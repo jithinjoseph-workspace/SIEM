@@ -7,6 +7,7 @@ import {
   Database, Settings, Network, Zap, FolderSearch, Bot, Server,
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
+  Cpu, Bug, ShieldCheck, FileCheck, Terminal,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -108,15 +109,19 @@ export class Sidebar implements OnInit, OnDestroy {
     if (hasNdr && has('ai-activity') && this.auth.isTenantAiEnabled())
       intelItems.push({ label: 'AI Activity', route: '/analyst/ai-activity', icon: Bot, permission: 'ai-activity' });
 
-    // SIEM section — visible whenever tenant has 'siem' feature
-    const siemItems: NavItem[] = [];
+    // SIEM section — unified host, fleet & security detection suite
     const hasSiem = this.auth.hasFeature('siem');
-    if (hasSiem) {
-      siemItems.push({ label: 'Host Agents', route: '/analyst/assets', icon: Server });
-      siemItems.push({ label: 'Detection Rules', route: '/analyst/rules', icon: ShieldAlert });
-      siemItems.push({ label: 'Threat Globe', route: '/analyst/threat-map', icon: MapIcon });
-      siemItems.push({ label: 'Data Sources & Syslog', route: '/tenant-admin/siem-sources', icon: Radio });
-    }
+    const siemItems: NavItem[] = [
+      { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server },
+      { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu },
+      { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield },
+      { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug },
+      { label: 'Compliance Audit',    route: '/analyst/compliance',      icon: ShieldCheck },
+      { label: 'FIM Syscheck',        route: '/analyst/fim',             icon: FileCheck },
+      { label: 'Active Response',     route: '/analyst/active-response', icon: Zap },
+      { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal },
+      { label: 'Data Sources & WEC',  route: '/tenant-admin/siem-sources', icon: Radio },
+    ];
 
     // XDR Correlated Incidents — available when both NDR & SIEM are enabled
     if (hasNdr && hasSiem) {

@@ -9,7 +9,7 @@ Write-Host ""
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $ScriptDir "wazuh-rust-angular\backend-rust"
-$FrontendDir = Join-Path $ScriptDir "wazuh-rust-angular\frontend-angular"
+$FrontendDir = Join-Path $ScriptDir "wazuh-rust-angular\ndr-ui"
 
 # 1. Check Port 8088 (Backend)
 $BackendConn = Get-NetTCPConnection -LocalPort 8088 -ErrorAction SilentlyContinue

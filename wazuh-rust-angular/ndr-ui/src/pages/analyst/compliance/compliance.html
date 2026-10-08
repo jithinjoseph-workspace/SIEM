@@ -1,0 +1,98 @@
+<div class="compliance-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="ShieldCheckIcon" class="w-6 h-6 text-emerald-400"></lucide-angular>
+        Regulatory Compliance & Audit Frameworks
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Automated control verification against PCI-DSS v4.0, SOC 2 Type II, HIPAA Security Rule, and NIST SP 800-53
+      </p>
+    </div>
+
+    <button 
+      (click)="loadCompliance()" 
+      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+    >
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+      Re-evaluate
+    </button>
+  </div>
+
+  <!-- Frameworks Cards Selector -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div 
+      *ngFor="let fw of frameworks()" 
+      (click)="selectFramework(fw)"
+      class="p-4 rounded-xl border cursor-pointer transition shadow-md"
+      [class.bg-slate-900]="selectedFramework()?.name !== fw.name"
+      [class.border-slate-800]="selectedFramework()?.name !== fw.name"
+      [class.bg-emerald-950]="selectedFramework()?.name === fw.name"
+      [class.border-emerald-500]="selectedFramework()?.name === fw.name"
+    >
+      <div class="flex justify-between items-start">
+        <h3 class="text-base font-bold text-white">{{ fw.name }}</h3>
+        <span class="text-xs font-mono font-bold text-emerald-400">{{ fw.score_percent }}%</span>
+      </div>
+      <p class="text-xs text-slate-400 mt-1 truncate">{{ fw.full_name }}</p>
+
+      <div class="mt-3 w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+        <div class="bg-emerald-500 h-2 rounded-full" [style.width.%]="fw.score_percent"></div>
+      </div>
+
+      <div class="mt-3 flex justify-between text-[11px] text-slate-400">
+        <span>{{ fw.passed_count }} / {{ fw.total_requirements }} passed</span>
+        <span class="text-rose-400">{{ fw.alert_count }} alerts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selected Framework Controls List -->
+  <div *ngIf="selectedFramework()" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+    <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+      <div>
+        <h2 class="text-lg font-bold text-white">{{ selectedFramework()?.full_name }}</h2>
+        <p class="text-xs text-slate-400">Specification Version: {{ selectedFramework()?.version }}</p>
+      </div>
+
+      <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+        {{ selectedFramework()?.score_percent }}% COMPLIANT
+      </span>
+    </div>
+
+    <div class="space-y-3">
+      <div 
+        *ngFor="let req of selectedFramework()?.requirements" 
+        class="p-4 bg-slate-950/70 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+      >
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-xs font-bold text-cyan-400">[{{ req.id }}]</span>
+            <h4 class="text-sm font-semibold text-white">{{ req.title }}</h4>
+          </div>
+          <p class="text-xs text-slate-400">{{ req.description }}</p>
+        </div>
+
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <span 
+            class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase"
+            [class.bg-emerald-950]="req.status === 'passed'"
+            [class.text-emerald-400]="req.status === 'passed'"
+            [class.border-emerald-800]="req.status === 'passed'"
+            [class.bg-amber-950]="req.status === 'warning'"
+            [class.text-amber-400]="req.status === 'warning'"
+            [class.border-amber-800]="req.status === 'warning'"
+            [class.bg-rose-950]="req.status === 'failed'"
+            [class.text-rose-400]="req.status === 'failed'"
+            [class.border-rose-800]="req.status === 'failed'"
+            [class.border]="true"
+          >
+            {{ req.status }}
+          </span>
+          <span class="text-xs font-mono text-slate-500">{{ req.alerts_count }} events</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

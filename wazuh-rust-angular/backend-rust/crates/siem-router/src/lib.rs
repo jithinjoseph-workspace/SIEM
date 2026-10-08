@@ -17,6 +17,8 @@
 
 #![cfg(target_os = "linux")]
 
+pub mod fb;
+pub mod sjson;
 pub mod socket;
 
 use std::collections::{HashMap, VecDeque};
@@ -34,15 +36,18 @@ pub const REMOTE_SUBSCRIPTION_ENDPOINT: &str = "queue/router/subscription.sock";
 
 /// `modules_log_level_t` names: "DEBUG", "INFO", "WARNING", "ERROR",
 /// "ERROR_EXIT", "DEBUG_VERBOSE".
-pub type LogFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
+/// The message is what C receives through `msg.c_str()`.
+pub type LogFn = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
 
 static LOG: OnceLock<LogFn> = OnceLock::new();
 
 /// `logMessage`
-pub fn log_message(level: &str, msg: &str) {
+pub fn log_message(level: &str, msg: impl AsRef<[u8]>) {
+    let msg = msg.as_ref();
     if !msg.is_empty() {
         if let Some(f) = LOG.get() {
-            f(level, msg);
+            // the C callback gets `msg.c_str()`
+            f(level, msg.split(|&c| c == 0).next().unwrap_or_default());
         }
     }
 }

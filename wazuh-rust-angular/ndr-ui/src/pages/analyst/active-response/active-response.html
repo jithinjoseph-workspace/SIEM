@@ -1,0 +1,126 @@
+<div class="ar-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="ZapIcon" class="w-6 h-6 text-rose-400"></lucide-angular>
+        Active Response & Automated Containment
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Dynamic IP blocking, endpoint command execution, and automated threat mitigation actions
+      </p>
+    </div>
+
+    <button 
+      (click)="loadRecords()" 
+      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+    >
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+      Refresh Actions
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Block IP Form -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+      <h2 class="text-base font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="ShieldAlertIcon" class="w-4 h-4 text-rose-400"></lucide-angular>
+        Manual Firewall IP Containment
+      </h2>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase block mb-1">Target IPv4 / IPv6 Address:</label>
+          <input 
+            [(ngModel)]="targetIp" 
+            placeholder="e.g. 198.51.100.42"
+            class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white font-mono focus:outline-none focus:border-rose-500"
+          />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase block mb-1">Drop Duration (Seconds):</label>
+          <input 
+            type="number" 
+            [(ngModel)]="durationSeconds" 
+            class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white font-mono focus:outline-none focus:border-rose-500"
+          />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase block mb-1">Containment Rationale:</label>
+          <input 
+            [(ngModel)]="reason" 
+            class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-rose-500"
+          />
+        </div>
+
+        <button 
+          (click)="blockIp()" 
+          [disabled]="isBlocking()"
+          class="w-full mt-2 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs font-bold uppercase rounded-lg shadow-lg shadow-rose-600/20 transition flex items-center justify-center gap-2"
+        >
+          <lucide-angular [img]="PlayIcon" class="w-4 h-4"></lucide-angular>
+          {{ isBlocking() ? 'Executing Firewall Drop...' : 'Dispatch Firewall Drop' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: Active Blocks Table -->
+    <div class="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <lucide-angular [img]="ShieldCheckIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
+          Active Containment State
+        </h2>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-950 text-rose-400 border border-rose-800">
+          {{ totalActive() }} BLOCKS ACTIVE
+        </span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase">
+            <tr>
+              <th class="p-3">TARGET IP</th>
+              <th class="p-3">STATUS</th>
+              <th class="p-3">REASON</th>
+              <th class="p-3">DURATION</th>
+              <th class="p-3 text-right">ACTION</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            <tr *ngFor="let r of records()" class="hover:bg-slate-800/50">
+              <td class="p-3 font-mono font-bold text-rose-400">{{ r.target_ip }}</td>
+              <td class="p-3">
+                <span 
+                  class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                  [class.bg-rose-950]="r.status === 'Active'"
+                  [class.text-rose-400]="r.status === 'Active'"
+                  [class.border-rose-800]="r.status === 'Active'"
+                  [class.bg-slate-800]="r.status !== 'Active'"
+                  [class.text-slate-400]="r.status !== 'Active'"
+                  [class.border-slate-700]="r.status !== 'Active'"
+                  [class.border]="true"
+                >
+                  {{ r.status }}
+                </span>
+              </td>
+              <td class="p-3 max-w-xs truncate text-slate-300">{{ r.reason }}</td>
+              <td class="p-3 font-mono text-slate-400">{{ r.duration_seconds }}s</td>
+              <td class="p-3 text-right">
+                <button 
+                  *ngIf="r.status === 'Active'"
+                  (click)="unblockIp(r.target_ip)"
+                  class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded border border-slate-700 transition"
+                >
+                  Release
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,134 @@
+<div class="vulns-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header with Actions -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="BugIcon" class="w-6 h-6 text-amber-400"></lucide-angular>
+        Vulnerability Detector (NVD / CVE Feed)
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Package correlation, CVSS v3.1 impact metrics, and automated CVE remediation alerts
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button 
+        (click)="loadVulnerabilities()" 
+        class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+      >
+        <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+        Refresh
+      </button>
+
+      <button 
+        (click)="triggerScanNow()" 
+        [disabled]="isScanning()"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-amber-500/20 transition"
+      >
+        <lucide-angular [img]="PlayIcon" class="w-4 h-4" [class.animate-spin]="isScanning()"></lucide-angular>
+        {{ isScanning() ? 'Scanning Fleet...' : 'Run CVE Scan Now' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Total Vulnerabilities</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ vulnStats().total }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-rose-900/40">
+      <span class="text-xs text-rose-400 block font-medium">Critical (CVSS 9.0+)</span>
+      <span class="text-2xl font-bold text-rose-400 mt-1 block">{{ vulnStats().critical }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-amber-900/40">
+      <span class="text-xs text-amber-400 block font-medium">High (CVSS 7.0-8.9)</span>
+      <span class="text-2xl font-bold text-amber-400 mt-1 block">{{ vulnStats().high }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-yellow-900/40">
+      <span class="text-xs text-yellow-400 block font-medium">Medium (CVSS 4.0-6.9)</span>
+      <span class="text-2xl font-bold text-yellow-400 mt-1 block">{{ vulnStats().medium }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-blue-900/40">
+      <span class="text-xs text-blue-400 block font-medium">Low (CVSS 0.1-3.9)</span>
+      <span class="text-2xl font-bold text-blue-400 mt-1 block">{{ vulnStats().low }}</span>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+    <div class="relative">
+      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
+      <input 
+        [(ngModel)]="searchQuery" 
+        placeholder="Search CVE ID, package or affected host..." 
+        class="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+      />
+    </div>
+
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-slate-400 uppercase font-semibold">Severity:</span>
+      <select 
+        [(ngModel)]="severityFilter" 
+        class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+      >
+        <option value="all">All Severities</option>
+        <option value="critical">Critical Only</option>
+        <option value="high">High Only</option>
+        <option value="medium">Medium Only</option>
+        <option value="low">Low Only</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+          <tr>
+            <th class="p-3.5">CVE IDENTIFIER</th>
+            <th class="p-3.5">SEVERITY</th>
+            <th class="p-3.5">CVSS</th>
+            <th class="p-3.5">AFFECTED PACKAGE</th>
+            <th class="p-3.5">INSTALLED VER</th>
+            <th class="p-3.5">FIXED VER</th>
+            <th class="p-3.5">AGENT ID</th>
+            <th class="p-3.5">TITLE & DESCRIPTION</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 text-slate-300">
+          <tr *ngFor="let v of filteredVulns()" class="hover:bg-slate-800/50 transition">
+            <td class="p-3.5 font-mono font-bold text-cyan-400 whitespace-nowrap">{{ v.cve }}</td>
+            <td class="p-3.5">
+              <span 
+                class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                [class.bg-rose-950]="v.severity === 'Critical'"
+                [class.text-rose-400]="v.severity === 'Critical'"
+                [class.border]="true"
+                [class.border-rose-800]="v.severity === 'Critical'"
+                [class.bg-amber-950]="v.severity === 'High'"
+                [class.text-amber-400]="v.severity === 'High'"
+                [class.border-amber-800]="v.severity === 'High'"
+                [class.bg-yellow-950]="v.severity === 'Medium'"
+                [class.text-yellow-400]="v.severity === 'Medium'"
+                [class.border-yellow-800]="v.severity === 'Medium'"
+                [class.bg-blue-950]="v.severity === 'Low'"
+                [class.text-blue-400]="v.severity === 'Low'"
+                [class.border-blue-800]="v.severity === 'Low'"
+              >
+                {{ v.severity }}
+              </span>
+            </td>
+            <td class="p-3.5 font-mono font-semibold">{{ v.cvss_score }}</td>
+            <td class="p-3.5 font-semibold text-white">{{ v.package_name }}</td>
+            <td class="p-3.5 font-mono text-slate-400">{{ v.installed_version }}</td>
+            <td class="p-3.5 font-mono text-emerald-400">{{ v.fixed_version || 'N/A' }}</td>
+            <td class="p-3.5 font-mono text-slate-400">{{ v.agent_id }}</td>
+            <td class="p-3.5 max-w-xs truncate text-slate-300" [title]="v.title">{{ v.title }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

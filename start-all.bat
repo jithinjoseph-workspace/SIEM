@@ -10,7 +10,7 @@ echo.
 
 set "SCRIPT_DIR=%~dp0"
 set "BACKEND_DIR=%SCRIPT_DIR%wazuh-rust-angular\backend-rust"
-set "FRONTEND_DIR=%SCRIPT_DIR%wazuh-rust-angular\frontend-angular"
+set "FRONTEND_DIR=%SCRIPT_DIR%wazuh-rust-angular\ndr-ui"
 
 echo [*] Checking Backend (Port 8088)...
 netstat -ano | findstr ":8088 " | findstr "LISTENING" >nul

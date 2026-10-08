@@ -46,10 +46,10 @@
       }
     ],
     "normalization": {
-      "text": "data.text",
-      "a": "data.a",
       "ceData_children": "data.cedata_children",
+      "text": "data.text",
       "type": "data.type",
+      "a": "data.a",
       "redirections": "data.redirections",
       "commandElements": "data.commandelements"
     },
@@ -115,12 +115,12 @@
       }
     ],
     "normalization": {
-      "commandElements": "data.commandelements",
-      "type": "data.type",
+      "ceData_children": "data.cedata_children",
       "redirections": "data.redirections",
       "a": "data.a",
+      "type": "data.type",
       "text": "data.text",
-      "ceData_children": "data.cedata_children"
+      "commandElements": "data.commandelements"
     },
     "confidence": 0.94,
     "version": 1,
@@ -190,13 +190,13 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "alarm": "data.alarm",
       "status": "status",
+      "patient_id": "data.patient_id",
+      "timestamp": "timestamp",
+      "flow_rate_mlh": "data.flow_rate_mlh",
       "volume_infused_ml": "data.volume_infused_ml",
       "device_id": "data.device_id",
-      "flow_rate_mlh": "data.flow_rate_mlh",
-      "patient_id": "data.patient_id"
+      "alarm": "data.alarm"
     },
     "confidence": 0.92,
     "version": 1,
@@ -246,10 +246,10 @@
       }
     ],
     "normalization": {
+      "pid": "data.pid",
       "ecu": "data.ecu",
-      "dtc": "data.dtc",
       "timestamp": "timestamp",
-      "pid": "data.pid"
+      "dtc": "data.dtc"
     },
     "confidence": 0.94,
     "version": 1,
@@ -317,12 +317,12 @@
       }
     ],
     "normalization": {
+      "breaker": "data.breaker",
+      "feeder": "data.feeder",
+      "power_mw": "data.power_mw",
       "voltage_kv": "data.voltage_kv",
       "current_a": "data.current_a",
-      "power_mw": "data.power_mw",
       "timestamp": "timestamp",
-      "feeder": "data.feeder",
-      "breaker": "data.breaker",
       "frequency_hz": "data.frequency_hz"
     },
     "confidence": 0.92,
@@ -391,13 +391,13 @@
       }
     ],
     "normalization": {
-      "mode": "data.mode",
+      "humidity": "data.humidity",
       "temp_c": "data.temp_c",
-      "airflow_cfm": "data.airflow_cfm",
+      "mode": "data.mode",
       "timestamp": "timestamp",
-      "status": "status",
+      "airflow_cfm": "data.airflow_cfm",
       "unit": "data.unit",
-      "humidity": "data.humidity"
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -459,12 +459,12 @@
       }
     ],
     "normalization": {
-      "camera": "data.camera",
-      "event": "data.event",
       "target": "data.target",
-      "zone": "data.zone",
       "timestamp": "timestamp",
-      "confidence": "data.confidence"
+      "camera": "data.camera",
+      "zone": "data.zone",
+      "confidence": "data.confidence",
+      "event": "data.event"
     },
     "confidence": 0.92,
     "version": 1,
@@ -526,12 +526,12 @@
       }
     ],
     "normalization": {
-      "access": "data.access",
       "badge_id": "data.badge_id",
-      "timestamp": "timestamp",
-      "user": "srcuser",
+      "access": "data.access",
+      "door": "data.door",
       "direction": "data.direction",
-      "door": "data.door"
+      "user": "srcuser",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -599,13 +599,13 @@
       }
     ],
     "normalization": {
-      "code": "data.code",
-      "payload": "data.payload",
-      "token": "data.token",
       "timestamp": "timestamp",
+      "code": "data.code",
+      "token": "data.token",
       "rcode": "data.rcode",
+      "remote": "data.remote",
       "path": "data.path",
-      "remote": "data.remote"
+      "payload": "data.payload"
     },
     "confidence": 0.92,
     "version": 1,
@@ -667,11 +667,11 @@
       }
     ],
     "normalization": {
-      "payload": "data.payload",
-      "qos": "data.qos",
-      "status": "status",
       "client": "data.client",
+      "payload": "data.payload",
       "timestamp": "timestamp",
+      "status": "status",
+      "qos": "data.qos",
       "topic": "data.topic"
     },
     "confidence": 0.92,
@@ -735,10 +735,10 @@
     ],
     "normalization": {
       "ph_level": "data.ph_level",
-      "timestamp": "timestamp",
       "status": "status",
       "plc": "data.plc",
       "pressure_psi": "data.pressure_psi",
+      "timestamp": "timestamp",
       "flow_rate": "data.flow_rate"
     },
     "confidence": 0.92,
@@ -801,11 +801,11 @@
       }
     ],
     "normalization": {
+      "unit": "data.unit",
       "register": "data.register",
-      "func": "data.func",
       "timestamp": "timestamp",
       "status": "status",
-      "unit": "data.unit",
+      "func": "data.func",
       "client": "data.client"
     },
     "confidence": 0.94,
@@ -875,12 +875,12 @@
     ],
     "normalization": {
       "status": "status",
-      "repo": "data.repo",
-      "action": "action",
       "artifact": "data.artifact",
+      "user": "srcuser",
+      "action": "action",
+      "repo": "data.repo",
       "timestamp": "timestamp",
-      "size": "data.size",
-      "user": "srcuser"
+      "size": "data.size"
     },
     "confidence": 0.92,
     "version": 1,
@@ -948,13 +948,13 @@
       }
     ],
     "normalization": {
-      "security_hotspots": "data.security_hotspots",
-      "coverage": "data.coverage",
       "status": "status",
+      "security_hotspots": "data.security_hotspots",
+      "bugs": "data.bugs",
       "vulnerabilities": "data.vulnerabilities",
+      "coverage": "data.coverage",
       "timestamp": "timestamp",
-      "project": "data.project",
-      "bugs": "data.bugs"
+      "project": "data.project"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1017,11 +1017,11 @@
     ],
     "normalization": {
       "health": "data.health",
-      "repo": "data.repo",
       "sync_status": "status",
-      "app": "data.app",
       "timestamp": "timestamp",
-      "revision": "data.revision"
+      "app": "data.app",
+      "revision": "data.revision",
+      "repo": "data.repo"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1095,14 +1095,14 @@
       }
     ],
     "normalization": {
-      "duration": "data.duration",
+      "change": "data.change",
+      "destroy": "data.destroy",
+      "timestamp": "timestamp",
       "status": "status",
       "workspace": "data.workspace",
-      "timestamp": "timestamp",
       "add": "data.add",
-      "change": "data.change",
-      "module": "data.module",
-      "destroy": "data.destroy"
+      "duration": "data.duration",
+      "module": "data.module"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1164,12 +1164,12 @@
       }
     ],
     "normalization": {
-      "value": "data.value",
-      "alert": "data.alert",
       "job": "data.job",
       "severity": "data.severity",
-      "timestamp": "timestamp",
-      "instance": "data.instance"
+      "instance": "data.instance",
+      "alert": "data.alert",
+      "value": "data.value",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1231,12 +1231,12 @@
       }
     ],
     "normalization": {
-      "check": "data.check",
       "status": "status",
-      "service": "data.service",
       "notes": "data.notes",
+      "timestamp": "timestamp",
       "node": "data.node",
-      "timestamp": "timestamp"
+      "service": "data.service",
+      "check": "data.check"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1304,13 +1304,13 @@
       }
     ],
     "normalization": {
-      "path": "data.path",
       "op": "data.op",
-      "error": "data.error",
+      "timestamp": "timestamp",
       "auth_token": "data.auth_token",
-      "type": "data.type",
       "client": "data.client",
-      "timestamp": "timestamp"
+      "path": "data.path",
+      "type": "data.type",
+      "error": "data.error"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1372,12 +1372,12 @@
       }
     ],
     "normalization": {
-      "build": "data.build",
-      "node": "data.node",
-      "job": "data.job",
       "duration_ms": "data.duration_ms",
+      "result": "data.result",
+      "node": "data.node",
       "timestamp": "timestamp",
-      "result": "data.result"
+      "build": "data.build",
+      "job": "data.job"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1445,13 +1445,13 @@
       }
     ],
     "normalization": {
-      "run_id": "data.run_id",
       "timestamp": "timestamp",
-      "actor": "data.actor",
-      "conclusion": "data.conclusion",
-      "repo": "data.repo",
+      "workflow": "data.workflow",
       "status": "status",
-      "workflow": "data.workflow"
+      "conclusion": "data.conclusion",
+      "actor": "data.actor",
+      "run_id": "data.run_id",
+      "repo": "data.repo"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1519,13 +1519,13 @@
       }
     ],
     "normalization": {
-      "project": "data.project",
-      "status": "status",
-      "job": "data.job",
       "stage": "data.stage",
-      "duration": "data.duration",
+      "timestamp": "timestamp",
+      "status": "status",
       "runner": "data.runner",
-      "timestamp": "timestamp"
+      "duration": "data.duration",
+      "job": "data.job",
+      "project": "data.project"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1593,13 +1593,13 @@
       }
     ],
     "normalization": {
+      "settlement_date": "data.settlement_date",
+      "counterparty": "data.counterparty",
       "cusip": "srcip",
       "symbol": "data.symbol",
-      "counterparty": "data.counterparty",
-      "settlement_date": "data.settlement_date",
-      "timestamp": "timestamp",
       "shares": "data.shares",
-      "status": "status"
+      "status": "status",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1667,13 +1667,13 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "batch_id": "data.batch_id",
-      "count": "data.count",
       "rcode": "data.rcode",
-      "total_debit": "data.total_debit",
+      "count": "data.count",
       "total_credit": "data.total_credit",
-      "status": "status"
+      "total_debit": "data.total_debit",
+      "timestamp": "timestamp",
+      "status": "status",
+      "batch_id": "data.batch_id"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1735,12 +1735,12 @@
       }
     ],
     "normalization": {
+      "ip": "srcip",
+      "timestamp": "timestamp",
       "rules_violated": "data.rules_violated",
-      "velocity_score": "data.velocity_score",
       "decision": "data.decision",
       "user": "srcuser",
-      "ip": "srcip",
-      "timestamp": "timestamp"
+      "velocity_score": "data.velocity_score"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1814,14 +1814,14 @@
       }
     ],
     "normalization": {
-      "taker": "data.taker",
-      "status": "status",
-      "timestamp": "timestamp",
-      "price": "data.price",
-      "order_id": "data.order_id",
-      "pair": "data.pair",
       "side": "data.side",
-      "qty": "data.qty"
+      "qty": "data.qty",
+      "timestamp": "timestamp",
+      "status": "status",
+      "price": "data.price",
+      "pair": "data.pair",
+      "order_id": "data.order_id",
+      "taker": "data.taker"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1883,12 +1883,12 @@
       }
     ],
     "normalization": {
-      "auditor": "data.auditor",
+      "credit_account": "data.credit_account",
+      "amount": "data.amount",
+      "debit_account": "data.debit_account",
       "timestamp": "timestamp",
       "journal": "data.journal",
-      "amount": "data.amount",
-      "credit_account": "data.credit_account",
-      "debit_account": "data.debit_account"
+      "auditor": "data.auditor"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1962,14 +1962,14 @@
       }
     ],
     "normalization": {
-      "auth_code": "data.auth_code",
-      "store_id": "data.store_id",
-      "entry": "data.entry",
-      "status": "status",
       "card_scheme": "data.card_scheme",
+      "entry": "data.entry",
+      "store_id": "data.store_id",
       "timestamp": "timestamp",
+      "status": "status",
+      "term_id": "data.term_id",
       "total": "data.total",
-      "term_id": "data.term_id"
+      "auth_code": "data.auth_code"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2037,13 +2037,13 @@
       }
     ],
     "normalization": {
-      "cassette": "data.cassette",
       "status": "status",
-      "dispense_amount": "data.dispense_amount",
+      "cassette": "data.cassette",
       "note_count": "data.note_count",
+      "card_hash": "data.card_hash",
       "timestamp": "timestamp",
       "atm_id": "data.atm_id",
-      "card_hash": "data.card_hash"
+      "dispense_amount": "data.dispense_amount"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2111,13 +2111,13 @@
       }
     ],
     "normalization": {
-      "amount": "data.amount",
       "ccy": "data.ccy",
-      "ref": "data.ref",
+      "amount": "data.amount",
       "receiver_bic": "data.receiver_bic",
+      "sender_bic": "data.sender_bic",
+      "ref": "data.ref",
       "timestamp": "timestamp",
-      "msg_type": "data.msg_type",
-      "sender_bic": "data.sender_bic"
+      "msg_type": "data.msg_type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2179,12 +2179,12 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "payment_status": "status",
-      "txn_id": "data.txn_id",
+      "payer_email": "data.payer_email",
       "txn_type": "data.txn_type",
       "mc_gross": "data.mc_gross",
-      "payer_email": "data.payer_email"
+      "timestamp": "timestamp",
+      "txn_id": "data.txn_id",
+      "payment_status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2246,11 +2246,11 @@
       }
     ],
     "normalization": {
+      "currency": "data.currency",
+      "type": "data.type",
       "charge_id": "data.charge_id",
       "customer": "data.customer",
       "amount": "data.amount",
-      "type": "data.type",
-      "currency": "data.currency",
       "timestamp": "timestamp"
     },
     "confidence": 0.92,
@@ -2313,12 +2313,12 @@
       }
     ],
     "normalization": {
-      "status": "status",
       "task_id": "data.task_id",
-      "timestamp": "timestamp",
       "task": "data.task",
+      "runtime": "data.runtime",
+      "timestamp": "timestamp",
       "worker": "data.worker",
-      "runtime": "data.runtime"
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2386,13 +2386,13 @@
       }
     ],
     "normalization": {
-      "offset": "data.offset",
+      "timestamp": "timestamp",
       "partition": "data.partition",
-      "topic": "data.topic",
-      "status": "status",
-      "lag": "data.lag",
       "broker_id": "data.broker_id",
-      "timestamp": "timestamp"
+      "offset": "data.offset",
+      "status": "status",
+      "topic": "data.topic",
+      "lag": "data.lag"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2454,11 +2454,11 @@
       }
     ],
     "normalization": {
-      "vhost": "data.vhost",
-      "timestamp": "timestamp",
-      "reason": "data.reason",
       "event": "data.event",
       "pid": "data.pid",
+      "timestamp": "timestamp",
+      "vhost": "data.vhost",
+      "reason": "data.reason",
       "queue": "data.queue"
     },
     "confidence": 0.92,
@@ -2515,11 +2515,11 @@
       }
     ],
     "normalization": {
-      "event": "data.event",
+      "id": "data.id",
+      "timestamp": "timestamp",
       "level": "data.level",
       "runtime": "data.runtime",
-      "timestamp": "timestamp",
-      "id": "data.id"
+      "event": "data.event"
     },
     "confidence": 0.94,
     "version": 1,
@@ -2587,13 +2587,13 @@
       }
     ],
     "normalization": {
-      "image": "data.image",
-      "msg": "data.msg",
-      "oom_killed": "data.oom_killed",
       "container": "data.container",
+      "level": "data.level",
+      "msg": "data.msg",
       "timestamp": "timestamp",
+      "oom_killed": "data.oom_killed",
       "exit_code": "data.exit_code",
-      "level": "data.level"
+      "image": "data.image"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2661,13 +2661,13 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "status": "status",
       "allocs": "data.allocs",
-      "controller": "data.controller",
-      "format": "data.format",
       "action": "action",
-      "duration": "data.duration"
+      "controller": "data.controller",
+      "duration": "data.duration",
+      "status": "status",
+      "format": "data.format",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2723,9 +2723,9 @@
       }
     ],
     "normalization": {
-      "level": "data.level",
-      "timestamp": "timestamp",
       "msg": "data.msg",
+      "timestamp": "timestamp",
+      "level": "data.level",
       "latency": "data.latency",
       "caller": "data.caller"
     },
@@ -2789,12 +2789,12 @@
       }
     ],
     "normalization": {
-      "level": "data.level",
       "line": "data.line",
-      "timestamp": "timestamp",
+      "message": "data.message",
       "file": "data.file",
+      "timestamp": "timestamp",
       "func": "data.func",
-      "message": "data.message"
+      "level": "data.level"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2862,13 +2862,13 @@
       }
     ],
     "normalization": {
-      "amount": "data.amount",
-      "service": "data.service",
-      "level": "data.level",
       "user_id": "srcuser",
       "msg": "data.msg",
-      "ip": "srcip",
-      "timestamp": "timestamp"
+      "service": "data.service",
+      "level": "data.level",
+      "timestamp": "timestamp",
+      "amount": "data.amount",
+      "ip": "srcip"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2930,11 +2930,11 @@
       }
     ],
     "normalization": {
-      "logger": "data.logger",
-      "trace_id": "data.trace_id",
       "thread": "data.thread",
       "message": "data.message",
+      "trace_id": "data.trace_id",
       "timestamp": "timestamp",
+      "logger": "data.logger",
       "level": "data.level"
     },
     "confidence": 0.92,
@@ -2997,12 +2997,12 @@
       }
     ],
     "normalization": {
-      "result": "data.result",
       "cred_id": "data.cred_id",
-      "user": "srcuser",
-      "timestamp": "timestamp",
+      "rp_id": "data.rp_id",
       "signature_counter": "data.signature_counter",
-      "rp_id": "data.rp_id"
+      "timestamp": "timestamp",
+      "result": "data.result",
+      "user": "srcuser"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3070,13 +3070,13 @@
       }
     ],
     "normalization": {
-      "user": "srcuser",
-      "timestamp": "timestamp",
-      "device": "data.device",
+      "integration": "data.integration",
       "factor": "data.factor",
-      "ip": "srcip",
+      "user": "srcuser",
       "status": "status",
-      "integration": "data.integration"
+      "ip": "srcip",
+      "timestamp": "timestamp",
+      "device": "data.device"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3132,11 +3132,11 @@
       }
     ],
     "normalization": {
-      "subject": "data.subject",
-      "issuer": "data.issuer",
-      "timestamp": "timestamp",
       "sp_entity": "data.sp_entity",
-      "status": "status"
+      "subject": "data.subject",
+      "status": "status",
+      "issuer": "data.issuer",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3193,10 +3193,10 @@
     ],
     "normalization": {
       "conn": "data.conn",
+      "ip": "srcip",
       "op": "data.op",
       "result": "data.result",
-      "timestamp": "timestamp",
-      "ip": "srcip"
+      "timestamp": "timestamp"
     },
     "confidence": 0.94,
     "version": 1,
@@ -3264,12 +3264,12 @@
       }
     ],
     "normalization": {
+      "nas_ip": "srcip",
+      "nas_port": "srcport",
       "packet": "data.packet",
       "timestamp": "timestamp",
       "status": "status",
-      "nas_ip": "srcip",
       "user": "srcuser",
-      "nas_port": "srcport",
       "cli": "data.cli"
     },
     "confidence": 0.92,
@@ -3332,12 +3332,12 @@
       }
     ],
     "normalization": {
-      "client": "data.client",
-      "etype": "data.etype",
       "principal": "srcip",
       "module": "data.module",
+      "timestamp": "timestamp",
       "status": "status",
-      "timestamp": "timestamp"
+      "client": "data.client",
+      "etype": "data.etype"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3405,12 +3405,12 @@
       }
     ],
     "normalization": {
-      "ip": "srcip",
-      "client": "data.client",
       "timestamp": "timestamp",
-      "description": "srcip",
       "type": "data.type",
+      "description": "srcip",
+      "ip": "srcip",
       "user": "srcuser",
+      "client": "data.client",
       "connection": "data.connection"
     },
     "confidence": 0.92,
@@ -3473,12 +3473,12 @@
       }
     ],
     "normalization": {
-      "event_type": "data.event_type",
       "outcome": "data.outcome",
+      "client_ip": "srcip",
       "actor": "data.actor",
-      "timestamp": "timestamp",
       "target": "data.target",
-      "client_ip": "srcip"
+      "event_type": "data.event_type",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3546,13 +3546,13 @@
       }
     ],
     "normalization": {
-      "event": "data.event",
       "client_id": "data.client_id",
-      "timestamp": "timestamp",
-      "ip_address": "srcip",
+      "event": "data.event",
       "user_id": "srcuser",
       "auth_method": "data.auth_method",
-      "realm": "data.realm"
+      "timestamp": "timestamp",
+      "realm": "data.realm",
+      "ip_address": "srcip"
     },
     "confidence": 0.94,
     "version": 1,
@@ -3614,12 +3614,12 @@
       }
     ],
     "normalization": {
-      "user": "srcuser",
-      "ticket_options": "data.ticket_options",
-      "result_code": "data.result_code",
       "realm": "data.realm",
       "timestamp": "timestamp",
-      "client": "data.client"
+      "client": "data.client",
+      "user": "srcuser",
+      "result_code": "data.result_code",
+      "ticket_options": "data.ticket_options"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3681,12 +3681,12 @@
       }
     ],
     "normalization": {
-      "key": "data.key",
       "bytes": "data.bytes",
       "cmd": "data.cmd",
+      "timestamp": "timestamp",
       "client": "data.client",
-      "status": "status",
-      "timestamp": "timestamp"
+      "key": "data.key",
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3754,13 +3754,13 @@
       }
     ],
     "normalization": {
-      "query_kind": "data.query_kind",
-      "query_id": "data.query_id",
-      "read_rows": "data.read_rows",
+      "timestamp": "timestamp",
       "user": "srcuser",
+      "query_kind": "data.query_kind",
+      "read_rows": "data.read_rows",
+      "query_id": "data.query_id",
       "memory_bytes": "data.memory_bytes",
-      "duration": "data.duration",
-      "timestamp": "timestamp"
+      "duration": "data.duration"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3828,13 +3828,13 @@
       }
     ],
     "normalization": {
-      "operation": "data.operation",
-      "status": "status",
+      "keyspace": "data.keyspace",
       "rows": "data.rows",
-      "node": "data.node",
+      "status": "status",
       "timestamp": "timestamp",
       "user": "srcuser",
-      "keyspace": "data.keyspace"
+      "node": "data.node",
+      "operation": "data.operation"
     },
     "confidence": 0.92,
     "version": 1,
@@ -3890,11 +3890,11 @@
       }
     ],
     "normalization": {
-      "message": "data.message",
       "node": "data.node",
+      "level": "data.level",
       "timestamp": "timestamp",
-      "component": "data.component",
-      "level": "data.level"
+      "message": "data.message",
+      "component": "data.component"
     },
     "confidence": 0.94,
     "version": 1,
@@ -3962,13 +3962,13 @@
       }
     ],
     "normalization": {
-      "client_ip": "srcip",
       "action": "action",
-      "user": "srcuser",
       "code": "data.code",
+      "user": "srcuser",
       "status": "status",
+      "timestamp": "timestamp",
       "host": "data.host",
-      "timestamp": "timestamp"
+      "client_ip": "srcip"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4036,13 +4036,13 @@
       }
     ],
     "normalization": {
-      "status": "status",
-      "timestamp": "timestamp",
-      "action": "action",
-      "db": "data.db",
-      "client_ip": "srcip",
       "table": "data.table",
-      "user": "srcuser"
+      "status": "status",
+      "action": "action",
+      "client_ip": "srcip",
+      "user": "srcuser",
+      "db": "data.db",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4099,9 +4099,9 @@
     ],
     "normalization": {
       "user": "srcuser",
-      "timestamp": "timestamp",
-      "client": "data.client",
       "cmd": "data.cmd",
+      "client": "data.client",
+      "timestamp": "timestamp",
       "status": "status"
     },
     "confidence": 0.94,
@@ -4171,11 +4171,11 @@
     ],
     "normalization": {
       "user": "srcuser",
-      "result": "data.result",
       "client": "data.client",
       "atype": "data.atype",
-      "db": "data.db",
       "mechanism": "data.mechanism",
+      "db": "data.db",
+      "result": "data.result",
       "timestamp": "timestamp"
     },
     "confidence": 0.92,
@@ -4239,11 +4239,11 @@
     ],
     "normalization": {
       "timestamp": "timestamp",
-      "user": "srcuser",
-      "query": "data.query",
+      "db": "data.db",
       "thread": "data.thread",
+      "query": "data.query",
       "host": "data.host",
-      "db": "data.db"
+      "user": "srcuser"
     },
     "confidence": 0.94,
     "version": 1,
@@ -4305,12 +4305,12 @@
       }
     ],
     "normalization": {
-      "db": "data.db",
-      "user": "srcuser",
       "timestamp": "timestamp",
-      "rows": "data.rows",
+      "duration": "data.duration",
       "statement": "data.statement",
-      "duration": "data.duration"
+      "rows": "data.rows",
+      "user": "srcuser",
+      "db": "data.db"
     },
     "confidence": 0.94,
     "version": 1,
@@ -4384,13 +4384,13 @@
       }
     ],
     "normalization": {
+      "duration": "data.duration",
       "service": "data.service",
-      "code": "data.code",
-      "router": "data.router",
       "path": "data.path",
       "timestamp": "timestamp",
       "client": "data.client",
-      "duration": "data.duration",
+      "router": "data.router",
+      "code": "data.code",
       "method": "data.method"
     },
     "confidence": 0.92,
@@ -4465,14 +4465,14 @@
       }
     ],
     "normalization": {
-      "backend": "data.backend",
       "age": "data.age",
+      "url": "data.url",
       "ttl": "data.ttl",
-      "status": "status",
-      "handling": "data.handling",
-      "timestamp": "timestamp",
+      "backend": "data.backend",
       "req": "data.req",
-      "url": "data.url"
+      "timestamp": "timestamp",
+      "handling": "data.handling",
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4540,13 +4540,13 @@
       }
     ],
     "normalization": {
+      "timestamp": "timestamp",
       "client": "data.client",
       "fastly_server": "data.fastly_server",
-      "url": "data.url",
-      "timestamp": "timestamp",
-      "status": "status",
       "hit_state": "data.hit_state",
-      "resp_bytes": "data.resp_bytes"
+      "status": "status",
+      "resp_bytes": "data.resp_bytes",
+      "url": "data.url"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4614,13 +4614,13 @@
       }
     ],
     "normalization": {
-      "country": "data.country",
       "threat_score": "data.threat_score",
-      "client_ip": "srcip",
+      "host": "data.host",
+      "rule": "data.rule",
       "timestamp": "timestamp",
       "action": "action",
-      "rule": "data.rule",
-      "host": "data.host"
+      "country": "data.country",
+      "client_ip": "srcip"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4695,13 +4695,13 @@
     ],
     "normalization": {
       "method": "data.method",
-      "url": "data.url",
       "timestamp": "timestamp",
-      "user": "srcuser",
-      "status": "status",
+      "peer": "data.peer",
       "client": "data.client",
       "code": "data.code",
-      "peer": "data.peer"
+      "user": "srcuser",
+      "url": "data.url",
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4775,14 +4775,14 @@
       }
     ],
     "normalization": {
+      "client": "data.client",
       "status": "status",
       "bytes": "data.bytes",
-      "srv": "data.srv",
-      "be": "data.be",
-      "term": "data.term",
-      "client": "data.client",
+      "fe": "data.fe",
       "timestamp": "timestamp",
-      "fe": "data.fe"
+      "be": "data.be",
+      "srv": "data.srv",
+      "term": "data.term"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4868,16 +4868,16 @@
       }
     ],
     "normalization": {
-      "uri": "data.uri",
-      "timestamp": "timestamp",
-      "proto": "data.proto",
+      "host": "data.host",
+      "duration": "data.duration",
+      "remote": "data.remote",
       "level": "data.level",
       "status": "status",
-      "duration": "data.duration",
+      "bytes": "data.bytes",
       "method": "data.method",
-      "host": "data.host",
-      "remote": "data.remote",
-      "bytes": "data.bytes"
+      "proto": "data.proto",
+      "timestamp": "timestamp",
+      "uri": "data.uri"
     },
     "confidence": 0.92,
     "version": 1,
@@ -4946,12 +4946,12 @@
     ],
     "normalization": {
       "bytes": "data.bytes",
-      "method": "data.method",
-      "timestamp": "timestamp",
       "uri": "data.uri",
-      "client": "data.client",
+      "timestamp": "timestamp",
       "referer": "data.referer",
-      "code": "data.code"
+      "code": "data.code",
+      "client": "data.client",
+      "method": "data.method"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5019,12 +5019,12 @@
       }
     ],
     "normalization": {
-      "reason": "data.reason",
-      "server": "data.server",
-      "timestamp": "timestamp",
-      "request": "data.request",
       "pid": "data.pid",
+      "reason": "data.reason",
+      "request": "data.request",
+      "timestamp": "timestamp",
       "level": "data.level",
+      "server": "data.server",
       "client": "data.client"
     },
     "confidence": 0.94,
@@ -5099,14 +5099,14 @@
       }
     ],
     "normalization": {
-      "size": "data.size",
-      "method": "data.method",
-      "client": "data.client",
-      "status": "status",
-      "timestamp": "timestamp",
-      "ua": "data.ua",
       "rt": "data.rt",
-      "url": "data.url"
+      "client": "data.client",
+      "method": "data.method",
+      "size": "data.size",
+      "ua": "data.ua",
+      "timestamp": "timestamp",
+      "url": "data.url",
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5168,12 +5168,12 @@
       }
     ],
     "normalization": {
-      "threat_name": "data.threat_name",
       "path": "data.path",
-      "event": "data.event",
-      "action": "action",
+      "threat_name": "data.threat_name",
       "severity": "data.severity",
-      "timestamp": "timestamp"
+      "action": "action",
+      "timestamp": "timestamp",
+      "event": "data.event"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5235,10 +5235,10 @@
       }
     ],
     "normalization": {
-      "service": "data.service",
+      "rhost": "data.rhost",
       "module": "data.module",
       "user": "srcuser",
-      "rhost": "data.rhost",
+      "service": "data.service",
       "timestamp": "timestamp",
       "status": "status"
     },
@@ -5303,11 +5303,11 @@
     ],
     "normalization": {
       "pid": "data.pid",
-      "cmd": "data.cmd",
-      "timestamp": "timestamp",
-      "user": "srcuser",
       "exit_code": "data.exit_code",
-      "status": "status"
+      "status": "status",
+      "user": "srcuser",
+      "cmd": "data.cmd",
+      "timestamp": "timestamp"
     },
     "confidence": 0.94,
     "version": 1,
@@ -5369,12 +5369,12 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "duration": "data.duration",
       "jail": "data.jail",
-      "action": "action",
       "failures": "data.failures",
-      "ip": "srcip"
+      "action": "action",
+      "timestamp": "timestamp",
+      "ip": "srcip",
+      "duration": "data.duration"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5436,12 +5436,12 @@
       }
     ],
     "normalization": {
-      "pid": "data.pid",
       "action": "action",
-      "event": "data.event",
+      "timestamp": "timestamp",
       "user": "srcuser",
+      "event": "data.event",
       "process": "data.process",
-      "timestamp": "timestamp"
+      "pid": "data.pid"
     },
     "confidence": 0.94,
     "version": 1,
@@ -5497,11 +5497,11 @@
       }
     ],
     "normalization": {
+      "timestamp": "timestamp",
+      "image_path": "data.image_path",
       "user": "srcuser",
       "service": "data.service",
-      "image_path": "data.image_path",
-      "start_type": "data.start_type",
-      "timestamp": "timestamp"
+      "start_type": "data.start_type"
     },
     "confidence": 0.94,
     "version": 1,
@@ -5564,10 +5564,10 @@
     ],
     "normalization": {
       "ip": "srcip",
-      "timestamp": "timestamp",
       "sub_status": "status",
-      "user": "srcuser",
+      "timestamp": "timestamp",
       "domain": "data.domain",
+      "user": "srcuser",
       "status": "status"
     },
     "confidence": 0.92,
@@ -5630,12 +5630,12 @@
       }
     ],
     "normalization": {
-      "domain": "data.domain",
+      "user": "srcuser",
       "ip": "srcip",
+      "logon_type": "data.logon_type",
       "timestamp": "timestamp",
       "status": "status",
-      "user": "srcuser",
-      "logon_type": "data.logon_type"
+      "domain": "data.domain"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5698,11 +5698,11 @@
     ],
     "normalization": {
       "user_target": "srcuser",
-      "command": "data.command",
       "pwd": "data.pwd",
-      "tty": "data.tty",
+      "timestamp": "timestamp",
       "user": "srcuser",
-      "timestamp": "timestamp"
+      "tty": "data.tty",
+      "command": "data.command"
     },
     "confidence": 0.94,
     "version": 1,
@@ -5776,14 +5776,14 @@
       }
     ],
     "normalization": {
-      "pid": "data.pid",
       "exe": "data.exe",
+      "pid": "data.pid",
       "args": "data.args",
-      "timestamp": "timestamp",
+      "euid": "data.euid",
       "type": "data.type",
       "uid": "data.uid",
-      "comm": "data.comm",
-      "euid": "data.euid"
+      "timestamp": "timestamp",
+      "comm": "data.comm"
     },
     "confidence": 0.94,
     "version": 1,
@@ -5851,13 +5851,13 @@
       }
     ],
     "normalization": {
+      "latency_ms": "data.latency_ms",
       "timestamp": "timestamp",
-      "mesh": "data.mesh",
-      "dst_workload": "dstip",
       "src_workload": "srcip",
-      "rcode": "data.rcode",
       "response_flags": "data.response_flags",
-      "latency_ms": "data.latency_ms"
+      "rcode": "data.rcode",
+      "dst_workload": "dstip",
+      "mesh": "data.mesh"
     },
     "confidence": 0.92,
     "version": 1,
@@ -5937,15 +5937,15 @@
       }
     ],
     "normalization": {
-      "path": "data.path",
-      "method": "data.method",
       "upstream": "data.upstream",
+      "path": "data.path",
+      "proto": "data.proto",
+      "client": "data.client",
       "status": "status",
+      "method": "data.method",
       "timestamp": "timestamp",
       "duration": "data.duration",
-      "proto": "data.proto",
-      "bytes": "data.bytes",
-      "client": "data.client"
+      "bytes": "data.bytes"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6013,13 +6013,13 @@
       }
     ],
     "normalization": {
-      "probe": "data.probe",
-      "namespace": "data.namespace",
-      "container": "data.container",
       "status": "status",
-      "code": "data.code",
+      "container": "data.container",
+      "namespace": "data.namespace",
+      "timestamp": "timestamp",
       "pod": "data.pod",
-      "timestamp": "timestamp"
+      "code": "data.code",
+      "probe": "data.probe"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6087,12 +6087,12 @@
       }
     ],
     "normalization": {
+      "timestamp": "timestamp",
       "verb": "data.verb",
+      "user": "srcuser",
+      "code": "data.code",
       "namespace": "data.namespace",
       "resource": "data.resource",
-      "code": "data.code",
-      "timestamp": "timestamp",
-      "user": "srcuser",
       "ip": "srcip"
     },
     "confidence": 0.92,
@@ -6156,11 +6156,11 @@
     ],
     "normalization": {
       "method": "data.method",
-      "timestamp": "timestamp",
-      "service": "data.service",
-      "ip": "srcip",
       "status": "status",
-      "user": "srcuser"
+      "service": "data.service",
+      "user": "srcuser",
+      "timestamp": "timestamp",
+      "ip": "srcip"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6234,14 +6234,14 @@
       }
     ],
     "normalization": {
-      "location": "data.location",
       "ip": "srcip",
-      "status": "status",
-      "error_code": "data.error_code",
-      "user": "srcuser",
       "client_app": "data.client_app",
+      "user": "srcuser",
+      "error_code": "data.error_code",
       "risk_level": "data.risk_level",
-      "timestamp": "timestamp"
+      "timestamp": "timestamp",
+      "location": "data.location",
+      "status": "status"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6298,10 +6298,10 @@
     ],
     "normalization": {
       "timestamp": "timestamp",
-      "operation": "data.operation",
+      "caller": "data.caller",
       "resourceGroup": "data.resourcegroup",
       "status": "status",
-      "caller": "data.caller"
+      "operation": "data.operation"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6363,12 +6363,12 @@
       }
     ],
     "normalization": {
-      "timestamp": "timestamp",
-      "severity": "data.severity",
       "actor_ip": "srcip",
-      "type": "data.type",
+      "timestamp": "timestamp",
       "count": "data.count",
-      "instance": "data.instance"
+      "instance": "data.instance",
+      "type": "data.type",
+      "severity": "data.severity"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6466,18 +6466,18 @@
       }
     ],
     "normalization": {
+      "proto": "data.proto",
+      "sport": "srcport",
       "timestamp": "timestamp",
-      "account": "data.account",
       "eni": "data.eni",
       "src": "srcip",
-      "action": "action",
-      "version": "data.version",
-      "dst": "dstip",
       "bytes": "data.bytes",
-      "proto": "data.proto",
+      "dst": "dstip",
+      "packets": "data.packets",
+      "version": "data.version",
       "dport": "srcport",
-      "sport": "srcport",
-      "packets": "data.packets"
+      "account": "data.account",
+      "action": "action"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6545,12 +6545,12 @@
       }
     ],
     "normalization": {
-      "status": "status",
-      "event": "data.event",
       "region": "data.region",
       "mfa": "data.mfa",
-      "src_ip": "srcip",
+      "status": "status",
       "timestamp": "timestamp",
+      "event": "data.event",
+      "src_ip": "srcip",
       "user": "srcuser"
     },
     "confidence": 0.92,
@@ -6619,13 +6619,13 @@
       }
     ],
     "normalization": {
-      "action": "action",
-      "threat": "data.threat",
-      "timestamp": "timestamp",
-      "dst_ip": "srcip",
-      "log_component": "data.log_component",
       "rule_name": "data.rule_name",
-      "src_ip": "srcip"
+      "threat": "data.threat",
+      "log_component": "data.log_component",
+      "action": "action",
+      "src_ip": "srcip",
+      "dst_ip": "srcip",
+      "timestamp": "timestamp"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6687,12 +6687,12 @@
       }
     ],
     "normalization": {
-      "rx_bytes": "data.rx_bytes",
       "status": "status",
       "tx_bytes": "data.tx_bytes",
-      "peer": "data.peer",
       "src": "srcip",
-      "timestamp": "timestamp"
+      "peer": "data.peer",
+      "timestamp": "timestamp",
+      "rx_bytes": "data.rx_bytes"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6742,10 +6742,10 @@
       }
     ],
     "normalization": {
-      "proto": "data.proto",
-      "dst": "dstip",
       "src": "srcip",
-      "timestamp": "timestamp"
+      "dst": "dstip",
+      "timestamp": "timestamp",
+      "proto": "data.proto"
     },
     "confidence": 0.94,
     "version": 1,
@@ -6819,14 +6819,14 @@
       }
     ],
     "normalization": {
-      "DST": "dstip",
-      "DPT": "data.dpt",
       "SRC": "srcip",
+      "DST": "dstip",
       "IN": "data.in",
-      "MAC": "data.mac",
       "SPT": "data.spt",
+      "PROTO": "data.proto",
+      "DPT": "data.dpt",
       "timestamp": "timestamp",
-      "PROTO": "data.proto"
+      "MAC": "data.mac"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6894,13 +6894,13 @@
       }
     ],
     "normalization": {
-      "dport": "srcport",
-      "proto": "data.proto",
       "reason": "data.reason",
+      "dport": "srcport",
       "timestamp": "timestamp",
-      "dst": "dstip",
       "sport": "srcport",
-      "src": "srcip"
+      "dst": "dstip",
+      "src": "srcip",
+      "proto": "data.proto"
     },
     "confidence": 0.92,
     "version": 1,
@@ -6968,13 +6968,13 @@
       }
     ],
     "normalization": {
+      "src": "srcip",
+      "timestamp": "timestamp",
       "action": "action",
       "reason": "data.reason",
-      "product": "data.product",
-      "dst": "dstip",
       "service": "data.service",
-      "timestamp": "timestamp",
-      "src": "srcip"
+      "dst": "dstip",
+      "product": "data.product"
     },
     "confidence": 0.92,
     "version": 1,
@@ -7048,14 +7048,14 @@
       }
     ],
     "normalization": {
+      "proto": "data.proto",
+      "iface": "data.iface",
       "src": "srcip",
-      "port": "srcport",
       "rule": "data.rule",
-      "dst": "dstip",
       "action": "action",
       "timestamp": "timestamp",
-      "proto": "data.proto",
-      "iface": "data.iface"
+      "port": "srcport",
+      "dst": "dstip"
     },
     "confidence": 0.92,
     "version": 1,
@@ -7105,9 +7105,9 @@
       }
     ],
     "normalization": {
+      "dst": "dstip",
       "proto": "data.proto",
       "timestamp": "timestamp",
-      "dst": "dstip",
       "src": "srcip"
     },
     "confidence": 0.92,
@@ -7176,13 +7176,13 @@
       }
     ],
     "normalization": {
-      "status": "status",
-      "devname": "data.devname",
       "dstip": "srcip",
+      "status": "status",
+      "srcip": "srcip",
       "timestamp": "timestamp",
-      "attack": "data.attack",
       "policyid": "data.policyid",
-      "srcip": "srcip"
+      "attack": "data.attack",
+      "devname": "data.devname"
     },
     "confidence": 0.92,
     "version": 1,
@@ -7262,15 +7262,15 @@
       }
     ],
     "normalization": {
-      "type": "data.type",
-      "proto": "data.proto",
+      "bytes": "data.bytes",
       "action": "action",
+      "src": "srcip",
       "sport": "srcport",
       "dst": "dstip",
-      "src": "srcip",
+      "type": "data.type",
+      "dport": "srcport",
       "timestamp": "timestamp",
-      "bytes": "data.bytes",
-      "dport": "srcport"
+      "proto": "data.proto"
     },
     "confidence": 0.92,
     "version": 1,
@@ -7338,13 +7338,13 @@
       }
     ],
     "normalization": {
+      "timestamp": "timestamp",
       "userId": "srcuser",
-      "type": "data.type",
       "error": "data.error",
       "clientId": "data.clientid",
       "realmId": "data.realmid",
-      "timestamp": "timestamp",
-      "ipAddress": "srcip"
+      "ipAddress": "srcip",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -7406,10 +7406,10 @@
     ],
     "normalization": {
       "client_ip": "srcip",
-      "error": "data.error",
+      "user": "srcuser",
       "status": "status",
       "amount": "data.amount",
-      "user": "srcuser",
+      "error": "data.error",
       "timestamp": "timestamp"
     },
     "confidence": 0.92,
@@ -7456,9 +7456,9 @@
       }
     ],
     "normalization": {
+      "srcuser": "srcuser",
       "srcip": "srcip",
-      "reason": "action",
-      "srcuser": "srcuser"
+      "reason": "action"
     },
     "confidence": 0.95,
     "version": 1,

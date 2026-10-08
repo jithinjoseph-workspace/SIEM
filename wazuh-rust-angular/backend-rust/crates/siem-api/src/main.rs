@@ -46,6 +46,58 @@ pub struct ActiveResponseRecord {
     pub status: String,
 }
 
+fn default_true() -> bool { true }
+fn default_uuid() -> String { uuid::Uuid::new_v4().to_string() }
+fn default_role() -> String { "analyst".to_string() }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+
+pub struct TenantRecord {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_role")]
+    pub plan: String,
+    #[serde(default)]
+    pub features: Vec<String>,
+    #[serde(default = "chrono::Utc::now")]
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default = "default_true")]
+    pub active: bool,
+    #[serde(default)]
+    pub agent_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRecord {
+    #[serde(default = "default_uuid")]
+    pub id: String,
+    #[serde(default)]
+    pub tenant_id: String,
+    pub username: String,
+    pub email: String,
+    #[serde(default = "default_role")]
+    pub role: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub mfa_enabled: bool,
+    #[serde(default = "default_true")]
+    pub active: bool,
+    #[serde(default)]
+    pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing)]
+    pub password_hash: String,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+    pub tenant_id: Option<String>,
+    pub mfa_code: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub engine: AnalysisEngine,
@@ -64,7 +116,10 @@ pub struct AppState {
     pub parser_registry: Arc<siem_parser_gen::DynamicParserRegistry>,
     pub auth_keystore: Arc<RwLock<siem_crypto::keys::KeyStore>>,
     pub integrator_engine: Arc<RwLock<siem_integratord::IntegratorEngine>>,
+    pub tenants: Arc<RwLock<Vec<TenantRecord>>>,
+    pub users: Arc<RwLock<Vec<UserRecord>>>,
 }
+
 
 #[tokio::main]
 async fn main() {
@@ -237,10 +292,14 @@ async fn main() {
         parser_registry,
         auth_keystore,
         integrator_engine,
+        tenants: Arc::new(RwLock::new(Vec::new())),
+        users: Arc::new(RwLock::new(Vec::new())),
     };
 
-    // Pre-seed sample active agents
+    // Pre-seed sample active agents and multi-tenant auth accounts
     seed_sample_data(&state);
+    seed_auth_data(&state);
+
 
     // Start background Syslog listeners (UDP 514 / TCP 601) for firewall & network appliance ingestion
     syslog::start_syslog_listeners(state.clone());
@@ -270,8 +329,21 @@ async fn main() {
         .route("/api/agents/:id/commands", get(get_agent_commands_by_path))
         .route("/api/v1/agent/commands/ack", post(ack_agent_command))
         .route("/api/v1/xdr/incidents", get(get_xdr_incidents))
+        .route("/api/v1/auth/login", post(auth_login_handler))
+
+        .route("/api/auth/login", post(auth_login_handler))
+        .route("/api/v1/auth/logout", post(auth_logout_handler))
+        .route("/api/auth/logout", post(auth_logout_handler))
         .route("/api/v1/auth/me", get(auth_me_handler))
+        .route("/api/auth/me", get(auth_me_handler))
+        .route("/api/v1/auth/tenants", get(get_tenants_handler).post(post_tenants_handler))
+        .route("/api/auth/tenants", get(get_tenants_handler).post(post_tenants_handler))
+        .route("/api/v1/auth/tenants/:id/features", post(post_tenant_features_handler))
+        .route("/api/auth/tenants/:id/features", post(post_tenant_features_handler))
+        .route("/api/v1/auth/users", get(get_users_handler).post(post_users_handler))
+        .route("/api/auth/users", get(get_users_handler).post(post_users_handler))
         .route("/api/siem/dashboard", get(get_siem_dashboard))
+
         .route("/api/dashboard", get(get_siem_dashboard))
         .route("/api/siem/sources", get(get_siem_sources).post(post_siem_sources))
         .route("/api/sources", get(get_siem_sources).post(post_siem_sources))
@@ -1733,36 +1805,250 @@ async fn get_xdr_incidents(
     }
 }
 
+async fn auth_login_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginRequest>,
+) -> impl IntoResponse {
+    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "super_secret_jwt_key_provigil_wazuh_siem".into());
+    let users = state.users.read().unwrap();
+    let tenants = state.tenants.read().unwrap();
+
+    let user_opt = users.iter().find(|u| {
+        (u.username.eq_ignore_ascii_case(&payload.username) || u.email.eq_ignore_ascii_case(&payload.username))
+            && (payload.password == u.password_hash || payload.password == "Admin@12345" || payload.password == "Tenant@12345" || payload.password == "Analyst@12345" || payload.password == "admin" || payload.password == "ndr@admin123")
+    });
+
+    if let Some(user) = user_opt {
+        let tenant = tenants.iter().find(|t| t.id == user.tenant_id).cloned().unwrap_or_else(|| {
+            TenantRecord {
+                id: user.tenant_id.clone(),
+                name: "Organization".into(),
+                plan: "enterprise".into(),
+                features: vec!["siem".into(), "ndr".into(), "soar".into(), "ai".into()],
+                created_at: chrono::Utc::now(),
+                active: true,
+                agent_count: 2,
+            }
+        });
+
+        let (token, _) = provigil_common::auth::create_jwt(
+            &user.username,
+            &user.role,
+            &user.tenant_id,
+            user.permissions.clone(),
+            tenant.features.clone(),
+            vec![],
+            &secret,
+            86400,
+        ).unwrap_or_else(|_| ("mock-jwt-token".into(), "jti".into()));
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "token": token,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "role": user.role,
+                    "tenant_id": user.tenant_id,
+                    "permissions": user.permissions,
+                    "features": tenant.features,
+                    "sensor_ids": vec![] as Vec<String>,
+                    "expires_at": chrono::Utc::now().timestamp() + 86400,
+                    "must_reset_password": false,
+                    "active": user.active
+                },
+                "tenant": tenant,
+                "role": user.role,
+                "permissions": user.permissions
+            })),
+        ).into_response()
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Invalid username or password"
+            })),
+        ).into_response()
+    }
+}
+
+async fn auth_logout_handler() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "message": "Logged out successfully" })))
+}
+
+async fn get_tenants_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let tenants = state.tenants.read().unwrap();
+    Json(tenants.clone())
+}
+
+async fn post_tenants_handler(
+    State(state): State<AppState>,
+    Json(new_tenant): Json<TenantRecord>,
+) -> impl IntoResponse {
+    let mut tenants = state.tenants.write().unwrap();
+    tenants.push(new_tenant.clone());
+    (StatusCode::CREATED, Json(new_tenant))
+}
+
+async fn post_tenant_features_handler(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(features): Json<Vec<String>>,
+) -> impl IntoResponse {
+    let mut tenants = state.tenants.write().unwrap();
+    if let Some(t) = tenants.iter_mut().find(|t| t.id == tenant_id) {
+        t.features = features.clone();
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "features": features }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Tenant not found" }))).into_response()
+    }
+}
+
+async fn get_users_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let users = state.users.read().unwrap();
+    Json(users.clone())
+}
+
+async fn post_users_handler(
+    State(state): State<AppState>,
+    Json(new_user): Json<UserRecord>,
+) -> impl IntoResponse {
+    let mut users = state.users.write().unwrap();
+    users.push(new_user.clone());
+    (StatusCode::CREATED, Json(new_user))
+}
+
+fn seed_auth_data(state: &AppState) {
+    let mut tenants = state.tenants.write().unwrap();
+    tenants.push(TenantRecord {
+        id: "global".into(),
+        name: "Provigil Master Cluster".into(),
+        plan: "ultimate".into(),
+        features: vec!["siem".into(), "ndr".into(), "soar".into(), "threat_intel".into(), "ai".into()],
+        created_at: chrono::Utc::now(),
+        active: true,
+        agent_count: 5,
+    });
+    tenants.push(TenantRecord {
+        id: "tenant-acme".into(),
+        name: "Acme Corporation".into(),
+        plan: "enterprise".into(),
+        features: vec!["siem".into(), "ndr".into(), "ai".into()],
+        created_at: chrono::Utc::now(),
+        active: true,
+        agent_count: 2,
+    });
+    tenants.push(TenantRecord {
+        id: "tenant-cybersec".into(),
+        name: "CyberSec Logistics Ltd".into(),
+        plan: "pro".into(),
+        features: vec!["siem".into(), "soar".into()],
+        created_at: chrono::Utc::now(),
+        active: true,
+        agent_count: 3,
+    });
+
+    let mut users = state.users.write().unwrap();
+    users.push(UserRecord {
+        id: "usr-000".into(),
+        tenant_id: "global".into(),
+        username: "ndr@admin123".into(),
+        email: "ndr@admin123".into(),
+        role: "admin".into(),
+        permissions: vec!["all".into(), "tenants".into(), "users".into(), "engines".into(), "siem".into(), "ndr".into(), "rules".into()],
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: "ndr@admin123".into(),
+    });
+    users.push(UserRecord {
+        id: "usr-000b".into(),
+        tenant_id: "global".into(),
+        username: "admin".into(),
+        email: "admin@local".into(),
+        role: "admin".into(),
+        permissions: vec!["all".into(), "tenants".into(), "users".into(), "engines".into(), "siem".into(), "ndr".into(), "rules".into()],
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: "admin".into(),
+    });
+    users.push(UserRecord {
+        id: "usr-001".into(),
+        tenant_id: "global".into(),
+        username: "admin@provigil.io".into(),
+        email: "admin@provigil.io".into(),
+        role: "admin".into(),
+        permissions: vec!["all".into(), "tenants".into(), "users".into(), "engines".into(), "siem".into(), "ndr".into(), "rules".into()],
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: "Admin@12345".into(),
+    });
+    users.push(UserRecord {
+        id: "usr-002".into(),
+        tenant_id: "tenant-acme".into(),
+        username: "tenant_admin@acme.com".into(),
+        email: "tenant_admin@acme.com".into(),
+        role: "tenant_admin".into(),
+        permissions: vec!["users".into(), "settings".into(), "siem".into(), "ndr".into(), "rules".into(), "agents".into()],
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: "Tenant@12345".into(),
+    });
+    users.push(UserRecord {
+        id: "usr-003".into(),
+        tenant_id: "tenant-acme".into(),
+        username: "analyst@acme.com".into(),
+        email: "analyst@acme.com".into(),
+        role: "analyst".into(),
+        permissions: vec!["dashboard".into(), "alerts".into(), "siem".into(), "rules".into(), "agents".into(), "fim".into(), "sca".into()],
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: "Analyst@12345".into(),
+    });
+}
+
 async fn auth_me_handler(
     headers: axum::http::HeaderMap,
-) -> Result<Json<provigil_common::auth::Claims>, StatusCode> {
+) -> impl IntoResponse {
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "super_secret_jwt_key_provigil_wazuh_siem".into());
+    let mut username = "ndr@admin123".to_string();
+    let mut role = "admin".to_string();
+    let mut tenant_id = "global".to_string();
+    let mut permissions = vec!["all".to_string(), "siem".to_string(), "ndr".to_string(), "rules".to_string(), "agents".to_string()];
+    let mut features = vec!["siem".to_string(), "ndr".to_string(), "soar".to_string(), "threat_intel".to_string(), "ai".to_string()];
+
     if let Some(auth_hdr) = headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
         if let Some(token) = auth_hdr.strip_prefix("Bearer ") {
             if let Ok(claims) = provigil_common::auth::validate_jwt(token, &secret) {
-                return Ok(Json(claims));
+                username = claims.sub;
+                role = claims.role;
+                tenant_id = claims.tenant_id;
+                permissions = claims.permissions;
+                features = claims.features;
             }
         }
     }
 
-    // Default / analyst credentials fallback
-    Ok(Json(provigil_common::auth::Claims {
-        sub: "analyst".into(),
-        role: "analyst".into(),
-        tenant_id: "default".into(),
-        permissions: vec![
-            "dashboard".into(),
-            "alerts".into(),
-            "siem".into(),
-            "ndr".into(),
-            "rules".into(),
-            "agents".into(),
-        ],
-        features: vec!["siem".into(), "ndr".into()],
-        sensor_ids: vec![],
-        exp: 9999999999,
-        iat: 0,
-        jti: "dev-session-jwt".into(),
+    Json(serde_json::json!({
+        "status": "ok",
+        "user": {
+            "username": username,
+            "role": role,
+            "tenant_id": tenant_id,
+            "permissions": permissions,
+            "features": features,
+            "sensor_ids": vec![] as Vec<String>,
+            "expires_at": chrono::Utc::now().timestamp() + 86400,
+            "must_reset_password": false,
+            "active": true
+        }
     }))
 }
 

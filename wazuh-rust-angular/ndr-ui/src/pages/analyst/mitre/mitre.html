@@ -1,0 +1,117 @@
+<div class="mitre-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header with search -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="ShieldIcon" class="w-6 h-6 text-red-400"></lucide-angular>
+        MITRE ATT&CK Enterprise Matrix
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        14 Enterprise tactics, active adversary coverage, and live rule mapping from Rust analysis engine
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3 w-full sm:w-auto">
+      <div class="relative flex-1 sm:w-64">
+        <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
+        <input 
+          [(ngModel)]="searchQuery" 
+          placeholder="Search techniques or ID..." 
+          class="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"
+        />
+      </div>
+
+      <button 
+        (click)="loadMatrix()" 
+        class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+      >
+        <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Matrix Horizontal Grid -->
+  <div class="overflow-x-auto pb-4">
+    <div class="inline-flex gap-4 min-w-full">
+      <div 
+        *ngFor="let col of filteredMatrix()" 
+        class="w-64 flex-shrink-0 bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col space-y-3"
+      >
+        <!-- Column Header -->
+        <div class="pb-2 border-b border-slate-800">
+          <h3 class="text-xs font-bold text-white tracking-wide uppercase truncate" [title]="col.name">{{ col.name }}</h3>
+          <span class="text-[11px] font-mono text-slate-500 block mt-0.5">{{ col.tactic_id }} • {{ col.techniques.length }} techniques</span>
+        </div>
+
+        <!-- Techniques list -->
+        <div class="space-y-2 flex-1 overflow-y-auto max-h-[600px] pr-1">
+          <div 
+            *ngFor="let tech of col.techniques" 
+            (click)="selectTechnique(tech)"
+            class="p-2.5 bg-slate-950/80 hover:bg-slate-800/80 cursor-pointer rounded-lg border border-slate-800/80 hover:border-red-500/50 transition flex flex-col justify-between"
+          >
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono text-red-400 font-semibold">{{ tech.id }}</span>
+                <span 
+                  *ngIf="tech.alert_count > 0"
+                  class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800"
+                >
+                  {{ tech.alert_count }}
+                </span>
+              </div>
+              <h4 class="text-xs font-medium text-slate-200 mt-1 line-clamp-2">{{ tech.name }}</h4>
+            </div>
+
+            <span class="text-[10px] text-slate-500 mt-2 block font-mono">Max Level: {{ tech.max_level }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technique Details Modal -->
+  <div *ngIf="selectedTechnique()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div>
+          <span class="text-xs font-mono text-red-400 font-bold uppercase block">{{ selectedTechnique()?.id }}</span>
+          <h2 class="text-lg font-bold text-white">{{ selectedTechnique()?.name }}</h2>
+        </div>
+        <button (click)="closeModal()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+          <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-sm text-slate-300">
+        <div>
+          <span class="text-xs font-semibold text-slate-400 uppercase block mb-1">Description</span>
+          <p class="text-xs leading-relaxed text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800">
+            {{ selectedTechnique()?.description }}
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-2">
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <span class="text-xs text-slate-500 block">Triggered Alerts</span>
+            <span class="text-lg font-bold text-rose-400">{{ selectedTechnique()?.alert_count }}</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <span class="text-xs text-slate-500 block">Severity Level</span>
+            <span class="text-lg font-bold text-amber-400">Level {{ selectedTechnique()?.max_level }}</span>
+          </div>
+        </div>
+
+        <div *ngIf="selectedTechnique()?.subtechniques?.length" class="space-y-1.5">
+          <span class="text-xs font-semibold text-slate-400 uppercase block">Subtechniques</span>
+          <div class="flex flex-wrap gap-1.5">
+            <span *ngFor="let sub of selectedTechnique()?.subtechniques" class="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded font-mono text-xs text-slate-400">
+              {{ sub }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

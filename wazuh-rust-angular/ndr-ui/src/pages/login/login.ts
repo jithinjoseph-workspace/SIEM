@@ -173,7 +173,7 @@ export class Login {
     this.auth.login(this.username, this.password).subscribe({
       next: (res: any) => {
         this.loading = false;
-        if (res.status === 'ok' && res.user) {
+        if ((res.status === 'ok' || res.status === 'success') && res.user) {
           if (res.user.must_reset_password) {
             // Backend already issued a real session — the account just still
             // has the default installer password. Don't navigate yet: force
@@ -220,7 +220,7 @@ export class Login {
 
   private completeLogin(user: any) {
     const role = user?.role;
-    if (role === 'admin' || role === 'super_admin') {
+    if (role === 'admin' || role === 'superadmin' || role === 'super_admin') {
       this.router.navigate(['/admin']).then(() => this.ws.connect());
     } else if (role === 'tenant_admin') {
       this.router.navigate(['/tenant-admin']).then(() => this.ws.connect());

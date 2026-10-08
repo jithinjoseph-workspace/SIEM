@@ -3,6 +3,8 @@
 //! exact error texts, `contains`, `at`, `get<T>` and the range-for
 //! iteration semantics. Errors are the exceptions' `what()` strings.
 
+pub mod dtoa;
+
 use std::collections::BTreeMap;
 
 /// A JSON value (`basic_json` with the default types).
@@ -901,7 +903,13 @@ impl Value {
             Value::Bool(b) => out.extend_from_slice(if *b { b"true" } else { b"false" }),
             Value::Int(i) => out.extend_from_slice(i.to_string().as_bytes()),
             Value::UInt(u) => out.extend_from_slice(u.to_string().as_bytes()),
-            Value::Float(f) => out.extend_from_slice(format!("{f}").as_bytes()),
+            Value::Float(f) => {
+                if f.is_finite() {
+                    dtoa::to_chars(out, *f)
+                } else {
+                    out.extend_from_slice(b"null")
+                }
+            }
             Value::Str(s) => dump_string(out, s)?,
             Value::Array(a) => {
                 out.push(b'[');

@@ -363,4 +363,3 @@ export interface AuthSession {
   token: string;
   user: UserRecord;
 }
-

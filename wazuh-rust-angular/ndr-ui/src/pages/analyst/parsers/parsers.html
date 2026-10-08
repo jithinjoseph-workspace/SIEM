@@ -1,0 +1,207 @@
+<div class="parsers-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header with Stats -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="SparklesIcon" class="w-6 h-6 text-purple-400"></lucide-angular>
+        Autonomous Dynamic Parser Studio
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Zero-code AI decoder generation, automated regex/grok synthesis, and unmatched log signature clustering
+      </p>
+    </div>
+
+    <button 
+      (click)="loadParsers()" 
+      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+    >
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4"></lucide-angular>
+      Refresh Parsers
+    </button>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Learned Decoders</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ parserStats().total_learned_parsers }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Active in Pipeline</span>
+      <span class="text-2xl font-bold text-emerald-400 mt-1 block">{{ parserStats().active_parsers }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Novel Signatures</span>
+      <span class="text-2xl font-bold text-amber-400 mt-1 block">{{ parserStats().pending_novel_fingerprints }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Parse Execution Latency</span>
+      <span class="text-2xl font-bold text-cyan-400 mt-1 block">{{ parserStats().average_latency_us }} µs</span>
+    </div>
+  </div>
+
+  <!-- Main 2-Column Studio Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Left Column: Synthesizer & Test Bench -->
+    <div class="lg:col-span-7 space-y-5">
+      <!-- AI Synthesizer Card -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <lucide-angular [img]="CpuIcon" class="w-4 h-4 text-purple-400"></lucide-angular>
+            AI Structural Decoder Synthesizer
+          </h2>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950 text-purple-300 border border-purple-800">
+            LLM Auto-Grok
+          </span>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1.5">Raw Sample Logs (1 per line):</label>
+          <textarea 
+            [(ngModel)]="studioInputSamples" 
+            rows="4" 
+            class="w-full p-3 bg-slate-950/80 border border-slate-800 rounded-xl font-mono text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+            placeholder="Paste raw unstructured log lines..."
+          ></textarea>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <div *ngIf="studioMessage()" class="text-xs text-purple-300 font-medium truncate max-w-sm">
+            {{ studioMessage() }}
+          </div>
+          <button 
+            (click)="triggerSynthesize()" 
+            [disabled]="studioIsSynthesizing()"
+            class="ml-auto px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-lg shadow-md transition inline-flex items-center gap-2"
+          >
+            <lucide-angular [img]="SparklesIcon" class="w-4 h-4" [class.animate-spin]="studioIsSynthesizing()"></lucide-angular>
+            {{ studioIsSynthesizing() ? 'Synthesizing...' : 'Synthesize Decoder' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Test Bench Card -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <lucide-angular [img]="TerminalIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
+            Compiled Regex Pattern & Field Extractor Test Bench
+          </h2>
+          <button 
+            (click)="testParserPattern()" 
+            [disabled]="studioIsTesting()"
+            class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition inline-flex items-center gap-1.5"
+          >
+            <lucide-angular [img]="PlayIcon" class="w-3.5 h-3.5"></lucide-angular>
+            Run Test
+          </button>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Generated Regex Pattern:</label>
+          <input 
+            [(ngModel)]="studioPattern" 
+            class="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg font-mono text-xs text-cyan-300 focus:outline-none focus:border-cyan-500"
+          />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-slate-300 block mb-1">Evaluation Test Sample:</label>
+          <input 
+            [(ngModel)]="studioTestLog" 
+            class="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg font-mono text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+          />
+        </div>
+
+        <!-- Extraction Results -->
+        <div *ngIf="studioTestResult()" class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+          <div class="flex justify-between items-center">
+            <span 
+              class="text-xs font-bold"
+              [class.text-emerald-400]="studioTestResult()?.success"
+              [class.text-rose-400]="!studioTestResult()?.success"
+            >
+              {{ studioTestResult()?.success ? '✓ MATCH SUCCESS' : '✕ MATCH FAILED' }}
+            </span>
+            <span class="text-xs font-mono text-slate-500">Latency: {{ studioTestResult()?.execution_time_us }} µs</span>
+          </div>
+
+          <div *ngIf="studioTestResult()?.extracted_fields" class="grid grid-cols-2 gap-2 pt-1">
+            <div *ngFor="let item of studioTestResult()?.extracted_fields | keyvalue" class="p-2 bg-slate-900 rounded border border-slate-800">
+              <span class="text-[11px] text-slate-500 block uppercase font-mono">{{ item.key }}</span>
+              <span class="text-xs font-mono text-cyan-300 font-semibold">{{ item.value }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Active Parsers & Novel Clusters -->
+    <div class="lg:col-span-5 space-y-5">
+      <!-- Active Parsers List -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+        <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center justify-between">
+          <span>Active Parser Catalog</span>
+          <span class="text-xs text-slate-400 lowercase">({{ filteredParsers().length }} active)</span>
+        </h3>
+
+        <input 
+          [(ngModel)]="searchQuery" 
+          placeholder="Filter parsers..." 
+          class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500 mb-2"
+        />
+
+        <div class="space-y-2 max-h-72 overflow-y-auto pr-1">
+          <div 
+            *ngFor="let p of filteredParsers()" 
+            (click)="selectParser(p)"
+            class="p-3 bg-slate-950/70 hover:bg-slate-800/60 cursor-pointer rounded-xl border border-slate-800 transition"
+            [class.border-cyan-500]="selectedParser()?.id === p.id"
+          >
+            <div class="flex justify-between items-center">
+              <h4 class="text-xs font-bold text-white">{{ p.name }}</h4>
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                {{ p.parser_type }}
+              </span>
+            </div>
+            <p class="text-[11px] font-mono text-slate-400 truncate mt-1">{{ p.pattern }}</p>
+            <div class="flex justify-between items-center text-[10px] text-slate-500 mt-2">
+              <span>Confidence: {{(p.confidence * 100).toFixed(0)}}%</span>
+              <span>Hits: {{ p.hit_count }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Novel Unmatched Clusters -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+        <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+          <lucide-angular [img]="ZapIcon" class="w-4 h-4 text-amber-400"></lucide-angular>
+          Unmatched Log Signatures
+        </h3>
+
+        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+          <div 
+            *ngFor="let u of unmatchedFingerprints()" 
+            class="p-3 bg-slate-950/70 rounded-xl border border-amber-900/30 space-y-2"
+          >
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-mono text-amber-300 font-bold">FP: #{{ u.fingerprint }}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-800">
+                {{ u.sample_count }} logs clustered
+              </span>
+            </div>
+            <p class="text-[11px] font-mono text-slate-400 truncate">{{ u.signature }}</p>
+            <button 
+              (click)="triggerSynthesize(u.fingerprint, u.sample_previews)" 
+              class="w-full py-1 bg-amber-900/30 hover:bg-amber-900/50 text-amber-300 text-xs font-semibold rounded border border-amber-800/50 transition"
+            >
+              Synthesize For This Cluster
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

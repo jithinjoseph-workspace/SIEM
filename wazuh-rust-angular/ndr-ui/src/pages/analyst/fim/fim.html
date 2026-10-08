@@ -1,0 +1,86 @@
+<div class="fim-page p-6 max-w-7xl mx-auto space-y-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="FileCheckIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+        File Integrity Monitoring (Syscheck / FIM)
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Real-time baseline verification, cryptographic hash auditing (MD5/SHA256), and file system modification logs
+      </p>
+    </div>
+
+    <button 
+      (click)="loadFim()" 
+      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
+    >
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+      Refresh Baselines
+    </button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block font-medium">Monitored Inodes</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ stats().total }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-emerald-900/40">
+      <span class="text-xs text-emerald-400 block font-medium">Files Added</span>
+      <span class="text-2xl font-bold text-emerald-400 mt-1 block">{{ stats().added }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-amber-900/40">
+      <span class="text-xs text-amber-400 block font-medium">Files Modified</span>
+      <span class="text-2xl font-bold text-amber-400 mt-1 block">{{ stats().modified }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-rose-900/40">
+      <span class="text-xs text-rose-400 block font-medium">Files Deleted</span>
+      <span class="text-2xl font-bold text-rose-400 mt-1 block">{{ stats().deleted }}</span>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+          <tr>
+            <th class="p-3.5">TIMESTAMP</th>
+            <th class="p-3.5">ACTION</th>
+            <th class="p-3.5">TARGET FILE PATH</th>
+            <th class="p-3.5">AGENT ID</th>
+            <th class="p-3.5">HOST NAME</th>
+            <th class="p-3.5">SHA256 CHECKSUM</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 text-slate-300">
+          <tr *ngFor="let r of records()" class="hover:bg-slate-800/50 transition">
+            <td class="p-3.5 font-mono text-slate-400 whitespace-nowrap">{{ r.timestamp | date:'medium' }}</td>
+            <td class="p-3.5">
+              <span 
+                class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                [class.bg-emerald-950]="r.action === 'Added'"
+                [class.text-emerald-400]="r.action === 'Added'"
+                [class.border-emerald-800]="r.action === 'Added'"
+                [class.bg-amber-950]="r.action === 'Modified'"
+                [class.text-amber-400]="r.action === 'Modified'"
+                [class.border-amber-800]="r.action === 'Modified'"
+                [class.bg-rose-950]="r.action === 'Deleted'"
+                [class.text-rose-400]="r.action === 'Deleted'"
+                [class.border-rose-800]="r.action === 'Deleted'"
+                [class.border]="true"
+              >
+                {{ r.action }}
+              </span>
+            </td>
+            <td class="p-3.5 font-mono text-cyan-300 font-semibold">{{ r.path }}</td>
+            <td class="p-3.5 font-mono text-slate-400">{{ r.agent_id }}</td>
+            <td class="p-3.5 font-medium text-white">{{ r.agent_name }}</td>
+            <td class="p-3.5 font-mono text-slate-500 max-w-xs truncate" [title]="r.sha256">{{ r.sha256 || 'N/A' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

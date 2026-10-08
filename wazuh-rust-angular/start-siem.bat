@@ -13,7 +13,7 @@ echo [*] Waiting 2 seconds for Rust backend to initialize...
 timeout /t 2 /nobreak >nul
 
 echo [*] Starting Step 2: Angular 21 Operations Center (:4200)...
-start "Wazuh Angular SOC Dashboard (:4200)" cmd /k "cd /d %~dp0frontend-angular && npm start"
+start "Wazuh Angular SOC Dashboard (:4200)" cmd /k "cd /d %~dp0ndr-ui && npm start"
 
 echo.
 echo ==============================================================================

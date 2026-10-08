@@ -49,7 +49,7 @@ impl RouterSink for WazuhRouter {
 /// `router_initialize(taggedLogFunction)`: the module logs with the
 /// ":router" tag.
 pub fn router_initialize(log: Arc<WLog>) {
-    siem_router::router_initialize(Arc::new(move |level: &str, msg: &str| {
+    siem_router::router_initialize(Arc::new(move |level: &str, msg: &[u8]| {
         let lv = match level {
             "ERROR" => "ERROR",
             "ERROR_EXIT" => "CRITICAL",

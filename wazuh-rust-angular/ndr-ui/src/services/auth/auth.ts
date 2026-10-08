@@ -153,7 +153,7 @@ export class AuthService implements OnDestroy {
 
   isAdmin(): boolean {
     const role = this.getUser()?.role;
-    return role === 'admin' || role === 'super_admin';
+    return role === 'admin' || role === 'super_admin' || role === 'superadmin';
   }
 
   isTenantAdmin(): boolean {
@@ -172,7 +172,7 @@ export class AuthService implements OnDestroy {
   isTenantAiEnabled(): boolean {
     const user = this.getUser();
     if (!user) return false;
-    if (user.role === 'super_admin') return true;
+    if (user.role === 'super_admin' || user.role === 'superadmin' || user.role === 'admin') return true;
     return user.ai_enabled !== false;
   }
 

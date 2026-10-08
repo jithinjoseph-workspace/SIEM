@@ -39,6 +39,15 @@ export const routes: Routes = [
       { path: 'support',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/support/support').then(m => m.Support) },
       { path: 'honeypots',      canActivate: [authGuard], data: { permission: 'honeypots'     }, loadComponent: () => import('../pages/analyst/honeypots/honeypots').then(m => m.Honeypots) },
       { path: 'retrospective',  canActivate: [authGuard], data: { permission: 'retrospective' }, loadComponent: () => import('../pages/analyst/retrospective/retrospective').then(m => m.Retrospective) },
+      /* ── Wazuh Unified SIEM Suite ── */
+      { path: 'agents',         canActivate: [authGuard], loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
+      { path: 'parsers',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/parsers/parsers').then(m => m.Parsers) },
+      { path: 'mitre',          canActivate: [authGuard], loadComponent: () => import('../pages/analyst/mitre/mitre').then(m => m.MitreMatrix) },
+      { path: 'vulnerabilities',canActivate: [authGuard], loadComponent: () => import('../pages/analyst/vulnerabilities/vulnerabilities').then(m => m.Vulnerabilities) },
+      { path: 'compliance',     canActivate: [authGuard], loadComponent: () => import('../pages/analyst/compliance/compliance').then(m => m.Compliance) },
+      { path: 'fim',            canActivate: [authGuard], loadComponent: () => import('../pages/analyst/fim/fim').then(m => m.Fim) },
+      { path: 'active-response',canActivate: [authGuard], loadComponent: () => import('../pages/analyst/active-response/active-response').then(m => m.ActiveResponse) },
+      { path: 'logtest',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/logtest/logtest').then(m => m.Logtest) },
     ]
   },
 

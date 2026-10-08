@@ -34,13 +34,8 @@ $FrontendConn = Get-NetTCPConnection -LocalPort 4200 -ErrorAction SilentlyContin
 if ($FrontendConn) {
     Write-Host "[OK] Angular Frontend is already running on http://localhost:4200 (PID: $($FrontendConn[0].OwningProcess))" -ForegroundColor Green
 } else {
-    Write-Host "[*] Launching Angular Web Console on port 4200..." -ForegroundColor Yellow
-    $DistDir = Join-Path $FrontendDir "dist\frontend-angular"
-    if (Test-Path $DistDir) {
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k cd /d `"$FrontendDir`" && npx -y serve -s dist/frontend-angular -l 4200" -WindowStyle Normal
-    } else {
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/k cd /d `"$FrontendDir`" && npm start" -WindowStyle Normal
-    }
+    Write-Host "[*] Launching Angular Web Console via ng serve on port 4200..." -ForegroundColor Yellow
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/k cd /d `"$FrontendDir`" && npm start" -WindowStyle Normal
 }
 
 # 3. Health Check

@@ -33,13 +33,10 @@ netstat -ano | findstr ":4200 " | findstr "LISTENING" >nul
 if %errorlevel% equ 0 (
     echo [OK] Frontend is already running on port 4200!
 ) else (
-    echo [*] Starting Angular Web Console on :4200...
-    if exist "%FRONTEND_DIR%\dist\frontend-angular" (
-        start "Provigil SIEM Web Console (:4200)" cmd /k "cd /d "%FRONTEND_DIR%" && npx -y serve -s dist/frontend-angular -l 4200"
-    ) else (
-        start "Provigil SIEM Web Console (:4200)" cmd /k "cd /d "%FRONTEND_DIR%" && npm start"
-    )
+    echo [*] Starting Angular Web Console via ng serve on :4200...
+    start "Provigil SIEM Web Console (:4200)" cmd /k "cd /d "%FRONTEND_DIR%" && npm start"
 )
+
 
 echo.
 echo ==============================================================================

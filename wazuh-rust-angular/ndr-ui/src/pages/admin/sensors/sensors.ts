@@ -97,7 +97,7 @@ export class Sensors implements OnInit {
   ngOnInit() {
     this.loadSensorKeys();
     this.api.getTenants().subscribe({
-      next: (data: any) => { this.tenants = data.tenants || []; this.cdr.detectChanges(); },
+      next: (data: any) => { this.tenants = data.tenants || (Array.isArray(data) ? data : []); this.cdr.detectChanges(); },
       error: reportRxjsError,
     });
     this.api.getInterfaces().subscribe({

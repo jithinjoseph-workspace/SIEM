@@ -96,14 +96,14 @@ export class Users implements OnInit {
   loadUsers() {
     this.loadingUsers = true;
     this.api.getUsers().subscribe({
-      next: (data: any) => { this.users = data.users || []; this.loadingUsers = false; this.cdr.detectChanges(); },
+      next: (data: any) => { this.users = data.users || (Array.isArray(data) ? data : []); this.loadingUsers = false; this.cdr.detectChanges(); },
       error: () => { this.loadingUsers = false; this.showMsg('Failed to load users', 'error'); this.cdr.detectChanges(); },
     });
   }
 
   loadTenants() {
     this.api.getTenants().subscribe({
-      next: (data: any) => { this.tenants = data.tenants || []; this.cdr.detectChanges(); },
+      next: (data: any) => { this.tenants = data.tenants || (Array.isArray(data) ? data : []); this.cdr.detectChanges(); },
       error: reportRxjsError,
     });
   }

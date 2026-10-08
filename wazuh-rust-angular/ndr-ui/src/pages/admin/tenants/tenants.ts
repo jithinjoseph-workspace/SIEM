@@ -129,7 +129,7 @@ export class Tenants implements OnInit, OnDestroy {
     this.loadingTenants = true;
     this.api.getTenants().subscribe({
       next: (data: any) => {
-        this.tenants = data.tenants || [];
+        this.tenants = data.tenants || (Array.isArray(data) ? data : []);
         this.loadingTenants = false;
         this.cdr.detectChanges();
       },
@@ -144,7 +144,7 @@ export class Tenants implements OnInit, OnDestroy {
   loadUsers() {
     this.api.getUsers().subscribe({
       next: (data: any) => {
-        this.users = data.users || [];
+        this.users = data.users || (Array.isArray(data) ? data : []);
         this.cdr.detectChanges();
       },
       error: reportRxjsError,
@@ -337,8 +337,15 @@ export class Tenants implements OnInit, OnDestroy {
     const apiResult = this.provisioningApiResult;
     const apiError = this.provisioningApiError;
 
-    if (apiError || (apiResult && apiResult.status !== 'ok')) {
-      const errMsg = apiError?.error?.message || apiResult?.message || 'Failed to complete tenant initialization';
+    const isSuccess = !apiError && (
+      apiResult?.status === 'ok' ||
+      !!apiResult?.tenant ||
+      !!apiResult?.id ||
+      (typeof apiResult === 'object' && apiResult !== null && !apiResult.error)
+    );
+
+    if (!isSuccess) {
+      const errMsg = apiError?.error?.message || apiResult?.message || apiResult?.error || 'Failed to complete tenant initialization';
       this.provisioningFailed = true;
       this.savingTenant = false;
       this.provisioningError = errMsg;

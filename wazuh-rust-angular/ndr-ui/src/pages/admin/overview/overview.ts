@@ -555,7 +555,7 @@ export class Overview implements OnInit, AfterViewInit, OnDestroy {
     // 1. Real Users
     this.api.getUsers().subscribe({
       next: (data: any) => {
-        this.users = data.users || [];
+        this.users = data.users || (Array.isArray(data) ? data : []);
         this.cdr.detectChanges();
         this.renderUserRolesDonut();
       },
@@ -565,7 +565,7 @@ export class Overview implements OnInit, AfterViewInit, OnDestroy {
     // 2. Real Tenants
     this.api.getTenants().subscribe({
       next: (data: any) => {
-        this.tenants = data.tenants || [];
+        this.tenants = data.tenants || (Array.isArray(data) ? data : []);
         this.cdr.detectChanges();
         this.renderFocusedPostureGauge();
       },
@@ -575,7 +575,7 @@ export class Overview implements OnInit, AfterViewInit, OnDestroy {
     // 3. Real Engine Nodes
     this.api.getEngines().subscribe({
       next: (data: any) => {
-        this.engines = data.engines || [];
+        this.engines = data.engines || (Array.isArray(data) ? data : []);
         this.cdr.detectChanges();
         this.renderFocusedPostureGauge();
       },
@@ -584,8 +584,8 @@ export class Overview implements OnInit, AfterViewInit, OnDestroy {
 
     // 4. Real Sensor Keys
     this.api.getSensorKeys().subscribe({
-      next: (keys: any[]) => {
-        this.sensorKeys = keys || [];
+      next: (keys: any) => {
+        this.sensorKeys = Array.isArray(keys) ? keys : (keys?.keys || []);
         this.cdr.detectChanges();
         this.renderFocusedPostureGauge();
       },

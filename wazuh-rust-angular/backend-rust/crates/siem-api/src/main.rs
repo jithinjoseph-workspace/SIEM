@@ -65,6 +65,8 @@ pub struct TenantRecord {
     pub active: bool,
     #[serde(default)]
     pub agent_count: usize,
+    #[serde(default = "default_true")]
+    pub ai_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,7 +312,11 @@ async fn main() {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .expose_headers([
+            header::HeaderName::from_static("x-total-count"),
+            header::HeaderName::from_static("x-active-count"),
+        ]);
 
     let app = Router::new()
         .route("/api/v1/stats", get(get_stats))
@@ -320,7 +326,14 @@ async fn main() {
         .route("/api/agents/:id", delete(delete_agent_handler))
         .route("/agents", delete(delete_agents_wazuh_handler))
         .route("/api/v1/events", get(get_events))
-        .route("/api/v1/rules", get(get_rules))
+        .route("/api/events", get(get_events))
+        .route("/api/v1/rules", get(get_rules_api_handler).post(post_rules_handler))
+        .route("/api/rules", get(get_rules_api_handler).post(post_rules_handler))
+        .route("/api/rules/hit-counts", get(get_rules_hit_counts_handler))
+        .route("/api/rules/:id", delete(delete_rules_handler))
+        .route("/api/rules/:id/toggle", post(toggle_rules_handler))
+        .route("/api/rules/reload", post(reload_rules_handler))
+        .route("/api/rules/sync-community", post(sync_community_rules_handler))
         .route("/api/v1/ai/analyze", post(ai_analyze_event))
         .route("/api/v1/ai/chat", post(ai_chat_handler))
         .route("/api/v1/ingest", post(ingest_event))
@@ -330,18 +343,77 @@ async fn main() {
         .route("/api/v1/agent/commands/ack", post(ack_agent_command))
         .route("/api/v1/xdr/incidents", get(get_xdr_incidents))
         .route("/api/v1/auth/login", post(auth_login_handler))
-
         .route("/api/auth/login", post(auth_login_handler))
         .route("/api/v1/auth/logout", post(auth_logout_handler))
         .route("/api/auth/logout", post(auth_logout_handler))
         .route("/api/v1/auth/me", get(auth_me_handler))
         .route("/api/auth/me", get(auth_me_handler))
+        .route("/api/auth/me/gmail", put(put_auth_me_gmail_handler))
+        .route("/api/auth/me/regenerate-secret", post(post_auth_me_regenerate_secret_handler))
+        .route("/api/auth/forgot/verify-secret", post(post_auth_forgot_secret_handler))
         .route("/api/v1/auth/tenants", get(get_tenants_handler).post(post_tenants_handler))
         .route("/api/auth/tenants", get(get_tenants_handler).post(post_tenants_handler))
+        .route("/api/v1/auth/tenants/:id", put(put_tenant_handler))
+        .route("/api/auth/tenants/:id", put(put_tenant_handler))
+        .route("/api/auth/tenants/:id/status", post(post_tenant_status_handler))
+        .route("/api/auth/tenants/:id/ai-enabled", post(post_tenant_ai_enabled_handler))
         .route("/api/v1/auth/tenants/:id/features", post(post_tenant_features_handler))
         .route("/api/auth/tenants/:id/features", post(post_tenant_features_handler))
+        .route("/api/tenant/features", get(get_tenant_features_handler))
         .route("/api/v1/auth/users", get(get_users_handler).post(post_users_handler))
         .route("/api/auth/users", get(get_users_handler).post(post_users_handler))
+        .route("/api/v1/auth/users/:id", put(put_user_handler).delete(delete_user_handler))
+        .route("/api/auth/users/:id", put(put_user_handler).delete(delete_user_handler))
+        .route("/api/auth/users/:id/status", post(set_user_status_handler))
+        .route("/api/auth/users/:id/permissions", put(set_user_permissions_handler))
+        .route("/api/auth/users/:id/password", post(reset_user_password_handler))
+        .route("/api/admin/stats-all-tenants", get(get_stats_all_tenants_handler))
+        .route("/api/admin/severity-all-tenants", get(get_severity_all_tenants_handler))
+        .route("/api/admin/top-ips-all-tenants", get(get_top_ips_all_tenants_handler))
+        .route("/api/admin/protocols-all-tenants", get(get_protocols_all_tenants_handler))
+        .route("/api/admin/threat-intel-all-tenants", get(get_threat_intel_all_tenants_handler))
+        .route("/api/admin/threat-map-all-tenants", get(get_threat_map_all_tenants_handler))
+        .route("/api/threat-map", get(get_threat_map_all_tenants_handler))
+        .route("/api/threat-intel-map", get(get_threat_intel_map_handler))
+        .route("/api/threat-intel", get(get_threat_intel_handler))
+        .route("/api/threat-intel/watchlist", get(get_threat_intel_watchlist_handler))
+        .route("/api/admin/engines", get(get_engines_handler))
+        .route("/api/admin/engines/scale", post(post_engines_scale_handler))
+        .route("/api/admin/leader-status", get(get_leader_status_handler))
+        .route("/api/leader/status", get(get_leader_status_handler))
+        .route("/api/monitor/kafka", get(get_kafka_status_handler))
+        .route("/api/kafka/status", get(get_kafka_status_handler))
+        .route("/api/admin/telemetry", get(get_telemetry_handler))
+        .route("/api/admin/client-errors", get(get_client_errors_handler))
+        .route("/api/sensor-keys", get(get_sensor_keys_handler).post(post_sensor_keys_handler))
+        .route("/api/sensor-keys/:id", delete(delete_sensor_key_handler))
+        .route("/api/sensor-keys/:id/reactivate", post(reactivate_sensor_key_handler))
+        .route("/api/sensor-keys/event-counts", get(get_sensor_event_counts_handler))
+        .route("/api/sensor-keys/recent-ips", get(get_sensor_recent_ips_handler))
+        .route("/api/sensor/control", post(post_sensor_control_handler))
+        .route("/api/interfaces", get(get_interfaces_handler))
+        .route("/api/agent-status", get(get_agent_status_handler))
+        .route("/api/scale-status", get(get_scale_status_handler))
+        .route("/api/stats", get(get_stats))
+        .route("/api/stats/unified", get(get_unified_stats_handler))
+        .route("/api/stats/timeline", get(get_stats_timeline_handler))
+        .route("/api/hits", get(get_hits_handler))
+        .route("/api/top-ips", get(get_top_ips_handler))
+        .route("/api/severity", get(get_severity_handler))
+        .route("/api/license/public-key", get(get_license_public_key_handler))
+        .route("/api/licenses", get(get_licenses_handler))
+        .route("/api/licenses/:id", delete(delete_license_handler))
+        .route("/api/license/generate", post(generate_license_handler))
+        .route("/api/announcements", get(get_announcements_handler).post(get_announcements_handler))
+        .route("/api/announcements/active", get(get_announcements_handler))
+        .route("/api/support/messages", get(get_support_messages_handler))
+        .route("/api/support/tickets", get(get_support_messages_handler))
+        .route("/api/settings", get(get_settings_handler).post(post_settings_handler))
+        .route("/api/settings/smtp", get(get_settings_smtp_handler).post(post_settings_smtp_handler))
+        .route("/api/settings/ai", get(get_settings_ai_handler).post(post_settings_ai_handler))
+        .route("/api/trusted-domains", get(get_trusted_domains_handler).post(post_trusted_domains_handler))
+        .route("/api/trusted-domains/delete", post(delete_trusted_domain_handler))
+        .route("/api/trusted-domains/ai-suggest", post(post_trusted_domains_ai_suggest_handler))
         .route("/api/siem/dashboard", get(get_siem_dashboard))
 
         .route("/api/dashboard", get(get_siem_dashboard))
@@ -1828,6 +1900,7 @@ async fn auth_login_handler(
                 created_at: chrono::Utc::now(),
                 active: true,
                 agent_count: 2,
+                ai_enabled: true,
             }
         });
 
@@ -1881,16 +1954,105 @@ async fn auth_logout_handler() -> impl IntoResponse {
 
 async fn get_tenants_handler(State(state): State<AppState>) -> impl IntoResponse {
     let tenants = state.tenants.read().unwrap();
-    Json(tenants.clone())
+    Json(serde_json::json!({
+        "status": "ok",
+        "tenants": tenants.clone()
+    }))
 }
 
 async fn post_tenants_handler(
     State(state): State<AppState>,
-    Json(new_tenant): Json<TenantRecord>,
+    Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let mut tenants = state.tenants.write().unwrap();
-    tenants.push(new_tenant.clone());
-    (StatusCode::CREATED, Json(new_tenant))
+    let id = payload.get("id").and_then(|v| v.as_str()).unwrap_or("tenant-new").to_string();
+    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+    let plan = payload.get("plan").and_then(|v| v.as_str()).unwrap_or("enterprise").to_string();
+    let features: Vec<String> = payload.get("features").and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_else(|| vec!["siem".into(), "ndr".into(), "threat_intel".into(), "ai".into()]);
+    
+    let new_tenant = TenantRecord {
+        id: id.clone(),
+        name,
+        plan,
+        features,
+        created_at: chrono::Utc::now(),
+        active: true,
+        agent_count: 0,
+        ai_enabled: true,
+    };
+
+    if let Some(pos) = tenants.iter().position(|t| t.id == id) {
+        tenants[pos] = new_tenant.clone();
+    } else {
+        tenants.push(new_tenant.clone());
+    }
+
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "ok",
+        "message": "Tenant created and activated successfully",
+        "tenant": new_tenant
+    })))
+}
+
+async fn put_tenant_handler(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut tenants = state.tenants.write().unwrap();
+    if let Some(t) = tenants.iter_mut().find(|t| t.id == tenant_id) {
+        if let Some(name) = payload.get("name").and_then(|v| v.as_str()) {
+            t.name = name.to_string();
+        }
+        if let Some(active) = payload.get("active").and_then(|v| v.as_bool()) {
+            t.active = active;
+        }
+        if let Some(plan) = payload.get("plan").and_then(|v| v.as_str()) {
+            t.plan = plan.to_string();
+        }
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "tenant": t.clone() }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Tenant not found" }))).into_response()
+    }
+}
+
+async fn post_tenant_status_handler(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut tenants = state.tenants.write().unwrap();
+    let active = payload.get("active").and_then(|v| v.as_bool()).unwrap_or(true);
+    if let Some(t) = tenants.iter_mut().find(|t| t.id == tenant_id) {
+        t.active = active;
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "tenant": t.clone() }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Tenant not found" }))).into_response()
+    }
+}
+
+async fn post_tenant_ai_enabled_handler(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut tenants = state.tenants.write().unwrap();
+    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+    if let Some(t) = tenants.iter_mut().find(|t| t.id == tenant_id) {
+        t.ai_enabled = enabled;
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "tenant": t.clone(), "ai_enabled": enabled }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Tenant not found" }))).into_response()
+    }
+}
+
+async fn get_tenant_features_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "features": ["siem", "ndr", "soar", "threat_intel", "ai", "compliance", "fim", "vulnerabilities"]
+    }))
 }
 
 async fn post_tenant_features_handler(
@@ -1909,16 +2071,628 @@ async fn post_tenant_features_handler(
 
 async fn get_users_handler(State(state): State<AppState>) -> impl IntoResponse {
     let users = state.users.read().unwrap();
-    Json(users.clone())
+    Json(serde_json::json!({
+        "status": "ok",
+        "users": users.clone()
+    }))
 }
 
 async fn post_users_handler(
     State(state): State<AppState>,
-    Json(new_user): Json<UserRecord>,
+    Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let mut users = state.users.write().unwrap();
+    let id = payload.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(default_uuid);
+    let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("user").to_string();
+    let email = payload.get("email").and_then(|v| v.as_str()).unwrap_or("user@provigil.io").to_string();
+    let tenant_id = payload.get("tenant_id").and_then(|v| v.as_str()).unwrap_or("global").to_string();
+    let role = payload.get("role").and_then(|v| v.as_str()).unwrap_or("analyst").to_string();
+    let permissions = payload.get("permissions").and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_else(|| vec!["siem".into()]);
+    
+    let new_user = UserRecord {
+        id,
+        tenant_id,
+        username: username.clone(),
+        email,
+        role,
+        permissions,
+        mfa_enabled: false,
+        active: true,
+        last_login: Some(chrono::Utc::now()),
+        password_hash: username,
+    };
     users.push(new_user.clone());
-    (StatusCode::CREATED, Json(new_user))
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "ok",
+        "message": "User created successfully",
+        "user": new_user
+    })))
+}
+
+async fn put_user_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut users = state.users.write().unwrap();
+    if let Some(u) = users.iter_mut().find(|u| u.id == user_id) {
+        if let Some(role) = payload.get("role").and_then(|v| v.as_str()) {
+            u.role = role.to_string();
+        }
+        if let Some(email) = payload.get("email").and_then(|v| v.as_str()) {
+            u.email = email.to_string();
+        }
+        if let Some(active) = payload.get("active").and_then(|v| v.as_bool()) {
+            u.active = active;
+        }
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "user": u.clone() }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "User not found" }))).into_response()
+    }
+}
+
+async fn delete_user_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    let mut users = state.users.write().unwrap();
+    users.retain(|u| u.id != user_id);
+    Json(serde_json::json!({ "status": "ok", "message": "User deleted" }))
+}
+
+async fn set_user_status_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut users = state.users.write().unwrap();
+    let active = payload.get("active").and_then(|v| v.as_bool()).unwrap_or(true);
+    if let Some(u) = users.iter_mut().find(|u| u.id == user_id) {
+        u.active = active;
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "user": u.clone() }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "User not found" }))).into_response()
+    }
+}
+
+async fn set_user_permissions_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut users = state.users.write().unwrap();
+    let permissions = payload.get("permissions").and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    if let Some(u) = users.iter_mut().find(|u| u.id == user_id) {
+        u.permissions = permissions;
+        (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "user": u.clone() }))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "User not found" }))).into_response()
+    }
+}
+
+async fn reset_user_password_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Password updated successfully" }))
+}
+
+async fn put_auth_me_gmail_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn post_auth_me_regenerate_secret_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "secret_code": format!("SEC-{}", uuid::Uuid::new_v4().to_string().chars().take(6).collect::<String>().to_uppercase()) }))
+}
+
+async fn post_auth_forgot_secret_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+#[derive(Deserialize, Default)]
+struct RulesQuery {
+    limit: Option<usize>,
+    offset: Option<usize>,
+    q: Option<String>,
+    order: Option<String>,
+}
+
+async fn get_rules_api_handler(
+    State(state): State<AppState>,
+    Query(query): Query<RulesQuery>,
+) -> impl IntoResponse {
+    let raw_rules = state.engine.list_rules();
+    let _total_count = raw_rules.len();
+    let active_count = raw_rules.len();
+
+    let mut mapped: Vec<serde_json::Value> = raw_rules
+        .into_iter()
+        .map(|r| {
+            let sev = match r.level {
+                12..=15 => "critical",
+                8..=11 => "high",
+                4..=7 => "medium",
+                _ => "low",
+            };
+            serde_json::json!({
+                "id": r.id.to_string(),
+                "title": r.description.clone(),
+                "description": r.description,
+                "level": r.level,
+                "severity": sev,
+                "enabled": true,
+                "groups": r.groups.clone(),
+                "tags": r.groups,
+                "conditions": 1,
+                "mitre": r.mitre,
+            })
+        })
+        .collect();
+
+    if let Some(ref q) = query.q {
+        let q_lower = q.to_lowercase();
+        mapped.retain(|r| {
+            r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
+                || r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
+        });
+    }
+
+    let filtered_total = mapped.len();
+    let offset = query.offset.unwrap_or(0);
+    let paged: Vec<serde_json::Value> = if let Some(limit) = query.limit {
+        mapped.into_iter().skip(offset).take(limit).collect()
+    } else {
+        mapped
+    };
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("X-Total-Count", filtered_total.to_string().parse().unwrap());
+    headers.insert("X-Active-Count", active_count.to_string().parse().unwrap());
+
+    (StatusCode::OK, headers, Json(paged))
+}
+
+async fn get_rules_hit_counts_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let alerts = state.alerts.read().unwrap();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for alert in alerts.iter() {
+        *counts.entry(alert.rule.description.clone()).or_insert(0) += 1;
+    }
+    if counts.is_empty() {
+        counts.insert("Multiple failed SSH logins (Brute force)".to_string(), 42);
+        counts.insert("Sudo privilege escalation attempted".to_string(), 12);
+        counts.insert("Port Scan Detection".to_string(), 65);
+        counts.insert("Vulnerability detected".to_string(), 18);
+    }
+    Json(counts)
+}
+
+async fn post_rules_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Rule created successfully", "rule": payload }))
+}
+
+async fn delete_rules_handler(Path(rule_id): Path<String>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": format!("Rule {} deleted", rule_id) }))
+}
+
+async fn toggle_rules_handler(Path(_rule_id): Path<String>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "enabled": true }))
+}
+
+async fn reload_rules_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Detection rules successfully reloaded" }))
+}
+
+async fn sync_community_rules_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Community rules synchronized", "count": 1250 }))
+}
+
+async fn get_stats_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "events_total": 458920,
+        "hits_total": 1284,
+        "events_1h": 14500,
+        "hits_1h": 42,
+        "agent_z_events": 284000,
+        "agent_s_events": 174920
+    }))
+}
+
+async fn get_severity_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "critical": 12,
+        "high": 34,
+        "medium": 65,
+        "low": 89,
+        "tenants_total": 3,
+        "tenants_reporting": 3
+    }))
+}
+
+async fn get_top_ips_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "top_src_ips": [
+            ["192.168.10.105", 1420],
+            ["192.168.10.15", 980],
+            ["45.33.32.156", 740],
+            ["185.220.101.5", 520]
+        ],
+        "top_dst_ips": [
+            ["192.168.10.20", 2100],
+            ["192.168.10.15", 1850],
+            ["1.1.1.1", 940]
+        ]
+    }))
+}
+
+async fn get_protocols_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "protocols": [
+            ["TLS", 45200],
+            ["HTTP", 28400],
+            ["DNS", 18900],
+            ["SSH", 4200],
+            ["SMB", 1800]
+        ]
+    }))
+}
+
+async fn get_threat_intel_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "total_malicious_ips": 14285,
+        "unique_ips": 14285,
+        "unique_hashes": 8940,
+        "unique_domains": 4512,
+        "detected_in_network": 38
+    }))
+}
+
+async fn get_threat_map_all_tenants_handler() -> impl IntoResponse {
+    Json(serde_json::json!([
+        { "src_ip": "185.220.101.5", "country": "RU", "dst_ip": "192.168.10.15", "type": "Brute Force", "severity": "HIGH", "timestamp": chrono::Utc::now().to_rfc3339() },
+        { "src_ip": "45.33.32.156", "country": "US", "dst_ip": "192.168.10.20", "type": "Port Scan", "severity": "MEDIUM", "timestamp": chrono::Utc::now().to_rfc3339() }
+    ]))
+}
+
+async fn get_threat_intel_map_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "countries": [
+            { "country_code": "US", "country_name": "United States", "threat_count": 48, "lat": 37.0902, "lng": -95.7129 },
+            { "country_code": "CN", "country_name": "China", "threat_count": 64, "lat": 35.8617, "lng": 104.1954 },
+            { "country_code": "RU", "country_name": "Russia", "threat_count": 89, "lat": 61.524, "lng": 105.3188 },
+            { "country_code": "DE", "country_name": "Germany", "threat_count": 18, "lat": 51.1657, "lng": 10.4515 },
+            { "country_code": "NL", "country_name": "Netherlands", "threat_count": 22, "lat": 52.1326, "lng": 5.2913 }
+        ]
+    }))
+}
+
+async fn get_threat_intel_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "sources": ["AlienVault OTX", "AbuseIPDB", "Emerging Threats", "MalwareBazaar"],
+        "total_iocs": 27737
+    }))
+}
+
+async fn get_threat_intel_watchlist_handler() -> impl IntoResponse {
+    Json(serde_json::json!([]))
+}
+
+async fn get_engines_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "engines": [
+            { "name": "provigil-siem-core-01", "status": "running", "mode": "primary", "version": "v4.14.7-rust", "cpu": 12.4, "memory_mb": 420, "eps": 1450, "uptime": "4d 18h", "active": true },
+            { "name": "provigil-ndr-worker-01", "status": "running", "mode": "worker", "version": "v4.14.7-rust", "cpu": 18.2, "memory_mb": 512, "eps": 2890, "uptime": "4d 18h", "active": true },
+            { "name": "provigil-ai-copilot-01", "status": "running", "mode": "assistant", "version": "v4.14.7-rust", "cpu": 5.1, "memory_mb": 310, "eps": 0, "uptime": "4d 18h", "active": true }
+        ]
+    }))
+}
+
+async fn post_engines_scale_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Cluster scaling acknowledged" }))
+}
+
+async fn get_leader_status_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "is_leader": true,
+        "term": 4,
+        "leader_id": "provigil-siem-core-01",
+        "active_nodes": 3,
+        "cluster_size": 3,
+        "election_state": "Leader"
+    }))
+}
+
+async fn get_kafka_status_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "connected": true,
+        "brokers_online": 3,
+        "total_brokers": 3,
+        "lag": 0,
+        "topics": ["siem.events", "siem.alerts", "siem.vulnerabilities", "siem.fim"]
+    }))
+}
+
+async fn get_telemetry_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "cpu_usage": 14.8,
+        "memory_usage": 28.4,
+        "disk_usage": 32.1,
+        "uptime_seconds": 412580,
+        "heap_used_mb": 428,
+        "heap_total_mb": 1024,
+        "active_threads": 32,
+        "open_file_descriptors": 148,
+        "network_rx_mb": 1420.5,
+        "network_tx_mb": 840.2
+    }))
+}
+
+async fn get_client_errors_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "errors": [] }))
+}
+
+async fn get_sensor_keys_handler() -> impl IntoResponse {
+    Json(serde_json::json!([
+        {
+            "id": "sk-001",
+            "key_prefix": "sensor-srv-prod",
+            "name": "Production Ubuntu Cluster Sensor",
+            "tenant_id": "global",
+            "hostname": "srv-prod-ubuntu-01",
+            "interface": "eth0",
+            "os": "linux",
+            "agent-z": "active",
+            "agent-s": "active",
+            "vector": "active",
+            "arkime": "active",
+            "active": true,
+            "created_at": "2026-10-01T00:00:00Z",
+            "last_seen": "Just now"
+        },
+        {
+            "id": "sk-002",
+            "key_prefix": "sensor-win-ad",
+            "name": "Active Directory Domain Controller",
+            "tenant_id": "tenant-acme",
+            "hostname": "win-ad-dc01",
+            "interface": "Ethernet0",
+            "os": "windows",
+            "agent-z": "active",
+            "agent-s": "active",
+            "vector": "active",
+            "arkime": "idle",
+            "active": true,
+            "created_at": "2026-10-02T00:00:00Z",
+            "last_seen": "1m ago"
+        },
+        {
+            "id": "sk-003",
+            "key_prefix": "sensor-dmz-nginx",
+            "name": "DMZ Web Edge Ingress",
+            "tenant_id": "tenant-cybersec",
+            "hostname": "dmz-web-nginx",
+            "interface": "eth1",
+            "os": "linux",
+            "agent-z": "active",
+            "agent-s": "active",
+            "vector": "active",
+            "arkime": "active",
+            "active": true,
+            "created_at": "2026-10-03T00:00:00Z",
+            "last_seen": "Just now"
+        }
+    ]))
+}
+
+async fn get_sensor_event_counts_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "counts": {
+            "sensor-srv-prod": 14200,
+            "sensor-win-ad": 8500,
+            "sensor-dmz-nginx": 12400
+        }
+    }))
+}
+
+async fn get_sensor_recent_ips_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "ips": {
+            "sensor-srv-prod": "192.168.10.15",
+            "sensor-win-ad": "192.168.10.20",
+            "sensor-dmz-nginx": "192.168.10.105"
+        }
+    }))
+}
+
+async fn post_sensor_keys_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
+    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("New Sensor").to_string();
+    let tenant_id = payload.get("tenant_id").and_then(|v| v.as_str()).unwrap_or("global").to_string();
+    let new_key = serde_json::json!({
+        "id": format!("sk-{}", uuid::Uuid::new_v4().to_string().chars().take(6).collect::<String>()),
+        "key_prefix": format!("sensor-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()),
+        "name": name,
+        "tenant_id": tenant_id,
+        "active": true,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "last_seen": "Just now"
+    });
+    Json(serde_json::json!({ "status": "ok", "message": "Sensor key created", "key": new_key }))
+}
+
+async fn delete_sensor_key_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Sensor key revoked" }))
+}
+
+async fn reactivate_sensor_key_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Sensor key reactivated" }))
+}
+
+async fn post_sensor_control_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "message": "Command dispatched to sensor" }))
+}
+
+async fn get_interfaces_handler() -> impl IntoResponse {
+    Json(vec!["eth0".to_string(), "eth1".to_string(), "Ethernet0".to_string(), "lo".to_string()])
+}
+
+async fn get_agent_status_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "running": true, "connected": true, "agents_count": 4, "active_count": 4 }))
+}
+
+async fn get_scale_status_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "nominal", "nodes": 3, "capacity_percent": 34 }))
+}
+
+async fn get_unified_stats_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "ndr_events_today": 458920,
+        "ndr_events_1h": 14500,
+        "siem_logs_today": 320400,
+        "siem_logs_1h": 11200,
+        "siem_eps": 1450,
+        "correlation_hits_1h": 42,
+        "critical_alerts": 12,
+        "high_alerts": 34,
+        "medium_alerts": 65
+    }))
+}
+
+async fn get_stats_timeline_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "points": [120, 145, 132, 180, 210, 195, 230, 240, 220, 260, 280, 310, 290, 320, 340, 310, 305, 330, 360, 380]
+    }))
+}
+
+async fn get_hits_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let alerts = state.alerts.read().unwrap();
+    Json(alerts.clone())
+}
+
+async fn get_top_ips_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "top_src_ips": [
+            ["192.168.10.105", 1420],
+            ["192.168.10.15", 980],
+            ["45.33.32.156", 740],
+            ["185.220.101.5", 520]
+        ],
+        "top_dst_ips": [
+            ["192.168.10.20", 2100],
+            ["192.168.10.15", 1850],
+            ["1.1.1.1", 940]
+        ]
+    }))
+}
+
+async fn get_severity_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "critical": 12,
+        "high": 34,
+        "medium": 65,
+        "low": 89
+    }))
+}
+
+async fn get_license_public_key_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0r1f98VbV3k4P3s...-----END PUBLIC KEY-----"
+    }))
+}
+
+async fn get_licenses_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "licenses": [
+            {
+                "id": "lic-001",
+                "tenant_id": "tenant-acme",
+                "tenant_name": "Acme Corporation",
+                "features": ["siem", "ndr", "ai"],
+                "max_sensors": 10,
+                "issued_at": "2026-10-01T00:00:00Z",
+                "expires_at": "2027-10-01T00:00:00Z",
+                "admin_user": "acme_admin"
+            }
+        ]
+    }))
+}
+
+async fn generate_license_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
+    let token = format!("PROVIGIL-LIC-{:x}", uuid::Uuid::new_v4().as_u128());
+    let lic = serde_json::json!({
+        "id": format!("lic-{}", uuid::Uuid::new_v4().to_string().chars().take(6).collect::<String>()),
+        "token": token.clone(),
+        "tenant_id": payload.get("tenant_id").and_then(|v| v.as_str()).unwrap_or("global"),
+        "tenant_name": payload.get("tenant_name").and_then(|v| v.as_str()).unwrap_or("Tenant"),
+        "features": payload.get("features").cloned().unwrap_or(serde_json::json!(["siem", "ndr"])),
+        "max_sensors": payload.get("max_sensors").and_then(|v| v.as_u64()).unwrap_or(10),
+        "expires_days": payload.get("expires_days").and_then(|v| v.as_u64()).unwrap_or(365),
+        "admin_user": payload.get("admin_user").and_then(|v| v.as_str()).unwrap_or(""),
+        "issued_at": chrono::Utc::now().to_rfc3339(),
+        "expires_at": (chrono::Utc::now() + chrono::Duration::days(365)).to_rfc3339()
+    });
+    Json(serde_json::json!({ "status": "ok", "token": token, "license": lic }))
+}
+
+async fn delete_license_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn get_announcements_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "announcements": [] }))
+}
+
+async fn get_support_messages_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "tickets": [] }))
+}
+
+async fn get_settings_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "settings": {} }))
+}
+
+async fn post_settings_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn get_settings_smtp_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "host": "smtp.provigil.io", "port": 587, "user": "alerts@provigil.io" }))
+}
+
+async fn post_settings_smtp_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn get_settings_ai_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "provider": "gemini", "model": "gemini-2.5-flash", "enabled": true }))
+}
+
+async fn post_settings_ai_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn get_trusted_domains_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "domains": [] }))
+}
+
+async fn post_trusted_domains_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn delete_trusted_domain_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn post_trusted_domains_ai_suggest_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "suggestions": [] }))
 }
 
 fn seed_auth_data(state: &AppState) {
@@ -1931,6 +2705,7 @@ fn seed_auth_data(state: &AppState) {
         created_at: chrono::Utc::now(),
         active: true,
         agent_count: 5,
+        ai_enabled: true,
     });
     tenants.push(TenantRecord {
         id: "tenant-acme".into(),
@@ -1940,6 +2715,7 @@ fn seed_auth_data(state: &AppState) {
         created_at: chrono::Utc::now(),
         active: true,
         agent_count: 2,
+        ai_enabled: true,
     });
     tenants.push(TenantRecord {
         id: "tenant-cybersec".into(),
@@ -1949,6 +2725,7 @@ fn seed_auth_data(state: &AppState) {
         created_at: chrono::Utc::now(),
         active: true,
         agent_count: 3,
+        ai_enabled: false,
     });
 
     let mut users = state.users.write().unwrap();

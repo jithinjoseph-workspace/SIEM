@@ -1,0 +1,38 @@
+[package]
+name = "siem-api"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Axum REST & WebSocket SIEM Manager Server in Rust"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-engine = { path = "../siem-engine" }
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1.40", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", features = ["json"] }
+clickhouse = { version = "0.13", features = ["time", "uuid"] }
+provigil-common = { path = "../provigil-common" }
+siem-vuln-detector = { path = "../siem-vuln-detector" }
+siem-remoted = { path = "../siem-remoted" }
+siem-wdb = { path = "../siem-wdb" }
+siem-cdb = { path = "../siem-cdb" }
+siem-rootcheck = { path = "../siem-rootcheck" }
+siem-task-manager = { path = "../siem-task-manager" }
+siem-parser-gen = { path = "../siem-parser-gen" }
+siem-authd = { path = "../siem-authd" }
+siem-integratord = { path = "../siem-integratord" }
+siem-csyslogd = { path = "../siem-csyslogd" }
+siem-maild = { path = "../siem-maild" }
+siem-reportd = { path = "../siem-reportd" }
+siem-agent-upgrade = { path = "../siem-agent-upgrade" }
+siem-monitord = { path = "../siem-monitord" }
+siem-crypto = { path = "../siem-crypto" }
+

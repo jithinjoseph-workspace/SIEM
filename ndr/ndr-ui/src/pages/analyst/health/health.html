@@ -1,0 +1,113 @@
+<section class="health-shell">
+  <div class="health-header">
+    <div>
+      <div class="eyebrow">Tenant Health</div>
+      <h2>Sensor Health Monitor</h2>
+      <p>Tenant sensor readiness, processing volume, and monitoring pipeline status.</p>
+    </div>
+
+    <div class="health-summary">
+      <span class="summary-dot"></span>
+      <div>
+        <strong>{{ onlineSensors }}/{{ activeSensors }} sensors online</strong>
+        <span>Auto-refresh every 10 seconds</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="health-strip">
+    <div>
+      <span>Last sensor heartbeat</span>
+      <strong>{{ lastSensorSeen }}</strong>
+    </div>
+    <div>
+      <span>SIGMA rules</span>
+      <strong>{{ sigmaRules }}</strong>
+    </div>
+    <div>
+      <span>Active sessions</span>
+      <strong>{{ sessions }}</strong>
+    </div>
+  </div>
+
+  <div class="health-metrics">
+    <article class="health-card">
+      <div class="card-icon">
+        <lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon>
+      </div>
+      <div>
+        <span>Total Events</span>
+        <strong>{{ totalEvents.toLocaleString() }}</strong>
+        <small>All processed telemetry</small>
+      </div>
+    </article>
+
+    <article class="health-card">
+      <div class="card-icon">
+        <lucide-icon [name]="CpuIcon" class="w-5 h-5"></lucide-icon>
+      </div>
+      <div>
+        <span>Events / Hour</span>
+        <strong>{{ eventsPerHour }}</strong>
+        <small>Recent ingestion rate</small>
+      </div>
+    </article>
+
+    <article class="health-card">
+      <div class="card-icon">
+        <lucide-icon [name]="ServerIcon" class="w-5 h-5"></lucide-icon>
+      </div>
+      <div>
+        <span>Correlation Hits</span>
+        <strong>{{ totalHits }}</strong>
+        <small>Detection matches</small>
+      </div>
+    </article>
+
+    <article class="health-card">
+      <div class="card-icon success">
+        <lucide-icon [name]="CheckIcon" class="w-5 h-5"></lucide-icon>
+      </div>
+      <div>
+        <span>Sensor Services</span>
+        <strong>{{ runningCount }}/{{ services.length }}</strong>
+        <small>Tenant sensor and platform readiness</small>
+      </div>
+    </article>
+  </div>
+
+  <section class="services-panel">
+    <div class="panel-header">
+      <div>
+        <h3>Tenant Sensor Operations</h3>
+        <p>Agent-Z, Agent-S, and Telemetry Pipeline come from sensor heartbeats; platform services come from engine health.</p>
+      </div>
+      <span class="refresh-pill">10s refresh</span>
+    </div>
+
+    <div class="service-grid">
+      <article *ngFor="let srv of services" class="service-card">
+        <div class="service-main">
+          <span class="service-dot" [class]="getStatusDotClass(srv.status)"></span>
+          <div>
+            <h4>{{ srv.name }}</h4>
+            <p>{{ srv.label }}</p>
+          </div>
+        </div>
+
+        <div class="service-card-right">
+          <span class="service-badge" [class]="getStatusBadgeClass(srv.status)">
+            {{ getStatusLabel(srv.status) }}
+          </span>
+          <a *ngIf="srv.type === 'arkime' && arkimeUrl && srv.status === 'running'"
+             [href]="arkimeUrl"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="arkime-open-link">
+            Open UI
+          </a>
+        </div>
+      </article>
+    </div>
+  </section>
+</section>

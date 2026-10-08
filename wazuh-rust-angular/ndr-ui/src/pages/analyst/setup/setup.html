@@ -1,0 +1,530 @@
+<section class="setup-shell premium-dashboard">
+  <!-- ── PAGE HEADER ── -->
+  <header class="dashboard-header">
+    <div class="header-titles">
+      <div class="eyebrow">SENSOR CONTROL</div>
+      <h2>Sensor Configuration</h2>
+      <p>Manage the local capture pipeline and registered external sensors from one place.</p>
+    </div>
+
+    <!-- Status Box -->
+    <div class="header-status-box" *ngIf="activeTab === 'external'">
+      <div class="status-indicator">
+        <span class="status-dot green"></span>
+        <div class="status-text">
+          <strong>{{ externalOnlineCount }}/{{ externalSensors.length }} Online</strong>
+          <small>External sensor command queue ready</small>
+        </div>
+      </div>
+      <button class="icon-btn" title="Refresh" (click)="loadExternalSensors()">
+        <lucide-icon [name]="RefreshIcon" class="w-5 h-5"></lucide-icon>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── SENSOR STRIP ── -->
+  <div class="sensor-strip" *ngIf="activeTab === 'local'; else externalStrip">
+    <div>
+      <span>Capture Interface</span>
+      <strong>{{ selectedInterface || 'None' }}</strong>
+    </div>
+    <div>
+      <span>Engines Running</span>
+      <strong>{{ localRunningCount() }}/3</strong>
+    </div>
+    <div>
+      <span>Pipeline</span>
+      <strong [class.degraded]="status() !== 'Running'">
+        {{ status() === 'Running' ? 'Monitoring Active' : 'Monitoring Idle' }}
+      </strong>
+    </div>
+  </div>
+
+  <ng-template #externalStrip>
+    <div class="sensor-strip">
+      <div>
+        <span>Registered Sensors</span>
+        <strong>{{ externalSensors.length }}</strong>
+      </div>
+      <div>
+        <span>Seen Recently</span>
+        <strong>{{ externalOnlineCount }}</strong>
+      </div>
+      <div>
+        <span>Control Path</span>
+        <strong [class.degraded]="!canViewExternalSensors">
+          {{ canViewExternalSensors ? 'Command Queue Ready' : 'Restricted' }}
+        </strong>
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- ── TABS ── -->
+  <div class="setup-tabs" role="tablist" aria-label="Sensor setup views" *ngIf="canViewLocalSensor">
+    <button type="button" (click)="selectTab('local')" [class.active]="activeTab === 'local'">
+      <lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon>
+      Local Sensor
+    </button>
+    <button type="button" (click)="selectTab('external')" [class.active]="activeTab === 'external'">
+      <lucide-icon [name]="ServerIcon" class="w-4 h-4"></lucide-icon>
+      External Sensors
+    </button>
+  </div>
+
+  <!-- ── LOCAL SENSOR PANEL ── -->
+  <div *ngIf="activeTab === 'local' && canViewLocalSensor" class="setup-grid">
+    <section class="panel interface-panel">
+      <div class="panel-heading">
+        <div class="panel-icon secondary">
+          <lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <div>
+          <h3>Network Interface</h3>
+          <p>Interface used by Agent-Z and Agent-S for packet capture.</p>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label for="capture-interface">Capture NIC</label>
+        <select id="capture-interface" [(ngModel)]="selectedInterface">
+          <option value="" disabled>Select an interface</option>
+          <option *ngFor="let iface of interfaces" [value]="iface">{{ iface }}</option>
+        </select>
+      </div>
+
+      <div class="selected-chip">
+        <span>Selected</span>
+        <strong>{{ selectedInterface || 'None' }}</strong>
+      </div>
+
+      <button type="button" class="secondary-action" (click)="applyInterface()" [disabled]="!selectedInterface">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+        Apply Interface
+      </button>
+    </section>
+
+    <section class="panel engine-panel">
+      <div class="panel-heading">
+        <div class="panel-icon">
+          <lucide-icon [name]="SettingsIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <div>
+          <h3>Engine Management</h3>
+          <p>Runtime control for the local monitoring pipeline.</p>
+        </div>
+      </div>
+
+      <div class="engine-list">
+        <article class="engine-row">
+          <div class="engine-copy">
+            <strong>Agent-Z IDS</strong>
+            <span>Traffic analysis engine</span>
+          </div>
+          <span class="engine-badge" [class.running]="agentZStatus() === 'running'">
+            {{ agentZStatus() === 'running' ? 'Running' : 'Stopped' }}
+          </span>
+        </article>
+        <article class="engine-row">
+          <div class="engine-copy">
+            <strong>Agent-S EVE</strong>
+            <span>Intrusion detection system</span>
+          </div>
+          <span class="engine-badge" [class.running]="agentSStatus() === 'running'">
+            {{ agentSStatus() === 'running' ? 'Running' : 'Stopped' }}
+          </span>
+        </article>
+        <article class="engine-row">
+          <div class="engine-copy">
+            <strong>Telemetry Pipeline</strong>
+            <span>Log shipping pipeline</span>
+          </div>
+          <span class="engine-badge" [class.running]="vectorStatus() === 'running'">
+            {{ vectorStatus() === 'running' ? 'Running' : 'Stopped' }}
+          </span>
+        </article>
+        <article class="engine-row">
+          <div class="engine-copy">
+            <strong>PCAP Engine</strong>
+            <span>Full packet capture</span>
+          </div>
+          <span class="engine-badge" [class.running]="arkimeStatus() === 'running'">
+            {{ arkimeStatus() === 'running' ? 'Running' : 'Stopped' }}
+          </span>
+        </article>
+      </div>
+
+      <div class="engine-actions">
+        <button type="button" class="primary-action"
+          (click)="startMonitoring()"
+          [disabled]="status() === 'Starting...' || status() === 'Stopping...' || status() === 'Running'">
+          <lucide-icon [name]="PlayIcon" class="w-4 h-4" *ngIf="status() !== 'Running'"></lucide-icon>
+          <lucide-icon [name]="ShieldIcon" class="w-4 h-4" *ngIf="status() === 'Running'"></lucide-icon>
+          {{ status() === 'Starting...' ? 'Starting...' : status() === 'Running' ? 'Monitoring Active' : 'Start Monitoring' }}
+        </button>
+        <button type="button" class="stop-action"
+          (click)="stopMonitoring()"
+          [disabled]="localRunningCount() === 0 || status() === 'Stopping...' || status() === 'Starting...'">
+          <lucide-icon [name]="StopIcon" class="w-4 h-4"></lucide-icon>
+          {{ status() === 'Stopping...' ? 'Stopping...' : 'Stop Monitoring' }}
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── KPI GRID ── -->
+  <div class="kpi-grid" *ngIf="activeTab === 'external'">
+    <article class="kpi-card blue-glow">
+      <div class="kpi-icon-box blue">
+        <lucide-icon [name]="ServerIcon" class="w-6 h-6"></lucide-icon>
+      </div>
+      <div class="kpi-content">
+        <strong class="kpi-value">{{ externalSensors.length }}</strong>
+        <span class="kpi-label">REGISTERED SENSORS</span>
+      </div>
+      <div class="kpi-bottom-glow blue"></div>
+    </article>
+
+    <article class="kpi-card green-glow">
+      <div class="kpi-icon-box green">
+        <lucide-icon [name]="ActivityIcon" class="w-6 h-6"></lucide-icon>
+      </div>
+      <div class="kpi-content">
+        <strong class="kpi-value">{{ externalOnlineCount }}</strong>
+        <span class="kpi-label">ONLINE</span>
+      </div>
+      <div class="kpi-bottom-glow green"></div>
+    </article>
+
+    <article class="kpi-card red-glow">
+      <div class="kpi-icon-box red">
+        <lucide-icon [name]="WifiOffIcon" class="w-6 h-6"></lucide-icon>
+      </div>
+      <div class="kpi-content">
+        <strong class="kpi-value">{{ externalOfflineCount }}</strong>
+        <span class="kpi-label">OFFLINE</span>
+      </div>
+      <div class="kpi-bottom-glow red"></div>
+    </article>
+
+    <article class="kpi-card purple-glow">
+      <div class="kpi-icon-box purple">
+        <lucide-icon [name]="ClipboardListIcon" class="w-6 h-6"></lucide-icon>
+      </div>
+      <div class="kpi-content">
+        <strong class="kpi-value">Ready</strong>
+        <span class="kpi-label">COMMAND QUEUE</span>
+      </div>
+      <div class="kpi-bottom-glow purple"></div>
+    </article>
+  </div>
+
+  <!-- ── HERO BANNER ── -->
+  <div class="hero-banner" *ngIf="activeTab === 'external'">
+    <div class="hero-content">
+      <div class="hero-graphics">
+        <div class="graphic-rings"></div>
+        <div class="graphic-rings inner"></div>
+        <div class="graphic-icon-box">
+          <lucide-icon [name]="ServerIcon" class="w-10 h-10"></lucide-icon>
+        </div>
+      </div>
+      <div class="hero-text">
+        <span class="hero-eyebrow">TENANT SENSOR FLEET</span>
+        <h3>External Sensor Fleet</h3>
+        <p>Monitor registered capture hosts, review service posture,<br>and queue runtime actions for {{ tenantDisplayName }}.</p>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button class="primary-btn add-btn" (click)="openAddSensorModal()" *ngIf="canViewExternalSensors">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        Add Sensor
+      </button>
+    </div>
+  </div>
+
+  <!-- ── INSTALL FLOW BANNER ── -->
+  <div class="install-banner" *ngIf="activeTab === 'external'">
+    <div class="install-info">
+      <div class="install-icon">
+        <lucide-icon [name]="LinkIcon" class="w-4 h-4"></lucide-icon>
+      </div>
+      <span class="install-label">INSTALL FLOW</span>
+      <span class="install-desc">Generate a one-time sensor key and deploy it to a capture host to register.</span>
+    </div>
+    <button class="outline-btn green-outline" (click)="openAddSensorModal()">
+      <lucide-icon [name]="KeyIcon" class="w-4 h-4"></lucide-icon>
+      Generate Key
+    </button>
+  </div>
+
+  <!-- Messages -->
+  <div *ngIf="externalActionMessage" class="inline-message success" style="margin-top: 16px;">
+    {{ externalActionMessage }}
+  </div>
+  <div *ngIf="externalError" class="inline-message error" style="margin-top: 16px;">
+    {{ externalError }}
+  </div>
+
+  <!-- ── SENSOR GRID ── -->
+  <div class="sensor-grid" *ngIf="activeTab === 'external'">
+    <!-- Empty / Loading States -->
+    <div *ngIf="!canViewExternalSensors" class="empty-state">
+      <strong>External sensor management is not available for this account.</strong>
+      <p>Viewing sensor keys currently requires a tenant admin or super admin role.</p>
+    </div>
+
+    <div *ngIf="canViewExternalSensors && externalLoading" class="empty-state">
+      <strong>Loading external sensors...</strong>
+      <p>Refreshing registered sensor keys and recent check-in timestamps.</p>
+    </div>
+
+    <div *ngIf="canViewExternalSensors && !externalLoading && !externalSensors.length" class="empty-state">
+      <strong>No external sensors registered.</strong>
+      <p>Create or install a remote sensor key to have it appear here.</p>
+    </div>
+
+    <!-- Sensor Cards -->
+    <article class="sensor-card-v2" [class.offline-card]="!sensor.online" *ngFor="let sensor of externalSensors; trackBy: trackSensor">
+      <div class="sensor-card-header">
+        <div class="sensor-id-block">
+          <div class="sensor-device-icon">
+            <lucide-icon [name]="MonitorIcon" class="w-6 h-6"></lucide-icon>
+          </div>
+          <div class="sensor-name-info">
+            <div class="sensor-name-row">
+              <span class="status-dot" [class.green]="sensor.online"></span>
+              <h4>{{ sensor.displayName }}</h4>
+            </div>
+            <p>
+              {{ sensor.hostname || 'Unregistered host' }}
+              <span class="sensor-id-tag">ID: {{ sensor.key_prefix || sensor.id }}</span>
+            </p>
+          </div>
+        </div>
+        <div class="sensor-header-actions">
+          <span class="status-pill" [class.offline]="!sensor.online && sensor.active" [class.online]="sensor.online">
+            {{ sensor.active ? (sensor.online ? 'ONLINE' : 'OFFLINE') : 'REVOKED' }}
+          </span>
+          <button class="icon-menu-btn">
+            <lucide-icon [name]="MoreVerticalIcon" class="w-5 h-5"></lucide-icon>
+          </button>
+        </div>
+      </div>
+
+      <div class="sensor-details-table">
+        <div class="detail-col">
+          <span class="detail-label">TENANT</span>
+          <strong class="detail-value">{{ sensor.tenant_id }}</strong>
+        </div>
+        <div class="detail-col">
+          <span class="detail-label">INTERFACE</span>
+          <strong class="detail-value">{{ sensor.interface }}</strong>
+        </div>
+        <div class="detail-col">
+          <span class="detail-label">OS</span>
+          <strong class="detail-value">{{ sensor.os }}</strong>
+        </div>
+      </div>
+
+      <div class="sensor-services-status">
+        <div class="service-status-col">
+          <div class="service-status-item">
+            <span>Agent-Z</span>
+            <div class="service-badge" [class.running]="sensor['agent-z'] === 'running'">
+              <span class="service-dot" [class.green]="sensor['agent-z'] === 'running'"></span>
+              {{ getServiceLabel(sensor['agent-z']) }}
+            </div>
+          </div>
+          <div class="service-status-item">
+            <span>Agent-S</span>
+            <div class="service-badge" [class.running]="sensor['agent-s'] === 'running'">
+              <span class="service-dot" [class.green]="sensor['agent-s'] === 'running'"></span>
+              {{ getServiceLabel(sensor['agent-s']) }}
+            </div>
+          </div>
+          <div class="service-status-item">
+            <span>Vector</span>
+            <div class="service-badge" [class.running]="sensor.vector === 'running'">
+              <span class="service-dot" [class.green]="sensor.vector === 'running'"></span>
+              {{ getServiceLabel(sensor.vector) }}
+            </div>
+          </div>
+        </div>
+        <div class="sensor-last-seen">
+          <div class="last-seen-head">
+            <lucide-icon [name]="ClockIcon" class="w-3 h-3"></lucide-icon>
+            LAST SEEN
+          </div>
+          <strong>{{ formatRelativeTime(sensor.last_seen) }}</strong>
+          <small>Using sensor key<br>heartbeat timestamp.</small>
+        </div>
+      </div>
+
+      <div class="sensor-actions-footer">
+        <button class="action-btn green-btn"
+          (click)="controlExternalSensor(sensor, 'start')"
+          [disabled]="!sensor.active || !sensor.online || isCommandPending(sensor) || isSensorRunning(sensor)">
+          <lucide-icon [name]="PlayIcon" class="w-4 h-4"></lucide-icon>
+          {{ isCommandPending(sensor, 'start') ? 'Starting...' : isSensorRunning(sensor) ? 'Running' : 'Start' }}
+        </button>
+        <button class="action-btn red-btn"
+          (click)="controlExternalSensor(sensor, 'stop')"
+          [disabled]="!sensor.active || !sensor.online || isCommandPending(sensor) || !isSensorRunning(sensor)">
+          <lucide-icon [name]="StopIcon" class="w-4 h-4"></lucide-icon>
+          {{ isCommandPending(sensor, 'stop') ? 'Stopping...' : 'Stop' }}
+        </button>
+        <button class="action-btn blue-btn"
+          (click)="controlExternalSensor(sensor, 'restart')"
+          [disabled]="!sensor.active || !sensor.online || isCommandPending(sensor)">
+          <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+          {{ isCommandPending(sensor, 'restart') ? 'Restarting...' : 'Restart' }}
+        </button>
+      </div>
+    </article>
+  </div>
+
+
+  <div *ngIf="showAddSensorModal" class="modal-backdrop">
+    <div class="sensor-modal">
+      <div class="modal-head">
+        <div>
+          <h3>Add Remote Sensor</h3>
+          <p>Generate a one-time API key and run the install command on the remote sensor machine.</p>
+        </div>
+        <button type="button" class="icon-close" (click)="showAddSensorModal = false">
+          x
+        </button>
+      </div>
+
+      <div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;padding:10px 14px;font-size:12px;color:#fbbf24;display:flex;gap:8px;align-items:flex-start;margin:12px 0 0;">
+        <span style="flex-shrink:0;">⚠</span>
+        <span>This key is for <strong>remote capture machines only</strong>. The local sensor on this server runs automatically via Docker and does not need a key.</span>
+      </div>
+
+      <!-- Server URL field (shown always; warning if localhost) -->
+      <div class="sensor-step">
+        <div class="step-number">0</div>
+        <div class="step-content">
+          <h4>Server URL</h4>
+          <p style="font-size:12px;color:#94a3b8;margin:0 0 8px;">
+            The URL remote sensors will use to reach this NDR server.
+          </p>
+          <div *ngIf="isLocalhostUrl" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:8px 12px;font-size:12px;color:#fbbf24;margin-bottom:8px;">
+            You are accessing via localhost — enter the server's real IP or hostname so remote sensors can connect.
+          </div>
+          <label>
+            <input
+              [(ngModel)]="customServerUrl"
+              (ngModelChange)="rebuildInstallCommand()"
+              placeholder="http://192.168.1.100:3000"
+              style="width:100%;"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div class="sensor-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>Create API Key</h4>
+          <label>
+            <span>Sensor Name</span>
+            <input
+              [(ngModel)]="newSensorName"
+              [disabled]="!!createdSensorKey"
+              placeholder="Office gateway sensor"
+            />
+          </label>
+          <button
+            type="button"
+            class="primary-btn"
+            [disabled]="creatingSensor || !newSensorName.trim() || !!createdSensorKey"
+            (click)="createExternalSensorKey()"
+          >
+            <lucide-icon [name]="KeyIcon" class="w-4 h-4"></lucide-icon>
+            {{ creatingSensor ? 'Generating...' : 'Generate Key' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="sensor-step" [class.disabled]="!createdSensorKey">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>Install Sensor</h4>
+          <div *ngIf="!createdSensorKey" class="muted-panel">
+            Generate a key first. The full key is shown only once.
+          </div>
+
+          <ng-container *ngIf="createdSensorKey">
+            <div class="warning-box">
+              Copy this key now. It will never be shown again.
+            </div>
+
+            <div class="secret-block">
+              <code>{{ createdSensorKey.key }}</code>
+              <button type="button"
+                class="secondary-action compact"
+                [class.copied]="keyCopied"
+                (click)="copyCreatedSensorKey()"
+                [disabled]="keyCopied"
+              >
+                <lucide-icon [name]="CopyIcon" class="w-4 h-4" *ngIf="!keyCopied"></lucide-icon>
+                {{ keyCopied ? 'Copied' : 'Copy Key' }}
+              </button>
+            </div>
+
+            <div class="command-block">
+              <code>{{ installCommand }}</code>
+              <button type="button"
+                class="secondary-action compact"
+                [class.copied]="commandCopied"
+                (click)="copyInstallCommand()"
+                [disabled]="commandCopied"
+              >
+                <lucide-icon [name]="CopyIcon" class="w-4 h-4" *ngIf="!commandCopied"></lucide-icon>
+                {{ commandCopied ? 'Copied' : 'Copy Command' }}
+              </button>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-action compact" (click)="showAddSensorModal = false">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Modal -->
+  <div *ngIf="showErrorModal" class="modal-backdrop">
+    <div class="sensor-modal" style="border-color: rgba(255, 113, 106, 0.25); background: rgba(16, 25, 43, 0.99);">
+      <div class="modal-head">
+        <div>
+          <h3 style="color: #ff918b; display: flex; align-items: center; gap: 8px;">
+            <lucide-icon [name]="AlertIcon" class="w-5 h-5"></lucide-icon>
+            {{ errorTitle || 'Error Occurred' }}
+          </h3>
+          <p>An operation failed. Please review the details below.</p>
+        </div>
+        <button type="button" class="icon-close" (click)="showErrorModal = false" style="border-color: rgba(255, 113, 106, 0.2); color: #ff918b;">
+          x
+        </button>
+      </div>
+
+      <div class="sensor-step" style="border-color: rgba(255, 113, 106, 0.15); background: rgba(255, 113, 106, 0.03);">
+        <div class="step-content" style="padding-top: 4px;">
+          <h4 style="color: #f7f9ff;">Details</h4>
+          <p style="color: #ffb1ac; font-size: 13px; line-height: 1.6; margin: 0; white-space: pre-wrap;">{{ errorMessage }}</p>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 24px;">
+        <button type="button" class="stop-action" (click)="showErrorModal = false" style="min-width: 100px;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</section>

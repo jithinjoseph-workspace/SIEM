@@ -1,0 +1,714 @@
+<div class="ar-page" id="ai-report-page">
+
+  <!-- ══ SCREEN: Top Action Bar ════════════════════════════════════════════ -->
+  <div class="ar-topbar no-print">
+    <button class="ar-back-btn" (click)="goBack()">
+      <lucide-icon [name]="BackIcon" class="w-4 h-4"></lucide-icon>
+      Dashboard
+    </button>
+
+    <div class="ar-topbar-center">
+      <lucide-icon [name]="BotIcon" class="ar-topbar-icon"></lucide-icon>
+      <span>ARIA Threat Intelligence Report</span>
+    </div>
+
+    <div class="ar-topbar-actions">
+      <!-- Period Selector -->
+      <div class="ar-period-selector" *ngIf="!generating()">
+        <button [class.active]="reportPeriod() === '24h'" (click)="setPeriod('24h')">24h</button>
+        <button [class.active]="reportPeriod() === '7d'"  (click)="setPeriod('7d')">7d</button>
+        <button [class.active]="reportPeriod() === '30d'" (click)="setPeriod('30d')">30d</button>
+      </div>
+
+      <button class="ar-customize-btn" *ngIf="generated() && !generating()"
+              (click)="customMode.set(!customMode())"
+              [class.active]="customMode()">
+        <lucide-icon [name]="ListIcon" class="w-4 h-4"></lucide-icon>
+        {{ customMode() ? 'Close Builder' : 'Customize' }}
+      </button>
+
+      <button class="ar-generate-btn" (click)="generateReport()" [disabled]="generating()">
+        <lucide-icon [name]="generating() ? LoadingIcon : RefreshIcon"
+                     class="w-4 h-4" [class.spin]="generating()"></lucide-icon>
+        {{ generating() ? 'Generating…' : (generated() ? 'Regenerate' : 'Generate Report') }}
+      </button>
+
+      <button class="ar-download-btn" (click)="downloadPdf()" [disabled]="!generated()">
+        <lucide-icon [name]="DownloadIcon" class="w-4 h-4"></lucide-icon>
+        Download PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Error Banner ══════════════════════════════════════════════════════ -->
+  <div class="ar-error-banner no-print" *ngIf="globalError()">
+    <lucide-icon [name]="AlertIcon" class="w-4 h-4"></lucide-icon>
+    {{ globalError() }}
+  </div>
+
+  <!-- ══ Landing (idle) ════════════════════════════════════════════════════ -->
+  <div class="ar-landing no-print" *ngIf="!generating() && !generated()">
+    <div class="ar-landing-inner">
+      <div class="ar-landing-glow"></div>
+      <lucide-icon [name]="BotIcon" class="ar-landing-bot"></lucide-icon>
+      <h1>AI Threat Intelligence Report</h1>
+      <p>ARIA analyzes all live system data and generates a structured, industry-standard PDF report with MITRE ATT&CK mapping, KPIs, and AI-generated narratives — all sourced from real-time NDR telemetry.</p>
+
+      <!-- Period selector on landing -->
+      <div class="ar-landing-period">
+        <span class="ar-landing-period-label">Report Period</span>
+        <div class="ar-period-selector large">
+          <button [class.active]="reportPeriod() === '24h'" (click)="reportPeriod.set('24h')">Last 24 Hours</button>
+          <button [class.active]="reportPeriod() === '7d'"  (click)="reportPeriod.set('7d')">Last 7 Days</button>
+          <button [class.active]="reportPeriod() === '30d'" (click)="reportPeriod.set('30d')">Last 30 Days</button>
+        </div>
+      </div>
+
+      <div class="ar-landing-chips">
+        <span><lucide-icon [name]="ListIcon"    class="w-3 h-3"></lucide-icon> Table of Contents</span>
+        <span><lucide-icon [name]="ChartIcon"   class="w-3 h-3"></lucide-icon> KPI Strip</span>
+        <span><lucide-icon [name]="TargetIcon"  class="w-3 h-3"></lucide-icon> MITRE ATT&CK Mapping</span>
+        <span><lucide-icon [name]="ShieldIcon"  class="w-3 h-3"></lucide-icon> AI Threat Analyses</span>
+        <span><lucide-icon [name]="ActivityIcon" class="w-3 h-3"></lucide-icon> Predictions</span>
+        <span><lucide-icon [name]="ZapIcon"     class="w-3 h-3"></lucide-icon> Recommendations</span>
+      </div>
+
+      <button class="ar-generate-btn large" (click)="generateReport()">
+        <lucide-icon [name]="BotIcon" class="w-5 h-5"></lucide-icon>
+        Generate Report Now
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ Skeleton Loading ══════════════════════════════════════════════════ -->
+  <div class="ar-skeleton-wrap no-print" *ngIf="generating()">
+    <div class="ar-skeleton-header">
+      <div class="skel skel-title"></div>
+      <div class="skel skel-sub"></div>
+    </div>
+    <div class="ar-skeleton-sections">
+      <div class="skel-section" *ngFor="let i of [1,2,3,4,5,6,7,8]">
+        <div class="skel skel-section-title"></div>
+        <div class="skel skel-line"></div>
+        <div class="skel skel-line short"></div>
+        <div class="skel skel-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Report Builder Panel ════════════════════════════════════════════ -->
+  <div class="ar-customizer no-print" *ngIf="customMode() && generated()">
+    <div class="ar-customizer-header">
+      <div class="ar-customizer-title">
+        <lucide-icon [name]="ListIcon" class="w-4 h-4"></lucide-icon>
+        Report Builder
+      </div>
+      <p class="ar-customizer-desc">Drag to reorder · click Included / Excluded to toggle sections</p>
+      <button class="ar-reset-btn" (click)="resetToDefault()">
+        <lucide-icon [name]="RefreshIcon" class="w-3 h-3"></lucide-icon>
+        Reset to default
+      </button>
+    </div>
+
+    <div class="ar-builder-list">
+      <div class="ar-builder-tile"
+           *ngFor="let id of sectionOrder(); let i = index"
+           [class.tile-disabled]="!isSectionEnabled(id)"
+           [class.tile-dragging]="dragSrcIdx() === i"
+           [class.tile-dragover]="dragOverIdx() === i"
+           draggable="true"
+           (dragstart)="onDragStart(i, $event)"
+           (dragover)="onDragOver(i, $event)"
+           (drop)="onDrop(i, $event)"
+           (dragend)="onDragEnd()">
+        <lucide-icon [name]="GripIcon" class="ar-grip-icon"></lucide-icon>
+        <span class="ar-tile-num">{{ sectionNumbers()[id] }}</span>
+        <span class="ar-tile-title">{{ getSectionDef(id)?.title }}</span>
+        <div class="ar-tile-actions">
+          <span class="ar-tile-required" *ngIf="getSectionDef(id)?.required">Required</span>
+          <button class="ar-tile-toggle"
+                  [class.included]="isSectionEnabled(id)"
+                  [class.excluded]="!isSectionEnabled(id)"
+                  (click)="toggleSection(id)"
+                  [disabled]="getSectionDef(id)?.required">
+            {{ isSectionEnabled(id) ? 'Included' : 'Excluded' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ar-customizer-footer">
+      <span>{{ enabledCount() }} of {{ sectionDefs.length }} sections included in report</span>
+      <span class="ar-customizer-hint">Changes apply instantly — drag to reorder, toggle to include/exclude</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       REPORT DOCUMENT — fully structured, printable
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="ar-report-doc" *ngIf="generated()">
+
+    <!-- Watermark — hidden on screen, fixed on every printed/PDF page -->
+    <div class="ar-watermark" aria-hidden="true">CONFIDENTIAL</div>
+
+    <!-- ─── COVER PAGE ───────────────────────────────────────────────────── -->
+    <div class="ar-cover page-break-after" id="cover-page">
+
+      <div class="ar-cover-classification">CONFIDENTIAL — RESTRICTED DISTRIBUTION</div>
+
+      <div class="ar-cover-logo">
+        <div class="ar-cover-logo-ring">
+          <lucide-icon [name]="ShieldIcon" class="w-10 h-10"></lucide-icon>
+        </div>
+      </div>
+
+      <div class="ar-cover-title-block">
+        <div class="ar-cover-eyebrow">ARIA Intelligence Engine · NDR Platform</div>
+        <h1 class="ar-cover-title">Threat Intelligence<br>Security Report</h1>
+        <div class="ar-cover-subtitle">AI-Generated Network Detection &amp; Response Assessment</div>
+      </div>
+
+      <div class="ar-cover-meta-grid">
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Report ID</span>
+          <span class="ar-cover-meta-value mono small-mono">{{ reportId() }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Generated</span>
+          <span class="ar-cover-meta-value">{{ reportDate() }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Report Period</span>
+          <span class="ar-cover-meta-value">{{ periodLabel() }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Overall Risk</span>
+          <span class="ar-cover-meta-value" [class]="riskClass()">{{ riskLevel() }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Total Alerts</span>
+          <span class="ar-cover-meta-value">{{ totalAlerts() }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">AI Analyses</span>
+          <span class="ar-cover-meta-value">{{ analyses().length }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Predictions</span>
+          <span class="ar-cover-meta-value">{{ predictions().length }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">Suppressions</span>
+          <span class="ar-cover-meta-value">{{ suppressions().length }}</span>
+        </div>
+        <div class="ar-cover-meta-item">
+          <span class="ar-cover-meta-label">MITRE ATT&CK</span>
+          <span class="ar-cover-meta-value">v14.1 Framework</span>
+        </div>
+      </div>
+
+      <div class="ar-cover-footer">
+        Report ID: {{ reportId() }} · Generated by ARIA — Autonomous Response &amp; Intelligence Agent
+      </div>
+    </div>
+
+    <!-- ─── TABLE OF CONTENTS ─────────────────────────────────────────────── -->
+    <div class="ar-toc no-print" id="toc">
+      <div class="ar-toc-header">
+        <lucide-icon [name]="ListIcon" class="w-5 h-5"></lucide-icon>
+        <h2>Table of Contents</h2>
+      </div>
+      <ol class="ar-toc-list">
+        <li *ngFor="let s of activeTocSections()" class="ar-toc-item" (click)="scrollToSection(s.id)">
+          <span class="ar-toc-num">{{ s.num }}</span>
+          <span class="ar-toc-title">{{ s.title }}</span>
+          <span class="ar-toc-dots"></span>
+        </li>
+      </ol>
+    </div>
+
+    <!-- Print-only TOC (simplified, no interactive anchors) -->
+    <div class="ar-toc-print print-only">
+      <h2>Table of Contents</h2>
+      <ol class="ar-toc-print-list">
+        <li *ngFor="let s of activeTocSections()">
+          <span class="ar-toc-num">{{ s.num }}</span>
+          <span class="ar-toc-title">{{ s.title }}</span>
+        </li>
+      </ol>
+    </div>
+
+    <!-- ─── SECTION 01: EXECUTIVE SUMMARY ────────────────────────────────── -->
+    <div class="ar-section" id="section-exec"
+         *ngIf="isSectionEnabled('section-exec')"
+         [style.order]="sectionCssOrder('section-exec')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-exec'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Executive Summary</h2>
+          <p class="ar-section-desc">AI-generated strategic overview · Period: {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="EyeIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-narrative-block" *ngIf="!execLoading() && execSummary()">
+        <div class="ar-narrative-label">
+          <lucide-icon [name]="BotIcon" class="w-3 h-3"></lucide-icon>
+          ARIA Executive Analysis
+        </div>
+        <p class="ar-narrative-text">{{ execSummary() }}</p>
+      </div>
+      <div class="ar-narrative-block" *ngIf="!execLoading() && !execSummary()">
+        <p class="ar-narrative-empty">Executive summary unavailable — configure an AI provider in Settings.</p>
+      </div>
+      <div class="ar-ai-loading" *ngIf="execLoading()">
+        <lucide-icon [name]="LoadingIcon" class="w-4 h-4 spin"></lucide-icon>
+        ARIA is composing executive summary…
+      </div>
+
+      <!-- Severity snapshot -->
+      <div class="ar-risk-cards">
+        <div class="ar-risk-card risk-critical">
+          <lucide-icon [name]="AlertIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ severity()?.critical ?? 0 }}</div><div class="ar-risk-label">Critical</div></div>
+        </div>
+        <div class="ar-risk-card risk-high">
+          <lucide-icon [name]="ShieldIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ severity()?.high ?? 0 }}</div><div class="ar-risk-label">High</div></div>
+        </div>
+        <div class="ar-risk-card risk-medium">
+          <lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ severity()?.medium ?? 0 }}</div><div class="ar-risk-label">Medium</div></div>
+        </div>
+        <div class="ar-risk-card risk-low">
+          <lucide-icon [name]="CheckIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ severity()?.low ?? 0 }}</div><div class="ar-risk-label">Low</div></div>
+        </div>
+        <div class="ar-risk-card risk-neutral">
+          <lucide-icon [name]="ChartIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ stats()?.events_total?.toLocaleString() ?? '0' }}</div><div class="ar-risk-label">Total Events</div></div>
+        </div>
+        <div class="ar-risk-card risk-neutral">
+          <lucide-icon [name]="ZapIcon" class="w-5 h-5"></lucide-icon>
+          <div><div class="ar-risk-num">{{ stats()?.hits_total?.toLocaleString() ?? '0' }}</div><div class="ar-risk-label">Corr. Hits</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 02: KPI STRIP ─────────────────────────────────────────── -->
+    <div class="ar-section" id="section-kpis"
+         *ngIf="isSectionEnabled('section-kpis')"
+         [style.order]="sectionCssOrder('section-kpis')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-kpis'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Key Performance Indicators</h2>
+          <p class="ar-section-desc">Metrics computed from live NDR telemetry · {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="ChartIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-kpi-strip">
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">AI Detection Coverage</span>
+            <span class="ar-kpi-info" title="Percentage of correlation hits that received an AI deep-dive analysis">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiAiCoverage()">
+            {{ kpiAiCoverage() !== null ? kpiAiCoverage() + '%' : 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Analyses ÷ Total Hits</div>
+          <div class="ar-kpi-data">{{ analyses().length }} analyses / {{ stats()?.hits_total ?? 0 }} hits</div>
+        </div>
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">FP Suppression Rate</span>
+            <span class="ar-kpi-info" title="Active AI suppression rules as a % of total correlation hits — higher = more false-positive noise removed">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiFpRate()">
+            {{ kpiFpRate() !== null ? kpiFpRate() + '%' : 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Active Suppressions ÷ Total Hits</div>
+          <div class="ar-kpi-data">{{ suppressions().filter(s => s.active).length }} active suppression rules</div>
+        </div>
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">Avg AI Confidence</span>
+            <span class="ar-kpi-info" title="Mean confidence score across all AI suppression decisions">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiAvgConfidence()">
+            {{ kpiAvgConfidence() !== null ? kpiAvgConfidence() + '%' : 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Avg ai_confidence across suppressions</div>
+          <div class="ar-kpi-data">{{ suppressions().length }} suppression decisions</div>
+        </div>
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">Active Suppression Rate</span>
+            <span class="ar-kpi-info" title="Fraction of all suppression rules that are currently active">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiActiveSuppressionRate()">
+            {{ kpiActiveSuppressionRate() !== null ? kpiActiveSuppressionRate() + '%' : 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Active ÷ Total Suppressions</div>
+          <div class="ar-kpi-data">{{ suppressions().filter(s => s.active).length }} active / {{ suppressions().length }} total</div>
+        </div>
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">Critical Alert Rate</span>
+            <span class="ar-kpi-info" title="Proportion of total alerts at CRITICAL severity">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiCriticalRate()"
+               [class.kpi-danger]="kpiCriticalRate() && +kpiCriticalRate()! > 10">
+            {{ kpiCriticalRate() !== null ? kpiCriticalRate() + '%' : 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Critical ÷ Total Alerts</div>
+          <div class="ar-kpi-data">{{ severity()?.critical ?? 0 }} critical / {{ totalAlerts() }} total</div>
+        </div>
+
+        <div class="ar-kpi-card">
+          <div class="ar-kpi-top">
+            <span class="ar-kpi-label">Agent-Z / Agent-S Split</span>
+            <span class="ar-kpi-info" title="Event volume contribution from Agent-Z vs Agent-S sensors">ⓘ</span>
+          </div>
+          <div class="ar-kpi-value" [class.kpi-na]="!kpiAgentZRatio()">
+            {{ kpiAgentZRatio() ?? 'N/A' }}
+          </div>
+          <div class="ar-kpi-formula">Agent-Z events / Agent-S events</div>
+          <div class="ar-kpi-data">{{ stats()?.agent_z_events?.toLocaleString() ?? 0 }} / {{ stats()?.agent_s_events?.toLocaleString() ?? 0 }}</div>
+        </div>
+
+      </div>
+
+      <div class="ar-kpi-note">
+        ⓘ MTTD (Mean Time to Detect) and MTTR (Mean Time to Respond) require correlated event-to-resolution timestamps.
+        These metrics are not yet available via the current telemetry pipeline. Enable event lifecycle tracking to populate them.
+      </div>
+    </div>
+
+    <!-- ─── SECTION 03: THREAT LANDSCAPE ──────────────────────────────────── -->
+    <div class="ar-section" id="section-threat"
+         *ngIf="isSectionEnabled('section-threat')"
+         [style.order]="sectionCssOrder('section-threat')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-threat'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Threat Landscape Overview</h2>
+          <p class="ar-section-desc">Current threat posture and network telemetry · {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="GlobeIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-narrative-block" *ngIf="!threatLoading() && threatNarrative()">
+        <div class="ar-narrative-label">
+          <lucide-icon [name]="BotIcon" class="w-3 h-3"></lucide-icon>
+          ARIA Threat Assessment
+        </div>
+        <p class="ar-narrative-text">{{ threatNarrative() }}</p>
+      </div>
+      <div class="ar-ai-loading" *ngIf="threatLoading()">
+        <lucide-icon [name]="LoadingIcon" class="w-4 h-4 spin"></lucide-icon>
+        ARIA is analyzing the threat landscape…
+      </div>
+
+      <!-- Top Source IPs -->
+      <div class="ar-subsection" *ngIf="topIps()?.top_src_ips?.length">
+        <h3 class="ar-subsection-title">Top Source IPs by Event Volume</h3>
+        <div class="ar-ip-table">
+          <div class="ar-ip-row header">
+            <span>Rank</span><span>Source IP</span><span>Event Count</span><span>Relative Volume</span>
+          </div>
+          <div class="ar-ip-row" *ngFor="let ip of (topIps()?.top_src_ips || []).slice(0,5); let i = index">
+            <span class="ar-ip-rank">{{ i + 1 }}</span>
+            <span class="ar-ip-addr">{{ ip.ip }}</span>
+            <span class="ar-ip-count">{{ ip.count | number }}</span>
+            <span class="ar-ip-bar-wrap">
+              <span class="ar-ip-bar" [style.width.%]="(ip.count / (topIps()?.top_src_ips?.[0]?.count || 1)) * 100"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Destination IPs -->
+      <div class="ar-subsection" *ngIf="topIps()?.top_dst_ips?.length">
+        <h3 class="ar-subsection-title">Top Destination IPs by Event Volume</h3>
+        <div class="ar-ip-table">
+          <div class="ar-ip-row header">
+            <span>Rank</span><span>Destination IP</span><span>Event Count</span><span>Relative Volume</span>
+          </div>
+          <div class="ar-ip-row" *ngFor="let ip of (topIps()?.top_dst_ips || []).slice(0,5); let i = index">
+            <span class="ar-ip-rank">{{ i + 1 }}</span>
+            <span class="ar-ip-addr">{{ ip.ip }}</span>
+            <span class="ar-ip-count">{{ ip.count | number }}</span>
+            <span class="ar-ip-bar-wrap">
+              <span class="ar-ip-bar dst" [style.width.%]="(ip.count / (topIps()?.top_dst_ips?.[0]?.count || 1)) * 100"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Protocol Distribution -->
+      <div class="ar-subsection" *ngIf="protocols().length">
+        <h3 class="ar-subsection-title">Traffic Protocol Distribution</h3>
+        <div class="ar-proto-grid">
+          <div class="ar-proto-chip" *ngFor="let p of protocols().slice(0, 10)">
+            <span class="ar-proto-name">{{ p.proto | uppercase }}</span>
+            <span class="ar-proto-count">{{ p.count | number }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 04: AI THREAT ANALYSES + MITRE ATT&CK ─────────────────── -->
+    <div class="ar-section" id="section-analyses"
+         *ngIf="isSectionEnabled('section-analyses')"
+         [style.order]="sectionCssOrder('section-analyses')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-analyses'] }}</div>
+        <div>
+          <h2 class="ar-section-title">AI Threat Analyses &amp; MITRE ATT&CK Mapping</h2>
+          <p class="ar-section-desc">ARIA deep-dive analyses with ATT&CK framework classification · {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="TargetIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <!-- MITRE loading indicator -->
+      <div class="ar-mitre-status" *ngIf="mitreLoading()">
+        <lucide-icon [name]="LoadingIcon" class="w-3 h-3 spin"></lucide-icon>
+        Mapping analyses to MITRE ATT&CK v14…
+      </div>
+
+      <div class="ar-empty-state" *ngIf="analyses().length === 0">
+        No AI threat analyses recorded in the selected period ({{ periodLabel() }}).
+        Analyses are generated automatically for HIGH, CRITICAL and MEDIUM evidence bundles.
+      </div>
+
+      <div class="ar-analysis-card" *ngFor="let a of analyses(); let i = index">
+        <div class="ar-analysis-header">
+          <span class="ar-sev-badge" [class]="sevClass(a.severity)">{{ a.severity || 'UNKNOWN' }}</span>
+          <span class="ar-analysis-flow">{{ a.src_ip }} → {{ a.dst_ip }}</span>
+          <span class="ar-analysis-time">{{ formatTime(a.created_at) }}</span>
+        </div>
+
+        <!-- MITRE ATT&CK tags for this analysis -->
+        <div class="ar-mitre-row" *ngIf="getMitreForAnalysis(a.id) as mitre">
+          <div class="ar-mitre-tactics" *ngIf="mitre.tactics.length">
+            <span class="ar-mitre-section-label">Tactics</span>
+            <span class="ar-mitre-tactic" *ngFor="let t of mitre.tactics">{{ t }}</span>
+          </div>
+          <div class="ar-mitre-techniques" *ngIf="mitre.techniques.length">
+            <span class="ar-mitre-section-label">Techniques</span>
+            <span class="ar-mitre-technique" *ngFor="let tech of mitre.techniques"
+                  [title]="tech.name">
+              <span class="ar-technique-id">{{ tech.id }}</span>
+              <span class="ar-technique-name">{{ tech.name }}</span>
+            </span>
+          </div>
+        </div>
+        <div class="ar-mitre-row unavailable"
+             *ngIf="!mitreLoading() && !getMitreForAnalysis(a.id)">
+          <span class="ar-mitre-na">MITRE mapping pending or unavailable for this analysis</span>
+        </div>
+
+        <div class="ar-analysis-body">
+          <div class="ar-analysis-label">ARIA Analysis</div>
+          <p class="ar-analysis-text">{{ a.analysis }}</p>
+          <div class="ar-analysis-footer">Bundle ID: {{ a.bundle_id }} · Community ID: {{ (a.community_id || '').slice(0, 28) }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 05: THREAT PREDICTIONS ───────────────────────────────── -->
+    <div class="ar-section" id="section-predictions"
+         *ngIf="isSectionEnabled('section-predictions')"
+         [style.order]="sectionCssOrder('section-predictions')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-predictions'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Predictive Threat Intelligence</h2>
+          <p class="ar-section-desc">Forward-looking AI predictions from observed network patterns · {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="ActivityIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-empty-state" *ngIf="predictions().length === 0">
+        No threat predictions recorded in the selected period ({{ periodLabel() }}).
+        Predictions are generated every 6 hours from behavioral pattern analysis.
+      </div>
+
+      <div class="ar-prediction-card" *ngFor="let p of predictions()">
+        <div class="ar-pred-header">
+          <div class="ar-pred-title">
+            <lucide-icon [name]="AlertIcon" class="w-4 h-4 ar-pred-icon"></lucide-icon>
+            <span class="ar-pred-type">{{ p.attack_type }}</span>
+          </div>
+          <div class="ar-pred-right">
+            <span class="ar-pred-time">{{ formatTime(p.predicted_at) }}</span>
+            <lucide-icon [name]="trendIcon(p.trend)" class="w-4 h-4" [class]="trendClass(p.trend)"></lucide-icon>
+          </div>
+        </div>
+
+        <div class="ar-pred-prob-row">
+          <span class="ar-pred-prob-label">Probability</span>
+          <div class="ar-pred-prob-track">
+            <div class="ar-pred-prob-fill"
+              [style.width]="probBar(p.probability) + '%'"
+              [style.background]="probColor(p.probability)">
+            </div>
+          </div>
+          <span class="ar-pred-prob-pct" [style.color]="probColor(p.probability)">{{ probBar(p.probability) }}%</span>
+          <span class="ar-trend-chip" [class]="trendClass(p.trend)">
+            <lucide-icon [name]="trendIcon(p.trend)" class="w-3 h-3"></lucide-icon>
+            {{ p.trend }}
+          </span>
+        </div>
+
+        <div class="ar-pred-detail">
+          <p class="ar-pred-briefing" *ngIf="p.aria_briefing">{{ p.aria_briefing }}</p>
+          <ul class="ar-pred-recs" *ngIf="p.recommendations?.length">
+            <li *ngFor="let r of p.recommendations">
+              <lucide-icon [name]="ShieldIcon" class="w-3 h-3"></lucide-icon>{{ r }}
+            </li>
+          </ul>
+          <div class="ar-pred-meta">
+            <span>Confidence: {{ ((p.confidence || 0) * 100).toFixed(0) }}%</span>
+            <span *ngIf="p.ai_model">Model: {{ p.ai_model }}</span>
+            <span *ngIf="p.alert_level">Alert Level: {{ p.alert_level | uppercase }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 06: SUPPRESSION DECISIONS ─────────────────────────────── -->
+    <div class="ar-section" id="section-suppressions"
+         *ngIf="isSectionEnabled('section-suppressions')"
+         [style.order]="sectionCssOrder('section-suppressions')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-suppressions'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Autonomous Suppression Decisions</h2>
+          <p class="ar-section-desc">AI-driven false-positive suppression rules applied by ARIA · {{ periodLabel() }}</p>
+        </div>
+        <lucide-icon [name]="SuppressIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-empty-state" *ngIf="suppressions().length === 0">
+        No suppression decisions recorded in the selected period ({{ periodLabel() }}).
+      </div>
+
+      <div class="ar-table-wrap" *ngIf="suppressions().length > 0">
+        <table class="ar-table">
+          <thead>
+            <tr>
+              <th>Signature / SID</th>
+              <th>Suppress Type</th>
+              <th>Target IP</th>
+              <th>Flow</th>
+              <th>AI Confidence</th>
+              <th>Status</th>
+              <th>AI Reason</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let s of suppressions()">
+              <td>
+                <span class="ar-sig-name">{{ s.signature_name || '—' }}</span>
+                <span class="ar-sig-id">SID {{ s.signature_id }}</span>
+              </td>
+              <td><span class="ar-suppress-type">{{ suppressTypeLabel(s.suppress_type) }}</span></td>
+              <td class="mono">{{ s.suppress_ip || '—' }}</td>
+              <td class="mono small">{{ s.src_ip }} → {{ s.dst_ip }}</td>
+              <td>
+                <div class="ar-conf-wrap">
+                  <div class="ar-conf-bar"><div class="ar-conf-fill" [style.width]="s.ai_confidence + '%'"></div></div>
+                  <span>{{ s.ai_confidence }}%</span>
+                </div>
+              </td>
+              <td>
+                <span class="ar-status-badge" [class.active]="s.active" [class.inactive]="!s.active">
+                  {{ s.active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="ar-reason-cell" [title]="s.ai_reason">{{ s.ai_reason }}</td>
+              <td class="small">{{ formatTime(s.created_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ─── SECTION 07: RECOMMENDATIONS ────────────────────────────────────── -->
+    <div class="ar-section" id="section-recommendations"
+         *ngIf="isSectionEnabled('section-recommendations')"
+         [style.order]="sectionCssOrder('section-recommendations')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-recommendations'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Recommendations &amp; Remediation</h2>
+          <p class="ar-section-desc">ARIA-generated operational action items based on observed threats</p>
+        </div>
+        <lucide-icon [name]="ZapIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-ai-loading" *ngIf="recoLoading()">
+        <lucide-icon [name]="LoadingIcon" class="w-4 h-4 spin"></lucide-icon>
+        ARIA is generating recommendations from observed threat data…
+      </div>
+
+      <div class="ar-narrative-block" *ngIf="!recoLoading() && recommendations()">
+        <div class="ar-narrative-label">
+          <lucide-icon [name]="BotIcon" class="w-3 h-3"></lucide-icon>
+          ARIA Prioritised Recommendations
+        </div>
+        <pre class="ar-reco-text">{{ recommendations() }}</pre>
+      </div>
+
+      <div class="ar-empty-state" *ngIf="!recoLoading() && !recommendations()">
+        Recommendations unavailable — AI provider may not be configured or returned no response.
+      </div>
+    </div>
+
+    <!-- ─── APPENDIX A: SYSTEM HEALTH ─────────────────────────────────────── -->
+    <div class="ar-section ar-appendix" id="section-appendix"
+         *ngIf="isSectionEnabled('section-appendix')"
+         [style.order]="sectionCssOrder('section-appendix')">
+      <div class="ar-section-header">
+        <div class="ar-section-num">{{ sectionNumbers()['section-appendix'] }}</div>
+        <div>
+          <h2 class="ar-section-title">Appendix — System Health</h2>
+          <p class="ar-section-desc">NDR engine status and infrastructure telemetry snapshot</p>
+        </div>
+        <lucide-icon [name]="ServerIcon" class="ar-section-icon"></lucide-icon>
+      </div>
+
+      <div class="ar-health-grid" *ngIf="health()">
+        <div class="ar-health-item" *ngFor="let key of getHealthKeys()">
+          <span class="ar-health-key">{{ key }}</span>
+          <span class="ar-health-val">{{ health()[key] }}</span>
+        </div>
+      </div>
+      <div class="ar-empty-state" *ngIf="!health()">System health data unavailable.</div>
+
+      <!-- Document footer -->
+      <div class="ar-report-footer">
+        <div class="ar-footer-left">
+          <strong>NDR — ARIA Threat Intelligence Report</strong>
+          <span>Report ID: {{ reportId() }}</span>
+          <span>Generated: {{ reportDate() }} · Period: {{ periodLabel() }}</span>
+        </div>
+        <div class="ar-footer-right">
+          CONFIDENTIAL — For authorized personnel only<br>
+          ARIA v14 · MITRE ATT&amp;CK v14.1
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /ar-report-doc -->
+
+</div>

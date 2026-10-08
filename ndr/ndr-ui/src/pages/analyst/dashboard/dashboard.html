@@ -1,0 +1,612 @@
+<!-- SIEM-only view (no NDR licence) -->
+<app-siem-dashboard *ngIf="!hasNdr && hasSiem"></app-siem-dashboard>
+
+<section class="dashboard-shell" *ngIf="hasNdr">
+  <div class="dashboard-header">
+    <div>
+      <!-- Unified header when both features are licensed -->
+      <ng-container *ngIf="hasNdr && hasSiem; else ndrOnlyEyebrow">
+        <div class="eyebrow">Security Operations Center</div>
+        <h2>Unified Overview</h2>
+        <p>NDR telemetry, SIEM log ingestion, correlated detections and pipeline status.</p>
+      </ng-container>
+      <ng-template #ndrOnlyEyebrow>
+        <div class="eyebrow">Network Detection & Response</div>
+        <h2>Operational Overview</h2>
+        <p>Live infrastructure telemetry, correlated detections, and source activity.</p>
+      </ng-template>
+    </div>
+
+    <div class="dashboard-actions">
+      <div class="export-menu">
+        <button class="export-trigger">
+          <svg class="export-trigger-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 1v9M5 7l3 3 3-3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"/>
+          </svg>
+          Export Report
+          <svg class="export-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 1l4 4 4-4"/>
+          </svg>
+        </button>
+
+        <div class="export-dropdown">
+          <div class="export-dropdown-header">Download as</div>
+          <button class="export-item" (click)="exportReport('xlsx')">
+            <span class="export-item-icon export-icon-xlsx">XLS</span>
+            <span class="export-item-text">
+              <span class="export-item-name">Excel Workbook</span>
+              <span class="export-item-desc">Multi-sheet .xlsx</span>
+            </span>
+          </button>
+          <button class="export-item" (click)="exportReport('pdf')">
+            <span class="export-item-icon export-icon-pdf">PDF</span>
+            <span class="export-item-text">
+              <span class="export-item-name">PDF Report</span>
+              <span class="export-item-desc">Printable summary</span>
+            </span>
+          </button>
+          <div class="export-divider"></div>
+          <button class="export-item" (click)="exportReport('csv')">
+            <span class="export-item-icon export-icon-csv">CSV</span>
+            <span class="export-item-text">
+              <span class="export-item-name">CSV Export</span>
+              <span class="export-item-desc">Raw data, comma-separated</span>
+            </span>
+          </button>
+          <button class="export-item" (click)="exportReport('json')">
+            <span class="export-item-icon export-icon-json">&#123;&#125;</span>
+            <span class="export-item-text">
+              <span class="export-item-name">JSON Export</span>
+              <span class="export-item-desc">Structured event data</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+
+      <button class="ai-report-action" (click)="openAiReport()" title="Generate AI-powered threat intelligence report">
+        <lucide-icon [name]="BotIcon" class="w-4 h-4"></lucide-icon>
+        AI Report
+      </button>
+    </div>
+  </div>
+  <div class="status-strip">
+    <div>
+      <span class="status-dot"></span>
+      WebSocket telemetry active
+    </div>
+    <div>Refresh interval: 30s</div>
+    <div>{{ eventsLastHour() }} events in the last hour</div>
+  </div>
+
+  <!-- Unified KPI strip — only when analyst has both NDR + SIEM -->
+  <div class="unified-kpi-strip" *ngIf="hasNdr && hasSiem">
+    <div class="ukpi-card">
+      <span class="ukpi-label">NDR Events</span>
+      <span class="ukpi-value">{{ uNdrEvents().toLocaleString() }}</span>
+      <span class="ukpi-sub">today</span>
+    </div>
+    <div class="ukpi-divider"></div>
+    <div class="ukpi-card">
+      <span class="ukpi-label">SIEM Logs</span>
+      <span class="ukpi-value">{{ uSiemLogs().toLocaleString() }}</span>
+      <span class="ukpi-sub">{{ uSiemEps() }} eps</span>
+    </div>
+    <div class="ukpi-divider"></div>
+    <div class="ukpi-card">
+      <span class="ukpi-label">Correlation Hits</span>
+      <span class="ukpi-value">{{ uCorrHits().toLocaleString() }}</span>
+      <span class="ukpi-sub">last hour</span>
+    </div>
+    <div class="ukpi-divider"></div>
+    <div class="ukpi-card" [class.ukpi-warn]="uCritical() > 0 || uHigh() > 0">
+      <span class="ukpi-label">Active Alerts</span>
+      <span class="ukpi-value">{{ (uCritical() + uHigh()).toLocaleString() }}</span>
+      <span class="ukpi-sub">
+        <span class="ukpi-sev ukpi-crit" *ngIf="uCritical() > 0">{{ uCritical() }} CRIT</span>
+        <span class="ukpi-sev ukpi-high" *ngIf="uHigh() > 0">{{ uHigh() }} HIGH</span>
+        <span *ngIf="uCritical() === 0 && uHigh() === 0">{{ uMedium() }} medium</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Module tab switcher — only shown when both NDR + SIEM are licensed -->
+  <div class="module-tabs" *ngIf="hasNdr && hasSiem">
+    <button class="module-tab" [class.active]="activeTab() === 'ndr'" (click)="activeTab.set('ndr')">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+      NDR
+    </button>
+    <button class="module-tab" [class.active]="activeTab() === 'siem'" (click)="activeTab.set('siem')">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
+      SIEM
+    </button>
+  </div>
+
+  <!-- NDR content — hidden when SIEM tab active -->
+  <ng-container *ngIf="!hasSiem || activeTab() === 'ndr'">
+
+  <!-- Threat Prediction Banner -->
+  <div *ngIf="activePredictions().length > 0" class="threat-prediction-banner" (click)="openPredictionModal(activePredictions()[0])">
+    <div class="banner-glow"></div>
+    <div class="banner-content">
+      <div class="banner-icon-ring">
+        <lucide-icon [name]="ZapIcon" class="w-5 h-5 banner-icon"></lucide-icon>
+      </div>
+      <div class="banner-text">
+        <span class="banner-title">AI Threat Prediction</span>
+        <span class="banner-desc">ARIA has identified an emerging <strong class="attack-type-hl">{{ activePredictions()[0].attack_type }}</strong> pattern with {{ activePredictions()[0].probability * 100 | number:'1.0-0' }}% probability.</span>
+      </div>
+      <button class="banner-btn">
+        View Forecast <lucide-icon [name]="ChevronRightIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="metrics-grid">
+    <article class="metric-card metric-primary">
+      <div class="metric-topline">
+        <div class="metric-icon">
+          <lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <span class="metric-badge">+{{ eventsLastHour() }} /hr</span>
+      </div>
+      <div>
+        <h3>Total Events</h3>
+        <p class="metric-value">{{ totalEvents().toLocaleString() }}</p>
+        <p class="metric-detail">Agent-Z {{ zeekEvents() }} / Agent-S {{ suricataEvents() }}</p>
+      </div>
+      
+      <div class="metric-wave">
+        <svg viewBox="0 0 2400 120" preserveAspectRatio="none">
+          <path class="wave-back" d="M0,60 C150,120 450,0 600,60 C750,120 1050,0 1200,60 L1200,120 L0,120 Z"></path>
+          <path class="wave-back" transform="translate(1200, 0)" d="M0,60 C150,120 450,0 600,60 C750,120 1050,0 1200,60 L1200,120 L0,120 Z"></path>
+        </svg>
+        <svg viewBox="0 0 2400 120" preserveAspectRatio="none">
+          <path class="wave-front" d="M0,80 C150,140 450,20 600,80 C750,140 1050,20 1200,80 L1200,120 L0,120 Z"></path>
+          <path class="wave-front" transform="translate(1200, 0)" d="M0,80 C150,140 450,20 600,80 C750,140 1050,20 1200,80 L1200,120 L0,120 Z"></path>
+        </svg>
+      </div>
+    </article>
+
+    <article
+      class="metric-card metric-secondary clickable-card"
+      role="button"
+      tabindex="0"
+      (click)="openAlerts()"
+      (keydown.enter)="openAlerts()"
+      (keydown.space)="openAlerts()">
+      <div class="metric-topline">
+        <div class="metric-icon">
+          <lucide-icon [name]="ShieldIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <lucide-icon [name]="ArrowIcon" class="w-4 h-4 metric-trend"></lucide-icon>
+      </div>
+      <div>
+        <h3>Correlation Hits</h3>
+        <p class="metric-value">{{ totalHits() }}</p>
+        <p class="metric-detail">{{ hitsLastHour() }} new hits in the last hour</p>
+      </div>
+      
+      <div class="metric-bars">
+        <i class="bar" style="--h: 40%"></i>
+        <i class="bar" style="--h: 80%"></i>
+        <i class="bar" style="--h: 60%"></i>
+        <i class="bar" style="--h: 100%"></i>
+        <i class="bar" style="--h: 30%"></i>
+        <i class="bar" style="--h: 70%"></i>
+        <i class="bar" style="--h: 90%"></i>
+        <i class="bar" style="--h: 50%"></i>
+        <i class="bar" style="--h: 20%"></i>
+        <i class="bar" style="--h: 85%"></i>
+        <i class="bar" style="--h: 45%"></i>
+        <i class="bar" style="--h: 65%"></i>
+        <i class="bar" style="--h: 75%"></i>
+        <i class="bar" style="--h: 35%"></i>
+        <i class="bar" style="--h: 95%"></i>
+        <i class="bar" style="--h: 60%"></i>
+        <i class="bar" style="--h: 80%"></i>
+      </div>
+    </article>
+
+    <article
+      class="metric-card metric-danger clickable-card"
+      role="button"
+      tabindex="0"
+      [class.has-alerts]="critical() > 0"
+      (click)="openAlerts({ severity: 'CRITICAL' })"
+      (keydown.enter)="openAlerts({ severity: 'CRITICAL' })"
+      (keydown.space)="openAlerts({ severity: 'CRITICAL' })">
+      <div class="metric-topline">
+        <div class="metric-icon">
+          <lucide-icon [name]="AlertIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <span class="metric-badge danger">{{ critical() > 0 ? 'Action Needed' : 'Clear' }}</span>
+      </div>
+      <div>
+        <h3>Critical Alerts</h3>
+        <p class="metric-value">{{ critical() }}</p>
+        <p class="metric-detail">High {{ high() }} / Medium {{ medium() }}</p>
+      </div>
+
+    </article>
+
+    <article
+      class="metric-card severity-card clickable-card"
+      role="button"
+      tabindex="0"
+      (click)="openAlerts({ priority: 'true' })"
+      (keydown.enter)="openAlerts({ priority: 'true' })"
+      (keydown.space)="openAlerts({ priority: 'true' })">
+      <div class="metric-topline">
+        <div class="metric-icon neutral">
+          <lucide-icon [name]="TrendingUpIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <span class="metric-badge muted">Severity</span>
+      </div>
+      <div class="severity-bars">
+        <div class="severity-row critical">
+          <span>Critical</span>
+          <div><i [style.width.%]="(critical() / totalSeverityCount()) * 100"></i></div>
+          <strong>{{ critical() }}</strong>
+        </div>
+        <div class="severity-row high">
+          <span>High</span>
+          <div><i [style.width.%]="(high() / totalSeverityCount()) * 100"></i></div>
+          <strong>{{ high() }}</strong>
+        </div>
+        <div class="severity-row medium">
+          <span>Medium</span>
+          <div><i [style.width.%]="(medium() / totalSeverityCount()) * 100"></i></div>
+          <strong>{{ medium() }}</strong>
+        </div>
+        <div class="severity-row low">
+          <span>Low</span>
+          <div><i [style.width.%]="(low() / totalSeverityCount()) * 100"></i></div>
+          <strong>{{ low() }}</strong>
+        </div>
+      </div>
+
+    </article>
+  </div>
+
+  <div class="maps-grid">
+    <article
+      class="map-card threat-map-card clickable-card"
+      style="border: none; background: transparent; box-shadow: none;"
+      role="button" tabindex="0"
+      (click)="openThreatMap()"
+      (keydown.enter)="openThreatMap()"
+      (keydown.space)="openThreatMap()">
+      <div class="map-preview-container" style="padding: 0;">
+        <app-threat-map [previewMode]="true"></app-threat-map>
+      </div>
+    </article>
+
+    <article
+      class="map-card network-map-card clickable-card"
+      style="border: none; background: transparent; box-shadow: none;"
+      role="button" tabindex="0"
+      (click)="openNetworkMap()"
+      (keydown.enter)="openNetworkMap()"
+      (keydown.space)="openNetworkMap()">
+      <div class="map-preview-container" style="padding: 0; display: flex; align-items: center; justify-content: center; position: relative;">
+        <img src="assets/images/network_topology.png" alt="Network Topology" class="topology-img" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+        
+        <div class="simulated-cursor">
+          <svg width="46" height="46" viewBox="0 0 24 24" fill="url(#cursorGradient)" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="cursorGradient" x1="4" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#38bdf8" />
+                <stop offset="1" stop-color="#818cf8" />
+              </linearGradient>
+            </defs>
+            <path d="M4.5 2.5L11.5 21.5L14 14.5L21 12L4.5 2.5Z" />
+          </svg>
+          <div class="click-ripple"></div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <div class="dashboard-grid">
+    <section class="panel chart-panel">
+      <div class="panel-header">
+        <div>
+          <h4>Live Event Stream</h4>
+          <p>Event volume sampled from the active monitoring window.</p>
+        </div>
+        <div class="chart-controls">
+          <div class="live-pill">
+            <span></span>
+            Live
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-frame">
+
+        <!-- Cold-start skeleton: shimmer bars until first data point arrives -->
+        <div *ngIf="chartLoading() && !chartError()" class="chart-skeleton">
+          <div class="skeleton-shimmer"></div>
+          <div class="skeleton-bars">
+            <i *ngFor="let h of skeletonBars" [style.height]="h"></i>
+          </div>
+          <div class="skeleton-label">Loading telemetry&hellip;</div>
+        </div>
+
+        <!-- Error state: shown when API failed with no cached data -->
+        <div *ngIf="chartError()" class="chart-error">
+          <lucide-icon [name]="ActivityIcon" class="chart-error-icon"></lucide-icon>
+          <span>Unable to load telemetry data</span>
+          <button class="retry-btn" (click)="retryChart()">
+            <lucide-icon [name]="RefreshIcon" class="w-3 h-3"></lucide-icon>
+            Retry
+          </button>
+        </div>
+
+        <!-- Real chart: only mounted when  valid snapshot exists -->
+        <div *ngIf="!chartLoading() && !chartError()"
+             #liveEventStream
+             class="d3-chart-container"
+             style="width: 100%; height: 100%; min-height: 0;">
+        </div>
+
+      </div>
+    </section>
+
+    <div class="side-stack">
+
+      <section
+        class="panel ip-panel clickable-panel"
+        role="button"
+        tabindex="0"
+        (click)="openNetworkMap()"
+        (keydown.enter)="openNetworkMap()"
+        (keydown.space)="openNetworkMap()">
+        <div class="panel-header compact">
+          <div>
+            <h4>Top Source IPs</h4>
+            <p>Highest observed source activity.</p>
+          </div>
+        </div>
+
+        <div class="ip-list" *ngIf="topSrcIps().length > 0; else emptyIps">
+          <div *ngFor="let ip of topSrcIps().slice(0, 5); let i = index" class="ip-row">
+            <div class="ip-rank">{{ i + 1 }}</div>
+            <div class="ip-content">
+              <div class="ip-row-header">
+                <span class="ip-address">{{ ip.ip }}</span>
+                <strong>{{ ip.count | number }} events</strong>
+              </div>
+              <div class="ip-meter">
+                <i [style.width.%]="(ip.count / (topSrcIps()[0]?.count || 1)) * 100"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ng-template #emptyIps>
+          <div class="empty-state">
+            <span>No source IP data yet</span>
+            Monitoring results will appear here when events arrive.
+          </div>
+        </ng-template>
+
+        <button class="panel-link" type="button" (click)="openNetworkMap()">View All IPs</button>
+      </section>
+
+      <section class="panel agent-status-panel">
+        <div class="panel-header compact">
+          <div>
+            <h4>Agent Telemetry</h4>
+            <p>Engine event split.</p>
+          </div>
+        </div>
+
+        <div class="agent-bars">
+          <div class="agent-row">
+            <div class="agent-label-row">
+              <span class="agent-name">Agent-Z</span>
+              <span class="agent-count">{{ zeekEvents().toLocaleString() }}</span>
+            </div>
+            <div class="agent-track">
+              <div class="agent-fill agent-z"
+                   [style.width.%]="(zeekEvents() / ((zeekEvents() + suricataEvents()) || 1)) * 100">
+              </div>
+            </div>
+          </div>
+          <div class="agent-row">
+            <div class="agent-label-row">
+              <span class="agent-name">Agent-S</span>
+              <span class="agent-count">{{ suricataEvents().toLocaleString() }}</span>
+            </div>
+            <div class="agent-track">
+              <div class="agent-fill agent-s"
+                   [style.width.%]="(suricataEvents() / ((zeekEvents() + suricataEvents()) || 1)) * 100">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sys-health">
+          <div class="health-item">
+            <span class="health-dot online"></span>
+            <span>NDR Engine</span>
+            <strong>Online</strong>
+          </div>
+          <div class="health-item">
+            <span class="health-dot online"></span>
+            <span>WebSocket</span>
+            <strong>Active</strong>
+          </div>
+          <div class="health-item">
+            <span class="health-dot" [class.alert]="critical() > 0" [class.online]="critical() === 0"></span>
+            <span>Threat Level</span>
+            <strong [class.threat-elevated]="critical() > 0">{{ critical() > 0 ? 'Elevated' : 'Normal' }}</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div class="secondary-charts-grid">
+    <section class="panel">
+      <div class="panel-header compact">
+        <div>
+          <h4>Severity Distribution</h4>
+          <p>Breakdown by criticality.</p>
+        </div>
+      </div>
+      <div #severityDonutChart class="d3-container" style="width: 100%; height: 220px;"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header compact">
+        <div>
+          <h4>Top Destination IPs</h4>
+          <p>Highest observed destination traffic.</p>
+        </div>
+      </div>
+      <div #topDstIpsChart class="d3-container" style="width: 100%; height: 220px;"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header compact">
+        <div>
+          <h4>Traffic by Protocol</h4>
+          <p>Top application layer protocols.</p>
+        </div>
+      </div>
+      <div #protocolPieChart class="d3-container" style="width: 100%; height: 220px;"></div>
+    </section>
+
+    <section class="panel posture-panel">
+      <div class="panel-header compact">
+        <div>
+          <h4>Network Posture</h4>
+          <p>Operational KPIs at a glance.</p>
+        </div>
+      </div>
+      <div class="posture-grid">
+        <div class="posture-stat">
+          <span class="posture-label">Detection Rate</span>
+          <span class="posture-value accent">
+            {{ totalEvents() > 0 ? ((totalHits() / totalEvents()) * 100).toFixed(2) : '0.00' }}%
+          </span>
+          <span class="posture-sub">hits / total events</span>
+        </div>
+        <div class="posture-stat">
+          <span class="posture-label">Events / Hour</span>
+          <span class="posture-value">{{ eventsLastHour().toLocaleString() }}</span>
+          <span class="posture-sub">rolling 1h window</span>
+        </div>
+        <div class="posture-stat">
+          <span class="posture-label">Correlation Hits</span>
+          <span class="posture-value accent-cyan">{{ hitsLastHour().toLocaleString() }}</span>
+          <span class="posture-sub">last hour</span>
+        </div>
+        <div class="posture-stat" [class.posture-danger]="critical() > 0">
+          <span class="posture-label">Critical / High</span>
+          <span class="posture-value accent-red">{{ critical() }} / {{ high() }}</span>
+          <span class="posture-sub">active alerts</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Threat Prediction Modal -->
+  <div class="prediction-modal-backdrop" *ngIf="showPredictionModal()" (click)="closePredictionModal()">
+    <div class="prediction-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon-wrapper">
+            <lucide-icon [name]="ZapIcon" class="w-6 h-6"></lucide-icon>
+          </div>
+          <div>
+            <h3>Threat Forecast Analysis</h3>
+            <p>{{ selectedPrediction()?.attack_type }}</p>
+          </div>
+        </div>
+        <button class="modal-close" (click)="closePredictionModal()">
+          <lucide-icon [name]="XIcon" class="w-5 h-5"></lucide-icon>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="prediction-grid">
+          <!-- Current Prediction -->
+          <div class="prediction-card main-prediction">
+            <div class="card-eyebrow">Current Forecast</div>
+            <div class="prob-showcase">
+              <div class="prob-circle" [style.background]="'conic-gradient(#ef4444 ' + (selectedPrediction()?.probability * 100) + '%, rgba(255,255,255,0.05) 0)'">
+                <div class="prob-inner">
+                  <span class="prob-val">{{ selectedPrediction()?.probability * 100 | number:'1.0-0' }}%</span>
+                  <span class="prob-label">Probability</span>
+                </div>
+              </div>
+              <div class="prob-stats">
+                <div class="stat-row">
+                  <span class="stat-label">Confidence:</span>
+                  <span class="stat-val">{{ selectedPrediction()?.confidence * 100 | number:'1.0-0' }}%</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Alert Level:</span>
+                  <span class="stat-val severity-{{ selectedPrediction()?.alert_level | lowercase }}">{{ selectedPrediction()?.alert_level }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Internal Hits:</span>
+                  <span class="stat-val">{{ selectedPrediction()?.internal_hit_count }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="aria-briefing">
+              <h4>ARIA Briefing</h4>
+              <p>{{ selectedPrediction()?.aria_briefing }}</p>
+            </div>
+            
+            <div class="recommendations-list" *ngIf="selectedPrediction()?.recommendations?.length > 0">
+              <h4>Recommended Actions</h4>
+              <ul>
+                <li *ngFor="let rec of selectedPrediction()?.recommendations">
+                  <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+                  {{ rec }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- History / Trend -->
+          <div class="prediction-history">
+            <div class="card-eyebrow">Historical Trend</div>
+            <div class="history-timeline" *ngIf="historicalPredictions().length > 0; else noHistory">
+              <div class="timeline-item" *ngFor="let hist of historicalPredictions().slice(0, 5)">
+                <div class="timeline-marker" [class.active]="hist.id === selectedPrediction()?.id"></div>
+                <div class="timeline-content">
+                  <div class="timeline-time">{{ hist.predicted_at | date:'short' }}</div>
+                  <div class="timeline-prob">Probability: {{ hist.probability * 100 | number:'1.0-0' }}%</div>
+                  <div class="timeline-trend">
+                    <span [class.trend-up]="hist.trend_delta > 0" [class.trend-down]="hist.trend_delta < 0">
+                      {{ hist.trend_delta > 0 ? '+' : '' }}{{ hist.trend_delta * 100 | number:'1.0-1' }}%
+                    </span>
+                    delta
+                  </div>
+                </div>
+              </div>
+            </div>
+            <ng-template #noHistory>
+              <div class="empty-history">No historical data available for this threat.</div>
+            </ng-template>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </ng-container><!-- /NDR content -->
+
+  <!-- SIEM tab content — inline within the same section -->
+  <ng-container *ngIf="hasSiem && activeTab() === 'siem'">
+    <app-siem-dashboard></app-siem-dashboard>
+  </ng-container>
+
+</section>

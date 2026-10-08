@@ -1,0 +1,10 @@
+[package]
+name = "siem-router"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh's router shared module (shared_modules/router): providers, subscribers and the queue/router broker"
+
+[dependencies]
+siem-njson = { path = "../siem-njson" }
+libc = "0.2"
+parking_lot = "0.12"

@@ -1,0 +1,75 @@
+<section class="xa-shell">
+
+  <div class="xa-header">
+    <div>
+      <div class="xa-eyebrow">// XDR UNIFIED QUEUE</div>
+      <h2 class="xa-title">Alert Intelligence</h2>
+      <p class="xa-sub">All sources — NDR · SIEM · Corroborated · Threat Intel</p>
+    </div>
+    <div class="xa-header-stats">
+      <div class="xa-stat">
+        <span class="xa-stat-label">Total</span>
+        <span class="xa-stat-val">{{ alerts.length }}</span>
+      </div>
+      <div class="xa-stat">
+        <span class="xa-stat-label">Critical</span>
+        <span class="xa-stat-val danger">{{ criticalCount }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="xa-filters">
+    <select class="xa-select" [(ngModel)]="filterSource" (change)="load()">
+      <option *ngFor="let s of sources" [value]="s">{{ s === 'all' ? 'All Sources' : sourceLabel(s) }}</option>
+    </select>
+    <select class="xa-select" [(ngModel)]="filterSeverity" (change)="load()">
+      <option *ngFor="let s of severities" [value]="s">{{ s === 'all' ? 'All Severities' : s }}</option>
+    </select>
+    <select class="xa-select" [(ngModel)]="filterStatus" (change)="load()">
+      <option *ngFor="let s of statuses" [value]="s">{{ s === 'all' ? 'All Status' : s }}</option>
+    </select>
+    <button class="xa-refresh-btn" (click)="load()" type="button">Refresh</button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="xa-loading">
+    <div class="xa-spinner"></div>
+    <span>Loading unified alerts…</span>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error && !loading" class="xa-error">{{ error }}</div>
+
+  <!-- Alert list -->
+  <div *ngIf="!loading && !error" class="xa-alert-list">
+
+    <div *ngIf="alerts.length === 0" class="xa-empty">
+      No alerts match the current filters.
+    </div>
+
+    <div *ngFor="let a of filteredAlerts" class="xa-alert-card" [class]="severityClass(a.severity)">
+      <div class="xa-card-left">
+        <span class="xa-sev-badge" [class]="severityClass(a.severity)">{{ a.severity }}</span>
+        <span class="xa-src-badge" [class]="sourceClass(a.source)">{{ sourceLabel(a.source) }}</span>
+      </div>
+      <div class="xa-card-body">
+        <div class="xa-card-title">{{ a.title }}</div>
+        <div class="xa-card-sub">{{ a.rule_name }}</div>
+        <div class="xa-card-hosts" *ngIf="a.affected_hosts.length">
+          <span *ngFor="let h of a.affected_hosts.slice(0,3)" class="xa-host-chip">{{ h }}</span>
+        </div>
+        <div class="xa-card-mitre" *ngIf="a.mitre_techniques.length">
+          <span *ngFor="let t of a.mitre_techniques.slice(0,3)" class="xa-mitre-chip">{{ t }}</span>
+        </div>
+        <div class="xa-ai-summary" *ngIf="a.ai_summary">{{ a.ai_summary }}</div>
+      </div>
+      <div class="xa-card-right">
+        <span class="xa-status-badge">{{ a.status }}</span>
+        <span class="xa-time">{{ a.created_at | date:'MMM d, HH:mm' }}</span>
+      </div>
+    </div>
+
+  </div>
+
+</section>

@@ -1,0 +1,27 @@
+[package]
+name = "siem-logcollector"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh Logcollector Subsystem (src/logcollector)"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-shared = { path = "../siem-shared" }
+siem-crypto = { path = "../siem-crypto" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+quick-xml = { version = "0.36", features = ["serialize"] }
+regex = "1.10"
+sha1 = "0.10"
+glob = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "wazuh-logcollector"
+path = "src/bin/wazuh_logcollector.rs"

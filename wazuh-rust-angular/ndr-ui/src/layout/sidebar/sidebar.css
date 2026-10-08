@@ -1,0 +1,324 @@
+/* ══════════════════════════════════════════════════════════════
+   SIDEBAR — Tactical Cyber Theme
+   ══════════════════════════════════════════════════════════════ */
+
+.sidebar-shell {
+  display: flex;
+  width: 240px;
+  min-width: 240px;
+  height: 100%;
+  flex-direction: column;
+  position: relative;
+  background: #0d1420;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+/* ── Circuit grid texture ─────────────────────────────────── */
+.sidebar-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(34, 197, 94, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 197, 94, 0.018) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg,
+    transparent 0%,
+    rgba(0,0,0,0.45) 12%,
+    rgba(0,0,0,0.45) 88%,
+    transparent 100%);
+  z-index: 0;
+}
+
+/* ── Top ambient glow ─────────────────────────────────────── */
+.sidebar-shell::after {
+  content: '';
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse,
+    rgba(34, 197, 94, 0.12) 0%,
+    rgba(34, 197, 94, 0.03) 55%,
+    transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Brand block ──────────────────────────────────────────── */
+.brand-block {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 20px 32px 20px;
+  border-bottom: none;
+  background: linear-gradient(180deg, #ffffff 0%, #eefbf3 60%, #0d1420 100%);
+}
+
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.brand-name {
+  display: block;
+  background: linear-gradient(110deg, #064e3b 0%, #15803d 60%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+  text-align: center;
+}
+
+.brand-tagline {
+  display: block;
+  color: #166534;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  text-align: center;
+}
+
+.brand-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.05);
+  border-radius: 6px;
+  padding: 8px 14px;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+.brand-badge-text {
+  color: #0f172a;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.brand-badge-logo {
+  height: 24px;
+  object-fit: contain;
+  /* Exact original logo colors are preserved */
+}
+
+/* ── Nav list ─────────────────────────────────────────────── */
+.nav-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 16px;
+  flex: 1;
+  overflow-y: auto;
+  gap: 2px;
+}
+
+/* Custom thicker scrollbar for the sidebar */
+.nav-list::-webkit-scrollbar {
+  width: 10px;
+}
+.nav-list::-webkit-scrollbar-thumb {
+  background: rgba(34, 197, 94, 0.35);
+  border-radius: 4px;
+}
+.nav-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 197, 94, 0.5);
+}
+.nav-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+/* ── Collapsible section header ───────────────────────────── */
+.nav-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px 7px 12px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  background: rgba(34, 197, 94, 0.04);
+  border: 1px solid rgba(34, 197, 94, 0.08);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.nav-section:hover {
+  background: rgba(34, 197, 94, 0.09);
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.nav-section span {
+  flex: 1;
+  color: #a8c8a8;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transition: color 160ms ease;
+}
+
+.nav-section:hover span { color: #c8e8c8; }
+
+.nav-section.is-collapsed span { color: #7a9a7a; }
+
+/* Chevron icon */
+.nav-chevron {
+  flex-shrink: 0;
+  color: rgba(34, 197, 94, 0.5);
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1), color 160ms ease;
+}
+
+.nav-section:hover .nav-chevron { color: rgba(34, 197, 94, 0.85); }
+
+/* Rotate chevron when collapsed */
+.nav-section.is-collapsed .nav-chevron {
+  transform: rotate(-90deg);
+  color: rgba(34, 197, 94, 0.35);
+}
+
+/* ── Group body — *ngIf controls visibility, CSS handles enter animation ── */
+@keyframes navGroupOpen {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.nav-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: navGroupOpen 0.22s ease both;
+  padding-bottom: 2px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px 0 14px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  color: #b0c4de;
+  text-decoration: none;
+  position: relative;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+  overflow: hidden;
+  animation: navItemSlideIn 0.2s ease both;
+}
+
+@keyframes navItemSlideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Left indicator bar */
+.nav-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: transparent;
+  transition: background 150ms ease, box-shadow 150ms ease, top 150ms ease, bottom 150ms ease;
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  color: inherit;
+  transition: filter 150ms ease;
+}
+
+.nav-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: inherit;
+}
+
+/* ── Hover state ──────────────────────────────────────────── */
+.nav-link:hover {
+  color: #dce8f5;
+  background: rgba(34, 197, 94, 0.07);
+  border-color: rgba(34, 197, 94, 0.14);
+}
+
+.nav-link:hover::before {
+  background: rgba(34, 197, 94, 0.45);
+  top: 28%;
+  bottom: 28%;
+}
+
+/* ── Active state: indicator only, no block ───────────────── */
+.nav-link.active {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.07);
+  border-color: rgba(34, 197, 94, 0.15);
+}
+
+.nav-link.active::before {
+  background: #22c55e;
+  top: 15%;
+  bottom: 15%;
+  box-shadow:
+    0 0 6px rgba(34, 197, 94, 0.9),
+    0 0 18px rgba(34, 197, 94, 0.5),
+    0 0 36px rgba(34, 197, 94, 0.2);
+  animation: nav-bar-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes nav-bar-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 6px rgba(34, 197, 94, 0.9),
+      0 0 18px rgba(34, 197, 94, 0.5),
+      0 0 36px rgba(34, 197, 94, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 8px rgba(34, 197, 94, 1),
+      0 0 24px rgba(34, 197, 94, 0.7),
+      0 0 48px rgba(34, 197, 94, 0.3);
+  }
+}
+
+.nav-link.active .nav-icon {
+  filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.7));
+}

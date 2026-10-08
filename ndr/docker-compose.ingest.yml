@@ -1,0 +1,73 @@
+# Optional dedicated INGEST pool: engines that only receive sensor data, check the key and
+# publish to Kafka (ENGINE_ROLE=ingest). They do not read Kafka, run the elected-leader jobs
+# or the other background work, so a burst of sensor traffic cannot slow the UI engines.
+#
+# Not started by default. To use it:
+#   1. docker compose -f docker-compose.yml -f docker-compose.ingest.yml up -d --build ndr-ingest-1 ndr-ingest-2
+#   2. in config/nginx/nginx.conf, in `upstream ndr_ingest`, add above the marker
+#        server ndr-ingest-1:3000 max_fails=3 fail_timeout=30s;
+#        server ndr-ingest-2:3000 max_fails=3 fail_timeout=30s;
+#      and delete the ndr-engine-N lines so sensors reach only the ingest pool
+#   3. docker restart ndr-nginx    (the config is a single-file bind mount; a reload keeps the old one)
+# More ingest engines: copy a service below (new name, INSTANCE_ID, ENGINE_NAME) and add it to nginx.
+# Keep the existing ndr-engine-N: they still read Kafka, run the jobs and serve the UI (role "all").
+
+x-ndr-ingest: &ndr-ingest
+  build: ./rust
+  restart: unless-stopped
+  mem_limit: 1024m
+  env_file:
+    - .env
+  stop_grace_period: 5s
+  networks:
+    - default
+    - ndr-internal
+  volumes:
+    - ${INSTALL_DIR}/rust/ndr-engine/rules:/app/ndr-engine/rules:ro
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 60s
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+    ndr-valkey:
+      condition: service_healthy
+    clickhouse1:
+      condition: service_healthy
+    clickhouse-init:
+      condition: service_completed_successfully
+
+x-ndr-ingest-env: &ndr-ingest-env
+  ENGINE_ROLE: ingest
+  KAFKA_BROKERS: kafka1:9092,kafka2:9092,kafka3:9092
+  CLICKHOUSE_URL: http://clickhouse1:8123
+  CLICKHOUSE_USER: ndr
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+  VALKEY_URL: redis://ndr-valkey:6379
+  REDIS_URL: redis://ndr-valkey:6379
+  RULES_DIR: /app/ndr-engine/rules
+  JWT_SECRET: ${JWT_SECRET}
+  CORS_ORIGIN: ${CORS_ORIGIN}
+  DEPLOY_MODE: ${DEPLOY_MODE:-cloud}
+
+services:
+  ndr-ingest-1:
+    <<: *ndr-ingest
+    container_name: ndr-ingest-1
+    hostname: ndr-ingest-1
+    environment:
+      <<: *ndr-ingest-env
+      INSTANCE_ID: "101"
+      ENGINE_NAME: ndr-ingest-1
+
+  ndr-ingest-2:
+    <<: *ndr-ingest
+    container_name: ndr-ingest-2
+    hostname: ndr-ingest-2
+    environment:
+      <<: *ndr-ingest-env
+      INSTANCE_ID: "102"
+      ENGINE_NAME: ndr-ingest-2

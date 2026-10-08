@@ -1,0 +1,35 @@
+[package]
+name = "siem-authd"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh Agent Enrollment and Authd Daemon (src/os_auth)"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-shared = { path = "../siem-shared" }
+siem-crypto = { path = "../siem-crypto" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+quick-xml = "0.36"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+rand = "0.8"
+hex = "0.4"
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "wazuh-authd"
+path = "bin/wazuh_authd.rs"
+
+[[bin]]
+name = "agent-auth"
+path = "bin/agent_auth.rs"

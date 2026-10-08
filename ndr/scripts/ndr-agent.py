@@ -1,0 +1,1099 @@
+#!/usr/bin/env python3
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import socketserver
+import json, subprocess, os, re, time, threading, ipaddress, socket, shutil
+from pathlib import Path
+
+SENSOR_ID = os.environ.get("SENSOR_ID", "")
+TENANT_ID = os.environ.get("TENANT_ID", "default")
+
+
+def _docker_bridge_ip() -> str:
+    """Return the host IP on the Docker bridge so we bind only there.
+    Tries docker0 first, then any br- interface, falls back to 0.0.0.0."""
+    for iface in ("docker0",):
+        try:
+            out = subprocess.run(
+                ["ip", "-4", "addr", "show", iface],
+                capture_output=True, text=True
+            ).stdout
+            for line in out.splitlines():
+                line = line.strip()
+                if line.startswith("inet "):
+                    return line.split()[1].split("/")[0]
+        except Exception:
+            pass
+    # Fallback: scan for any br-* interface Docker created
+    try:
+        out = subprocess.run(["ip", "-4", "addr"], capture_output=True, text=True).stdout
+        iface = None
+        for line in out.splitlines():
+            if line and not line[0].isspace():
+                iface = line.split(":")[1].strip() if ":" in line else None
+            elif iface and iface.startswith("br-") and "inet " in line:
+                return line.strip().split()[1].split("/")[0]
+    except Exception:
+        pass
+    return "127.0.0.1"  # last resort — loopback only, docker containers reach via host.docker.internal
+
+HOME_DIR = os.path.expanduser("~")
+LOGDIR = os.path.join(HOME_DIR, "logs")
+INSTALL_DIR = Path(__file__).resolve().parent.parent
+RUNTIME_DIR = INSTALL_DIR / ".runtime"
+IFACE_FILE = RUNTIME_DIR / "ndr_interface"
+
+def _build_arp_script(sensor_mac: str, sensor_ip: str) -> str:
+    """Generate ndr-arp.zeek with sensor self-exclusion embedded.
+    Zeek will skip logging ARP from our own MAC/IP so the ARP-isolation
+    mechanism never triggers ip-conflict or arp-spoofing alerts against itself."""
+    return f"""\
+module ARP;
+
+export {{
+    redef enum Log::ID += {{ LOG }};
+
+    type Info: record {{
+        ts:        time    &log;
+        operation: string  &log;
+        mac:       string  &log;
+        dst_mac:   string  &log;
+        ip:        addr    &log;
+        dst_ip:    addr    &log;
+    }};
+}}
+
+# NDR sensor self-exclusion (auto-written by ndr-agent at startup).
+# ARP packets sourced from the sensor MAC/IP are for device isolation —
+# logging them causes ip-conflict / arp-spoofing false positives.
+const NDR_SENSOR_MACS: set[string] = {{"{sensor_mac}"}};
+const NDR_SENSOR_IPS:  set[addr]   = {{{sensor_ip}}};
+
+event zeek_init() &priority=5
+{{
+    Log::create_stream(ARP::LOG, [$columns=Info, $path="arp"]);
+}}
+
+event arp_request(mac_src: string, mac_dst: string,
+                  SPA: addr, SHA: string,
+                  TPA: addr, THA: string)
+{{
+    if (SHA in NDR_SENSOR_MACS) return;
+    if (SPA in NDR_SENSOR_IPS)  return;
+    Log::write(ARP::LOG, Info(
+        $ts        = network_time(),
+        $operation = "request",
+        $mac       = SHA,
+        $dst_mac   = mac_dst,
+        $ip        = SPA,
+        $dst_ip    = TPA
+    ));
+}}
+
+event arp_reply(mac_src: string, mac_dst: string,
+                SPA: addr, SHA: string,
+                TPA: addr, THA: string)
+{{
+    if (SHA in NDR_SENSOR_MACS) return;
+    if (SPA in NDR_SENSOR_IPS)  return;
+    Log::write(ARP::LOG, Info(
+        $ts        = network_time(),
+        $operation = "reply",
+        $mac       = SHA,
+        $dst_mac   = THA,
+        $ip        = SPA,
+        $dst_ip    = TPA
+    ));
+}}
+"""
+
+ZEEK_SITE = "/opt/zeek/share/zeek/site"
+
+def ensure_zeek_arp():
+    """Write ndr-arp.zeek (with sensor self-exclusion) and ensure local.zeek loads it."""
+    arp_path  = f"{ZEEK_SITE}/ndr-arp.zeek"
+    local_path = f"{ZEEK_SITE}/local.zeek"
+
+    iface      = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eno1"
+    sensor_mac = _get_our_mac(iface)
+    sensor_ip  = _docker_bridge_ip() or "127.0.0.1"
+
+    script = _build_arp_script(sensor_mac, sensor_ip)
+    p = subprocess.run(["sudo", "tee", arp_path], input=script.encode(), capture_output=True)
+    if p.returncode != 0:
+        return
+
+    try:
+        result = subprocess.run(["sudo", "cat", local_path], capture_output=True, text=True)
+        if "@load ndr-arp" not in result.stdout:
+            subprocess.run(
+                ["sudo", "tee", "-a", local_path],
+                input=b"\n@load ndr-arp\n",
+                capture_output=True,
+            )
+    except Exception:
+        pass
+
+
+def _write_suricata_exclusions(sensor_ip: str):
+    """Write a Suricata threshold suppress entry for the sensor's own IP
+    so the sensor's network discovery and ARP activity don't generate alerts.
+    Reloads Suricata rules live via suricatasc (no restart needed)."""
+    suppress_path = "/etc/suricata/ndr-sensor-suppress.conf"
+    content = (
+        "# Auto-generated by ndr-agent — NDR sensor self-exclusion\n"
+        "# The sensor runs active discovery (ARP scan, port probing) as part of\n"
+        "# normal operation. Suppress IDS alerts from its own source IP.\n"
+        f"suppress gen_id 1, track by_src, ip {sensor_ip}\n"
+    )
+    try:
+        subprocess.run(["sudo", "tee", suppress_path],
+                       input=content.encode(), capture_output=True)
+
+        # Include the file from Suricata's threshold.conf if not already there
+        th_conf      = "/etc/suricata/threshold.conf"
+        include_line = f"include {suppress_path}"
+        existing     = subprocess.run(["sudo", "cat", th_conf],
+                                      capture_output=True, text=True).stdout or ""
+        if include_line not in existing:
+            subprocess.run(["sudo", "tee", "-a", th_conf],
+                           input=f"\n{include_line}\n".encode(), capture_output=True)
+
+        # Reload rules live — no Suricata restart needed
+        subprocess.run(["sudo", "suricatasc", "-c", "reload-rules"], capture_output=True)
+        print(f"[NDR-SUPPRESS] Suricata exclusion applied for {sensor_ip}")
+    except Exception as e:
+        print(f"[NDR-SUPPRESS] Suricata exclusion failed: {e}")
+
+# Auto-create log directories on startup
+os.makedirs(f"{LOGDIR}/suricata", exist_ok=True)
+os.makedirs(f"{LOGDIR}/zeek", exist_ok=True)
+RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+
+# Singleton probe thread — prevents arp_probe_unknown from accumulating on repeated starts
+_probe_stop = threading.Event()
+_probe_thread: threading.Thread | None = None
+
+
+def bootstrap_from_arp_cache():
+    """On startup, read the kernel ARP cache and write entries to arp.log
+    so Vector ships them instantly — existing devices appear without any scanning."""
+    arp_log = f"{LOGDIR}/zeek/arp.log"
+    try:
+        out = subprocess.run(["ip", "neigh", "show"],
+                             capture_output=True, text=True).stdout
+        now = time.time()
+        entries = []
+        for line in out.splitlines():
+            parts = line.split()
+            if "lladdr" not in parts:
+                continue
+            idx = parts.index("lladdr")
+            ip_str = parts[0]
+            mac = parts[idx + 1] if idx + 1 < len(parts) else ""
+            state = parts[-1]
+            if state in ("FAILED", "INCOMPLETE") or not mac:
+                continue
+            try:
+                addr = ipaddress.ip_address(ip_str)
+                if not addr.is_private or addr.is_loopback:
+                    continue
+            except Exception:
+                continue
+            entries.append(json.dumps({
+                "ts": now, "operation": "reply",
+                "mac": mac, "dst_mac": "",
+                "ip": ip_str, "dst_ip": ""
+            }))
+        if entries:
+            os.makedirs(os.path.dirname(arp_log), exist_ok=True)
+            with open(arp_log, "a") as f:
+                f.write("\n".join(entries) + "\n")
+            print(f"[NDR] Bootstrapped {len(entries)} known devices from ARP cache")
+    except Exception as e:
+        print(f"[NDR] ARP cache bootstrap error: {e}")
+
+def snmp_router_discovery():
+    """Query the router's ARP table via SNMP to get all connected devices.
+    Auto-detects gateway, tries common community strings."""
+    arp_log = f"{LOGDIR}/zeek/arp.log"
+    try:
+        gw_out = subprocess.run(["ip", "route", "show", "default"],
+                                capture_output=True, text=True).stdout
+        m = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', gw_out)
+        if not m:
+            return
+        gateway = m.group(1)
+    except Exception:
+        return
+
+    entries = []
+    for community in ["public", "private", "community", "admin"]:
+        try:
+            result = subprocess.run(
+                ["snmpwalk", "-v2c", "-c", community, "-t", "3", "-r", "0",
+                 gateway, "1.3.6.1.2.1.4.22.1.2"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                continue
+            now = time.time()
+            for line in result.stdout.splitlines():
+                ip_m = re.search(r'\.(\d+\.\d+\.\d+\.\d+)\s*=', line)
+                mac_m = re.search(r'(?:Hex-STRING:|STRING:)\s*([0-9A-Fa-f :]+)', line)
+                if not ip_m or not mac_m:
+                    continue
+                ip = ip_m.group(1)
+                mac_raw = mac_m.group(1).strip()
+                mac = ":".join(mac_raw.split()).lower() if " " in mac_raw else mac_raw.lower()
+                if len(mac) != 17:
+                    continue
+                entries.append(json.dumps({
+                    "ts": now, "operation": "reply",
+                    "mac": mac, "dst_mac": "", "ip": ip, "dst_ip": ""
+                }))
+            if entries:
+                print(f"[NDR] SNMP: {len(entries)} devices from router {gateway} (community={community})")
+                break
+        except Exception:
+            continue
+
+    if entries:
+        os.makedirs(os.path.dirname(arp_log), exist_ok=True)
+        with open(arp_log, "a") as f:
+            f.write("\n".join(entries) + "\n")
+
+def discover_subnets():
+    """Read network interface CIDRs and write to ipam.log so the engine
+    can build per-tenant subnet maps and detect IP conflicts."""
+    ipam_log = f"{LOGDIR}/zeek/ipam.log"
+    try:
+        out = subprocess.run(["ip", "addr", "show"], capture_output=True, text=True).stdout
+        now = time.time()
+        iface = None
+        entries = []
+        for line in out.splitlines():
+            m = re.match(r'^\d+:\s+(\S+):', line)
+            if m:
+                iface = m.group(1).rstrip(':')
+                continue
+            m = re.match(r'\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)', line)
+            if m and iface:
+                ip, prefix = m.group(1), int(m.group(2))
+                if ip.startswith('127.') or ip.startswith('169.254.'):
+                    continue
+                network = ipaddress.IPv4Network(f"{ip}/{prefix}", strict=False)
+                cidr = str(network)
+                gateway = str(network.network_address + 1)
+                entries.append(json.dumps({
+                    "ts": now, "log_type": "ipam",
+                    "interface": iface, "cidr": cidr,
+                    "local_ip": ip, "gateway": gateway
+                }))
+        if entries:
+            os.makedirs(os.path.dirname(ipam_log), exist_ok=True)
+            with open(ipam_log, 'a') as f:
+                for e in entries:
+                    f.write(e + '\n')
+        print(f"[NDR] Subnet discovery: {len(entries)} subnets written")
+    except Exception as e:
+        print(f"[NDR] discover_subnets error: {e}")
+
+def arp_scan(iface: str):
+    """ARP scan the local subnet on startup.
+    Only real devices reply to ARP — no ghost placeholders possible.
+    Zeek captures the ARP replies via ndr-arp.zeek and enriches assets."""
+    try:
+        subprocess.run(
+            ["sudo", "arp-scan", f"--interface={iface}", "--localnet", "--quiet"],
+            capture_output=True, timeout=60
+        )
+        print("[NDR] ARP scan complete")
+    except Exception as e:
+        print(f"[NDR] ARP scan error: {e}")
+
+def arp_probe_unknown():
+    """Background loop: every 5 min, ARP-probe internal IPs seen in traffic
+    that have no ARP entry — so Zeek captures the reply and enriches the asset.
+    Uses arping (Layer 2) instead of ping to avoid creating ghost placeholders."""
+    conn_log = f"{LOGDIR}/zeek/conn.log"
+    while not _probe_stop.is_set():
+        _probe_stop.wait(300)
+        try:
+            iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eth0"
+
+            # IPs with known MACs from kernel ARP cache
+            arp_out = subprocess.run(["ip", "neigh", "show"],
+                                     capture_output=True, text=True).stdout
+            known = {line.split()[0] for line in arp_out.splitlines() if line}
+
+            # IPs seen in the last 500 conn.log lines
+            seen = set()
+            if os.path.exists(conn_log):
+                with open(conn_log) as f:
+                    for line in f.readlines()[-500:]:
+                        try:
+                            obj = json.loads(line)
+                            for key in ("id.orig_h", "id.resp_h"):
+                                ip = obj.get(key, "")
+                                if ip:
+                                    seen.add(ip)
+                        except Exception:
+                            pass
+
+            # ARP-probe internal IPs not yet in ARP cache
+            for ip in seen - known:
+                try:
+                    if ipaddress.IPv4Address(ip).is_private:
+                        subprocess.run(
+                            ["sudo", "arping", "-c", "1", "-w", "1", "-I", iface, ip],
+                            capture_output=True, timeout=3
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+def start_arkime():
+    subprocess.run(
+        ["sudo", "systemctl", "start", "arkime-capture"],
+        capture_output=True)
+    subprocess.run(
+        ["sudo", "systemctl", "start", "arkime-viewer"],
+        capture_output=True)
+
+
+def stop_arkime():
+    # Stop capture only — viewer stays running so old PCAP data remains downloadable
+    subprocess.run(
+        ["sudo", "systemctl", "stop", "arkime-capture"],
+        capture_output=True)
+
+
+def get_arkime_status():
+    r = subprocess.run(
+        ["systemctl", "is-active", "arkime-capture"],
+        capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+class AgentHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        print(f"[Agent] {args[0]} {args[1]}")
+
+    def send_json(self, data, code=200):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", len(body))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _check_auth(self) -> bool:
+        """Validate X-Agent-Secret header against NDR_AGENT_SECRET env var.
+        If the env var is not set, auth is skipped (development mode)."""
+        secret = os.environ.get("NDR_AGENT_SECRET", "")
+        if not secret:
+            return True
+        return self.headers.get("X-Agent-Secret", "") == secret
+
+    def get_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return json.loads(self.rfile.read(length)) if length else {}
+
+    def do_GET(self):
+        if not self._check_auth():
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        if self.path == "/agent/status":
+            zeek = subprocess.run(["pgrep", "-x", "zeek"], capture_output=True).returncode == 0
+            suri = subprocess.run("ps aux | grep -v grep | grep -v ndr-agent | grep -c suricata",
+                shell=True, capture_output=True, text=True).stdout.strip() != "0"
+            
+            # Check Docker containers
+            vector = subprocess.run(
+                "docker ps --filter name=ndr-vector --filter status=running --format '{{.Names}}' 2>/dev/null",
+                shell=True, capture_output=True, text=True
+            ).stdout.strip() != ""
+    
+            kafka = subprocess.run(
+                "docker ps --filter name=kafka --filter status=running --format '{{.Names}}' 2>/dev/null",
+                shell=True, capture_output=True, text=True
+            ).stdout.strip() != ""
+
+            # Check ClickHouse
+            clickhouse = subprocess.run(
+                "curl -s http://localhost:8123/ping 2>/dev/null",
+                shell=True, capture_output=True, text=True
+            ).stdout.strip() == "Ok."
+
+            iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eth0"
+
+            self.send_json({
+                "agent-z":    "running" if zeek       else "stopped",
+                "agent-s":    "running" if suri        else "stopped",
+                "vector":     "running" if vector      else "stopped",
+                "kafka":      "running" if kafka       else "stopped",
+                "clickhouse": "running" if clickhouse  else "stopped",
+                "arkime":     get_arkime_status(),
+                "interface":  iface,
+                "gateway":    _get_default_gateway(),
+            })                   
+
+        elif self.path == "/agent/interfaces":
+            out = subprocess.run(["ip", "-o", "link"], capture_output=True, text=True)
+            ifaces = []
+            for line in out.stdout.splitlines():
+                parts = line.split(":")
+                if len(parts) > 1:
+                    iface = parts[1].strip()
+                    if iface != "lo" and not iface.startswith("docker") \
+                       and not iface.startswith("br-") \
+                       and not iface.startswith("veth"):
+                        ifaces.append(iface)
+            self.send_json(ifaces)
+
+        elif self.path == "/agent/interface":
+            iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eth0"
+            self.send_json({"interface": iface})
+
+        else:
+            self.send_json({"error": "not found"}, 404)
+
+    def do_POST(self):
+        global _probe_stop, _probe_thread
+        if not self._check_auth():
+            self.send_json({"error": "Unauthorized"}, 401)
+            return
+        if self.path == "/agent/start":
+            iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eth0"
+            # Auto-create log directories
+            os.makedirs(f"{LOGDIR}/suricata", exist_ok=True)
+            os.makedirs(f"{LOGDIR}/zeek", exist_ok=True)
+            # Kill existing processes
+            subprocess.run(["sudo", "pkill", "-f", "suricata"], capture_output=True)
+            subprocess.run(["sudo", "pkill", "-f", "zeek"], capture_output=True)
+            time.sleep(2)
+
+            # Clean stale PID files — /tmp is user-writable; /var/run needs sudo
+            try:
+                os.remove("/tmp/suricata.pid")
+            except OSError:
+                pass
+            for pid_path in ["/var/run/suricata.pid", "/run/suricata.pid", "/var/run/suricata/suricata.pid"]:
+                subprocess.run(["sudo", "rm", "-f", pid_path], capture_output=True)
+            
+            # Clear Vector checkpoints so it reads from current position
+
+            for vpath in [f"{HOME_DIR}/.vector/data/suricata", f"{HOME_DIR}/.vector/data/zeek"]:
+                shutil.rmtree(vpath, ignore_errors=True)
+            os.makedirs(f"{HOME_DIR}/.vector/data/suricata", exist_ok=True)
+            os.makedirs(f"{HOME_DIR}/.vector/data/zeek", exist_ok=True)
+            # Write subnet CIDRs to ipam.log for IPAM engine
+            discover_subnets()
+            # Seed arp.log with existing ARP cache — instant asset bootstrap
+            bootstrap_from_arp_cache()
+            # Query router ARP table via SNMP
+            snmp_router_discovery()
+            # Write sensor self-exclusion rules BEFORE starting Suricata/Zeek
+            # so both processes load with the correct suppression from the start
+            sensor_ip = _docker_bridge_ip() or "127.0.0.1"
+            _write_suricata_exclusions(sensor_ip)
+            ensure_zeek_arp()
+            # Start Zeek
+            subprocess.Popen(["sudo", "/opt/zeek/bin/zeek", "-i", iface, "local",f"Log::default_logdir={LOGDIR}/zeek"],
+                            stdout=open("/tmp/zeek.log", "w"),
+                            stderr=subprocess.STDOUT)
+    
+            # Start Suricata
+            subprocess.Popen(["sudo", "suricata",
+                 "-c", "/etc/suricata/suricata.yaml",
+                 "-i", iface,
+                 "-l", f"{LOGDIR}/suricata",
+                 "-D",
+                 "--pidfile", "/tmp/suricata.pid",
+                 "--set", "detect.profile=low",        # low profile for 1 CPU
+                 "--set", "max-pending-packets=128",   # reduce memory usage
+                 ],  # use /tmp instead
+                            stdout=open("/tmp/suricata.log", "w"),
+                            stderr=subprocess.STDOUT)
+
+            # Start Arkime
+            start_arkime()
+
+            # Full subnet ARP scan on start — only real devices reply
+            threading.Thread(target=arp_scan, args=(iface,), daemon=True).start()
+            # Ongoing loop: ARP-probe unknown devices every 5 min (singleton)
+            if _probe_thread is None or not _probe_thread.is_alive():
+                _probe_stop.clear()
+                _probe_thread = threading.Thread(target=arp_probe_unknown, daemon=True)
+                _probe_thread.start()
+
+            # Wait up to 5s for both processes to appear before responding
+            # so the UI status poll immediately after start sees "running"
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                zeek_up = subprocess.run(["pgrep", "-x", "zeek"], capture_output=True).returncode == 0
+                suri_up = subprocess.run(["pgrep", "-x", "suricata"], capture_output=True).returncode == 0
+                if zeek_up and suri_up:
+                    break
+                time.sleep(0.5)
+
+            self.send_json({"status": "started", "interface": iface})
+        elif self.path == "/agent/stop":
+            _probe_stop.set()
+            subprocess.run(["sudo", "systemctl", "stop", "suricata"], capture_output=True)
+            subprocess.run(["sudo", "pkill", "-f", "suricata"], capture_output=True)
+            subprocess.run(["sudo", "pkill", "-f", "zeek"], capture_output=True)
+            # Clean stale PID files — /tmp is user-writable; /var/run needs sudo
+            try:
+                os.remove("/tmp/suricata.pid")
+            except OSError:
+                pass
+            for pid_path in ["/var/run/suricata.pid", "/run/suricata.pid", "/var/run/suricata/suricata.pid"]:
+                subprocess.run(["sudo", "rm", "-f", pid_path], capture_output=True)
+            # Clear Vector checkpoints to prevent replay
+
+            for vpath in [f"{HOME_DIR}/.vector/data/suricata", f"{HOME_DIR}/.vector/data/zeek"]:
+                shutil.rmtree(vpath, ignore_errors=True)
+            os.makedirs(f"{HOME_DIR}/.vector/data/suricata", exist_ok=True)
+            os.makedirs(f"{HOME_DIR}/.vector/data/zeek", exist_ok=True)
+            # Stop Arkime
+            stop_arkime()
+            # Rotate logs
+            subprocess.run(["sudo", "logrotate", "-f",
+                "/etc/logrotate.d/suricata-ndr"],
+                capture_output=True)
+            subprocess.run(["sudo", "logrotate", "-f",
+                "/etc/logrotate.d/zeek-ndr"],
+                capture_output=True)
+            self.send_json({"status": "stopped"})
+
+        elif self.path == "/agent/interface":
+            body = self.get_body()
+            iface = body.get("interface", "eth0")
+            RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+            IFACE_FILE.write_text(iface)
+            self.send_json({"status": "ok", "interface": iface})
+
+        elif self.path == "/agent/block":
+            body         = self.get_body()
+            src_ip       = body.get("src_ip", "").strip()
+            src_port     = int(body.get("src_port", 0))
+            dst_ip       = body.get("dst_ip", "").strip()
+            dst_port     = int(body.get("dst_port", 0))
+            community_id = body.get("community_id", "")
+            duration_h   = int(body.get("duration_hours", 24))
+            result = block_ip(src_ip, src_port, dst_ip, dst_port, community_id, duration_h)
+            code = 200 if result.get("status") == "blocked" else 400
+            self.send_json(result, code)
+
+        elif self.path == "/agent/unblock":
+            body   = self.get_body()
+            ip     = body.get("ip", "").strip()
+            result = unblock_ip(ip)
+            code   = 200 if result.get("status") == "unblocked" else 400
+            self.send_json(result, code)
+
+        elif self.path == "/agent/isolate":
+            body       = self.get_body()
+            target_ip  = body.get("target_ip", "").strip()
+            gateway_ip = body.get("gateway_ip") or _get_default_gateway()
+            result     = isolate_device(target_ip, gateway_ip)
+            code       = 200 if result.get("status") in ("isolated", "already_isolated") else 400
+            self.send_json(result, code)
+
+        elif self.path == "/agent/unisolate":
+            body      = self.get_body()
+            target_ip = body.get("target_ip", "").strip()
+            result    = unisolate_device(target_ip)
+            code      = 200 if result.get("status") == "unisolated" else 400
+            self.send_json(result, code)
+
+        elif self.path == "/agent/isolations":
+            import datetime
+            with _isolation_lock:
+                items = [
+                    {
+                        "ip": ip,
+                        "gateway_ip": v["gateway_ip"],
+                        "started_at": datetime.datetime.utcfromtimestamp(v["started_at"]).isoformat() + "Z",
+                    }
+                    for ip, v in _isolated_devices.items()
+                ]
+            self.send_json({"isolations": items})
+
+        else:
+            self.send_json({"error": "not found"}, 404)
+
+ZEEK_SID_FILTERS = {
+    '2049049': ('DNS',  'rec?$query && "ngrok" in rec$query'),
+    '2066052': ('SSL',  'rec?$server_name && "ngrok" in rec$server_name'),
+    '2066057': ('SSL',  'rec?$server_name && "ngrok" in rec$server_name'),
+    '2022973': ('DHCP', 'rec?$host_name && "kali" in to_lower(rec$host_name)'),
+}
+
+ZEEK_HOOK_TYPES = {
+    'DNS':  ('DNS::Info',  'DNS::log_policy'),
+    'SSL':  ('SSL::Info',  'SSL::log_policy'),
+    'DHCP': ('DHCP::Info', 'DHCP::log_policy'),
+}
+
+def apply_suppress_sid(cmd: str) -> bool:
+    """Apply suppress_sid command at both Suricata and Zeek collection layer.
+    Returns True if successfully applied, False if write failed.
+    Format: suppress_sid:SID  or  suppress_sid:SID:by_src:IP  or  suppress_sid:SID:by_dst:IP
+    """
+    parts = cmd.split(':')
+    if len(parts) < 2:
+        return False
+    sid = parts[1].strip()
+
+    # ── Suricata threshold.conf ───────────────────────────────────────────
+    threshold_file = '/etc/suricata/threshold.conf'
+    if len(parts) >= 4:
+        track_kw = 'by_dst' if parts[2].strip() == 'by_dst' else 'by_src'
+        suppress_line = f'suppress gen_id 1, sig_id {sid}, track {track_kw}, ip {parts[3].strip()}\n'
+    else:
+        suppress_line = f'suppress gen_id 1, sig_id {sid}\n'
+
+    try:
+        existing = open(threshold_file).read() if os.path.exists(threshold_file) else ''
+    except Exception:
+        existing = ''
+
+    if suppress_line.strip() not in existing:
+        # threshold.conf is root-owned — use sudo tee to append
+        result = subprocess.run(
+            ['sudo', 'tee', '-a', threshold_file],
+            input=suppress_line.encode(), capture_output=True
+        )
+        if result.returncode != 0:
+            return False
+        print(f"[NDR] Suricata: suppressed SID {sid}")
+        try:
+            pid = subprocess.run(['pidof', 'suricata'], capture_output=True, text=True).stdout.strip().split()[0]
+            subprocess.run(['sudo', 'kill', '-USR2', pid], check=True)
+        except Exception:
+            subprocess.run(['sudo', 'suricatasc', '-c', 'reload-rules'], capture_output=True)
+
+    # ── Zeek ndr-suppress.zeek ────────────────────────────────────────────
+    zeek_filter_file = '/opt/zeek/share/zeek/site/ndr-suppress.zeek'
+    if sid in ZEEK_SID_FILTERS:
+        log_type, condition = ZEEK_SID_FILTERS[sid]
+        rec_type, hook_name = ZEEK_HOOK_TYPES[log_type]
+        hook_block = (
+            f'\nhook {hook_name}(rec: {rec_type}, id: Log::ID, filter: Log::Filter) {{\n'
+            f'    if ( {condition} ) break;\n}}\n'
+        )
+        try:
+            existing_zeek = open(zeek_filter_file).read() if os.path.exists(zeek_filter_file) else ''
+        except Exception:
+            existing_zeek = ''
+
+        if hook_block.strip() not in existing_zeek:
+            subprocess.run(
+                ['sudo', 'tee', '-a', zeek_filter_file],
+                input=hook_block.encode(), capture_output=True
+            )
+
+            # Ensure local.zeek loads ndr-suppress
+            local_zeek = '/opt/zeek/share/zeek/site/local.zeek'
+            try:
+                lz = open(local_zeek).read()
+            except Exception:
+                lz = ''
+            if '@load ndr-suppress' not in lz:
+                subprocess.run(
+                    ['sudo', 'tee', '-a', local_zeek],
+                    input=b'@load ndr-suppress\n', capture_output=True
+                )
+
+            # Restart Zeek to apply new hook
+            iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else 'eth0'
+            subprocess.run(['sudo', 'pkill', '-f', 'zeek'], capture_output=True)
+            time.sleep(1)
+            subprocess.Popen(
+                ['sudo', '/opt/zeek/bin/zeek', '-i', iface, 'local',
+                 f'Log::default_logdir={LOGDIR}/zeek'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            print(f"[NDR] Zeek: filter added for SID {sid}, Zeek restarted")
+    return True
+
+
+# ── Active block registry (in-memory, survives until process restart) ─────
+_active_blocks: dict = {}   # ip -> threading.Timer
+_blocks_lock = threading.Lock()
+
+# ── ARP isolation registry ────────────────────────────────────────────────
+_isolated_devices: dict = {}   # ip -> {"stop_event": Event, "thread": Thread, "gateway_ip": str, "started_at": float}
+_isolation_lock = threading.Lock()
+
+
+def _is_routable(ip: str) -> bool:
+    """Return True only for public routable IPs — refuse to block internal/link-local."""
+    try:
+        addr = ipaddress.ip_address(ip)
+        return not (addr.is_private or addr.is_loopback or
+                    addr.is_link_local or addr.is_multicast or
+                    addr.is_reserved or addr.is_unspecified)
+    except ValueError:
+        return False
+
+
+def _rst_inject(src_ip: str, src_port: int, dst_ip: str, dst_port: int) -> bool:
+    """
+    TCP RST window-flood injection.
+
+    Sends 512 RST packets in each direction (1024 total) with sequence numbers
+    evenly spaced across the full 32-bit sequence space (step = 2^32 / 512 = 8 MB).
+    At least one will fall inside the receiver's TCP window regardless of window
+    scaling, guaranteeing session teardown on both sides.
+
+    Requires scapy and CAP_NET_RAW (already held by the agent for packet capture).
+    """
+    try:
+        from scapy.all import IP, TCP, send, conf
+        conf.verb = 0
+
+        STEPS   = 512
+        SEQ_MAX = 2 ** 32
+        step    = SEQ_MAX // STEPS
+
+        pkts = []
+        for i in range(STEPS):
+            seq = i * step
+            # Attacker → Victim RST
+            pkts.append(
+                IP(src=src_ip, dst=dst_ip) /
+                TCP(sport=src_port, dport=dst_port, flags="R", seq=seq, window=0)
+            )
+            # Victim → Attacker RST (terminates both halves)
+            pkts.append(
+                IP(src=dst_ip, dst=src_ip) /
+                TCP(sport=dst_port, dport=src_port, flags="R", seq=seq, window=0)
+            )
+
+        send(pkts, verbose=False, inter=0)
+        print(f"[NDR-BLOCK] RST flood: {src_ip}:{src_port} <-> {dst_ip}:{dst_port} "
+              f"({len(pkts)} packets, {STEPS} seq values)")
+        return True
+
+    except ImportError:
+        print("[NDR-BLOCK] scapy not installed — RST injection skipped (pip install scapy)")
+        return False
+    except Exception as e:
+        print(f"[NDR-BLOCK] RST injection error: {e}")
+        return False
+
+
+def block_ip(src_ip: str, src_port: int, dst_ip: str, dst_port: int,
+             community_id: str, duration_hours: int) -> dict:
+    import datetime
+
+    if not src_ip:
+        return {"status": "error", "message": "src_ip required"}
+
+    if not _is_routable(src_ip):
+        return {
+            "status": "error",
+            "message": f"{src_ip} is private/internal — blocking refused to prevent self-lockout",
+        }
+
+    # 1. RST injection — kills the active session immediately
+    rst_ok = _rst_inject(src_ip, src_port, dst_ip, dst_port)
+
+    # 2. Register expiry timer for cleanup log entry
+    expires_ts = time.time() + duration_hours * 3600
+
+    def _expire():
+        with _blocks_lock:
+            _active_blocks.pop(src_ip, None)
+        print(f"[NDR-BLOCK] Block expired: {src_ip}")
+
+    with _blocks_lock:
+        existing = _active_blocks.pop(src_ip, None)
+        if existing:
+            existing.cancel()
+        timer = threading.Timer(duration_hours * 3600, _expire)
+        timer.daemon = True
+        timer.start()
+        _active_blocks[src_ip] = timer
+
+    expires_iso = datetime.datetime.utcfromtimestamp(expires_ts).isoformat() + "Z"
+    print(f"[NDR-BLOCK] Registered: {src_ip} blocked until {expires_iso}")
+
+    return {
+        "status":         "blocked",
+        "src_ip":         src_ip,
+        "dst_ip":         dst_ip,
+        "community_id":   community_id,
+        "rst_injected":   rst_ok,
+        "duration_hours": duration_hours,
+        "expires_at":     expires_iso,
+    }
+
+
+def unblock_ip(ip: str) -> dict:
+    if not ip:
+        return {"status": "error", "message": "ip required"}
+
+    with _blocks_lock:
+        timer = _active_blocks.pop(ip, None)
+        if timer:
+            timer.cancel()
+
+    print(f"[NDR-BLOCK] Unblocked: {ip}")
+    return {"status": "unblocked", "ip": ip}
+
+
+def _get_default_gateway() -> str:
+    """Read the default gateway from the kernel routing table — works on any network."""
+    try:
+        out = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True, text=True
+        ).stdout
+        for line in out.splitlines():
+            parts = line.split()
+            if "via" in parts:
+                return parts[parts.index("via") + 1]
+    except Exception:
+        pass
+    return "192.168.1.1"
+
+
+def _get_mac_from_neigh(ip: str) -> str:
+    """Resolve MAC from kernel ARP/neighbour table — no CAP_NET_RAW needed."""
+    try:
+        out = subprocess.run(["ip", "neigh", "show", ip],
+                             capture_output=True, text=True).stdout.strip()
+        for line in out.splitlines():
+            parts = line.split()
+            if "lladdr" in parts:
+                return parts[parts.index("lladdr") + 1]
+    except Exception:
+        pass
+    return "ff:ff:ff:ff:ff:ff"
+
+def _get_our_mac(iface: str) -> str:
+    """Read our own MAC without scapy (no permissions needed)."""
+    try:
+        out = subprocess.run(["cat", f"/sys/class/net/{iface}/address"],
+                             capture_output=True, text=True).stdout.strip()
+        if out:
+            return out
+    except Exception:
+        pass
+    return ""
+
+def _arp_poison_loop(target_ip: str, gateway_ip: str, iface: str, stop_event: threading.Event):
+    """Send unicast ARP spoofs via sudo python3 — works without CAP_NET_RAW on the agent process."""
+    # Resolve MACs from kernel neighbour table — no CAP_NET_RAW needed for reads
+    our_mac     = _get_our_mac(iface)
+    target_mac  = _get_mac_from_neigh(target_ip)  or "ff:ff:ff:ff:ff:ff"
+    gateway_mac = _get_mac_from_neigh(gateway_ip) or "ff:ff:ff:ff:ff:ff"
+    print(f"[NDR-ISOLATE] ARP loop start: target={target_ip}/{target_mac} gw={gateway_ip}/{gateway_mac} our_mac={our_mac}")
+
+    # sendp() requires CAP_NET_RAW. Grant it once with:
+    #   sudo setcap cap_net_raw+ep /usr/bin/python3.14
+    try:
+        from scapy.all import ARP, Ether, sendp, conf as scapy_conf
+        scapy_conf.verb = 0
+        while not stop_event.is_set():
+            # Tell target: "gateway MAC = our MAC" → target sends traffic to us
+            pkt1 = Ether(dst=target_mac) / ARP(
+                op=2, pdst=target_ip, hwdst=target_mac,
+                psrc=gateway_ip, hwsrc=our_mac
+            )
+            # Tell gateway: "target MAC = our MAC" → replies come to us
+            pkt2 = Ether(dst=gateway_mac) / ARP(
+                op=2, pdst=gateway_ip, hwdst=gateway_mac,
+                psrc=target_ip, hwsrc=our_mac
+            )
+            sendp([pkt1, pkt2], iface=iface, verbose=False)
+            stop_event.wait(2)
+    except ImportError:
+        print("[NDR-ISOLATE] scapy not installed — pip install scapy")
+    except Exception as e:
+        print(f"[NDR-ISOLATE] ARP loop error for {target_ip}: {e}")
+
+
+def isolate_device(target_ip: str, gateway_ip: str = "") -> dict:
+    import datetime
+    if not target_ip:
+        return {"status": "error", "message": "target_ip required"}
+    if not gateway_ip:
+        gateway_ip = _get_default_gateway()
+
+    iface = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eno1"
+
+    with _isolation_lock:
+        if target_ip in _isolated_devices:
+            return {"status": "already_isolated", "ip": target_ip}
+
+        stop_event = threading.Event()
+        t = threading.Thread(
+            target=_arp_poison_loop,
+            args=(target_ip, gateway_ip, iface, stop_event),
+            daemon=True,
+        )
+        t.start()
+        _isolated_devices[target_ip] = {
+            "thread": t,
+            "stop_event": stop_event,
+            "gateway_ip": gateway_ip,
+            "started_at": time.time(),
+        }
+
+    # Drop all forwarded traffic from/to this device
+    subprocess.run(["sudo", "iptables", "-I", "FORWARD", "-s", target_ip, "-j", "DROP"], capture_output=True)
+    subprocess.run(["sudo", "iptables", "-I", "FORWARD", "-d", target_ip, "-j", "DROP"], capture_output=True)
+
+    started_iso = datetime.datetime.utcnow().isoformat() + "Z"
+    print(f"[NDR-ISOLATE] Isolated {target_ip} via ARP spoofing on {iface}, gateway {gateway_ip}")
+    return {
+        "status": "isolated",
+        "ip": target_ip,
+        "gateway_ip": gateway_ip,
+        "interface": iface,
+        "started_at": started_iso,
+    }
+
+
+def unisolate_device(target_ip: str) -> dict:
+    if not target_ip:
+        return {"status": "error", "message": "target_ip required"}
+
+    with _isolation_lock:
+        entry = _isolated_devices.pop(target_ip, None)
+
+    if not entry:
+        return {"status": "not_found", "ip": target_ip}
+
+    entry["stop_event"].set()
+
+    # Remove iptables DROP rules
+    subprocess.run(["sudo", "iptables", "-D", "FORWARD", "-s", target_ip, "-j", "DROP"], capture_output=True)
+    subprocess.run(["sudo", "iptables", "-D", "FORWARD", "-d", target_ip, "-j", "DROP"], capture_output=True)
+
+    # Send gratuitous ARPs to restore correct MAC mappings immediately —
+    # without this the ARP caches on target+gateway stay poisoned for up to 5 min.
+    try:
+        from scapy.all import ARP, Ether, sendp, conf as scapy_conf
+        scapy_conf.verb = 0
+        iface       = IFACE_FILE.read_text().strip() if IFACE_FILE.exists() else "eno1"
+        gateway_ip  = entry.get("gateway_ip") or _get_default_gateway()
+        target_mac  = _get_mac_from_neigh(target_ip)
+        gateway_mac = _get_mac_from_neigh(gateway_ip)
+        if target_mac and gateway_mac:
+            # Restore: tell target the real gateway MAC
+            pkt1 = Ether(dst=target_mac) / ARP(
+                op=2, pdst=target_ip, hwdst=target_mac,
+                psrc=gateway_ip, hwsrc=gateway_mac
+            )
+            # Restore: tell gateway the real target MAC
+            pkt2 = Ether(dst=gateway_mac) / ARP(
+                op=2, pdst=gateway_ip, hwdst=gateway_mac,
+                psrc=target_ip, hwsrc=target_mac
+            )
+            sendp([pkt1, pkt2] * 5, iface=iface, verbose=False)
+            print(f"[NDR-ISOLATE] Sent restore ARPs for {target_ip}")
+    except Exception as e:
+        print(f"[NDR-ISOLATE] Restore ARP warning: {e}")
+
+    print(f"[NDR-ISOLATE] Unisolated {target_ip}")
+    return {"status": "unisolated", "ip": target_ip}
+
+
+def _clickhouse_password():
+    """ClickHouse password for the local stack: env var first, then the install's .env.
+    Never hardcoded - returns "" if unavailable (the sync loop just retries)."""
+    pw = os.environ.get("CLICKHOUSE_PASSWORD", "")
+    if pw:
+        return pw
+    try:
+        for line in (INSTALL_DIR / ".env").read_text().splitlines():
+            if line.startswith("CLICKHOUSE_PASSWORD="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def suppression_sync_loop():
+    """Poll ClickHouse directly every 5 min for pending suppress_sid commands.
+    ClickHouse uses network_mode: host so localhost:8123 is always reachable.
+    No sensor key needed — this runs on the same machine as the NDR stack."""
+    import urllib.request, urllib.parse, base64
+    ch_url   = 'http://localhost:8123/'
+    ch_auth  = base64.b64encode(f'ndr:{_clickhouse_password()}'.encode()).decode()
+    headers  = {'Authorization': f'Basic {ch_auth}'}
+
+    sid  = SENSOR_ID.replace("'", "''")
+    tid  = TENANT_ID.replace("'", "''")
+    select_q = (
+        "SELECT command FROM ndr.sensor_commands FINAL "
+        f"WHERE tenant_id='{tid}' AND sensor_id='{sid}' AND status='pending'"
+    )
+    while True:
+        try:
+            req = urllib.request.Request(
+                ch_url + '?query=' + urllib.parse.quote(select_q),
+                headers=headers
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                for line in resp.read().decode().strip().splitlines():
+                    cmd = line.strip()
+                    if not cmd.startswith('suppress_sid:'):
+                        continue
+                    if apply_suppress_sid(cmd):
+                        # Only mark done after successful write
+                        done_q = (
+                            "ALTER TABLE ndr.sensor_commands "
+                            "UPDATE status='done' "
+                            f"WHERE tenant_id='{tid}' AND sensor_id='{sid}' "
+                            f"AND command='{cmd.replace(chr(39), chr(39)*2)}' AND status='pending'"
+                        )
+                        done_req = urllib.request.Request(
+                            ch_url, data=done_q.encode(), headers=headers
+                        )
+                        urllib.request.urlopen(done_req, timeout=5)
+        except Exception:
+            pass
+        time.sleep(300)
+
+
+def _cleanup_stale_iptables():
+    """On startup, remove any FORWARD DROP rules left from a previous crash.
+    We tag our rules with a comment so we can identify and remove only ours."""
+    try:
+        result = subprocess.run(
+            ["sudo", "iptables", "-L", "FORWARD", "-n", "--line-numbers"],
+            capture_output=True, text=True
+        )
+        lines = result.stdout.splitlines()
+        to_delete = []
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 4 and parts[1] == 'DROP' and parts[2] == 'all' and '/' not in parts[4]:
+                to_delete.append(parts[0])  # line number
+        # Delete in reverse order so line numbers stay valid
+        for num in reversed(to_delete):
+            subprocess.run(["sudo", "iptables", "-D", "FORWARD", num], capture_output=True)
+        if to_delete:
+            print(f"[NDR-AGENT] Cleaned up {len(to_delete)} stale iptables FORWARD DROP rules from previous run")
+    except Exception as e:
+        print(f"[NDR-AGENT] iptables cleanup warning: {e}")
+
+
+if __name__ == "__main__":
+    _cleanup_stale_iptables()
+    threading.Thread(target=suppression_sync_loop, daemon=True).start()
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    bind_host = _docker_bridge_ip()
+    server = ThreadedHTTPServer((bind_host, 3001), AgentHandler)
+    print(f"NDR Host Agent listening on {bind_host}:3001  sensor_id={SENSOR_ID!r}  tenant_id={TENANT_ID!r}")
+    server.serve_forever()

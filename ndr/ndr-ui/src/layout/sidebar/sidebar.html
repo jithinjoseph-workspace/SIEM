@@ -1,0 +1,44 @@
+<aside class="sidebar-shell">
+
+  <!-- Brand -->
+  <div class="brand-block">
+    <div class="brand-wordmark" style="display: flex; justify-content: center; width: 100%; margin-bottom: 16px;">
+      <img src="/assets/images/ProVigilAI.png" alt="ProVigil Logo" style="height: 90px; max-width: 90%; object-fit: contain; background: transparent;" />
+    </div>
+    <div class="brand-badge">
+      <span class="brand-badge-text">powered by</span>
+      <img src="/assets/images/promasecure.png" alt="PromaSecure" class="brand-badge-logo" />
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="nav-list">
+    <ng-container *ngFor="let group of navGroups; trackBy: trackGroup">
+
+      <!-- Collapsible section header -->
+      <button class="nav-section"
+              [class.is-collapsed]="group.collapsed"
+              (click)="toggleGroup(group)">
+        <span>{{ group.section }}</span>
+        <lucide-icon [name]="ChevronDownIcon" class="nav-chevron w-3 h-3"></lucide-icon>
+      </button>
+
+      <!-- Items — shown/hidden via ngIf so initial render is always correct -->
+      <div class="nav-group-body" *ngIf="!group.collapsed">
+        <a *ngFor="let item of group.items; let i = index; trackBy: trackItem"
+           [routerLink]="item.route"
+           [queryParams]="item.queryParams || null"
+           [class.active]="isActive(item)"
+           class="nav-link"
+           [style.animation-delay]="(i * 40) + 'ms'">
+          <span class="nav-icon">
+            <lucide-icon [name]="item.icon" class="w-4 h-4"></lucide-icon>
+          </span>
+          <span class="nav-label">{{ item.label }}</span>
+        </a>
+      </div>
+
+    </ng-container>
+  </nav>
+
+</aside>

@@ -1,0 +1,85 @@
+# ==============================================================================
+# Unified XDR Platform Caddy Configuration (NDR + SIEM + Single Angular UI)
+# Supports: Automatic HTTPS (Let's Encrypt / ZeroSSL), Microservices Reverse Proxy,
+# WebSockets, Compression (zstd/gzip), and Single Page Application (SPA) routing.
+# ==============================================================================
+
+{
+    # Global options
+    admin off
+    auto_https disable_redirects
+}
+
+:80, http://localhost {
+    # 1. High-Performance Compression
+    encode zstd gzip
+
+    # 2. Security Headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    # 3. Allow large telemetry log batches (up to 50MB)
+    request_body {
+        max_size 50MB
+    }
+
+    # 4. Auth Microservice APIs (/api/auth/*)
+    handle /api/auth/* {
+        reverse_proxy http://{$AUTH_UPSTREAM:auth-service:3001} {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 5. SIEM Microservice APIs (/api/v1/*, /api/siem/*, etc.)
+    handle /api/* {
+        reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088} {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 5. NDR Microservice APIs (/api/ndr/*)
+    handle_path /api/ndr/* {
+        rewrite * /api{path}
+        reverse_proxy http://{$NDR_UPSTREAM:ndr-api:8090} {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 6. Real-Time WebSockets for Live Alerts Broadcast
+    # SIEM WebSockets (/ws/siem/* and /ws/alerts)
+    handle /ws/siem/* {
+        rewrite * /ws/alerts
+        reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088}
+    }
+
+    handle /ws/alerts {
+        reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088}
+    }
+
+    # NDR WebSockets (/ws/ndr/*)
+    handle /ws/ndr/* {
+        reverse_proxy http://{$NDR_UPSTREAM:ndr-api:8090}
+    }
+
+    # 7. Agent Binary Downloads (Windows .exe, Linux deb/rpm/sh)
+    handle /downloads/* {
+        reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088}
+    }
+
+    # 8. Single Unified Angular SOC Frontend Dashboard (SPA)
+    handle {
+        root * /usr/share/caddy/html
+        file_server
+        try_files {path} /index.html
+    }
+}

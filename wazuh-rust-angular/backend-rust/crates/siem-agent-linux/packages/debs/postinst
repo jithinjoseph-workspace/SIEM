@@ -1,0 +1,82 @@
+#!/bin/sh
+# ==============================================================================
+# Wazuh Linux Agent - Debian/Ubuntu postinst script
+# Mirrors official Wazuh packaging (packages/debs/SPECS/wazuh-agent/debian/postinst)
+# ==============================================================================
+set -e
+
+DIR="/var/ossec"
+USER="wazuh"
+GROUP="wazuh"
+SHELL="/sbin/nologin"
+
+if [ ! -f "${SHELL}" ]; then
+    if [ -f "/bin/false" ]; then
+        SHELL="/bin/false"
+    fi
+fi
+
+case "$1" in
+    configure)
+        # 1. Create wazuh system group if not present
+        if ! getent group ${GROUP} > /dev/null 2>&1; then
+            addgroup --system ${GROUP} > /dev/null 2>&1
+        fi
+
+        # 2. Create wazuh system user if not present
+        if ! getent passwd ${USER} > /dev/null 2>&1; then
+            adduser --system --home ${DIR} --shell ${SHELL} --ingroup ${GROUP} ${USER} > /dev/null 2>&1
+        fi
+
+        # 3. Create required runtime directory hierarchy
+        mkdir -p "${DIR}/bin"
+        mkdir -p "${DIR}/etc"
+        mkdir -p "${DIR}/logs"
+        mkdir -p "${DIR}/queue"
+        mkdir -p "${DIR}/quarantine"
+        mkdir -p "${DIR}/var/run"
+
+        # 4. Create default agent config if missing
+        if [ ! -f "${DIR}/etc/agent-config.json" ]; then
+            cat <<EOF > "${DIR}/etc/agent-config.json"
+{
+  "manager_url": "http://127.0.0.1:8088",
+  "agent_id": "002",
+  "agent_name": "wazuh-linux-endpoint",
+  "buffer_capacity": 5000,
+  "events_per_second": 500
+}
+EOF
+            chmod 640 "${DIR}/etc/agent-config.json"
+            chown root:${GROUP} "${DIR}/etc/agent-config.json"
+        fi
+
+        # 5. Set hardened directory permissions
+        chown root:${GROUP} "${DIR}"
+        chmod 750 "${DIR}"
+        chown -R root:${GROUP} "${DIR}/bin"
+        chmod 750 "${DIR}/bin"
+        chmod 750 "${DIR}/bin/siem-agent-linux"
+        chown -R ${USER}:${GROUP} "${DIR}/logs"
+        chmod 750 "${DIR}/logs"
+        chown -R ${USER}:${GROUP} "${DIR}/queue"
+        chmod 750 "${DIR}/queue"
+        chown -R root:${GROUP} "${DIR}/quarantine"
+        chmod 700 "${DIR}/quarantine"
+
+        # 6. Create global binary symlinks
+        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-agentd
+        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-control
+
+        # 7. Reload systemd and enable service
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload > /dev/null 2>&1 || true
+            systemctl enable wazuh-rust-agent.service > /dev/null 2>&1 || true
+            systemctl restart wazuh-rust-agent.service > /dev/null 2>&1 || true
+        fi
+
+        echo "[✓] Wazuh Linux Agent successfully installed and configured."
+    ;;
+esac
+
+exit 0

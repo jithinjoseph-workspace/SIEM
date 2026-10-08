@@ -1,0 +1,23 @@
+[package]
+name = "siem-reportd"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh Report Generator Subsystem (src/reportd)"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-shared = { path = "../siem-shared" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "wazuh-reportd"
+path = "bin/wazuh_reportd.rs"

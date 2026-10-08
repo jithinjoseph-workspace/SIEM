@@ -1,0 +1,36 @@
+
+<ossec_config>
+  <command>
+    <name>fw-drop</name>
+    <executable>firewall-drop</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+  <command>
+    <name>hd</name>
+    <executable>host-deny</executable>
+    <extra_args>-a 'x;y' $z</extra_args>
+    <timeout_allowed>no</timeout_allowed>
+  </command>
+  <active-response>
+    <command>fw-drop</command>
+    <location>local</location>
+    <level>10</level>
+    <timeout>600</timeout>
+  </active-response>
+  <active-response>
+    <command>hd</command>
+    <location>all</location>
+    <rules_group>authentication_failed,</rules_group>
+  </active-response>
+  <active-response>
+    <command>fw-drop</command>
+    <location>server</location>
+    <rules_id>5710,5712,31103,2502</rules_id>
+  </active-response>
+  <active-response>
+    <command>hd</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>
+    <level>7</level>
+  </active-response>
+</ossec_config>

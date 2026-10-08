@@ -1,0 +1,7 @@
+[package]
+name = "siem-cjson"
+version = "0.1.0"
+edition = "2021"
+description = "Port of cJSON 1.7.18 (Wazuh deps v54): ordered/duplicate keys, C number formatting, tab-formatted printing"
+
+[dependencies]

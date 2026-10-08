@@ -1,0 +1,88 @@
+//! `router_message_forward` (`secure.c`): forwards syscollector deltas and
+//! rsync messages to the inventory harvester / vulnerability scanner via the
+//! router (`shared_modules/router`). FIM messages are never forwarded.
+
+const DBSYNC_HEADER: &[u8] = b"5:";
+const SYSCOLLECTOR_HEADER: &[u8] = b"d:syscollector:";
+const SYSCHECK_HEADER: &[u8] = b"8:syscheck:";
+const SYSCOLLECTOR_SYNC_HEADER: &[u8] = b"syscollector:";
+const SYSCHECK_FILE_HEADER: &[u8] = b"fim_file:";
+const SYSCHECK_REGISTRY_KEY_HEADER: &[u8] = b"fim_registry_key:";
+const SYSCHECK_REGISTRY_VALUE_HEADER: &[u8] = b"fim_registry_value:";
+
+/// `MT_SYS_DELTAS` / `MT_SYNC`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaType {
+    SysDeltas,
+    Sync,
+}
+
+/// `agent_ctx`
+#[derive(Debug, Clone)]
+pub struct AgentCtx<'a> {
+    pub agent_id: &'a str,
+    pub agent_name: &'a str,
+    pub agent_ip: &'a str,
+    pub agent_version: Option<&'a str>,
+}
+
+/// The router providers `deltas-syscollector` and `rsync`.
+pub trait Router: Send + Sync {
+    fn provider_available(&self, schema: SchemaType) -> bool;
+    /// `router_provider_send_fb_json`
+    fn send(&self, schema: SchemaType, msg: &[u8], agent: &AgentCtx<'_>) -> bool;
+}
+
+/// Router with no subscribers (providers unavailable).
+pub struct NoRouter;
+
+impl Router for NoRouter {
+    fn provider_available(&self, _: SchemaType) -> bool {
+        false
+    }
+    fn send(&self, _: SchemaType, _: &[u8], _: &AgentCtx<'_>) -> bool {
+        false
+    }
+}
+
+/// `router_message_forward`
+pub fn router_message_forward(r: &dyn Router, msg: &[u8], agent_id: &str, agent_ip: &str, agent_name: &str, version: Option<&str>) {
+    let after_dbsync = msg.get(DBSYNC_HEADER.len()..).unwrap_or(&[]);
+    if msg.starts_with(SYSCHECK_HEADER)
+        || (msg.starts_with(DBSYNC_HEADER)
+            && (after_dbsync.starts_with(SYSCHECK_FILE_HEADER)
+                || after_dbsync.starts_with(SYSCHECK_REGISTRY_KEY_HEADER)
+                || after_dbsync.starts_with(SYSCHECK_REGISTRY_VALUE_HEADER)))
+    {
+        tracing::trace!("FIM event detected, not forwarding to Inventory Harvester.");
+        return;
+    }
+    let (schema, header_size) = if msg.starts_with(SYSCOLLECTOR_HEADER) {
+        if !r.provider_available(SchemaType::SysDeltas) {
+            tracing::trace!("Router handle for 'syscollector' not available.");
+            return;
+        }
+        (SchemaType::SysDeltas, SYSCOLLECTOR_HEADER.len())
+    } else if msg.starts_with(DBSYNC_HEADER) {
+        if !r.provider_available(SchemaType::Sync) {
+            tracing::trace!("Router handle for 'rsync' not available.");
+            return;
+        }
+        if after_dbsync.starts_with(SYSCOLLECTOR_SYNC_HEADER) {
+            (SchemaType::Sync, DBSYNC_HEADER.len() + SYSCOLLECTOR_SYNC_HEADER.len())
+        } else {
+            tracing::trace!("DBSYNC message not recognized {}", String::from_utf8_lossy(msg));
+            return;
+        }
+    } else {
+        tracing::trace!("{agent_id} message not recognized {}", String::from_utf8_lossy(msg));
+        return;
+    };
+    let start = &msg[header_size..];
+    if start.len() + header_size < siem_ipc::OS_MAXSTR {
+        let ctx = AgentCtx { agent_id, agent_name, agent_ip, agent_version: version };
+        if !r.send(schema, start, &ctx) {
+            tracing::trace!("Unable to forward message for agent '{agent_id}'.");
+        }
+    }
+}

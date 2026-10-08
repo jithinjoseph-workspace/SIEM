@@ -1,0 +1,49 @@
+[package]
+name = "ndr-engine"
+version = "1.0.27"
+edition = "2021"
+license = "Apache-2.0"
+description = "Production-grade NDR correlation engine (Apache-2.0)"
+
+[features]
+default = ["soar"]
+soar    = ["provigil-common/soar"]
+
+[dependencies]
+provigil-common = { path = "../provigil-common", features = ["kafka"] }
+axum            = { version = "0.7", features = ["ws", "multipart"] }
+tokio           = { version = "1",   features = ["full"] }
+serde           = { version = "1",   features = ["derive"] }
+serde_json      = "1"
+serde_yaml      = "0.9"
+dashmap         = "5"
+maxminddb       = "0.24"
+reqwest         = { version = "0.12", features = ["json"] }
+urlencoding     = "2"
+base64 = "0.21"
+ipnetwork       = "0.20"
+chrono          = { version = "0.4", features = ["serde"] }
+regex           = "1"
+tracing         = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite        = { version = "0.31", features = ["bundled"] }
+anyhow          = "1"
+async-trait     = "0.1"
+rdkafka         = { version = "0.36", features = ["cmake-build"] }
+tower-http      = { version = "0.5", features = ["cors", "decompression-gzip", "catch-panic"] }
+clickhouse      = { version = "0.11", features = ["watch"] }
+url = "2"
+jsonwebtoken = "9"
+bcrypt = "0.15"
+rand = "0.8"
+hostname = "0.3"
+uuid = { version = "1", features = ["v4"] }
+redis = { version = "0.23", features = ["tokio-comp"] }
+futures-util = "0.3"
+sysinfo = "0.30"
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls"] }
+sha2   = "0.10"
+zip    = "0.6"
+flate2 = "1"
+csv             = "1.3"
+rust_xlsxwriter = "0.75"

@@ -1,0 +1,13 @@
+{
+  "id": "workspace",
+  "version": "opensearchDashboards",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": [
+    "savedObjects",
+    "opensearchDashboardsReact",
+    "navigation"
+  ],
+  "optionalPlugins": ["savedObjectsManagement","management","dataSourceManagement","contentManagement", "dataSource"],
+  "requiredBundles": ["opensearchDashboardsReact","dataSource", "dataSourceManagement","contentManagement"]
+}

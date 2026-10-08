@@ -1,0 +1,200 @@
+<section class="td-shell">
+
+  <!-- ── PAGE HEADER ── -->
+  <div class="td-header">
+    <div class="td-header-left">
+      <div class="td-eyebrow">Domain Management</div>
+      <h2>Trusted Domains</h2>
+      <p>Allowlist domains to suppress false-positive DNS beaconing alerts for your organization.</p>
+    </div>
+    <div class="td-header-actions">
+      <button class="td-btn-secondary" type="button" (click)="runAiSuggest()" [disabled]="tdAiLoading()">
+        <lucide-icon [name]="SparklesIcon" class="w-4 h-4"></lucide-icon>
+        {{ tdAiLoading() ? 'Analyzing…' : 'AI Suggest' }}
+      </button>
+      <button class="td-btn-secondary" type="button" (click)="loadTrustedDomains()">
+        <lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- ── KPI STRIP ── -->
+  <div class="td-kpi-strip">
+    <div>
+      <span>Your Domains</span>
+      <strong class="kpi-green">{{ tenantOwnDomains().length }}</strong>
+    </div>
+    <div>
+      <span>AI Suggestions</span>
+      <strong class="kpi-amber">{{ tdAiSuggestions().length }}</strong>
+    </div>
+    <div>
+      <span>Global Domains</span>
+      <strong class="kpi-violet">{{ globalDomains().length }}</strong>
+    </div>
+  </div>
+
+  <!-- ── MAIN GRID ── -->
+  <div class="td-grid">
+
+    <!-- LEFT: main content -->
+    <div class="td-main">
+
+      <!-- AI not configured notice -->
+      <div *ngIf="tdAiAvailable() === false" class="td-notice">
+        <lucide-icon [name]="BotIcon" class="w-4 h-4"></lucide-icon>
+        <span><strong>AI not configured</strong> — Ask your super admin to add an AI provider to enable domain suggestions.</span>
+      </div>
+
+      <!-- AI suggestions -->
+      <section class="td-panel td-panel-amber" *ngIf="tdAiSuggestions().length > 0">
+        <div class="td-panel-head">
+          <div class="td-panel-icon amber">
+            <lucide-icon [name]="SparklesIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h3>AI Suggestions</h3>
+            <p>Frequently queried domains that look like legitimate services — add them to stop false-positive alerts.</p>
+          </div>
+          <span class="td-badge amber">{{ tdAiSuggestions().length }} pending</span>
+        </div>
+        <div class="td-suggestion-list">
+          <div *ngFor="let s of tdAiSuggestions(); trackBy: trackByIndex" class="td-suggestion-row">
+            <div class="td-row-icon amber">
+              <lucide-icon [name]="GlobeIcon" class="w-4 h-4"></lucide-icon>
+            </div>
+            <div class="td-row-info">
+              <span class="td-domain-name">{{ s.domain }}</span>
+              <span class="td-domain-meta">{{ s.cnt | number }} queries · {{ s.reason }}</span>
+            </div>
+            <div class="td-row-actions">
+              <button class="td-approve-btn" (click)="approveTdSuggestion(s)">+ Add</button>
+              <button class="td-dismiss-btn" (click)="dismissTdSuggestion(s.domain)">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Add Domain panel -->
+      <section class="td-panel">
+        <div class="td-panel-head">
+          <div class="td-panel-icon">
+            <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h3>Add Domain</h3>
+            <p>Exclude a domain from DNS beaconing alerts across your organization.</p>
+          </div>
+        </div>
+
+        <div class="td-form-grid">
+          <div class="td-field">
+            <span class="td-field-label">Domain</span>
+            <div class="td-input-wrap">
+              <lucide-icon [name]="GlobeIcon" class="td-input-icon w-4 h-4"></lucide-icon>
+              <input type="text"
+                     class="td-input td-input--icon"
+                     [ngModel]="tdNewDomain()" (ngModelChange)="tdNewDomain.set($event)"
+                     placeholder="e.g. ci.mycompany.com"
+                     (keydown.enter)="addTrustedDomain()" />
+            </div>
+          </div>
+          <div class="td-field">
+            <span class="td-field-label">Category</span>
+            <div class="td-input-wrap">
+              <select class="td-select"
+                      [ngModel]="tdNewCategory()" (ngModelChange)="tdNewCategory.set($event)">
+                <option value="dns_beacon">DNS Beacon</option>
+                <option value="threat_intel">Threat Intel</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+          </div>
+          <div class="td-field">
+            <span class="td-field-label">Note (optional)</span>
+            <div class="td-input-wrap">
+              <input type="text"
+                     class="td-input"
+                     [ngModel]="tdNewNote()" (ngModelChange)="tdNewNote.set($event)"
+                     placeholder="Why this domain is trusted" />
+            </div>
+          </div>
+        </div>
+
+        <div class="td-form-footer">
+          <button class="td-add-btn"
+                  (click)="addTrustedDomain()"
+                  [disabled]="tdSaving() || !tdNewDomain().trim()">
+            <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+            {{ tdSaving() ? 'Adding…' : 'Add Domain' }}
+          </button>
+        </div>
+      </section>
+
+      <!-- Your Allowlist -->
+      <section class="td-panel">
+        <div class="td-panel-head">
+          <div class="td-panel-icon green">
+            <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h3>Your Organization's Allowlist</h3>
+            <p>Custom entries that suppress DNS beaconing alerts for your tenant.</p>
+          </div>
+          <span class="td-badge green">{{ tenantOwnDomains().length }}</span>
+        </div>
+
+        <div *ngIf="loadingTrustedDomains()" class="td-skeleton-list">
+          <div class="td-skeleton" *ngFor="let r of [1,2,3]"></div>
+        </div>
+
+        <div class="td-domain-list" *ngIf="!loadingTrustedDomains() && tenantOwnDomains().length > 0">
+          <div *ngFor="let d of tenantOwnDomains()" class="td-domain-row">
+            <div class="td-row-icon green">
+              <lucide-icon [name]="GlobeIcon" class="w-3 h-3"></lucide-icon>
+            </div>
+            <span class="td-domain-name">{{ d.domain }}</span>
+            <span class="td-cat-badge">{{ d.category }}</span>
+            <span class="td-domain-note" *ngIf="d.note">{{ d.note }}</span>
+            <button class="td-remove-btn" (click)="deleteTrustedDomain(d.domain, d.tenant_id)" title="Remove">×</button>
+          </div>
+        </div>
+
+        <p *ngIf="!loadingTrustedDomains() && tenantOwnDomains().length === 0" class="td-empty">
+          No entries yet. Add domains above to stop false-positive DNS beaconing alerts.
+        </p>
+      </section>
+
+    </div>
+
+    <!-- RIGHT: Global list -->
+    <aside class="td-sidebar">
+      <section class="td-panel td-panel-violet" *ngIf="globalDomains().length > 0 || loadingTrustedDomains()">
+        <div class="td-panel-head">
+          <div class="td-panel-icon violet">
+            <lucide-icon [name]="GlobeIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h3>Global List</h3>
+            <p>Shared read-only list. Applies to all organizations.</p>
+          </div>
+          <span class="td-badge violet">{{ globalDomains().length }}</span>
+        </div>
+
+        <div *ngIf="loadingTrustedDomains()" class="td-skeleton-list">
+          <div class="td-skeleton" *ngFor="let r of [1,2,3,4,5]"></div>
+        </div>
+
+        <div class="td-global-chips" *ngIf="!loadingTrustedDomains()">
+          <span *ngFor="let d of globalDomains()" class="td-global-chip" [title]="d.note || d.category">
+            {{ d.domain }}
+            <span class="td-cat-tag">{{ d.category }}</span>
+          </span>
+        </div>
+      </section>
+    </aside>
+
+  </div>
+
+</section>

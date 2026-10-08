@@ -1,0 +1,166 @@
+/* ==========================================================================
+   Sensor Scope Banner — Compact analyst scope indicator
+   ========================================================================== */
+
+.ssb-banner {
+  display: inline-block;
+  box-sizing: border-box;
+  animation: ssb-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ssb-slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ssb-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 25, 48, 0.4) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.ssb-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.06) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+/* Left icon + pulse */
+.ssb-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);
+  line-height: 0;
+}
+
+.ssb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #10b981;
+}
+
+.ssb-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.ssb-pulse {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  animation: ssb-pulse-ring 2s ease-out infinite;
+}
+
+@keyframes ssb-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Content row */
+.ssb-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ssb-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #10b981;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.ssb-divider {
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.ssb-desc {
+  font-size: 12px;
+  color: #8792a7;
+  font-weight: 500;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+/* Sensor ID chips */
+.ssb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ssb-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font-mono, 'Roboto Mono', monospace);
+  color: #f7f9ff;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Right badge */
+.ssb-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8792a7;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  line-height: 1;
+}

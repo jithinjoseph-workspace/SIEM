@@ -1,0 +1,17 @@
+<div class="ssb-banner" *ngIf="hasSensors" role="status" aria-label="Sensor scope">
+  <div class="ssb-inner">
+    <div class="ssb-icon-wrap">
+      <lucide-icon [name]="RadioIcon" class="ssb-icon"></lucide-icon>
+      <span class="ssb-pulse"></span>
+    </div>
+    <div class="ssb-content">
+      <span class="ssb-label">Sensor Scope</span>
+      <span class="ssb-divider">·</span>
+      <span class="ssb-desc">Viewing data from:</span>
+      <div class="ssb-chips">
+        <span class="ssb-chip" *ngFor="let id of sensorIds">{{ id }}</span>
+      </div>
+    </div>
+    <div class="ssb-badge">{{ sensorIds.length }} sensor{{ sensorIds.length === 1 ? '' : 's' }}</div>
+  </div>
+</div>

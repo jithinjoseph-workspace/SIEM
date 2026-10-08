@@ -1,0 +1,432 @@
+<section class="admin-panel telemetry-panel">
+  <!-- Cyber Hero Strip -->
+  <div class="cyber-hero-strip">
+    <div class="hero-brand">
+      <div class="hero-status-pill">
+        <span class="pulse-dot"></span>
+        <span class="status-text">CORE TELEMETRY BUS · REAL-TIME SYSMON ONLINE</span>
+      </div>
+      <h2 class="hero-title">Platform Infrastructure &amp; Hardware Telemetry</h2>
+      <p class="hero-subtext">
+        Continuous kernel sysinfo diagnostics, memory physical allocation bounds, ClickHouse stream ingestion velocity, and Kafka partition health.
+      </p>
+    </div>
+
+    <div class="hero-actions">
+      <div class="system-time-pill" title="Synchronized Platform Time">
+        <lucide-icon [name]="ClockIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+        <span>{{ clock.currentTime() || 'SYNCING' }}</span>
+        <span class="date-sep">·</span>
+        <span class="date-text">{{ clock.currentDate() }}</span>
+      </div>
+
+      <div class="sync-status-pill" title="Polling cadence">
+        <span class="sync-dot"></span>
+        <span>CADENCE 4s · {{ lastUpdatedTime || 'LIVE' }}</span>
+      </div>
+
+      <button class="cyber-btn cyber-btn-ghost" type="button" (click)="triggerManualRefresh()" title="Trigger immediate hardware probe">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="isRefreshing"></lucide-icon>
+        <span>Probe Now</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── 2. Industrial Server Chassis Hardware Deck (Distinctive Style) ── -->
+  <section class="server-chassis-deck" aria-label="Hardware Chassis Barometer">
+
+    <!-- Blade 1: CPU Compute Core Engine -->
+    <div class="blade-slot blade--cpu">
+      <div class="blade-glow cyan"></div>
+      <div class="blade-top">
+        <div class="blade-label">
+          <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>CHASSIS CPU LOAD</span>
+        </div>
+        <span class="blade-status cyan" [class.danger]="cpuPercent > 85">{{ cpuPercent }}%</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-big-stat">
+          <span class="blade-num font-mono text-cyan-400">{{ cpuPercent }}</span>
+          <span class="blade-unit">% UTILIZED</span>
+        </div>
+
+        <!-- Dynamic LED Bar Display -->
+        <div class="led-meter-bar">
+          <span class="led-block" [class.lit]="cpuPercent >= 10" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 20" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 30" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 45" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 60" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 75" [class.warn]="cpuPercent > 60" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 85" [class.alert]="cpuPercent > 85"></span>
+          <span class="led-block" [class.lit]="cpuPercent >= 95" [class.alert]="cpuPercent > 85"></span>
+        </div>
+
+        <div class="blade-meta-row">
+          <span>Global Sysinfo Polling</span>
+          <span class="blade-sub-pill">{{ cpuPercent > 85 ? 'THROTTLED' : 'NOMINAL' }}</span>
+        </div>
+      </div>
+
+      <div class="blade-footer">
+        <span class="blade-chip">KERNEL x86_64</span>
+        <span class="blade-chip">SCHEDULING</span>
+        <span class="blade-chip cyan">ONLINE</span>
+      </div>
+    </div>
+
+    <!-- Blade 2: Physical Memory Allocation Fabric -->
+    <div class="blade-slot blade--ram">
+      <div class="blade-glow purple"></div>
+      <div class="blade-top">
+        <div class="blade-label">
+          <lucide-icon [name]="MemoryStickIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>HOST RAM FABRIC</span>
+        </div>
+        <span class="blade-status purple">{{ memoryPercent }}% OCCUPIED</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-big-stat">
+          <span class="blade-num font-mono text-purple-300">{{ memoryUsedGb | number:'1.1-2' }}</span>
+          <span class="blade-unit">/ {{ memoryTotalGb | number:'1.1-2' }} GB</span>
+        </div>
+
+        <!-- Dual Allocation Bar -->
+        <div class="ram-split-bar" title="Host Physical RAM Allocation">
+          <div class="ram-used-fill" [style.width.%]="memoryPercent"></div>
+        </div>
+
+        <div class="blade-meta-row">
+          <span>Unreserved Available:</span>
+          <span class="font-mono text-emerald-400 font-semibold">{{ memoryFreeGb | number:'1.1-2' }} GB</span>
+        </div>
+      </div>
+
+      <div class="blade-footer">
+        <span class="blade-chip">PHYSICAL RAM</span>
+        <span class="blade-chip">HEAP RESIDENT</span>
+        <span class="blade-chip purple">BOUND</span>
+      </div>
+    </div>
+
+    <!-- Blade 3: ClickHouse Ingestion Engine Throughput -->
+    <div class="blade-slot blade--ch">
+      <div class="blade-glow emerald"></div>
+      <div class="blade-top">
+        <div class="blade-label">
+          <lucide-icon [name]="DatabaseIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>INGESTION STREAM</span>
+        </div>
+        <span class="blade-status emerald">{{ eventsPerSec | number }} EPS</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-big-stat">
+          <span class="blade-num font-mono text-emerald-400">{{ eventsPerSec | number }}</span>
+          <span class="blade-unit">EVENTS / SEC</span>
+        </div>
+
+        <div class="blade-io-box">
+          <div class="io-item">
+            <span class="io-lbl">1-HOUR VOLUME</span>
+            <span class="io-val font-mono text-slate-200">{{ events1h | number }}</span>
+          </div>
+          <div class="io-item">
+            <span class="io-lbl">STORAGE ENGINE</span>
+            <span class="io-val font-mono text-emerald-300">CLICKHOUSE</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="blade-footer">
+        <span class="blade-chip">COLUMNAR DB</span>
+        <span class="blade-chip">VECTOR WRITES</span>
+        <span class="blade-chip success">STREAMING</span>
+      </div>
+    </div>
+
+    <!-- Blade 4: Kafka Messaging Fabric & Replication -->
+    <div class="blade-slot blade--kafka">
+      <div class="blade-glow blue"></div>
+      <div class="blade-top">
+        <div class="blade-label">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>STREAM BUS &amp; QUEUE</span>
+        </div>
+        <span class="blade-status blue" [class.success]="kafkaLag === 0">{{ kafkaLag === 0 ? 'ZERO LAG' : kafkaLag + ' LAG' }}</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-big-stat">
+          <span class="blade-num font-mono text-cyan-300">{{ kafkaPartitions }}</span>
+          <span class="blade-unit">PARTITIONS</span>
+        </div>
+
+        <div class="blade-io-box">
+          <div class="io-item">
+            <span class="io-lbl">REPLICATION ISR</span>
+            <span class="io-val font-mono text-emerald-400">{{ kafkaInSyncPartitions }} in-sync</span>
+          </div>
+          <div class="io-item">
+            <span class="io-lbl">QUEUE LAG</span>
+            <span class="io-val font-mono" [class.text-emerald-400]="kafkaLag === 0" [class.text-amber-400]="kafkaLag > 0">{{ kafkaLag }} records</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="blade-footer">
+        <span class="blade-chip">DISTRIBUTED BUS</span>
+        <span class="blade-chip">PARTITIONED</span>
+        <span class="blade-chip cyan">SYNCED</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Main Telemetry Diagnostic Panels (2x2 Grid) -->
+  <div class="telemetry-dual-grid" *ngIf="telemetryData">
+    <!-- Panel 1: CPU Architecture Gauge Card -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip info"><lucide-icon [name]="CpuIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Compute Core Utilization</h3>
+            <span class="card-subtitle">Real-time processor core workload &amp; scheduling</span>
+          </div>
+        </div>
+        <span class="live-tag"><span class="pulse-dot"></span> LIVE POLLING</span>
+      </div>
+
+      <div class="gauge-center-box">
+        <div class="radial-gauge-container">
+          <svg viewBox="0 0 36 36" class="circular-chart">
+            <path class="circle-bg"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <path class="circle cyan" [style.stroke-dasharray]="cpuPercent + ', 100'"
+              [class.danger]="cpuPercent > 85"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <text x="18" y="20.35" class="percentage" [class.danger]="cpuPercent > 85">
+              {{ cpuPercent }}%
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="diagnostic-rows">
+        <div class="diag-row">
+          <span class="diag-label">Core Load Threshold</span>
+          <span class="diag-val" [class.text-emerald-400]="cpuPercent <= 60" [class.text-amber-400]="cpuPercent > 60 && cpuPercent <= 85" [class.text-rose-400]="cpuPercent > 85">
+            {{ cpuPercent > 85 ? 'Critical Utilization (>85%)' : (cpuPercent > 60 ? 'Elevated Load (60-85%)' : 'Optimal Capacity (<60%)') }}
+          </span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Engine Compute Nodes</span>
+          <span class="diag-val">{{ activeEnginesCount }} of {{ totalEnginesCount }} Nodes Online</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Telemetry Sampling</span>
+          <span class="diag-val">Sysinfo Kernel Poll @ 4000ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Memory Physical Fabric Gauge Card -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip accent"><lucide-icon [name]="MemoryStickIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Memory Allocation Fabric</h3>
+            <span class="card-subtitle">Host RAM residency &amp; heap footprint</span>
+          </div>
+        </div>
+        <span class="live-tag"><span class="pulse-dot"></span> LIVE POLLING</span>
+      </div>
+
+      <div class="gauge-center-box">
+        <div class="radial-gauge-container">
+          <svg viewBox="0 0 36 36" class="circular-chart">
+            <path class="circle-bg"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <path class="circle purple" [style.stroke-dasharray]="memoryPercent + ', 100'"
+              [class.danger]="memoryPercent > 85"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <text x="18" y="20.35" class="percentage" [class.danger]="memoryPercent > 85">
+              {{ memoryPercent }}%
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="memory-progress-track">
+        <div class="memory-bar-fill" [style.width.%]="memoryPercent" [class.danger]="memoryPercent > 85"></div>
+      </div>
+
+      <div class="diagnostic-rows">
+        <div class="diag-row">
+          <span class="diag-label">Resident Used RAM</span>
+          <span class="diag-val font-mono text-cyan-300">{{ memoryUsedGb | number:'1.2-2' }} GB</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Unallocated Available RAM</span>
+          <span class="diag-val font-mono text-emerald-400">{{ memoryFreeGb | number:'1.2-2' }} GB</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Total Host Physical RAM</span>
+          <span class="diag-val font-mono text-slate-300">{{ memoryTotalGb | number:'1.2-2' }} GB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Ingestion Stream Card -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip emerald"><lucide-icon [name]="DatabaseIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>ClickHouse Ingestion Engine</h3>
+            <span class="card-subtitle">Real-time analytical event throughput &amp; stream writes</span>
+          </div>
+        </div>
+        <span class="pill-badge emerald">CH ACTIVE</span>
+      </div>
+
+      <div class="stats-counter-banner">
+        <div class="counter-block">
+          <span class="counter-label">CURRENT INGESTION RATE</span>
+          <div class="counter-num-box">
+            <span class="counter-big">{{ eventsPerSec | number }}</span>
+            <span class="counter-sub">events / sec</span>
+          </div>
+        </div>
+        <div class="counter-block">
+          <span class="counter-label">1-HOUR ACCUMULATED VOLUME</span>
+          <div class="counter-num-box">
+            <span class="counter-big">{{ events1h | number }}</span>
+            <span class="counter-sub">events logged</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="diagnostic-rows">
+        <div class="diag-row">
+          <span class="diag-label">Estimated Minute Flow</span>
+          <span class="diag-val font-mono">{{ Math.round(eventsPerSec * 60) | number }} events / min</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Estimated 24h Projected</span>
+          <span class="diag-val font-mono">{{ (events1h * 24) | number }} events / day</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Analytical Storage Engine</span>
+          <span class="diag-val">ClickHouse High-Performance Vector DB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 4: Kafka Stream Bus Diagnostics -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip blue"><lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Kafka Event Pipeline &amp; Queue</h3>
+            <span class="card-subtitle">Distributed messaging bus partition distribution</span>
+          </div>
+        </div>
+        <span class="pill-badge" [class.emerald]="kafkaLag === 0" [class.amber]="kafkaLag > 0">
+          {{ kafkaLag === 0 ? 'ZERO LAG' : kafkaLag + ' LAG' }}
+        </span>
+      </div>
+
+      <div class="stats-counter-banner">
+        <div class="counter-block">
+          <span class="counter-label">TOTAL TOPIC PARTITIONS</span>
+          <div class="counter-num-box">
+            <span class="counter-big">{{ kafkaPartitions }}</span>
+            <span class="counter-sub">active partitions</span>
+          </div>
+        </div>
+        <div class="counter-block">
+          <span class="counter-label">REPLICATION STATE</span>
+          <div class="counter-num-box">
+            <span class="counter-big">{{ kafkaInSyncPartitions }}</span>
+            <span class="counter-sub">in-sync ISR</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="diagnostic-rows">
+        <div class="diag-row">
+          <span class="diag-label">Consumer Lag Backpressure</span>
+          <span class="diag-val font-mono" [class.text-emerald-400]="kafkaLag === 0" [class.text-amber-400]="kafkaLag > 0">
+            {{ kafkaLag }} records pending
+          </span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Active Sensor Probe Keys</span>
+          <span class="diag-val font-mono">{{ activeSensorsCount }} keys transmitting</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Cluster Bus Health</span>
+          <span class="diag-val text-emerald-400">Stream Pipeline Operational</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 5: Frontend Client Error Reports -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip amber"><lucide-icon [name]="AlertTriangleIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Frontend Client Error Reports</h3>
+            <span class="card-subtitle">Unhandled UI errors captured from every user's browser, most recent first</span>
+          </div>
+        </div>
+        <span class="pill-badge" [class.emerald]="clientErrors.length === 0" [class.amber]="clientErrors.length > 0">
+          {{ clientErrors.length }} RECENT
+        </span>
+      </div>
+
+      <div class="diagnostic-rows" *ngIf="!loadingClientErrors && clientErrors.length === 0">
+        <div class="diag-row">
+          <span class="diag-label">Status</span>
+          <span class="diag-val text-emerald-400">No client errors reported recently</span>
+        </div>
+      </div>
+
+      <div class="diagnostic-rows" *ngIf="loadingClientErrors">
+        <div class="diag-row">
+          <span class="diag-label">Status</span>
+          <span class="diag-val">Loading...</span>
+        </div>
+      </div>
+
+      <div class="diagnostic-rows" *ngIf="!loadingClientErrors && clientErrors.length > 0">
+        <div class="diag-row" *ngFor="let err of clientErrors" style="align-items:flex-start; flex-direction:column; gap:4px;">
+          <span class="diag-label font-mono" style="white-space:normal; word-break:break-word;">
+            {{ err.occurred_at }} · {{ err.username || 'anonymous' }} · {{ err.tenant_id || 'no tenant' }} · {{ err.url }}
+          </span>
+          <span class="diag-val text-amber-400" style="white-space:normal; word-break:break-word; text-align:left;">
+            {{ err.message }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div class="cyber-loading-box" *ngIf="isLoading && !telemetryData">
+    <lucide-icon [name]="RefreshIcon" class="w-8 h-8 spinning text-cyan-400"></lucide-icon>
+    <div class="loading-label">Connecting to Host Telemetry Daemon...</div>
+  </div>
+</section>

@@ -1,0 +1,9 @@
+[package]
+name = "siem-regex"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh-compatible OSRegex / OSMatch / PCRE2 expression matching"
+
+[dependencies]
+thiserror = "1"
+pcre2 = "0.2"

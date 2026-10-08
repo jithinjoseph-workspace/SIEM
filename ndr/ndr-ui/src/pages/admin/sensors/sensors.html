@@ -1,0 +1,506 @@
+<section class="admin-panel sns-panel">
+
+  <!-- Ambient Glows -->
+  <div class="sns-ambient-glow glow--amber" aria-hidden="true"></div>
+  <div class="sns-ambient-glow glow--cyan" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="msg" [class]="'admin-message ' + (msgType === 'success' ? 'success' : 'error')">{{ msg }}</div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="sns-hero-strip">
+    <div class="sns-hero-left">
+      <div class="sns-system-badge">
+        <span class="sns-pulse-dot"></span>
+        <span>DISTRIBUTED PROBES / TAP MATRIX</span>
+        <span class="sns-badge-sep">/</span>
+        <span class="sns-badge-status">{{ activeRatioPercent >= 100 ? 'ALL PROBES ARMED' : activeSensorsCount + '/' + sensorKeys.length + ' ARMED' }}</span>
+      </div>
+      <h1 class="sns-headline">Sensor Probe <em>Matrix</em> &amp; Keys</h1>
+      <p class="sns-tagline">Cryptographic mTLS key provisioning, remote endpoint TAP agents, and real-time capture mesh.</p>
+    </div>
+
+    <div class="sns-hero-controls">
+      <!-- Refresh Action -->
+      <button type="button" class="sns-action-btn" (click)="loadSensorKeys()" title="Refresh probe status">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingSensorKeys"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="sns-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-amber-400"></lucide-icon>
+        <div class="sns-clock-text">
+          <span class="sns-clock-time">{{ clock.currentTime() }}</span>
+          <span class="sns-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. Sensor Ingress & TAP Fleet Command Deck (Completely Distinct Style) ── -->
+  <section class="sensor-command-deck" aria-label="Sensor Probe Fleet Diagnostic Deck">
+
+    <!-- Card 1: Probe Fleet Armed Radar Radial -->
+    <div class="deck-card deck-card--radar">
+      <div class="deck-card-glow amber"></div>
+      <div class="deck-card-top">
+        <div class="deck-tag">
+          <lucide-icon [name]="RadioIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>PROBE FLEET ARMED</span>
+        </div>
+        <span class="deck-status-pill amber">{{ activeSensorsCount }}/{{ sensorKeys.length }} ARMED</span>
+      </div>
+
+      <div class="deck-radar-body">
+        <div class="radar-gauge-wrap">
+          <svg class="radar-circular-svg" viewBox="0 0 36 36">
+            <path class="radar-circle-bg"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+            <path class="radar-circle-bar amber"
+              [style.stroke-dasharray]="activeRatioPercent + ', 100'"
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            />
+          </svg>
+          <div class="radar-center-content">
+            <span class="radar-center-pct text-amber-400">{{ activeRatioPercent }}%</span>
+            <span class="radar-center-lbl">ACTIVE</span>
+          </div>
+        </div>
+
+        <div class="deck-radar-stats">
+          <div class="radar-stat-line">
+            <span class="stat-lbl">Active Probes</span>
+            <span class="stat-val font-mono text-amber-400 font-bold">{{ activeSensorsCount }} armed</span>
+          </div>
+          <div class="radar-stat-line">
+            <span class="stat-lbl">Revoked / Idle</span>
+            <span class="stat-val font-mono text-slate-400">{{ revokedSensorsCount }} keys</span>
+          </div>
+          <div class="radar-stat-line">
+            <span class="stat-lbl">Tunnel Link</span>
+            <span class="stat-val font-mono text-emerald-400">mTLS v1.3</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="deck-card-footer">
+        <span class="foot-chip">TUNNEL mTLS 1.3</span>
+        <span class="foot-chip">ZERO-COPY RING</span>
+        <span class="foot-chip success">ENCRYPTED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Cryptographic Key Vault Capsule -->
+    <div class="deck-card deck-card--vault">
+      <div class="deck-card-glow cyan"></div>
+      <div class="deck-card-top">
+        <div class="deck-tag">
+          <lucide-icon [name]="KeyIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>KEY VAULT SECURITY</span>
+        </div>
+        <span class="deck-status-pill cyan">ED25519 CIPHER</span>
+      </div>
+
+      <div class="deck-vault-body">
+        <div class="vault-token-display">
+          <div class="vault-icon-box">
+            <lucide-icon [name]="LockIcon" class="w-5 h-5 text-cyan-400"></lucide-icon>
+          </div>
+          <div class="vault-token-meta">
+            <span class="vault-token-count font-mono">{{ sensorKeys.length }}</span>
+            <span class="vault-token-sub">PROVISIONED TOKENS</span>
+          </div>
+        </div>
+
+        <div class="vault-hash-badge">
+          <span class="hash-tag">CIPHER STANDARD</span>
+          <span class="hash-code font-mono">AES-256-GCM / SHA-256 AUTH</span>
+        </div>
+      </div>
+
+      <div class="deck-card-footer">
+        <span class="foot-chip">PREFIX ndr_live_</span>
+        <span class="foot-chip">ON-DEMAND</span>
+        <span class="foot-chip cyan">TENANT BOUND</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Multi-Tenant Ingress Mesh (Segmented Slot Rack) -->
+    <div class="deck-card deck-card--mesh">
+      <div class="deck-card-glow emerald"></div>
+      <div class="deck-card-top">
+        <div class="deck-tag">
+          <lucide-icon [name]="BuildingIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>TENANT SCOPE COVERAGE</span>
+        </div>
+        <span class="deck-status-pill emerald">{{ tenantsCoveredCount }}/{{ tenants.length }} ORGS</span>
+      </div>
+
+      <div class="deck-mesh-body">
+        <div class="mesh-stat-lead">
+          <span class="mesh-num text-emerald-400 font-mono">{{ tenantsCoveredPercent }}%</span>
+          <span class="mesh-desc">ORGANIZATION COVERAGE</span>
+        </div>
+
+        <!-- Segmented Tenant Slot Bar -->
+        <div class="tenant-slot-track" title="Segmented Tenant Probe Coverage">
+          <div *ngFor="let t of tenants" class="tenant-slot-block"
+            [class.covered]="isTenantCovered(t.id)"
+            [title]="t.name + ': ' + (isTenantCovered(t.id) ? 'Probe Armed' : 'No Active Probe')">
+          </div>
+        </div>
+
+        <div class="mesh-meta-row">
+          <span class="text-emerald-400 font-mono font-semibold">{{ tenantsCoveredCount }} Armed</span>
+          <span class="text-slate-500">·</span>
+          <span class="text-slate-400 font-mono">{{ tenants.length - tenantsCoveredCount }} Pending</span>
+        </div>
+      </div>
+
+      <div class="deck-card-footer">
+        <span class="foot-chip">STRICT RBAC</span>
+        <span class="foot-chip">ISOLATION 100%</span>
+        <span class="foot-chip success">ENFORCED</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Kernel Zero-Copy Ingress & Loss Monitor -->
+    <div class="deck-card deck-card--ingress">
+      <div class="deck-card-glow purple"></div>
+      <div class="deck-card-top">
+        <div class="deck-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>KERNEL INGRESS POSTURE</span>
+        </div>
+        <span class="deck-status-pill purple">AF_PACKET / eBPF</span>
+      </div>
+
+      <div class="deck-ingress-body">
+        <div class="ingress-lead-row">
+          <div class="ingress-drop-badge">
+            <span class="drop-num text-emerald-400 font-mono">0.00%</span>
+            <span class="drop-lbl">PACKET LOSS RATIO</span>
+          </div>
+          <div class="ingress-status-pill">
+            <span class="pulse-dot-green"></span>
+            <span>ZERO LOSS</span>
+          </div>
+        </div>
+
+        <div class="ingress-tech-matrix">
+          <div class="tech-item">
+            <span class="t-lbl">CAPTURE ENGINE</span>
+            <span class="t-val text-purple-300 font-mono">eBPF / AF_PACKET</span>
+          </div>
+          <div class="tech-item">
+            <span class="t-lbl">RING BUFFER</span>
+            <span class="t-val text-emerald-400 font-mono">ZERO-COPY RING</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="deck-card-footer">
+        <span class="foot-chip">HEARTBEAT 5s</span>
+        <span class="foot-chip">KERNEL RING</span>
+        <span class="foot-chip purple">OPTIMAL</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. Key Provisioning Command Console ─────────────────────── -->
+  <section class="sns-card glass-card">
+    <div class="sns-card-head">
+      <div>
+        <div class="sns-card-tag">INGRESS KEY PROVISIONING</div>
+        <h2 class="sns-card-title">Generate New Probe Authentication Key</h2>
+        <p class="sns-card-desc">Assign a cryptographically signed ingestion token to a tenant organization.</p>
+      </div>
+    </div>
+
+    <form class="sns-provision-form" (ngSubmit)="createSensorKey()">
+      <div class="sns-form-grid">
+        <div class="sns-form-field">
+          <label>TENANT SCOPE</label>
+          <select [(ngModel)]="newSensorKey.tenant_id" name="sensorTenant" class="sns-input">
+            <option value="">Choose tenant organization...</option>
+            <option *ngFor="let tenant of tenants" [value]="tenant.id">
+              {{ tenant.name }} ({{ tenant.id }})
+            </option>
+          </select>
+        </div>
+
+        <div class="sns-form-field">
+          <label>PROBE IDENTIFIER NAME</label>
+          <input [(ngModel)]="newSensorKey.name" name="sensorName" placeholder="e.g. Core-Datacenter-TAP-01" class="sns-input" />
+        </div>
+
+        <div class="sns-form-submit">
+          <button class="sns-submit-btn" type="submit"
+            [disabled]="creatingSensorKey || !newSensorKey.tenant_id || !newSensorKey.name.trim()">
+            <lucide-icon [name]="KeyIcon" class="w-4 h-4"></lucide-icon>
+            <span>{{ creatingSensorKey ? 'Generating Key...' : 'Provision Key' }}</span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Quick Command Strip If Just Created -->
+    <div *ngIf="installCommand" class="sns-command-strip">
+      <div class="command-content">
+        <span class="command-label">INSTALL COMMAND:</span>
+        <code>{{ installCommand }}</code>
+      </div>
+      <button class="sns-copy-btn" type="button" (click)="copyInstallCommand()">
+        <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
+        <span>Copy Command</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ── 3.5. Live TAP Ingress & Cryptographic Rotation Ribbon ──────── -->
+  <section class="tap-pipeline-ribbon" aria-label="TAP Ingress and Crypto Rotation Pipeline">
+
+    <!-- Blade 1: Hardware Mirror TAP & Interface Ingress -->
+    <div class="pipeline-blade blade--tap">
+      <div class="blade-accent-line amber"></div>
+      <div class="blade-top">
+        <div class="blade-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>MIRROR SPAN INGRESS</span>
+        </div>
+        <span class="blade-badge amber">10 Gbps LINE-RATE</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-metric-lead">
+          <span class="b-val text-amber-400 font-mono">PROMISCUOUS</span>
+          <span class="b-lbl">KERNEL AF_PACKET ZERO-COPY</span>
+        </div>
+
+        <div class="tap-interface-chips">
+          <span *ngFor="let iface of (interfaces.length > 0 ? interfaces.slice(0, 4) : ['eth0'])" class="iface-chip font-mono">
+            <span class="iface-dot green"></span>
+            <strong>{{ iface }}</strong>: TAP-INGRESS
+          </span>
+        </div>
+
+        <div class="blade-tech-line">
+          <span class="bt-lbl">CAPTURE BYPASS:</span>
+          <span class="bt-val font-mono text-slate-300">eBPF XDP Hardware Offload</span>
+        </div>
+      </div>
+
+      <div class="blade-foot">
+        <span class="b-chip">FULL PACKET SLICING</span>
+        <span class="b-chip">HW TIMESTAMP</span>
+        <span class="b-chip amber">ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- Blade 2: Cryptographic Token Lifecycle & Rotation -->
+    <div class="pipeline-blade blade--crypto">
+      <div class="blade-accent-line cyan"></div>
+      <div class="blade-top">
+        <div class="blade-tag">
+          <lucide-icon [name]="LockIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>KEY ROTATION LIFECYCLE</span>
+        </div>
+        <span class="blade-badge cyan">ED25519-SHA512</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-metric-lead">
+          <span class="b-val text-cyan-400 font-mono">ON-DEMAND</span>
+          <span class="b-lbl">INSTANT KEY REVOCATION &amp; RE-KEY</span>
+        </div>
+
+        <div class="crypto-progress-track">
+          <div class="crypto-progress-bar" style="width: 100%;"></div>
+        </div>
+
+        <div class="blade-tech-line">
+          <span class="bt-lbl">CIPHER ROTATION:</span>
+          <span class="bt-val font-mono text-cyan-300">Strict Anti-Replay Nonce Verification</span>
+        </div>
+      </div>
+
+      <div class="blade-foot">
+        <span class="b-chip">mTLS 1.3 PINNED</span>
+        <span class="b-chip">ECDH P-384</span>
+        <span class="b-chip cyan">ENFORCED</span>
+      </div>
+    </div>
+
+    <!-- Blade 3: Multi-Tenant Ingress Boundary Gate -->
+    <div class="pipeline-blade blade--tenant">
+      <div class="blade-accent-line emerald"></div>
+      <div class="blade-top">
+        <div class="blade-tag">
+          <lucide-icon [name]="ShieldCheckIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>INGRESS BOUNDARY GATE</span>
+        </div>
+        <span class="blade-badge emerald">PARTITION HARDWALL</span>
+      </div>
+
+      <div class="blade-body">
+        <div class="blade-metric-lead">
+          <span class="b-val text-emerald-400 font-mono">ISOLATED</span>
+          <span class="b-lbl">TENANT-SCOPED INGESTION TOKENS</span>
+        </div>
+
+        <div class="tenant-gate-status">
+          <span class="gate-status-pill font-mono">
+            <span class="gate-dot"></span>
+            Cross-Tenant Write Rejection: 100% Enforced
+          </span>
+        </div>
+
+        <div class="blade-tech-line">
+          <span class="bt-lbl">STORAGE TARGET:</span>
+          <span class="bt-val font-mono text-emerald-300">ClickHouse Sharded Table Engine</span>
+        </div>
+      </div>
+
+      <div class="blade-foot">
+        <span class="b-chip">ZERO CROSS-LEAK</span>
+        <span class="b-chip">RBAC AUDIT</span>
+        <span class="b-chip success">OPTIMAL</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 4. Registered Sensor Keys Matrix ────────────────────────── -->
+  <section class="sns-card glass-card">
+    <div class="sns-card-head">
+      <div>
+        <div class="sns-card-tag">PROBE INVENTORY</div>
+        <h2 class="sns-card-title">Registered Sensor Probes</h2>
+        <p class="sns-card-desc">Active cryptographic keys, host bindings, and telemetry connection states.</p>
+      </div>
+
+      <!-- Search Toolbar -->
+      <div class="sns-toolbar">
+        <div class="sns-search-box">
+          <lucide-icon [name]="SearchIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <input [(ngModel)]="sensorSearch" type="search" placeholder="Filter probe, tenant, or prefix..." class="sns-search-input" />
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="loadingSensorKeys" class="sns-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Retrieving sensor probe keys...</span>
+    </div>
+
+    <div *ngIf="!loadingSensorKeys && filteredSensorKeys.length === 0" class="sns-empty-state">
+      <lucide-icon [name]="RadioIcon" class="w-8 h-8 text-slate-500"></lucide-icon>
+      <strong>No sensor probe keys match</strong>
+      <span>Provision a sensor key above to deploy a network tap agent.</span>
+    </div>
+
+    <div *ngIf="!loadingSensorKeys && filteredSensorKeys.length > 0" class="sns-table-wrap">
+      <table class="ov-cyber-table">
+        <thead>
+          <tr>
+            <th class="col-probe">Sensor Probe</th>
+            <th class="col-tenant">Tenant Organization</th>
+            <th class="col-prefix">Key Prefix</th>
+            <th class="col-state">Ingress State</th>
+            <th class="col-date">Provisioned</th>
+            <th class="col-seen">Last Heartbeat</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let s of filteredSensorKeys">
+            <td class="col-probe">
+              <div class="probe-cell">
+                <lucide-icon [name]="RadioIcon" class="w-4 h-4" [class.text-amber-400]="s.active" [class.text-slate-500]="!s.active"></lucide-icon>
+                <div>
+                  <strong>{{ s.name }}</strong>
+                  <span class="probe-sub">{{ s.hostname || 'Endpoint TAP Agent' }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="col-tenant">
+              <span class="tenant-tag">
+                <lucide-icon [name]="BuildingIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+                <span>{{ tenantName(s.tenant_id) }}</span>
+              </span>
+            </td>
+            <td class="col-prefix">
+              <span class="prefix-badge font-mono">{{ s.key_prefix }}...</span>
+            </td>
+            <td class="col-state">
+              <span class="sns-status-pill" [class.status--armed]="s.active" [class.status--idle]="!s.active">
+                <i class="p-dot"></i> {{ s.active ? 'Armed & Listening' : 'Revoked' }}
+              </span>
+            </td>
+            <td class="col-date"><span class="mono-text text-xs text-slate-400">{{ s.created_at ? (s.created_at | date:'mediumDate') : '—' }}</span></td>
+            <td class="col-seen">
+              <span class="mono-text text-xs" [class.text-emerald-400]="s.last_seen" [class.text-slate-500]="!s.last_seen">
+                {{ s.last_seen ? (s.last_seen | date:'shortTime') : 'Idle' }}
+              </span>
+            </td>
+            <td class="col-actions">
+              <div class="sns-row-actions">
+                <button *ngIf="s.active" type="button" class="sns-revoke-btn" (click)="revokeSensorKey(s)" title="Revoke probe key">
+                  Revoke
+                </button>
+                <button *ngIf="!s.active" type="button" class="sns-reactivate-btn" (click)="reactivateSensorKey(s)" title="Reactivate probe key">
+                  Reactivate
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Key Created Dialog Modal -->
+  <div *ngIf="showSensorKeyModal" class="modal-backdrop">
+    <div class="modal-panel compact glass-card">
+      <div class="modal-head">
+        <div>
+          <h3>Sensor Probe Key Created</h3>
+          <p>Copy this key now. For security, the full key secret will not be displayed again.</p>
+        </div>
+        <button type="button" class="icon-button" (click)="closeSensorKeyModal()">
+          <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="sns-modal-keybox" *ngIf="createdSensorKey?.key">
+        <label>FULL SENSOR KEY</label>
+        <div class="key-copy-row">
+          <input type="text" readonly [value]="createdSensorKey?.key" class="sns-input font-mono text-cyan-300" />
+          <button type="button" class="sns-copy-btn" (click)="copyCreatedSensorKey()">
+            <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sns-modal-commandbox" *ngIf="installCommand">
+        <label>LINUX / DEBIAN SENSOR INSTALL SCRIPT</label>
+        <div class="command-snippet">
+          <code>{{ installCommand }}</code>
+          <button type="button" class="sns-copy-btn" (click)="copyInstallCommand()">
+            <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="primary-action" type="button" (click)="closeSensorKeyModal()">Done</button>
+      </div>
+    </div>
+  </div>
+
+</section>

@@ -1,0 +1,92 @@
+.analyst-layout {
+  display: block; /* Removed flex since sidebar is fixed */
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-surface);
+}
+
+.analyst-content {
+  margin-left: 240px; /* Space for the absolute sidebar */
+  height: calc(100vh - 76px); /* Full height minus topbar */
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Force app-sidebar to be fixed at the absolute top left */
+.analyst-layout app-sidebar .sidebar-shell {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: 100vh !important;
+  z-index: 150;
+}
+
+/* ── Analyst Sidebar Enhancements ── */
+.analyst-layout app-sidebar .nav-section span {
+  font-size: 11px !important;
+  letter-spacing: 0.12em !important;
+}
+
+.analyst-layout app-sidebar .nav-label {
+  font-size: 14.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.analyst-layout app-sidebar .nav-link {
+  min-height: 40px !important;
+  margin: 2px 8px !important;
+  padding: 0 12px 0 16px !important;
+  border-radius: 8px !important;
+}
+
+/* Active page highlighting */
+.analyst-layout app-sidebar .nav-link.active {
+  background: linear-gradient(90deg, #15803d, #22c55e) !important;
+  color: #ffffff !important;
+  border-color: #22c55e !important;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.4) !important;
+}
+
+.analyst-layout app-sidebar .nav-link.active .nav-icon {
+  color: #ffffff !important;
+  filter: none !important;
+}
+
+/* Hide the old left indicator bar on active items for a cleaner pill look */
+.analyst-layout app-sidebar .nav-link.active::before {
+  display: none !important;
+}
+
+/* Slightly enhance hover state */
+.analyst-layout app-sidebar .nav-link:hover:not(.active) {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-radius: 8px !important;
+}
+
+/* ── Analyst Custom Dark Theme Overrides ── */
+.analyst-layout {
+  /* Override global surface colors to be pure black for the Analyst section only */
+  --color-surface: #000000 !important; 
+  --color-surface-container-low: #050505 !important; 
+  --color-surface-container-high: #0a0a0a !important;
+  --color-surface-container-highest: #111111 !important;
+}
+
+/* ── Analyst Layout - Shared Components Overrides ── */
+.analyst-layout app-sidebar .sidebar-shell {
+  background: #000000 !important;
+}
+.analyst-layout app-sidebar .brand-block {
+  background: linear-gradient(180deg, #ffffff 0%, #eefbf3 60%, #000000 100%) !important;
+}
+body.has-analyst-sidebar app-navbar .topbar {
+  background: rgba(0, 0, 0, 0.9) !important;
+  height: 76px !important;
+  border-bottom: 2px solid transparent !important;
+  border-image: linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #8b5cf6 100%) 1 !important;
+  box-shadow: 0 4px 30px rgba(16, 185, 129, 0.15) !important;
+  transition: all 0.3s ease !important;
+}

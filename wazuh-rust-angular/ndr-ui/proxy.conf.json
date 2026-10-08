@@ -1,0 +1,17 @@
+{
+  "/api": {
+    "target": "https://localhost:3000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/favicon-proxy": {
+    "target": "https://localhost:3000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/ws": {
+    "target": "wss://localhost:3000",
+    "secure": false,
+    "ws": true
+  }
+}

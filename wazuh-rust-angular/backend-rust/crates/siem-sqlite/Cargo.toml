@@ -1,0 +1,11 @@
+[package]
+name = "siem-sqlite"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite 3.50.4 as pinned by Wazuh (deps v54), built with Wazuh's flags, behind a thin wrapper of the C API used by wazuh-db"
+links = "sqlite3"
+
+[dependencies]
+
+[build-dependencies]
+cc = "1"

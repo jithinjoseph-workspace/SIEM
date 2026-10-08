@@ -1,0 +1,188 @@
+<div class="flex w-full h-full overflow-hidden crm-shell-container">
+
+  <!-- ── REFERENCE DASHBOARD SIDEBAR ── -->
+  <aside class="crm-sidebar">
+
+    <!-- Brand Header -->
+    <div class="crm-brand-block">
+      <div class="crm-brand-title-wrap">
+        <h1 class="crm-brand-title">ProVigil AI</h1>
+        <span class="crm-brand-subtitle">TENANT DASHBOARD</span>
+      </div>
+      <div class="crm-brand-badge">
+        <span class="crm-badge-dot"></span>
+        <span class="crm-badge-text">PROMASECURE ENTERPRISE</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="crm-nav">
+
+      <!-- Category 1: IDENTITY & ACCESS -->
+      <div class="crm-nav-section">
+        <div class="crm-category-header">
+          <lucide-icon [name]="UserIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>IDENTITY &amp; ACCESS</span>
+        </div>
+        <div class="crm-nav-items">
+          <a routerLink="/tenant-admin/users" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="UsersIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Users &amp; Sensors</span>
+            <span class="crm-badge-pill cyan">NEW</span>
+          </a>
+          <a routerLink="/tenant-admin/trusted-domains" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="GlobeIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Trusted Domains</span>
+          </a>
+          <a routerLink="/tenant-admin/sessions" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="ActivityIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Active Sessions</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Category 2: DEFENSE & CONFIG -->
+      <div class="crm-nav-section">
+        <div class="crm-category-header">
+          <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>DEFENSE &amp; CONFIG</span>
+        </div>
+        <div class="crm-nav-items">
+          <a routerLink="/tenant-admin/setup" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="SettingsIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Sensor Setup</span>
+          </a>
+          <a routerLink="/tenant-admin/settings" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="SlidersIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Detection Settings</span>
+          </a>
+          <a *ngIf="hasSiem" routerLink="/tenant-admin/siem-sources" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="RadioIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">SIEM Sources</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Category 3: OPERATIONS & ACCOUNT -->
+      <div class="crm-nav-section">
+        <div class="crm-category-header">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>OPERATIONS</span>
+        </div>
+        <div class="crm-nav-items">
+          <a routerLink="/tenant-admin/profile" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="UserIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">My Profile</span>
+          </a>
+          <a routerLink="/tenant-admin/support" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="HelpCircleIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Support Center</span>
+          </a>
+        </div>
+      </div>
+
+    </nav>
+
+  </aside>
+
+  <!-- ── MAIN CONTENT AREA ── -->
+  <div class="flex-1 overflow-auto relative">
+    <section class="crm-main-shell">
+
+      <!-- ── TENANT IDENTITY COCKPIT CARD ── -->
+      <div class="crm-hero-banner">
+        <div class="crm-hero-left">
+          <div class="crm-hero-avatar">
+            <lucide-icon [name]="BuildingIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div class="crm-hero-text">
+            <span class="crm-hero-eyebrow">ORGANIZATION WORKSPACE</span>
+            <h2 class="crm-hero-title">{{ tenantName() }}</h2>
+          </div>
+        </div>
+
+        <div class="crm-hero-right">
+          <div class="crm-status-box">
+            <div class="crm-status-info">
+              <span class="crm-status-label">SYSTEM HEALTH</span>
+              <div class="crm-status-val">
+                <span class="crm-pulse-dot" [class.degraded]="tenantSystemStatus() === 'DEGRADED'"></span>
+                <strong [class.degraded]="tenantSystemStatus() === 'DEGRADED'">{{ tenantSystemStatus() }}</strong>
+              </div>
+            </div>
+            <div class="spark-bars" [class.degraded-bars]="tenantSystemStatus() === 'DEGRADED'">
+              <div class="spark-bar"></div>
+              <div class="spark-bar"></div>
+              <div class="spark-bar"></div>
+              <div class="spark-bar"></div>
+              <div class="spark-bar"></div>
+              <div class="spark-bar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SOFTWARE UPDATE BANNER ── -->
+      <div *ngIf="updateAvailable()" class="crm-update-banner">
+        <div class="crm-update-icon">
+          <lucide-icon [name]="ArrowUpCircleIcon" class="w-5 h-5"></lucide-icon>
+        </div>
+        <div class="crm-update-text">
+          <span>Firmware Update Available &mdash; <strong>v{{ latestVersion() }}</strong></span>
+          <span class="crm-update-current">(Active: v{{ currentVersion() }})</span>
+        </div>
+        <button class="crm-update-btn" type="button" (click)="openUpdateDialog()">
+          <lucide-icon [name]="RefreshCwIcon" class="w-4 h-4"></lucide-icon>
+          Upgrade Now
+        </button>
+      </div>
+
+      <!-- ── UPDATE CONFIRMATION DIALOG ── -->
+      <div *ngIf="showUpdateDialog()" class="dialog-overlay" (click)="closeUpdateDialog()">
+        <div class="crm-dialog-box" (click)="$event.stopPropagation()">
+          <div class="crm-dialog-header">
+            <div class="crm-dialog-icon">
+              <lucide-icon [name]="ArrowUpCircleIcon" class="w-5 h-5"></lucide-icon>
+            </div>
+            <div>
+              <h3>Apply System Update</h3>
+              <p>Upgrade the tenant telemetry node to version {{ latestVersion() }}</p>
+            </div>
+            <button class="dialog-close-btn" type="button" (click)="closeUpdateDialog()">
+              <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+            </button>
+          </div>
+          <div class="crm-dialog-body">
+            <p>This will update the NDR platform from <strong>v{{ currentVersion() }}</strong> to <strong>v{{ latestVersion() }}</strong>.</p>
+            <ul class="update-notes">
+              <li>Services will restart &mdash; active telemetry sessions may reconnect briefly</li>
+              <li>All stored security data, logs, and configurations are preserved</li>
+              <li>The dashboard will reconnect automatically</li>
+            </ul>
+            <div *ngIf="updateMessage()" class="update-status-msg">{{ updateMessage() }}</div>
+          </div>
+          <div class="dialog-actions">
+            <button class="crm-btn-cancel" type="button" (click)="closeUpdateDialog()" [disabled]="updateApplying()">Cancel</button>
+            <button class="crm-btn-confirm" type="button" (click)="confirmApplyUpdate()" [disabled]="updateApplying()">
+              <lucide-icon *ngIf="!updateApplying()" [name]="ArrowUpCircleIcon" class="w-4 h-4"></lucide-icon>
+              <lucide-icon *ngIf="updateApplying()"  [name]="LoaderIcon"        class="w-4 h-4 spin"></lucide-icon>
+              {{ updateApplying() ? 'Applying Update…' : 'Confirm &amp; Apply' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── NOTIFICATION TOAST ── -->
+      <div *ngIf="message()" [class]="'crm-message ' + messageType()">
+        <lucide-icon *ngIf="messageType() === 'success'" [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+        <lucide-icon *ngIf="messageType() === 'error'"   [name]="XIcon"     class="w-4 h-4"></lucide-icon>
+        <span>{{ message() }}</span>
+      </div>
+
+      <!-- ── CHILD PAGE ROUTER OUTLET ── -->
+      <router-outlet></router-outlet>
+
+    </section>
+  </div>
+
+</div>

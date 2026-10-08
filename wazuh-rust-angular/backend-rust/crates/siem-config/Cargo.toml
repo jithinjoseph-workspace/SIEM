@@ -1,0 +1,16 @@
+[package]
+name = "siem-config"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh's configuration layer (src/config): ReadConfig, internal options and section readers"
+
+[dependencies]
+siem-cjson = { path = "../siem-cjson" }
+siem-xml = { path = "../siem-xml" }
+siem-regex = { path = "../siem-regex" }
+thiserror = "1"
+tracing = "0.1"
+regex = "1.10"
+
+[dev-dependencies]
+tempfile = "3"

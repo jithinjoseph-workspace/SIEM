@@ -1,0 +1,693 @@
+<section class="admin-panel tnt-panel">
+
+  <!-- Ambient Glows -->
+  <div class="tnt-ambient-glow glow--cyan" aria-hidden="true"></div>
+  <div class="tnt-ambient-glow glow--violet" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="msg" [class]="'admin-message ' + (msgType === 'success' ? 'success' : 'error')">{{ msg }}</div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="tnt-hero-strip">
+    <div class="tnt-hero-left">
+      <div class="tnt-system-badge">
+        <span class="tnt-pulse-dot"></span>
+        <span>TENANT REGISTRY / SCOPE ISOLATION</span>
+        <span class="tnt-badge-sep">/</span>
+        <span class="tnt-badge-status">{{ activePercent >= 100 ? 'ALL TENANTS ACTIVE' : activeTenantsCount + '/' + tenants.length + ' OPERATIONAL' }}</span>
+      </div>
+      <h1 class="tnt-headline">Multi-Tenant <em>Organizations</em> &amp; Governance</h1>
+      <p class="tnt-tagline">Encapsulated company namespaces, cryptographic on-prem licenses, and automated AI analysis.</p>
+    </div>
+
+    <div class="tnt-hero-controls">
+      <!-- Quick Action: Add Tenant -->
+      <button type="button" class="tnt-action-btn btn--primary" (click)="showAddTenant=true">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        <span>Add Tenant</span>
+      </button>
+
+      <!-- Quick Action: Refresh -->
+      <button type="button" class="tnt-action-btn" (click)="loadTenants(); loadUsers()" title="Refresh tenants">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingTenants"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="tnt-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <div class="tnt-clock-text">
+          <span class="tnt-clock-time">{{ clock.currentTime() }}</span>
+          <span class="tnt-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. Multi-Tenant Organization & Governance Deck (Unique Style) ── -->
+  <section class="tenant-governance-deck" aria-label="Tenant Organization Governance Deck">
+
+    <!-- Card 1: Tenant Capacity & Namespace Partitioning -->
+    <div class="org-deck-card org-deck--capacity">
+      <div class="org-card-glow cyan"></div>
+      <div class="org-card-top">
+        <div class="org-card-tag">
+          <lucide-icon [name]="BuildingIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>ORGANIZATION PARTITIONS</span>
+        </div>
+        <span class="org-status-pill cyan">{{ activeTenantsCount }}/{{ tenants.length }} ACTIVE</span>
+      </div>
+
+      <div class="org-capacity-body">
+        <div class="capacity-lead-row">
+          <div class="capacity-metric">
+            <span class="capacity-num text-cyan-400 font-mono">{{ activeTenantsCount }}</span>
+            <span class="capacity-denom text-slate-500 font-mono">/ {{ tenants.length }}</span>
+          </div>
+          <span class="capacity-badge text-cyan-300 font-mono">{{ activePercent }}% ONLINE</span>
+        </div>
+
+        <div class="partition-blocks-row" title="Active Tenant Partition Allocation">
+          <div *ngFor="let t of tenants" class="partition-block"
+            [class.active]="t.active"
+            [title]="t.name + ': ' + (t.active ? 'Active Tenant Partition' : 'Suspended')">
+          </div>
+        </div>
+
+        <div class="capacity-meta-line">
+          <span class="meta-label">Storage Boundary:</span>
+          <span class="meta-val text-slate-200">ClickHouse Namespace Isolation</span>
+        </div>
+      </div>
+
+      <div class="org-card-footer">
+        <span class="org-chip">DB PARTITIONS</span>
+        <span class="org-chip">HARDWALL ISOLATION</span>
+        <span class="org-chip cyan">ENFORCED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Neural AI Threat Cognition Engine -->
+    <div class="org-deck-card org-deck--ai">
+      <div class="org-card-glow violet"></div>
+      <div class="org-card-top">
+        <div class="org-card-tag">
+          <lucide-icon [name]="SparklesIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>AI THREAT COGNITION</span>
+        </div>
+        <span class="org-status-pill violet">{{ aiEnabledCount }} ARIA COGNITIVE</span>
+      </div>
+
+      <div class="org-ai-body">
+        <div class="ai-lead-row">
+          <div class="ai-icon-hex">
+            <lucide-icon [name]="BotIcon" class="w-5 h-5 text-purple-400"></lucide-icon>
+          </div>
+          <div class="ai-lead-meta">
+            <div class="ai-stat-row">
+              <span class="ai-stat-num text-purple-400 font-mono">{{ aiAdoptionPercent }}%</span>
+              <span class="ai-stat-lbl">AI ADOPTION</span>
+            </div>
+            <span class="ai-sub-txt">{{ aiEnabledCount }} of {{ tenants.length }} Organizations Enabled</span>
+          </div>
+        </div>
+
+        <div class="ai-pipeline-track">
+          <div class="ai-pipeline-fill" [style.width.%]="aiAdoptionPercent"></div>
+        </div>
+
+        <div class="ai-capability-row">
+          <span class="ai-cap-tag">CORRELATION: ONLINE</span>
+          <span class="ai-cap-tag success">ARIA COPILOT</span>
+        </div>
+      </div>
+
+      <div class="org-card-footer">
+        <span class="org-chip">ARIA LLM</span>
+        <span class="org-chip">NEURAL REASONING</span>
+        <span class="org-chip purple">ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- Card 3: User Population & Seating Allocation -->
+    <div class="org-deck-card org-deck--population">
+      <div class="org-card-glow emerald"></div>
+      <div class="org-card-top">
+        <div class="org-card-tag">
+          <lucide-icon [name]="UsersIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>MANAGED POPULATION</span>
+        </div>
+        <span class="org-status-pill emerald">{{ totalUsersCount }} SEATS</span>
+      </div>
+
+      <div class="org-pop-body">
+        <div class="pop-lead-row">
+          <span class="pop-big-num text-emerald-400 font-mono">{{ totalUsersCount }}</span>
+          <div class="pop-rate-meta">
+            <span class="pop-rate-label">AVERAGE DENSITY</span>
+            <span class="pop-rate-val text-emerald-300 font-mono">{{ avgUsersPerTenant }} users / org</span>
+          </div>
+        </div>
+
+        <div class="pop-security-badge">
+          <lucide-icon [name]="ShieldCheckIcon" class="w-4 h-4 text-emerald-400"></lucide-icon>
+          <span>Multi-Tenant RBAC Boundary Enforced · 0.00% Leakage</span>
+        </div>
+      </div>
+
+      <div class="org-card-footer">
+        <span class="org-chip">RBAC ISOLATION</span>
+        <span class="org-chip">PER-TENANT REALM</span>
+        <span class="org-chip success">ZERO LEAK</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Cryptographic Enterprise Licensing -->
+    <div class="org-deck-card org-deck--license">
+      <div class="org-card-glow amber"></div>
+      <div class="org-card-top">
+        <div class="org-card-tag">
+          <lucide-icon [name]="KeyIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>LICENSE AUTHENTICATION</span>
+        </div>
+        <span class="org-status-pill amber">RSA-4096 SEAL</span>
+      </div>
+
+      <div class="org-license-body">
+        <div class="license-shield-row">
+          <div class="license-stamp-box">
+            <lucide-icon [name]="ShieldIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+          </div>
+          <div class="license-meta-box">
+            <span class="lic-tier text-amber-300 font-mono">ENTERPRISE ON-PREM</span>
+            <span class="lic-sub">Cryptographically Signed Token Authority</span>
+          </div>
+        </div>
+
+        <div class="license-token-capsule">
+          <span class="tok-label">AUTH METHOD:</span>
+          <span class="tok-val font-mono text-slate-300">Asymmetric Key Pair Handshake</span>
+        </div>
+      </div>
+
+      <div class="org-card-footer">
+        <span class="org-chip">PERPETUAL</span>
+        <span class="org-chip">OFFLINE VALID</span>
+        <span class="org-chip amber">COMPLIANT</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. Tenant Organizations Directory ───────────────────────── -->
+  <section class="tnt-card glass-card">
+    <div class="tnt-card-head">
+      <div>
+        <div class="tnt-card-tag">ENTERPRISE TENANTS</div>
+        <h2 class="tnt-card-title">Tenant Organizations Directory</h2>
+        <p class="tnt-card-desc">Configure isolated company environments, grant licensed features, and issue on-prem deployment keys.</p>
+      </div>
+
+      <!-- Search Toolbar -->
+      <div class="tnt-toolbar">
+        <div class="tnt-search-box">
+          <lucide-icon [name]="SearchIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <input [(ngModel)]="tenantSearch" type="search" placeholder="Search company or tenant ID..." class="tnt-search-input" />
+        </div>
+        <span class="tnt-count-badge">{{ filteredTenants.length }} organizations</span>
+      </div>
+    </div>
+
+    <div *ngIf="loadingTenants" class="tnt-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Loading tenant organizations...</span>
+    </div>
+
+    <div *ngIf="!loadingTenants && filteredTenants.length === 0" class="tnt-empty-state">
+      <lucide-icon [name]="BuildingIcon" class="w-8 h-8 text-slate-500"></lucide-icon>
+      <strong>No tenant organizations found</strong>
+      <span>Click "Add Tenant" above to provision a new company workspace.</span>
+    </div>
+
+    <div *ngIf="!loadingTenants && filteredTenants.length > 0" class="tnt-list">
+      <div *ngFor="let tenant of filteredTenants" class="tnt-row" [class.tnt-row--inactive]="!tenant.active">
+        <div class="tnt-main">
+          <div class="tnt-mark">{{ tenant.name.charAt(0).toUpperCase() }}</div>
+          <div class="tnt-identity">
+            <div class="tnt-name-row">
+              <strong class="tnt-name">{{ tenant.name }}</strong>
+              <code class="tnt-id-pill">{{ tenant.id }}</code>
+            </div>
+            <div class="tnt-stats-row">
+              <span class="tnt-stat-chip">
+                <lucide-icon [name]="UsersIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+                <span>{{ tenantUserCount(tenant.id) }} users</span>
+              </span>
+              <span class="tnt-stat-chip">
+                <lucide-icon [name]="ShieldCheckIcon" class="w-3 h-3 text-purple-400"></lucide-icon>
+                <span>{{ tenantAdminCount(tenant.id) }} admins</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tnt-actions-wrap">
+          <!-- Active Status Pill -->
+          <span class="tnt-status-pill" [class.status--active]="tenant.active" [class.status--inactive]="!tenant.active">
+            <i class="p-dot"></i> {{ tenant.active ? 'Active' : 'Inactive' }}
+          </span>
+
+          <!-- AI Switch Toggle Button -->
+          <button *ngIf="currentUser?.role === 'super_admin'"
+            class="tnt-chip-btn ai-toggle-btn"
+            [class.ai-enabled]="tenant.ai_enabled"
+            type="button"
+            [title]="tenant.ai_enabled ? 'Disable AI features for this tenant' : 'Enable AI features for this tenant'"
+            (click)="toggleTenantAI(tenant, !tenant.ai_enabled)">
+            <lucide-icon [name]="BotIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>{{ tenant.ai_enabled ? 'AI Armed' : 'AI Off' }}</span>
+          </button>
+
+          <!-- Licensed Features Button -->
+          <button *ngIf="currentUser?.role === 'super_admin'"
+            class="tnt-chip-btn"
+            type="button" title="Manage licensed features"
+            (click)="openFeatures(tenant)">
+            <lucide-icon [name]="KeyIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+            <span>Features</span>
+          </button>
+
+          <!-- License Token Generator -->
+          <button *ngIf="currentUser?.role === 'super_admin'"
+            class="tnt-chip-btn"
+            type="button" title="Generate license token for on-premise install"
+            (click)="openLicense(tenant)">
+            <lucide-icon [name]="ShieldIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+            <span>License</span>
+          </button>
+
+          <!-- Edit Tenant -->
+          <button class="tnt-icon-btn" type="button" title="Edit tenant details" (click)="openEditTenant(tenant)">
+            <lucide-icon [name]="EditIcon" class="w-4 h-4"></lucide-icon>
+          </button>
+
+          <!-- Deactivate / Reactivate Action -->
+          <button class="tnt-toggle-active-btn" type="button" [disabled]="tenant.id === 'default'"
+            [class.btn--deactivate]="tenant.active" [class.btn--reactivate]="!tenant.active"
+            (click)="setTenantActive(tenant, !tenant.active)">
+            {{ tenant.active ? 'Deactivate' : 'Reactivate' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- Add Tenant Modal (Standard Form & High-Tech Provisioning Deck) -->
+<div *ngIf="showAddTenant" class="modal-backdrop">
+
+  <!-- State 1: Input Form (Before Creation) -->
+  <div *ngIf="!isProvisioning" class="modal-panel">
+    <div class="modal-head">
+      <div>
+        <h3>Add Tenant</h3>
+        <p>Create a company namespace before assigning an admin.</p>
+      </div>
+      <button type="button" class="icon-button" (click)="showAddTenant=false">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <div *ngIf="tenantMsg" class="admin-message error">{{ tenantMsg }}</div>
+    <label class="form-field">
+      <span>Company Name</span>
+      <input [(ngModel)]="newTenant.name" (ngModelChange)="onTenantNameChange()" placeholder="Acme Corporation" />
+    </label>
+    <label class="form-field">
+      <span>Tenant ID</span>
+      <input [(ngModel)]="newTenant.id" (ngModelChange)="onTenantIdChange()" placeholder="acme-corporation" />
+      <small *ngIf="newTenant.id && tenantIdExists(newTenant.id)">This tenant ID already exists.</small>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" [disabled]="savingTenant || !canCreateTenant" (click)="addTenant()">
+        {{ savingTenant ? 'Creating...' : 'Create Tenant' }}
+      </button>
+      <button class="secondary-action" type="button" (click)="showAddTenant=false">Cancel</button>
+    </div>
+  </div>
+
+  <!-- State 2: High-Tech Provisioning Deck & Animated Checklist -->
+  <div *ngIf="isProvisioning" class="modal-panel modal-panel--provisioning glass-card">
+
+    <!-- Provisioning Header -->
+    <div class="prov-head">
+      <div class="prov-badge" [class.success]="provisioningComplete" [class.error]="provisioningFailed">
+        <span class="prov-pulse-dot" [class.pulse-green]="provisioningComplete" [class.pulse-red]="provisioningFailed"></span>
+        <span>{{ provisioningComplete ? 'TENANT ARMED & READY' : (provisioningFailed ? 'PROVISIONING HALTED' : 'INITIALIZING TENANT WORKSPACE') }}</span>
+      </div>
+      <h3 class="prov-title">
+        <span>{{ provisioningTenantName }}</span>
+        <span class="prov-slug font-mono">({{ provisioningTenantId }})</span>
+      </h3>
+      <div class="prov-meta font-mono">
+        <span>TARGET DB:</span>
+        <span class="text-cyan-400 font-bold">{{ provisioningTargetDb }}</span>
+        <span class="prov-meta-sep">•</span>
+        <span>CLUSTER:</span>
+        <span class="text-purple-300">ndr_cluster</span>
+      </div>
+    </div>
+
+    <!-- Glowing Progress Bar -->
+    <div class="prov-progress-wrap">
+      <div class="prov-progress-labels">
+        <span class="prov-pct font-mono" [class.text-emerald-400]="provisioningComplete" [class.text-red-400]="provisioningFailed">
+          {{ provisioningProgress }}%
+        </span>
+        <span class="prov-status-txt font-mono">
+          {{ provisioningComplete ? 'All 5 isolation boundaries verified' : (provisioningFailed ? 'Encountered deployment failure' : 'Provisioning in progress...') }}
+        </span>
+      </div>
+      <div class="prov-progress-track">
+        <div class="prov-progress-fill" [style.width.%]="provisioningProgress" [class.fill-success]="provisioningComplete" [class.fill-error]="provisioningFailed"></div>
+      </div>
+    </div>
+
+    <!-- Stepper Checklist Cards -->
+    <div class="prov-stepper">
+      <div *ngFor="let s of provisioningSteps; let i = index"
+           class="prov-step-card"
+           [class.step--active]="s.status === 'active'"
+           [class.step--done]="s.status === 'done'"
+           [class.step--error]="s.status === 'error'"
+           [class.step--pending]="s.status === 'pending'">
+
+        <!-- Icon / Tick Mark Indicator -->
+        <div class="prov-step-indicator">
+          <ng-container [ngSwitch]="s.status">
+            <!-- Done: Glowing Emerald Tick -->
+            <div *ngSwitchCase="'done'" class="step-icon-circle circle--done">
+              <lucide-icon [name]="CheckCircleIcon" class="w-4 h-4 text-emerald-400 check-pop"></lucide-icon>
+            </div>
+            <!-- Active: Animated Cyan Spinner Ring -->
+            <div *ngSwitchCase="'active'" class="step-icon-circle circle--active">
+              <span class="spinner-ring"></span>
+              <span class="inner-dot"></span>
+            </div>
+            <!-- Error: Red Warning Icon -->
+            <div *ngSwitchCase="'error'" class="step-icon-circle circle--error">
+              <lucide-icon [name]="AlertTriangleIcon" class="w-4 h-4 text-red-400"></lucide-icon>
+            </div>
+            <!-- Pending: Subtle Inactive Circle -->
+            <div *ngSwitchDefault class="step-icon-circle circle--pending">
+              <span class="pending-dot">{{ i + 1 }}</span>
+            </div>
+          </ng-container>
+        </div>
+
+        <!-- Step Content -->
+        <div class="prov-step-info">
+          <div class="prov-step-title-row">
+            <span class="prov-step-title">{{ s.title }}</span>
+            <span class="prov-step-badge" [ngClass]="'badge--' + s.status">
+              {{ s.status === 'done' ? 'DONE ✓' : (s.status === 'active' ? 'DEPLOYING...' : (s.status === 'error' ? 'FAILED' : 'QUEUED')) }}
+            </span>
+          </div>
+          <p class="prov-step-desc font-mono">{{ s.desc }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cyber Terminal Stream -->
+    <div class="prov-terminal">
+      <div class="prov-term-head">
+        <div class="term-dots">
+          <span class="dot dot--red"></span>
+          <span class="dot dot--yellow"></span>
+          <span class="dot dot--green"></span>
+        </div>
+        <div class="term-title font-mono">
+          <lucide-icon [name]="TerminalIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>CLUSTER PROVISIONING STREAM</span>
+        </div>
+      </div>
+      <div class="prov-term-body font-mono">
+        <div *ngFor="let log of provisioningLogs" class="prov-term-line" [ngClass]="'term-line--' + log.type">
+          <span class="term-time">[{{ log.time }}]</span>
+          <span class="term-text">{{ log.text }}</span>
+        </div>
+        <span class="prov-term-cursor">█</span>
+      </div>
+    </div>
+
+    <!-- Actions / Completion -->
+    <div class="prov-actions">
+      <!-- In-Progress Wait Notice -->
+      <div *ngIf="!provisioningComplete && !provisioningFailed" class="prov-wait-notice font-mono">
+        <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5 text-cyan-400 spin-fast"></lucide-icon>
+        <span>Synchronizing with ClickHouse cluster &amp; auth realm...</span>
+      </div>
+
+      <!-- Error State Actions -->
+      <div *ngIf="provisioningFailed" class="prov-error-actions">
+        <div class="prov-error-msg font-mono">
+          <lucide-icon [name]="AlertTriangleIcon" class="w-4 h-4 text-red-400"></lucide-icon>
+          <span>{{ provisioningError }}</span>
+        </div>
+        <div class="prov-btn-group">
+          <button type="button" class="btn-prov-secondary" (click)="resetProvisioningForm()">
+            <span>Back to Form</span>
+          </button>
+          <button type="button" class="btn-prov-primary btn-retry" (click)="addTenant()">
+            <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Retry Provisioning</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Success State Actions -->
+      <div *ngIf="provisioningComplete" class="prov-success-actions">
+        <div class="prov-success-tag">
+          <lucide-icon [name]="ShieldCheckIcon" class="w-4 h-4 text-emerald-400"></lucide-icon>
+          <span>Activated! Auto-closing in 2s...</span>
+        </div>
+        <button type="button" class="btn-prov-primary btn-finish" (click)="closeProvisioningModal()" title="Open Fleet immediately">
+          <span>Open Fleet Now</span>
+          <lucide-icon [name]="ArrowRightIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Features Modal -->
+<div *ngIf="featureTenant" class="modal-backdrop">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div>
+        <h3>Licensed Features</h3>
+        <p>{{ featureTenant.name }} — {{ featureTenant.id }}</p>
+      </div>
+      <button type="button" class="icon-button" (click)="closeFeatures()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <p style="font-size:0.8rem;opacity:0.6;margin-bottom:1rem;">
+      Select which modules this tenant has purchased. These become embedded in the license token — the customer can only access what is checked here.
+    </p>
+    <label class="toggle-field">
+      <input [(ngModel)]="featureForm.ndr" type="checkbox" />
+      <span>NDR — Network Detection &amp; Response</span>
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="featureForm.siem" type="checkbox" />
+      <span>SIEM — Log ingestion, correlation &amp; alerting</span>
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="featureForm.soar" type="checkbox" />
+      <span>SOAR — Automated response playbooks &amp; integrations</span>
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="featureForm.threat_intel" type="checkbox" />
+      <span>Threat Intel — External feed collection (CISA, OTX, AbuseIPDB)</span>
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="featureForm.ai" type="checkbox" />
+      <span>AI Analysis — ARIA threat explanations &amp; AI activity</span>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" [disabled]="savingFeatures" (click)="saveFeatures()">
+        {{ savingFeatures ? 'Saving...' : 'Save Features' }}
+      </button>
+      <button class="secondary-action" type="button" (click)="closeFeatures()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- License Modal -->
+<div *ngIf="licenseTenant" class="modal-backdrop">
+  <div class="modal-panel" style="max-width:560px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-head">
+      <div>
+        <h3>Generate License</h3>
+        <p>{{ licenseTenant.name }} — on-premise install token</p>
+      </div>
+      <button type="button" class="icon-button" (click)="closeLicense()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <p style="font-size:0.8rem;opacity:0.6;margin-bottom:1rem;">
+      This signed JWT encodes the tenant's licensed features and expiry.
+      The client puts it in their <code>.env</code> as <code>LICENSE_TOKEN=…</code>.
+      Features included: <strong>{{ (licenseTenant.features ?? ['ndr','ai']).join(', ') }}</strong>
+    </p>
+    <label class="form-field">
+      <span>Valid for (days)</span>
+      <input [(ngModel)]="licenseForm.expires_days" type="number" min="1" max="3650" />
+    </label>
+    <label class="form-field">
+      <span>Max sensors</span>
+      <input [(ngModel)]="licenseForm.max_sensors" type="number" min="1" max="1000" />
+    </label>
+    <label class="form-field">
+      <span>Tenant admin username</span>
+      <input [(ngModel)]="licenseForm.admin_user" type="text" placeholder="e.g. acme-admin" autocomplete="off" />
+      <small>Provisioned automatically on customer server at first boot</small>
+    </label>
+    <label class="form-field">
+      <span>Tenant admin password</span>
+      <input [(ngModel)]="licenseForm.admin_pass" type="password" placeholder="Strong password" autocomplete="new-password" />
+    </label>
+    <div *ngIf="generatedToken" style="margin-top:1rem;">
+
+      <!-- Token -->
+      <label class="form-field">
+        <span>LICENSE_TOKEN (just generated)</span>
+        <textarea readonly rows="4" style="font-family:monospace;font-size:0.72rem;word-break:break-all;">{{ generatedToken }}</textarea>
+      </label>
+
+      <!-- Install package block -->
+      <div style="margin-top:1rem;padding:1rem;background:var(--surface-2,#0f172a);border:1px solid var(--border,#1e293b);border-radius:8px;">
+        <p style="font-size:0.75rem;font-weight:600;opacity:0.7;margin:0 0 0.75rem;letter-spacing:0.05em;text-transform:uppercase;">Send to Client</p>
+
+        <div style="font-size:0.78rem;margin-bottom:0.5rem;">
+          <span style="opacity:0.5;">Step 1 —</span> Run on client's Ubuntu server:
+        </div>
+        <pre style="font-family:monospace;font-size:0.72rem;background:var(--surface-3,#1e293b);padding:0.6rem 0.8rem;border-radius:6px;margin:0 0 0.75rem;white-space:pre-wrap;word-break:break-all;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/jithinjoseph-workspace/NDR-Demo/arkime/install-customer.sh)</pre>
+
+        <div style="font-size:0.78rem;margin-bottom:0.5rem;">
+          <span style="opacity:0.5;">Step 2 —</span> When prompted, paste these values:
+        </div>
+        <div style="display:grid;gap:0.4rem;margin-bottom:0.75rem;">
+          <div style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.78rem;">
+            <span style="opacity:0.5;min-width:130px;padding-top:0.2rem;">License public key</span>
+            <code style="font-family:monospace;background:var(--surface-3,#1e293b);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.65rem;word-break:break-all;white-space:pre-wrap;flex:1;max-height:5rem;overflow-y:auto;display:block;">{{ licensePublicKey || '…loading' }}</code>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;">
+            <span style="opacity:0.5;min-width:130px;">License token</span>
+            <code style="font-family:monospace;background:var(--surface-3,#1e293b);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.68rem;word-break:break-all;max-height:2.8rem;overflow:hidden;">{{ generatedToken.slice(0,60) }}…</code>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;">
+            <span style="opacity:0.5;min-width:130px;">Admin username</span>
+            <code style="font-family:monospace;background:var(--surface-3,#1e293b);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.68rem;">{{ licenseForm.admin_user || '—' }}</code>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;">
+            <span style="opacity:0.5;min-width:130px;">Admin password</span>
+            <code style="font-family:monospace;background:var(--surface-3,#1e293b);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.68rem;">{{ licenseForm.admin_pass ? '••••••••' : '—' }}</code>
+          </div>
+        </div>
+
+        <div style="font-size:0.75rem;opacity:0.5;margin-bottom:0.75rem;">
+          Features: <strong style="opacity:1;">{{ (licenseTenant?.features ?? ['ndr','ai']).join(', ') }}</strong>
+          &nbsp;·&nbsp; Expires: <strong style="opacity:1;">{{ licenseForm.expires_days }} days</strong>
+          &nbsp;·&nbsp; Max sensors: <strong style="opacity:1;">{{ licenseForm.max_sensors }}</strong>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:0.75rem;">
+        <button class="primary-action" type="button" (click)="copyInstallPackage()">
+          <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
+          {{ installCopied ? 'Copied!' : 'Copy Install Package' }}
+        </button>
+        <button class="secondary-action" type="button" (click)="copyToken()">
+          {{ tokenCopied ? 'Copied!' : 'Copy Token Only' }}
+        </button>
+        <button class="secondary-action" type="button" (click)="generateLicense()">Regenerate</button>
+        <button class="secondary-action" type="button" (click)="closeLicense()">Close</button>
+      </div>
+    </div>
+
+    <!-- Issued license history -->
+    <div *ngIf="!generatedToken" style="margin-top:1.25rem;">
+      <p style="font-size:0.75rem;font-weight:600;opacity:0.6;margin:0 0 0.6rem;letter-spacing:0.05em;text-transform:uppercase;">Previously Issued Licenses</p>
+
+      <div *ngIf="loadingLicenses" style="font-size:0.78rem;opacity:0.5;">Loading…</div>
+
+      <div *ngIf="!loadingLicenses && issuedLicenses.length === 0" style="font-size:0.78rem;opacity:0.4;">
+        No licenses issued yet for this tenant.
+      </div>
+
+      <div *ngFor="let lic of issuedLicenses"
+           style="padding:0.6rem 0.75rem;background:var(--surface-2,#0f172a);border:1px solid var(--border,#1e293b);border-radius:6px;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.2rem;">
+            <span *ngFor="let f of lic.features"
+                  style="font-size:0.65rem;padding:0.1rem 0.4rem;border-radius:3px;background:var(--accent,#3b82f6);color:#fff;font-weight:600;text-transform:uppercase;">
+              {{ f }}
+            </span>
+          </div>
+          <div style="font-size:0.72rem;opacity:0.5;">
+            Issued {{ lic.issued_at?.slice(0,10) }}
+            &nbsp;·&nbsp; Expires {{ lic.expires_at?.slice(0,10) }}
+            &nbsp;·&nbsp; Max {{ lic.max_sensors }} sensors
+          </div>
+        </div>
+        <button class="secondary-action compact-action" type="button"
+                style="font-size:0.7rem;"
+                (click)="copyInstallPackage(lic.token, lic)">
+          <lucide-icon [name]="CopyIcon" class="w-3 h-3"></lucide-icon>
+          Copy
+        </button>
+        <button class="secondary-action compact-action" type="button"
+                style="font-size:0.7rem;color:#ef4444;"
+                title="Delete this license"
+                (click)="deleteLicense(lic)">
+          <lucide-icon [name]="TrashIcon" class="w-3 h-3"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="modal-actions" style="margin-top:0.75rem;">
+        <button class="primary-action" type="button" [disabled]="generatingLicense" (click)="generateLicense()">
+          {{ generatingLicense ? 'Generating...' : 'Generate New License' }}
+        </button>
+        <button class="secondary-action" type="button" (click)="closeLicense()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Tenant Modal -->
+<div *ngIf="editingTenant" class="modal-backdrop">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div>
+        <h3>Edit Tenant</h3>
+        <p>{{ editingTenant.id }}</p>
+      </div>
+      <button type="button" class="icon-button" (click)="closeEditTenant()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <label class="form-field">
+      <span>Tenant Name</span>
+      <input [(ngModel)]="tenantForm.name" />
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="tenantForm.active" type="checkbox" [disabled]="editingTenant.id === 'default'" />
+      <span>Tenant is active</span>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" (click)="saveTenantEdit()">Save Tenant</button>
+      <button class="secondary-action" type="button" (click)="closeEditTenant()">Cancel</button>
+    </div>
+  </div>
+</div>

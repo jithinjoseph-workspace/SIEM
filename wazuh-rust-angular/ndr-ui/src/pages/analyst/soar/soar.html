@@ -1,0 +1,2052 @@
+<div class="bg-black min-h-screen text-white pb-12">
+<div class="p-8 w-full mx-auto">
+  <!-- ══ Page Header ═══════════════════════════════════════════════════════ -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <lucide-icon [name]="ZapIcon" class="w-5 h-5 text-primary"></lucide-icon>
+        <span class="text-sm font-bold text-primary uppercase tracking-[0.15em]">Security Orchestration</span>
+      </div>
+      <h1 class="text-3xl font-bold text-white tracking-tight mt-1">SOAR — Native Automation</h1>
+      <p class="text-sm text-on-surface-variant mt-1.5">Automated threat response engine — native to NDR</p>
+    </div>
+    <div class="flex items-center gap-2 text-sm text-on-surface-variant font-mono bg-[#121212] border border-white/10 px-4 py-2 rounded-lg">
+      <span class="status-dot-live w-2 h-2 rounded-full bg-primary flex-shrink-0"></span>
+      ENGINE RUNNING
+    </div>
+  </div>
+  <!-- ══ Tab Bar ════════════════════════════════════════════════════════════ -->
+  <div class="flex items-center gap-1 mb-10 bg-[#121212] p-1.5 rounded-full border border-white/5 w-fit shadow-lg">
+
+    <button (click)="switchTab('cases')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'cases' ? 'bg-primary text-black shadow-[0_0_20px_rgba(105,246,184,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="ShieldIcon" class="w-5 h-5"></lucide-icon>
+      Cases
+      <span *ngIf="cases().length > 0" [class]="'ml-1 text-xs font-bold px-2 py-0.5 rounded ' + (activeTab() === 'cases' ? 'bg-black/20 text-black' : 'bg-primary/20 text-primary')">
+        {{ cases().length }}
+      </span>
+    </button>
+
+    <button (click)="switchTab('playbooks')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'playbooks' ? 'bg-primary text-black shadow-[0_0_20px_rgba(105,246,184,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="ZapIcon" class="w-5 h-5"></lucide-icon>
+      Playbooks
+    </button>
+
+    <button (click)="switchTab('integrations')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'integrations' ? 'bg-primary text-black shadow-[0_0_20px_rgba(105,246,184,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="LinkIcon" class="w-5 h-5"></lucide-icon>
+      Integrations
+    </button>
+
+    <button (click)="switchTab('activity')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'activity' ? 'bg-primary text-black shadow-[0_0_20px_rgba(105,246,184,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon>
+      Activity Log
+    </button>
+
+    <button (click)="switchTab('blocks')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'blocks' ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="BanIcon" class="w-5 h-5"></lucide-icon>
+      Active Blocks
+      <span *ngIf="activeBlocks().length > 0" [class]="'ml-1 text-xs font-bold px-2 py-0.5 rounded ' + (activeTab() === 'blocks' ? 'bg-black/20 text-white' : 'bg-red-500/20 text-red-400')">
+        {{ activeBlocks().length }}
+      </span>
+    </button>
+
+    <button (click)="switchTab('isolations')"
+      [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
+        (activeTab() === 'isolations' ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.5)]' : 'bg-transparent text-gray-400 hover:text-white hover:bg-white/5')">
+      <lucide-icon [name]="WifiOffIcon" class="w-5 h-5"></lucide-icon>
+      Isolated Devices
+      <span *ngIf="isolations().length > 0" [class]="'ml-1 text-xs font-bold px-2 py-0.5 rounded ' + (activeTab() === 'isolations' ? 'bg-black/20 text-black' : 'bg-amber-500/20 text-amber-400')">
+        {{ isolations().length }}
+      </span>
+    </button>
+
+  </div>
+
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — CASES
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'cases'" class="soar-tab-content">
+
+    <!-- ── Quick Stats Bar (hide when detail open) ───────────────────── -->
+    <div *ngIf="!selectedCase()" class="case-stats-bar">
+      <div class="stat-card">
+        <div class="stat-value">{{ caseStats().active }}</div>
+        <div class="stat-label">Active Cases</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-blue-400">{{ caseStats().inProgress }}</div>
+        <div class="stat-label">In Progress</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-emerald-400">{{ caseStats().resolvedToday }}</div>
+        <div class="stat-label">Resolved Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-amber-400">{{ caseStats().avgHrs }}h</div>
+        <div class="stat-label">Avg Resolution</div>
+      </div>
+    </div>
+
+    <!-- ── Split pane container ───────────────────────────────────────── -->
+    <div [class]="'cases-split' + (selectedCase() ? ' has-detail' : '')">
+
+      <!-- ── LEFT: case list ──────────────────────────────────────────── -->
+      <div class="cases-list-col">
+
+        <!-- Toolbar -->
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs text-on-surface-variant font-mono">{{ cases().length }} case{{ cases().length !== 1 ? 's' : '' }}</span>
+          <button (click)="openNewCaseModal()"
+            class="flex items-center gap-1.5 text-xs font-bold bg-primary text-black px-3 py-1.5 rounded-lg hover:bg-primary/85 transition-colors">
+            <lucide-icon [name]="PlusIcon" class="w-3 h-3"></lucide-icon>
+            New Case
+          </button>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="cases().length === 0" class="flex flex-col items-center justify-center py-16 border border-outline/10 rounded-xl bg-surface-container/20">
+          <lucide-icon [name]="ShieldIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+          <p class="text-sm font-semibold text-on-surface-variant">No cases found</p>
+          <p class="text-xs text-on-surface-variant/60 mt-1 mb-4">Create a case manually or let playbooks generate them automatically.</p>
+          <button (click)="openNewCaseModal()"
+            class="flex items-center gap-1.5 text-xs font-bold bg-primary text-black px-3.5 py-2 rounded-lg hover:bg-primary/85 transition-colors">
+            <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon> New Case
+          </button>
+        </div>
+
+        <!-- Full table (no detail open) -->
+        <div *ngIf="cases().length > 0 && !selectedCase()" class="case-table-wrap">
+          <table class="case-table w-full">
+            <thead>
+              <tr>
+                <th class="w-36">Ticket ID</th>
+                <th class="w-20">Priority</th>
+                <th>Title</th>
+                <th class="w-28">Severity</th>
+                <th class="w-28">Status</th>
+                <th class="w-28">Assigned To</th>
+                <th class="w-36">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let c of cases()" (click)="openCase(c)" class="case-row">
+                <td><span class="ticket-id">{{ c.case_number || '—' }}</span></td>
+                <td><span [class]="'prio-badge ' + priorityClass(c.priority)">{{ c.priority || 'P2' }}</span></td>
+                <td>
+                  <div class="case-title">{{ c.title }}</div>
+                  <div *ngIf="c.src_ip || c.dst_ip" class="case-flow">{{ c.src_ip }}{{ c.src_ip && c.dst_ip ? ' → ' : '' }}{{ c.dst_ip }}</div>
+                </td>
+                <td><span [class]="'sev-badge ' + severityClass(c.severity)">{{ c.severity }}</span></td>
+                <td><span [class]="'status-badge ' + statusClass(c.status)">{{ c.status }}</span></td>
+                <td><span class="text-xs text-on-surface-variant font-mono">{{ c.assigned_to || '—' }}</span></td>
+                <td><span class="text-xs font-mono text-on-surface-variant/70">{{ formatDateShort(c.created_at) }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Compact list (detail open — left rail) -->
+        <div *ngIf="cases().length > 0 && selectedCase()" class="case-compact-list">
+          <div *ngFor="let c of cases()" (click)="openCase(c)"
+            [class]="'case-compact-row' + (selectedCase()?.id === c.id ? ' active' : '')">
+            <div class="ccr-top">
+              <span class="ticket-id-sm">{{ c.case_number || '—' }}</span>
+              <span [class]="'status-badge ' + statusClass(c.status)">{{ c.status }}</span>
+            </div>
+            <div class="ccr-title">{{ c.title }}</div>
+            <div class="ccr-meta">
+              <span [class]="'sev-badge ' + severityClass(c.severity)">{{ c.severity }}</span>
+              <span [class]="'prio-badge ' + priorityClass(c.priority)">{{ c.priority || 'P2' }}</span>
+              <span class="text-[10px] text-on-surface-variant ml-auto">{{ formatDateShort(c.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /cases-list-col -->
+
+      <!-- ── RIGHT: case detail inline pane ──────────────────────────── -->
+      <div *ngIf="selectedCase()" class="cases-detail-col">
+
+        <!-- ── Header ─────────────────────────────────────────────────── -->
+        <div class="case-detail-header">
+          <div class="flex items-start gap-4 min-w-0">
+            <div class="ticket-id-block">
+              <div class="ticket-id-label">TICKET</div>
+              <div class="ticket-id-large">{{ selectedCase().case_number || '—' }}</div>
+            </div>
+            <div class="min-w-0">
+              <h3 class="case-detail-title">{{ selectedCase().title }}</h3>
+              <div class="flex items-center gap-2 mt-2 flex-wrap">
+                <span [class]="'sev-badge ' + severityClass(selectedCase().severity)">{{ selectedCase().severity }}</span>
+                <span [class]="'prio-badge ' + priorityClass(selectedCase().priority)">{{ selectedCase().priority || 'P2' }}</span>
+                <span [class]="'status-badge ' + statusClass(selectedCase().status)">{{ selectedCase().status }}</span>
+                <span class="text-xs font-mono text-on-surface-variant/60">{{ formatDateShort(selectedCase().created_at) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button *ngIf="['Closed','Resolved','False Positive'].includes(selectedCase().status)"
+              (click)="openCaseReport()"
+              class="case-report-dl-btn"
+              title="View & download incident report">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M5 7l3 3 3-3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"/></svg>
+              Report
+            </button>
+            <button (click)="closeCaseModal()" class="modal-close">✕</button>
+          </div>
+        </div>
+
+        <!-- ── Body ───────────────────────────────────────────────────── -->
+        <div class="case-detail-body">
+
+          <!-- Metadata grid -->
+          <div class="detail-meta-grid">
+            <div class="detail-meta-item">
+              <div class="meta-label">Source IP</div>
+              <div class="meta-value font-mono">{{ selectedCase().src_ip || '—' }}</div>
+            </div>
+            <div class="detail-meta-item">
+              <div class="meta-label">Dest IP</div>
+              <div class="meta-value font-mono">{{ selectedCase().dst_ip || '—' }}</div>
+            </div>
+            <div class="detail-meta-item">
+              <div class="meta-label">Community ID</div>
+              <div class="meta-value font-mono text-primary text-xs">{{ selectedCase().community_id || '—' }}</div>
+            </div>
+            <div *ngIf="selectedCase().community_id" class="detail-meta-item">
+              <div class="meta-label">Evidence</div>
+              <button (click)="viewEvidence(selectedCase().community_id)" class="evidence-link-btn">
+                <lucide-icon [name]="ExternalIcon" class="w-3 h-3"></lucide-icon>
+                Full Bundle ↗
+              </button>
+            </div>
+            <div class="detail-meta-item">
+              <div class="meta-label">Assigned To</div>
+              <div *ngIf="!editingAssignee()" class="flex items-center gap-2">
+                <span class="meta-value">{{ selectedCase().assigned_to || 'Unassigned' }}</span>
+                <button (click)="startEditAssignee()" class="text-[10px] text-primary/70 hover:text-primary border border-primary/20 hover:border-primary/50 px-1.5 py-0.5 rounded transition-colors">
+                  {{ selectedCase().assigned_to ? 'Change' : 'Assign' }}
+                </button>
+              </div>
+              <div *ngIf="editingAssignee()" class="flex items-center gap-2">
+                <input [(ngModel)]="assigneeInput" class="field-input py-0.5 text-xs flex-1" (keyup.enter)="saveAssignee()" placeholder="Username" />
+                <button (click)="saveAssignee()" class="text-[10px] bg-primary text-black px-2 py-1 rounded font-bold">Save</button>
+                <button (click)="editingAssignee.set(false)" class="text-[10px] text-on-surface-variant hover:text-white">✕</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Workflow Transition ─────────────────────────────────── -->
+          <div class="workflow-section">
+            <div class="section-label">WORKFLOW — TRANSITION TO</div>
+            <div class="workflow-steps">
+              <div *ngFor="let s of WORKFLOW_STATES" class="workflow-step"
+                [class.active]="selectedCase().status === s"
+                [class.past]="WORKFLOW_STATES.indexOf(s) < WORKFLOW_STATES.indexOf(selectedCase().status)">
+                <div class="step-dot"></div>
+                <div class="step-name">{{ s }}</div>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-3">
+              <button *ngFor="let ns of nextStates(selectedCase().status)"
+                (click)="updateCaseStatus(ns)"
+                [class]="'transition-btn ' + (ns === 'False Positive' ? 'btn-fp' : ns === 'Resolved' ? 'btn-resolve' : ns === 'Closed' ? 'btn-close' : 'btn-next')">
+                → {{ ns }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="detail-section" *ngIf="selectedCase().description">
+            <div class="section-label">DESCRIPTION</div>
+            <div class="description-text">{{ selectedCase().description }}</div>
+          </div>
+
+          <!-- ── Incident Report (generated on close/resolve) ───────── -->
+          <div *ngIf="incidentReport()" class="detail-section incident-report-section">
+            <div class="section-label">INCIDENT REPORT</div>
+            <div class="incident-report">
+              <div class="ir-header">
+                <span class="ir-ticket">{{ incidentReport().case_number }}</span>
+                <span [class]="'severity-badge sev-' + incidentReport().severity?.toLowerCase()">{{ incidentReport().severity }}</span>
+                <span [class]="'status-badge status-' + incidentReport().status?.toLowerCase().replace(' ','-')">{{ incidentReport().status }}</span>
+              </div>
+              <div class="ir-title">{{ incidentReport().title }}</div>
+              <div class="ir-grid">
+                <div class="ir-field"><span class="ir-key">Attacker IP</span><span class="ir-val font-mono text-red-400">{{ incidentReport().src_ip || '—' }}</span></div>
+                <div class="ir-field"><span class="ir-key">Victim IP</span><span class="ir-val font-mono text-blue-400">{{ incidentReport().dst_ip || '—' }}</span></div>
+                <div class="ir-field"><span class="ir-key">Analyst</span><span class="ir-val">{{ incidentReport().analyst }}</span></div>
+                <div class="ir-field"><span class="ir-key">Closed At</span><span class="ir-val">{{ incidentReport().closed_at }}</span></div>
+                <div class="ir-field"><span class="ir-key">PCAP Sessions</span><span class="ir-val">{{ incidentReport().pcap_count }}</span></div>
+                <div class="ir-field"><span class="ir-key">Attack Tags</span><span class="ir-val">{{ incidentReport().tags || '—' }}</span></div>
+              </div>
+              <div class="ir-resolution">
+                <div class="ir-key">Resolution Notes</div>
+                <div class="ir-val mt-1">{{ incidentReport().resolution }}</div>
+              </div>
+              <div *ngIf="incidentReport().intel_added" class="ir-intel-badge">
+                ✓ {{ incidentReport().intel_added }}
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Close / Resolve inline form ──────────────────────── -->
+          <div *ngIf="showCloseForm()" class="close-form-inline">
+            <div class="close-form-inline-header">
+              <span class="text-xs font-bold tracking-widest text-amber-400 uppercase">{{ pendingStatus() }} Case — Complete Resolution</span>
+              <button (click)="showCloseForm.set(false)" class="text-on-surface-variant hover:text-white text-xs">✕ Cancel</button>
+            </div>
+            <div class="cf-row" *ngIf="selectedCase().src_ip">
+              <label class="cf-label">
+                <input type="checkbox" [(ngModel)]="addToIntel" class="mr-2 accent-amber-400" />
+                Add attacker IP <span class="font-mono text-red-400">{{ selectedCase().src_ip }}</span> to Threat Intel watchlist
+              </label>
+            </div>
+            <div class="cf-row" *ngIf="addToIntel && selectedCase().src_ip">
+              <label class="cf-key">Attacker Group / Campaign</label>
+              <input type="text" [(ngModel)]="intelGroup" placeholder="e.g. APT29, brute-force-campaign" class="cf-input" />
+            </div>
+            <div class="cf-row">
+              <label class="cf-key">Resolution Notes</label>
+              <textarea [(ngModel)]="closeNotes" rows="4" placeholder="Describe what happened and how it was resolved..." class="cf-input"></textarea>
+            </div>
+            <div class="cf-actions">
+              <button (click)="showCloseForm.set(false)" class="btn-cancel-sm">Cancel</button>
+              <button (click)="confirmClose()" class="btn-confirm-sm">{{ pendingStatus() }} &amp; Generate Report</button>
+            </div>
+          </div>
+
+          <!-- Evidence Panel -->
+          <div *ngIf="evidenceLoading()" class="text-xs text-on-surface-variant animate-pulse py-2">Loading evidence...</div>
+          <ng-container *ngIf="liveEvidence() && !evidenceLoading()">
+
+            <!-- PCAP Sessions -->
+            <div class="detail-section">
+              <div class="flex items-center justify-between mb-1">
+                <div class="section-label">PCAP SESSIONS ({{ visibleSessions().length }}{{ dismissedSessionIds().size > 0 ? ' · ' + dismissedSessionIds().size + ' removed' : '' }})</div>
+                <button *ngIf="selectedCase()?.community_id" (click)="collectPcap()" [disabled]="collectingPcap()" title="Trigger on-demand evidence bundle capture for this flow" class="text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 text-emerald-400 hover:border-emerald-400/60 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{{ collectingPcap() ? '⟳ Collecting...' : '⬡ Collect PCAP' }}</button>
+              </div>
+              <div *ngIf="visibleSessions().length > 0; else noPcap">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-on-surface-variant border-b border-outline/10">
+                      <th class="pb-2 text-left">Time</th>
+                      <th class="pb-2 text-left">Source</th>
+                      <th class="pb-2 text-left">Dest</th>
+                      <th class="pb-2 text-left">Proto</th>
+                      <th class="pb-2 text-right">Bytes</th>
+                      <th class="pb-2 text-right">Pkts</th>
+                      <th class="pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-outline/5">
+                    <tr *ngFor="let s of visibleSessions()" class="text-white group/pcap-row">
+                      <td class="py-1.5 font-mono text-on-surface-variant">{{ formatPcapTime(s.start_time) }}</td>
+                      <td class="py-1.5 font-mono">{{ s.src_ip }}:{{ s.src_port }}</td>
+                      <td class="py-1.5 font-mono">{{ s.dst_ip }}:{{ s.dst_port }}</td>
+                      <td class="py-1.5">{{ (s.proto || 'other').toUpperCase() }}</td>
+                      <td class="py-1.5 text-right text-on-surface-variant">{{ s.bytes || 0 }}</td>
+                      <td class="py-1.5 text-right text-on-surface-variant">{{ s.packets || 0 }}</td>
+                      <td class="py-1.5 text-right">
+                        <div class="flex items-center justify-end gap-1 opacity-0 group-hover/pcap-row:opacity-100 transition-opacity">
+                          <button (click)="analyzeSession(s)" title="View decoded session metadata"
+                            class="text-[10px] px-1.5 py-0.5 rounded border border-blue-400/25 text-blue-400 hover:border-blue-400/50 hover:text-blue-300">Metadata</button>
+                          <button (click)="openPcapViewer(s)" title="Open raw PCAP file viewer" class="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/30 text-amber-400 hover:border-amber-400/60 hover:text-amber-300">⬡ Raw PCAP</button>
+                          <button (click)="downloadPcap(s)" title="Download PCAP file"
+                            class="text-[10px] px-1.5 py-0.5 rounded border border-primary/25 text-primary hover:border-primary/50">↓</button>
+                          <button (click)="dismissSession(s.id)" title="Remove from this view"
+                            class="text-[10px] px-1.5 py-0.5 rounded border border-red-400/20 text-red-400 hover:border-red-300/40 hover:text-red-300">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Session Detail Panel -->
+              <div *ngIf="selectedSession()" class="session-detail-panel mt-3">
+                <div class="session-detail-header">
+                  <span class="text-[10px] font-bold tracking-widest text-primary uppercase">Session Detail</span>
+                  <button (click)="closeSessionDetail()" class="text-on-surface-variant hover:text-white text-xs">✕ Close</button>
+                </div>
+                <div class="session-detail-body">
+                  <div class="sd-section">
+                    <div class="sd-label">Flow</div>
+                    <div class="sd-row"><span class="sd-key">Source</span><span class="sd-val font-mono">{{ selectedSession().src_ip }}:{{ selectedSession().src_port }}</span></div>
+                    <div class="sd-row"><span class="sd-key">Destination</span><span class="sd-val font-mono">{{ selectedSession().dst_ip }}:{{ selectedSession().dst_port }}</span></div>
+                    <div class="sd-row"><span class="sd-key">Protocol</span><span class="sd-val">{{ (selectedSession().proto || '').toUpperCase() }}</span></div>
+                    <div class="sd-row"><span class="sd-key">Duration</span><span class="sd-val">{{ sessionDuration(selectedSession) }}</span></div>
+                    <div class="sd-row"><span class="sd-key">Bytes / Packets</span><span class="sd-val">{{ selectedSession().bytes }} bytes / {{ selectedSession().packets }} pkts</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().data_bytes"><span class="sd-key">Data bytes (↑ client / ↓ server)</span><span class="sd-val">{{ selectedSession().client_bytes }} / {{ selectedSession().server_bytes }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().sensor_host"><span class="sd-key">Sensor</span><span class="sd-val font-mono">{{ selectedSession().sensor_host }}</span></div>
+                    <div class="sd-row"><span class="sd-key">Community ID</span><span class="sd-val font-mono text-[10px] break-all">{{ selectedSession().community_id }}</span></div>
+                  </div>
+                  <div class="sd-section" *ngIf="selectedSession().tcp_flags">
+                    <div class="sd-label">TCP Flags</div>
+                    <div class="flex flex-wrap gap-1.5 mt-1">
+                      <span *ngIf="selectedSession().tcp_flags.syn"    class="sd-flag flag-syn">SYN ×{{ selectedSession().tcp_flags.syn }}</span>
+                      <span *ngIf="selectedSession().tcp_flags.synack" class="sd-flag flag-syn">SYN-ACK ×{{ selectedSession().tcp_flags.synack }}</span>
+                      <span *ngIf="selectedSession().tcp_flags.rst"    class="sd-flag flag-rst">RST ×{{ selectedSession().tcp_flags.rst }}</span>
+                      <span *ngIf="selectedSession().tcp_flags.fin"    class="sd-flag flag-fin">FIN ×{{ selectedSession().tcp_flags.fin }}</span>
+                    </div>
+                  </div>
+                  <div class="sd-section" *ngIf="selectedSession().http">
+                    <div class="sd-label">HTTP</div>
+                    <div class="sd-row" *ngIf="selectedSession().http.method"><span class="sd-key">Method</span><span class="sd-val font-bold text-yellow-400">{{ selectedSession().http.method }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().http.host"><span class="sd-key">Host</span><span class="sd-val font-mono">{{ selectedSession().http.host }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().http.uri"><span class="sd-key">URI</span><span class="sd-val font-mono break-all text-primary">{{ selectedSession().http.uri }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().http.status"><span class="sd-key">Status</span><span class="sd-val" [class.text-red-400]="selectedSession().http.status >= 400">{{ selectedSession().http.status }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().http.user_agent"><span class="sd-key">User-Agent</span><span class="sd-val font-mono text-[10px] break-all">{{ selectedSession().http.user_agent }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().http.content_type"><span class="sd-key">Content-Type</span><span class="sd-val font-mono">{{ selectedSession().http.content_type }}</span></div>
+                  </div>
+                  <div class="sd-section" *ngIf="selectedSession().dns">
+                    <div class="sd-label">DNS</div>
+                    <div class="sd-row" *ngIf="selectedSession().dns.host"><span class="sd-key">Query</span><span class="sd-val font-mono text-yellow-400">{{ selectedSession().dns.host }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().dns.type"><span class="sd-key">Type</span><span class="sd-val">{{ selectedSession().dns.type }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().dns.status"><span class="sd-key">Status</span><span class="sd-val">{{ selectedSession().dns.status }}</span></div>
+                  </div>
+                  <div class="sd-section" *ngIf="selectedSession().tls">
+                    <div class="sd-label">TLS</div>
+                    <div class="sd-row" *ngIf="selectedSession().tls.server_name"><span class="sd-key">SNI</span><span class="sd-val font-mono">{{ selectedSession().tls.server_name }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().tls.ja3"><span class="sd-key">JA3</span><span class="sd-val font-mono text-[10px]">{{ selectedSession().tls.ja3 }}</span></div>
+                    <div class="sd-row" *ngIf="selectedSession().tls.ja3s"><span class="sd-key">JA3S</span><span class="sd-val font-mono text-[10px]">{{ selectedSession().tls.ja3s }}</span></div>
+                  </div>
+                  <div class="sd-section">
+                    <button (click)="downloadPcap(selectedSession())"
+                      class="text-xs px-3 py-1.5 rounded border border-primary/30 text-primary hover:border-primary/60 hover:bg-primary/10 transition-colors font-semibold">
+                      ↓ Download Raw PCAP
+                    </button>
+                  </div>
+                  <!-- ── Session Annotation ───────────────────────── -->
+                  <div class="sd-section sd-annotation">
+                    <div class="sd-label">Analyst Notes on This Session</div>
+                    <textarea [(ngModel)]="sessionNote" rows="3"
+                      placeholder="e.g. SYN flood pattern, suspicious UA, payload anomaly..."
+                      class="sd-note-input"></textarea>
+                    <div class="flex gap-2 mt-2">
+                      <button (click)="addSessionNote(selectedSession())"
+                        [disabled]="!sessionNote.trim()"
+                        class="text-xs px-3 py-1.5 rounded bg-primary text-black font-bold hover:bg-primary/85 transition-colors disabled:opacity-40">
+                        Add Note to Case
+                      </button>
+                      <button (click)="closeSessionDetail()"
+                        class="text-xs px-3 py-1.5 rounded border border-outline/20 text-on-surface-variant hover:text-white hover:border-outline/40 transition-colors">
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ng-template #noPcap>
+                <p class="text-xs text-on-surface-variant">No PCAP sessions captured for this flow.</p>
+                <p *ngIf="collectPcapDone()" class="text-xs text-emerald-400 mt-1">Collection triggered — sessions will appear shortly.</p>
+              </ng-template>
+            </div>
+
+            <!-- ── Raw PCAP File Viewer ──────────────────────────────── -->
+            <div *ngIf="pcapViewSession()" class="detail-section pcap-viewer-panel">
+
+              <!-- Header bar -->
+              <div class="pcap-viewer-header">
+                <div class="pcap-viewer-title">
+                  <span class="pcap-viewer-badge">⬡ RAW PCAP</span>
+                  <span class="pcap-viewer-flow">
+                    <span class="text-white/80">{{ pcapViewSession().src_ip }}:{{ pcapViewSession().src_port }}</span>
+                    <span class="text-on-surface-variant/50 mx-1">→</span>
+                    <span class="text-white/80">{{ pcapViewSession().dst_ip }}:{{ pcapViewSession().dst_port }}</span>
+                  </span>
+                  <span *ngIf="pcapPackets().length" class="pcap-pkt-count">{{ pcapPackets().length }} packets</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button (click)="openPcapAnalysis()" [disabled]="!pcapPackets().length"
+                    class="pcap-hdr-btn pcap-hdr-btn-analyze">⬡ Analyze</button>
+                  <button (click)="downloadPcap(pcapViewSession())"
+                    class="pcap-hdr-btn">↓ Download</button>
+                  <button (click)="closePcapViewer()"
+                    class="pcap-hdr-close">✕ Close</button>
+                </div>
+              </div>
+
+              <!-- Loading / Error -->
+              <div *ngIf="pcapLoading()" class="pcap-status-row">
+                <span class="pcap-status-dot loading"></span>Fetching PCAP…
+              </div>
+              <div *ngIf="pcapError()" class="pcap-status-row error">
+                <span class="pcap-status-dot error-dot"></span>{{ pcapError() }}
+              </div>
+
+              <!-- Packet table -->
+              <div *ngIf="!pcapLoading() && pcapPackets().length > 0" class="pcap-pkt-table-wrap">
+                <table class="pcap-pkt-table">
+                  <thead>
+                    <tr>
+                      <th class="w-col-no">#</th>
+                      <th class="w-col-ts">Time (ms)</th>
+                      <th>Source → Destination</th>
+                      <th class="w-col-proto">Proto</th>
+                      <th class="w-col-len text-right">Len</th>
+                      <th>Info</th>
+                      <th class="w-col-exp"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <ng-container *ngFor="let pkt of pcapPackets()">
+
+                      <!-- Packet summary row -->
+                      <tr (click)="togglePktExpand(pkt.idx)"
+                          [class]="'pcap-pkt-row proto-' + (pkt.proto||'').toLowerCase() + (expandedPktIdx().has(pkt.idx) ? ' expanded' : '')">
+                        <td class="pkt-no">{{ pkt.idx }}</td>
+                        <td class="pkt-ts">{{ pkt.ts < 1 ? (pkt.ts * 1000).toFixed(0) + ' µs' : pkt.ts.toFixed(3) + ' ms' }}</td>
+                        <td class="pkt-flow">
+                          <span *ngIf="pkt.src_ip">
+                            {{ pkt.src_ip }}{{ pkt.src_port ? ':' + pkt.src_port : '' }}
+                            <span class="pkt-arrow">→</span>
+                            {{ pkt.dst_ip }}{{ pkt.dst_port ? ':' + pkt.dst_port : '' }}
+                          </span>
+                          <span *ngIf="!pkt.src_ip" class="text-on-surface-variant">—</span>
+                        </td>
+                        <td><span [class]="'pcap-proto-badge proto-badge-' + (pkt.proto||'other').toLowerCase()">{{ pkt.proto || '?' }}</span></td>
+                        <td class="pkt-len text-right">{{ pkt.len }}</td>
+                        <td class="pkt-info">{{ pkt.info }}</td>
+                        <td class="pkt-exp-icon">{{ expandedPktIdx().has(pkt.idx) ? '▲' : '▼' }}</td>
+                      </tr>
+
+                      <!-- Expanded detail row -->
+                      <tr *ngIf="expandedPktIdx().has(pkt.idx)" class="pcap-detail-row">
+                        <td colspan="7">
+                          <div class="pcap-detail-body">
+
+                            <!-- TCP flags pill -->
+                            <div *ngIf="pkt.flags" class="pcap-flags-row">
+                              <span class="pcap-flags-label">TCP Flags</span>
+                              <ng-container *ngFor="let f of pkt.flags.split('+')">
+                                <span [class]="'pcap-flag-chip ' + (f==='RST'?'chip-rst':f==='SYN'?'chip-syn':f==='FIN'?'chip-fin':'chip-ack')">{{ f }}</span>
+                              </ng-container>
+                            </div>
+
+                            <!-- HTTP -->
+                            <ng-container *ngIf="pkt.httpHeaders?.length">
+                              <div class="pcap-decoded-block">
+                                <div class="pcap-decoded-proto-label">HTTP</div>
+                                <div class="pcap-decoded-firstline">{{ pkt.httpFirstLine }}</div>
+                                <table class="pcap-decoded-table">
+                                  <tr *ngFor="let h of pkt.httpHeaders" [class]="isKeyHeader(h.k) ? 'key-header-row' : ''">
+                                    <td class="pcap-decoded-key">{{ h.k }}</td>
+                                    <td class="pcap-decoded-val">{{ h.v }}</td>
+                                  </tr>
+                                </table>
+                                <div *ngIf="pkt.httpBody" class="pcap-body-block">
+                                  <div class="pcap-body-label">Body</div>
+                                  <pre class="pcap-body-pre">{{ pkt.httpBody }}</pre>
+                                </div>
+                                <div *ngIf="pkt.httpBodyNote" class="pcap-body-note">
+                                  <span class="pcap-body-note-icon">⚠</span> {{ pkt.httpBodyNote }}
+                                </div>
+                              </div>
+                            </ng-container>
+
+                            <!-- DNS -->
+                            <ng-container *ngIf="pkt.dnsDecoded?.length">
+                              <div class="pcap-decoded-block">
+                                <div class="pcap-decoded-proto-label dns">DNS</div>
+                                <table class="pcap-decoded-table">
+                                  <tr *ngFor="let h of pkt.dnsDecoded">
+                                    <td class="pcap-decoded-key">{{ h.k }}</td>
+                                    <td class="pcap-decoded-val">{{ h.v }}</td>
+                                  </tr>
+                                </table>
+                              </div>
+                            </ng-container>
+
+                            <!-- TLS -->
+                            <ng-container *ngIf="pkt.tlsDecoded?.length">
+                              <div class="pcap-decoded-block">
+                                <div class="pcap-decoded-proto-label tls">TLS</div>
+                                <table class="pcap-decoded-table">
+                                  <tr *ngFor="let h of pkt.tlsDecoded">
+                                    <td class="pcap-decoded-key">{{ h.k }}</td>
+                                    <td class="pcap-decoded-val">{{ h.v }}</td>
+                                  </tr>
+                                </table>
+                              </div>
+                            </ng-container>
+
+                            <!-- ICMP -->
+                            <ng-container *ngIf="pkt.icmpDecoded?.length">
+                              <div class="pcap-decoded-block">
+                                <div class="pcap-decoded-proto-label icmp">ICMP</div>
+                                <table class="pcap-decoded-table">
+                                  <tr *ngFor="let h of pkt.icmpDecoded">
+                                    <td class="pcap-decoded-key">{{ h.k }}</td>
+                                    <td class="pcap-decoded-val">{{ h.v }}</td>
+                                  </tr>
+                                </table>
+                              </div>
+                            </ng-container>
+
+                            <!-- Raw hex (no decoded layer available) -->
+                            <ng-container *ngIf="!pkt.httpHeaders?.length && !pkt.dnsDecoded?.length && !pkt.tlsDecoded?.length && !pkt.icmpDecoded?.length">
+                              <div class="pcap-hex-block">
+                                <pre *ngFor="let line of pkt.hexLines" class="pcap-hex-line">{{ line }}</pre>
+                              </div>
+                            </ng-container>
+
+                          </div>
+                        </td>
+                      </tr>
+
+                    </ng-container>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Analyst notes -->
+              <div class="pcap-note-box">
+                <div class="pcap-note-label">Analyst Notes on this PCAP</div>
+                <textarea [(ngModel)]="pcapNote" rows="3"
+                  placeholder="Document findings: suspicious patterns, anomalies, indicators of compromise…"
+                  class="sd-note-input"></textarea>
+                <div class="flex gap-2 mt-2">
+                  <button (click)="addPcapNote()" [disabled]="!pcapNote.trim()"
+                    class="text-xs px-3 py-1.5 rounded bg-amber-400 text-black font-bold hover:bg-amber-300 transition-colors disabled:opacity-40">
+                    Add to Case Timeline
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── PCAP Analysis Modal ──────────────────────────────────── -->
+            <div *ngIf="showPcapAnalysis() && pcapAnalysis()" class="pa-overlay" (click)="showPcapAnalysis.set(false)">
+              <div class="pa-modal soar-modal" (click)="$event.stopPropagation()">
+
+                <!-- Top bar -->
+                <div class="pa-topbar">
+                  <div class="pa-topbar-left">
+                    <span class="pa-logo-chip">⬡ NDR</span>
+                    <span class="pa-breadcrumb">{{ pcapViewSession()?.src_ip }}:{{ pcapViewSession()?.src_port }} → {{ pcapViewSession()?.dst_ip }}:{{ pcapViewSession()?.dst_port }}</span>
+                  </div>
+                  <button class="modal-close" (click)="showPcapAnalysis.set(false)">✕</button>
+                </div>
+
+                <div class="pa-layout">
+
+                  <!-- ── Sidebar ── -->
+                  <nav class="pa-sidebar">
+                    <div class="pa-sidebar-section-label">Analysis</div>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='overview'" (click)="setpaTab('overview')">
+                      <span class="pa-nav-icon">◈</span>
+                      <span class="pa-nav-label">Data Overview</span>
+                    </button>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='connections'" (click)="setpaTab('connections')">
+                      <span class="pa-nav-icon">⇌</span>
+                      <span class="pa-nav-label">Connections</span>
+                      <span *ngIf="pcapAnalysis().connections.length" class="pa-nav-badge">{{ pcapAnalysis().connections.length }}</span>
+                    </button>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='http'" (click)="setpaTab('http')"
+                      [disabled]="!pcapAnalysis().http.length">
+                      <span class="pa-nav-icon">⇄</span>
+                      <span class="pa-nav-label">HTTP</span>
+                      <span *ngIf="pcapAnalysis().http.length" class="pa-nav-badge">{{ pcapAnalysis().http.length }}</span>
+                    </button>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='dns'" (click)="setpaTab('dns')"
+                      [disabled]="!pcapAnalysis().dns.length">
+                      <span class="pa-nav-icon">◉</span>
+                      <span class="pa-nav-label">DNS</span>
+                      <span *ngIf="pcapAnalysis().dns.length" class="pa-nav-badge">{{ pcapAnalysis().dns.length }}</span>
+                    </button>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='tls'" (click)="setpaTab('tls')"
+                      [disabled]="!pcapAnalysis().tls.length">
+                      <span class="pa-nav-icon">⬡</span>
+                      <span class="pa-nav-label">SSL / TLS</span>
+                      <span *ngIf="pcapAnalysis().tls.length" class="pa-nav-badge">{{ pcapAnalysis().tls.length }}</span>
+                    </button>
+
+                    <button class="pa-nav-item" [class.active]="paActiveTab()==='icmp'" (click)="setpaTab('icmp')"
+                      [disabled]="!pcapAnalysis().icmp.length">
+                      <span class="pa-nav-icon">◎</span>
+                      <span class="pa-nav-label">ICMP</span>
+                      <span *ngIf="pcapAnalysis().icmp.length" class="pa-nav-badge">{{ pcapAnalysis().icmp.length }}</span>
+                    </button>
+                  </nav>
+
+                  <!-- ── Main content ── -->
+                  <div class="pa-content">
+
+                    <!-- ── OVERVIEW ── -->
+                    <div *ngIf="paActiveTab()==='overview'" class="pa-pane">
+                      <div class="pa-pane-title">Network Traffic by Protocol Over Time</div>
+
+                      <!-- Chart -->
+                      <div class="pa-chart-wrap">
+                        <canvas id="pa-chart-canvas" class="pa-chart-canvas"></canvas>
+                      </div>
+
+                      <!-- Legend -->
+                      <div class="pa-legend">
+                        <div *ngFor="let p of protocolList()" class="pa-legend-item">
+                          <span [class]="'pa-legend-dot proto-dot-' + p.proto.toLowerCase()"></span>
+                          <span class="pa-legend-proto">{{ p.proto }}</span>
+                          <span class="pa-legend-count">{{ p.count }}</span>
+                        </div>
+                      </div>
+
+                      <!-- Summary cards -->
+                      <div class="pa-summary-cards">
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ pcapAnalysis().totalPackets }}</div>
+                          <div class="pa-sc-key">Total Packets</div>
+                        </div>
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ formatBytes(pcapAnalysis().totalBytes) }}</div>
+                          <div class="pa-sc-key">Captured Data</div>
+                        </div>
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ pcapAnalysis().connections.length }}</div>
+                          <div class="pa-sc-key">Network Flows</div>
+                        </div>
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ pcapAnalysis().http.length }}</div>
+                          <div class="pa-sc-key">HTTP Transactions</div>
+                        </div>
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ pcapAnalysis().dns.length }}</div>
+                          <div class="pa-sc-key">DNS Queries</div>
+                        </div>
+                        <div class="pa-summary-card">
+                          <div class="pa-sc-val">{{ pcapAnalysis().tls.length }}</div>
+                          <div class="pa-sc-key">TLS Hosts</div>
+                        </div>
+                      </div>
+
+                      <!-- Protocol breakdown bars -->
+                      <div class="pa-pane-subtitle">Protocol Breakdown</div>
+                      <div class="pa-proto-grid">
+                        <div *ngFor="let p of protocolList()" class="pa-proto-item">
+                          <span [class]="'pcap-proto-badge proto-badge-' + p.proto.toLowerCase()">{{ p.proto }}</span>
+                          <span class="pa-proto-count">{{ p.count }}</span>
+                          <div class="pa-proto-bar-wrap">
+                            <div class="pa-proto-bar" [style.width.%]="p.count / pcapAnalysis().totalPackets * 100"
+                              [class]="'pa-proto-bar-fill proto-bar-' + p.proto.toLowerCase()"></div>
+                          </div>
+                          <span class="pa-proto-pct">{{ (p.count / pcapAnalysis().totalPackets * 100).toFixed(1) }}%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- ── CONNECTIONS ── -->
+                    <div *ngIf="paActiveTab()==='connections'" class="pa-pane">
+                      <div class="pa-pane-title">Network Flows <span class="pa-pane-count">{{ pcapAnalysis().connections.length }}</span></div>
+                      <div class="pa-pane-desc">Unique bidirectional flows sorted by traffic volume.</div>
+                      <div class="pa-table-wrap">
+                        <table class="pa-table">
+                          <thead><tr>
+                            <th>Source</th><th>Destination</th><th>Proto</th>
+                            <th class="text-right">Pkts</th><th class="text-right">Bytes</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr *ngFor="let c of pcapAnalysis().connections">
+                              <td class="pa-mono">{{ c.src }}</td>
+                              <td class="pa-mono">{{ c.dst }}</td>
+                              <td><span [class]="'pcap-proto-badge proto-badge-' + (c.proto||'other').toLowerCase()">{{ c.proto || '?' }}</span></td>
+                              <td class="text-right pa-mono">{{ c.pkts }}</td>
+                              <td class="text-right pa-mono">{{ formatBytes(c.bytes) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ── HTTP ── -->
+                    <div *ngIf="paActiveTab()==='http'" class="pa-pane">
+                      <div class="pa-pane-title">HTTP Transactions <span class="pa-pane-count">{{ pcapAnalysis().http.length }}</span></div>
+                      <div class="pa-pane-desc">HTTP requests and responses decoded from packet payloads.</div>
+                      <div class="pa-table-wrap">
+                        <table class="pa-table">
+                          <thead><tr>
+                            <th>Request / Response Line</th><th>Host</th><th>Content-Type</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr *ngFor="let h of pcapAnalysis().http">
+                              <td class="pa-mono pa-http-line">{{ h.line }}</td>
+                              <td class="pa-mono pa-host">{{ h.host || '—' }}</td>
+                              <td class="pa-mono">{{ h.ct || '—' }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ── DNS ── -->
+                    <div *ngIf="paActiveTab()==='dns'" class="pa-pane">
+                      <div class="pa-pane-title">DNS Queries <span class="pa-pane-count">{{ pcapAnalysis().dns.length }}</span></div>
+                      <div class="pa-pane-desc">Domain name queries and responses found in the capture.</div>
+                      <div class="pa-table-wrap">
+                        <table class="pa-table">
+                          <thead><tr>
+                            <th>Domain Name</th><th>Type</th><th>Status</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr *ngFor="let d of pcapAnalysis().dns">
+                              <td class="pa-mono pa-dns-name">{{ d.name }}</td>
+                              <td><span class="pa-type-chip">{{ d.type || '—' }}</span></td>
+                              <td>
+                                <span [class]="'pa-status-chip ' + (d.status === 'No Error' ? 'ok' : d.status ? 'err' : '')">
+                                  {{ d.status || (d.hasResp ? 'OK' : 'Query') }}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ── TLS ── -->
+                    <div *ngIf="paActiveTab()==='tls'" class="pa-pane">
+                      <div class="pa-pane-title">SSL / TLS Connections <span class="pa-pane-count">{{ pcapAnalysis().tls.length }}</span></div>
+                      <div class="pa-pane-desc">TLS handshakes and server names (SNI) extracted from the capture.</div>
+                      <div class="pa-table-wrap">
+                        <table class="pa-table">
+                          <thead><tr>
+                            <th>Server Name (SNI)</th><th>Destination IP</th><th>Handshake Type</th><th class="text-right">Packets</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr *ngFor="let t of pcapAnalysis().tls">
+                              <td class="pa-mono pa-sni">{{ t.sni }}</td>
+                              <td class="pa-mono">{{ t.dst || '—' }}</td>
+                              <td class="pa-mono">{{ t.hs || '—' }}</td>
+                              <td class="text-right pa-mono">{{ t.count }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ── ICMP ── -->
+                    <div *ngIf="paActiveTab()==='icmp'" class="pa-pane">
+                      <div class="pa-pane-title">ICMP Packets <span class="pa-pane-count">{{ pcapAnalysis().icmp.length }}</span></div>
+                      <div class="pa-pane-desc">Internet Control Message Protocol packets decoded from the capture.</div>
+                      <div class="pa-table-wrap">
+                        <table class="pa-table">
+                          <thead><tr>
+                            <th>Description</th><th>Source</th><th>Destination</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr *ngFor="let i of pcapAnalysis().icmp">
+                              <td>{{ i.desc }}</td>
+                              <td class="pa-mono">{{ i.src }}</td>
+                              <td class="pa-mono">{{ i.dst }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                  </div><!-- /pa-content -->
+                </div><!-- /pa-layout -->
+              </div><!-- /pa-modal -->
+            </div><!-- /pa-overlay -->
+
+            <!-- NDR Events -->
+            <div class="detail-section">
+              <div class="section-label">NDR EVENTS ({{ liveEvidence().ndr_events?.length || 0 }})</div>
+              <div *ngIf="liveEvidence().ndr_events?.length > 0; else noEvents">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-on-surface-variant border-b border-outline/10">
+                      <th class="pb-2 text-left">Time</th>
+                      <th class="pb-2 text-left">Source</th>
+                      <th class="pb-2 text-left">Type</th>
+                      <th class="pb-2 text-left">Flow</th>
+                      <th class="pb-2 text-left">Proto</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-outline/5">
+                    <tr *ngFor="let e of liveEvidence().ndr_events" class="text-white">
+                      <td class="py-1.5 font-mono text-on-surface-variant">{{ formatTs(e.ts) }}</td>
+                      <td class="py-1.5">
+                        <span [class]="'px-1.5 py-0.5 rounded text-[10px] font-bold ' + (e.source === 'agent-z' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400')">
+                          {{ e.source === 'agent-z' ? 'AGENT-Z' : (e.source === 'agent-s' ? 'AGENT-S' : (e.source | uppercase)) }}
+                        </span>
+                      </td>
+                      <td class="py-1.5 text-primary">{{ e.event_type || 'conn' }}</td>
+                      <td class="py-1.5 font-mono text-xs">{{ e.src_ip }}:{{ e.src_port }} → {{ e.dst_ip }}:{{ e.dst_port }}</td>
+                      <td class="py-1.5 uppercase text-on-surface-variant">{{ e.proto }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <ng-template #noEvents>
+                <p class="text-xs text-on-surface-variant">No NDR events found for this flow.</p>
+              </ng-template>
+            </div>
+          </ng-container>
+
+          <!-- Case Notes / Timeline -->
+          <div class="detail-section">
+            <div class="section-label">CASE NOTES / TIMELINE</div>
+            <div *ngIf="loadingCase()" class="text-xs text-on-surface-variant animate-pulse py-2">Loading notes...</div>
+            <div class="case-timeline">
+              <div class="timeline-entry timeline-system">
+                <div class="timeline-dot tl-system"></div>
+                <div class="timeline-content">
+                  <span class="timeline-author">SYSTEM</span>
+                  <span class="timeline-time">{{ formatDateShort(selectedCase().created_at) }}</span>
+                  <div class="timeline-text">Case {{ selectedCase().case_number || selectedCase().id?.slice(0,8) }} created — Status: <strong>{{ selectedCase().status }}</strong></div>
+                </div>
+              </div>
+              <div *ngFor="let c of caseComments()" class="timeline-entry">
+                <div class="timeline-dot tl-analyst"></div>
+                <div class="timeline-content">
+                  <span class="timeline-author">{{ c.author }}</span>
+                  <span class="timeline-time">{{ formatDate(c.created_at) }}</span>
+                  <div class="timeline-text">{{ c.comment }}</div>
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2 mt-4">
+              <input [(ngModel)]="newComment" placeholder="Add a note or update..." class="field-input flex-1"
+                (keyup.enter)="addComment()" />
+              <button (click)="addComment()" class="btn-primary text-xs px-4">Add Note</button>
+            </div>
+          </div>
+
+        </div><!-- /case-detail-body -->
+      </div><!-- /cases-detail-col -->
+
+    </div><!-- /cases-split -->
+  </div><!-- /cases tab -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — PLAYBOOKS
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'playbooks'" class="soar-tab-content space-y-4">
+
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between">
+      <span class="text-xs text-on-surface-variant">{{ playbooks().length }} playbook{{ playbooks().length !== 1 ? 's' : '' }} defined</span>
+      <button (click)="initPlaybookModal()"
+        class="flex items-center gap-1.5 text-xs font-semibold bg-primary text-black px-3 py-2 rounded-lg hover:bg-primary/85 transition-colors">
+        <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+        New Playbook
+      </button>
+    </div>
+
+    <!-- Empty -->
+    <div *ngIf="playbooks().length === 0" class="flex flex-col items-center justify-center py-16 border border-white/10 border-dashed rounded-xl bg-[#121212] shadow-sm">
+      <lucide-icon [name]="ZapIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+      <p class="text-sm font-semibold text-on-surface-variant">No playbooks configured</p>
+      <p class="text-xs text-on-surface-variant/60 mt-1 mb-4">Create a playbook to automate response actions.</p>
+      <button (click)="initPlaybookModal()"
+        class="flex items-center gap-1.5 text-xs font-semibold bg-primary text-black px-3 py-2 rounded-lg hover:bg-primary/85 transition-colors">
+        <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon> New Playbook
+      </button>
+    </div>
+
+    <!-- Table -->
+    <div *ngIf="playbooks().length > 0" class="border border-white/10 rounded-xl overflow-hidden shadow-lg bg-[#121212]">
+      <table class="soar-table w-full text-left text-sm">
+        <thead class="bg-[#0a0a0a]">
+          <tr class="border-b border-white/10 text-[11px] uppercase tracking-[0.15em] text-white/60 font-bold">
+            <th class="px-4 py-3 w-16">Enabled</th>
+            <th class="px-4 py-3">Playbook</th>
+            <th class="px-4 py-3">Trigger Condition</th>
+            <th class="px-4 py-3">Action</th>
+            <th class="px-4 py-3 text-right w-20">Runs</th>
+            <th class="px-4 py-3 w-20"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5 bg-[#121212]">
+          <tr *ngFor="let pb of playbooks()" class="soar-row group hover:bg-white/5 transition-colors">
+            <!-- Toggle -->
+            <td class="px-4 py-3.5">
+              <button (click)="togglePlaybook(pb)" [title]="pb.enabled ? 'Click to disable' : 'Click to enable'"
+                [class]="'soar-switch ' + (pb.enabled ? 'bg-primary on' : 'bg-outline/20')">
+                <div class="soar-switch-thumb"></div>
+              </button>
+            </td>
+            <!-- Name + desc -->
+            <td class="px-4 py-3.5">
+              <div class="flex items-center gap-2">
+                <div [class]="'w-1 h-8 rounded-full flex-shrink-0 ' + (pb.enabled ? 'bg-primary' : 'bg-outline/20')"></div>
+                <div>
+                  <div class="text-sm font-semibold text-white leading-tight">{{ pb.name }}</div>
+                  <div class="text-xs text-on-surface-variant mt-0.5 leading-tight">{{ pb.description }}</div>
+                </div>
+              </div>
+            </td>
+            <!-- Condition -->
+            <td class="px-4 py-3.5">
+              <code class="text-xs font-mono text-primary/90 bg-primary/8 border border-primary/15 px-2 py-1 rounded">
+                {{ pb.cond_field }}&nbsp;{{ pb.cond_op }}&nbsp;{{ pb.cond_value }}
+              </code>
+            </td>
+            <!-- Action -->
+            <td class="px-4 py-3.5">
+              <span class="inline-flex items-center gap-1.5 text-xs text-on-surface-variant bg-surface-container border border-outline/10 px-2.5 py-1 rounded capitalize">
+                <span class="int-abbr text-primary/70 text-[10px]">{{ getIntAbbr(pb.action_type) }}</span>
+                {{ pb.action_type }}
+              </span>
+            </td>
+            <!-- Runs -->
+            <td class="px-4 py-3.5 text-right">
+              <span class="text-sm font-mono font-semibold text-white">{{ pb.run_count || 0 }}</span>
+            </td>
+            <!-- Actions -->
+            <td class="px-4 py-3.5">
+              <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button (click)="openEditPlaybook(pb)" title="Edit playbook"
+                  class="p-1.5 text-on-surface-variant hover:text-white hover:bg-surface-container rounded transition-all">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button (click)="deletePlaybook(pb)" title="Delete playbook"
+                  class="p-1.5 text-on-surface-variant hover:text-red-400 hover:bg-red-500/8 rounded transition-all">
+                  <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — INTEGRATIONS
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'integrations'" class="soar-tab-content space-y-4">
+
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between">
+      <span class="text-xs text-on-surface-variant">
+        {{ integrations().length }} channel{{ integrations().length !== 1 ? 's' : '' }} configured
+      </span>
+      <button (click)="showNewIntegration.set(true); editingIntId=null; intConfig={}; intName=''; intType='slack'; testResult.set('')"
+        class="flex items-center gap-1.5 text-xs font-semibold bg-primary text-black px-3 py-2 rounded-lg hover:bg-primary/85 transition-colors">
+        <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+        Add Integration
+      </button>
+    </div>
+
+    <!-- Empty -->
+    <div *ngIf="integrations().length === 0" class="flex flex-col items-center justify-center py-16 border border-white/10 border-dashed rounded-xl bg-[#121212] shadow-sm">
+      <lucide-icon [name]="LinkIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+      <p class="text-sm font-semibold text-on-surface-variant">No integrations configured</p>
+      <p class="text-xs text-on-surface-variant/60 mt-1 mb-4">Add a notification channel for playbook actions.</p>
+      <button (click)="showNewIntegration.set(true); editingIntId=null; intConfig={}; intName=''; intType='slack'; testResult.set('')"
+        class="flex items-center gap-1.5 text-xs font-semibold bg-primary text-black px-3 py-2 rounded-lg hover:bg-primary/85 transition-colors">
+        <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon> Add Integration
+      </button>
+    </div>
+
+    <!-- Integration list table -->
+    <div *ngIf="integrations().length > 0" class="border border-white/10 rounded-xl overflow-hidden shadow-lg bg-[#121212]">
+      <table class="soar-table w-full text-left text-sm">
+        <thead class="bg-[#0a0a0a]">
+          <tr class="border-b border-white/10 text-[11px] uppercase tracking-[0.15em] text-white/60 font-bold">
+            <th class="px-4 py-3 w-16">Status</th>
+            <th class="px-4 py-3 w-16">Type</th>
+            <th class="px-4 py-3">Name</th>
+            <th class="px-4 py-3">Endpoint / Host</th>
+            <th class="px-4 py-3 w-28"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5 bg-[#121212]">
+          <tr *ngFor="let int of integrations()" class="soar-row group hover:bg-white/5 transition-colors">
+
+            <!-- Status dot + toggle -->
+            <td class="px-4 py-3.5">
+              <div class="flex items-center gap-2">
+                <span [class]="'w-1.5 h-1.5 rounded-full flex-shrink-0 ' + (int.enabled ? 'status-dot-live bg-primary' : 'bg-outline/30')"></span>
+                <button (click)="toggleIntegration(int)" [title]="int.enabled ? 'Disable' : 'Enable'"
+                  [class]="'soar-switch ' + (int.enabled ? 'bg-primary on' : 'bg-outline/20')">
+                  <div class="soar-switch-thumb"></div>
+                </button>
+              </div>
+            </td>
+
+            <!-- Type abbr badge -->
+            <td class="px-4 py-3.5">
+              <span class="int-abbr text-[10px] font-bold px-2 py-1 rounded bg-surface-container border border-outline/15 text-on-surface-variant uppercase tracking-widest">
+                {{ getIntAbbr(int.type) }}
+              </span>
+            </td>
+
+            <!-- Name -->
+            <td class="px-4 py-3.5">
+              <div class="text-sm font-semibold text-white">{{ int.name }}</div>
+              <div class="text-xs text-on-surface-variant capitalize">{{ int.type }}</div>
+            </td>
+
+            <!-- Endpoint preview -->
+            <td class="px-4 py-3.5">
+              <span class="text-xs font-mono text-on-surface-variant/70 truncate block max-w-xs">
+                <ng-container *ngIf="int.config?.webhook_url">{{ int.config.webhook_url | slice:0:48 }}{{ int.config.webhook_url?.length > 48 ? '…' : '' }}</ng-container>
+                <ng-container *ngIf="int.config?.smtp_host">{{ int.config.smtp_host }}:{{ int.config.smtp_port || '587' }}</ng-container>
+                <ng-container *ngIf="!int.config?.webhook_url && !int.config?.smtp_host">—</ng-container>
+              </span>
+            </td>
+
+            <!-- Actions -->
+            <td class="px-4 py-3.5">
+              <div class="flex items-center justify-end gap-1">
+                <button (click)="openEditIntegration(int)" title="Edit"
+                  class="flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant hover:text-white hover:bg-surface-container px-2.5 py-1.5 rounded transition-all border border-transparent hover:border-outline/10">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit
+                </button>
+                <button (click)="deleteIntegration(int)" title="Remove"
+                  class="flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant hover:text-red-400 hover:bg-red-500/8 px-2.5 py-1.5 rounded transition-all border border-transparent hover:border-red-500/15">
+                  <lucide-icon [name]="TrashIcon" class="w-3 h-3"></lucide-icon>
+                  Remove
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary row -->
+    <div *ngIf="integrations().length > 0" class="text-[11px] text-on-surface-variant px-1">
+      {{ integrations().length }} channel{{ integrations().length !== 1 ? 's' : '' }} configured
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — ACTIVITY LOG
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'activity'" class="soar-tab-content space-y-4">
+
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between">
+      <span class="text-xs text-on-surface-variant">{{ runs().length }} execution{{ runs().length !== 1 ? 's' : '' }} recorded</span>
+      <button (click)="loadRuns()"
+        class="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant hover:text-white border border-outline/10 hover:border-outline/25 px-3 py-1.5 rounded-lg transition-all bg-surface-container">
+        <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5"></lucide-icon>
+        Refresh
+      </button>
+    </div>
+
+    <!-- Empty -->
+    <div *ngIf="runs().length === 0" class="flex flex-col items-center justify-center py-16 border border-white/10 border-dashed rounded-xl bg-[#121212] shadow-sm">
+      <lucide-icon [name]="ActivityIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+      <p class="text-sm font-semibold text-on-surface-variant">No executions recorded</p>
+      <p class="text-xs text-on-surface-variant/60 mt-1">Playbook runs will appear here.</p>
+    </div>
+
+    <!-- Log table -->
+    <div *ngIf="runs().length > 0" class="border border-white/10 rounded-xl overflow-hidden shadow-lg bg-[#121212]">
+      <table class="soar-table w-full text-left text-sm">
+        <thead class="bg-[#0a0a0a]">
+          <tr class="border-b border-white/10 text-[11px] uppercase tracking-[0.15em] text-white/60 font-bold">
+            <th class="px-4 py-3 w-44">Timestamp</th>
+            <th class="px-4 py-3">Playbook</th>
+            <th class="px-4 py-3 w-24">Result</th>
+            <th class="px-4 py-3">Details</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5 bg-[#121212]">
+          <tr *ngFor="let run of runs()" class="soar-row hover:bg-white/5 transition-colors">
+            <td class="px-4 py-3 font-mono text-xs text-on-surface-variant whitespace-nowrap">
+              {{ formatDate(run.created_at) }}
+            </td>
+            <td class="px-4 py-3 text-sm font-semibold text-white">{{ run.playbook_name }}</td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-1.5">
+                <span [class]="'w-1.5 h-1.5 rounded-full flex-shrink-0 ' + (run.status === 'success' ? 'bg-primary' : 'bg-red-400')"></span>
+                <span [class]="'text-xs font-semibold uppercase tracking-wide ' + (run.status === 'success' ? 'text-primary' : 'text-red-400')">
+                  {{ run.status }}
+                </span>
+              </div>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant max-w-sm truncate">{{ run.detail }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — ACTIVE BLOCKS
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'blocks'" class="soar-tab-content space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-bold text-white">Active Blocks</h3>
+        <p class="text-xs text-on-surface-variant/60 mt-0.5">TCP RST injection and firewall rules enforced by NDR sensors</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button (click)="loadBlocks()" [disabled]="loadingBlocks()"
+          class="flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-white bg-surface-container border border-outline/15 hover:border-outline/30 rounded-lg px-3 py-2 transition-all">
+          <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="loadingBlocks()"></lucide-icon>
+          Refresh
+        </button>
+        <button (click)="openBlockModal()"
+          class="flex items-center gap-1.5 text-xs font-bold text-black bg-red-500 hover:bg-red-400 rounded-lg px-3 py-2 transition-colors">
+          <lucide-icon [name]="BanIcon" class="w-3.5 h-3.5"></lucide-icon>
+          Block IP
+        </button>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div *ngIf="!loadingBlocks() && activeBlocks().length === 0"
+      class="flex flex-col items-center justify-center py-16 border border-white/10 border-dashed rounded-xl bg-[#121212] shadow-sm">
+      <lucide-icon [name]="ShieldOffIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+      <p class="text-sm font-semibold text-on-surface-variant">No active blocks</p>
+      <p class="text-xs text-on-surface-variant/60 mt-1">Use the Block IP button or configure a playbook with block_ip action.</p>
+    </div>
+
+    <!-- Blocks table -->
+    <div *ngIf="activeBlocks().length > 0" class="border border-white/10 rounded-xl overflow-hidden shadow-lg bg-[#121212]">
+      <table class="soar-table w-full text-left text-sm">
+        <thead class="bg-[#0a0a0a]">
+          <tr class="border-b border-white/10 text-[11px] uppercase tracking-[0.15em] text-white/60 font-bold">
+            <th class="px-4 py-3 font-semibold">Source IP</th>
+            <th class="px-4 py-3 font-semibold">Triggered By</th>
+            <th class="px-4 py-3 font-semibold">Enforcement</th>
+            <th class="px-4 py-3 font-semibold">Expires</th>
+            <th class="px-4 py-3 font-semibold">Status</th>
+            <th class="px-4 py-3 font-semibold">Reason</th>
+            <th class="px-4 py-3 font-semibold text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5 bg-[#121212]">
+          <tr *ngFor="let b of activeBlocks()" class="soar-row hover:bg-white/5 transition-colors">
+            <td class="px-4 py-3 font-mono text-white text-xs">
+              {{ b.src_ip }}
+              <span *ngIf="b.src_port" class="text-on-surface-variant">:{{ b.src_port }}</span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant">
+              <span [class]="b.triggered_by === 'manual' ? 'text-yellow-400' : 'text-primary'">
+                {{ b.triggered_by }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs">
+              <span *ngIf="b.rst_injected" class="inline-block bg-red-500/15 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded mr-1">RST</span>
+              <span *ngIf="b.firewall_type && b.firewall_type !== 'none'" class="inline-block bg-orange-500/15 text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded">{{ b.firewall_type | uppercase }}</span>
+              <span *ngIf="!b.rst_injected && (!b.firewall_type || b.firewall_type === 'none')" class="text-on-surface-variant/40">—</span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant font-mono">{{ formatDate(b.expires_at) }}</td>
+            <td class="px-4 py-3">
+              <span [class]="'text-[10px] font-bold px-2 py-0.5 rounded uppercase ' +
+                (b.status === 'active' ? 'bg-green-500/15 text-green-400' :
+                 b.status === 'revoked' ? 'bg-red-500/15 text-red-400' : 'bg-surface-container text-on-surface-variant')">
+                {{ b.status }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant max-w-xs truncate" [title]="b.reason">{{ b.reason || '—' }}</td>
+            <td class="px-4 py-3 text-right">
+              <button *ngIf="b.status === 'active'" (click)="revokeBlock(b)"
+                class="text-[10px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-400/40 px-2.5 py-1 rounded-lg transition-all">
+                Revoke
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TAB — Isolated Devices
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="activeTab() === 'isolations'" class="soar-tab-content space-y-4">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-bold text-white">Isolated Devices</h3>
+        <p class="text-xs text-on-surface-variant/60 mt-0.5">ARP spoofing, switch VLAN quarantine, and cloud firewall deny rules</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button (click)="loadIsolations()" [disabled]="loadingIsolations()"
+          class="flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-white bg-surface-container border border-outline/15 hover:border-outline/30 rounded-lg px-3 py-2 transition-all">
+          <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="loadingIsolations()"></lucide-icon>
+          Refresh
+        </button>
+        <button (click)="openIsolateModal()"
+          class="flex items-center gap-1.5 text-xs font-bold text-black bg-amber-400 hover:bg-amber-300 rounded-lg px-3 py-2 transition-colors">
+          <lucide-icon [name]="WifiOffIcon" class="w-3.5 h-3.5"></lucide-icon>
+          Isolate Device
+        </button>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div *ngIf="!loadingIsolations() && isolations().length === 0"
+      class="flex flex-col items-center justify-center py-16 border border-white/10 border-dashed rounded-xl bg-[#121212] shadow-sm">
+      <lucide-icon [name]="WifiIcon" class="w-8 h-8 text-on-surface-variant/30 mb-3"></lucide-icon>
+      <p class="text-sm font-semibold text-on-surface-variant">No isolated devices</p>
+      <p class="text-xs text-on-surface-variant/60 mt-1">Isolate a device to cut it off from the network immediately.</p>
+    </div>
+
+    <!-- Isolations table -->
+    <div *ngIf="isolations().length > 0" class="border border-white/10 rounded-xl overflow-hidden shadow-lg bg-[#121212]">
+      <table class="soar-table w-full text-left text-sm">
+        <thead class="bg-[#0a0a0a]">
+          <tr class="border-b border-white/10 text-[11px] uppercase tracking-[0.15em] text-white/60 font-bold">
+            <th class="px-4 py-3 font-semibold">Target IP</th>
+            <th class="px-4 py-3 font-semibold">Method</th>
+            <th class="px-4 py-3 font-semibold">Enforcement</th>
+            <th class="px-4 py-3 font-semibold">Triggered By</th>
+            <th class="px-4 py-3 font-semibold">Isolated At</th>
+            <th class="px-4 py-3 font-semibold">Status</th>
+            <th class="px-4 py-3 font-semibold">Reason</th>
+            <th class="px-4 py-3 font-semibold text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5 bg-[#121212]">
+          <tr *ngFor="let iso of isolations()" class="soar-row hover:bg-white/5 transition-colors">
+            <td class="px-4 py-3 font-mono text-white text-xs">{{ iso.target_ip }}</td>
+            <td class="px-4 py-3 text-xs">
+              <span class="inline-block bg-amber-500/15 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
+                {{ iso.method }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant">{{ isolationMethodLabel(iso.enforcement) }}</td>
+            <td class="px-4 py-3 text-xs">
+              <span [class]="iso.triggered_by === 'manual' ? 'text-yellow-400' : 'text-primary'">
+                {{ iso.triggered_by }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant font-mono">{{ formatDate(iso.created_at) }}</td>
+            <td class="px-4 py-3">
+              <span [class]="'text-[10px] font-bold px-2 py-0.5 rounded uppercase ' +
+                (iso.status === 'active' ? 'bg-amber-500/15 text-amber-400' :
+                 iso.status === 'restored' ? 'bg-green-500/15 text-green-400' : 'bg-surface-container text-on-surface-variant')">
+                {{ iso.status }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs text-on-surface-variant max-w-xs truncate" [title]="iso.reason">{{ iso.reason || '—' }}</td>
+            <td class="px-4 py-3 text-right">
+              <button *ngIf="iso.status === 'active'" (click)="restoreIsolation(iso)"
+                class="text-[10px] font-semibold text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 hover:border-green-400/40 px-2.5 py-1 rounded-lg transition-all">
+                Restore
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — Isolation Progress
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showIsolationProgress()" class="fixed inset-0 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto bg-black/70 backdrop-blur-sm">
+    <div class="soar-modal bg-[#121212] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl">
+
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-outline/10 flex items-center gap-3">
+        <div [class]="'flex items-center justify-center w-9 h-9 rounded-full ' +
+            (isolationProgressComplete() && isolationProgressSuccess() ? 'bg-green-500/15' :
+             isolationProgressComplete() && !isolationProgressSuccess() ? 'bg-red-500/15' : 'bg-amber-500/15')">
+          <lucide-icon *ngIf="!isolationProgressComplete()" [name]="WifiOffIcon" class="w-5 h-5 text-amber-400 animate-pulse"></lucide-icon>
+          <lucide-icon *ngIf="isolationProgressComplete() && isolationProgressSuccess()" [name]="CheckCircleIcon" class="w-5 h-5 text-green-400"></lucide-icon>
+          <lucide-icon *ngIf="isolationProgressComplete() && !isolationProgressSuccess()" [name]="AlertCircleIcon" class="w-5 h-5 text-red-400"></lucide-icon>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold text-white">{{ isolationProgressTitle() }}</h2>
+          <p class="text-xs text-on-surface-variant font-mono mt-0.5">{{ isolationProgressTarget() }}</p>
+        </div>
+      </div>
+
+      <!-- Steps -->
+      <div class="px-6 py-5 space-y-3">
+        <div *ngFor="let step of isolationProgressSteps(); let i = index" class="flex items-center gap-3">
+          <!-- Status icon -->
+          <div class="flex-shrink-0 w-6 h-6 flex items-center justify-center">
+            <div *ngIf="step.status === 'pending'" class="w-4 h-4 rounded-full border-2 border-outline/30"></div>
+            <div *ngIf="step.status === 'running'" class="w-4 h-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
+            <div *ngIf="step.status === 'done'" class="w-4 h-4 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg class="w-2.5 h-2.5 text-green-400" fill="none" viewBox="0 0 10 8"><path d="M1 4l2.5 2.5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div *ngIf="step.status === 'error'" class="w-4 h-4 rounded-full bg-red-500/20 flex items-center justify-center">
+              <svg class="w-2.5 h-2.5 text-red-400" fill="none" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+          </div>
+          <!-- Connector line -->
+          <div class="flex-1">
+            <span [class]="'text-xs ' + (step.status === 'done' ? 'text-white' : step.status === 'running' ? 'text-amber-300 font-semibold' : step.status === 'error' ? 'text-red-400' : 'text-on-surface-variant/50')">
+              {{ step.label }}
+            </span>
+          </div>
+          <div *ngIf="step.status === 'done'" class="text-[10px] text-green-400/70 font-mono">done</div>
+          <div *ngIf="step.status === 'running'" class="text-[10px] text-amber-400/70 font-mono">running…</div>
+          <div *ngIf="step.status === 'error'" class="text-[10px] text-red-400/70 font-mono">failed</div>
+        </div>
+
+        <!-- Error message -->
+        <div *ngIf="isolationProgressComplete() && isolationProgressError()"
+          class="mt-2 text-xs text-red-400 bg-red-500/8 border border-red-500/15 px-3 py-2 rounded-lg">
+          {{ isolationProgressError() }}
+        </div>
+
+        <!-- Success message -->
+        <div *ngIf="isolationProgressComplete() && isolationProgressSuccess()"
+          class="mt-2 text-xs text-green-400 bg-green-500/8 border border-green-500/15 px-3 py-2 rounded-lg font-semibold">
+          {{ isolationProgressTitle().includes('Restor') ? 'Device network access restored successfully.' : 'Device successfully isolated from the network.' }}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-outline/10 flex justify-end">
+        <button *ngIf="!isolationProgressComplete()"
+          class="text-xs text-on-surface-variant/50 cursor-not-allowed px-4 py-2 rounded-lg border border-outline/10">
+          Please wait…
+        </button>
+        <button *ngIf="isolationProgressComplete()" (click)="closeIsolationProgress()"
+          class="text-xs font-semibold text-black bg-amber-400 hover:bg-amber-300 px-5 py-2 rounded-lg transition-colors">
+          Done
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — Isolate Device
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showIsolateModal()" class="fixed inset-0 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm">
+    <div class="soar-modal bg-[#121212] border border-white/10 rounded-xl w-full max-w-md shadow-2xl">
+
+      <div class="flex items-center justify-between px-6 py-4 border-b border-outline/10">
+        <div>
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <lucide-icon [name]="WifiOffIcon" class="w-4 h-4 text-amber-400"></lucide-icon>
+            Isolate Device
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">Cut off device network access via ARP spoofing, switch, or cloud firewall</p>
+        </div>
+        <button (click)="showIsolateModal.set(false)" class="text-on-surface-variant hover:text-white p-1">✕</button>
+      </div>
+
+      <div class="px-6 py-4 space-y-4">
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Target IP *</label>
+          <input [(ngModel)]="isolateIp" placeholder="192.168.1.55"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-amber-400/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Enforcement Method</label>
+          <select [(ngModel)]="isolateEnforcement"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-amber-400/50 transition-colors">
+            <option *ngFor="let t of isolationEnforcementTypes" [value]="t.value">{{ t.label }}</option>
+          </select>
+        </div>
+
+        <div *ngIf="isolateEnforcement === 'arp'">
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Gateway IP</label>
+          <input [(ngModel)]="isolateGateway" placeholder="192.168.1.1"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-amber-400/50 transition-colors"/>
+          <p class="text-[10px] text-on-surface-variant/50 mt-1">The ARP agent will poison both the target and gateway ARP caches to intercept traffic.</p>
+        </div>
+
+        <div *ngIf="isolateEnforcement === 'cisco' || isolateEnforcement === 'aruba' || isolateEnforcement === 'snmp'">
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Quarantine VLAN</label>
+          <input type="number" [(ngModel)]="isolateVlan" min="1" max="4094"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-amber-400/50 transition-colors"/>
+          <p class="text-[10px] text-on-surface-variant/50 mt-1">Port will be moved to this VLAN. Configure this VLAN with no uplink or a sinkhole.</p>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Reason</label>
+          <input [(ngModel)]="isolateReason" placeholder="Suspected malware, active C2 session…"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-amber-400/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <div *ngIf="isolateError()" class="text-xs text-red-400 bg-red-500/8 border border-red-500/15 px-3 py-2 rounded-lg">
+          {{ isolateError() }}
+        </div>
+
+      </div>
+
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-outline/10">
+        <button (click)="showIsolateModal.set(false)"
+          class="text-xs font-semibold text-on-surface-variant hover:text-white px-4 py-2 rounded-lg border border-outline/10 hover:border-outline/25 transition-all bg-surface-container">
+          Cancel
+        </button>
+        <button (click)="submitIsolation()" [disabled]="isolateSaving()"
+          class="text-xs font-bold bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black px-4 py-2 rounded-lg transition-colors">
+          {{ isolateSaving() ? 'Isolating…' : 'Isolate Now' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — Manual Block
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showBlockModal()" class="fixed inset-0 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm">
+    <div class="soar-modal bg-[#121212] border border-white/10 rounded-xl w-full max-w-md shadow-2xl">
+
+      <div class="flex items-center justify-between px-6 py-4 border-b border-outline/10">
+        <div>
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <lucide-icon [name]="BanIcon" class="w-4 h-4 text-red-400"></lucide-icon>
+            Block IP Address
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">Inject TCP RST and/or push a firewall rule</p>
+        </div>
+        <button (click)="showBlockModal.set(false)" class="text-on-surface-variant hover:text-white p-1">✕</button>
+      </div>
+
+      <div class="px-6 py-4 space-y-4">
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Source IP *</label>
+          <input [(ngModel)]="blockIp" placeholder="203.0.113.42"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-red-400/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Port (optional)</label>
+            <input type="number" [(ngModel)]="blockPort" placeholder="any" min="0" max="65535"
+              class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-red-400/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+          </div>
+          <div>
+            <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Duration (hours)</label>
+            <input type="number" [(ngModel)]="blockDuration" min="1" max="720"
+              class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm font-mono outline-none focus:border-red-400/50 transition-colors"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Enforcement</label>
+          <select [(ngModel)]="blockEnforcement"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-red-400/50 transition-colors">
+            <option value="both">RST Injection + Firewall API</option>
+            <option value="rst">RST Injection Only</option>
+            <option value="firewall">Firewall API Only</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[10px] text-on-surface-variant/70 mb-1 uppercase tracking-wider">Reason</label>
+          <input [(ngModel)]="blockReason" placeholder="Suspected C2 callback, manual investigation…"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-red-400/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <div *ngIf="blockError()" class="text-xs text-red-400 bg-red-500/8 border border-red-500/15 px-3 py-2 rounded-lg">
+          {{ blockError() }}
+        </div>
+
+      </div>
+
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-outline/10">
+        <button (click)="showBlockModal.set(false)"
+          class="text-xs font-semibold text-on-surface-variant hover:text-white px-4 py-2 rounded-lg border border-outline/10 hover:border-outline/25 transition-all bg-surface-container">
+          Cancel
+        </button>
+        <button (click)="submitManualBlock()" [disabled]="blockSaving()"
+          class="text-xs font-bold bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors">
+          {{ blockSaving() ? 'Blocking…' : 'Block Now' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — New Case
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showNewCase()" class="fixed inset-0 bg-black/80 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto backdrop-blur-sm">
+    <div class="soar-modal case-create-modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-eyebrow">SOAR / NEW CASE</div>
+          <h2 class="modal-title">Create Incident Ticket</h2>
+        </div>
+        <button (click)="showNewCase.set(false)" class="modal-close">✕</button>
+      </div>
+
+      <div class="modal-body space-y-4">
+        <!-- Title -->
+        <div>
+          <label class="field-label">Title <span class="text-red-400">*</span></label>
+          <input [(ngModel)]="newCaseTitle" placeholder="e.g. Lateral movement detected from 10.0.0.5"
+            class="field-input w-full" />
+        </div>
+
+        <!-- Severity / Priority row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Severity</label>
+            <select [(ngModel)]="newCaseSeverity" class="field-select w-full">
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="LOW">LOW</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Priority</label>
+            <select [(ngModel)]="newCasePriority" class="field-select w-full">
+              <option value="P1">P1 — Critical (&lt;4h SLA)</option>
+              <option value="P2">P2 — High (8h SLA)</option>
+              <option value="P3">P3 — Medium (24h SLA)</option>
+              <option value="P4">P4 — Low (72h SLA)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Assign To -->
+        <div>
+          <label class="field-label">Assign To (optional)</label>
+          <input [(ngModel)]="newCaseAssignedTo" placeholder="Analyst username or team"
+            class="field-input w-full" />
+        </div>
+
+        <!-- IPs row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">Source IP</label>
+            <input [(ngModel)]="newCaseSrcIp" placeholder="10.0.0.0" class="field-input field-mono w-full" />
+          </div>
+          <div>
+            <label class="field-label">Dest IP</label>
+            <input [(ngModel)]="newCaseDstIp" placeholder="10.0.0.1" class="field-input field-mono w-full" />
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="field-label">Description</label>
+          <textarea [(ngModel)]="newCaseDescription" rows="3"
+            placeholder="Describe the incident, initial findings, and context..."
+            class="field-input w-full resize-none"></textarea>
+        </div>
+
+        <!-- Tags -->
+        <div>
+          <label class="field-label">Tags (comma-separated)</label>
+          <input [(ngModel)]="newCaseTags" placeholder="port-scan, lateral-movement, exfiltration"
+            class="field-input w-full" />
+        </div>
+
+        <div *ngIf="newCaseError()" class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{{ newCaseError() }}</div>
+      </div>
+
+      <div class="modal-footer">
+        <button (click)="showNewCase.set(false)" class="btn-ghost">Cancel</button>
+        <button (click)="submitNewCase()" [disabled]="savingNewCase()" class="btn-primary">
+          {{ savingNewCase() ? 'Creating...' : 'Create Case' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — Playbook (Create / Edit)
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showNewPlaybook()" class="fixed inset-0 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm">
+    <div class="soar-modal bg-[#121212] border border-white/10 rounded-xl w-full max-w-lg shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-outline/10">
+        <div>
+          <h2 class="text-sm font-bold text-white">{{ editingPbId ? 'Edit Playbook' : 'New Playbook' }}</h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">Define trigger condition and response action</p>
+        </div>
+        <button (click)="showNewPlaybook.set(false)" class="modal-close">✕</button>
+      </div>
+
+      <!-- Form -->
+      <div class="p-6 space-y-4">
+        <!-- Name -->
+        <div>
+          <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">Playbook Name <span class="text-red-400">*</span></label>
+          <input [(ngModel)]="pbName" placeholder="e.g. Block High-Risk Source"
+            class="soar-input w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+        <!-- Description -->
+        <div>
+          <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">Description</label>
+          <input [(ngModel)]="pbDesc" placeholder="Brief description of what this playbook does"
+            class="soar-input w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <!-- Trigger condition -->
+        <div class="border border-outline/10 rounded-lg p-4 space-y-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant">Trigger Condition</div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[10px] text-on-surface-variant/70 mb-1">Field</label>
+              <select [(ngModel)]="pbCondField" (ngModelChange)="onCondFieldChange()"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs outline-none focus:border-primary/50 transition-colors">
+                <option value="score">Risk Score</option>
+                <option value="severity">Severity</option>
+                <option value="threat_intel">Threat Intel</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] text-on-surface-variant/70 mb-1">Operator</label>
+              <select [(ngModel)]="pbCondOp"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs font-mono outline-none focus:border-primary/50 transition-colors">
+                <option *ngFor="let op of condOps" [value]="op.value">{{ op.label }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] text-on-surface-variant/70 mb-1">Value</label>
+              <select *ngIf="condValueType === 'severity'" [(ngModel)]="pbCondValue"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs outline-none focus:border-primary/50 transition-colors">
+                <option value="LOW">LOW</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="HIGH">HIGH</option>
+                <option value="CRITICAL">CRITICAL</option>
+              </select>
+              <select *ngIf="condValueType === 'bool'" [(ngModel)]="pbCondValue"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs outline-none focus:border-primary/50 transition-colors">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+              <input *ngIf="condValueType === 'text'" [(ngModel)]="pbCondValue"
+                [placeholder]="pbCondField === 'score' ? '75' : 'CN'"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs font-mono outline-none focus:border-primary/50 transition-colors"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Response action -->
+        <div class="border border-outline/10 rounded-lg p-4 space-y-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant">Response Action</div>
+          <div>
+            <label class="block text-[10px] text-on-surface-variant/70 mb-1">Action Type</label>
+            <select [(ngModel)]="pbActionType"
+              class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors">
+              <option value="create_case">Create Security Case</option>
+              <option value="slack">Send Slack Notification</option>
+              <option value="teams">Send Microsoft Teams Notification</option>
+              <option value="discord">Send Discord Notification</option>
+              <option value="email">Send Email Alert</option>
+              <option value="webhook">Call Custom Webhook</option>
+              <option value="block_ip">Block Source IP (RST + Firewall)</option>
+            </select>
+          </div>
+          <div *ngIf="['slack','teams','discord','webhook'].includes(pbActionType)">
+            <label class="block text-[10px] text-on-surface-variant/70 mb-1">Webhook URL</label>
+            <input [(ngModel)]="pbActionConfig['webhook_url']" placeholder="https://…"
+              class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-xs font-mono outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+          </div>
+          <div *ngIf="pbActionType === 'email'">
+            <label class="block text-[10px] text-on-surface-variant/70 mb-1">Recipient Email</label>
+            <input [(ngModel)]="pbActionConfig['to_addr']" placeholder="soc@company.com"
+              class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-xs font-mono outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+          </div>
+          <div *ngIf="pbActionType === 'create_case'"
+            class="text-xs text-on-surface-variant bg-surface-container border border-outline/8 px-3 py-2 rounded-lg">
+            A new case entry will be created automatically in the Cases tab.
+          </div>
+          <div *ngIf="pbActionType === 'block_ip'" class="space-y-2">
+            <div>
+              <label class="block text-[10px] text-on-surface-variant/70 mb-1">Enforcement</label>
+              <select [(ngModel)]="pbActionConfig['enforcement']"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors">
+                <option value="both">RST Injection + Firewall API</option>
+                <option value="rst">RST Injection Only</option>
+                <option value="firewall">Firewall API Only</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] text-on-surface-variant/70 mb-1">Duration (hours)</label>
+              <input type="number" [(ngModel)]="pbActionConfig['duration_hours']" placeholder="24" min="1" max="720"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-primary/50 transition-colors"/>
+            </div>
+            <p class="text-[10px] text-on-surface-variant/50">Blocks will appear in the Active Blocks tab and can be revoked at any time.</p>
+          </div>
+        </div>
+
+        <!-- Error message -->
+        <div *ngIf="pbError()" class="text-xs text-red-400 bg-red-500/8 border border-red-500/15 px-3 py-2.5 rounded-lg">
+          {{ pbError() }}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-outline/10">
+        <button (click)="showNewPlaybook.set(false)"
+          class="text-xs font-semibold text-on-surface-variant hover:text-white px-4 py-2 rounded-lg border border-outline/10 hover:border-outline/25 transition-all bg-surface-container">
+          Cancel
+        </button>
+        <button (click)="savePlaybook()" [disabled]="savingPb()"
+          class="text-xs font-bold bg-primary text-black px-4 py-2 rounded-lg hover:bg-primary/85 disabled:opacity-50 transition-colors">
+          {{ savingPb() ? 'Saving…' : (editingPbId ? 'Save Changes' : 'Create Playbook') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODAL — Integration (Add / Edit)
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div *ngIf="showNewIntegration()" class="fixed inset-0 z-40 flex items-start pt-32 justify-center pb-8 overflow-y-auto bg-black/60 backdrop-blur-sm">
+    <div class="soar-modal bg-[#121212] border border-white/10 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-outline/10 flex-shrink-0">
+        <div>
+          <h2 class="text-sm font-bold text-white">{{ editingIntId ? 'Edit Integration' : 'Add Integration' }}</h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">
+            {{ editingIntId ? 'Update channel configuration' : 'Connect a notification channel to your playbooks' }}
+          </p>
+        </div>
+        <button (click)="showNewIntegration.set(false)" class="modal-close">✕</button>
+      </div>
+
+      <!-- Form -->
+      <div class="p-6 space-y-4 overflow-y-auto flex-1">
+
+        <!-- Integration type selector — grouped -->
+        <div class="space-y-3">
+          <div *ngFor="let group of [
+            {key:'notify', label:'Notification'},
+            {key:'firewall', label:'Firewall / Block'},
+            {key:'switch', label:'Switch Isolation'},
+            {key:'cloud', label:'Cloud Firewall'}
+          ]">
+            <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant/60 mb-1.5">{{ group.label }}</label>
+            <div class="flex flex-wrap gap-1.5">
+              <button *ngFor="let t of integrationsByGroup(group.key)"
+                (click)="intType=t.type; intConfig={}"
+                [class]="'flex items-center gap-1.5 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all ' +
+                  (intType === t.type
+                    ? 'bg-primary text-black border-primary'
+                    : 'bg-surface-container text-on-surface-variant border-outline/10 hover:border-outline/25 hover:text-white')">
+                <span class="font-mono tracking-wider">{{ t.abbr }}</span>
+                <span>{{ t.name }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connection name -->
+        <div>
+          <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">Connection Name</label>
+          <input [(ngModel)]="intName" [placeholder]="'e.g. Production ' + (selectedIntType?.name || 'Channel')"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <!-- Dynamic fields -->
+        <div *ngFor="let field of selectedIntType?.fields">
+          <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">{{ field.label }}</label>
+          <input [(ngModel)]="intConfig[field.key]" [placeholder]="field.placeholder" [type]="field.type || 'text'"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
+        </div>
+
+        <!-- Test result -->
+        <div *ngIf="testResult()"
+          [class]="'text-xs px-3 py-2.5 rounded-lg border ' +
+            (testResult().includes('✅')
+              ? 'bg-primary/8 text-primary border-primary/15'
+              : 'bg-red-500/8 text-red-400 border-red-500/15')">
+          {{ testResult() }}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-between gap-2 px-6 py-4 border-t border-outline/10 flex-shrink-0">
+        <button (click)="testIntegration()" [disabled]="testingInt()"
+          class="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant hover:text-white border border-outline/10 hover:border-outline/25 px-3 py-2 rounded-lg bg-surface-container disabled:opacity-50 transition-all">
+          <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="testingInt()"></lucide-icon>
+          {{ testingInt() ? 'Testing…' : 'Test Connection' }}
+        </button>
+        <div class="flex items-center gap-2">
+          <button (click)="showNewIntegration.set(false)"
+            class="text-xs font-semibold text-on-surface-variant hover:text-white px-4 py-2 rounded-lg border border-outline/10 hover:border-outline/25 transition-all bg-surface-container">
+            Cancel
+          </button>
+          <button (click)="saveIntegration()" [disabled]="savingInt()"
+            class="text-xs font-bold bg-primary text-black px-4 py-2 rounded-lg hover:bg-primary/85 disabled:opacity-50 transition-colors">
+            {{ savingInt() ? 'Saving…' : (editingIntId ? 'Save Changes' : 'Save Integration') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Incident Report Modal ───────────────────────────────────────────────── -->
+<div *ngIf="showReportModal() && incidentReport()" class="ir-modal-overlay" (click)="showReportModal.set(false)">
+  <div class="ir-modal" (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="ir-modal-header">
+      <div class="ir-modal-title-block">
+        <span class="ir-modal-eyebrow">Incident Report</span>
+        <h2 class="ir-modal-title">{{ incidentReport().title }}</h2>
+        <div class="ir-modal-badges">
+          <span [class]="'ir-sev-badge sev-' + incidentReport().severity?.toLowerCase()">{{ incidentReport().severity }}</span>
+          <span class="ir-pri-badge">{{ incidentReport().priority }}</span>
+          <span class="ir-status-badge">{{ incidentReport().status }}</span>
+          <span class="ir-case-num">{{ incidentReport().case_number }}</span>
+        </div>
+      </div>
+      <div class="ir-modal-actions">
+        <button class="ir-dl-btn ir-dl-html" (click)="downloadReport('html')" title="Download as HTML file">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M5 7l3 3 3-3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"/></svg>
+          Download HTML
+        </button>
+        <button class="ir-dl-btn ir-dl-pdf" (click)="downloadReport('pdf')" title="Print / Save as PDF">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="10" height="12" rx="1"/><path d="M5 6h6M5 9h4"/><path d="M10 2v4h4"/></svg>
+          Print / PDF
+        </button>
+        <button class="ir-close-btn" (click)="showReportModal.set(false)">✕</button>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="ir-modal-body">
+
+      <!-- Key fields grid -->
+      <div class="ir-fields-grid">
+        <div class="ir-field-item">
+          <span class="ir-field-label">Attacker IP</span>
+          <span class="ir-field-val ir-red">{{ incidentReport().src_ip || '—' }}</span>
+        </div>
+        <div class="ir-field-item">
+          <span class="ir-field-label">Victim IP</span>
+          <span class="ir-field-val ir-blue">{{ incidentReport().dst_ip || '—' }}</span>
+        </div>
+        <div class="ir-field-item">
+          <span class="ir-field-label">Analyst</span>
+          <span class="ir-field-val">{{ incidentReport().analyst }}</span>
+        </div>
+        <div class="ir-field-item">
+          <span class="ir-field-label">Closed At</span>
+          <span class="ir-field-val">{{ incidentReport().closed_at }}</span>
+        </div>
+        <div class="ir-field-item">
+          <span class="ir-field-label">PCAP Sessions</span>
+          <span class="ir-field-val">{{ incidentReport().pcap_count }}</span>
+        </div>
+        <div class="ir-field-item">
+          <span class="ir-field-label">Attack Tags</span>
+          <span class="ir-field-val">{{ incidentReport().tags || '—' }}</span>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div *ngIf="incidentReport().description" class="ir-section">
+        <div class="ir-section-label">Description</div>
+        <div class="ir-prose">{{ incidentReport().description }}</div>
+      </div>
+
+      <!-- Resolution -->
+      <div class="ir-section">
+        <div class="ir-section-label">Resolution Notes</div>
+        <div class="ir-prose">{{ incidentReport().resolution }}</div>
+      </div>
+
+      <!-- Intel badge -->
+      <div *ngIf="incidentReport().intel_added" class="ir-intel-confirm">
+        <svg viewBox="0 0 16 16" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg>
+        {{ incidentReport().intel_added }}
+      </div>
+
+      <!-- PCAP sessions table -->
+      <div *ngIf="liveEvidence()?.pcap_sessions?.length" class="ir-section">
+        <div class="ir-section-label">PCAP Sessions ({{ liveEvidence().pcap_sessions.length }})</div>
+        <div class="ir-table-wrap">
+          <table class="ir-table">
+            <thead><tr><th>Time</th><th>Source</th><th>Destination</th><th>Proto</th><th>Bytes</th><th>Pkts</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let s of liveEvidence().pcap_sessions.slice(0,20)">
+                <td>{{ formatPcapTime(s.start_time) || '—' }}</td>
+                <td>{{ s.src_ip }}:{{ s.src_port }}</td>
+                <td>{{ s.dst_ip }}:{{ s.dst_port }}</td>
+                <td>{{ s.proto }}</td>
+                <td>{{ s.bytes | number }}</td>
+                <td>{{ s.packets }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- NDR events table -->
+      <div *ngIf="liveEvidence()?.ndr_events?.length" class="ir-section">
+        <div class="ir-section-label">NDR Events ({{ liveEvidence().ndr_events.length }})</div>
+        <div class="ir-table-wrap">
+          <table class="ir-table">
+            <thead><tr><th>Time</th><th>Type</th><th>Source</th><th>Destination</th><th>Note</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let e of liveEvidence().ndr_events.slice(0,20)">
+                <td>{{ e.ts || e.timestamp || '—' }}</td>
+                <td>{{ e.event_type || e.type || '—' }}</td>
+                <td>{{ e.src_ip || '—' }}</td>
+                <td>{{ e.dst_ip || '—' }}</td>
+                <td>{{ e.note || e.message || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="ir-modal-footer">
+        PromaSecure NDR Platform &nbsp;·&nbsp; {{ incidentReport().case_number }} &nbsp;·&nbsp; {{ incidentReport().closed_at }}
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Full Evidence Overlay ──────────────────────────────────────────────── -->
+<div *ngIf="showEvidenceOverlay()"
+  class="fixed inset-0 z-[200] flex flex-col bg-black/95 backdrop-blur-sm">
+  <div class="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#0d1117] shrink-0">
+    <span class="text-xs font-semibold text-primary tracking-widest uppercase">Evidence Analysis</span>
+    <button (click)="closeEvidenceOverlay()"
+      class="text-on-surface-variant hover:text-white text-sm font-bold px-3 py-1 rounded border border-outline/10 hover:border-outline/30 transition-colors bg-surface-container">
+      ✕ Close
+    </button>
+  </div>
+  <iframe [src]="evidenceOverlaySrc()"
+    class="flex-1 w-full border-0"
+    allow="same-origin">
+  </iframe>
+</div>

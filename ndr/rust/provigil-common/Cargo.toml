@@ -1,0 +1,31 @@
+[package]
+name = "provigil-common"
+version = "1.0.27"
+edition = "2021"
+description = "Shared types, JWT, SOAR, threat-intel, ClickHouse, Kafka, and tenant utilities for Provigil AI XDR services"
+
+[features]
+kafka = ["dep:rdkafka"]
+soar  = []
+
+[dependencies]
+jsonwebtoken = "9"
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+chrono       = { version = "0.4", features = ["serde"] }
+uuid         = { version = "1",   features = ["v4"] }
+thiserror    = "1"
+tracing      = "0.1"
+clickhouse   = "0.11"
+rdkafka      = { version = "0.36", features = ["cmake-build"], optional = true }
+tokio        = { version = "1",   features = ["rt", "macros", "time", "process"] }
+reqwest      = { version = "0.12", features = ["json", "native-tls"] }
+dashmap      = "5"
+ipnetwork    = "0.20"
+anyhow       = "1"
+async-trait  = "0.1"
+urlencoding  = "2"
+lettre       = { version = "0.11", features = ["tokio1", "tokio1-native-tls"] }
+maxminddb    = "0.24"
+serde_yaml   = "0.9"
+regex        = "1"

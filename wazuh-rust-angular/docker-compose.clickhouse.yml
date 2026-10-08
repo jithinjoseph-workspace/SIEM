@@ -1,0 +1,22 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: wazuh-siem-clickhouse
+    restart: always
+    environment:
+      CLICKHOUSE_DB: wazuh_siem
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123" # HTTP API port for siem-api
+      - "9000:9000" # Native TCP client port
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+volumes:
+  clickhouse_data:
+    driver: local

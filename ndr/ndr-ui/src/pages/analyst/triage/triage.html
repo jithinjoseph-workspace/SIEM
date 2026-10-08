@@ -1,0 +1,146 @@
+<div class="triage-page">
+
+  <header class="tri-head">
+    <div class="tri-title">
+      <div class="tri-title-icon"><lucide-icon [name]="ListIcon" class="w-6 h-6"></lucide-icon></div>
+      <div>
+        <h1>Alert Triage</h1>
+        <p>Groups similar alerts and points out the ones that are almost certainly harmless.
+           Nothing is hidden until you press <strong>Hide</strong>.</p>
+      </div>
+    </div>
+    <button type="button" class="tri-btn primary" (click)="run()" [disabled]="anyBusy()">
+      <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.tri-spin]="running()"></lucide-icon>
+      {{ running() ? 'Checking...' : 'Re-check now' }}
+    </button>
+  </header>
+ 
+  <div *ngIf="error()" class="tri-banner error">
+    <span>{{ error() }}</span>
+    <button type="button" class="tri-btn small" (click)="load()">Try again</button>
+  </div>
+  <div *ngIf="notice()" class="tri-banner ok">{{ notice() }}</div>
+
+  <div *ngIf="loading()" class="tri-empty">Loading...</div>
+
+  <ng-container *ngIf="!loading() && data()">
+
+    <section class="tri-cards" *ngIf="summary() as s">
+      <div class="tri-card">
+        <span class="tri-card-label">Alerts reviewed</span>
+        <strong>{{ s.alerts }}</strong>
+        <small>last {{ data().lookback_hours }} h, in {{ s.groups }} groups</small>
+      </div>
+      <div class="tri-card good">
+        <span class="tri-card-label">Likely harmless</span>
+        <strong>{{ s.alerts_likely_benign }}</strong>
+        <small>{{ s.benign }} groups</small>
+      </div>
+      <div class="tri-card bad">
+        <span class="tri-card-label">Needs a look</span>
+        <strong>{{ s.suspicious }}</strong>
+        <small>groups kept for a person</small>
+      </div>
+      <div class="tri-card warn">
+        <span class="tri-card-label">Not sure</span>
+        <strong>{{ s.unknown }}</strong>
+        <small>groups undecided</small>
+      </div>
+      <div class="tri-card" *ngIf="ai() as a">
+        <span class="tri-card-label">AI helper</span>
+        <strong *ngIf="a.enabled">{{ a.used_this_hour }} / {{ a.budget_per_hour }}</strong>
+        <strong *ngIf="!a.enabled" class="off">Off</strong>
+        <small *ngIf="a.enabled">calls this hour, recommends only</small>
+        <small *ngIf="!a.enabled">not enabled for this tenant</small>
+      </div>
+    </section>
+
+    <p class="tri-meta">
+      Last checked {{ ago(data().last_run) || 'not yet' }}. Automatic checks run about every 30 minutes;
+      "Re-check now" applies the rules straight away and reuses earlier AI answers without a new AI call.
+      Suppressions you apply are hidden for 24 hours and can be reviewed under AI Activity.
+    </p>
+
+    <div *ngIf="!attention().length && !unsure().length && !harmless().length" class="tri-empty">
+      <strong>Nothing to review right now.</strong>
+      <span>No visible alerts in the last {{ data().lookback_hours }} hours{{ data().last_run ? '' : ', or the first automatic check has not run yet - press Re-check now' }}.</span>
+    </div>
+
+    <ng-template #rows let-list let-kind="kind">
+      <article class="tri-row" [ngClass]="kind" *ngFor="let r of list; trackBy: trackRec">
+        <div class="tri-row-main">
+          <div class="tri-flow">
+            <code>{{ r.src_ip }}</code><span class="tri-arrow">&rarr;</span><code>{{ r.dst_ip || 'no destination' }}</code>
+          </div>
+          <div class="tri-chips">
+            <span class="chip tag">{{ r.tag }}</span>
+            <span class="chip">{{ r.alert_count }} alert{{ r.alert_count !== 1 ? 's' : '' }}</span>
+            <span class="chip" *ngFor="let s of sevList(r)">{{ s.name }} {{ s.n }}</span>
+            <span class="chip who">
+              <lucide-icon *ngIf="r.source === 'ai'" [name]="BotIcon" class="w-3 h-3"></lucide-icon>
+              {{ r.source === 'ai' ? 'AI ' + r.confidence + '%' : 'Rule' }}
+            </span>
+          </div>
+          <p class="tri-reason" *ngIf="r.reason">{{ r.reason }}</p>
+          <ng-container *ngIf="kind !== 'attention'">
+            <p class="tri-impact" *ngIf="impact(r) as i">
+              <ng-container *ngIf="!i.blocked">
+                Hiding hides every "{{ r.tag }}" alert from {{ r.src_ip }} for 24 hours
+                ({{ i.alerts }} alert{{ i.alerts !== 1 ? 's' : '' }} in {{ i.groups }} group{{ i.groups !== 1 ? 's' : '' }}).
+              </ng-container>
+              <ng-container *ngIf="i.blocked">
+                Another group with the same source and tag needs a look first, so this one can't be hidden yet.
+              </ng-container>
+            </p>
+          </ng-container>
+        </div>
+        <div class="tri-row-actions">
+          <a *ngIf="kind === 'attention'" routerLink="/analyst/alerts" class="tri-btn small">Open alerts</a>
+          <ng-container *ngIf="kind !== 'attention'">
+            <button type="button" class="tri-btn small primary" (click)="hide(r)"
+                    [disabled]="anyBusy() || impact(r).blocked">
+              {{ busyId() === r.id ? 'Working...' : 'Hide 24h' }}
+            </button>
+            <button type="button" class="tri-btn small" (click)="dismiss(r)" [disabled]="anyBusy()">Dismiss</button>
+          </ng-container>
+        </div>
+      </article>
+    </ng-template>
+
+    <section class="tri-section" *ngIf="attention().length">
+      <h2 class="bad"><lucide-icon [name]="AlertIcon" class="w-4 h-4"></lucide-icon> Needs a look <small>{{ attention().length }}</small></h2>
+      <p class="tri-hint">A threat-intelligence match, a fired detection rule, high severity or a risky tag. These are never suggested for hiding.</p>
+      <ng-container *ngTemplateOutlet="rows; context: { $implicit: attention(), kind: 'attention' }"></ng-container>
+    </section>
+
+    <section class="tri-section" *ngIf="unsure().length">
+      <h2 class="warn"><lucide-icon [name]="UnsureIcon" class="w-4 h-4"></lucide-icon> Not sure <small>{{ unsure().length }}</small></h2>
+      <p class="tri-hint">The rules could not decide{{ ai()?.enabled ? ' and the AI has not answered yet (it works within an hourly call budget)' : ', and the AI helper is off for this tenant' }}.</p>
+      <ng-container *ngTemplateOutlet="rows; context: { $implicit: unsure(), kind: 'unsure' }"></ng-container>
+    </section>
+
+    <section class="tri-section" *ngIf="harmless().length">
+      <div class="tri-section-head">
+        <h2 class="good"><lucide-icon [name]="OkIcon" class="w-4 h-4"></lucide-icon> Likely harmless <small>{{ harmless().length }}</small></h2>
+        <button *ngIf="!confirmAll()" type="button" class="tri-btn small primary" (click)="askHideAll()" [disabled]="anyBusy()">
+          Hide all likely harmless
+        </button>
+      </div>
+      <div *ngIf="confirmAll()" class="tri-confirm">
+        <span>
+          This hides {{ harmless().length }} group{{ harmless().length !== 1 ? 's' : '' }}
+          ({{ summary()?.alerts_likely_benign }} alerts) for 24 hours. Each one hides its tag for that source,
+          so other groups with the same source and tag go too.
+        </span>
+        <span class="tri-confirm-actions">
+          <button type="button" class="tri-btn small primary" (click)="hideAll()" [disabled]="bulkBusy()">
+            {{ bulkBusy() ? 'Hiding...' : 'Yes, hide them' }}
+          </button>
+          <button type="button" class="tri-btn small" (click)="cancelHideAll()" [disabled]="bulkBusy()">Cancel</button>
+        </span>
+      </div>
+      <ng-container *ngTemplateOutlet="rows; context: { $implicit: harmless(), kind: 'harmless' }"></ng-container>
+    </section>
+
+  </ng-container>
+</div>

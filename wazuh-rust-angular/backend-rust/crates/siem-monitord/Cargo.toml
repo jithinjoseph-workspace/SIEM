@@ -1,0 +1,31 @@
+[package]
+name = "siem-monitord"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh Monitoring, Disconnection Detector, Log Rotator & Report Daemon (src/monitord)"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-shared = { path = "../siem-shared" }
+siem-crypto = { path = "../siem-crypto" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+quick-xml = "0.36"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+flate2 = "1.0"
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "wazuh-monitord"
+path = "bin/wazuh_monitord.rs"

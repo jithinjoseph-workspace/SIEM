@@ -1,0 +1,215 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.game-cabinet-card {
+  width: 100%;
+  max-width: 560px;
+  margin: 0;
+  padding: 28px 34px;
+  background: #060914; /* 100% solid, fully opaque cyber unit */
+  border: 2px solid rgba(var(--accent-rgb), 0.75);
+  border-radius: 22px;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.96),
+              0 0 45px rgba(var(--accent-rgb), 0.35),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-cabinet-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(var(--accent-rgb), 1);
+  box-shadow: 0 30px 85px rgba(0, 0, 0, 0.98),
+              0 0 65px rgba(var(--accent-rgb), 0.55);
+}
+
+/* Marquee Sign */
+.cabinet-marquee {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.marquee-sign {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  background: rgba(var(--accent-rgb), 0.16);
+  border: 1.5px solid var(--accent);
+  border-radius: 20px;
+  box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.4);
+}
+
+.marquee-glow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.marquee-text {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--accent);
+}
+
+.marquee-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.5), transparent);
+}
+
+/* Glass Text Panel */
+.glass-text-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.game-number {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 1.5px;
+}
+
+.category-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 2px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+}
+
+.game-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(24px, 2.6vw, 32px);
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+  line-height: 1.15;
+  margin: 0 0 4px 0;
+  text-shadow: 0 0 16px rgba(var(--accent-rgb), 0.6);
+}
+
+.game-subtitle {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  letter-spacing: 0.8px;
+}
+
+.game-desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  margin-bottom: 14px;
+}
+
+.panel-divider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.5), rgba(255, 255, 255, 0.06));
+  margin: 10px 0 14px 0;
+}
+
+/* Specs Container */
+.specs-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  padding: 2px 0;
+}
+
+.spec-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 1px;
+}
+
+.spec-val {
+  color: #f1f5f9;
+  font-weight: 600;
+  text-align: right;
+}
+
+.text-accent {
+  color: var(--accent);
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.6);
+}
+
+/* CTA Wrapper */
+.cta-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.btn-cabinet-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 28px;
+  background: linear-gradient(135deg, var(--accent), #ffffff);
+  color: #03050c;
+  border: none;
+  border-radius: 30px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.6);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-cabinet-cta:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 0 35px rgba(var(--accent-rgb), 0.9);
+}
+
+.cta-arrow {
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.btn-cabinet-cta:hover .cta-arrow {
+  transform: translateX(4px);
+}
+
+.cta-tip {
+  color: #64748b;
+  font-size: 10px;
+  letter-spacing: 1px;
+}

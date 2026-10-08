@@ -1,0 +1,549 @@
+:host { display: contents; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   REFERENCE CRM-DASHBOARD STYLE — TENANT ADMIN LAYOUT & SIDEBAR
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Topbar & Global Alignment ───────────────────────────────────── */
+body:has(.crm-sidebar) .topbar {
+  padding-left: 240px !important;
+}
+
+body:has(.crm-sidebar) .crm-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 120;
+}
+
+/* ── Reference Dashboard Sidebar ─────────────────────────────────── */
+.crm-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  flex-shrink: 0;
+  background: #0f1222;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.crm-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+.crm-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Brand Header */
+.crm-brand-block {
+  padding: 26px 22px 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-brand-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.crm-brand-subtitle {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #38bdf8; /* Electric Sky Cyan */
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.crm-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: fit-content;
+}
+
+.crm-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+
+.crm-badge-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+}
+
+/* Navigation */
+.crm-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0 24px 0;
+  flex: 1;
+}
+
+.crm-nav-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.crm-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px 6px 22px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #a78bfa;
+  text-transform: uppercase;
+}
+
+.crm-category-header lucide-icon {
+  color: inherit;
+}
+
+.crm-nav-section:nth-child(1) .crm-category-header {
+  color: #a78bfa; /* Royal Violet: Identity & Access */
+}
+
+.crm-nav-section:nth-child(2) .crm-category-header {
+  color: #38bdf8; /* Electric Cyan: Defense & Config */
+}
+
+.crm-nav-section:nth-child(3) .crm-category-header {
+  color: #fb7185; /* Coral Rose: Operations */
+}
+
+.crm-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crm-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  margin: 1px 12px;
+  border-radius: 10px;
+  color: #8a94b2;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.crm-nav-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateX(2px);
+}
+
+.crm-nav-link.active {
+  background: #141a33 !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  border-left: 3px solid #38bdf8 !important;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.crm-nav-link.active .crm-link-icon {
+  color: #38bdf8 !important;
+}
+
+.crm-link-icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.crm-link-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crm-badge-pill.cyan,
+.crm-badge-pill.magenta {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+}
+
+/* ── Main Shell ──────────────────────────────────────────────────── */
+.crm-main-shell {
+  min-height: calc(100vh + 240px);
+  padding: 24px 36px 80px 276px;
+  background-color: #0d1021; /* Sleek Dark Navy-Black from Reference Dashboard */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #ffffff;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ── Cockpit Hero Card ───────────────────────────────────────────── */
+.crm-hero-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 26px;
+  background: #171b37;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  margin-bottom: 24px;
+}
+
+.crm-hero-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.crm-hero-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #161e38;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.crm-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.crm-hero-eyebrow {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.crm-hero-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.crm-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-status-box {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 18px;
+  border-radius: 12px;
+  background: #101426;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.crm-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crm-status-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.crm-status-val {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.crm-status-val strong {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.crm-status-val strong.degraded {
+  color: #fbbf24;
+}
+
+.crm-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.crm-pulse-dot.degraded {
+  background: #fbbf24;
+}
+
+/* Spark Bars */
+.spark-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+}
+
+.spark-bar {
+  width: 3px;
+  border-radius: 2px;
+  background: #10b981;
+  animation: sparkWave 1.4s ease-in-out infinite alternate;
+}
+
+.spark-bars.degraded-bars .spark-bar {
+  background: #fbbf24;
+}
+
+.spark-bar:nth-child(1) { height: 40%; animation-delay: 0.1s; }
+.spark-bar:nth-child(2) { height: 75%; animation-delay: 0.3s; }
+.spark-bar:nth-child(3) { height: 100%; animation-delay: 0.5s; }
+.spark-bar:nth-child(4) { height: 50%; animation-delay: 0.2s; }
+.spark-bar:nth-child(5) { height: 85%; animation-delay: 0.4s; }
+.spark-bar:nth-child(6) { height: 60%; animation-delay: 0.15s; }
+
+@keyframes sparkWave {
+  0%   { transform: scaleY(0.4); opacity: 0.6; }
+  100% { transform: scaleY(1.0); opacity: 1; }
+}
+
+/* ── Update Banner ───────────────────────────────────────────────── */
+.crm-update-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  margin-bottom: 22px;
+  border-radius: 14px;
+  background: #171b37;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.crm-update-icon {
+  color: #a855f7;
+}
+
+.crm-update-text {
+  flex: 1;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.crm-update-current {
+  color: #8a94b2;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.crm-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 16px;
+  border-radius: 10px;
+  border: none;
+  background: #6366f1;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.crm-update-btn:hover {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+/* ── Update Dialog ───────────────────────────────────────────────── */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 16, 33, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.crm-dialog-box {
+  width: 100%;
+  max-width: 480px;
+  background: #171b37;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 26px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.crm-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.crm-dialog-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #6366f1;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.crm-dialog-header h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.crm-dialog-header p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #8a94b2;
+}
+
+.dialog-close-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.dialog-close-btn:hover {
+  color: #ffffff;
+}
+
+.crm-dialog-body {
+  font-size: 13px;
+  color: #cbd5e1;
+  line-height: 1.55;
+}
+
+.update-notes {
+  margin: 12px 0 16px;
+  padding-left: 18px;
+  color: #8a94b2;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.crm-btn-cancel {
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: #101426;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8a94b2;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.crm-btn-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 20px;
+  border-radius: 10px;
+  border: none;
+  background: #6366f1;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.crm-btn-confirm:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+/* ── Toast Messages ──────────────────────────────────────────────── */
+.crm-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.crm-message.success {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+}
+
+.crm-message.error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}

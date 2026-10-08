@@ -1,0 +1,13 @@
+[package]
+name = "siem-vuln-detector"
+version = "0.1.0"
+edition = "2021"
+description = "Wazuh-compatible vulnerability detection engine for correlating package inventories with CVE feeds"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+siem-core = { path = "../siem-core" }

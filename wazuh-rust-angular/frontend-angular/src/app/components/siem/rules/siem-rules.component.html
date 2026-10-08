@@ -1,0 +1,115 @@
+<div class="siem-rules-container">
+  <!-- Rules Header -->
+  <div class="rules-header" *ngIf="!compactMode">
+    <div class="title-group">
+      <div class="badge-tag">Wazuh Rules Engine</div>
+      <h3>Endpoint Detection Rules</h3>
+      <p>Sliding-window correlation rules, MITRE ATT&CK mappings, and threshold triggers.</p>
+    </div>
+    <div class="metrics-pill">
+      <span class="count">{{ filteredRules().length }} Active Rules</span>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-toolbar">
+    <div class="search-box">
+      <i-lucide [img]="SearchIcon" class="icon"></i-lucide>
+      <input type="text" placeholder="Search by rule ID, description, or MITRE technique..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)">
+    </div>
+
+    <div class="level-filters">
+      <button [class.active]="selectedLevel() === 'all'" (click)="selectedLevel.set('all')">All</button>
+      <button class="critical-btn" [class.active]="selectedLevel() === 'critical'" (click)="selectedLevel.set('critical')">Critical (12+)</button>
+      <button class="high-btn" [class.active]="selectedLevel() === 'high'" (click)="selectedLevel.set('high')">High (8-11)</button>
+      <button class="medium-btn" [class.active]="selectedLevel() === 'medium'" (click)="selectedLevel.set('medium')">Medium (4-7)</button>
+      <button class="refresh-btn" (click)="loadRules()" title="Reload Rules">
+        <i-lucide [img]="RefreshIcon" [class.spin]="loading()"></i-lucide>
+      </button>
+    </div>
+  </div>
+
+  <!-- Rules Table -->
+  <div class="table-card">
+    <table class="rules-table">
+      <thead>
+        <tr>
+          <th>Rule ID</th>
+          <th>Level</th>
+          <th>Description</th>
+          <th>MITRE ATT&CK</th>
+          <th>Category Groups</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let rule of filteredRules()" (click)="selectRule(rule)">
+          <td class="rule-id font-mono">#{{ rule.id }}</td>
+          <td>
+            <span class="level-pill" [ngClass]="getLevelClass(rule.level)">Level {{ rule.level }}</span>
+          </td>
+          <td class="rule-desc">{{ rule.description }}</td>
+          <td>
+            <span *ngIf="rule.mitre" class="mitre-tag">
+              {{ rule.mitre.id }}: {{ rule.mitre.technique }}
+            </span>
+            <span *ngIf="!rule.mitre" class="text-muted">—</span>
+          </td>
+          <td>
+            <div class="tags-row">
+              <span *ngFor="let g of rule.groups" class="group-tag">{{ g }}</span>
+            </div>
+          </td>
+          <td>
+            <button class="view-btn">Inspect</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div *ngIf="filteredRules().length === 0 && !loading()" class="empty-state">
+      <p>No detection rules matched your search criteria.</p>
+    </div>
+  </div>
+
+  <!-- Rule Details Drawer -->
+  <div *ngIf="selectedRule()" class="modal-backdrop" (click)="closeModal()">
+    <div class="drawer-panel" (click)="$event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3>Rule #{{ selectedRule()?.id }}</h3>
+          <span class="sub-id">Severity Level: {{ selectedRule()?.level }}</span>
+        </div>
+        <button class="close-btn" (click)="closeModal()">✕</button>
+      </div>
+
+      <div class="rule-detail-body">
+        <div class="detail-section">
+          <label>Description</label>
+          <p class="desc-text">{{ selectedRule()?.description }}</p>
+        </div>
+
+        <div class="detail-section" *ngIf="selectedRule()?.mitre">
+          <label>MITRE ATT&CK Framework Mapping</label>
+          <div class="mitre-box">
+            <span class="m-id">{{ selectedRule()?.mitre?.id }}</span>
+            <span class="m-tactic">Tactic: {{ selectedRule()?.mitre?.tactic }}</span>
+            <span class="m-tech">Technique: {{ selectedRule()?.mitre?.technique }}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <label>Compiled Rust Pattern / Regex</label>
+          <pre class="regex-block"><code>{{ selectedRule()?.regex_pattern }}</code></pre>
+        </div>
+
+        <div class="detail-section">
+          <label>Associated Rule Groups</label>
+          <div class="tags-row">
+            <span *ngFor="let g of selectedRule()?.groups" class="group-tag">{{ g }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

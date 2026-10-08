@@ -1,0 +1,12 @@
+[package]
+name = "siem-fileop"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh shared/file_op.c helpers (merged.mg handling, directory ops, md5)"
+
+[dependencies]
+md-5 = "0.10"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

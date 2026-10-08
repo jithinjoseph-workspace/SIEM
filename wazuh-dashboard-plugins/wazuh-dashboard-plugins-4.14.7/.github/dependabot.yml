@@ -1,0 +1,9 @@
+version: 2
+updates:
+ 
+  - package-ecosystem: "npm"
+    directory: "/plugins/main"
+    schedule:
+      interval: "daily"
+    target-branch: "4.6"
+    open-pull-requests-limit: 100

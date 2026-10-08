@@ -1,0 +1,284 @@
+<section class="admin-panel smtp-panel">
+
+  <!-- Ambient Glows -->
+  <div class="smtp-ambient-glow glow--amber" aria-hidden="true"></div>
+  <div class="smtp-ambient-glow glow--cyan" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="smtpMessage" class="admin-message success">
+    <lucide-icon [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+    <span>{{ smtpMessage }}</span>
+  </div>
+  <div *ngIf="smtpError" class="admin-message error">
+    <lucide-icon [name]="ErrorIcon" class="w-4 h-4"></lucide-icon>
+    <span>{{ smtpError }}</span>
+  </div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="smtp-hero-strip">
+    <div class="smtp-hero-left">
+      <div class="smtp-system-badge">
+        <span class="smtp-pulse-dot"></span>
+        <span>ALERT RELAY / SMTP GATEWAY</span>
+        <span class="smtp-badge-sep">/</span>
+        <span class="smtp-badge-status">{{ isConfigured ? 'RELAY ARMED (' + smtpConfig.host + ')' : 'RELAY UNCONFIGURED' }}</span>
+      </div>
+      <h1 class="smtp-headline">SMTP Relay &amp; <em>Dispatch</em> Gateway</h1>
+      <p class="smtp-tagline">Cryptographic TLS mail transport agent for SOC incident escalation, executive threat briefings, and 2FA OTP verification.</p>
+    </div>
+
+    <div class="smtp-hero-controls">
+      <!-- Refresh -->
+      <button type="button" class="smtp-action-btn" (click)="loadSmtpConfig()" title="Reload SMTP settings">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+        <span>Reload</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="smtp-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-amber-400"></lucide-icon>
+        <div class="smtp-clock-text">
+          <span class="smtp-clock-time">{{ clock.currentTime() }}</span>
+          <span class="smtp-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. MTA Diagnostic Deck (4 Unique Cards) ────────────────── -->
+  <section class="mta-diagnostic-deck" aria-label="MTA Relay Diagnostic Deck">
+
+    <!-- Card 1: Relay Host & Link Posture -->
+    <div class="smtp-deck-card smtp-deck--host">
+      <div class="smtp-card-glow amber"></div>
+      <div class="smtp-card-top">
+        <div class="smtp-card-tag">
+          <lucide-icon [name]="ServerIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>RELAY TRANSPORT LINK</span>
+        </div>
+        <span class="smtp-status-pill amber">PORT {{ smtpConfig.port }}</span>
+      </div>
+
+      <div class="smtp-host-body">
+        <div class="h-stat-lead">
+          <span class="h-host font-mono text-amber-400 font-bold">{{ smtpConfig.host || 'Not Configured' }}</span>
+          <span class="h-desc">{{ tlsMode }}</span>
+        </div>
+
+        <div class="h-port-rack">
+          <span class="port-chip" [class.active]="smtpConfig.port === 587">587 STARTTLS</span>
+          <span class="port-chip" [class.active]="smtpConfig.port === 465">465 SMTPS</span>
+          <span class="port-chip" [class.active]="smtpConfig.port === 25">25 RELAY</span>
+        </div>
+
+        <div class="h-meta-row">
+          <span class="m-lbl">CIPHER HANDSHAKE:</span>
+          <span class="m-val font-mono text-slate-200">TLS 1.3 Strict Verification</span>
+        </div>
+      </div>
+
+      <div class="smtp-card-footer">
+        <span class="smtp-chip">TCP / ESMTP</span>
+        <span class="smtp-chip">TLS 1.3</span>
+        <span class="smtp-chip amber">READY</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Authentication Handshake Posture -->
+    <div class="smtp-deck-card smtp-deck--auth">
+      <div class="smtp-card-glow cyan"></div>
+      <div class="smtp-card-top">
+        <div class="smtp-card-tag">
+          <lucide-icon [name]="LockIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>AUTHENTICATION STATE</span>
+        </div>
+        <span class="smtp-status-pill cyan">{{ isConfigured ? 'CREDENTIALS BOUND' : 'STANDBY' }}</span>
+      </div>
+
+      <div class="smtp-auth-body">
+        <div class="a-stat-lead">
+          <span class="a-user font-mono text-cyan-400">{{ smtpConfig.user ? smtpConfig.user.split('@')[0] : 'Not Assigned' }}</span>
+          <span class="a-desc">{{ smtpConfig.user ? '@' + smtpConfig.user.split('@')[1] : 'Configure sender address' }}</span>
+        </div>
+
+        <div class="a-secret-box">
+          <span class="a-secret-lbl">APP PASSWORD:</span>
+          <span class="a-secret-val font-mono">{{ isConfigured ? '•••••••••••••••• (Encrypted)' : 'Unset' }}</span>
+        </div>
+
+        <div class="a-meta-row">
+          <span class="m-lbl">AUTH STANDARD:</span>
+          <span class="m-val font-mono text-cyan-300">SASL PLAIN / LOGIN</span>
+        </div>
+      </div>
+
+      <div class="smtp-card-footer">
+        <span class="smtp-chip">APP PASSWORD</span>
+        <span class="smtp-chip">ZERO-LOG PASS</span>
+        <span class="smtp-chip cyan">ENCRYPTED</span>
+      </div>
+    </div>
+
+    <!-- Card 3: SOC Notification Pipeline -->
+    <div class="smtp-deck-card smtp-deck--pipeline">
+      <div class="smtp-card-glow emerald"></div>
+      <div class="smtp-card-top">
+        <div class="smtp-card-tag">
+          <lucide-icon [name]="SendIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>INCIDENT DISPATCH</span>
+        </div>
+        <span class="smtp-status-pill emerald">DISPATCH ARMED</span>
+      </div>
+
+      <div class="smtp-pipeline-body">
+        <div class="p-stat-lead">
+          <span class="p-num text-emerald-400 font-mono">0.00s</span>
+          <span class="p-desc">DISPATCH QUEUE LAG</span>
+        </div>
+
+        <div class="p-features-grid">
+          <div class="p-feat-item">
+            <span class="f-dot emerald"></span>
+            <span>2FA OTP Tokens</span>
+          </div>
+          <div class="p-feat-item">
+            <span class="f-dot emerald"></span>
+            <span>P1 Critical Alerts</span>
+          </div>
+          <div class="p-feat-item">
+            <span class="f-dot emerald"></span>
+            <span>Executive Briefings</span>
+          </div>
+        </div>
+
+        <div class="p-meta-row">
+          <span class="m-lbl">MIME FORMAT:</span>
+          <span class="m-val font-mono text-emerald-300">Multipart HTML + Plain</span>
+        </div>
+      </div>
+
+      <div class="smtp-card-footer">
+        <span class="smtp-chip">ASYNC DISPATCH</span>
+        <span class="smtp-chip">SPF COMPLIANT</span>
+        <span class="smtp-chip success">OPTIMAL</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Delivery Cadence & Buffer Integrity -->
+    <div class="smtp-deck-card smtp-deck--buffer">
+      <div class="smtp-card-glow purple"></div>
+      <div class="smtp-card-top">
+        <div class="smtp-card-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>BUFFER POSTURE</span>
+        </div>
+        <span class="smtp-status-pill purple">IMMEDIATE</span>
+      </div>
+
+      <div class="smtp-buffer-body">
+        <div class="b-stat-lead">
+          <span class="b-num text-purple-400 font-mono">100%</span>
+          <span class="b-desc">TRANSPORT HEALTH</span>
+        </div>
+
+        <div class="b-meter-bar">
+          <div class="b-fill" style="width: 100%;"></div>
+        </div>
+
+        <div class="b-meta-row">
+          <span class="m-lbl">RETRY POLICY:</span>
+          <span class="m-val font-mono text-purple-300">Exponential Backoff (3x)</span>
+        </div>
+      </div>
+
+      <div class="smtp-card-footer">
+        <span class="smtp-chip">NON-BLOCKING</span>
+        <span class="smtp-chip">RATE LIMITED</span>
+        <span class="smtp-chip purple">ARMED</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. Industrial Relay Configuration Console ───────────────── -->
+  <section class="smtp-card glass-card">
+    <div class="smtp-card-head">
+      <div>
+        <div class="smtp-tag amber">MTA RELAY SETTINGS</div>
+        <h2 class="smtp-card-title">SMTP Gateway Connection Credentials</h2>
+        <p class="smtp-card-desc">Define outbound mail server parameters used by NDR engine for user alerts, credential resets, and SOC reports.</p>
+      </div>
+    </div>
+
+    <form (submit)="saveSmtpConfig(); $event.preventDefault()" class="smtp-form">
+      <div class="smtp-form-grid">
+
+        <!-- Host -->
+        <div class="smtp-field">
+          <label>SMTP HOST (FQDN)</label>
+          <input type="text" [(ngModel)]="smtpConfig.host" name="smtpHost" placeholder="e.g. smtp.gmail.com" class="smtp-input font-mono" />
+          <small class="field-hint">Gmail: <code>smtp.gmail.com</code> | Outlook: <code>smtp.office365.com</code></small>
+        </div>
+
+        <!-- Port -->
+        <div class="smtp-field">
+          <label>SMTP PORT</label>
+          <div class="port-input-wrap">
+            <input type="number" [(ngModel)]="smtpConfig.port" name="smtpPort" placeholder="587" class="smtp-input font-mono" />
+            <div class="port-quick-buttons">
+              <button type="button" class="quick-port-btn" [class.selected]="smtpConfig.port === 587" (click)="setPort(587)">587</button>
+              <button type="button" class="quick-port-btn" [class.selected]="smtpConfig.port === 465" (click)="setPort(465)">465</button>
+              <button type="button" class="quick-port-btn" [class.selected]="smtpConfig.port === 25" (click)="setPort(25)">25</button>
+            </div>
+          </div>
+          <small class="field-hint">587 uses STARTTLS (Standard) · 465 uses SSL/TLS (Implicit)</small>
+        </div>
+
+        <!-- Sender Email -->
+        <div class="smtp-field">
+          <label>SENDER GMAIL / ACCOUNT USERNAME</label>
+          <input type="email" [(ngModel)]="smtpConfig.user" name="smtpUser" placeholder="security-alerts@yourdomain.com" class="smtp-input font-mono" />
+          <small class="field-hint">Authenticating user address</small>
+        </div>
+
+        <!-- App Password -->
+        <div class="smtp-field">
+          <label>APP PASSWORD / ACCESS TOKEN</label>
+          <div class="password-input-wrap">
+            <input [type]="showPassword ? 'text' : 'password'" [(ngModel)]="smtpConfig.password" name="smtpPassword" placeholder="Leave empty to retain existing password" class="smtp-input font-mono" />
+            <button type="button" class="password-eye-btn" (click)="showPassword = !showPassword" title="Toggle visibility">
+              <lucide-icon [name]="showPassword ? EyeOffIcon : EyeIcon" class="w-4 h-4"></lucide-icon>
+            </button>
+          </div>
+          <small class="field-hint">For Gmail: generate a 16-character App Password under Google Account &gt; Security</small>
+        </div>
+
+      </div>
+
+      <!-- Submit & Action Row -->
+      <div class="smtp-form-footer">
+        <div class="security-stamp">
+          <lucide-icon [name]="ShieldIcon" class="w-4 h-4 text-emerald-400"></lucide-icon>
+          <span>Credentials stored securely with AES-256 host encryption.</span>
+        </div>
+
+        <button type="submit" class="smtp-submit-btn" [disabled]="savingSmtp || !smtpConfig.host || !smtpConfig.user">
+          <lucide-icon [name]="savingSmtp ? LoadingIcon : SaveIcon" class="w-4 h-4" [class.spinning]="savingSmtp"></lucide-icon>
+          <span>{{ savingSmtp ? 'Validating & Saving...' : 'Commit Gateway Configuration' }}</span>
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ── 4. Technical Advisory Notice ────────────────────────────── -->
+  <section class="smtp-advisory glass-card">
+    <div class="advisory-icon-box">
+      <lucide-icon [name]="MailIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+    </div>
+    <div class="advisory-text">
+      <strong>Google Workspace &amp; Gmail Authentication Guidelines</strong>
+      <p>Modern SMTP relays reject standard account passwords. Enable <strong>2-Step Verification</strong> on your sender Gmail account, navigate to <strong>App passwords</strong>, generate a token designated for <em>NDR SIEM Relay</em>, and paste the 16-character string into the password field above.</p>
+    </div>
+  </section>
+
+</section>

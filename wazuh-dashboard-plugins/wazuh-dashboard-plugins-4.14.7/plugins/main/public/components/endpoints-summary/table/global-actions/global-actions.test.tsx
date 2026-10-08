@@ -1,0 +1,69 @@
+import React from 'react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { AgentsTableGlobalActions } from './global-actions';
+import { Agent } from '../../types';
+
+jest.mock('../../../common/permissions/element', () => ({
+  WzElementPermissions: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+// the jest.mock of @osd/monaco is added due to a problem transcribing the files to run the tests.
+// https://github.com/wazuh/wazuh-dashboard-plugins/pull/6921#issuecomment-2298289550
+
+jest.mock('@osd/monaco', () => ({
+  monaco: {},
+}));
+
+describe('AgentsTableGlobalActions component', () => {
+  test('should return the component', () => {
+    const { container, getByText } = render(
+      <AgentsTableGlobalActions
+        selectedAgents={[{ id: '001', name: 'agent1' } as Agent]}
+        allAgentsSelected={false}
+        allAgentsCount={3}
+        filters={{}}
+        reloadAgents={() => {}}
+        setIsUpgradeTasksModalVisible={() => {}}
+        setIsUpgradePanelClosed={() => {}}
+        allowGetTasks={true}
+      />,
+    );
+
+    expect(container).toMatchSnapshot();
+
+    const option = getByText('More');
+    expect(option).toBeInTheDocument();
+  });
+
+  test('should show options on click', async () => {
+    const { getByText } = render(
+      <AgentsTableGlobalActions
+        selectedAgents={[{ id: '001', name: 'agent1' } as Agent]}
+        allAgentsSelected={false}
+        allAgentsCount={3}
+        filters={{}}
+        reloadAgents={() => {}}
+        setIsUpgradeTasksModalVisible={() => {}}
+        setIsUpgradePanelClosed={() => {}}
+        allowGetTasks={true}
+      />,
+    );
+
+    const option = getByText('More');
+    expect(option).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(option);
+    });
+
+    await waitFor(() =>
+      expect(getByText('Add groups to agents (1)')).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(getByText('Remove groups from agents (1)')).toBeInTheDocument(),
+    );
+  });
+});

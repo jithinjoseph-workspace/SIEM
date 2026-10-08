@@ -1,0 +1,30 @@
+#!/bin/sh
+# ==============================================================================
+# Wazuh Linux Agent - Debian/Ubuntu postrm script
+# ==============================================================================
+set -e
+
+case "$1" in
+    purge)
+        rm -rf /var/ossec/queue
+        rm -rf /var/ossec/logs
+        rm -rf /var/ossec/quarantine
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload > /dev/null 2>&1 || true
+        fi
+        # Remove user and group on purge
+        if getent passwd wazuh > /dev/null 2>&1; then
+            deluser --system wazuh > /dev/null 2>&1 || true
+        fi
+        if getent group wazuh > /dev/null 2>&1; then
+            delgroup --system wazuh > /dev/null 2>&1 || true
+        fi
+    ;;
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload > /dev/null 2>&1 || true
+        fi
+    ;;
+esac
+
+exit 0

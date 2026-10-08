@@ -1,0 +1,208 @@
+<div class="retro-page">
+
+  <!-- ── PAGE HEADER ────────────────────────────────────────────────────── -->
+  <div class="retro-header">
+    <div class="retro-header-left">
+      <div class="retro-eyebrow">
+        <lucide-icon [name]="RetroIcon" class="w-3 h-3"></lucide-icon>
+        THREAT HUNTING
+      </div>
+      <h1 class="retro-title">Retrospective Detection</h1>
+      <p class="retro-subtitle">Search historical alerts for any Agent-S or Agent-Z rule that has fired — pick from the list or type a keyword.</p>
+    </div>
+    <button class="btn-refresh" (click)="loadScans()" [disabled]="loading" [class.spinning]="loading">
+      <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+      Refresh
+    </button>
+  </div>
+
+  <!-- ── SCAN LAUNCHER ──────────────────────────────────────────────────── -->
+  <div class="retro-panel">
+    <div class="retro-panel-title">
+      <lucide-icon [name]="PlayIcon" class="w-4 h-4"></lucide-icon>
+      Launch Retrospective Scan
+    </div>
+    <div class="retro-form">
+
+      <!-- Rule picker -->
+      <div class="retro-field retro-field-wide retro-picker-wrap">
+        <label>Rule</label>
+
+        @if (selectedRuleId) {
+          <!-- Selected rule chip -->
+          <div class="retro-selected-rule">
+            <span class="retro-engine-badge" [class]="'retro-engine-' + ruleEngine(selectedRuleId).toLowerCase().replace('-','')">
+              {{ ruleEngine(selectedRuleId) }}
+            </span>
+            <span class="retro-selected-name">{{ selectedRuleName }}</span>
+            <button class="retro-clear-btn" (click)="clearRule()" title="Clear selection">
+              <lucide-icon [name]="XIcon" class="w-3 h-3"></lucide-icon>
+            </button>
+          </div>
+        } @else {
+          <!-- Search input -->
+          <div class="retro-search-wrap">
+            <lucide-icon [name]="SearchIcon" class="retro-search-icon w-3.5 h-3.5"></lucide-icon>
+            <input
+              class="retro-input retro-search-input"
+              [(ngModel)]="ruleQuery"
+              placeholder="{{ rulesLoading ? 'Loading rules...' : 'Search rules by name…' }}"
+              (focus)="openDropdown()"
+              (input)="openDropdown()"
+              autocomplete="off"
+            />
+          </div>
+          @if (showDropdown) {
+            <div class="retro-dropdown">
+              @if (filteredFired.length === 0 && filteredSigma.length === 0) {
+                <div class="retro-dropdown-empty">No rules found</div>
+              }
+
+              <!-- Section: Rules with actual history -->
+              @if (filteredFired.length > 0) {
+                <div class="retro-dropdown-section">HAS HISTORY</div>
+                @for (rule of filteredFired; track rule.name) {
+                  <div class="retro-dropdown-item" (click)="selectRule(rule)">
+                    <div class="retro-dropdown-row">
+                      <span class="retro-dropdown-name">{{ rule.name }}</span>
+                      <span class="retro-engine-badge" [class]="'retro-engine-' + ruleEngine(rule.name).toLowerCase().replace('-','')">
+                        {{ ruleEngine(rule.name) }}
+                      </span>
+                    </div>
+                    <span class="retro-dropdown-id">{{ rule.hit_count }} hit{{ rule.hit_count === 1 ? '' : 's' }} in history</span>
+                  </div>
+                }
+              }
+
+              <!-- Section: All Sigma library (Agent-Z) -->
+              @if (filteredSigma.length > 0) {
+                <div class="retro-dropdown-section">SIGMA LIBRARY — AGENT-Z</div>
+                @for (rule of filteredSigma; track rule.id) {
+                  <div class="retro-dropdown-item" (click)="selectRule(rule)">
+                    <div class="retro-dropdown-row">
+                      <span class="retro-dropdown-name">{{ rule.name }}</span>
+                      <span class="retro-engine-badge retro-engine-agentz">Agent-Z</span>
+                    </div>
+                    <span class="retro-dropdown-id">{{ rule.id }}</span>
+                  </div>
+                }
+              }
+            </div>
+          }
+        }
+      </div>
+
+      <!-- Keyword fallback -->
+      <div class="retro-field retro-field-wide">
+        <label>Keyword / IP <span class="retro-optional">(optional — OR filter)</span></label>
+        <input [(ngModel)]="ruleContent" placeholder="e.g. 185.220.101.45 or lateral-movement" class="retro-input" />
+      </div>
+
+      <!-- Time window -->
+      <div class="retro-field">
+        <label>History Window</label>
+        <div class="retro-hours">
+          @for (h of hoursOptions; track h) {
+            <button class="retro-hour-btn" [class.active]="hoursBack === h" (click)="hoursBack = h">
+              {{ h === 168 ? '7d' : h + 'h' }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Run -->
+      <div class="retro-field retro-field-btn">
+        <button class="btn-run" (click)="startScan()" [disabled]="scanning">
+          <lucide-icon [name]="PlayIcon" class="w-3.5 h-3.5"></lucide-icon>
+          {{ scanning ? 'Starting...' : 'Run Scan' }}
+        </button>
+      </div>
+    </div>
+
+    @if (success) { <div class="retro-alert retro-alert-ok">{{ success }}</div> }
+    @if (error)   { <div class="retro-alert retro-alert-err">{{ error }}</div> }
+  </div>
+
+  <!-- ── PAST SCANS ──────────────────────────────────────────────────────── -->
+  <div class="retro-scans-section">
+    <div class="retro-section-title">Past Scans</div>
+
+    @if (loading && scans.length === 0) {
+      <div class="retro-loading">Loading scans...</div>
+    } @else if (scans.length === 0) {
+      <div class="retro-empty">No scans yet. Launch one above.</div>
+    } @else {
+      @for (scan of scans; track scan.id) {
+        <div class="retro-card" [class.retro-card-open]="selectedScan?.id === scan.id">
+
+          <div class="retro-card-header" (click)="viewScan(scan)">
+            <div class="retro-card-left">
+              <span class="retro-badge" [class]="'retro-badge-' + scan.status">{{ scan.status.toUpperCase() }}</span>
+              <span class="retro-meta-item"><strong>{{ scanLabel(scan) }}</strong></span>
+              <span class="retro-meta-sep">·</span>
+              <span class="retro-meta-item">Last {{ scan.hours_back === 168 ? '7d' : scan.hours_back + 'h' }}</span>
+            </div>
+            <div class="retro-card-right">
+              <span class="retro-matches" [class.retro-matches-hit]="scan.match_count > 0">
+                {{ scan.match_count }} match{{ scan.match_count === 1 ? '' : 'es' }}
+              </span>
+              <span class="retro-time">{{ scan.started_at | date:'dd MMM, HH:mm' }}</span>
+              <lucide-icon
+                [name]="selectedScan?.id === scan.id ? ChevronDown : ChevronRight"
+                class="retro-chevron">
+              </lucide-icon>
+            </div>
+          </div>
+
+          @if (selectedScan?.id === scan.id) {
+            <div class="retro-card-body">
+
+              @if (scan.status === 'running') {
+                <div class="retro-loading small">Scan in progress...</div>
+              }
+
+              @if (scan.status === 'failed') {
+                <div class="retro-alert retro-alert-err small">Scan failed — check engine logs for details.</div>
+              }
+
+              @if (scan.status === 'done' && selectedMatches.length === 0) {
+                <div class="retro-empty small">No matching alerts found for this rule in the selected time window.</div>
+              }
+
+              @if (scan.status === 'done' && selectedMatches.length > 0) {
+                <div class="retro-results-wrap">
+                  <table class="retro-results">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Src IP</th>
+                        <th>Dst IP</th>
+                        <th>Severity</th>
+                        <th>Matched Rules</th>
+                        <th>Community ID</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (m of selectedMatches; track m.community_id) {
+                        <tr>
+                          <td class="retro-td-mono">{{ m.ts }}</td>
+                          <td class="retro-td-ip">{{ m.src_ip }}</td>
+                          <td class="retro-td-ip">{{ m.dst_ip }}</td>
+                          <td><span class="retro-sev" [class]="'retro-sev-' + m.severity?.toLowerCase()">{{ m.severity || '—' }}</span></td>
+                          <td class="retro-td-sig">{{ m.alert_signature || '—' }}</td>
+                          <td class="retro-td-mono retro-td-sm">{{ m.community_id }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+
+            </div>
+          }
+        </div>
+      }
+    }
+  </div>
+
+</div>

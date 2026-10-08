@@ -1,0 +1,61 @@
+{
+  "name": "ndr-ui",
+  "version": "1.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve --proxy-config proxy.conf.json",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "packageManager": "npm@11.1.0",
+  "dependencies": {
+    "@angular/cdk": "^21.2.0",
+    "@angular/common": "^21.1.0",
+    "@angular/compiler": "^21.1.0",
+    "@angular/core": "^21.1.0",
+    "@angular/forms": "^21.1.0",
+    "@angular/platform-browser": "^21.1.0",
+    "@angular/router": "^21.1.0",
+    "@lottiefiles/dotlottie-web": "^0.74.0",
+    "@types/d3": "^7.4.3",
+    "@types/topojson-client": "^3.1.5",
+    "3d-force-graph": "^1.80.0",
+    "chart.js": "^4.5.1",
+    "d3": "^7.9.0",
+    "driver.js": "^1.0.1",
+    "echarts": "^6.1.0",
+    "echarts-gl": "^2.1.0",
+    "lucide-angular": "^1.0.0",
+    "ng2-charts": "^10.0.0",
+    "rxjs": "~7.8.0",
+    "three": "^0.180.0",
+    "topojson-client": "^3.1.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.1.4",
+    "@angular/cli": "^21.1.4",
+    "@angular/compiler-cli": "^21.1.0",
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/three": "^0.180.0",
+    "jsdom": "^27.1.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.12",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}

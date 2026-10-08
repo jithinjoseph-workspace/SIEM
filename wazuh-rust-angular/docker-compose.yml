@@ -1,0 +1,155 @@
+# ==============================================================================
+# Unified XDR Platform (NDR + SIEM) - Production Docker Compose
+# Architecture: Caddy (Edge Proxy) -> Rust Microservices -> ClickHouse DB
+# ==============================================================================
+
+services:
+  # 1. Edge Reverse Proxy & Automatic TLS
+  caddy:
+    image: caddy:alpine
+    container_name: xdr-caddy-proxy
+    restart: always
+    ports:
+      - "80:80"       # HTTP & WebSocket entrypoint
+      - "443:443"     # HTTPS SSL entrypoint
+      - "443:443/udp" # HTTP/3 QUIC
+    environment:
+      - SITE_DOMAIN=localhost # Replace with your production domain (e.g. siem.company.com)
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend-angular/dist/frontend-angular/browser:/usr/share/caddy/html:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - clickhouse
+      - siem-api
+      - auth-service
+
+  # 2. High-Performance Columnar Big Data Engine (Shared NDR + SIEM)
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: xdr-clickhouse
+    restart: always
+    environment:
+      CLICKHOUSE_DB: ndr
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_PASSWORD: change-me-clickhouse-password
+    ports:
+      - "8123:8123" # HTTP API port
+      - "9000:9000" # Native TCP client port
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./clickhouse/ndr-user.xml:/etc/clickhouse-server/users.d/ndr-user.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. In-Memory Session & Fast Token Revocation Cache
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: xdr-valkey
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # 4. Multi-Tenant JWT & RBAC Auth Microservice
+  auth-service:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile.auth
+    container_name: xdr-auth-service
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - LISTEN_ADDR=0.0.0.0:3001
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DB=ndr
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - VALKEY_URL=redis://valkey:6379
+      - REDIS_URL=redis://valkey:6379
+      - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
+      - TOKEN_TTL_SECS=3600
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+
+  # 5. Rust SIEM Microservice (AnalysisEngine + Sliding Window Accumulator + Ingestion + WebSockets + Syslog)
+  siem-api:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile
+    container_name: xdr-siem-api
+    restart: always
+    ports:
+      - "514:514/udp" # Syslog UDP
+      - "514:514"     # Syslog TCP
+      - "601:601"     # Syslog RFC 6587 TCP
+    environment:
+      - SIEM_PORT=8088
+      - SYSLOG_UDP_PORT=514
+      - SYSLOG_TCP_PORT=601
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DB=wazuh_siem
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  # 6. High-Capacity Wazuh Agent Gateway (50,000+ Agents - AES-256 Wire on 1514, Authd on 1515)
+  siem-remoted:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile.remoted
+    container_name: xdr-siem-remoted
+    restart: always
+    ports:
+      - "1514:1514/udp"
+      - "1514:1514/tcp"
+      - "1515:1515/tcp"
+    environment:
+      - REMOTED_PORT=1514
+      - AUTHD_PORT=1515
+      - CLIENT_KEYS_PATH=/var/ossec/etc/client.keys
+      - RUST_LOG=info
+    volumes:
+      - remoted_keys:/var/ossec/etc
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+
+  # 7. Rust NDR Microservice (Network Detection & Response)
+  # Un-comment to run NDR backend microservice alongside SIEM:
+  # ndr-api:
+  #   image: your-ndr-backend:latest
+  #   container_name: xdr-ndr-api
+  #   restart: always
+  #   environment:
+  #     - NDR_PORT=8090
+  #     - CLICKHOUSE_URL=http://clickhouse:8123
+  #     - CLICKHOUSE_DB=wazuh_siem
+
+volumes:
+  clickhouse_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  remoted_keys:
+    driver: local

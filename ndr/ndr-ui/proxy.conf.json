@@ -1,0 +1,27 @@
+{
+  "/api/auth": {
+    "target": "http://127.0.0.1:3001",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/v1": {
+    "target": "http://127.0.0.1:8088",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api": {
+    "target": "http://127.0.0.1:80",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/favicon-proxy": {
+    "target": "http://127.0.0.1:80",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/ws": {
+    "target": "ws://127.0.0.1:8088",
+    "secure": false,
+    "ws": true
+  }
+}

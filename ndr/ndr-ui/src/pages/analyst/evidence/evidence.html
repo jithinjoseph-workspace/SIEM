@@ -1,0 +1,947 @@
+<div class="evidence-page">
+  <header class="page-header">
+    <div>
+      <div class="page-eyebrow">Forensic Analysis</div>
+      <h2>Evidence &amp; Forensics</h2>
+      <p class="page-sub">Captured incident bundles with chain of custody and AI analysis.</p>
+    </div>
+    <span class="badge">{{ bundles().length }} incidents</span>
+  </header>
+  <div class="evidence-layout">
+
+    <!-- Left: Bundle list (grouped by src_ip→dst_ip, then by community_id) -->
+    <div class="bundle-list">
+      <div class="bundle-list-topbar">
+        <span class="bundle-list-title">Incidents</span>
+        <span class="badge">{{ bundles().length }}</span>
+      </div>
+
+      <!-- Corroboration filter bar -->
+      <div class="corr-filter-bar">
+        <button class="corr-filter-btn corr-both"
+                [class.active]="corrFilterActive() === 'corroborated'"
+                (click)="toggleCorrFilter('corroborated')"
+                title="Corroborated — both Agent-Z + Agent-S matched this flow">
+          Z+S <span class="corr-count">{{ corroboratedCount() }}</span>
+        </button>
+        <button class="corr-filter-btn corr-s"
+                [class.active]="corrFilterActive() === 'agent_s_only'"
+                (click)="toggleCorrFilter('agent_s_only')"
+                title="Agent-S alert only — no Agent-Z flow match">
+          S <span class="corr-count">{{ bundles().filter(b => b.correlation_status === 'agent_s_only').length }}</span>
+        </button>
+        <button class="corr-filter-btn corr-z"
+                [class.active]="corrFilterActive() === 'agent_z_only'"
+                (click)="toggleCorrFilter('agent_z_only')"
+                title="Agent-Z flow only — no Agent-S alert match">
+          Z <span class="corr-count">{{ bundles().filter(b => b.correlation_status === 'agent_z_only').length }}</span>
+        </button>
+        <button class="corr-filter-btn corr-all"
+                [class.active]="corrFilterActive() === ''"
+                (click)="toggleCorrFilter('')"
+                title="Show all incidents">
+          ALL
+        </button>
+      </div>
+
+      <!-- Outer IP-pair groups -->
+      <div *ngFor="let ipGroup of ipGroupedBundles()" class="ip-bundle-group">
+
+        <!-- IP pair header row — click to expand/collapse -->
+        <div class="ip-group-header" [class.ip-group-expanded]="expandedIpKeys().has(ipGroup.key)"
+             (click)="toggleIpGroup(ipGroup.key)">
+          <span class="ip-group-chevron">{{ expandedIpKeys().has(ipGroup.key) ? '▼' : '▶' }}</span>
+          <span class="ip-group-sev" [class]="'sev-' + ipGroup.maxSev?.toLowerCase()">{{ ipGroup.maxSev }}</span>
+          <span class="ip-group-flow">
+            <span class="ip-src">{{ ipGroup.src_ip }}</span>
+            <span class="ip-arrow"> → </span>
+            <span class="ip-dst">{{ ipGroup.dst_ip }}</span>
+          </span>
+          <span class="ip-group-count">{{ ipGroup.count }}</span>
+        </div>
+
+        <!-- Expanded: individual bundles within this IP pair -->
+        <div *ngIf="expandedIpKeys().has(ipGroup.key)" class="ip-group-bundles">
+          <div *ngFor="let b of ipGroup.bundles" class="bundle-card bundle-card-inner"
+               [class.selected]="selectedBundle()?.id === b.id"
+               (click)="selectBundle(b)">
+
+            <div class="bundle-header">
+              <span class="severity-badge" [class]="'sev-' + b.severity?.toLowerCase()">{{ b.severity }}</span>
+              <span class="hold-badge" *ngIf="b.legal_hold">HOLD</span>
+              <span class="auto-badge" *ngIf="b.auto_captured">AUTO</span>
+              <span class="corr-badge" [class]="corrLabel(b.correlation_status).cls">
+                {{ corrLabel(b.correlation_status).label }}
+              </span>
+            </div>
+
+            <div class="bundle-meta">
+              <span>{{ b.captured_at | date:'M/d/yy, h:mm a' }}</span>
+              <span>{{ (b.size_bytes / 1024).toFixed(1) }} KB</span>
+            </div>
+
+            <div class="bundle-cid" title="{{ b.community_id }}">
+              CID: {{ b.community_id | slice:0:18 }}…
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div *ngIf="loading()" class="loading">Loading bundles...</div>
+      <div *ngIf="!loading() && ipGroupedBundles().length === 0" class="empty">
+        No evidence bundles yet.<br>HIGH/CRITICAL alerts auto-capture.
+      </div>
+    </div>
+
+    <!-- Right: Bundle detail -->
+    <div class="bundle-detail" *ngIf="selectedBundle()">
+      <div class="detail-header">
+        <div class="detail-title-block">
+          <div class="detail-header-top">
+            <span class="severity-badge" [class]="'sev-' + selectedBundle()?.severity?.toLowerCase()">
+              {{ selectedBundle()?.severity }}
+            </span>
+            <h3>Evidence Bundle</h3>
+            <span class="corr-badge detail-corr-badge"
+                  [class]="corrLabel(selectedBundle()?.correlation_status).cls"
+                  [title]="selectedBundle()?.corroborated
+                    ? 'Corroborated — Agent-Z flow + Agent-S alert matched on this community ID'
+                    : 'Single-source detection — no cross-sensor match'">
+              {{ selectedBundle()?.corroborated ? 'CORROBORATED' : (selectedBundle()?.correlation_status === 'agent_s_only' ? 'AGENT-S ONLY' : 'AGENT-Z ONLY') }}
+            </span>
+            <span class="hold-badge" *ngIf="selectedBundle().legal_hold">⚠ LEGAL HOLD</span>
+          </div>
+          <div class="detail-flow">
+            <span class="detail-ip src">{{ selectedBundle()?.src_ip }}</span>
+            <span class="detail-arrow">→</span>
+            <span class="detail-ip dst">{{ selectedBundle()?.dst_ip }}</span>
+            <span class="detail-cid">CID: {{ selectedBundle()?.community_id | slice:0:22 }}…</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-primary" (click)="download(selectedBundle())">
+            ↓ Download ZIP
+          </button>
+          <button class="btn-secondary" (click)="verify(selectedBundle())">
+            Verify Integrity
+          </button>
+          <button *ngIf="!selectedBundle().legal_hold"
+                  class="btn-hold"
+                  (click)="setHold(selectedBundle(), true)">
+            Legal Hold
+          </button>
+          <button *ngIf="selectedBundle().legal_hold"
+                  class="btn-release"
+                  (click)="setHold(selectedBundle(), false)">
+            Release Hold
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button [class.active]="activeTab()==='investigation'"
+                (click)="activeTab.set('investigation')">Investigation</button>
+        <button [class.active]="activeTab()==='bundles'"
+                (click)="activeTab.set('bundles')">Overview</button>
+        <button [class.active]="activeTab()==='timeline'"
+                (click)="activeTab.set('timeline')">Attack Timeline</button>
+        <button [class.active]="activeTab()==='log'"
+                (click)="activeTab.set('log')">Chain of Custody</button>
+        <button [class.active]="activeTab()==='notes'"
+                (click)="activeTab.set('notes')">Analyst Notes</button>
+        <button [class.active]="activeTab()==='verify'"
+                (click)="verify(selectedBundle())">Integrity</button>
+      </div>
+
+      <!-- Overview tab -->
+      <div *ngIf="activeTab()==='bundles'" class="tab-content">
+        <div class="overview-grid">
+          <!-- Incident summary card -->
+          <div class="overview-card" [class]="'sev-card-' + (selectedBundle()?.severity || 'unknown').toLowerCase()">
+            <div class="overview-card-title">Incident</div>
+            <div class="overview-sev">{{ selectedBundle()?.severity }}</div>
+            <div class="overview-ips">
+              <span class="ip src-ip">{{ selectedBundle()?.src_ip || '-' }}</span>
+              <span class="arrow-sep">→</span>
+              <span class="ip dst-ip">{{ selectedBundle()?.dst_ip || '-' }}</span>
+            </div>
+            <div class="overview-meta-row">Captured: {{ selectedBundle()?.captured_at }}</div>
+            <div class="overview-meta-row auto-label" *ngIf="selectedBundle().auto_captured">Auto-captured</div>
+          </div>
+
+          <!-- Bundle integrity card -->
+          <div class="overview-card">
+            <div class="overview-card-title">Bundle Integrity</div>
+            <table class="info-table">
+              <tr><td>Bundle ID</td><td>{{ selectedBundle()?.id }}</td></tr>
+              <tr><td>Community ID</td><td class="monospace small">{{ selectedBundle()?.community_id }}</td></tr>
+              <tr><td>SHA-256</td><td class="monospace small break-all">{{ selectedBundle()?.sha256 }}</td></tr>
+              <tr><td>Size</td><td>{{ (selectedBundle()?.size_bytes/1024).toFixed(1) }} KB</td></tr>
+              <tr><td>Expires</td><td>{{ selectedBundle()?.expires_at }}</td></tr>
+              <tr><td>Legal Hold</td><td>{{ selectedBundle()?.legal_hold ? 'Yes' : 'No' }}</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- Summary from investigation if loaded -->
+        <div *ngIf="bundleContents()?.attack_summary" class="overview-narrative">
+          <div class="overview-card-title">Summary</div>
+          <p>{{ bundleContents()?.attack_summary.summary }}</p>
+          <div class="overview-stats">
+            <span class="stat-chip">{{ bundleContents()?.attack_summary.rules_fired?.length || 0 }} rules</span>
+            <span class="stat-chip">{{ bundleContents()?.attack_summary.threat_intel_hits || 0 }} threat intel hits</span>
+            <span class="stat-chip">{{ bundleContents()?.attack_summary.files_transferred || 0 }} files</span>
+            <span *ngIf="bundleContents()?.attack_summary.http_user_agent" class="stat-chip">UA: {{ bundleContents()?.attack_summary.http_user_agent }}</span>
+          </div>
+          <div *ngIf="bundleContents()?.attack_summary.recommended_action" class="recommended-action-mini">
+            {{ bundleContents()?.attack_summary.recommended_action }}
+          </div>
+        </div>
+
+        <!-- Legal hold form -->
+        <div *ngIf="!selectedBundle().legal_hold" class="hold-form">
+          <input [(ngModel)]="holdReason"
+                 placeholder="Reason for legal hold (required)"
+                 class="hold-input"/>
+          <button (click)="setHold(selectedBundle(), true)" [disabled]="!holdReason">
+            Place Legal Hold
+          </button>
+        </div>
+      </div>
+
+      <!-- Timeline tab -->
+      <div *ngIf="activeTab()==='timeline'" class="tab-content">
+        <div *ngIf="timeline()" class="timeline">
+          <div class="narrative">
+            <h4>Attack Narrative</h4>
+            <p>{{ timeline()?.narrative }}</p>
+          </div>
+          <div class="events">
+            <div *ngFor="let e of timeline()?.events"
+                 class="event-row"
+                 [class]="'event-' + e.type">
+              <span class="event-time">{{ e.time | date:'h:mm:ss a' }}</span>
+              <span class="event-type-badge">{{ e.type }}</span>
+              <span class="event-desc">{{ e.description }}</span>
+            </div>
+          </div>
+          <div class="related-count">
+            {{ timeline()?.related_sessions_count }} related sessions in ±5min window
+          </div>
+
+          <!-- UID-linked connection story (shows when Agent-Z UID or any Agent-S events exist) -->
+          <div *ngIf="timeline()?.zeek_uid || timeline()?.uid_logs?.length" class="uid-story">
+            <div class="uid-story-header">
+              <span class="uid-story-title">Connection Story</span>
+              <span *ngIf="timeline()?.zeek_uid" class="uid-source-badge agent-z-badge">AGENT-Z</span>
+              <span *ngIf="hasAgentSLogs()" class="uid-source-badge agent-s-badge">AGENT-S</span>
+              <span *ngIf="timeline()?.zeek_uid" class="uid-chip" title="Agent-Z UID — links all log types for this connection">
+                UID: {{ timeline()?.zeek_uid }}
+              </span>
+            </div>
+
+            <!-- DNS queries seen on this connection -->
+            <div *ngIf="timeline()?.dns_queries?.length" class="uid-summary-row">
+              <span class="uid-summary-label">DNS Queries</span>
+              <span *ngFor="let q of timeline()?.dns_queries" class="uid-dns-chip">{{ q }}</span>
+            </div>
+
+            <!-- TLS SNIs seen on this connection -->
+            <div *ngIf="timeline()?.tls_snis?.length" class="uid-summary-row">
+              <span class="uid-summary-label">TLS SNI</span>
+              <span *ngFor="let s of timeline()?.tls_snis" class="uid-sni-chip">{{ s }}</span>
+            </div>
+
+            <!-- Per-log entries ordered by time (Agent-Z + Agent-S merged) -->
+            <div class="uid-log-list">
+              <div *ngFor="let entry of timeline()?.uid_logs" class="uid-log-row">
+                <span class="uid-log-time">{{ entry.time | date:'h:mm:ss a' }}</span>
+                <span class="uid-log-type" [class]="'uid-type-' + entry.log_type">{{ entry.log_type | uppercase }}</span>
+                <span class="uid-log-desc">
+                  <span *ngIf="entry.source === 'agent-s'" class="uid-source-badge agent-s-badge" style="font-size:0.55rem;padding:0.05rem 0.3rem;margin-right:0.35rem;vertical-align:middle">S</span>{{ entry.description }}
+                </span>
+              </div>
+            </div>
+
+            <div *ngIf="!timeline()?.uid_logs?.length" class="empty" style="margin-top:8px">
+              No log entries linked to this connection.
+            </div>
+          </div>
+
+          <div *ngIf="!timeline()?.zeek_uid" class="uid-story uid-story-empty">
+            No Agent-Z UID found for this connection — UID linking not available.
+          </div>
+        </div>
+      </div>
+
+      <!-- Chain of custody tab -->
+      <div *ngIf="activeTab()==='log'" class="tab-content">
+        <table class="custody-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>Action</th>
+              <th>By</th><th>Notes</th><th>IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let l of log()">
+              <td>{{ l.performed_at }}</td>
+              <td><span class="action-badge">{{ l.action }}</span></td>
+              <td>{{ l.performed_by }}</td>
+              <td>{{ l.notes }}</td>
+              <td>{{ l.ip_address }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div *ngIf="log().length === 0" class="empty">No custody log entries yet.</div>
+      </div>
+
+      <!-- Notes tab -->
+      <div *ngIf="activeTab()==='notes'" class="tab-content">
+        <div class="add-note">
+          <textarea [(ngModel)]="newNote"
+                    placeholder="Add analyst note..."
+                    rows="3"></textarea>
+          <input [(ngModel)]="newTag"
+                 placeholder="Tag (e.g. confirmed_malicious)"/>
+          <button (click)="addNote(selectedBundle)"
+                  [disabled]="!newNote">Add Note</button>
+        </div>
+        <div class="notes-list">
+          <div *ngFor="let a of annotations()" class="note-card">
+            <div class="note-header">
+              <span class="note-author">{{ a.author }}</span>
+              <span class="note-time">{{ a.created_at }}</span>
+              <span *ngIf="a.tag" class="note-tag">{{ a.tag }}</span>
+            </div>
+            <p>{{ a.note }}</p>
+          </div>
+          <div *ngIf="annotations().length === 0" class="empty">No notes yet.</div>
+        </div>
+      </div>
+
+      <!-- Investigation tab -->
+      <div *ngIf="activeTab()==='investigation'" class="tab-content investigation-tab">
+
+        <div *ngIf="contentsLoading()" class="loading">Loading bundle contents...</div>
+        <div *ngIf="contentsError()" class="error-msg">{{ contentsError() }}</div>
+
+        <div *ngIf="bundleContents() && !contentsLoading()">
+
+          <!-- Section nav -->
+          <div class="section-nav">
+            <button [class.active]="activeContentSection()==='attack_summary'"
+                    (click)="activeContentSection.set('attack_summary')">Attack Summary</button>
+            <button [class.active]="activeContentSection()==='connection'"
+                    (click)="activeContentSection.set('connection')">Connection</button>
+            <button [class.active]="activeContentSection()==='dns'"
+                    (click)="activeContentSection.set('dns')">DNS</button>
+            <button [class.active]="activeContentSection()==='http'"
+                    (click)="activeContentSection.set('http')">HTTP</button>
+            <button [class.active]="activeContentSection()==='ssl'"
+                    (click)="activeContentSection.set('ssl')">TLS/SSL</button>
+            <button [class.active]="activeContentSection()==='files'"
+                    (click)="activeContentSection.set('files')">Files</button>
+            <button [class.active]="activeContentSection()==='weird'"
+                    (click)="activeContentSection.set('weird')">Anomalies</button>
+            <button [class.active]="activeContentSection()==='alerts'"
+                    (click)="activeContentSection.set('alerts')">All Alerts</button>
+            <button [class.active]="activeContentSection()==='intel'"
+                    (click)="activeContentSection.set('intel')">Threat Intel</button>
+            <button [class.active]="activeContentSection()==='related'"
+                    (click)="activeContentSection.set('related')">Related Activity</button>
+            <button [class.active]="activeContentSection()==='pcap'"
+                    (click)="activeContentSection.set('pcap')">PCAP</button>
+            <button [class.active]="activeContentSection()==='aria_verdict'"
+                    (click)="activeContentSection.set('aria_verdict')"
+                    class="aria-nav-btn">
+              AI Verdict
+              <span *ngIf="ariaVerdict()" class="verdict-dot"
+                    [class.verdict-dot-true]="ariaVerdict()?.verdict === 'TRUE_POSITIVE'"
+                    [class.verdict-dot-false]="ariaVerdict()?.verdict === 'FALSE_POSITIVE'"
+                    [class.verdict-dot-sus]="ariaVerdict()?.verdict === 'SUSPICIOUS'">
+              </span>
+            </button>
+          </div>
+
+          <!-- ATTACK SUMMARY -->
+          <div *ngIf="activeContentSection()==='attack_summary'" class="content-section">
+            <div *ngIf="bundleContents()?.attack_summary" class="attack-summary">
+
+              <div class="summary-severity"
+                   [class]="'sev-' + bundleContents()?.attack_summary.severity?.toLowerCase()">
+                {{ bundleContents()?.attack_summary.severity }} — {{ bundleContents()?.attack_summary.title }}
+              </div>
+
+              <div class="summary-narrative">{{ bundleContents()?.attack_summary.summary }}</div>
+
+              <div class="summary-grid">
+                <div class="summary-card">
+                  <label>Victim IP</label>
+                  <span class="ip">{{
+                    bundleContents()?.attack_summary.victim_ip ||
+                    bundleContents()?.zeek_conn?.record?.src_ip || 'N/A'
+                  }}</span>
+                </div>
+                <div class="summary-card">
+                  <label>Attacker / Dest IP</label>
+                  <span class="ip threat">{{
+                    bundleContents()?.attack_summary.attacker_ip ||
+                    bundleContents()?.zeek_conn?.record?.dst_ip || 'N/A'
+                  }}</span>
+                </div>
+                <div class="summary-card">
+                  <label>Rules Fired</label>
+                  <span class="count">{{ bundleContents()?.attack_summary.rules_fired?.length || 0 }}</span>
+                </div>
+                <div class="summary-card">
+                  <label>Threat Intel Hits</label>
+                  <span class="count" [class.threat]="bundleContents()?.attack_summary.threat_intel_hits > 0">
+                    {{ bundleContents()?.attack_summary.threat_intel_hits || 0 }}
+                  </span>
+                </div>
+                <div class="summary-card">
+                  <label>Related Alerts</label>
+                  <span class="count">{{ bundleContents()?.attack_summary.related_alerts || 0 }}</span>
+                </div>
+                <div class="summary-card">
+                  <label>PCAP</label>
+                  <span [class.ok]="bundleContents()?.pcap_available">
+                    {{ bundleContents()?.pcap_available ? 'Captured' : 'Not available' }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="recommended-action" *ngIf="bundleContents()?.attack_summary.recommended_action">
+                <h4>Recommended Action</h4>
+                <p>{{ bundleContents()?.attack_summary.recommended_action }}</p>
+              </div>
+
+              <div *ngIf="filterRules(bundleContents()?.attack_summary.rules_fired).length">
+                <h4>Rules Fired</h4>
+                <div *ngFor="let r of filterRules(bundleContents()?.attack_summary.rules_fired)"
+                     class="rule-row" [class]="'sev-' + r.severity?.toLowerCase()">
+                  <span class="rule-sev">{{ r.severity }}</span>
+                  <span class="rule-name">{{ r.name }}</span>
+                </div>
+              </div>
+            </div>
+            <div *ngIf="!bundleContents()?.attack_summary" class="empty">No attack summary in this bundle.</div>
+          </div>
+
+          <!-- CONNECTION DETAILS -->
+          <div *ngIf="activeContentSection()==='connection'" class="content-section">
+            <h4>Connection Record
+              <span *ngIf="bundleContents()?.zeek_conn?.record?.source"
+                    class="source-badge"
+                    [class.zeek-badge]="bundleContents()?.zeek_conn.record.source === 'agent-z'"
+                    [class.suri-badge]="bundleContents()?.zeek_conn.record.source === 'agent-s'">
+                {{ bundleContents()?.zeek_conn.record.source | titlecase }}
+              </span>
+            </h4>
+            <div *ngIf="bundleContents()?.zeek_conn?.record" class="conn-details">
+              <table class="info-table">
+                <tr><td>Source</td>
+                    <td class="ip">{{ bundleContents()?.zeek_conn.record.src_ip }}:{{ bundleContents()?.zeek_conn.record.src_port }}</td></tr>
+                <tr><td>Destination</td>
+                    <td class="ip">{{ bundleContents()?.zeek_conn.record.dst_ip }}:{{ bundleContents()?.zeek_conn.record.dst_port }}</td></tr>
+                <tr><td>Protocol</td><td>{{ bundleContents()?.zeek_conn.record.proto }}</td></tr>
+                <tr><td>Event Type</td><td>{{ bundleContents()?.zeek_conn.record.event_type || '-' }}</td></tr>
+                <tr><td>Timestamp</td><td>{{ bundleContents()?.zeek_conn.record.timestamp }}</td></tr>
+                <tr><td>Community ID</td><td class="monospace small">{{ bundleContents()?.zeek_conn.community_id }}</td></tr>
+              </table>
+            </div>
+            <div *ngIf="!bundleContents()?.zeek_conn?.record" class="empty">
+              No connection record found for this community_id.
+            </div>
+
+            <h4 style="margin-top:20px">Alert Connection Info</h4>
+            <div class="conn-details">
+              <table class="info-table">
+                <tr><td>Source IP</td><td class="ip">{{
+                  bundleContents()?.alert?.src_ip || bundleContents()?.zeek_conn?.record?.src_ip || '-'
+                }}</td></tr>
+                <tr><td>Dest IP</td><td class="ip">{{
+                  bundleContents()?.alert?.dst_ip || bundleContents()?.zeek_conn?.record?.dst_ip || '-'
+                }}</td></tr>
+                <tr><td>Src Port</td><td>{{
+                  bundleContents()?.alert?.src_port || bundleContents()?.zeek_conn?.record?.src_port || '-'
+                }}</td></tr>
+                <tr><td>Dst Port</td><td>{{
+                  bundleContents()?.alert?.dst_port || bundleContents()?.zeek_conn?.record?.dst_port || '-'
+                }}</td></tr>
+                <tr><td>Protocol</td><td>{{
+                  bundleContents()?.alert?.proto || bundleContents()?.zeek_conn?.record?.proto || '-'
+                }}</td></tr>
+                <tr><td>App Protocol</td><td>{{ bundleContents()?.alert?.app_proto || '-' }}</td></tr>
+                <tr><td>User Agent</td><td>{{ bundleContents()?.alert?.user_agent || '-' }}</td></tr>
+                <tr><td>Total Bytes</td><td>{{ bundleContents()?.alert?.bytes_total ?? '-' }}</td></tr>
+                <tr><td>To Server</td><td>{{ bundleContents()?.alert?.bytes_toserver ?? '-' }}</td></tr>
+                <tr><td>To Client</td><td>{{ bundleContents()?.alert?.bytes_toclient ?? '-' }}</td></tr>
+                <tr><td>Total Packets</td><td>{{ bundleContents()?.alert?.packets_total ?? '-' }}</td></tr>
+                <tr><td>Flow Start</td><td>{{ bundleContents()?.alert?.flow_start || '-' }}</td></tr>
+                <tr><td>Flow End</td><td>{{ bundleContents()?.alert?.flow_end || '-' }}</td></tr>
+                <tr><td>Flow State</td><td>{{ bundleContents()?.alert?.flow_state || '-' }}</td></tr>
+                <tr><td>Severity</td><td>{{ bundleContents()?.alert?.severity || '-' }}</td></tr>
+              </table>
+            </div>
+
+            <h4 style="margin-top:20px">PCAP Engine Session Metadata</h4>
+            <div *ngIf="bundleContents()?.session_metadata" class="conn-details">
+              <table class="info-table">
+                <tr><td>Session ID</td>
+                    <td class="monospace small">{{ bundleContents()?.session_metadata.arkime_session_id }}</td></tr>
+                <tr><td>Index</td><td>{{ bundleContents()?.session_metadata.index }}</td></tr>
+                <tr><td>Source</td><td>{{ bundleContents()?.session_metadata.query_source }}</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <!-- DNS LOOKUPS -->
+          <div *ngIf="activeContentSection()==='dns'" class="content-section">
+            <!-- Agent-Z DNS -->
+            <div class="source-section">
+              <div class="source-label zeek-label">Agent-Z DNS Lookups ({{ bundleContents()?.zeek_dns?.total || 0 }})</div>
+              <div *ngIf="bundleContents()?.zeek_dns?.resolves_to_target_ip" class="warning-row">
+                DNS query resolved to target IP — consistent with C2 domain lookup.
+              </div>
+              <div *ngFor="let d of bundleContents()?.zeek_dns?.queries || []" class="dns-row">
+                <div class="dns-header">
+                  <span class="dns-time">{{ d.timestamp }}</span>
+                  <span class="dns-query">{{ d.query }}</span>
+                  <span class="dns-rcode" [class.ok]="d.rcode==='NOERROR'">{{ d.rcode }}</span>
+                </div>
+                <div class="dns-answers" *ngIf="d.answers?.length">
+                  Answers: <span *ngFor="let a of d.answers" class="ip-tag">{{ a }}</span>
+                </div>
+                <div class="dns-meta">
+                  {{ d.src_ip }} → {{ d.dns_server }} | Proto: {{ d.proto }}
+                  <span *ngIf="d.rejected" class="warn-badge">REJECTED</span>
+                </div>
+              </div>
+              <div *ngIf="!bundleContents()?.zeek_dns?.total" class="empty">No Agent-Z DNS logs for this session uid.</div>
+            </div>
+
+            <!-- Agent-S DNS -->
+            <div class="source-section">
+              <div class="source-label suri-label">Agent-S DNS Events ({{ bundleContents()?.suricata_dns?.total || 0 }})</div>
+              <div *ngIf="bundleContents()?.suricata_dns?.resolves_to_target_ip" class="warning-row">
+                DNS query resolved to target IP — consistent with C2 domain lookup.
+              </div>
+              <div *ngFor="let d of bundleContents()?.suricata_dns?.queries || []" class="dns-row">
+                <div class="dns-header">
+                  <span class="dns-time">{{ d.timestamp }}</span>
+                  <span class="dns-query">{{ d.query }}</span>
+                  <span class="dns-rcode" [class.ok]="d.rcode==='NOERROR'">{{ d.rcode }}</span>
+                  <span class="dns-type">{{ d.type }}</span>
+                </div>
+                <div class="dns-meta">{{ d.src_ip }} → {{ d.dns_server }} | Proto: {{ d.proto }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.suricata_dns?.total" class="empty">No Agent-S DNS events for this community_id.</div>
+            </div>
+          </div>
+
+          <!-- HTTP REQUESTS -->
+          <div *ngIf="activeContentSection()==='http'" class="content-section">
+            <!-- Agent-Z HTTP -->
+            <div class="source-section">
+              <div class="source-label zeek-label">Agent-Z HTTP ({{ bundleContents()?.zeek_http?.total || 0 }})</div>
+              <div *ngFor="let h of bundleContents()?.zeek_http?.requests || []" class="http-row">
+                <div class="http-header">
+                  <span class="http-method" [class.post]="h.method==='POST'" [class.get]="h.method==='GET'">{{ h.method }}</span>
+                  <span class="http-url">{{ h.full_url }}</span>
+                  <span class="http-status" [class.ok]="h.status_code < 400">{{ h.status_code }}</span>
+                </div>
+                <div class="http-meta">
+                  <span *ngIf="h.user_agent" class="ua-tag">UA: {{ h.user_agent }}</span>
+                  <span>{{ h.bytes_uploaded || 0 }}B up / {{ h.bytes_downloaded || 0 }}B down</span>
+                </div>
+                <div class="http-time">{{ h.timestamp }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.zeek_http?.total" class="empty">No Agent-Z HTTP logs for this session uid.</div>
+            </div>
+
+            <!-- Agent-S HTTP -->
+            <div class="source-section">
+              <div class="source-label suri-label">Agent-S HTTP ({{ bundleContents()?.suricata_http?.total || 0 }})</div>
+              <div *ngFor="let h of bundleContents()?.suricata_http?.requests || []" class="http-row">
+                <div class="http-header">
+                  <span class="http-method" [class.post]="h.method==='POST'" [class.get]="h.method==='GET'">{{ h.method }}</span>
+                  <span class="http-url">{{ h.full_url }}</span>
+                  <span class="http-status" [class.ok]="h.status_code < 400">{{ h.status_code }}</span>
+                </div>
+                <div class="http-meta">
+                  <span *ngIf="h.user_agent" class="ua-tag">UA: {{ h.user_agent }}</span>
+                  <span *ngIf="h.content_type">Type: {{ h.content_type }}</span>
+                  <span>{{ h.bytes_downloaded || 0 }}B down</span>
+                  <span class="src-tag">{{ h.src_ip }} → {{ h.dest_ip }}</span>
+                </div>
+                <div class="http-time">{{ h.timestamp }} | Proto: {{ h.protocol }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.suricata_http?.total" class="empty">No Agent-S HTTP events for this community_id.</div>
+            </div>
+          </div>
+
+          <!-- TLS/SSL -->
+          <div *ngIf="activeContentSection()==='ssl'" class="content-section">
+            <!-- Agent-Z SSL -->
+            <div class="source-section">
+              <div class="source-label zeek-label">Agent-Z TLS/SSL ({{ bundleContents()?.zeek_ssl?.total || 0 }})</div>
+              <div *ngIf="bundleContents()?.zeek_ssl?.any_self_signed" class="warning-row">
+                Self-signed certificate detected — typical of attacker-controlled infrastructure.
+              </div>
+              <div *ngFor="let s of bundleContents()?.zeek_ssl?.connections || []" class="ssl-row" [class.self-signed]="s.self_signed">
+                <div class="ssl-header">
+                  <span class="ssl-sni">{{ s.server_name || '(no SNI)' }}</span>
+                  <span class="ssl-version">{{ s.tls_version }}</span>
+                  <span *ngIf="s.self_signed" class="warn-badge">SELF-SIGNED</span>
+                  <span *ngIf="s.is_valid" class="ok-badge">Valid</span>
+                </div>
+                <div class="ssl-cert">
+                  <div *ngIf="s.subject">Subject: {{ s.subject }}</div>
+                  <div *ngIf="s.issuer">Issuer: {{ s.issuer }}</div>
+                  <div *ngIf="s.cipher">Cipher: {{ s.cipher }}</div>
+                </div>
+                <div class="ssl-fingerprints">
+                  <div *ngIf="s.ja3">JA3: <code class="monospace small">{{ s.ja3 }}</code></div>
+                  <div *ngIf="s.ja3s">JA3S: <code class="monospace small">{{ s.ja3s }}</code></div>
+                </div>
+                <div class="ssl-meta">{{ s.timestamp }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.zeek_ssl?.total" class="empty">No Agent-Z TLS/SSL logs for this session uid.</div>
+            </div>
+
+            <!-- Agent-S TLS -->
+            <div class="source-section">
+              <div class="source-label suri-label">Agent-S TLS ({{ bundleContents()?.suricata_tls?.total || 0 }})</div>
+              <div *ngIf="bundleContents()?.suricata_tls?.any_self_signed" class="warning-row">
+                Self-signed certificate detected.
+              </div>
+              <div *ngFor="let s of bundleContents()?.suricata_tls?.sessions || []" class="ssl-row" [class.self-signed]="s.self_signed">
+                <div class="ssl-header">
+                  <span class="ssl-sni">{{ s.server_name || '(no SNI)' }}</span>
+                  <span class="ssl-version">{{ s.tls_version }}</span>
+                  <span *ngIf="s.self_signed" class="warn-badge">SELF-SIGNED</span>
+                </div>
+                <div class="ssl-cert">
+                  <div *ngIf="s.subject">Subject: {{ s.subject }}</div>
+                  <div *ngIf="s.issuer">Issuer: {{ s.issuer }}</div>
+                  <div *ngIf="s.fingerprint">Fingerprint: <code class="monospace small">{{ s.fingerprint }}</code></div>
+                  <div *ngIf="s.not_before || s.not_after">Valid: {{ s.not_before }} → {{ s.not_after }}</div>
+                </div>
+                <div class="ssl-fingerprints">
+                  <div *ngIf="s.ja3">JA3: <code class="monospace small">{{ s.ja3 }}</code></div>
+                  <div *ngIf="s.ja3s">JA3S: <code class="monospace small">{{ s.ja3s }}</code></div>
+                </div>
+                <div class="ssl-meta">{{ s.timestamp }} | {{ s.src_ip }} → {{ s.dest_ip }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.suricata_tls?.total" class="empty">No Agent-S TLS events for this community_id.</div>
+            </div>
+          </div>
+
+          <!-- FILE TRANSFERS -->
+          <div *ngIf="activeContentSection()==='files'" class="content-section">
+            <!-- Agent-Z Files -->
+            <div class="source-section">
+              <div class="source-label zeek-label">Agent-Z File Transfers ({{ bundleContents()?.zeek_files?.total || 0 }})</div>
+              <div *ngFor="let f of bundleContents()?.zeek_files?.files || []" class="file-row">
+                <div class="file-header">
+                  <span class="file-name">{{ f.filename || '(unnamed)' }}</span>
+                  <span class="file-mime">{{ f.mime_type }}</span>
+                  <span class="file-dir" [class.upload]="f.direction==='upload'">{{ f.direction }}</span>
+                </div>
+                <div class="file-size">{{ f.seen_bytes }} / {{ f.total_bytes }} bytes</div>
+                <div class="file-hashes">
+                  <div *ngIf="f.md5">MD5: <code class="monospace small">{{ f.md5 }}</code></div>
+                  <div *ngIf="f.sha1">SHA1: <code class="monospace small">{{ f.sha1 }}</code></div>
+                  <div *ngIf="f.sha256">SHA256: <code class="monospace small">{{ f.sha256 }}</code></div>
+                </div>
+                <div *ngIf="f.virustotal_link" class="vt-link">
+                  <a [href]="f.virustotal_link" target="_blank" rel="noopener noreferrer">Check on VirusTotal</a>
+                </div>
+                <div class="file-meta">{{ f.timestamp }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.zeek_files?.total" class="empty">No Agent-Z file logs for this session uid.</div>
+            </div>
+
+            <!-- Agent-S File Info -->
+            <div class="source-section">
+              <div class="source-label suri-label">Agent-S File Info ({{ bundleContents()?.suricata_files?.total || 0 }})</div>
+              <div *ngFor="let f of bundleContents()?.suricata_files?.files || []" class="file-row">
+                <div class="file-header">
+                  <span class="file-name">{{ f.filename || '(unnamed)' }}</span>
+                  <span class="file-mime">{{ f.mime_type }}</span>
+                  <span class="file-dir">{{ f.direction }}</span>
+                </div>
+                <div class="file-size">{{ f.size }} bytes | {{ f.state }}</div>
+                <div *ngIf="f.http_url" class="http-url-ref">URL: {{ f.http_url }}</div>
+                <div *ngIf="f.user_agent" class="ua-tag">UA: {{ f.user_agent }}</div>
+                <div class="file-meta">{{ f.timestamp }} | {{ f.src_ip }} → {{ f.dest_ip }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.suricata_files?.total" class="empty">No Agent-S fileinfo events for this community_id.</div>
+            </div>
+          </div>
+
+          <!-- ANOMALIES -->
+          <div *ngIf="activeContentSection()==='weird'" class="content-section">
+            <!-- Agent-Z Weird -->
+            <div class="source-section">
+              <div class="source-label zeek-label">Agent-Z Protocol Anomalies ({{ bundleContents()?.zeek_weird?.total || 0 }})</div>
+              <div *ngFor="let w of bundleContents()?.zeek_weird?.events || []" class="weird-row">
+                <div class="weird-header">
+                  <span class="weird-type">{{ w.weird_type }}</span>
+                  <span class="weird-time">{{ w.timestamp }}</span>
+                </div>
+                <div *ngIf="w.detail" class="weird-detail">{{ w.detail }}</div>
+                <div class="weird-ips">{{ w.src_ip }} → {{ w.dst_ip }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.zeek_weird?.total" class="empty">No Agent-Z protocol anomalies for this session uid.</div>
+            </div>
+
+            <!-- Agent-S Anomaly -->
+            <div class="source-section">
+              <div class="source-label suri-label">Agent-S Anomalies ({{ bundleContents()?.suricata_anomaly?.total || 0 }})</div>
+              <div *ngFor="let w of bundleContents()?.suricata_anomaly?.events || []" class="weird-row">
+                <div class="weird-header">
+                  <span class="weird-type">{{ w.type }}</span>
+                  <span class="weird-time">{{ w.timestamp }}</span>
+                  <span *ngIf="w.layer" class="layer-badge">{{ w.layer }}</span>
+                </div>
+                <div *ngIf="w.event" class="weird-detail">{{ w.event }}</div>
+                <div class="weird-ips">{{ w.src_ip }} → {{ w.dest_ip }} | Proto: {{ w.proto }}</div>
+              </div>
+              <div *ngIf="!bundleContents()?.suricata_anomaly?.total" class="empty">No Agent-S anomaly events for this community_id.</div>
+            </div>
+          </div>
+
+          <!-- ALL ALERTS -->
+          <div *ngIf="activeContentSection()==='alerts'" class="content-section">
+            <h4>Agent-S / NDR Alerts ({{ bundleContents()?.suricata_alerts?.alerts?.length || 0 }})</h4>
+            <div *ngFor="let a of bundleContents()?.suricata_alerts?.alerts || []"
+                 class="alert-row" [class]="'sev-' + a.severity?.toLowerCase()">
+              <div class="alert-header">
+                <span class="sev-badge">{{ a.severity }}</span>
+                <span class="alert-name">{{ sanitizeRuleName(a.rule_name || a.tags) }}</span>
+                <span class="alert-time">{{ a.timestamp }}</span>
+              </div>
+              <div class="alert-meta">
+                {{ a.src_ip }} → {{ a.dst_ip }}
+                | Score: {{ a.score }}
+                | {{ a.src_country }} → {{ a.dst_country }}
+              </div>
+            </div>
+            <div *ngIf="!bundleContents()?.suricata_alerts?.alerts?.length" class="empty">
+              No alerts for this session in ndr_hits.
+            </div>
+
+            <h4 style="margin-top:20px">SIGMA Matches ({{ bundleContents()?.sigma_matches?.matches?.length || 0 }})</h4>
+            <div *ngFor="let s of bundleContents()?.sigma_matches?.matches || []"
+                 class="alert-row sigma">
+              <div class="alert-header">
+                <span class="sev-badge">{{ s.severity }}</span>
+                <span class="alert-name">{{ sanitizeRuleName(s.sigma_hits) }}</span>
+                <span class="alert-time">{{ s.timestamp }}</span>
+              </div>
+              <div *ngIf="s.tags" class="alert-tags">Tags: {{ s.tags }}</div>
+            </div>
+            <div *ngIf="!bundleContents()?.sigma_matches?.matches?.length" class="empty">
+              No SIGMA matches for this session.
+            </div>
+          </div>
+
+          <!-- THREAT INTEL -->
+          <div *ngIf="activeContentSection()==='intel'" class="content-section">
+            <h4>Threat Intelligence Check</h4>
+            <div *ngIf="bundleContents()?.threat_intel">
+              <div class="intel-checked">
+                <span class="intel-label">IPs checked:</span>
+                <ng-container *ngFor="let ip of bundleContents()?.threat_intel.checked_ips || []; let last = last">
+                  <span class="ip-tag">{{ ip }}</span><span *ngIf="!last" class="ip-sep">,</span>
+                </ng-container>
+                <span *ngIf="!bundleContents()?.threat_intel.checked_ips?.length" class="empty-inline">none (src/dst IP unknown at capture time)</span>
+              </div>
+              <div *ngIf="!(bundleContents()?.threat_intel.matches?.length)" class="intel-clean">
+                Not found in any known malicious IP feed (Feodo Tracker, URLhaus, MalwareBazaar).
+                <span class="intel-note">
+                  Alert severity is from IDS behavioral rules, not IP reputation — this IP may be legitimate.
+                </span>
+              </div>
+              <div *ngFor="let m of bundleContents()?.threat_intel.matches || []" class="intel-hit">
+                <div class="intel-header">
+                  <span class="intel-type">{{ m.ioc_type || m.threat_type }}</span>
+                  <span class="intel-value ip">{{ m.ioc_value || m.indicator }}</span>
+                  <span class="intel-confidence" [class.high]="m.confidence >= 70">
+                    Confidence: {{ m.confidence }}%
+                  </span>
+                </div>
+                <div class="intel-desc">{{ m.description }}</div>
+                <div class="intel-tags">{{ m.tags }}</div>
+                <div class="intel-dates" *ngIf="m.first_seen">
+                  First seen: {{ m.first_seen }} | Last seen: {{ m.last_seen }}
+                </div>
+              </div>
+            </div>
+            <div *ngIf="!bundleContents()?.threat_intel" class="empty">Threat intel data not available.</div>
+          </div>
+
+          <!-- RELATED ACTIVITY -->
+          <div *ngIf="activeContentSection()==='related'" class="content-section">
+            <h4>Related Alerts from Same Source (±30 min window)</h4>
+            <div *ngIf="!bundleContents()?.related_alerts?.alerts?.length" class="empty">
+              No related alerts in ±30 minute window. (Isolated incident)
+            </div>
+            <div *ngFor="let r of bundleContents()?.related_alerts?.alerts || []"
+                 class="related-row" [class]="'sev-' + r.severity?.toLowerCase()">
+              <div class="related-header">
+                <span class="sev-badge">{{ r.severity }}</span>
+                <span class="related-time">{{ r.timestamp }}</span>
+              </div>
+              <div class="related-ips">{{ r.src_ip }} → {{ r.dst_ip }}</div>
+              <div class="related-tags">{{ r.tags }}</div>
+              <div class="related-cid monospace small">CID: {{ r.community_id }}</div>
+            </div>
+          </div>
+
+          <!-- AI VERDICT -->
+          <div *ngIf="activeContentSection()==='aria_verdict'" class="content-section aria-verdict-section">
+
+            <!-- Run investigation button (always shown at top) -->
+            <div class="aria-verdict-header">
+              <h4>AI Auto-Investigation</h4>
+              <button class="btn-aria-investigate"
+                      (click)="runInvestigation(selectedBundle())"
+                      [disabled]="ariaInvestigating()">
+                <span *ngIf="!ariaInvestigating()">Run Investigation</span>
+                <span *ngIf="ariaInvestigating()" class="investigating-pulse">Analyzing...</span>
+              </button>
+            </div>
+            <p class="aria-verdict-desc">
+              ARIA analyzes all available evidence for this event — alerts, network events, and threat intel —
+              and determines if this is a real attack.
+            </p>
+
+            <!-- Investigating spinner -->
+            <div *ngIf="ariaInvestigating()" class="aria-investigating">
+              <div class="ai-spinner"></div>
+              <p>ARIA is analyzing the evidence. This may take 10–30 seconds...</p>
+            </div>
+
+            <!-- Error -->
+            <div *ngIf="ariaError() && !ariaInvestigating()" class="aria-error">
+              {{ ariaError() }}
+            </div>
+
+            <!-- Verdict card -->
+            <div *ngIf="ariaVerdict() && !ariaInvestigating()" class="aria-verdict-card"
+                 [class]="verdictClass(ariaVerdict()?.verdict)">
+
+              <!-- Verdict badge + confidence -->
+              <div class="verdict-top">
+                <div class="verdict-badge-large" [class]="verdictClass(ariaVerdict()?.verdict)">
+                  {{ verdictLabel(ariaVerdict()?.verdict) }}
+                </div>
+                <div class="verdict-confidence">
+                  <div class="confidence-label">Confidence: {{ ariaVerdict()?.confidence }}%</div>
+                  <div class="confidence-bar-track">
+                    <div class="confidence-bar-fill"
+                         [style.width.%]="ariaVerdict()?.confidence"
+                         [class]="verdictClass(ariaVerdict()?.verdict)">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Reasoning -->
+              <div class="verdict-reasoning">
+                <h5>Analysis</h5>
+                <p>{{ ariaVerdict()?.reasoning }}</p>
+              </div>
+
+              <!-- Recommended action -->
+              <div class="verdict-action">
+                <h5>Recommended Action</h5>
+                <p>{{ ariaVerdict()?.recommended_action }}</p>
+              </div>
+
+              <!-- MITRE techniques -->
+              <div *ngIf="ariaVerdict()?.mitre_techniques?.length" class="verdict-mitre">
+                <h5>MITRE ATT&amp;CK Techniques</h5>
+                <div class="mitre-chips">
+                  <span *ngFor="let t of ariaVerdict()?.mitre_techniques" class="mitre-chip">{{ t }}</span>
+                </div>
+              </div>
+
+              <!-- Generated at -->
+              <div class="verdict-meta">
+                Analysis generated: {{ ariaVerdict()?.generated_at }}
+              </div>
+            </div>
+
+            <!-- No verdict yet -->
+            <div *ngIf="!ariaVerdict() && !ariaInvestigating() && !ariaError()" class="aria-no-verdict">
+              <p>No AI investigation has been run for this event yet.</p>
+              <p>Click "Run Investigation" to have ARIA analyze the evidence.</p>
+            </div>
+
+          </div>
+
+          <!-- PCAP -->
+          <div *ngIf="activeContentSection()==='pcap'" class="content-section">
+            <div *ngIf="bundleContents()?.pcap_available" class="pcap-available">
+              <h4>PCAP Captured</h4>
+              <p>Size: {{ (bundleContents()?.pcap_size_bytes / 1024).toFixed(1) }} KB</p>
+              <p>Contains raw packets for this session. Open in Wireshark for deep packet inspection.</p>
+              <button class="btn-primary" (click)="download(selectedBundle())">
+                Download Full ZIP (includes session.pcap)
+              </button>
+              <p class="pcap-note">PCAP is inside the ZIP as <code>session.pcap</code>. Open with Wireshark.</p>
+            </div>
+            <div *ngIf="!bundleContents()?.pcap_available" class="pcap-missing">
+              <h4>PCAP Not Available</h4>
+              <p>Possible reasons:</p>
+              <ul>
+                <li>Session rotated out of PCAP Engine storage before capture</li>
+                <li>PCAP Engine not running at capture time</li>
+                <li>OpenSearch session not indexed yet</li>
+              </ul>
+              <p>All other evidence files (alerts, connection, threat intel) are still available above.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Integrity tab -->
+      <div *ngIf="activeTab()==='verify'" class="tab-content">
+        <div *ngIf="!verifyResult()" class="verifying">
+          Verifying bundle integrity...
+        </div>
+        <div *ngIf="verifyResult()" class="verify-result"
+             [class.verified]="verifyResult()?.status === 'VERIFIED'"
+             [class.tampered]="verifyResult()?.status !== 'VERIFIED'">
+          <div class="verify-status">
+            {{ verifyResult()?.status === 'VERIFIED' ? 'VERIFIED' : 'TAMPERED OR CORRUPTED' }}
+          </div>
+          <table class="info-table verify-table">
+            <tr><td>Status</td><td>{{ verifyResult()?.status }}</td></tr>
+            <tr><td>Stored Hash</td>
+                <td class="monospace">{{ verifyResult()?.stored_sha256 }}</td></tr>
+            <tr><td>Computed Hash</td>
+                <td class="monospace">{{ verifyResult()?.computed_sha256 }}</td></tr>
+            <tr><td>Verified At</td><td>{{ verifyResult()?.verified_at }}</td></tr>
+            <tr><td>Verified By</td><td>{{ verifyResult()?.verified_by }}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- No selection -->
+    <div class="bundle-detail empty-state" *ngIf="!selectedBundle()">
+      <div class="empty-state-icon"></div>
+      <p>Select an evidence bundle to view details, timeline, and chain of custody.</p>
+      <p>HIGH and CRITICAL alerts are automatically captured. Manual download available for all alerts via the Alerts page.</p>
+    </div>
+  </div>
+</div>

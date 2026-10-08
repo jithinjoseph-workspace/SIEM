@@ -1,0 +1,7 @@
+[package]
+name = "siem-njson"
+version = "0.1.0"
+edition = "2021"
+description = "The nlohmann::json 3.11.2 behaviour Wazuh's C++ modules rely on (parse errors, get<T>, dump)"
+
+[dependencies]

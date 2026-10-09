@@ -1,0 +1,13 @@
+[package]
+name = "siem-dbsync"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh's dbsync and rsync shared modules (SQLite-backed inventory diffs and the range-checksum sync protocol)"
+
+[dependencies]
+siem-njson = { path = "../siem-njson" }
+siem-sqlite = { path = "../siem-sqlite" }
+siem-cjson = { path = "../siem-cjson" }
+parking_lot = "0.12"
+libc = "0.2"
+sha1 = "0.10"

@@ -20,6 +20,7 @@ futures-util = "0.3"
 reqwest = { version = "0.12", features = ["json"] }
 clickhouse = { version = "0.13", features = ["time", "uuid"] }
 provigil-common = { path = "../provigil-common" }
+redis = { version = "0.23", features = ["tokio-comp", "connection-manager"] }
 siem-vuln-detector = { path = "../siem-vuln-detector" }
 siem-remoted = { path = "../siem-remoted" }
 siem-wdb = { path = "../siem-wdb" }

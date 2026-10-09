@@ -5,11 +5,16 @@ services:
     container_name: xdr-caddy-proxy
     restart: always
     ports:
-      - "80:80"     # HTTP and WebSocket entrypoint
-      - "443:443"   # HTTPS SSL entrypoint
-      - "443:443/udp" # HTTP/3 QUIC
+      - "8081:80"     # HTTP and WebSocket entrypoint (avoids host port 80 conflict)
+      - "8443:443"   # HTTPS SSL entrypoint (avoids Wazuh Dashboard port 443 conflict)
+      - "8443:443/udp" # HTTP/3 QUIC
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - SITE_DOMAIN=localhost # Set to your domain (e.g. siem.company.com) in production
+      - SIEM_UPSTREAM=host.docker.internal:8088
+      - AUTH_UPSTREAM=host.docker.internal:3001
+      - NDR_UPSTREAM=host.docker.internal:8088
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./dist/frontend-angular:/usr/share/caddy/html:ro
@@ -17,7 +22,6 @@ services:
       - caddy_config:/config
     depends_on:
       - clickhouse
-      - siem-api
 
   # Shared ClickHouse Big Data Engine (NDR + SIEM)
   clickhouse:
@@ -25,7 +29,7 @@ services:
     container_name: xdr-clickhouse
     restart: always
     environment:
-      CLICKHOUSE_DB: wazuh_siem
+      CLICKHOUSE_DB: ndr
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
@@ -34,6 +38,8 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./clickhouse/ndr-cluster.xml:/etc/clickhouse-server/config.d/ndr-cluster.xml:ro
+      - ./clickhouse/ndr-compat-profile.xml:/etc/clickhouse-server/users.d/ndr-compat-profile.xml:ro
     ulimits:
       nofile:
         soft: 262144
@@ -54,7 +60,7 @@ services:
     environment:
       - SIEM_PORT=8088
       - CLICKHOUSE_URL=http://clickhouse:8123
-      - CLICKHOUSE_DB=wazuh_siem
+      - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
     depends_on:
@@ -70,7 +76,7 @@ services:
   #   environment:
   #     - NDR_PORT=8090
   #     - CLICKHOUSE_URL=http://clickhouse:8123
-  #     - CLICKHOUSE_DB=wazuh_siem
+  #     - CLICKHOUSE_DB=ndr
 
 volumes:
   clickhouse_data:

@@ -1,0 +1,30 @@
+[package]
+name = "siem-agentd"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh 4.14.7 wazuh-agentd (src/client-agent)"
+
+[[bin]]
+name = "wazuh-agentd"
+path = "src/bin/wazuh-agentd.rs"
+
+[dependencies]
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+siem-crypto = { path = "../siem-crypto" }
+siem-ipc = { path = "../siem-ipc" }
+siem-fileop = { path = "../siem-fileop" }
+siem-daemon = { path = "../siem-daemon" }
+siem-cjson = { path = "../siem-cjson" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
+chrono = "0.4"
+flate2 = "1"
+rand = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+openssl = { version = "0.10", features = ["vendored"] }
+
+[dev-dependencies]
+tempfile = "3"

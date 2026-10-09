@@ -41,6 +41,8 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./clickhouse/ndr-cluster.xml:/etc/clickhouse-server/config.d/ndr-cluster.xml:ro
+      - ./clickhouse/ndr-compat-profile.xml:/etc/clickhouse-server/users.d/ndr-compat-profile.xml:ro
       - ./clickhouse/ndr-user.xml:/etc/clickhouse-server/users.d/ndr-user.xml:ro
     ulimits:
       nofile:
@@ -102,7 +104,7 @@ services:
       - SYSLOG_UDP_PORT=514
       - SYSLOG_TCP_PORT=601
       - CLICKHOUSE_URL=http://clickhouse:8123
-      - CLICKHOUSE_DB=wazuh_siem
+      - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=ndr
       - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
       - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
@@ -142,7 +144,7 @@ services:
   #   environment:
   #     - NDR_PORT=8090
   #     - CLICKHOUSE_URL=http://clickhouse:8123
-  #     - CLICKHOUSE_DB=wazuh_siem
+  #     - CLICKHOUSE_DB=ndr
 
 volumes:
   clickhouse_data:

@@ -40,3 +40,8 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# Local secrets and runtime state (siem-api / auth-service)
+wazuh-rust-angular/backend-rust/data/jwt_secret.txt
+wazuh-rust-angular/backend-rust/data/tenant_agent_keys.json
+wazuh-rust-angular/backend-rust/data/agent_tenants.json

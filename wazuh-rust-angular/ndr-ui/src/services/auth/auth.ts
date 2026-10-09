@@ -218,12 +218,33 @@ export class AuthService implements OnDestroy {
     if (this.isAdmin()) return '/admin';
     if (user.role === 'tenant_admin') return '/tenant-admin';
 
-    // SIEM-only installs default to SIEM dashboard
-    if (this.config.hasSiem() && !this.config.hasNdr()) return '/siem/dashboard';
+    // Analysts work in the SIEM pages only (NDR pages are hidden).
+    return this.siemHomeRoute();
+  }
 
-    const permissions = this.normalizePermissions(user.permissions);
-    const firstPermission = permissions.find(permission => this.defaultRouteByPermission[permission]);
-    return firstPermission ? this.defaultRouteByPermission[firstPermission] : '/settings';
+  /** First SIEM page the analyst may open (in sidebar order). */
+  siemHomeRoute(): string {
+    const C = '/analyst/siem-classic/console';
+    const pages: [string, string][] = [
+      ['siem-dashboard', C + '/overview'],
+      ['siem-alerts', C + '/alerts'],
+      ['siem-logs', C + '/telemetry'],
+      ['siem-agents', '/analyst/agents'],
+      ['siem-vulnerabilities', '/analyst/vulnerabilities'],
+      ['siem-mitre', '/analyst/mitre'],
+      ['siem-compliance', C + '/compliance'],
+      ['siem-fim', C + '/fim'],
+      ['siem-rules', C + '/rules'],
+      ['siem-active-response', '/analyst/active-response'],
+      ['siem-logtest', '/analyst/logtest'],
+      ['siem-parsers', C + '/parsers'],
+      ['siem-console', C],
+    ];
+    if (this.hasFeature('siem')) {
+      const hit = pages.find(([perm]) => this.hasPermission(perm));
+      if (hit) return hit[1];
+    }
+    return '/analyst/settings';
   }
 
   normalizePermissions(value: unknown): string[] {

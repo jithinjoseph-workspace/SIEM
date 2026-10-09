@@ -17,16 +17,20 @@
 
 #![cfg(target_os = "linux")]
 
+pub mod adapter;
 pub mod fb;
+pub mod schemas;
 pub mod sjson;
 pub mod socket;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use parking_lot::{Condvar, Mutex, RwLock};
 use siem_njson::Value;
+use adapter::{adapt_json_message, c_view, AgentCtx};
 use socket::{OnRead, SocketClient, SocketServer};
 
 /// `DEFAULT_SOCKET_PATH`
@@ -614,25 +618,138 @@ pub fn router_provider_create(name: &str, is_local: bool) -> ProviderHandle {
     h
 }
 
-/// `router_provider_send(handle, message, size)`
-pub fn router_provider_send(handle: ProviderHandle, message: &[u8]) -> i32 {
-    let r: Result<(), String> = (|| {
-        if message.is_empty() {
-            return Err("Error sending message to provider. Message is empty".into());
-        }
-        let p = providers().read();
-        let Some(p) = p.get(&handle) else {
-            return Err("map::at".into());
-        };
-        RouterFacade::instance().push(&p.topic, message)
-    })();
+/// `PROVIDERS.at(handle)->send(data)`
+fn provider_send(handle: ProviderHandle, data: &[u8]) -> Result<(), Vec<u8>> {
+    let p = providers().read();
+    let Some(p) = p.get(&handle) else {
+        return Err(b"map::at".to_vec());
+    };
+    RouterFacade::instance().push(&p.topic, data).map_err(String::into_bytes)
+}
+
+/// The `catch` of the send functions.
+fn send_result(r: Result<i32, Vec<u8>>) -> i32 {
     match r {
-        Ok(()) => 0,
+        Ok(v) => v,
         Err(e) => {
-            log_message("ERROR", &format!("Error sending message to provider: {e}"));
+            log_message("ERROR", [b"Error sending message to provider: ".as_slice(), &e].concat());
             -1
         }
     }
+}
+
+const EMPTY_MESSAGE: &[u8] = b"Error sending message to provider. Message is empty";
+
+/// `router_provider_send(handle, message, size)`
+pub fn router_provider_send(handle: ProviderHandle, message: &[u8]) -> i32 {
+    send_result((|| {
+        if message.is_empty() {
+            return Err(EMPTY_MESSAGE.to_vec());
+        }
+        provider_send(handle, message)?;
+        Ok(0)
+    })())
+}
+
+thread_local! {
+    /// `static thread_local auto parserMap = initSchemaParsers();`
+    static SCHEMA_PARSERS: RefCell<Option<HashMap<i32, fb::Parser>>> = const { RefCell::new(None) };
+}
+
+fn fb_parser() -> fb::Parser {
+    let mut p = fb::Parser::new();
+    p.opts.skip_unexpected_fields_in_json = true;
+    // Wazuh's own option: a float for an integer field is 0
+    p.opts.zero_on_float_to_int = true;
+    p
+}
+
+/// `initSchemaParsers()`
+fn init_schema_parsers() -> Result<HashMap<i32, fb::Parser>, Vec<u8>> {
+    let mut m = HashMap::new();
+    for (t, schema) in [
+        (adapter::MT_SYS_DELTAS, schemas::SYSCOLLECTOR_DELTAS_SCHEMA),
+        (adapter::MT_SYNC, schemas::RSYNC_SCHEMA),
+        (adapter::MT_SYSCHECK_DELTAS, schemas::SYSCHECK_DELTAS_SCHEMA),
+    ] {
+        let mut p = fb_parser();
+        if !p.parse(schema.as_bytes()) {
+            return Err([b"Error parsing schema, ".as_slice(), &p.error].concat());
+        }
+        m.insert(t, p);
+    }
+    Ok(m)
+}
+
+/// `router_provider_send_fb_json(handle, message, agent_ctx, schema)`: the
+/// agent message adapted (`SchemaAdapter`) and built with the schema of
+/// `schema` (a `msg_type`); `message` is a C string (`None` is NULL).
+pub fn router_provider_send_fb_json(handle: ProviderHandle, message: Option<&[u8]>, agent_ctx: Option<&AgentCtx>, schema: i32) -> i32 {
+    send_fb_json_with(message, agent_ctx, schema, &mut |d| provider_send(handle, d))
+}
+
+/// [`router_provider_send_fb_json`] with the provider's `send` replaced.
+pub fn send_fb_json_with(
+    message: Option<&[u8]>,
+    agent_ctx: Option<&AgentCtx>,
+    schema: i32,
+    send: &mut dyn FnMut(&[u8]) -> Result<(), Vec<u8>>,
+) -> i32 {
+    send_result((|| {
+        let Some(message) = message else {
+            return Err(EMPTY_MESSAGE.to_vec());
+        };
+        let message = c_view(message);
+        let data = SCHEMA_PARSERS.with(|cell| -> Result<Option<Vec<u8>>, Vec<u8>> {
+            let mut slot = cell.borrow_mut();
+            if slot.is_none() {
+                *slot = Some(init_schema_parsers()?);
+            }
+            let Some(parser) = slot.as_mut().unwrap().get_mut(&schema) else {
+                return Err(b"map::at".to_vec());
+            };
+            parser.builder.clear();
+            let mut buffer = Vec::new();
+            adapt_json_message(message, schema, agent_ctx, &mut buffer)?;
+            if buffer.is_empty() {
+                return Ok(None);
+            }
+            if !parser.parse(&buffer) {
+                log_message("ERROR", [b"JSON message: ".as_slice(), &buffer].concat());
+                return Err([b"Error parsing message, ".as_slice(), &parser.error].concat());
+            }
+            Ok(Some(parser.builder.data().to_vec()))
+        })?;
+        if let Some(data) = data {
+            send(&data)?;
+        }
+        Ok(0)
+    })())
+}
+
+/// `router_provider_send_fb(handle, message, schema)`: `message` (a C
+/// string, `None` is NULL) parsed with the schema text `schema` by a fresh
+/// parser.
+pub fn router_provider_send_fb(handle: ProviderHandle, message: Option<&[u8]>, schema: &[u8]) -> i32 {
+    send_fb_with(message, schema, &mut |d| provider_send(handle, d))
+}
+
+/// [`router_provider_send_fb`] with the provider's `send` replaced.
+pub fn send_fb_with(message: Option<&[u8]>, schema: &[u8], send: &mut dyn FnMut(&[u8]) -> Result<(), Vec<u8>>) -> i32 {
+    send_result((|| {
+        let Some(message) = message else {
+            return Err(EMPTY_MESSAGE.to_vec());
+        };
+        let mut parser = fb_parser();
+        if !parser.parse(schema) {
+            return Err([b"Error parsing schema, ".as_slice(), &parser.error].concat());
+        }
+        if !parser.parse(message) {
+            return Err([b"Error parsing message, ".as_slice(), &parser.error].concat());
+        }
+        send(parser.builder.data())?;
+        Ok(0)
+    })())
 }
 
 /// `router_provider_destroy(handle)`

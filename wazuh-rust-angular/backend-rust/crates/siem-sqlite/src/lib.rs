@@ -259,6 +259,17 @@ unsafe impl Send for Stmt {}
 unsafe impl Sync for Stmt {}
 
 impl Stmt {
+    /// The NULL statement `sqlite3_prepare_v2` gives for an empty or
+    /// comment-only SQL: SQLite answers SQLITE_MISUSE to step and binds,
+    /// 0 to the counts.
+    pub fn null() -> Stmt {
+        Stmt { raw: ptr::null_mut() }
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.raw.is_null()
+    }
+
     pub fn step(&self) -> i32 {
         unsafe { sqlite3_step(self.raw) }
     }

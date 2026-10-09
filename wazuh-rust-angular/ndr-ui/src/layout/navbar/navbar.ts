@@ -96,9 +96,9 @@ export class Navbar implements OnInit, OnDestroy {
   }
 
   get canViewTutorial() {
-    const user = this.auth.getUser();
-    if (!user) return false;
-    return !this.auth.isAdmin() && user.role !== 'tenant_admin';
+    // The guided tour walks through the NDR pages, which analysts don't see
+    // while the product is developed as a SIEM (see SHOW_NDR_PAGES in the sidebar).
+    return false;
   }
 
   constructor(

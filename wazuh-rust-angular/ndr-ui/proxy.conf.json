@@ -1,5 +1,28 @@
 {
+  "/api/v1/auth": {
+    "target": "http://127.0.0.1:3001",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/v1/auth": "/api/auth"
+    }
+  },
+  "/api/auth": {
+    "target": "http://127.0.0.1:3001",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/announcements": {
+    "target": "http://127.0.0.1:3001",
+    "secure": false,
+    "changeOrigin": true
+  },
   "/api": {
+    "target": "http://127.0.0.1:8088",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/downloads": {
     "target": "http://127.0.0.1:8088",
     "secure": false,
     "changeOrigin": true

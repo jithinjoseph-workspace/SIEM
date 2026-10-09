@@ -275,8 +275,22 @@ pub fn spawn_active_response_worker(
                                 "fim_scan" | "syscheck restart" | "syscheck_restart" | "restart" => {
                                     handler.run_fim_scan(&buffer).await;
                                 }
+                                "deactivate" => {
+                                    crate::enroll::stop_deactivated(&agent_id);
+                                }
                                 "sca_scan" => {
                                     handler.run_sca_scan(&buffer).await;
+                                }
+                                "syscollector_scan" | "sync_inventory" => {
+                                    crate::syscollector::emit_inventory(&agent_id, &buffer).await;
+                                }
+                                "restart_agent" => {
+                                    info!("wazuh-execd: restarting the agent service on manager request");
+                                    // Let the poll loop finish before systemd restarts us.
+                                    tokio::spawn(async {
+                                        tokio::time::sleep(Duration::from_secs(2)).await;
+                                        crate::control::restart_service();
+                                    });
                                 }
                                 unknown => {
                                     warn!("wazuh-execd: Unrecognized active response action: {}", unknown);

@@ -1562,6 +1562,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "300.6.1+3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1569,6 +1578,7 @@ checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -2375,6 +2385,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-agentd"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "libc",
+ "openssl",
+ "rand 0.8.8",
+ "siem-cjson",
+ "siem-config",
+ "siem-crypto",
+ "siem-daemon",
+ "siem-fileop",
+ "siem-ipc",
+ "siem-log",
+ "siem-regex",
+ "siem-xml",
+ "tempfile",
+]
+
+[[package]]
 name = "siem-agentlessd"
 version = "0.1.0"
 dependencies = [
@@ -2420,6 +2451,7 @@ dependencies = [
  "clickhouse 0.13.3",
  "futures-util",
  "provigil-common",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",
@@ -2528,6 +2560,7 @@ dependencies = [
  "sha1",
  "sha2",
  "siem-core",
+ "siem-regex",
  "siem-shared",
  "tempfile",
  "thiserror 1.0.69",
@@ -2557,6 +2590,18 @@ dependencies = [
  "libc",
  "siem-log",
  "tempfile",
+]
+
+[[package]]
+name = "siem-dbsync"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "parking_lot",
+ "sha1",
+ "siem-cjson",
+ "siem-njson",
+ "siem-sqlite",
 ]
 
 [[package]]
@@ -2595,6 +2640,7 @@ dependencies = [
 name = "siem-fileop"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "md-5",
  "tempfile",
  "tracing",
@@ -2634,7 +2680,10 @@ name = "siem-ipc"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "libc",
  "serde_json",
+ "siem-log",
+ "siem-regex",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -2754,6 +2803,7 @@ dependencies = [
  "siem-fileop",
  "siem-ipc",
  "siem-regex",
+ "siem-router",
  "siem-xml",
  "tempfile",
  "thiserror 1.0.69",

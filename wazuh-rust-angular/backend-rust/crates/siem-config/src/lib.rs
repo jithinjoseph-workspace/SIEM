@@ -10,6 +10,7 @@
 //! * Section readers live in their own modules (`global`, `remote`, ...).
 
 pub mod active_response;
+pub mod client;
 pub mod cluster;
 pub mod global;
 pub mod internal_options;
@@ -96,17 +97,50 @@ pub struct ConfigContext {
     pub platform: Platform,
     pub agent: AgentIdentity,
     pub warnings: Vec<String>,
+    /// Every message the C readers would log (`merror`, `mwarn`, `mdebug*`),
+    /// in order. `warnings` keeps only the warnings.
+    pub log: Vec<(LogLevel, String)>,
+}
+
+/// Level of a message in [`ConfigContext::log`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Debug1,
+    Debug2,
+    Info,
+    Warn,
+    Error,
 }
 
 impl ConfigContext {
     pub fn new(platform: Platform) -> Self {
-        Self { platform, agent: AgentIdentity::default(), warnings: Vec::new() }
+        Self { platform, agent: AgentIdentity::default(), warnings: Vec::new(), log: Vec::new() }
     }
 
     pub fn warn(&mut self, msg: impl Into<String>) {
         let m = msg.into();
         tracing::warn!("{m}");
+        self.log.push((LogLevel::Warn, m.clone()));
         self.warnings.push(m);
+    }
+
+    /// `merror` that does not abort the read.
+    pub fn error(&mut self, msg: impl Into<String>) {
+        let m = msg.into();
+        tracing::error!("{m}");
+        self.log.push((LogLevel::Error, m));
+    }
+
+    pub fn info(&mut self, msg: impl Into<String>) {
+        self.log.push((LogLevel::Info, msg.into()));
+    }
+
+    pub fn debug1(&mut self, msg: impl Into<String>) {
+        self.log.push((LogLevel::Debug1, msg.into()));
+    }
+
+    pub fn debug2(&mut self, msg: impl Into<String>) {
+        self.log.push((LogLevel::Debug2, msg.into()));
     }
 }
 
@@ -402,8 +436,16 @@ pub fn read_config(
     if mods & CAGENT_CONFIG != 0 && remote_conf == Some(false) {
         return Ok(());
     }
-    let xml = OsXml::read_file(cfgfile, false)
-        .map_err(|e| ConfigError::new(messages::xml_error(&cfgfile.display().to_string(), &e.message, e.line)))?;
+    let xml = match OsXml::read_file(cfgfile, false) {
+        Ok(x) => x,
+        Err(e) => {
+            let m = messages::xml_error(&cfgfile.display().to_string(), &e.message, e.line);
+            if mods & CAGENT_CONFIG == 0 || !ctx.platform.client {
+                ctx.error(m.clone());
+            }
+            return Err(ConfigError::new(m));
+        }
+    };
     read_config_xml(ctx, mods, &xml, &cfgfile.display().to_string(), h)
 }
 
@@ -419,7 +461,16 @@ pub fn read_config_xml(
     for node in &nodes {
         if mods & CAGENT_CONFIG == 0 && node.element == "ossec_config" {
             if let Some(ch) = xml.get_elements_by_node(Some(node)) {
-                read_main_elements(ctx, xml, mods, &ch, h)?;
+                if let Err(e) = read_main_elements(ctx, xml, mods, &ch, h) {
+                    // The reader's own merror, then PrintErrorAcordingToModules.
+                    ctx.error(e.0.clone());
+                    if mods == CSYSCHECK || mods == CROOTCHECK {
+                        ctx.warn(messages::config_error(cfgname));
+                    } else {
+                        ctx.error(messages::config_error(cfgname));
+                    }
+                    return Err(e);
+                }
             }
         } else if mods & CAGENT_CONFIG != 0 && node.element == "agent_config" {
             let mut passed = true;
@@ -443,23 +494,33 @@ pub fn read_config_xml(
                         }
                         "overwrite" => {}
                         other => {
-                            tracing::error!("{}", messages::xml_invattr(other, cfgname));
+                            ctx.error(messages::xml_invattr(other, cfgname));
                         }
                     }
                 }
-            } else if ctx.platform.client && ctx.agent.profile.is_none() {
+            } else if ctx.platform.client {
                 // Generic block: only read when the agent has no profile... the C
                 // code inverts this (passed = 0 when the agent has NO profile).
-                passed = false;
+                ctx.debug2("agent_config element does not have any attributes.");
+                if ctx.agent.profile.is_none() {
+                    ctx.debug2("but agent has a profile name.");
+                    passed = false;
+                }
             }
             if let Some(ch) = xml.get_elements_by_node(Some(node)) {
                 if passed {
-                    read_main_elements(ctx, xml, mods, &ch, h)
-                        .map_err(|_| ConfigError::new(messages::config_error(cfgname)))?;
+                    if let Err(e) = read_main_elements(ctx, xml, mods, &ch, h) {
+                        ctx.error(e.0);
+                        let m = messages::config_error(cfgname);
+                        ctx.error(m.clone());
+                        return Err(ConfigError::new(m));
+                    }
                 }
             }
         } else {
-            return Err(ConfigError::new(messages::xml_invelem(&node.element)));
+            let m = messages::xml_invelem(&node.element);
+            ctx.error(m.clone());
+            return Err(ConfigError::new(m));
         }
     }
     Ok(())
@@ -473,7 +534,7 @@ fn agent_filter(ctx: &mut ConfigContext, what: &str, pattern: &str, value: Optio
                 "OS" => "Unable to retrieve the agent OS.",
                 _ => "Unable to retrieve agent profile.",
             };
-            tracing::error!("Reading shared configuration. {item}");
+            ctx.error(format!("Reading shared configuration. {item}"));
             false
         }
         Some(v) => {
@@ -485,7 +546,15 @@ fn agent_filter(ctx: &mut ConfigContext, what: &str, pattern: &str, value: Optio
                 ));
                 false
             } else {
-                siem_regex::os_match2(pattern, &v)
+                let m = siem_regex::os_match2(pattern, &v);
+                if what == "profile" {
+                    if m {
+                        ctx.debug2(format!("Matched agent config profile name [{v}]"));
+                    } else {
+                        ctx.debug2(format!("[{pattern}] did not match agent config profile name [{v}]"));
+                    }
+                }
+                m
             }
         }
     }

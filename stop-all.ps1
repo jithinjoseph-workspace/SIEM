@@ -4,7 +4,7 @@
 
 Write-Host "Stopping all Provigil SIEM & EDR services..." -ForegroundColor Yellow
 
-$Ports = @(8088, 4200)
+$Ports = @(3001, 8088, 4200)
 foreach ($Port in $Ports) {
     $Conns = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
     if ($Conns) {
@@ -22,9 +22,9 @@ foreach ($Port in $Ports) {
     }
 }
 
-Get-Process | Where-Object { $_.ProcessName -eq "siem-api" } | ForEach-Object {
+Get-Process | Where-Object { $_.ProcessName -eq "siem-api" -or $_.ProcessName -eq "auth-service" } | ForEach-Object {
     Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-    Write-Host "[OK] Stopped process siem-api ($($_.Id))" -ForegroundColor Green
+    Write-Host "[OK] Stopped process $($_.ProcessName) ($($_.Id))" -ForegroundColor Green
 }
 
 Write-Host "`nAll SIEM services stopped." -ForegroundColor Green

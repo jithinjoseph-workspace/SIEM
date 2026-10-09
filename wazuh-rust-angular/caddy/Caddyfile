@@ -36,6 +36,25 @@
         }
     }
 
+    # 4b. SIEM pages call the auth API under /api/v1/auth/* — same service
+    handle /api/v1/auth/* {
+        uri replace /api/v1/auth/ /api/auth/
+        reverse_proxy http://{$AUTH_UPSTREAM:auth-service:3001} {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 4c. Announcements also live in the auth microservice
+    handle /api/announcements* {
+        reverse_proxy http://{$AUTH_UPSTREAM:auth-service:3001} {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
     # 5. SIEM Microservice APIs (/api/v1/*, /api/siem/*, etc.)
     handle /api/* {
         reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088} {

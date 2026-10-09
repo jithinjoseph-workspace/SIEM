@@ -30,6 +30,26 @@ impl ThreatIntelManager {
         guard.get(name).cloned()
     }
 
+    pub fn get_table_entries(&self, name: &str) -> Vec<(String, String)> {
+        let guard = self.lists.read().unwrap();
+        if let Some(table) = guard.get(name) {
+            table.entries().iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn insert_entry(&self, list_name: &str, key: &str, value: &str) {
+        let mut guard = self.lists.write().unwrap();
+        if let Some(table) = guard.get_mut(list_name) {
+            table.insert(key, value);
+        } else {
+            let mut table = CdbTable::new(list_name);
+            table.insert(key, value);
+            guard.insert(list_name.to_string(), table);
+        }
+    }
+
     /// Check if an IP address matches any registered threat list
     pub fn check_ip(&self, ip: &str) -> Option<(String, String)> {
         let guard = self.lists.read().unwrap();

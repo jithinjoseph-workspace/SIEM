@@ -45,6 +45,82 @@ impl Router for NoRouter {
     }
 }
 
+/// The real router (`secure.c`'s HandleSecure start): `router_initialize`
+/// with the ":router" tagged log and the remote providers
+/// `deltas-syscollector` and `rsync` on wazuh-modulesd's broker.
+#[cfg(target_os = "linux")]
+pub struct WazuhRouter {
+    syscollector: siem_router::ProviderHandle,
+    rsync: siem_router::ProviderHandle,
+}
+
+#[cfg(target_os = "linux")]
+impl WazuhRouter {
+    pub fn new() -> Self {
+        siem_router::router_initialize(std::sync::Arc::new(|level: &str, msg: &[u8]| {
+            let m = String::from_utf8_lossy(msg);
+            match level {
+                "ERROR" | "ERROR_EXIT" => tracing::error!(target: "router", "{m}"),
+                "WARNING" => tracing::warn!(target: "router", "{m}"),
+                "INFO" => tracing::info!(target: "router", "{m}"),
+                "DEBUG" => tracing::debug!(target: "router", "{m}"),
+                _ => tracing::trace!(target: "router", "{m}"),
+            }
+            if level == "ERROR_EXIT" {
+                std::process::exit(1);
+            }
+        }));
+        let syscollector = siem_router::router_provider_create("deltas-syscollector", false);
+        if syscollector == 0 {
+            tracing::trace!("Failed to create router handle for 'syscollector'.");
+        }
+        let rsync = siem_router::router_provider_create("rsync", false);
+        if rsync == 0 {
+            tracing::trace!("Failed to create router handle for 'rsync'.");
+        }
+        WazuhRouter { syscollector, rsync }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Default for WazuhRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Router for WazuhRouter {
+    fn provider_available(&self, schema: SchemaType) -> bool {
+        match schema {
+            SchemaType::SysDeltas => self.syscollector != 0,
+            SchemaType::Sync => self.rsync != 0,
+        }
+    }
+
+    fn send(&self, schema: SchemaType, msg: &[u8], agent: &AgentCtx<'_>) -> bool {
+        let (handle, t) = match schema {
+            SchemaType::SysDeltas => (self.syscollector, siem_router::adapter::MT_SYS_DELTAS),
+            SchemaType::Sync => (self.rsync, siem_router::adapter::MT_SYNC),
+        };
+        let ctx = siem_router::adapter::AgentCtx {
+            agent_id: agent.agent_id.as_bytes(),
+            agent_name: agent.agent_name.as_bytes(),
+            agent_ip: agent.agent_ip.as_bytes(),
+            agent_version: agent.agent_version.map(str::as_bytes),
+        };
+        siem_router::router_provider_send_fb_json(handle, Some(msg), Some(&ctx), t) == 0
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for WazuhRouter {
+    fn drop(&mut self) {
+        siem_router::router_provider_destroy(self.syscollector);
+        siem_router::router_provider_destroy(self.rsync);
+    }
+}
+
 /// `router_message_forward`
 pub fn router_message_forward(r: &dyn Router, msg: &[u8], agent_id: &str, agent_ip: &str, agent_name: &str, version: Option<&str>) {
     let after_dbsync = msg.get(DBSYNC_HEADER.len()..).unwrap_or(&[]);
@@ -82,7 +158,7 @@ pub fn router_message_forward(r: &dyn Router, msg: &[u8], agent_id: &str, agent_
     if start.len() + header_size < siem_ipc::OS_MAXSTR {
         let ctx = AgentCtx { agent_id, agent_name, agent_ip, agent_version: version };
         if !r.send(schema, start, &ctx) {
-            tracing::trace!("Unable to forward message for agent '{agent_id}'.");
+            tracing::trace!("Unable to forward message '{}' for agent '{agent_id}'.", String::from_utf8_lossy(start));
         }
     }
 }

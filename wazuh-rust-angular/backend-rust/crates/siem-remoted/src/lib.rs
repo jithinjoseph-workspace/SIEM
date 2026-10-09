@@ -112,6 +112,9 @@ impl Deps {
         Self {
             wdb: Arc::new(siem_ipc::wdbc::WdbcSocket::new(settings.paths.wdb_sock())),
             sink: Box::new(mq::QueueSocket::new(settings.paths.queue())),
+            #[cfg(target_os = "linux")]
+            router: Box::new(router::WazuhRouter::new()),
+            #[cfg(not(target_os = "linux"))]
             router: Box::new(router::NoRouter),
             cluster: Box::new(NoCluster),
             downloader: Box::new(shared_download::HttpDownloader),

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, catchError, Subject } from 'rxjs';
+import { Observable, of, catchError, Subject, map } from 'rxjs';
 import {
   Agent,
   Alert,
@@ -123,13 +123,42 @@ export class SiemService {
       agent_id: agentId,
       action,
       target
-    }).pipe(
-      catchError(() => of({ status: 'queued' }))
+    });
+  }
+
+  /** Deactivate: the agent is kept (not deleted), stops reporting and is told to stop. */
+  deactivateAgent(agentId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agents/${agentId}/deactivate`, {});
+  }
+
+  /** Reactivate a deactivated agent: it resumes on its next state check (within a minute). */
+  activateAgent(agentId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agents/${agentId}/activate`, {});
+  }
+
+  /** Deactivated agents of the caller's tenant. */
+  getDeactivatedAgents(): Observable<{ id: string; name: string; os_type: string; groups: string; enrolled_at: string }[]> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/deactivated`).pipe(
+      map((r: any) => r?.agents ?? []),
+      catchError(() => of([]))
     );
   }
 
+  /** Delete an agent permanently (its id is never reused). */
+  deleteAgent(agentId: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/agents/${agentId}`);
+  }
+
+  /** SCA policy results stored for an agent. */
+  getAgentSca(agentId: string): Observable<{ policy_id?: string; score?: number; passed?: number; failed?: number; checks?: any[] } | null> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/sca`).pipe(
+      catchError(() => of(null))
+    );
+  }
+
+  /** Runs a simulation scenario on the manager (POST /api/v1/simulate). */
   simulateAttack(scenario: string): Observable<any> {
-    return this.sendAgentCommand('sim-target', 'simulate_attack', scenario);
+    return this.http.post(`${this.apiUrl}/api/v1/simulate`, { scenario });
   }
 
   runLogtest(log: string): Observable<LogtestResponse> {

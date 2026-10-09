@@ -11,7 +11,8 @@ import {
   LayoutDashboard, Bell, FileText, Radio, Network, Globe, Gem, Settings,
   UserCircle, ChevronRight, Server, FolderSearch, Bot, Cpu, Plus,
   AlertCircle, XCircle, ChevronDown, Check, RotateCcw,
-  Database, ShieldAlert, ScrollText, Zap, Layers, Sparkles, TrendingUp
+  Database, ShieldAlert, ScrollText, Zap, Layers, Sparkles, TrendingUp,
+  Bug, FileCheck, Terminal
 } from 'lucide-angular';
 import { Api, SensorKey, SensorAssignment } from '../../../services/api/api';
 import { AuthService } from '../../../services/auth/auth';
@@ -472,6 +473,17 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { key: 'siem-dashboard', label: 'SIEM Dashboard', description: 'Security events overview',   icon: ShieldAlert,     requiredFeatures: ['siem'] },
     { key: 'siem-logs',      label: 'SIEM Logs',      description: 'Ingested log stream',         icon: ScrollText,      requiredFeatures: ['siem'] },
     { key: 'siem-sources',   label: 'SIEM Sources',   description: 'Log source management',       icon: Database,        requiredFeatures: ['siem'] },
+    { key: 'siem-agents',          label: 'Agent Fleet',      description: 'Endpoint agents & inventory',   icon: Server,      requiredFeatures: ['siem'] },
+    { key: 'siem-parsers',         label: 'Dynamic Parsers',  description: 'Learned log parsers',           icon: Cpu,         requiredFeatures: ['siem'] },
+    { key: 'siem-mitre',           label: 'MITRE ATT&CK',     description: 'Technique coverage matrix',     icon: Shield,      requiredFeatures: ['siem'] },
+    { key: 'siem-vulnerabilities', label: 'Vulnerabilities',  description: 'CVE detections per host',       icon: Bug,         requiredFeatures: ['siem'] },
+    { key: 'siem-compliance',      label: 'Compliance Audit', description: 'SCA / CIS results',             icon: ShieldCheck, requiredFeatures: ['siem'] },
+    { key: 'siem-fim',             label: 'FIM Syscheck',     description: 'File integrity monitoring',     icon: FileCheck,   requiredFeatures: ['siem'] },
+    { key: 'siem-active-response', label: 'Active Response',  description: 'Block / unblock actions',       icon: Zap,         requiredFeatures: ['siem'] },
+    { key: 'siem-logtest',         label: 'Logtest Console',  description: 'Rule & decoder testing',        icon: Terminal,    requiredFeatures: ['siem'] },
+    { key: 'siem-console',         label: 'SIEM Console',     description: 'Full SIEM console, simulator, copilot, 3D XDR', icon: Layers, requiredFeatures: ['siem'] },
+    { key: 'siem-alerts',          label: 'SIEM Alerts',      description: 'Host alert stream',             icon: Bell,        requiredFeatures: ['siem'] },
+    { key: 'siem-rules',           label: 'SIEM Rules',       description: 'Wazuh detection rules',         icon: Gem,         requiredFeatures: ['siem'] },
   ];
 
   private readonly allPermissionCategories = [
@@ -480,7 +492,9 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { title: 'SECURITY',   keys: ['intel', 'rules', 'evidence'] },
     { title: 'ENFORCE',    keys: ['honeypots', 'retrospective'] },
     { title: 'OPERATIONS', keys: ['health', 'soar', 'ai-activity', 'ai-report'] },
-    { title: 'SIEM',       keys: ['siem-dashboard', 'siem-logs', 'siem-sources'] },
+    { title: 'SIEM',       keys: ['siem-dashboard', 'siem-logs', 'siem-sources', 'siem-agents', 'siem-parsers', 'siem-mitre',
+                              'siem-vulnerabilities', 'siem-compliance', 'siem-fim', 'siem-active-response', 'siem-logtest',
+                              'siem-console', 'siem-alerts', 'siem-rules'] },
   ];
 
   // ── License-aware permission computed signals ──────────────────────────────

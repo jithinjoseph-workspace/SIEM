@@ -2,6 +2,7 @@ mod agcom;
 mod buffer;
 mod client_agent;
 mod control;
+mod enroll;
 mod execd;
 mod logcollector;
 mod rootcheck;
@@ -64,7 +65,32 @@ async fn main() {
 }
 
 async fn run_linux_agent() {
-    let config = ClientAgent::load_config();
+    let mut config = ClientAgent::load_config();
+    enroll::export_tenant_key(config.tenant_key.as_deref());
+
+    // No identity yet: enroll with the manager and keep the id in client.keys.
+    if config.agent_id.is_empty() {
+        let e = enroll::enroll_until_done(
+            &config.manager_url,
+            &config.agent_name,
+            &config.agent_group,
+            "linux",
+            config.tenant_key.as_deref(),
+        )
+        .await;
+        let keys_path = ["/var/ossec/etc/client.keys", "/etc/wazuh-agent/client.keys"]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .find(|p| p.parent().map(|d| d.exists()).unwrap_or(false))
+            .unwrap_or_else(|| std::path::PathBuf::from("client.keys"));
+        if let Err(err) = enroll::write_client_keys(&keys_path, &e) {
+            tracing::warn!("Could not store client.keys at {}: {}", keys_path.display(), err);
+        }
+        config.agent_id = e.agent_id;
+        config.agent_name = e.agent_name;
+    }
+    // Deactivated on the manager: stay dormant until reactivated.
+    enroll::wait_until_active(&config.manager_url, &config.agent_id).await;
     let client = ClientAgent { config: config.clone() };
 
     info!("===============================================================");

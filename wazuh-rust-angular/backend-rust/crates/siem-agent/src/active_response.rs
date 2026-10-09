@@ -346,6 +346,16 @@ impl ActiveResponseHandler {
             if ps_profile.exists() {
                 fim_paths.push(ps_profile);
             }
+
+            // User Downloads directories (browser downloads)
+            if let Ok(entries) = std::fs::read_dir(r"C:\Users") {
+                for entry in entries.flatten() {
+                    let dl = entry.path().join("Downloads");
+                    if dl.exists() && dl.is_dir() {
+                        fim_paths.push(dl);
+                    }
+                }
+            }
         }
         let test_dirs = [
             std::path::PathBuf::from(r"C:\test_fim"),
@@ -451,8 +461,14 @@ pub fn spawn_active_response_worker(
                                 "restart_agent" => handler.restart_agent(&buffer).await,
                                 "fim_scan" | "syscheck restart" | "syscheck_restart" | "restart" => handler.run_fim_scan(&buffer).await,
                                 "sca_scan" => handler.run_sca_scan(&buffer).await,
+                                "syscollector_scan" | "sync_inventory" => {
+                                    crate::syscollector::Syscollector::new(agent_id.clone()).scan_and_emit(&buffer).await;
+                                    true
+                                }
+                                "deactivate" => true,
                                 _ => false,
                             };
+                            let deactivate = cmd.action == "deactivate";
 
                             let _ = client
                                 .post(&ack_url)
@@ -463,6 +479,9 @@ pub fn spawn_active_response_worker(
                                 }))
                                 .send()
                                 .await;
+                            if deactivate {
+                                crate::enroll::stop_deactivated(&agent_id);
+                            }
                         }
                     }
                 }

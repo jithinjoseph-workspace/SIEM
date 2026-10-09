@@ -40,7 +40,7 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
     // Check if ndr_threats table exists in ClickHouse
     let has_ndr_threats: Vec<u64> = state
         .db
-        .fetch_alerts(1, 0)
+        .fetch_alerts(crate::tenancy::DEFAULT_TENANT, 1, 0)
         .await
         .map(|_| vec![1])
         .unwrap_or_default();
@@ -51,6 +51,7 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
 
     // Corroborate in-memory or ClickHouse alerts where network threats hit the same endpoint IP
     let alerts = state.alerts.read().unwrap().clone();
+    let agent_tenants = state.agent_tenants.read().unwrap().clone();
     for alert in alerts.iter().rev().take(50) {
         let host_ip = &alert.agent.ip;
         if host_ip.is_empty() || host_ip == "127.0.0.1" {
@@ -77,8 +78,9 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
                 status: "open".into(),
             };
 
-            // Store in ClickHouse
-            state.db.insert_incident(&inc).await;
+            // Store in the alert's tenant database
+            let tenant = crate::tenancy::alert_tenant(alert, &agent_tenants);
+            state.db.insert_incident(&tenant, &inc).await;
         }
     }
 

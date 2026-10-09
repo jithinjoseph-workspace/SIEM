@@ -1,5 +1,6 @@
 mod active_response;
 mod buffer;
+mod enroll;
 mod eventchannel;
 mod fim;
 mod registry;
@@ -59,6 +60,7 @@ pub async fn run_agent_loop() {
     };
 
     // Fallback or override from agent-config.json
+    let mut config_json: Option<serde_json::Value> = None;
     let (file_url, file_id) = {
         let exe_dir = std::env::current_exe()
             .ok()
@@ -73,8 +75,9 @@ pub async fn run_agent_loop() {
                 if let Ok(content) = std::fs::read_to_string(&cand) {
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                         let u = val.get("manager_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let i = val.get("agent_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let i = val.get("agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
                         found = (u, i);
+                        config_json = Some(val);
                         break;
                     }
                 }
@@ -88,16 +91,49 @@ pub async fn run_agent_loop() {
         .or(file_url)
         .or_else(|| if ossec_url != "http://127.0.0.1:8088" { Some(ossec_url) } else { None })
         .unwrap_or_else(|| "http://127.0.0.1:8088".into());
-    let agent_id = std::env::var("SIEM_AGENT_ID")
-        .ok()
-        .or(keys_id)
-        .or(file_id)
-        .unwrap_or_else(|| "001".into());
-    let agent_name = std::env::var("COMPUTERNAME")
-        .ok()
+    // Identity: client.keys (written at enrollment) first, then an explicit
+    // SIEM_AGENT_ID, then agent-config.json; otherwise enroll with the manager.
+    let cfg_str = |k: &str| {
+        config_json.as_ref().and_then(|v| v.get(k)).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    };
+    let tenant_key = enroll::tenant_key(config_json.as_ref());
+    enroll::export_tenant_key(tenant_key.as_deref());
+    let mut agent_name = keys_name
+        .clone()
+        .or_else(|| std::env::var("SIEM_AGENT_NAME").ok().filter(|s| !s.trim().is_empty()))
+        .or_else(|| cfg_str("agent_name"))
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
         .or_else(|| std::env::var("HOSTNAME").ok())
-        .or(keys_name)
         .unwrap_or_else(|| "wazuh-win-agent".into());
+    let agent_group = std::env::var("SIEM_AGENT_GROUP")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| cfg_str("agent_group"))
+        .unwrap_or_else(|| "default".into());
+    // An installed agent (agent-config.json written by install-service) ignores
+    // SIEM_AGENT_ID: Windows services keep the machine environment they started
+    // with, so a value left by an older installer would pin the id and skip
+    // enrollment. Manual / dev runs without a config file may still set it.
+    let env_id = if config_json.is_none() {
+        std::env::var("SIEM_AGENT_ID").ok().filter(|s| !s.trim().is_empty())
+    } else {
+        None
+    };
+    let agent_id = match keys_id.or(file_id).or(env_id) {
+        Some(id) => id,
+        None => {
+            let e = enroll::enroll_until_done(&manager_url, &agent_name, &agent_group, "windows", tenant_key.as_deref()).await;
+            let keys_path = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("client.keys")))
+                .unwrap_or_else(|| std::path::PathBuf::from("client.keys"));
+            if let Err(err) = enroll::write_client_keys(&keys_path, &e) {
+                tracing::warn!("Could not store client.keys at {}: {}", keys_path.display(), err);
+            }
+            agent_name = e.agent_name.clone();
+            e.agent_id
+        }
+    };
 
     info!("===============================================================");
     info!("Starting Next-Gen Wazuh Windows Agent in Rust");
@@ -106,6 +142,9 @@ pub async fn run_agent_loop() {
     info!("Target Manager:  {}", manager_url);
     info!("Platform:        {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     info!("===============================================================");
+
+    // Deactivated on the manager: stay dormant until reactivated.
+    enroll::wait_until_active(&manager_url, &agent_id).await;
 
     // 1. Initialize Resilient Client Buffer (matching ossec.conf client_buffer settings)
     let (buffer, buffer_worker) = AgentBuffer::new(manager_url.clone(), buf_cap, buf_eps as u32);
@@ -149,6 +188,16 @@ pub async fn run_agent_loop() {
             let global_startup = PathBuf::from(format!(r"{}\Microsoft\Windows\Start Menu\Programs\Startup", prog_data));
             if global_startup.exists() {
                 fim_paths.push(global_startup);
+            }
+        }
+
+        // 4. User Downloads directories (monitors browser downloads automatically)
+        if let Ok(entries) = std::fs::read_dir(r"C:\Users") {
+            for entry in entries.flatten() {
+                let dl = entry.path().join("Downloads");
+                if dl.exists() && dl.is_dir() {
+                    fim_paths.push(dl);
+                }
             }
         }
     }
@@ -273,8 +322,9 @@ fn print_usage() {
     println!("  siem-agent.exe status-service           Query current Windows Service status");
     println!();
     println!("Optional installation arguments:");
-    println!("  siem-agent.exe install-service [MANAGER_URL] [AGENT_ID]");
-    println!("  Example: siem-agent.exe install-service http://127.0.0.1:8088 001");
+    println!("  siem-agent.exe install-service [MANAGER_URL] [AGENT_NAME] [GROUP] [TENANT_KEY]");
+    println!("  Example: siem-agent.exe install-service http://siem.example:8088 win-node-7f3a default tk_...");
+    println!("  The agent enrolls on first start and gets a unique id from the manager.");
 }
 
 fn main() {
@@ -316,8 +366,10 @@ fn main() {
                 #[cfg(windows)]
                 {
                     let url = args.get(2).map(|s| s.as_str());
-                    let id = args.get(3).map(|s| s.as_str());
-                    win_service::manager::install_service(url, id);
+                    let name = args.get(3).map(|s| s.as_str());
+                    let group = args.get(4).map(|s| s.as_str());
+                    let tenant_key = args.get(5).map(|s| s.as_str());
+                    win_service::manager::install_service(url, name, group, tenant_key);
                     return;
                 }
                 #[cfg(not(windows))]

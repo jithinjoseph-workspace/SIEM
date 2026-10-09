@@ -21,6 +21,7 @@ impl AgentBuffer {
         let worker = tokio::spawn(async move {
             let client = Client::builder()
                 .timeout(Duration::from_secs(5))
+                .default_headers(tenant_headers())
                 .build()
                 .unwrap_or_default();
 
@@ -56,6 +57,10 @@ impl AgentBuffer {
                     match client.post(&endpoint).json(&to_send).send().await {
                         Ok(res) if res.status().is_success() => {
                             debug!("AgentBuffer: Dispatched {} events to Manager", count);
+                        }
+                        Ok(res) if res.status() == reqwest::StatusCode::GONE => {
+                            let id = to_send.first().map(|e| e.agent_id.clone()).unwrap_or_default();
+                            crate::enroll::stop_deactivated(&id);
                         }
                         Ok(res) => {
                             warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());
@@ -98,4 +103,18 @@ impl AgentBuffer {
     pub fn dropped_events(&self) -> usize {
         self.dropped_count.load(Ordering::Relaxed)
     }
+}
+
+/// Default headers for manager requests: the tenant agent key from
+/// `SIEM_TENANT_KEY` (sent as `X-Tenant-Key`) puts this agent in that tenant.
+fn tenant_headers() -> reqwest::header::HeaderMap {
+    let mut h = reqwest::header::HeaderMap::new();
+    if let Ok(k) = std::env::var("SIEM_TENANT_KEY") {
+        if let Ok(v) = reqwest::header::HeaderValue::from_str(k.trim()) {
+            if !k.trim().is_empty() {
+                h.insert("x-tenant-key", v);
+            }
+        }
+    }
+    h
 }

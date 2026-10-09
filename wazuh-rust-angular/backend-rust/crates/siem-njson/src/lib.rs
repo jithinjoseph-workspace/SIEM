@@ -4,6 +4,9 @@
 //! iteration semantics. Errors are the exceptions' `what()` strings.
 
 pub mod dtoa;
+pub mod ops;
+
+pub use ops::exception_id;
 
 use std::collections::BTreeMap;
 

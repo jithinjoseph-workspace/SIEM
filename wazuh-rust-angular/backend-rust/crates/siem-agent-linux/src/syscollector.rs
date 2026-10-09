@@ -261,9 +261,18 @@ pub fn spawn_syscollector_worker(
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let collector = LinuxSyscollector::new(agent_id.clone());
-
         loop {
+            emit_inventory(&agent_id, &buffer).await;
+            tokio::time::sleep(interval).await;
+        }
+    })
+}
+
+/// Collects the inventory once and sends it to the manager.
+pub async fn emit_inventory(agent_id: &str, buffer: &AgentBuffer) {
+    let collector = LinuxSyscollector::new(agent_id.to_string());
+    {
+        {
             let inv = collector.collect_inventory();
             let summary = format!(
                 "syscollector: System Inventory: Hostname: '{}', OS: '{}' ({}), CPU Cores: {}, RAM: {} MB, Active Procs: {}, Open Ports: {}, Installed Packages: {}, Services: {}",
@@ -271,7 +280,7 @@ pub fn spawn_syscollector_worker(
             );
             info!("{}", summary);
 
-            let mut event = RawEvent::new(&agent_id, EventSource::Syscollector, "syscollector/inventory", summary);
+            let mut event = RawEvent::new(agent_id, EventSource::Syscollector, "syscollector/inventory", summary);
             event.metadata.insert("hostname".into(), inv.hostname.clone());
             event.metadata.insert("os_type".into(), "linux".into());
             event.metadata.insert("ram_mb".into(), inv.ram_mb.to_string());
@@ -285,7 +294,6 @@ pub fn spawn_syscollector_worker(
             }
 
             buffer.push(event).await;
-            tokio::time::sleep(interval).await;
         }
-    })
+    }
 }

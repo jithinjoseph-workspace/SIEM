@@ -9,8 +9,13 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub manager_url: String,
+    /// Empty until the agent is enrolled (client.keys / SIEM_AGENT_ID / enrollment).
     pub agent_id: String,
     pub agent_name: String,
+    /// Agent group sent at enrollment (`SIEM_AGENT_GROUP` / `WAZUH_AGENT_GROUP`).
+    pub agent_group: String,
+    /// Tenant agent key (`X-Tenant-Key`), see enroll.rs.
+    pub tenant_key: Option<String>,
     pub buffer_capacity: usize,
     pub events_per_second: usize,
 }
@@ -19,8 +24,10 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             manager_url: "http://127.0.0.1:8088".to_string(),
-            agent_id: "002".to_string(),
+            agent_id: String::new(),
             agent_name: "wazuh-linux-node".to_string(),
+            agent_group: "default".to_string(),
+            tenant_key: None,
             buffer_capacity: 5000,
             events_per_second: 500,
         }
@@ -35,6 +42,8 @@ impl ClientAgent {
     /// Load agent configuration from environment, JSON configuration file, or defaults
     pub fn load_config() -> AgentConfig {
         let mut cfg = AgentConfig::default();
+        let mut name_from_keys = false;
+        let mut config_json: Option<serde_json::Value> = None;
 
         // 1. Check client.keys (official Wazuh key authentication format: ID NAME IP KEY)
         let client_keys_candidates = [
@@ -47,6 +56,7 @@ impl ClientAgent {
             if let Some((id, name, _ip, _key)) = siem_core::parse_client_keys(keys_path) {
                 cfg.agent_id = id;
                 cfg.agent_name = name;
+                name_from_keys = true;
                 info!("ClientAgent: Loaded credentials from client.keys [ID: {}, Name: {}]", cfg.agent_id, cfg.agent_name);
                 break;
             }
@@ -78,12 +88,21 @@ impl ClientAgent {
                         if let Some(u) = parsed.get("manager_url").and_then(|v| v.as_str()) {
                             cfg.manager_url = u.to_string();
                         }
-                        if let Some(id) = parsed.get("agent_id").and_then(|v| v.as_str()) {
-                            cfg.agent_id = id.to_string();
+                        // client.keys (written at enrollment) wins over the config file.
+                        if cfg.agent_id.is_empty() {
+                            if let Some(id) = parsed.get("agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                                cfg.agent_id = id.to_string();
+                            }
                         }
-                        if let Some(name) = parsed.get("agent_name").and_then(|v| v.as_str()) {
-                            cfg.agent_name = name.to_string();
+                        if !name_from_keys {
+                            if let Some(name) = parsed.get("agent_name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                                cfg.agent_name = name.to_string();
+                            }
                         }
+                        if let Some(g) = parsed.get("agent_group").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                            cfg.agent_group = g.to_string();
+                        }
+                        config_json = Some(parsed.clone());
                         info!("ClientAgent: Loaded configuration from {}", cand.display());
                         break;
                     }
@@ -104,19 +123,57 @@ impl ClientAgent {
             cfg.manager_url = url;
         }
 
-        // Check WAZUH_AGENT_NAME / WAZUH_AGENT_GROUP / HOSTNAME
-        if let Ok(name) = std::env::var("WAZUH_AGENT_NAME") {
-            cfg.agent_name = name;
-        } else if let Ok(hostname) = std::env::var("HOSTNAME").or_else(|_| std::env::var("COMPUTERNAME")) {
-            cfg.agent_name = hostname;
+        // Agent name: an enrolled agent keeps the name in client.keys; otherwise
+        // SIEM_AGENT_NAME / WAZUH_AGENT_NAME, the config file, or the host name.
+        if !name_from_keys {
+            if let Ok(name) = std::env::var("SIEM_AGENT_NAME").or_else(|_| std::env::var("WAZUH_AGENT_NAME")) {
+                if !name.trim().is_empty() {
+                    cfg.agent_name = name.trim().to_string();
+                }
+            } else if cfg.agent_name == "wazuh-linux-node" {
+                if let Some(h) = Self::host_name() {
+                    cfg.agent_name = h;
+                }
+            }
+        }
+        if let Ok(g) = std::env::var("SIEM_AGENT_GROUP").or_else(|_| std::env::var("WAZUH_AGENT_GROUP")) {
+            if !g.trim().is_empty() {
+                cfg.agent_group = g.trim().to_string();
+            }
         }
 
-        // Check SIEM_AGENT_ID
-        if let Ok(id) = std::env::var("SIEM_AGENT_ID") {
-            cfg.agent_id = id;
+        // Explicit id override, only for manual setups without an identity
+        // (an enrolled agent keeps the id in client.keys / its config).
+        if cfg.agent_id.is_empty() && config_json.is_none() {
+            if let Ok(id) = std::env::var("SIEM_AGENT_ID") {
+                if !id.trim().is_empty() {
+                    cfg.agent_id = id.trim().to_string();
+                }
+            }
         }
+
+        cfg.tenant_key = crate::enroll::tenant_key(config_json.as_ref());
 
         cfg
+    }
+
+/// Host name: $HOSTNAME, else /etc/hostname, else gethostname via `hostname`.
+    pub fn host_name() -> Option<String> {
+        if let Ok(h) = std::env::var("HOSTNAME") {
+            if !h.trim().is_empty() {
+                return Some(h.trim().to_string());
+            }
+        }
+        if let Ok(h) = std::fs::read_to_string("/etc/hostname") {
+            if !h.trim().is_empty() {
+                return Some(h.trim().to_string());
+            }
+        }
+        std::process::Command::new("hostname")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
     }
 
     /// Read Linux distribution info from /etc/os-release (e.g. "Ubuntu 22.04 LTS")

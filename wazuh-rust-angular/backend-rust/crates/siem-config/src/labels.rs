@@ -116,3 +116,31 @@ pub fn labels_parse(json: &siem_cjson::Json) -> Vec<Label> {
     }
     out
 }
+
+/// `labels_format(labels, str, size)`: the "key":value lines (`#` for
+/// system labels, `!` for hidden ones) as they fit in a `size`-byte buffer;
+/// `false` (-1) when they did not, the text then ending with a truncation
+/// notice.
+pub fn labels_format(labels: &[Label], size: usize) -> (String, bool) {
+    let mut out = String::new();
+    for l in labels {
+        let line = format!(
+            "{}{}\"{}\":{}\n",
+            if l.flags.system { "#" } else { "" },
+            if l.flags.hidden { "!" } else { "" },
+            l.key,
+            l.value
+        );
+        if out.len() + line.len() >= size {
+            let msg = "Not all labels are being shown in this message\n";
+            let remaining = size.saturating_sub(out.len());
+            if remaining > 0 {
+                let n = msg.len().min(remaining - 1);
+                out.push_str(&msg[..n]);
+            }
+            return (out, false);
+        }
+        out.push_str(&line);
+    }
+    (out, true)
+}

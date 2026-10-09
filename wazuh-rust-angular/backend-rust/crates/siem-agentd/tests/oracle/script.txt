@@ -1,0 +1,18 @@
+# Manager-to-agent messages; seconds after the first ACK.
+2 send #!-req 1 agent getconfig client
+2.5 send #!-req 2 agent getconfig buffer
+3 send #!-req 3 agent getconfig labels
+3.5 send #!-req 4 agent getconfig internal
+4 send #!-req 5 agent getconfig anti_tampering
+4.5 send #!-req 6 agent getstate
+5 send #!-req 7 agent bogus
+5.5 send #!-req 8 agent getconfig
+6 send #!-req 9 logcollector getconfig localfile
+6.5 send #!-req badformat
+7 send #!-execd restart-wazuh0 - - 1 - -
+7.5 send plain text without header
+8 send #!-what is this
+8.5 send #!-up file 00000000000000000000000000000000 ../../etc/passwd
+9 file merged.mg @MERGED@
+12 send #!-force_reconnect
+20 close

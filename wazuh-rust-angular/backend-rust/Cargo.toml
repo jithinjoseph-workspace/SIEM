@@ -44,5 +44,7 @@ members = [
     "crates/siem-daemon",
     "crates/siem-njson",
     "crates/siem-router",
+    "crates/siem-dbsync",
+    "crates/siem-agentd",
 ]
 

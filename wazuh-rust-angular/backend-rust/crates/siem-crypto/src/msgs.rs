@@ -168,14 +168,27 @@ impl Default for CreateOptions {
 
 /// `CreateSecMSG`: frame, compress, pad and encrypt `msg` for `key`.
 ///
-/// `counter` is the sender counter. It is advanced here exactly like the C
-/// code; persist it with [`CounterStore::store_sender`] afterwards.
+/// See [`create_sec_msg_sized`] for the padded compressed size.
 pub fn create_sec_msg(
     key: &ClientKey,
     counter: &mut SenderCounter,
     msg: &[u8],
     opts: CreateOptions,
 ) -> Result<Vec<u8>, MsgError> {
+    create_sec_msg_sized(key, counter, msg, opts).map(|(m, _)| m)
+}
+
+/// [`create_sec_msg`] that also returns `cmp_size` (the padded compressed
+/// size the C code adds to its compression statistics).
+///
+/// `counter` is the sender counter. It is advanced here exactly like the C
+/// code; persist it with [`CounterStore::store_sender`] afterwards.
+pub fn create_sec_msg_sized(
+    key: &ClientKey,
+    counter: &mut SenderCounter,
+    msg: &[u8],
+    opts: CreateOptions,
+) -> Result<(Vec<u8>, usize), MsgError> {
     if msg.len() > OS_MAXSTR - OS_HEADER_SIZE || msg.is_empty() {
         return Err(MsgError::InvalidSize(msg.len()));
     }
@@ -234,7 +247,7 @@ pub fn create_sec_msg(
     .map_err(|e| MsgError::EncryptionFailed(e.to_string()))?;
 
     out.extend_from_slice(&encrypted);
-    Ok(out)
+    Ok((out, cmp_size))
 }
 
 /// What `ReadSecMSG` needs to know about counter verification.
@@ -487,6 +500,71 @@ impl CounterStore {
             _ => Ok(()),
         }
     }
+}
+
+/// The agent's sender counter file (`queue/rids/sender_counter`), kept
+/// open like `keyentries[keysize]->fp`: `OS_StartCounter` opens it `r+`
+/// (or creates it), and `StoreSenderCounter` rewrites `"%u:%u:"` at its
+/// start after every message, without truncating it.
+pub struct SenderCounterFile {
+    file: Option<fs::File>,
+}
+
+impl SenderCounterFile {
+    /// `OS_StartCounter` for the sender entry: the stored counter (0:0 when
+    /// none or unreadable, as `fscanf("%u:%u")` gives).
+    pub fn open(path: impl AsRef<Path>) -> io::Result<(SenderCounterFile, SenderCounter)> {
+        use std::io::Read;
+        let path = path.as_ref();
+        match fs::OpenOptions::new().read(true).write(true).open(path) {
+            Ok(mut f) => {
+                let mut s = String::new();
+                let _ = f.read_to_string(&mut s);
+                let c = parse_counter(&s).map(|(global, local)| SenderCounter { global, local }).unwrap_or_default();
+                Ok((SenderCounterFile { file: Some(f) }, c))
+            }
+            Err(_) => {
+                let f = fs::OpenOptions::new().write(true).create(true).truncate(true).open(path)?;
+                Ok((SenderCounterFile { file: Some(f) }, SenderCounter::default()))
+            }
+        }
+    }
+
+    /// `StoreSenderCounter(keys, global, local)`
+    pub fn store(&mut self, c: &SenderCounter) {
+        use std::io::{Seek, SeekFrom, Write};
+        if let Some(f) = self.file.as_mut() {
+            let _ = f.seek(SeekFrom::Start(0));
+            let _ = write!(f, "{}:{}:", c.global, c.local);
+            let _ = f.flush();
+        }
+    }
+}
+
+/// `fscanf(fp, "%u:%u", &g, &l) == 2`
+pub fn parse_counter(s: &str) -> Option<(u32, u32)> {
+    fn num(s: &str) -> Option<(u32, &str)> {
+        let t = s.trim_start();
+        let (neg, t) = match t.as_bytes().first() {
+            Some(b'-') => (true, &t[1..]),
+            Some(b'+') => (false, &t[1..]),
+            _ => (false, t),
+        };
+        let n = t.bytes().take_while(|c| c.is_ascii_digit()).count();
+        if n == 0 {
+            return None;
+        }
+        // %u: strtoul semantics (wraps negatives, saturates overflow)
+        // strtoul gives the 64-bit value (ULONG_MAX on overflow), stored
+        // into an unsigned int
+        let v: u64 = t[..n].parse().unwrap_or(u64::MAX);
+        let v = v as u32;
+        Some((if neg { v.wrapping_neg() } else { v }, &t[n..]))
+    }
+    let (g, rest) = num(s)?;
+    let rest = rest.strip_prefix(':')?;
+    let (l, _) = num(rest)?;
+    Some((g, l))
 }
 
 #[cfg(test)]

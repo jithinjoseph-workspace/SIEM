@@ -4,7 +4,7 @@ services:
     container_name: wazuh-siem-clickhouse
     restart: always
     environment:
-      CLICKHOUSE_DB: wazuh_siem
+      CLICKHOUSE_DB: ndr
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:

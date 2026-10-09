@@ -1,3 +1,6 @@
+//! Superseded: the faithful port of Wazuh's rsync is the `siem-dbsync`
+//! crate. This simplified in-memory version is kept for its current users.
+//!
 //! Wazuh differential table synchronization protocol (rsync)
 //!
 //! Provides range-based checksum partitioning and binary search differential synchronization

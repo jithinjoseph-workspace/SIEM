@@ -1,0 +1,133 @@
+<div class="globe-container card" #container>
+  <!-- Top Command Center Bar -->
+  <div class="globe-hud-header">
+    <div class="flex items-center gap-3">
+      <div class="radar-scan-icon">
+        <div class="radar-sweep"></div>
+      </div>
+      <div>
+        <div class="hud-title flex items-center gap-2">
+          <span>GLOBAL CYBER DEFENSE MATRIX</span>
+          <span class="badge badge-ai-glow">3D WebGL</span>
+          <span class="live-dot-pulse">LIVE</span>
+        </div>
+        <div class="hud-subtitle mono text-xs text-muted">
+          Active Threat Ballistics &bull; Real-time Endpoint Defense Interceptor
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD Real-time Metrics Counters -->
+    <div class="hud-kpi-row">
+      <div class="hud-kpi">
+        <span class="label">ACTIVE THREAT ARCS</span>
+        <span class="val mono text-rose">{{ activeThreatCount() }}</span>
+      </div>
+      <div class="hud-kpi">
+        <span class="label">INTERCEPT SUCCESS</span>
+        <span class="val mono text-emerald">{{ interceptRate() }}</span>
+      </div>
+      <div class="hud-kpi">
+        <span class="label">PACKETS DEFENDED</span>
+        <span class="val mono text-cyan">{{ packetsScanned() }}</span>
+      </div>
+    </div>
+
+    <!-- Quick Control Buttons -->
+    <div class="hud-controls flex gap-1">
+      <button 
+        class="btn btn-xs hud-btn" 
+        [class.active]="autoRotate()" 
+        (click)="toggleAutoRotate()"
+        title="Toggle Real-time Globe Auto Rotation"
+      >
+        {{ autoRotate() ? 'Pause Orbit' : 'Auto Orbit' }}
+      </button>
+      <button 
+        class="btn btn-xs hud-btn" 
+        [class.active]="threatArcsVisible()" 
+        (click)="toggleThreatArcs()"
+        title="Toggle Ballistic Laser Threat Arcs"
+      >
+        Threat Arcs
+      </button>
+      <button 
+        class="btn btn-xs hud-btn" 
+        (click)="resetCamera()"
+        title="Reset 3D Camera View"
+      >
+        Reset View
+      </button>
+    </div>
+  </div>
+
+  <!-- Interactive 3D WebGL Canvas Viewport -->
+  <div 
+    class="canvas-viewport"
+    (mousedown)="onMouseDown($event)"
+    (mousemove)="onMouseMove($event)"
+    (mouseup)="onMouseUp()"
+    (mouseleave)="onMouseUp()"
+    (wheel)="onWheel($event)"
+    (click)="onCanvasClick($event)"
+  >
+    <canvas #globeCanvas class="webgl-canvas"></canvas>
+
+    <!-- Overlay Targeting Reticle & Scanlines -->
+    <div class="cyber-scanlines"></div>
+    <div class="hud-crosshair center-crosshair"></div>
+    <div class="hud-compass top-left mono text-xs">
+      <div class="hud-line">AZIMUTH: <span class="text-cyan">042.8°</span></div>
+      <div class="hud-line">ALTITUDE: <span class="text-cyan">6,400 KM</span></div>
+      <div class="hud-line">GRID: <span class="text-emerald">WGS-84 ACTIVE</span></div>
+    </div>
+
+    <!-- Floating 3D Selected Beacon Holographic Dossier -->
+    <div class="beacon-dossier card" *ngIf="selectedBeacon() as b">
+      <div class="dossier-header flex justify-between items-center border-b border-subtle pb-2 mb-2">
+        <div class="flex items-center gap-2">
+          <span class="badge font-mono text-xs uppercase px-1.5 py-0.5 rounded bg-slate-800 text-cyan border border-slate-700">
+            {{ b.osType === 'windows' ? 'WIN' : (b.osType === 'linux' ? 'LNX' : (b.osType === 'macos' ? 'MAC' : b.osType)) }}
+          </span>
+          <div>
+            <div class="font-bold text-sm text-cyan">{{ b.name }}</div>
+            <div class="mono text-xs text-muted">ID: {{ b.agentId }} &bull; {{ b.ip }}</div>
+          </div>
+        </div>
+        <button class="close-btn text-xs" (click)="closeBeaconDossier()">✕</button>
+      </div>
+
+      <div class="dossier-body text-xs mono mb-3">
+        <div class="flex justify-between py-0.5">
+          <span class="text-muted">Status:</span>
+          <span class="text-emerald font-bold">{{ b.status | uppercase }}</span>
+        </div>
+        <div class="flex justify-between py-0.5">
+          <span class="text-muted">Coordinates:</span>
+          <span class="text-cyan">{{ b.lat }}° N, {{ b.lon }}° E</span>
+        </div>
+        <div class="flex justify-between py-0.5">
+          <span class="text-muted">Active Shield:</span>
+          <span class="text-emerald">Wazuh Rust Agent v4.14.7</span>
+        </div>
+        <div class="flex justify-between py-0.5">
+          <span class="text-muted">Telemetry:</span>
+          <span class="text-cyan">FIM + SCA + Syscollector</span>
+        </div>
+      </div>
+
+      <div class="dossier-actions flex gap-2">
+        <button class="btn btn-cyan btn-xs flex-1" (click)="triggerInspect(b.agentId)">
+          Inspect Endpoint
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Threat Intercept Ticker at Bottom -->
+    <div class="globe-ticker-bar mono text-xs">
+      <span class="ticker-badge">INTERCEPT ENGINE</span>
+      <span class="ticker-text text-cyan">{{ latestInterceptLog() }}</span>
+      <span class="text-muted ml-auto hidden-sm">Drag to rotate &bull; Scroll to zoom &bull; Click node to inspect</span>
+    </div>
+  </div>
+</div>

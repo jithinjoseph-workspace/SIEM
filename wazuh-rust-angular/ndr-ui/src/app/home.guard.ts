@@ -20,5 +20,13 @@ export const homeGuard: CanActivateFn = () => {
   }
 
   // All analysts go to the unified dashboard (shows NDR/SIEM sections based on product mode)
-  return router.createUrlTree(['/analyst/dashboard']);
+  // Analysts work in the SIEM pages only.
+  return router.createUrlTree([auth.siemHomeRoute()]);
+};
+
+/** The NDR analyst dashboard is hidden: send analysts to their SIEM home page. */
+export const siemHomeRedirect: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  return router.createUrlTree([auth.siemHomeRoute()]);
 };

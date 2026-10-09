@@ -10,6 +10,7 @@
 pub mod ciphers;
 pub mod hashes;
 pub mod keys;
+pub mod keystore;
 pub mod msgs;
 pub mod signature;
 

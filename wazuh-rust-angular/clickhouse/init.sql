@@ -1,8 +1,10 @@
 -- ClickHouse Unified XDR Schema (NDR + SIEM Auto-Provisioning)
-CREATE DATABASE IF NOT EXISTS wazuh_siem;
+-- One database per tenant: the default tenant uses `ndr` (NDR + SIEM), other
+-- tenants get ndr_<id> (created by auth-service; SIEM tables added by siem-api).
+CREATE DATABASE IF NOT EXISTS ndr;
 
 -- 1. Raw Telemetry Events Table
-CREATE TABLE IF NOT EXISTS wazuh_siem.siem_events (
+CREATE TABLE IF NOT EXISTS ndr.siem_events (
     id String,
     timestamp UInt64,
     agent_id LowCardinality(String),
@@ -14,7 +16,7 @@ CREATE TABLE IF NOT EXISTS wazuh_siem.siem_events (
 ORDER BY (timestamp, agent_id);
 
 -- 2. Correlated Security Alerts Table
-CREATE TABLE IF NOT EXISTS wazuh_siem.siem_alerts (
+CREATE TABLE IF NOT EXISTS ndr.siem_alerts (
     id String,
     timestamp UInt64,
     agent_id LowCardinality(String),
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS wazuh_siem.siem_alerts (
 ORDER BY (rule_level, timestamp);
 
 -- 3. Agent Inventory & Heartbeats (ReplacingMergeTree deduplicates per agent)
-CREATE TABLE IF NOT EXISTS wazuh_siem.siem_agents (
+CREATE TABLE IF NOT EXISTS ndr.siem_agents (
     id String,
     name String,
     ip String,
@@ -48,7 +50,7 @@ CREATE TABLE IF NOT EXISTS wazuh_siem.siem_agents (
 ORDER BY (id);
 
 -- 4. Active Response Remediation Audit Trail
-CREATE TABLE IF NOT EXISTS wazuh_siem.siem_active_responses (
+CREATE TABLE IF NOT EXISTS ndr.siem_active_responses (
     id UUID DEFAULT generateUUIDv4(),
     timestamp DateTime64(3, 'UTC'),
     agent_id LowCardinality(String),
@@ -60,7 +62,7 @@ CREATE TABLE IF NOT EXISTS wazuh_siem.siem_active_responses (
 ORDER BY (timestamp, agent_id);
 
 -- 5. NDR Network Flows (Zeek / Suricata / eBPF flow logs)
-CREATE TABLE IF NOT EXISTS wazuh_siem.ndr_network_flows (
+CREATE TABLE IF NOT EXISTS ndr.ndr_network_flows (
     id UUID DEFAULT generateUUIDv4(),
     timestamp DateTime64(3, 'UTC'),
     proto LowCardinality(String),
@@ -81,7 +83,7 @@ ORDER BY (timestamp, src_ip, dst_ip)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY;
 
 -- 6. NDR Network Threat Detections (C2 beaconing, port scanning, DNS tunneling, IDS alerts)
-CREATE TABLE IF NOT EXISTS wazuh_siem.ndr_threats (
+CREATE TABLE IF NOT EXISTS ndr.ndr_threats (
     id UUID DEFAULT generateUUIDv4(),
     timestamp DateTime64(3, 'UTC'),
     signature String,
@@ -100,7 +102,7 @@ ORDER BY (severity, timestamp, src_ip)
 TTL toDateTime(timestamp) + INTERVAL 180 DAY;
 
 -- 7. Unified XDR Correlated Incidents (Fusing NDR network threat + SIEM endpoint event)
-CREATE TABLE IF NOT EXISTS wazuh_siem.xdr_incidents (
+CREATE TABLE IF NOT EXISTS ndr.xdr_incidents (
     incident_id String,
     timestamp UInt64,
     title String,
@@ -116,6 +118,38 @@ CREATE TABLE IF NOT EXISTS wazuh_siem.xdr_incidents (
     status LowCardinality(String)
 ) ENGINE = MergeTree()
 ORDER BY (timestamp, host_ip);
+
+-- SIEM global tables (all tenants): agent identities, tenant agent keys, feed IOCs
+CREATE TABLE IF NOT EXISTS ndr.agent_registry (
+    agent_id String,
+    name String,
+    tenant_id LowCardinality(String),
+    groups String,
+    os_type LowCardinality(String),
+    deleted UInt8,
+    enrolled_at UInt64,
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY agent_id;
+
+CREATE TABLE IF NOT EXISTS ndr.tenant_agent_keys (
+    tenant_id LowCardinality(String),
+    agent_key String,
+    created_at UInt64
+) ENGINE = ReplacingMergeTree()
+ORDER BY tenant_id;
+
+CREATE TABLE IF NOT EXISTS ndr.siem_threat_intel (
+    id String,
+    source LowCardinality(String),
+    attack_type LowCardinality(String),
+    severity LowCardinality(String),
+    ioc_type LowCardinality(String),
+    ioc_value String,
+    description String,
+    threat_pattern String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ioc_type, ioc_value);
 
 -- 8. Multi-Tenant Auth & Users (Shared auth-service)
 CREATE DATABASE IF NOT EXISTS ndr;

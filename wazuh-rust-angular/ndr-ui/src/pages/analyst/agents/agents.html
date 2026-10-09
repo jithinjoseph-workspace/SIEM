@@ -21,7 +21,7 @@
       </button>
 
       <button 
-        (click)="showDeployModal.set(true)" 
+        (click)="openDeployModal()" 
         class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-cyan-500/20 transition"
       >
         <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular>
@@ -122,12 +122,48 @@
         >
           Inspect Specs
         </button>
+        <button (click)="$event.stopPropagation(); quickAction(ag, 'restart_agent')" title="Restart agent service"
+          class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700">Restart</button>
+        <button (click)="$event.stopPropagation(); quickAction(ag, 'fim_scan')" title="Run FIM scan"
+          class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700">FIM Scan</button>
+        <button (click)="$event.stopPropagation(); deactivateAgent(ag)" title="Stop this agent (kept, can be reactivated)"
+          class="py-1.5 px-2.5 bg-slate-800 hover:bg-amber-900/40 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700">Deactivate</button>
       </div>
+      <div *ngIf="rowFeedback()[ag.id]" class="mt-2 text-[11px] text-cyan-300">{{ rowFeedback()[ag.id] }}</div>
     </div>
   </div>
 
   <div *ngIf="filteredAgents().length === 0" class="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800 text-slate-500">
     No agents matching search criteria.
+  </div>
+
+  <!-- Deactivated agents: kept in the registry, stopped on the endpoint -->
+  <div class="mt-8">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wide">Deactivated agents ({{ deactivatedAgents().length }})</h2>
+      <span class="text-xs text-slate-500">Stopped on the endpoint; data is refused until reactivated.</span>
+    </div>
+    <div *ngIf="deactivatedFeedback()" class="mb-3 px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300">{{ deactivatedFeedback() }}</div>
+    <div *ngIf="deactivatedAgents().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-900/40 text-xs text-slate-500">No deactivated agents.</div>
+    <div *ngIf="deactivatedAgents().length > 0" class="rounded-xl border border-slate-800 overflow-hidden">
+      <table class="w-full text-xs">
+        <thead class="bg-slate-950 text-slate-400 uppercase">
+          <tr><th class="text-left px-4 py-2">ID</th><th class="text-left px-4 py-2">Name</th><th class="text-left px-4 py-2">OS</th><th class="text-left px-4 py-2">Group</th><th class="text-right px-4 py-2">Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let d of deactivatedAgents()" class="border-t border-slate-800 text-slate-300">
+            <td class="px-4 py-2 font-mono">{{ d.id }}</td>
+            <td class="px-4 py-2">{{ d.name }}</td>
+            <td class="px-4 py-2">{{ d.os_type || '—' }}</td>
+            <td class="px-4 py-2">{{ d.groups || '—' }}</td>
+            <td class="px-4 py-2 text-right space-x-2">
+              <button (click)="reactivateAgent(d.id, d.name)" class="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold">Reactivate</button>
+              <button (click)="deleteAgentPermanently(d.id, d.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold">Delete permanently</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Agent Details Modal -->
@@ -201,88 +237,133 @@
 
       <!-- Modal Body -->
       <div class="p-6 overflow-y-auto space-y-4 text-sm text-slate-300">
+        <div *ngIf="inventoryLoading() && selectedAgentTab() !== 'sca' && selectedAgentTab() !== 'actions'" class="text-xs text-slate-500">Loading inventory…</div>
+        <div *ngIf="!inventoryLoading() && !selectedAgentInventory() && selectedAgentTab() !== 'sca' && selectedAgentTab() !== 'actions'"
+          class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
+          This agent has not reported a system inventory yet. Use <b>Agent Actions → Sync Syscollector Inventory</b> to request one.
+        </div>
+
         <!-- Specs Tab -->
-        <div *ngIf="selectedAgentTab() === 'specs' && selectedAgentInventory()" class="space-y-4">
+        <div *ngIf="selectedAgentTab() === 'specs' && selectedAgentInventory() as inv" class="space-y-4">
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
               <span class="text-xs text-slate-500 block">CPU Cores</span>
-              <span class="text-lg font-bold text-white">{{ selectedAgentInventory()?.cpu_cores }} Cores</span>
+              <span class="text-lg font-bold text-white">{{ inv.cpu_cores }} Cores</span>
             </div>
             <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
               <span class="text-xs text-slate-500 block">RAM Memory</span>
-              <span class="text-lg font-bold text-white">{{ (selectedAgentInventory()?.ram_mb || 0) / 1024 }} GB</span>
+              <span class="text-lg font-bold text-white">{{ (inv.ram_mb / 1024) | number:'1.0-1' }} GB</span>
             </div>
             <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
               <span class="text-xs text-slate-500 block">Running Processes</span>
-              <span class="text-lg font-bold text-cyan-400">{{ selectedAgentInventory()?.running_processes_count }}</span>
+              <span class="text-lg font-bold text-cyan-400">{{ inv.running_processes_count }}</span>
             </div>
             <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
               <span class="text-xs text-slate-500 block">Listening Ports</span>
-              <span class="text-lg font-bold text-emerald-400">{{ selectedAgentInventory()?.open_ports_count }}</span>
+              <span class="text-lg font-bold text-emerald-400">{{ inv.open_ports_count }}</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-500 block">Installed Packages</span>
+              <span class="text-lg font-bold text-white">{{ inv.installed_packages_count }}</span>
+            </div>
+            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-500 block">Services</span>
+              <span class="text-lg font-bold text-white">{{ inv.services_count }}</span>
+            </div>
+            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
+              <span class="text-xs text-slate-500 block">Local Users</span>
+              <span class="text-lg font-bold text-white">{{ inv.users_count }}</span>
             </div>
           </div>
 
           <div class="bg-slate-950/70 p-4 rounded-lg border border-slate-800 space-y-2">
             <h4 class="font-semibold text-white">Operating System Specifications</h4>
             <div class="text-xs font-mono text-slate-400 bg-slate-900 p-2.5 rounded border border-slate-800">
-              {{ selectedAgent()?.os }} (Architecture: {{ selectedAgentInventory()?.arch }})
+              {{ inv.os }} · host {{ inv.hostname }} · architecture {{ inv.arch }}
             </div>
           </div>
         </div>
 
         <!-- Network Ports Tab -->
-        <div *ngIf="selectedAgentTab() === 'network_ports'" class="space-y-4">
+        <div *ngIf="selectedAgentTab() === 'network_ports' && selectedAgentInventory() as inv" class="space-y-4">
           <h4 class="font-semibold text-white">Active Listening Ports</h4>
           <div class="grid grid-cols-2 gap-2">
-            <div *ngFor="let port of selectedAgentInventory()?.listening_ports" class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-xs text-cyan-300">
-              {{ port }}
-            </div>
+            <div *ngFor="let port of inv.listening_ports" class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-xs text-cyan-300">{{ port }}</div>
           </div>
+          <h4 class="font-semibold text-white">Network Adapters</h4>
+          <div *ngFor="let a of inv.network_adapters" class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-xs text-slate-300">{{ a }}</div>
         </div>
 
         <!-- Services Tab -->
-        <div *ngIf="selectedAgentTab() === 'users_services'" class="space-y-4">
-          <h4 class="font-semibold text-white">Installed Software Packages</h4>
+        <div *ngIf="selectedAgentTab() === 'users_services' && selectedAgentInventory() as inv" class="space-y-4">
+          <h4 class="font-semibold text-white">Installed Software Packages ({{ inv.installed_packages_count }})</h4>
+          <div class="flex flex-wrap gap-2 max-h-56 overflow-y-auto">
+            <span *ngFor="let s of inv.installed_software" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ s }}</span>
+          </div>
+          <h4 class="font-semibold text-white">Active Services</h4>
+          <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+            <span *ngFor="let s of inv.active_services" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ s }}</span>
+          </div>
+          <h4 class="font-semibold text-white">Local Users</h4>
           <div class="flex flex-wrap gap-2">
-            <span *ngFor="let s of selectedAgentInventory()?.installed_software" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">
-              {{ s }}
-            </span>
+            <span *ngFor="let u of inv.local_users" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ u }}</span>
           </div>
         </div>
 
         <!-- SCA Tab -->
         <div *ngIf="selectedAgentTab() === 'sca'" class="space-y-3">
-          <h4 class="font-semibold text-white">CIS Security Configuration Benchmark Checks</h4>
+          <div class="flex items-center justify-between">
+            <h4 class="font-semibold text-white">CIS Security Configuration Benchmark Checks</h4>
+            <button (click)="triggerAgentAction('sca_scan')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Run SCA Audit</button>
+          </div>
+          <div *ngIf="scaSummary() as sca" class="text-xs text-slate-400">
+            Policy {{ sca.policy_id || '—' }} · score {{ sca.score | number:'1.0-1' }}% · {{ sca.passed }} passed · {{ sca.failed }} failed
+          </div>
+          <div *ngIf="selectedAgentScaChecks().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
+            No SCA results from this agent yet. Run an SCA audit.
+          </div>
           <div *ngFor="let check of selectedAgentScaChecks()" class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
             <span class="text-xs text-slate-200">[{{ check.check_id }}] {{ check.title }}</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
+            <span class="px-2 py-0.5 rounded text-[11px] font-semibold border"
+              [class.bg-emerald-950]="isPassed(check.status)" [class.text-emerald-400]="isPassed(check.status)" [class.border-emerald-800]="isPassed(check.status)"
+              [class.bg-rose-950]="!isPassed(check.status)" [class.text-rose-400]="!isPassed(check.status)" [class.border-rose-800]="!isPassed(check.status)">
               {{ check.status }}
             </span>
           </div>
         </div>
 
         <!-- Actions Tab -->
-        <div *ngIf="selectedAgentTab() === 'actions'" class="space-y-3">
+        <div *ngIf="selectedAgentTab() === 'actions'" class="space-y-4">
           <h4 class="font-semibold text-white">Remote Management & Diagnostic Dispatch</h4>
+          <p class="text-xs text-slate-500">Commands are queued on the manager; the agent picks them up on its next poll (a few seconds).</p>
           <div class="grid grid-cols-2 gap-3">
-            <button 
-              (click)="triggerAgentAction('restart_agent')" 
-              class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition"
-            >
+            <button (click)="triggerAgentAction('restart_agent')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
               Restart Wazuh Agent Service
             </button>
-            <button 
-              (click)="triggerAgentAction('trigger_syscheck')" 
-              class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition"
-            >
+            <button (click)="triggerAgentAction('fim_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
               Run Instant FIM Syscheck
             </button>
-            <button 
-              (click)="triggerAgentAction('sync_inventory')" 
-              class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition"
-            >
+            <button (click)="triggerAgentAction('sca_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
+              Run CIS SCA Compliance Audit
+            </button>
+            <button (click)="triggerAgentAction('syscollector_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
               Sync Syscollector Inventory
             </button>
+          </div>
+
+          <h4 class="font-semibold text-white pt-2">Agent Lifecycle</h4>
+          <button (click)="deactivateAgent(selectedAgent()!)" class="w-full p-3 bg-amber-950/40 hover:bg-amber-900/40 border border-amber-800 rounded-lg text-left text-xs font-semibold text-amber-200 transition">
+            Deactivate agent — stop monitoring on the endpoint (kept, can be reactivated)
+          </button>
+
+          <h4 class="font-semibold text-white pt-2">Host Firewall Containment</h4>
+          <div class="flex gap-2">
+            <input class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="IP address, e.g. 203.0.113.7"
+              [ngModel]="actionIp()" (ngModelChange)="actionIp.set($event)" />
+            <button (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Block IP</button>
+            <button (click)="unblockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg border border-slate-700 text-slate-200 text-xs font-semibold disabled:opacity-40">Unblock IP</button>
           </div>
         </div>
       </div>
@@ -290,12 +371,12 @@
   </div>
 
   <!-- Deploy Agent Wizard Modal -->
-  <div *ngIf="showDeployModal()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+  <div *ngIf="showDeployModal()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" (click)="showDeployModal.set(false)">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden" (click)="$event.stopPropagation()">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
         <div>
           <h2 class="text-lg font-bold text-white">Deploy & Enroll Wazuh Agent</h2>
-          <p class="text-xs text-slate-400">Generate 1-click installation script for Windows, Linux, or macOS</p>
+          <p class="text-xs text-slate-400">The agent enrolls on first start, gets a unique agent id and joins this tenant.</p>
         </div>
         <button (click)="showDeployModal.set(false)" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
           <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
@@ -303,42 +384,119 @@
       </div>
 
       <div class="p-6 overflow-y-auto space-y-5 text-sm">
-        <div class="grid grid-cols-3 gap-3">
-          <button 
-            (click)="deployOs.set('linux')" 
-            [class.border-cyan-500]="deployOs() === 'linux'"
-            [class.bg-cyan-950]="deployOs() === 'linux'"
-            class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition"
-          >
-            Linux (.deb / .rpm)
-          </button>
-          <button 
-            (click)="deployOs.set('windows')" 
-            [class.border-cyan-500]="deployOs() === 'windows'"
-            [class.bg-cyan-950]="deployOs() === 'windows'"
-            class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition"
-          >
-            Windows (Service)
-          </button>
-          <button 
-            (click)="deployOs.set('macos')" 
-            [class.border-cyan-500]="deployOs() === 'macos'"
-            [class.bg-cyan-950]="deployOs() === 'macos'"
-            class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition"
-          >
-            macOS (.pkg)
-          </button>
-        </div>
-
-        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-          <div class="flex justify-between items-center">
-            <span class="text-xs font-semibold text-slate-400 uppercase">Run this command on endpoint:</span>
-            <button (click)="copyInstallCommand()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">
-              {{ copied() ? '✓ Copied!' : 'Copy Command' }}
+        <!-- 1. Operating system -->
+        <div>
+          <div class="text-xs font-semibold text-slate-400 uppercase mb-2">1. Operating system</div>
+          <div class="grid grid-cols-3 gap-3">
+            <button (click)="selectDeployOs('linux')" [class.border-cyan-500]="deployOs() === 'linux'" [class.bg-cyan-950]="deployOs() === 'linux'"
+              class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
+              Linux <span class="block text-[11px] font-normal text-slate-400">install.sh (any distro, systemd)</span>
+            </button>
+            <button (click)="selectDeployOs('windows')" [class.border-cyan-500]="deployOs() === 'windows'" [class.bg-cyan-950]="deployOs() === 'windows'"
+              class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
+              Windows <span class="block text-[11px] font-normal text-slate-400">Windows service (siem-agent.exe)</span>
+            </button>
+            <button (click)="selectDeployOs('macos')" [class.border-cyan-500]="deployOs() === 'macos'" [class.bg-cyan-950]="deployOs() === 'macos'"
+              class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
+              macOS <span class="block text-[11px] font-normal text-slate-400">no package yet</span>
             </button>
           </div>
-          <pre class="p-3 bg-slate-900 border border-slate-800 rounded font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap">{{ deployInstallCommand() }}</pre>
         </div>
+
+        <div *ngIf="deployOs() === 'macos'" class="p-4 rounded-xl border border-amber-700/50 bg-amber-950/30 text-amber-200 text-xs">
+          There is no macOS agent build on this manager yet. Use a Linux or Windows endpoint.
+        </div>
+
+        <ng-container *ngIf="deployOs() !== 'macos'">
+          <!-- 2. Settings -->
+          <div>
+            <div class="text-xs font-semibold text-slate-400 uppercase mb-2">2. Agent settings</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label class="block">
+                <span class="text-xs text-slate-400">Manager URL (reachable from the endpoint)</span>
+                <input class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
+                  [ngModel]="deployManagerUrl()" (ngModelChange)="deployManagerUrl.set($event)" />
+              </label>
+              <label class="block">
+                <span class="text-xs text-slate-400">Agent name (auto-generated, editable)</span>
+                <div class="mt-1 flex gap-2">
+                  <input class="flex-1 bg-slate-950 border rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
+                    [class.border-slate-800]="deployNameValid()" [class.border-red-600]="!deployNameValid()"
+                    [ngModel]="deployAgentName()" (ngModelChange)="deployAgentName.set($event)" />
+                  <button (click)="regenerateAgentName()" title="Generate a new name"
+                    class="px-3 rounded-lg border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500">
+                    <lucide-angular [img]="RefreshIcon" class="w-4 h-4"></lucide-angular>
+                  </button>
+                </div>
+                <span *ngIf="!deployNameValid()" class="text-[11px] text-red-400">2-128 characters: letters, digits, '.', '_', '-'.</span>
+                <span *ngIf="deployNameValid() && deployNameTaken()" class="text-[11px] text-amber-400">
+                  An agent with this name exists: installing re-enrolls it and keeps its agent id.
+                </span>
+              </label>
+              <label class="block">
+                <span class="text-xs text-slate-400">Agent group</span>
+                <input class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
+                  [ngModel]="deployGroup()" (ngModelChange)="deployGroup.set($event)" />
+              </label>
+              <div class="block">
+                <span class="text-xs text-slate-400">Tenant agent key</span>
+                <div class="mt-1 px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 font-mono text-xs"
+                  [class.text-emerald-300]="deployTenantKey()" [class.text-amber-300]="!deployTenantKey()">
+                  {{ deployTenantKey() ? ('tenant ' + deployTenantId() + ' · ' + deployTenantKey().slice(0, 10) + '…') : (deployKeyError() || 'loading…') }}
+                </div>
+                <span *ngIf="!deployTenantKey() && deployKeyError()" class="text-[11px] text-amber-400">Without a key the agent joins the default tenant.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Windows install mode -->
+          <div *ngIf="deployOs() === 'windows'">
+            <div class="text-xs font-semibold text-slate-400 uppercase mb-2">Install mode</div>
+            <div class="grid grid-cols-2 gap-3">
+              <button (click)="winInstallMode.set('auto-elevate')" [class.border-cyan-500]="winInstallMode() === 'auto-elevate'"
+                class="p-2 rounded-lg border border-slate-800 text-white text-xs font-semibold">Auto-Elevate (recommended)
+                <span class="block font-normal text-slate-400">Run from any PowerShell; asks for admin rights</span></button>
+              <button (click)="winInstallMode.set('admin-ps')" [class.border-cyan-500]="winInstallMode() === 'admin-ps'"
+                class="p-2 rounded-lg border border-slate-800 text-white text-xs font-semibold">Admin PowerShell
+                <span class="block font-normal text-slate-400">Paste into an elevated PowerShell</span></button>
+            </div>
+          </div>
+
+          <!-- 3. Install command -->
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-semibold text-slate-400 uppercase">3. Run this on the endpoint {{ deployOs() === 'windows' ? '(PowerShell)' : '(as root / sudo)' }}</span>
+              <button (click)="copyInstallCommand()" [disabled]="!deployInstallCommand()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold disabled:opacity-40">
+                {{ copied() ? '✓ Copied!' : 'Copy Command' }}
+              </button>
+            </div>
+            <pre class="p-3 bg-slate-900 border border-slate-800 rounded font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap break-all">{{ deployInstallCommand() || 'Fix the agent name to generate the command.' }}</pre>
+          </div>
+
+          <!-- 4. Start / status command -->
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-semibold text-slate-400 uppercase">4. Start / check the service</span>
+              <button (click)="copyStartCommand()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">
+                {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
+              </button>
+            </div>
+            <pre class="p-3 bg-slate-900 border border-slate-800 rounded font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">{{ deployStartCommand() }}</pre>
+          </div>
+
+          <!-- Downloads -->
+          <div class="flex flex-wrap gap-3">
+            <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployNameValid()"
+              class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40">
+              <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline"></lucide-angular> Download 1-Click .BAT
+            </button>
+            <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployNameValid()"
+              class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40">
+              <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline"></lucide-angular> Download Deployment Script
+            </button>
+            <button (click)="showDeployModal.set(false)" class="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs">Close</button>
+          </div>
+        </ng-container>
       </div>
     </div>
   </div>

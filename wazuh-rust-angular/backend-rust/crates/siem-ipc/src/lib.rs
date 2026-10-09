@@ -13,6 +13,10 @@
 pub mod framing;
 pub mod local;
 pub mod mq;
+#[cfg(unix)]
+pub mod mq_op;
+#[cfg(unix)]
+pub mod os_net;
 pub mod wdbc;
 
 /// `OS_MAXSTR`

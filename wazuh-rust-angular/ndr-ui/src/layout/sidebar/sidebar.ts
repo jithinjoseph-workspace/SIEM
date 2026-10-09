@@ -7,7 +7,7 @@ import {
   Database, Settings, Network, Zap, FolderSearch, Bot, Server,
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
-  Cpu, Bug, ShieldCheck, FileCheck, Terminal,
+  Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -25,6 +25,13 @@ interface NavGroup {
   collapsed: boolean;
   items: NavItem[];
 }
+
+/**
+ * Analysts see the SIEM pages only while the product is developed as a SIEM.
+ * Set to true to bring back the NDR pages (dashboard, alerts, triage, attack
+ * map, network, NDR rules, SOAR, evidence, AI activity, ...).
+ */
+const SHOW_NDR_PAGES = false;
 
 @Component({
   selector: 'app-sidebar',
@@ -74,17 +81,17 @@ export class Sidebar implements OnInit, OnDestroy {
  
     const has = (p: string) => this.auth.hasPermission(p);
 
-    const hasNdr = this.auth.hasFeature('ndr');
+    const hasNdr = SHOW_NDR_PAGES && this.auth.hasFeature('ndr');
 
     const overviewItems: NavItem[] = [];
     // Dashboard is universal — shows NDR section, SIEM section, or both depending on product mode
-    if (has('dashboard') || has('siem-dashboard') || this.auth.hasFeature('siem')) overviewItems.push({ label: 'Dashboard', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
+    if (SHOW_NDR_PAGES && (has('dashboard') || (this.auth.hasFeature('siem') && has('siem-dashboard')))) overviewItems.push({ label: 'Dashboard', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
 
     const threatItems: NavItem[] = [];
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alerts',       route: '/analyst/alerts',     icon: Bell,    permission: 'alerts' });
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alert Triage', route: '/analyst/triage',     icon: ListChecks, permission: 'alerts' });
     if (hasNdr && has('intel'))  threatItems.push({ label: 'Threat Intel', route: '/analyst/intel',       icon: Search,  permission: 'intel'  });
-    if (hasNdr)  threatItems.push({ label: 'Attack Map',   route: '/analyst/threat-map',  icon: MapIcon });
+    if (hasNdr && has('alerts')) threatItems.push({ label: 'Attack Map',   route: '/analyst/threat-map',  icon: MapIcon, permission: 'alerts' });
 
     const networkItems: NavItem[] = [];
     if (hasNdr && has('logs'))        networkItems.push({ label: 'Network',     route: '/analyst/logs',        icon: FileText, permission: 'logs'        });
@@ -111,20 +118,48 @@ export class Sidebar implements OnInit, OnDestroy {
 
     // SIEM section — unified host, fleet & security detection suite
     const hasSiem = this.auth.hasFeature('siem');
-    const siemItems: NavItem[] = [
-      { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server },
-      { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu },
-      { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield },
-      { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug },
-      { label: 'Compliance Audit',    route: '/analyst/compliance',      icon: ShieldCheck },
-      { label: 'FIM Syscheck',        route: '/analyst/fim',             icon: FileCheck },
-      { label: 'Active Response',     route: '/analyst/active-response', icon: Zap },
-      { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal },
-      { label: 'Data Sources & WEC',  route: '/tenant-admin/siem-sources', icon: Radio },
+    // Each SIEM page needs the tenant's 'siem' feature and its own page permission.
+    const siemCandidates: NavItem[] = [
+      { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
+      { label: 'Dynamic Parsers',     route: '/analyst/siem-classic/console/parsers',             icon: Cpu,         permission: 'siem-parsers' },
+      { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },
+      { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug,         permission: 'siem-vulnerabilities' },
+      { label: 'Compliance Audit',    route: '/analyst/siem-classic/console/compliance',          icon: ShieldCheck, permission: 'siem-compliance' },
+      { label: 'FIM Syscheck',        route: '/analyst/siem-classic/console/fim',                 icon: FileCheck,   permission: 'siem-fim' },
+      { label: 'Active Response',     route: '/analyst/active-response', icon: Zap,         permission: 'siem-active-response' },
+      { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal,    permission: 'siem-logtest' },
     ];
+    const siemItems: NavItem[] = hasSiem ? siemCandidates.filter(i => has(i.permission!)) : [];
+    // Data source management is a tenant-admin page; analysts never get it in their sidebar.
+
+    // Pages copied from frontend-angular (/analyst/siem-classic/*), same permission model.
+    // SIEM console tabs (copied from frontend-angular), each its own page.
+    const consoleCandidates: NavItem[] = [
+      { label: 'Threat Overview',     route: '/analyst/siem-classic/console/overview',   icon: Globe,       permission: 'siem-dashboard' },
+      { label: 'SIEM Alerts',         route: '/analyst/siem-classic/console/alerts',     icon: Bell,        permission: 'siem-alerts' },
+      { label: 'Telemetry Stream',    route: '/analyst/siem-classic/console/telemetry',  icon: ScrollText,  permission: 'siem-logs' },
+      { label: 'Wazuh Rules',         route: '/analyst/siem-classic/console/rules',      icon: ShieldAlert, permission: 'siem-rules' },
+      { label: 'Attack Simulator',    route: '/analyst/siem-classic/console/simulator',  icon: Zap,         permission: 'siem-console' },
+      { label: 'AI Copilot',          route: '/analyst/siem-classic/console/copilot',    icon: Bot,         permission: 'siem-console' },
+      { label: '3D XDR Matrix',       route: '/analyst/siem-classic/console/xdr-3d',     icon: Shield,      permission: 'siem-console' },
+      { label: 'Full SIEM Console',   route: '/analyst/siem-classic/console',            icon: Monitor,     permission: 'siem-console' },
+    ];
+    const consoleItems: NavItem[] = hasSiem ? consoleCandidates.filter(i => has(i.permission!)) : [];
+
+    // The standalone frontend-angular pages, kept as they were.
+    const classicCandidates: NavItem[] = [
+      { label: 'Classic Overview',    route: '/analyst/siem-classic/overview',  icon: LayoutDashboard, permission: 'siem-dashboard' },
+      { label: 'Classic Dashboard',   route: '/analyst/siem-classic/dashboard', icon: BarChart2,   permission: 'siem-dashboard' },
+      { label: 'Classic Agents',      route: '/analyst/siem-classic/agents',    icon: Server,      permission: 'siem-agents' },
+      { label: 'Classic Alerts',      route: '/analyst/siem-classic/alerts',    icon: Bell,        permission: 'siem-alerts' },
+      { label: 'Classic Logs',        route: '/analyst/siem-classic/logs',      icon: ScrollText,  permission: 'siem-logs' },
+      { label: 'Classic Rules',       route: '/analyst/siem-classic/rules',     icon: ShieldAlert, permission: 'siem-rules' },
+      { label: 'Classic Sources',     route: '/analyst/siem-classic/sources',   icon: Radio,       permission: 'siem-sources' },
+    ];
+    const classicItems: NavItem[] = hasSiem ? classicCandidates.filter(i => has(i.permission!)) : [];
 
     // XDR Correlated Incidents — available when both NDR & SIEM are enabled
-    if (hasNdr && hasSiem) {
+    if (hasNdr && hasSiem && has('alerts')) {
       threatItems.unshift({ label: 'XDR Incidents', route: '/xdr/alerts', icon: Shield });
     }
 
@@ -132,6 +167,8 @@ export class Sidebar implements OnInit, OnDestroy {
       ...(overviewItems.length  ? [{ section: 'OVERVIEW',  collapsed: false, items: overviewItems  }] : []),
       ...(threatItems.length    ? [{ section: 'THREATS',   collapsed: false, items: threatItems    }] : []),
       ...(siemItems.length      ? [{ section: 'SIEM & HOSTS', collapsed: false, items: siemItems   }] : []),
+      ...(consoleItems.length   ? [{ section: 'SIEM CONSOLE', collapsed: false, items: consoleItems }] : []),
+      ...(classicItems.length   ? [{ section: 'SIEM CLASSIC PAGES', collapsed: true, items: classicItems }] : []),
       ...(networkItems.length   ? [{ section: 'NETWORK',   collapsed: false, items: networkItems   }] : []),
       ...(enforceItems.length   ? [{ section: 'ENFORCE',   collapsed: false, items: enforceItems   }] : []),
       ...(systemItems.length    ? [{ section: 'SYSTEM',    collapsed: false, items: systemItems    }] : []),

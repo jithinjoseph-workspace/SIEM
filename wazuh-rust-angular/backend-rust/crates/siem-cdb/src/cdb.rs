@@ -109,6 +109,10 @@ impl CdbTable {
         self.exact_map.len() + self.cidr_list.len()
     }
 
+    pub fn entries(&self) -> &HashMap<String, String> {
+        &self.exact_map
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }

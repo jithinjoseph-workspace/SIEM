@@ -116,7 +116,12 @@ pub mod manager {
     use super::*;
     use std::process::Command;
 
-    pub fn install_service(custom_manager_url: Option<&str>, custom_agent_id: Option<&str>) -> bool {
+    pub fn install_service(
+        custom_manager_url: Option<&str>,
+        agent_name: Option<&str>,
+        agent_group: Option<&str>,
+        tenant_key: Option<&str>,
+    ) -> bool {
         let current_exe = match std::env::current_exe() {
             Ok(p) => p,
             Err(e) => {
@@ -216,14 +221,21 @@ pub mod manager {
             ])
             .output();
 
-        // 6. Write permanent local agent-config.json in installation folder (matches Wazuh ossec.conf)
+        // 6. Write permanent local agent-config.json in installation folder (matches Wazuh ossec.conf).
+        // No agent_id: the agent enrolls on first start and keeps its id in client.keys.
         let manager_url = custom_manager_url.unwrap_or("http://127.0.0.1:8088");
-        let agent_id = custom_agent_id.unwrap_or("001");
         let config_path = target_dir.join("agent-config.json");
-        let config_json = format!(
-            "{{\n  \"manager_url\": \"{}\",\n  \"agent_id\": \"{}\"\n}}\n",
-            manager_url, agent_id
-        );
+        let mut cfg = serde_json::json!({ "manager_url": manager_url });
+        if let Some(n) = agent_name.filter(|s| !s.trim().is_empty()) {
+            cfg["agent_name"] = serde_json::Value::String(n.trim().to_string());
+        }
+        if let Some(g) = agent_group.filter(|s| !s.trim().is_empty()) {
+            cfg["agent_group"] = serde_json::Value::String(g.trim().to_string());
+        }
+        if let Some(k) = tenant_key.filter(|s| !s.trim().is_empty()) {
+            cfg["tenant_key"] = serde_json::Value::String(k.trim().to_string());
+        }
+        let config_json = serde_json::to_string_pretty(&cfg).unwrap_or_default();
         if let Err(e) = std::fs::write(&config_path, config_json) {
             eprintln!("[!] Warning: Could not write {:?}: {}", config_path, e);
         } else {
@@ -237,12 +249,11 @@ pub mod manager {
                 .output();
             println!("    Configured System Environment: SIEM_MANAGER_URL = {}", url);
         }
-        if let Some(id) = custom_agent_id {
-            let _ = Command::new("setx")
-                .args(["/M", "SIEM_AGENT_ID", id])
-                .output();
-            println!("    Configured System Environment: SIEM_AGENT_ID = {}", id);
-        }
+        // A machine-wide SIEM_AGENT_ID from older installers would pin every
+        // host to the same id: remove it so the agent enrolls.
+        let _ = Command::new("reg")
+            .args(["delete", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "/v", "SIEM_AGENT_ID", "/f"])
+            .output();
 
         println!("[✓] Service configured to start automatically on Windows boot!");
         println!("[*] Starting service now...");

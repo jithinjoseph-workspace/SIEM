@@ -6,6 +6,8 @@
 //! Paths are handled as `/`-separated strings, as Wazuh does: the relative
 //! names written into `merged.mg` must be byte-identical to a C manager's.
 
+pub mod version_op;
+
 use md5::{Digest, Md5};
 use std::fs;
 use std::io::{self, Write};

@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { authGuard } from '../services/auth/auth-guard';
-import { homeGuard } from './home.guard';
+import { homeGuard, siemHomeRedirect } from './home.guard';
 
 export const routes: Routes = [
   // Smart home redirect — sends user to the right dashboard based on installed product
@@ -19,7 +19,7 @@ export const routes: Routes = [
     loadComponent: () => import('../layout/analyst-layout/analyst-layout')
       .then(m => m.AnalystLayout),
     children: [
-      { path: 'dashboard',   canActivate: [authGuard], data: { role: 'analyst' }, loadComponent: () => import('../pages/analyst/dashboard/dashboard').then(m => m.Dashboard) },
+      { path: 'dashboard',   canActivate: [authGuard, siemHomeRedirect], data: { role: 'analyst' }, loadComponent: () => import('../pages/analyst/dashboard/dashboard').then(m => m.Dashboard) },
       { path: 'alerts',      canActivate: [authGuard], data: { role: 'analyst', permission: 'alerts'      }, loadComponent: () => import('../pages/analyst/alerts/alerts').then(m => m.Alerts) },
       { path: 'triage',      canActivate: [authGuard], data: { role: 'analyst', permission: 'alerts'      }, loadComponent: () => import('../pages/analyst/triage/triage').then(m => m.Triage) },
       { path: 'logs',        canActivate: [authGuard], data: { role: 'analyst', permission: 'logs'        }, loadComponent: () => import('../pages/analyst/logs/logs').then(m => m.Logs) },
@@ -30,7 +30,7 @@ export const routes: Routes = [
       { path: 'soar',        canActivate: [authGuard], data: { role: 'analyst', permission: 'soar'        }, loadComponent: () => import('../pages/analyst/soar/soar').then(m => m.Soar) },
       { path: 'evidence',    canActivate: [authGuard], data: { role: 'analyst', permission: 'evidence'    }, loadComponent: () => import('../pages/analyst/evidence/evidence').then(m => m.EvidenceComponent) },
       { path: 'ai-activity', canActivate: [authGuard], data: { role: 'analyst', permission: 'ai-activity' }, loadComponent: () => import('../pages/analyst/ai-activity/ai-activity').then(m => m.AiActivity) },
-      { path: 'threat-map',  canActivate: [authGuard], data: { role: 'analyst' }, loadComponent: () => import('../pages/analyst/threat-map/threat-map').then(m => m.ThreatMap) },
+      { path: 'threat-map',  canActivate: [authGuard], data: { role: 'analyst', permission: 'alerts' }, loadComponent: () => import('../pages/analyst/threat-map/threat-map').then(m => m.ThreatMap) },
       { path: 'ai-report',   canActivate: [authGuard], data: { role: 'analyst', permission: 'ai-report'   }, loadComponent: () => import('../pages/analyst/ai-report/ai-report').then(m => m.AiReport) },
       { path: 'assets',      canActivate: [authGuard], data: { role: 'analyst', permission: 'assets'      }, loadComponent: () => import('../pages/analyst/assets/assets').then(m => m.Assets) },
       { path: 'rules',       canActivate: [authGuard], data: { permission: 'rules'                        }, loadComponent: () => import('../pages/analyst/rules/rules').then(m => m.Rules) },
@@ -40,14 +40,49 @@ export const routes: Routes = [
       { path: 'honeypots',      canActivate: [authGuard], data: { permission: 'honeypots'     }, loadComponent: () => import('../pages/analyst/honeypots/honeypots').then(m => m.Honeypots) },
       { path: 'retrospective',  canActivate: [authGuard], data: { permission: 'retrospective' }, loadComponent: () => import('../pages/analyst/retrospective/retrospective').then(m => m.Retrospective) },
       /* ── Wazuh Unified SIEM Suite ── */
-      { path: 'agents',         canActivate: [authGuard], loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
-      { path: 'parsers',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/parsers/parsers').then(m => m.Parsers) },
-      { path: 'mitre',          canActivate: [authGuard], loadComponent: () => import('../pages/analyst/mitre/mitre').then(m => m.MitreMatrix) },
-      { path: 'vulnerabilities',canActivate: [authGuard], loadComponent: () => import('../pages/analyst/vulnerabilities/vulnerabilities').then(m => m.Vulnerabilities) },
-      { path: 'compliance',     canActivate: [authGuard], loadComponent: () => import('../pages/analyst/compliance/compliance').then(m => m.Compliance) },
-      { path: 'fim',            canActivate: [authGuard], loadComponent: () => import('../pages/analyst/fim/fim').then(m => m.Fim) },
-      { path: 'active-response',canActivate: [authGuard], loadComponent: () => import('../pages/analyst/active-response/active-response').then(m => m.ActiveResponse) },
-      { path: 'logtest',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/logtest/logtest').then(m => m.Logtest) },
+      { path: 'agents',         canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
+      { path: 'parsers',        canActivate: [authGuard], data: { permission: 'siem-parsers' }, loadComponent: () => import('../pages/analyst/parsers/parsers').then(m => m.Parsers) },
+      { path: 'mitre',          canActivate: [authGuard], data: { permission: 'siem-mitre' }, loadComponent: () => import('../pages/analyst/mitre/mitre').then(m => m.MitreMatrix) },
+      { path: 'vulnerabilities',canActivate: [authGuard], data: { permission: 'siem-vulnerabilities' }, loadComponent: () => import('../pages/analyst/vulnerabilities/vulnerabilities').then(m => m.Vulnerabilities) },
+      { path: 'compliance',     canActivate: [authGuard], data: { permission: 'siem-compliance' }, loadComponent: () => import('../pages/analyst/compliance/compliance').then(m => m.Compliance) },
+      { path: 'fim',            canActivate: [authGuard], data: { permission: 'siem-fim' }, loadComponent: () => import('../pages/analyst/fim/fim').then(m => m.Fim) },
+      { path: 'active-response',canActivate: [authGuard], data: { permission: 'siem-active-response' }, loadComponent: () => import('../pages/analyst/active-response/active-response').then(m => m.ActiveResponse) },
+      { path: 'logtest',        canActivate: [authGuard], data: { permission: 'siem-logtest' }, loadComponent: () => import('../pages/analyst/logtest/logtest').then(m => m.Logtest) },
+
+      /* SIEM pages copied from frontend-angular (pages/siem-classic) */
+      {
+        path: 'siem-classic',
+        canActivate: [authGuard],
+        loadComponent: () => import('../pages/siem-classic/siem-classic-shell').then(m => m.SiemClassicShell),
+        children: [
+          { path: '',          redirectTo: 'console', pathMatch: 'full' },
+          { path: 'console',   canActivate: [authGuard], data: { permission: 'siem-console' },   loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          /* one console tab per page (no console banner / tab bar) */
+          { path: 'console/overview', canActivate: [authGuard], data: { permission: 'siem-dashboard', tab: 'dashboard' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/alerts', canActivate: [authGuard], data: { permission: 'siem-alerts', tab: 'alerts' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/telemetry', canActivate: [authGuard], data: { permission: 'siem-logs', tab: 'telemetry' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/agents', canActivate: [authGuard], data: { permission: 'siem-agents', tab: 'agents' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/rules', canActivate: [authGuard], data: { permission: 'siem-rules', tab: 'rules' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/simulator', canActivate: [authGuard], data: { permission: 'siem-console', tab: 'simulator' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/copilot', canActivate: [authGuard], data: { permission: 'siem-console', tab: 'copilot' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/mitre', canActivate: [authGuard], data: { permission: 'siem-mitre', tab: 'mitre' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/vulnerabilities', canActivate: [authGuard], data: { permission: 'siem-vulnerabilities', tab: 'vulnerabilities' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/compliance', canActivate: [authGuard], data: { permission: 'siem-compliance', tab: 'compliance' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/fim', canActivate: [authGuard], data: { permission: 'siem-fim', tab: 'fim' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/logtest', canActivate: [authGuard], data: { permission: 'siem-logtest', tab: 'logtest' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/active-response', canActivate: [authGuard], data: { permission: 'siem-active-response', tab: 'active_response' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/parsers', canActivate: [authGuard], data: { permission: 'siem-parsers', tab: 'parsers' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'console/xdr-3d', canActivate: [authGuard], data: { permission: 'siem-console', tab: 'amix' }, loadComponent: () => import('../pages/siem-classic/siem-console').then(m => m.SiemConsole) },
+          { path: 'overview',  canActivate: [authGuard], data: { permission: 'siem-dashboard' }, loadComponent: () => import('../pages/siem-classic/components/siem/dashboard/siem-dashboard.component').then(m => m.SiemDashboardComponent) },
+          { path: 'dashboard', canActivate: [authGuard], data: { permission: 'siem-dashboard' }, loadComponent: () => import('../pages/siem-classic/pages/siem/dashboard/siem-dashboard').then(m => m.SiemDashboard) },
+          { path: 'agents',    canActivate: [authGuard], data: { permission: 'siem-agents' },    loadComponent: () => import('../pages/siem-classic/pages/siem/agents/siem-agents').then(m => m.SiemAgentsPage) },
+          { path: 'alerts',    canActivate: [authGuard], data: { permission: 'siem-alerts' },    loadComponent: () => import('../pages/siem-classic/pages/siem/alerts/siem-alerts').then(m => m.SiemAlertsPage) },
+          { path: 'logs',      canActivate: [authGuard], data: { permission: 'siem-logs' },      loadComponent: () => import('../pages/siem-classic/pages/siem/logs/siem-logs').then(m => m.SiemLogsPage) },
+          { path: 'rules',     canActivate: [authGuard], data: { permission: 'siem-rules' },     loadComponent: () => import('../pages/siem-classic/pages/siem/rules/siem-rules').then(m => m.SiemRulesPage) },
+          { path: 'sources',   canActivate: [authGuard], data: { permission: 'siem-sources' },   loadComponent: () => import('../pages/siem-classic/pages/siem/sources/siem-sources').then(m => m.SiemSources) },
+          { path: 'xdr-3d',    canActivate: [authGuard], data: { permission: 'siem-console' },   loadComponent: () => import('../pages/siem-classic/amix/amix-home.component').then(m => m.AmixHomeComponent) },
+        ]
+      },
     ]
   },
 
@@ -67,8 +102,8 @@ export const routes: Routes = [
   },
 
   /* ── SIEM pages — all embedded in analyst dashboard or moved to admin/tenant-admin ── */
-  { path: 'siem/dashboard', redirectTo: '/analyst/dashboard',        pathMatch: 'full' },
-  { path: 'siem/logs',      redirectTo: '/analyst/dashboard',        pathMatch: 'full' },
+  { path: 'siem/dashboard', redirectTo: '/analyst/siem-classic/console/overview',  pathMatch: 'full' },
+  { path: 'siem/logs',      redirectTo: '/analyst/siem-classic/console/telemetry', pathMatch: 'full' },
   { path: 'siem/sources',   redirectTo: '/tenant-admin/siem-sources', pathMatch: 'full' },
 
   /* ── ADMIN pages ──────────────────────────────────────────────────── */

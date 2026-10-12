@@ -10,8 +10,12 @@ use chrono::{Datelike, Local, TimeZone};
 use crate::*;
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const LOGFILE: &str = "logs/ossec.log";
-const LOGJSONFILE: &str = "logs/ossec.json";
+use siem_log::{LOGFILE, LOGJSONFILE};
+/// Where rotated logs go.
+#[cfg(unix)]
+const BASE_DIR: &str = "logs/wazuh";
+#[cfg(windows)]
+const BASE_DIR: &str = "logs";
 
 /// `IsFile(path) == 0`
 fn is_file(p: &str) -> bool {
@@ -23,10 +27,14 @@ fn is_dir(p: &str) -> bool {
     std::fs::metadata(p).map(|m| m.is_dir()).unwrap_or(false)
 }
 
+/// `mkdir(p, 0770)` (`_mkdir(p)` on Windows)
 fn mkdir_0770(ag: &Agentd, p: &str) {
-    use std::os::unix::fs::DirBuilderExt;
     if !is_dir(p) {
-        if let Err(e) = std::fs::DirBuilder::new().mode(0o770).create(p) {
+        #[allow(unused_mut)]
+        let mut b = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o770);
+        if let Err(e) = b.create(p) {
             let n = e.raw_os_error().unwrap_or(0);
             ag.exit_critical(format!("(1107): Could not create directory '{p}' due to [({n})-({})].", strerror(n)));
         }
@@ -142,7 +150,7 @@ pub fn w_rotate_log(ag: &Agentd, compress: bool, keep_log_days: i32, new_day: bo
     }
     let t = if new_day { now() - 86400 } else { now() };
     let tm = Local.timestamp_opt(t, 0).single().unwrap_or_else(Local::now);
-    let base_dir = "logs/wazuh";
+    let base_dir = BASE_DIR;
     let year_dir = format!("{base_dir}/{}", tm.year());
     let month_dir = format!("{year_dir}/{}", MONTHS[tm.month0() as usize]);
     mkdir_0770(ag, &year_dir);
@@ -166,7 +174,10 @@ pub fn w_rotate_log(ag: &Agentd, compress: bool, keep_log_days: i32, new_day: bo
 /// `OS_CompressLog`
 pub fn compress_log(ag: &Agentd, logfile: &str) {
     // SAFETY: umask has no preconditions.
-    unsafe { libc::umask(0o027) };
+    #[cfg(unix)]
+    unsafe {
+        libc::umask(0o027)
+    };
     let gz_path = format!("{logfile}.gz");
     let Ok(mut log) = std::fs::File::open(logfile) else { return };
     let out = match std::fs::File::create(&gz_path) {

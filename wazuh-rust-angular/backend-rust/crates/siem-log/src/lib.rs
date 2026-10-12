@@ -12,15 +12,34 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::panic::Location;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use siem_cjson::Json;
 
 /// `LOGFILE`
+#[cfg(not(windows))]
 pub const LOGFILE: &str = "logs/ossec.log";
 /// `LOGJSONFILE`
+#[cfg(not(windows))]
 pub const LOGJSONFILE: &str = "logs/ossec.json";
+/// `OSSECCONF`
+#[cfg(not(windows))]
+pub const OSSECCONF: &str = "etc/ossec.conf";
+/// `LOGFILE` (Windows: in the install directory)
+#[cfg(windows)]
+pub const LOGFILE: &str = "ossec.log";
+/// `LOGJSONFILE`
+#[cfg(windows)]
+pub const LOGJSONFILE: &str = "ossec.json";
+/// `OSSECCONF`
+#[cfg(windows)]
+pub const OSSECCONF: &str = "ossec.conf";
+/// The end of a stderr line (`"\r\n"` on Windows).
+#[cfg(not(windows))]
+const STDERR_EOL: &[u8] = b"\n";
+#[cfg(windows)]
+const STDERR_EOL: &[u8] = b"\r\n";
 const OS_MAXSTR: usize = 65536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,6 +82,30 @@ impl Level {
     }
 }
 
+/// What the C runtime writes for `fprintf(stderr/stdout, ...)`: on Windows
+/// the standard streams are text mode, so every LF goes out as CR LF (and
+/// the explicit CR LF of C as CR CR LF).
+pub fn crt_stream(b: &[u8]) -> Vec<u8> {
+    if cfg!(windows) {
+        let mut out = Vec::with_capacity(b.len() + 4);
+        for &c in b {
+            if c == b'\n' {
+                out.push(b'\r');
+            }
+            out.push(c);
+        }
+        out
+    } else {
+        b.to_vec()
+    }
+}
+
+/// `printf` to stdout through the C runtime stream.
+pub fn crt_print(s: &str) {
+    let _ = std::io::stdout().write_all(&crt_stream(s.as_bytes()));
+    let _ = std::io::stdout().flush();
+}
+
 /// One daemon's logger (`__local_name` + debug_op.c's static flags).
 pub struct WLog {
     tag: String,
@@ -72,7 +115,10 @@ pub struct WLog {
     plain: AtomicBool,
     json: AtomicBool,
     initialized: AtomicBool,
-    pid: u32,
+    /// `static int pid`: set by `os_logging_config`, 0 before.
+    pid: AtomicU32,
+    /// The configuration, log and JSON log files (the agent layout on Windows).
+    files: (&'static str, &'static str, &'static str),
     lock: Mutex<()>,
 }
 
@@ -117,9 +163,19 @@ impl WLog {
             plain: AtomicBool::new(false),
             json: AtomicBool::new(false),
             initialized: AtomicBool::new(false),
-            pid: std::process::id(),
+            pid: AtomicU32::new(0),
+            files: (OSSECCONF, LOGFILE, LOGJSONFILE),
             lock: Mutex::new(()),
         }
+    }
+
+    /// A manager daemon's logger: `etc/ossec.conf`, `logs/ossec.log` and
+    /// `logs/ossec.json` on every platform (manager daemons running on
+    /// Windows keep the server layout).
+    pub fn new_server(tag: &str, home: &Path) -> WLog {
+        let mut l = Self::new(tag, home);
+        l.files = ("etc/ossec.conf", "logs/ossec.log", "logs/ossec.json");
+        l
     }
 
     /// `nowDebug`
@@ -142,12 +198,13 @@ impl WLog {
     /// already been logged) and the caller exits.
     pub fn init(&self) -> Result<(), String> {
         self.initialized.store(true, Ordering::SeqCst);
-        let conf = self.home.join("etc/ossec.conf");
+        self.pid.store(std::process::id(), Ordering::SeqCst);
+        let conf = self.home.join(self.files.0);
         let mut xml = match siem_xml::OsXml::read_file(&conf, false) {
             Ok(x) => x,
             Err(e) => {
                 self.set_format(true, false);
-                let m = format!("(1226): Error reading XML file '{}': {} (line {}).", "etc/ossec.conf", e.message, e.line);
+                let m = format!("(1226): Error reading XML file '{}': {} (line {}).", self.files.0, e.message, e.line);
                 self.log_at(Level::Error, m.as_bytes(), Location::caller());
                 return Err(m);
             }
@@ -231,6 +288,27 @@ impl WLog {
         self.log_at(Level::Critical, msg.as_ref(), Location::caller());
     }
 
+    /// The `plain_*` functions: no auto-initialisation (plain format until
+    /// `init`) and never the JSON log. `level` as in [`WLog::tagged`].
+    #[track_caller]
+    pub fn plain(&self, level: &str, msg: impl AsRef<[u8]>) {
+        let lv = match level {
+            "DEBUG" if self.is_debug() >= 1 => Level::Debug,
+            "DEBUG" => return,
+            other => Level::from_name(other),
+        };
+        if !self.initialized.load(Ordering::SeqCst) {
+            self.set_format(true, false);
+        }
+        let json = self.json.swap(false, Ordering::SeqCst);
+        let tag = self.tag.clone();
+        let stderr = !self.daemon.load(Ordering::SeqCst);
+        self.write_tag_raw(&tag, lv, msg.as_ref(), Location::caller(), stderr);
+        if json {
+            self.json.store(true, Ordering::SeqCst);
+        }
+    }
+
     /// `_mferror`: file only, never stderr.
     #[track_caller]
     pub fn ferror(&self, msg: impl AsRef<[u8]>) {
@@ -270,11 +348,15 @@ impl WLog {
             }
             self.debug1("Logging module auto-initialized");
         }
+        self.write_tag_raw(tag, level, msg, loc, stderr)
+    }
+
+    fn write_tag_raw(&self, tag: &str, level: Level, msg: &[u8], loc: &Location<'_>, stderr: bool) {
         let ts = timestamp(chrono::Local::now());
         let file = loc.file().rsplit(['/', '\\']).next().unwrap_or("");
         let dbg = self.is_debug() > 0;
         let prefix = if dbg {
-            format!("{}[{}] {}:{} at {}(): ", tag, self.pid, file, loc.line(), "main")
+            format!("{}[{}] {}:{} at {}(): ", tag, self.pid.load(Ordering::SeqCst), file, loc.line(), "main")
         } else {
             format!("{}: ", tag)
         };
@@ -283,7 +365,7 @@ impl WLog {
             j.add("timestamp", Json::string(&ts));
             j.add("tag", Json::string(tag));
             if dbg {
-                j.add("pid", Json::number(self.pid as f64));
+                j.add("pid", Json::number(self.pid.load(Ordering::SeqCst) as f64));
                 j.add("file", Json::string(file));
                 j.add("line", Json::number(loc.line() as f64));
                 j.add("routine", Json::string("main"));
@@ -293,19 +375,19 @@ impl WLog {
             j.add("description", Json::string(&msg[..msg.len().min(OS_MAXSTR - 1)]));
             let mut line = j.print_unformatted();
             line.push(b'\n');
-            self.append(LOGJSONFILE, &line);
+            self.append(self.files.2, &line);
         }
         if self.plain.load(Ordering::SeqCst) {
             let mut line = format!("{ts} {prefix}{}: ", level.plain()).into_bytes();
             line.extend_from_slice(msg);
             line.push(b'\n');
-            self.append(LOGFILE, &line);
+            self.append(self.files.1, &line);
         }
         if stderr {
             let mut line = format!("{ts} {prefix}{}: ", level.plain()).into_bytes();
             line.extend_from_slice(msg);
-            line.push(b'\n');
-            let _ = std::io::stderr().write_all(&line);
+            line.extend_from_slice(STDERR_EOL);
+            let _ = std::io::stderr().write_all(&crt_stream(&line));
         }
     }
 
@@ -335,7 +417,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(d.path().join("etc")).unwrap();
         std::fs::create_dir_all(d.path().join("logs")).unwrap();
-        std::fs::write(d.path().join("etc/ossec.conf"), conf).unwrap();
+        std::fs::write(d.path().join(OSSECCONF), conf).unwrap();
         d
     }
 
@@ -372,5 +454,46 @@ mod tests {
         l.info("x");
         assert!(!d.path().join(LOGFILE).exists());
         assert!(d.path().join(LOGJSONFILE).exists());
+    }
+}
+
+/// The C runtime's `atexit` / `exit`: the daemons register their C-style
+/// exit hooks (state file, file status, "agent stopped" message) and leave
+/// through `exit()` so the hooks run, as the C daemons do. On Windows these
+/// are msvcrt's, the runtime of the C agent (Rust's own exit would end the
+/// process without running them).
+pub mod cexit {
+    extern "C" {
+        fn atexit(f: extern "C" fn()) -> i32;
+        fn exit(code: i32) -> !;
+    }
+
+    /// `atexit(f)`: 0 on success.
+    pub fn register(f: extern "C" fn()) -> i32 {
+        // SAFETY: registering a plain extern "C" function.
+        unsafe { atexit(f) }
+    }
+
+    /// `exit(code)`: runs the registered hooks, then ends the process.
+    pub fn exit_process(code: i32) -> ! {
+        // SAFETY: the C library exit.
+        unsafe { exit(code) }
+    }
+
+    static FATAL: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+    /// What the `*_exit` log functions do before `exit(1)` (Windows:
+    /// `WinSetError()`, which stops the service).
+    pub fn set_fatal_hook(f: Box<dyn Fn() + Send + Sync>) {
+        let _ = FATAL.set(f);
+    }
+
+    /// The end of `merror_exit` / `mlerror_exit`: the fatal hook, then
+    /// `exit(1)`.
+    pub fn fatal_exit() -> ! {
+        if let Some(f) = FATAL.get() {
+            f();
+        }
+        exit_process(1)
     }
 }

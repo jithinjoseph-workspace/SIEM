@@ -33,6 +33,64 @@ pub const IPPROTO_UDP: i32 = 17;
 pub const IPV6_LINK_LOCAL_PREFIX: &str = "FE80:0000:0000:0000:";
 /// `INET6_ADDRSTRLEN`
 pub const IPSIZE: usize = 46;
+pub use libc::{ECONNREFUSED, EAGAIN, ENOBUFS, ENOTCONN, EPIPE, EWOULDBLOCK, SOCK_DGRAM, SOCK_STREAM};
+
+/// `recv(sock, buf, len, dontwait ? MSG_DONTWAIT : 0)`
+pub fn recv_flags(sock: i32, buf: &mut [u8], dontwait: bool) -> isize {
+    let flags = if dontwait { libc::MSG_DONTWAIT } else { 0 };
+    // SAFETY: recv into a valid slice.
+    unsafe { libc::recv(sock, buf.as_mut_ptr().cast(), buf.len(), flags) }
+}
+
+/// `gethostname(buf, len)`: the name (up to the first NUL), `None` on error.
+pub fn gethostname(len: usize) -> Option<Vec<u8>> {
+    let mut buf = vec![0u8; len + 1];
+    // SAFETY: gethostname into a buffer of len + 1 bytes.
+    if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), len) } != 0 {
+        return None;
+    }
+    let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    buf.truncate(n);
+    Some(buf)
+}
+
+/// `close(fd)`
+pub fn close_fd(fd: i32) -> i32 {
+    // SAFETY: closing a descriptor we own.
+    unsafe { libc::close(fd) }
+}
+
+/// The local address of a socket (`getsockname`).
+pub enum SockName {
+    V4(String),
+    V6(String),
+    /// another family
+    Other(i32),
+}
+
+/// `getsockname` + `get_ipv4_string` / `get_ipv6_string` into `size` bytes;
+/// `Err` when `getsockname` fails.
+pub fn sock_name(sock: i32, size: usize) -> Result<SockName, ()> {
+    // SAFETY: getsockname into a sockaddr_storage.
+    unsafe {
+        let mut ss: libc::sockaddr_storage = std::mem::zeroed();
+        let mut len = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+        if libc::getsockname(sock, (&mut ss as *mut libc::sockaddr_storage).cast(), &mut len) != 0 {
+            return Err(());
+        }
+        Ok(match ss.ss_family as i32 {
+            libc::AF_INET => {
+                let a: libc::sockaddr_in = std::ptr::read((&ss as *const libc::sockaddr_storage).cast());
+                SockName::V4(get_ipv4_string(a.sin_addr, size).unwrap_or_default())
+            }
+            libc::AF_INET6 => {
+                let a: libc::sockaddr_in6 = std::ptr::read((&ss as *const libc::sockaddr_storage).cast());
+                SockName::V6(get_ipv6_string(a.sin6_addr, size).unwrap_or_default())
+            }
+            f => SockName::Other(f),
+        })
+    }
+}
 
 static LOGGER: OnceLock<Arc<WLog>> = OnceLock::new();
 

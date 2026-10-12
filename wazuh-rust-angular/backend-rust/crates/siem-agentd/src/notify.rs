@@ -35,27 +35,17 @@ pub fn getsharedfiles() -> String {
 
 /// `get_agent_ip`: the local address of the manager connection.
 pub fn get_agent_ip(ag: &Agentd) -> String {
-    let mut ss: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
-    let mut len = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-    // SAFETY: valid sockaddr_storage buffer and length.
-    let err = unsafe { libc::getsockname(ag.sock(), (&mut ss as *mut libc::sockaddr_storage).cast(), &mut len) };
-    if err != 0 {
-        ag.log.debug2(format!("getsockname() failed: {}", strerror(errno())));
-        return String::new();
-    }
-    match ss.ss_family as i32 {
-        libc::AF_INET => {
-            // SAFETY: the family says this is a sockaddr_in.
-            let a: libc::sockaddr_in = unsafe { std::ptr::read((&ss as *const libc::sockaddr_storage).cast()) };
-            os_net::get_ipv4_string(a.sin_addr, IPSIZE).unwrap_or_default()
-        }
-        libc::AF_INET6 => {
-            // SAFETY: the family says this is a sockaddr_in6.
-            let a: libc::sockaddr_in6 = unsafe { std::ptr::read((&ss as *const libc::sockaddr_storage).cast()) };
-            os_net::get_ipv6_string(a.sin6_addr, IPSIZE).unwrap_or_default()
-        }
-        f => {
+    match os_net::sock_name(ag.sock(), IPSIZE) {
+        Ok(os_net::SockName::V4(ip)) | Ok(os_net::SockName::V6(ip)) => ip,
+        Ok(os_net::SockName::Other(f)) => {
             ag.log.debug2(format!("Unknown address family: {f}"));
+            String::new()
+        }
+        Err(()) => {
+            #[cfg(unix)]
+            ag.log.debug2(format!("getsockname() failed: {}", strerror(errno())));
+            #[cfg(windows)]
+            ag.log.debug2(format!("getsockname() failed: {}", win_strerror_last()));
             String::new()
         }
     }

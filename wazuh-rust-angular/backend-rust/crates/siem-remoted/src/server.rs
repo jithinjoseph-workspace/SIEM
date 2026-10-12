@@ -410,7 +410,7 @@ impl Remoted {
         let verify = self.settings.internal.verify_msg_id == 1;
         let result = {
             let mut st = entry.state.lock().unwrap();
-            read_sec_msg(&mut st.key, body, ReadOptions { verify_counter: verify })
+            read_sec_msg(&mut st.key, body, ReadOptions { verify_counter: verify, client: false })
         };
         let payload = match result {
             Ok(r) => {

@@ -13,15 +13,10 @@
 //! `<secs> send <payload with \n escapes>`, `<secs> file <name> <local path>`,
 //! `<secs> close` (drop the connection), `<secs> exit`.
 
-#[cfg(not(unix))]
-fn main() {}
-
-#[cfg(unix)]
 fn main() {
     imp::main();
 }
 
-#[cfg(unix)]
 mod imp {
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -36,6 +31,8 @@ mod imp {
         start: Instant,
         first_ack: Option<Instant>,
         conn: Option<TcpStream>,
+        /// UDP mode: the socket and the last agent address seen.
+        udp: Option<(std::net::UdpSocket, Option<std::net::SocketAddr>)>,
         key: ClientKey,
         counter: SenderCounter,
     }
@@ -64,9 +61,13 @@ mod imp {
         let mut c = sh.counter;
         let msg = create_sec_msg(&key, &mut c, payload, CreateOptions::default()).expect("encrypt");
         sh.counter = c;
-        let mut frame = (msg.len() as u32).to_le_bytes().to_vec();
-        frame.extend_from_slice(&msg);
-        let ok = sh.conn.as_mut().map(|s| s.write_all(&frame).is_ok()).unwrap_or(false);
+        let ok = if let Some((u, peer)) = sh.udp.as_ref() {
+            peer.map(|p| u.send_to(&msg, p).is_ok()).unwrap_or(false)
+        } else {
+            let mut frame = (msg.len() as u32).to_le_bytes().to_vec();
+            frame.extend_from_slice(&msg);
+            sh.conn.as_mut().map(|s| s.write_all(&frame).is_ok()).unwrap_or(false)
+        };
         log(sh, &format!("OUT{} {}", if ok { "" } else { "(failed)" }, escape(payload)));
     }
 
@@ -85,6 +86,12 @@ mod imp {
                 log(&mut sh.lock().unwrap(), "DISCONNECT");
                 return;
             };
+            process(&sh, &frame);
+        }
+    }
+
+    fn process(sh: &Arc<Mutex<Shared>>, frame: &[u8]) {
+        {
             // "!<id>!" prefix of agents with a dynamic IP
             let mut body: &[u8] = &frame;
             let mut prefix = String::new();
@@ -96,7 +103,7 @@ mod imp {
             }
             let mut g = sh.lock().unwrap();
             let mut key = g.key.clone();
-            match read_sec_msg(&mut key, body, ReadOptions { verify_counter: false }) {
+            match read_sec_msg(&mut key, body, ReadOptions { verify_counter: false, client: false }) {
                 Ok(r) => {
                     let p = r.payload;
                     log(&mut g, &format!("IN {prefix}[{}:{}] {}", r.global, r.local, escape(&p)));
@@ -107,6 +114,16 @@ mod imp {
                         send(&mut g, b"#!-agent ack ");
                         if g.first_ack.is_none() {
                             g.first_ack = Some(Instant::now());
+                        }
+                    }
+                    // UDP: remoted acknowledges every request reply
+                    if req && g.udp.is_some() {
+                        let rest = &p[7..];
+                        if let Some(sp) = rest.iter().position(|&c| c == b' ') {
+                            if &rest[sp + 1..] != b"ack" {
+                                let ack = [b"#!-req ".as_slice(), &rest[..sp], b" ack"].concat();
+                                send(&mut g, &ack);
+                            }
                         }
                     }
                 }
@@ -197,13 +214,15 @@ mod imp {
         let keys = std::fs::read_to_string(&a[2]).expect("client.keys");
         let line = keys.lines().next().expect("key line");
         let f: Vec<&str> = line.split(' ').collect();
-        let key = ClientKey::new(f[0].into(), f[1].into(), f[2].into(), f[3].into());
+        let mut key = ClientKey::new(f[0].into(), f[1].into(), f[2].into(), f[3].into());
+        key.crypto_method = siem_crypto::keys::CryptoMethod::Aes;
         let out = std::fs::File::create(&a[3]).expect("out");
         let sh = Arc::new(Mutex::new(Shared {
             out,
             start: Instant::now(),
             first_ack: None,
             conn: None,
+            udp: None,
             key,
             counter: SenderCounter::default(),
         }));
@@ -211,7 +230,22 @@ mod imp {
             let s = Arc::clone(&sh);
             std::thread::spawn(move || run_script(s, script));
         }
-        let l = TcpListener::bind(("127.0.0.1", port)).expect("bind");
+        // FAKE_BIND: the address to listen on (127.0.0.1)
+        let bind = std::env::var("FAKE_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+        if std::env::var("FAKE_PROTO").as_deref() == Ok("udp") {
+            let u = std::net::UdpSocket::bind((bind.as_str(), port)).expect("bind udp");
+            let r = u.try_clone().expect("udp clone");
+            sh.lock().unwrap().udp = Some((u, None));
+            let mut buf = vec![0u8; 70000];
+            loop {
+                let Ok((n, from)) = r.recv_from(&mut buf) else { continue };
+                if let Some((_, peer)) = sh.lock().unwrap().udp.as_mut() {
+                    *peer = Some(from);
+                }
+                process(&sh, &buf[..n]);
+            }
+        }
+        let l = TcpListener::bind((bind.as_str(), port)).expect("bind");
         for s in l.incoming().flatten() {
             {
                 let mut g = sh.lock().unwrap();

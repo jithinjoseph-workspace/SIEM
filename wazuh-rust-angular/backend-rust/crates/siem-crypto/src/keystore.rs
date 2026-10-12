@@ -178,10 +178,12 @@ impl KeyStore {
                 continue;
             }
             let Some(sp) = raw.find(' ') else {
-                tracing::error!("(1110): Invalid key: '{}'.", raw.trim_end_matches('\n'));
+                // INVALID_KEY with the whole line (C prints the buffer, newline included)
+                tracing::error!("(1401): Error reading authentication key: '{raw}'.");
                 continue;
             };
-            let id = trunc(&raw[..sp]);
+            let id_raw = &raw[..sp];
+            let id = trunc(id_raw);
             let rest = &raw[sp + 1..];
             if let Ok(n) = id.parse::<i64>() {
                 if n > self.id_counter {
@@ -195,13 +197,15 @@ impl KeyStore {
                 continue;
             }
             let Some(sp) = rest.find(' ') else {
-                tracing::error!("(1110): Invalid key: '{}'.", raw.trim_end_matches('\n'));
+                // the buffer is already cut at the first space: C prints the id
+                tracing::error!("(1401): Error reading authentication key: '{id_raw}'.");
                 continue;
             };
             let name = trunc(&rest[..sp]);
             let rest = &rest[sp + 1..];
             let Some(sp) = rest.find(' ') else {
-                tracing::error!("(1110): Invalid key: '{}'.", raw.trim_end_matches('\n'));
+                // the buffer is already cut at the first space: C prints the id
+                tracing::error!("(1401): Error reading authentication key: '{id_raw}'.");
                 continue;
             };
             let ip = trunc(&rest[..sp]);

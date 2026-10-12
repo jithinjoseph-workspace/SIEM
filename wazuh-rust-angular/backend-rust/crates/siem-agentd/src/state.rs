@@ -102,9 +102,14 @@ pub fn write_state(ag: &Agentd) -> Result<(), ()> {
     ag.log.debug2("Updating state file.");
     let buffered = crate::buffer::get_buffer_length(ag);
     let st = ag.state.inner.lock().unwrap();
+    // Windows: "<name>.state" in the install directory, written in place
+    #[cfg(windows)]
+    let path_temp = format!("{ARGV0}.state");
+    #[cfg(unix)]
     let path = format!("{OS_PIDFILE}/{ARGV0}.state");
+    #[cfg(unix)]
     let path_temp = format!("{path}.temp");
-    let mut fp = match std::fs::File::create(&path_temp) {
+    let mut fp = match siem_fileop::crt::TextFile::create(&path_temp) {
         Ok(f) => f,
         Err(e) => {
             ag.log.error(fopen_error(&path_temp, e.raw_os_error().unwrap_or(0)));
@@ -151,6 +156,7 @@ pub fn write_state(ag: &Agentd) -> Result<(), ()> {
     }
     let _ = fp.write_all(out.as_bytes());
     drop(fp);
+    #[cfg(unix)]
     if let Err(e) = std::fs::rename(&path_temp, &path) {
         ag.log.error(format!("Renaming {path_temp} to {path}: {}", strerror(e.raw_os_error().unwrap_or(0))));
         if let Err(e) = std::fs::remove_file(&path_temp) {

@@ -46,5 +46,8 @@ members = [
     "crates/siem-router",
     "crates/siem-dbsync",
     "crates/siem-agentd",
+    "crates/siem-winagent",
+    "crates/siem-modulesd",
+    "crates/siem-sysinfo",
 ]
 

@@ -1,440 +1,402 @@
-//! Wazuh Logcollector Configuration Parser (src/logcollector/config.c, localfile-config.h)
-//!
-//! Parses `<localfile>` and `<socket>` blocks from `ossec.conf`.
-//! Supports 20+ log formats, multiline regex configurations, ignore/restrict regexes,
-//! out_format formatting, command execution, and query filtering.
+//! `logcollector/config.c`: `LogCollectorConfig` and the `getconfig`
+//! JSON (`getLocalfileConfig`, `getSocketConfig`,
+//! `getLogcollectorInternalOptions`).
 
-use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 
-/// Supported log formats matching `localfile-config.h`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LogFormat {
-    Syslog,
-    Json,
-    SnortFull,
-    SnortFast,
-    Nmapg,
-    MysqlLog,
-    MssqlLog,
-    PostgresqlLog,
-    DjbMultilog,
-    Command,
-    FullCommand,
-    Audit,
-    Journald,
-    Macos,
-    EventChannel,
-    EventLog,
-    MultiLine,
-    MultiLineRegex,
-    Ucs2Le,
-    Ucs2Be,
-    OssecAlert,
-}
+use siem_cjson::Json;
+use siem_config::localfile::{
+    multiline_attr_match_str, multiline_attr_replace_str, read_localfile, LogreaderConfig, EVENTLOG,
+    MACOS_LOG_TYPE_ACTIVITY, MACOS_LOG_TYPE_LOG, MACOS_LOG_TYPE_TRACE,
+};
+use siem_config::modules::*;
+use siem_config::socket::{read_socket, SocketMode};
+use siem_config::{read_config, ConfigContext, ConfigHandler, LogLevel, Platform, Result, Section};
+use siem_xml::{OsXml, XmlNode};
 
-impl Default for LogFormat {
-    fn default() -> Self {
-        LogFormat::Syslog
-    }
-}
+use crate::*;
 
-impl LogFormat {
-    pub fn from_str_name(s: &str) -> Option<Self> {
-        match s.to_ascii_lowercase().as_str() {
-            "syslog" => Some(LogFormat::Syslog),
-            "json" => Some(LogFormat::Json),
-            "snort-full" => Some(LogFormat::SnortFull),
-            "snort-fast" => Some(LogFormat::SnortFast),
-            "nmapg" => Some(LogFormat::Nmapg),
-            "mysql_log" | "mysql" => Some(LogFormat::MysqlLog),
-            "mssql_log" | "mssql" => Some(LogFormat::MssqlLog),
-            "postgresql_log" | "postgresql" => Some(LogFormat::PostgresqlLog),
-            "djb-multilog" => Some(LogFormat::DjbMultilog),
-            "command" => Some(LogFormat::Command),
-            "full_command" => Some(LogFormat::FullCommand),
-            "audit" => Some(LogFormat::Audit),
-            "journald" => Some(LogFormat::Journald),
-            "macos" => Some(LogFormat::Macos),
-            "eventchannel" => Some(LogFormat::EventChannel),
-            "eventlog" => Some(LogFormat::EventLog),
-            "multi-line" => Some(LogFormat::MultiLine),
-            "multi-line-regex" => Some(LogFormat::MultiLineRegex),
-            "ucs2-le" | "ucs2_le" => Some(LogFormat::Ucs2Le),
-            "ucs2-be" | "ucs2_be" => Some(LogFormat::Ucs2Be),
-            "ossecalert" => Some(LogFormat::OssecAlert),
-            _ => None,
-        }
-    }
+struct Handler<'a>(&'a mut LogreaderConfig);
 
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            LogFormat::Syslog => "syslog",
-            LogFormat::Json => "json",
-            LogFormat::SnortFull => "snort-full",
-            LogFormat::SnortFast => "snort-fast",
-            LogFormat::Nmapg => "nmapg",
-            LogFormat::MysqlLog => "mysql_log",
-            LogFormat::MssqlLog => "mssql_log",
-            LogFormat::PostgresqlLog => "postgresql_log",
-            LogFormat::DjbMultilog => "djb-multilog",
-            LogFormat::Command => "command",
-            LogFormat::FullCommand => "full_command",
-            LogFormat::Audit => "audit",
-            LogFormat::Journald => "journald",
-            LogFormat::Macos => "macos",
-            LogFormat::EventChannel => "eventchannel",
-            LogFormat::EventLog => "eventlog",
-            LogFormat::MultiLine => "multi-line",
-            LogFormat::MultiLineRegex => "multi-line-regex",
-            LogFormat::Ucs2Le => "ucs2-le",
-            LogFormat::Ucs2Be => "ucs2-be",
-            LogFormat::OssecAlert => "ossecalert",
+impl ConfigHandler for Handler<'_> {
+    fn section(
+        &mut self,
+        ctx: &mut ConfigContext,
+        _xml: &OsXml,
+        section: Section,
+        _node: &XmlNode,
+        children: Option<&[XmlNode]>,
+    ) -> Result<()> {
+        let ch = children.unwrap_or(&[]);
+        match section {
+            Section::Localfile => read_localfile(ctx, ch, self.0),
+            Section::LogcollectorSocket => read_socket(ch, &mut self.0.socket_list),
+            _ => Ok(()),
         }
     }
 }
 
-/// End-of-line replacement strategy for multiline logs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MultilineReplaceType {
-    NoReplace,
-    None,
-    Wspace,
-    Tab,
-}
-
-impl Default for MultilineReplaceType {
-    fn default() -> Self {
-        MultilineReplaceType::NoReplace
-    }
-}
-
-/// Multiline matching type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MultilineMatchType {
-    Start,
-    All,
-    End,
-}
-
-impl Default for MultilineMatchType {
-    fn default() -> Self {
-        MultilineMatchType::Start
-    }
-}
-
-/// Configuration for multiline-regex format
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MultilineConfig {
-    pub regex: String,
-    pub match_type: MultilineMatchType,
-    pub replace_type: MultilineReplaceType,
-    pub timeout: u32,
-}
-
-impl Default for MultilineConfig {
-    fn default() -> Self {
-        Self {
-            regex: String::new(),
-            match_type: MultilineMatchType::Start,
-            replace_type: MultilineReplaceType::NoReplace,
-            timeout: 5,
+fn flush(lc: &Lc, ctx: &mut ConfigContext) {
+    for (lv, m) in ctx.log.drain(..) {
+        match lv {
+            LogLevel::Debug1 => lc.log.debug1(m),
+            LogLevel::Debug2 => lc.log.debug2(m),
+            LogLevel::Info => lc.log.info(m),
+            LogLevel::Warn => lc.log.warn(m),
+            LogLevel::Error => lc.log.error(m),
         }
     }
 }
 
-/// Out-format specification
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OutFormat {
-    pub target: Option<String>,
-    pub format: String,
-}
-
-/// Individual `<localfile>` configuration entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LocalFileConfig {
-    pub location: Option<String>,
-    pub log_format: LogFormat,
-    pub command: Option<String>,
-    pub alias: Option<String>,
-    pub frequency: Option<u32>,
-    pub query: Option<String>,
-    pub query_type: Option<String>,
-    pub query_level: Option<String>,
-    pub reconnect_time: u32,
-    pub only_future_events: bool,
-    pub ignore: Vec<String>,
-    pub restrict: Vec<String>,
-    pub target: Vec<String>,
-    pub out_format: Vec<OutFormat>,
-    pub multiline: Option<MultilineConfig>,
-    pub age: Option<String>,
-    pub exclude: Option<String>,
-}
-
-impl Default for LocalFileConfig {
-    fn default() -> Self {
-        Self {
-            location: None,
-            log_format: LogFormat::Syslog,
-            command: None,
-            alias: None,
-            frequency: None,
-            query: None,
-            query_type: None,
-            query_level: None,
-            reconnect_time: 5,
-            only_future_events: false,
-            ignore: Vec::new(),
-            restrict: Vec::new(),
-            target: Vec::new(),
-            out_format: Vec::new(),
-            multiline: None,
-            age: None,
-            exclude: None,
+/// `os_read_agent_name` / `os_read_agent_profile` / `getuname` for `<agent_config>`.
+fn agent_identity() -> siem_config::AgentIdentity {
+    let data = siem_fileop::crt::read_text(AGENT_INFO_FILE).ok();
+    let lines: Vec<String> = data
+        .as_deref()
+        .map(|d| d.split_inclusive(|&c| c == b'\n').map(|l| String::from_utf8_lossy(l).into_owned()).collect())
+        .unwrap_or_default();
+    let name = lines.first().map(|l| {
+        let mut s = l.clone();
+        while s.len() > 1 && s.ends_with('\n') {
+            s.pop();
         }
+        s
+    });
+    let profile = lines.get(3).map(|l| l.trim_end_matches(['\r', '\n']).to_string());
+    siem_config::AgentIdentity { name, uname: Some(siem_fileop::version_op::getuname().to_string()), profile }
+}
+
+/// `LogCollectorConfig`: -1 / `OS_SIZELIM` (-3) on errors, 1 on success.
+pub fn log_collector_config(lc: &Lc, cfgfile: &str) -> i32 {
+    let i = &lc.ints;
+    let set = |a: &std::sync::atomic::AtomicI32, v: i32| a.store(v, Ordering::SeqCst);
+    let accept_remote = lc.define_int("logcollector", "remote_commands", 0, 1);
+    set(&i.accept_remote, accept_remote);
+    set(&i.loop_timeout, lc.define_int("logcollector", "loop_timeout", 1, 120));
+    set(&i.open_file_attempts, lc.define_int("logcollector", "open_attempts", 0, 998));
+    set(&i.vcheck_files, lc.define_int("logcollector", "vcheck_files", 0, 1024));
+    set(&i.maximum_lines, lc.define_int("logcollector", "max_lines", 0, 1000000));
+    set(&i.maximum_files, lc.define_int("logcollector", "max_files", 1, 100000));
+    set(&i.sock_fail_time, lc.define_int("logcollector", "sock_fail_time", 1, 3600));
+    set(&i.sample_log_length, lc.define_int("logcollector", "sample_log_length", 1, 4096));
+    set(&i.force_reload, lc.define_int("logcollector", "force_reload", 0, 1));
+    set(&i.reload_interval, lc.define_int("logcollector", "reload_interval", 1, 86400));
+    set(&i.reload_delay, lc.define_int("logcollector", "reload_delay", 0, 30000));
+    set(&i.free_excluded_files_interval, lc.define_int("logcollector", "exclude_files_interval", 1, 172800));
+    set(&i.state_interval, lc.define_int("logcollector", "state_interval", 0, 3600));
+
+    lc.total_files.store(0, Ordering::SeqCst);
+    lc.current_files.store(0, Ordering::SeqCst);
+
+    if get(&i.force_reload) != 0 && get(&i.reload_interval) < get(&i.vcheck_files) {
+        lc.log.warn(format!(
+            "Reload interval ({}) must be greater or equal than the checking interval ({}).",
+            get(&i.reload_interval),
+            get(&i.vcheck_files)
+        ));
     }
-}
+    #[cfg(unix)]
+    set(&i.nofile, lc.define_int("logcollector", "rlimit_nofile", 1024, 1048576));
 
-/// Forwarder socket configuration
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SocketForwarderConfig {
-    pub name: String,
-    pub location: String,
-    pub mode: String,
-    pub prefix: Option<String>,
-}
-
-/// Global LogCollector Configuration
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LogCollectorConfig {
-    pub localfiles: Vec<LocalFileConfig>,
-    pub sockets: Vec<SocketForwarderConfig>,
-    pub loop_timeout: u32,
-    pub open_file_attempts: u32,
-    pub vcheck_files: u32,
-    pub maximum_lines: u32,
-    pub force_reload: bool,
-    pub reload_interval: u32,
-    pub reload_delay: u32,
-    pub free_excluded_files_interval: u32,
-    pub state_interval: u32,
-    pub sample_log_length: usize,
-    pub accept_remote: bool,
-}
-
-impl Default for LogCollectorConfig {
-    fn default() -> Self {
-        Self {
-            localfiles: Vec::new(),
-            sockets: Vec::new(),
-            loop_timeout: 2,
-            open_file_attempts: 2,
-            vcheck_files: 64,
-            maximum_lines: 10000,
-            force_reload: false,
-            reload_interval: 30,
-            reload_delay: 2,
-            free_excluded_files_interval: 60,
-            state_interval: 10,
-            sample_log_length: 1024,
-            accept_remote: true,
-        }
+    let ml = get(&i.maximum_lines);
+    if ml > 0 && ml < 100 {
+        lc.log.error("Definition 'logcollector.max_lines' must be 0 or 100..1000000.");
+        return -1;
     }
-}
-
-impl LogCollectorConfig {
-    /// Parse `<localfile>` and `<socket>` blocks from XML configuration
-    pub fn parse_xml(xml: &str) -> Result<Self, String> {
-        let os_xml = siem_shared::xml::OsXml::parse_str(xml)?;
-        let mut config = LogCollectorConfig::default();
-
-        // 1. Parse localfiles
-        let lf_nodes = os_xml.get_elements_by_path(&["ossec_config", "localfile"]);
-        for elem in lf_nodes {
-            let mut lf = LocalFileConfig::default();
-
-            if let Some(loc) = elem.get_child("location") {
-                lf.location = Some(loc.content.clone());
-            }
-            if let Some(fmt) = elem.get_child("log_format") {
-                if let Some(parsed_fmt) = LogFormat::from_str_name(&fmt.content) {
-                    lf.log_format = parsed_fmt;
-                }
-            }
-            if let Some(cmd) = elem.get_child("command") {
-                lf.command = Some(cmd.content.clone());
-            }
-            if let Some(alias) = elem.get_child("alias") {
-                lf.alias = Some(alias.content.clone());
-            }
-            if let Some(freq) = elem.get_child("frequency") {
-                if let Ok(val) = freq.content.parse::<u32>() {
-                    lf.frequency = Some(val);
-                }
-            }
-            if let Some(q) = elem.get_child("query") {
-                lf.query = Some(q.content.clone());
-            }
-            if let Some(rec) = elem.get_child("reconnect_time") {
-                if let Ok(val) = rec.content.parse::<u32>() {
-                    lf.reconnect_time = val;
-                }
-            }
-            if let Some(ofe) = elem.get_child("only-future-events") {
-                lf.only_future_events = ofe.content.eq_ignore_ascii_case("yes") || ofe.content.eq_ignore_ascii_case("true");
-            }
-            if let Some(ign) = elem.get_child("ignore") {
-                lf.ignore.push(ign.content.clone());
-            }
-            if let Some(rest) = elem.get_child("restrict") {
-                lf.restrict.push(rest.content.clone());
-            }
-            if let Some(tgt) = elem.get_child("target") {
-                lf.target.push(tgt.content.clone());
-            }
-            if let Some(excl) = elem.get_child("exclude") {
-                lf.exclude = Some(excl.content.clone());
-            }
-            if let Some(age) = elem.get_child("age") {
-                lf.age = Some(age.content.clone());
-            }
-
-            // Multiline regex
-            if let Some(ml_elem) = elem.get_child("multiline_regex") {
-                let mut ml = MultilineConfig::default();
-                ml.regex = ml_elem.content.clone();
-
-                if let Some(attr) = ml_elem.attributes.get("match") {
-                    match attr.to_ascii_lowercase().as_str() {
-                        "all" => ml.match_type = MultilineMatchType::All,
-                        "end" => ml.match_type = MultilineMatchType::End,
-                        _ => ml.match_type = MultilineMatchType::Start,
-                    }
-                }
-                if let Some(attr) = ml_elem.attributes.get("replace") {
-                    match attr.to_ascii_lowercase().as_str() {
-                        "none" => ml.replace_type = MultilineReplaceType::None,
-                        "wspace" => ml.replace_type = MultilineReplaceType::Wspace,
-                        "tab" => ml.replace_type = MultilineReplaceType::Tab,
-                        _ => ml.replace_type = MultilineReplaceType::NoReplace,
-                    }
-                }
-                if let Some(attr) = ml_elem.attributes.get("timeout") {
-                    if let Ok(val) = attr.parse::<u32>() {
-                        ml.timeout = val;
-                    }
-                }
-
-                lf.multiline = Some(ml);
-            }
-
-            // Out format
-            if let Some(out_elem) = elem.get_child("out_format") {
-                let target = out_elem.attributes.get("target").cloned();
-                lf.out_format.push(OutFormat {
-                    target,
-                    format: out_elem.content.clone(),
-                });
-            }
-
-            config.localfiles.push(lf);
-        }
-
-        // 2. Parse sockets
-        let sock_nodes = os_xml.get_elements_by_path(&["ossec_config", "socket"]);
-        for elem in sock_nodes {
-            let name = elem.get_child("name").map(|e| e.content.clone()).unwrap_or_default();
-            let location = elem.get_child("location").map(|e| e.content.clone()).unwrap_or_default();
-            let mode = elem.get_child("mode").map(|e| e.content.clone()).unwrap_or_else(|| "udp".to_string());
-            let prefix = elem.get_child("prefix").map(|e| e.content.clone());
-
-            config.sockets.push(SocketForwarderConfig {
-                name,
-                location,
-                mode,
-                prefix,
-            });
-        }
-
-        Ok(config)
+    #[cfg(unix)]
+    if get(&i.maximum_files) > get(&i.nofile) - 100 {
+        lc.log.error("Definition 'logcollector.max_files' must be lower than ('logcollector.rlimit_nofile' - 100).");
+        return -3;
+    }
+    // Limit files on Windows as file descriptors are shared
+    #[cfg(windows)]
+    if get(&i.maximum_files) > WIN32_MAX_FILES {
+        set(&i.maximum_files, WIN32_MAX_FILES);
+        lc.log.debug1(format!(
+            "The maximum number of files to monitor cannot exceed {WIN32_MAX_FILES} in Windows, so it will be limited."
+        ));
     }
 
-    /// Read configuration from file
-    pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        Self::parse_xml(&content)
+    let mut cfg = LogreaderConfig {
+        agent_cfg: false,
+        accept_remote: accept_remote != 0,
+        maximum_files: get(&i.maximum_files),
+        ..Default::default()
+    };
+    let mut ctx = ConfigContext::new(Platform::AGENT);
+    let r = read_config(&mut ctx, CLOCALFILE | CLGCSOCKET, cfgfile, None, &mut Handler(&mut cfg));
+    flush(lc, &mut ctx);
+    if r.is_err() {
+        return -1;
     }
 
-    /// JSON generator matching `getLocalfileConfig(void)` in `src/logcollector/config.c`
-    pub fn get_localfile_config_json(&self) -> serde_json::Value {
-        let files: Vec<serde_json::Value> = self.localfiles.iter().map(|lf| {
-            let mut obj = serde_json::Map::new();
-            if let Some(ref loc) = lf.location {
-                obj.insert("file".to_string(), serde_json::Value::String(loc.clone()));
-            }
-            obj.insert("logformat".to_string(), serde_json::Value::String(lf.log_format.as_str_name().to_string()));
-            if let Some(ref cmd) = lf.command {
-                obj.insert("command".to_string(), serde_json::Value::String(cmd.clone()));
-            }
-            if let Some(ref alias) = lf.alias {
-                obj.insert("alias".to_string(), serde_json::Value::String(alias.clone()));
-            }
-            if let Some(freq) = lf.frequency {
-                obj.insert("frequency".to_string(), serde_json::json!(freq));
-            }
-            if let Some(ref q) = lf.query {
-                obj.insert("query".to_string(), serde_json::Value::String(q.clone()));
-            }
-            if !lf.ignore.is_empty() {
-                obj.insert("ignore".to_string(), serde_json::json!(lf.ignore));
-            }
-            if !lf.restrict.is_empty() {
-                obj.insert("restrict".to_string(), serde_json::json!(lf.restrict));
-            }
-            if !lf.target.is_empty() {
-                obj.insert("target".to_string(), serde_json::json!(lf.target));
-            }
-            serde_json::Value::Object(obj)
-        }).collect();
+    // CLIENT: the shared agent.conf
+    cfg.agent_cfg = true;
+    let mut ctx = ConfigContext::new(Platform::AGENT);
+    ctx.agent = agent_identity();
+    let remote = Some(lc.define_int("agent", "remote_conf", 0, 1) != 0);
+    let _ = read_config(&mut ctx, CAGENT_CONFIG | CLOCALFILE | CLGCSOCKET, AGENTCONFIG, remote, &mut Handler(&mut cfg));
+    flush(lc, &mut ctx);
+    cfg.agent_cfg = false;
 
-        serde_json::json!({
-            "localfile": files
+    lc.current_files.store(cfg.current_files, Ordering::SeqCst);
+    lc.total_files.store(cfg.total_files, Ordering::SeqCst);
+
+    // logff ends at the first entry without log_format (update_current)
+    let mut files = lc.files.write().unwrap();
+    files.logff = cfg.config.into_iter().map(|c| Mutex::new(Reader::new(c))).collect();
+    files.globs = cfg
+        .globs
+        .into_iter()
+        .map(|g| Glob {
+            gpath: g.gpath,
+            exclude_path: g.exclude_path,
+            num_files: g.num_files,
+            gfiles: g.gfiles.into_iter().map(|c| Mutex::new(Reader::new(c))).collect(),
         })
+        .collect();
+    *lc.logsk.write().unwrap() = cfg
+        .socket_list
+        .into_iter()
+        .map(|s| Arc::new(SockFwd::new(&s.name, &s.location, s.mode, s.prefix)))
+        .collect();
+    1
+}
+
+fn s(v: &str) -> Json {
+    Json::string(v)
+}
+
+/// `_getLocalfilesListJSON`
+fn localfile_json(r: &Reader, gpath: Option<&str>) -> Json {
+    let c = &r.c;
+    let mut f = Json::object();
+    if let Some(g) = gpath {
+        f.add("file", s(g));
+    } else if let Some(x) = &c.ffile {
+        f.add("file", s(x));
+    } else if let Some(x) = &c.file {
+        f.add("file", s(x));
     }
-
-    /// JSON generator matching `getSocketConfig(void)` in `src/logcollector/config.c`
-    pub fn get_socket_config_json(&self) -> serde_json::Value {
-        let socks: Vec<serde_json::Value> = self.sockets.iter().map(|s| {
-            serde_json::json!({
-                "name": s.name,
-                "location": s.location,
-                "mode": s.mode,
-                "prefix": s.prefix,
-            })
-        }).collect();
-
-        serde_json::json!({
-            "socket": socks
-        })
+    if let Some(x) = &c.channel_str {
+        f.add("channel", s(x));
     }
-
-    /// JSON generator matching `getLogcollectorInternalOptions(void)` in `src/logcollector/config.c`
-    pub fn get_internal_options_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "logcollector": {
-                "loop_timeout": self.loop_timeout,
-                "open_file_attempts": self.open_file_attempts,
-                "vcheck_files": self.vcheck_files,
-                "max_lines": self.maximum_lines,
-                "reload_interval": self.reload_interval,
-                "reload_delay": self.reload_delay,
-                "state_interval": self.state_interval,
-                "sample_log_length": self.sample_log_length
+    if let Some(x) = &c.logformat {
+        f.add("logformat", s(x));
+    }
+    if let Some(x) = &c.command {
+        f.add("command", s(x));
+    }
+    if let Some(x) = &c.djb_program_name {
+        f.add("djb_program_name", s(x));
+    }
+    if let Some(x) = &c.alias {
+        f.add("alias", s(x));
+    }
+    if let Some(q) = &c.query {
+        let mut o = Json::object();
+        if !q.is_empty() {
+            o.add("value", s(q));
+        }
+        if let Some(l) = &c.query_level {
+            o.add("level", s(l));
+        }
+        if c.query_type > 0 {
+            let mut t = Json::array();
+            if c.query_type & MACOS_LOG_TYPE_LOG != 0 {
+                t.push(s("log"));
             }
-        })
+            if c.query_type & MACOS_LOG_TYPE_ACTIVITY != 0 {
+                t.push(s("activity"));
+            }
+            if c.query_type & MACOS_LOG_TYPE_TRACE != 0 {
+                t.push(s("trace"));
+            }
+            o.add("type", t);
+        }
+        f.add("query", o);
     }
+    if c.journal_log.is_none() {
+        f.add("ignore_binaries", s(if c.filter_binary != 0 { "yes" } else { "no" }));
+    }
+    if let Some(x) = &c.age_str {
+        f.add("age", s(x));
+    }
+    if let Some(x) = &c.exclude {
+        f.add("exclude", s(x));
+    }
+    if let Some(fmt) = &c.logformat {
+        if fmt != EVENTLOG && fmt != "command" && fmt != "full_command" {
+            if c.future == 1 {
+                f.add("only-future-events", s("yes"));
+            } else {
+                f.add("only-future-events", s("no"));
+                let mut off = c.diff_max_size.to_string();
+                off.truncate(10);
+                f.add("max-size", s(&off));
+            }
+        }
+    }
+    if let Some(t) = c.target.as_ref().filter(|t| !t.is_empty()) {
+        let mut a = Json::array();
+        for x in t.iter() {
+            a.push(s(x));
+        }
+        f.add("target", a);
+    }
+    if let Some(of) = c.out_format.as_ref().filter(|o| !o.is_empty()) {
+        let mut a = Json::array();
+        for o in of.iter() {
+            let mut it = Json::object();
+            it.add("target", s(o.target.as_deref().unwrap_or("all")));
+            it.add("format", s(&o.format));
+            a.push(it);
+        }
+        f.add("out_format", a);
+    }
+    if r.duplicated != 0 {
+        f.add("duplicate", Json::number(r.duplicated as f64));
+    }
+    if let Some(l) = c.labels.as_ref().filter(|l| !l.is_empty()) {
+        let mut o = Json::object();
+        for x in l.iter() {
+            o.add(&x.key, s(&x.value));
+        }
+        f.add("labels", o);
+    }
+    let is_cmd = matches!(c.logformat.as_deref(), Some("command") | Some("full_command"));
+    if c.ign != 0 && is_cmd {
+        f.add("frequency", Json::number(c.ign as f64));
+    }
+    if c.reconnect_time != 0 && c.logformat.as_deref() == Some("eventchannel") {
+        f.add("reconnect_time", Json::number(c.reconnect_time as f64));
+    }
+    if let Some(m) = &c.multiline {
+        let mut o = Json::object();
+        o.add("match", s(multiline_attr_match_str(m.match_type)));
+        o.add("replace", s(multiline_attr_replace_str(m.replace_type)));
+        o.add("regex", s(m.regex.pattern().unwrap_or("")));
+        o.add("timeout", Json::number(m.timeout as f64));
+        f.add("multiline_regex", o);
+    }
+    if let Some(jl) = &c.journal_log {
+        if jl.filters.is_some() {
+            if let Some(js) = journal_filters_json(jl) {
+                f.add("filters", js);
+            }
+            f.add("filters_disabled", Json::bool(jl.disable_filters));
+        }
+    }
+    for (name, list) in [("ignore", &c.regex_ignore), ("restrict", &c.regex_restrict)] {
+        if let Some(l) = list {
+            if !l.is_empty() {
+                let mut a = Json::array();
+                for e in l.iter() {
+                    let mut o = Json::object();
+                    o.add("value", s(e.pattern().unwrap_or("")));
+                    o.add("type", s(e.type_str().unwrap_or("")));
+                    a.push(o);
+                }
+                f.add(name, a);
+            }
+        }
+    }
+    f
+}
+
+/// `w_journal_filter_list_as_json`
+fn journal_filters_json(jl: &siem_config::localfile::JournalLogConfig) -> Option<Json> {
+    let mut arr = Json::array();
+    for flt in jl.active_filters() {
+        if flt.units.is_empty() {
+            return None;
+        }
+        let mut fa = Json::array();
+        for u in &flt.units {
+            let mut o = Json::object();
+            o.add("field", s(&u.field));
+            o.add("expression", s(u.exp.pattern().unwrap_or("")));
+            o.add("ignore_if_missing", Json::bool(u.ignore_if_missing));
+            fa.push(o);
+        }
+        arr.push(fa);
+    }
+    Some(arr)
+}
+
+/// `getLocalfileConfig`
+pub fn get_localfile_config(lc: &Lc) -> Option<Json> {
+    let files = lc.files.read().unwrap();
+    let mut arr = Json::array();
+    // for (i = 0; logff[i].target; i++)
+    for m in &files.logff {
+        let r = m.lock().unwrap_or_else(|e| e.into_inner());
+        if r.c.target.is_none() {
+            break;
+        }
+        arr.push(localfile_json(&r, None));
+    }
+    for g in &files.globs {
+        if let Some(m) = g.gfiles.first() {
+            let r = m.lock().unwrap_or_else(|e| e.into_inner());
+            arr.push(localfile_json(&r, Some(&g.gpath)));
+        }
+    }
+    let mut root = Json::object();
+    if !arr.is_empty() {
+        root.add("localfile", arr);
+    }
+    Some(root)
+}
+
+/// `getSocketConfig`
+pub fn get_socket_config(lc: &Lc) -> Option<Json> {
+    let sk = lc.logsk.read().unwrap();
+    let mut arr = Json::array();
+    for x in sk.iter() {
+        let mut o = Json::object();
+        o.add("name", s(&x.name));
+        o.add("location", s(&x.location));
+        o.add("mode", s(if x.mode == SocketMode::Udp { "udp" } else { "tcp" }));
+        if let Some(p) = &x.prefix {
+            o.add("prefix", s(p));
+        }
+        arr.push(o);
+    }
+    let mut root = Json::object();
+    if !arr.is_empty() {
+        root.add("socket", arr);
+    }
+    Some(root)
+}
+
+/// `getLogcollectorInternalOptions`
+pub fn get_internal_options(lc: &Lc) -> Json {
+    let i = &lc.ints;
+    let n = |v: &std::sync::atomic::AtomicI32| Json::number(get(v) as f64);
+    let mut l = Json::object();
+    l.add("remote_commands", n(&i.accept_remote));
+    l.add("loop_timeout", n(&i.loop_timeout));
+    l.add("open_attempts", n(&i.open_file_attempts));
+    l.add("vcheck_files", n(&i.vcheck_files));
+    l.add("max_lines", n(&i.maximum_lines));
+    l.add("max_files", n(&i.maximum_files));
+    l.add("sock_fail_time", n(&i.sock_fail_time));
+    l.add("debug", n(&i.lc_debug_level));
+    l.add("sample_log_length", n(&i.sample_log_length));
+    l.add("queue_size", n(&i.output_queue_size));
+    l.add("input_threads", n(&i.n_input_threads));
+    l.add("force_reload", n(&i.force_reload));
+    l.add("reload_interval", n(&i.reload_interval));
+    l.add("reload_delay", n(&i.reload_delay));
+    l.add("exclude_files_interval", n(&i.free_excluded_files_interval));
+    l.add("state_interval", n(&i.state_interval));
+    #[cfg(unix)]
+    l.add("rlimit_nofile", n(&i.nofile));
+    let mut internals = Json::object();
+    internals.add("logcollector", l);
+    let mut root = Json::object();
+    root.add("internal", internals);
+    root
 }

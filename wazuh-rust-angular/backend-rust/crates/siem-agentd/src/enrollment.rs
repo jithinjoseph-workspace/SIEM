@@ -7,7 +7,10 @@
 //! certificate checks behave as in the C agent.
 
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
+#[cfg(windows)]
+use std::os::windows::io::FromRawSocket;
 use std::sync::Arc;
 
 use openssl::error::ErrorStack;
@@ -251,7 +254,10 @@ fn connect(ag: &Agentd, cfg: &EnrollmentConfig, server_address: &str, iface: u32
         ag.log.warn(format!("(1339) Cannot set timeout: {} ({e}).", strerror(e)));
     }
     // SAFETY: `sock` is a connected socket we own; the stream closes it.
+    #[cfg(unix)]
     let stream = unsafe { std::net::TcpStream::from_raw_fd(sock) };
+    #[cfg(windows)]
+    let stream = unsafe { std::net::TcpStream::from_raw_socket(sock as u32 as u64) };
     let ssl = Ssl::new(&ctx).ok()?;
     let tls = match ssl.connect(stream) {
         Ok(s) => s,
@@ -293,13 +299,11 @@ fn extract_agent_name(ag: &Agentd, cfg: &EnrollmentConfig) -> Option<String> {
     let name = match &cfg.target.agent_name {
         Some(n) => n.clone(),
         None => {
-            let mut buf = vec![0u8; 513];
-            // SAFETY: gethostname into a 512-byte buffer.
-            if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), 511) } != 0 {
+            let Some(buf) = os_net::gethostname(511) else {
                 ag.log.error("Unable to extract hostname. Custom agent name not set.");
                 return None;
-            }
-            convert_to_valid_agent_name(&String::from_utf8_lossy(crate::keys::cstr(&buf)))
+            };
+            convert_to_valid_agent_name(&String::from_utf8_lossy(&buf))
         }
     };
     if !cfg.allow_localhost && name == "localhost" {
@@ -393,7 +397,22 @@ fn send_message(ag: &Agentd, cfg: &EnrollmentConfig, tls: &mut SslStream<std::ne
     0
 }
 
+/// `w_enrollment_store_key_entry` (Windows): `wfopen(KEYS_FILE, "w")`.
+#[cfg(windows)]
+fn store_key_entry(ag: &Agentd, keys: &str) -> i32 {
+    let mut f = match siem_fileop::crt::TextFile::create(KEYS_FILE) {
+        Ok(f) => f,
+        Err(e) => {
+            ag.log.error(fopen_error(KEYS_FILE, e.raw_os_error().unwrap_or(0)));
+            return -1;
+        }
+    };
+    let _ = writeln!(f, "{keys}");
+    0
+}
+
 /// `w_enrollment_store_key_entry`
+#[cfg(unix)]
 fn store_key_entry(ag: &Agentd, keys: &str) -> i32 {
     use std::os::unix::fs::PermissionsExt;
     // TempFile(&file, KEYS_FILE, 0)

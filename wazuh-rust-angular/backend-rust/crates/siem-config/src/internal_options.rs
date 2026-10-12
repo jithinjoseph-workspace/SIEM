@@ -23,6 +23,13 @@ impl InternalOptions {
         }
     }
 
+    /// `OSSEC_LDEFINES` / `OSSEC_DEFINES` of the Windows agent: in its
+    /// installation directory.
+    pub fn windows_agent(dir: impl AsRef<Path>) -> Self {
+        let d = dir.as_ref();
+        Self { local: d.join("local_internal_options.conf"), defaults: d.join("internal_options.conf") }
+    }
+
     /// `_read_file`. `Ok(None)` when the option is absent; `Err` only when a
     /// non-local file cannot be opened (Wazuh logs FOPEN_ERROR and treats it
     /// as absent, so that case is also `Ok(None)` with a log line).
@@ -36,6 +43,9 @@ impl InternalOptions {
                 return None;
             }
         };
+        // wfopen(file, "r"): a text-mode stream on Windows
+        #[cfg(windows)]
+        let data = siem_fileop::crt::text_in(&data);
         // fgets(buf, 1024): long lines are split into 1023-byte chunks.
         for raw in split_fgets(&data, 1024) {
             let line = String::from_utf8_lossy(raw);

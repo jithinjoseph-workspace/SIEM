@@ -233,6 +233,8 @@ struct SigCtx {
 }
 
 static SIG: OnceLock<SigCtx> = OnceLock::new();
+/// The handler of `StartSIG2` (run before the exit of the signal handler).
+static SIG_HOOK: OnceLock<fn()> = OnceLock::new();
 
 /// `HandleExit` (the `atexit` hook): remove the PID and state files.
 pub fn handle_exit() {
@@ -244,6 +246,9 @@ pub fn handle_exit() {
 
 #[cfg(unix)]
 extern "C" fn handle_sig(sig: libc::c_int) {
+    if let Some(h) = SIG_HOOK.get() {
+        h();
+    }
     if let Some(c) = SIG.get() {
         // SAFETY: strsignal returns a pointer to a string (or NULL).
         let name = unsafe {
@@ -274,6 +279,12 @@ pub fn start_sig(name: &str, log: std::sync::Arc<WLog>) {
             libc::signal(s, h);
         }
     }
+}
+
+/// `StartSIG2`: `StartSIG` with `hook` (e.g. `ExecdShutdown`) run first.
+pub fn start_sig2(name: &str, log: std::sync::Arc<WLog>, hook: fn()) {
+    let _ = SIG_HOOK.set(hook);
+    start_sig(name, log);
 }
 
 #[cfg(test)]

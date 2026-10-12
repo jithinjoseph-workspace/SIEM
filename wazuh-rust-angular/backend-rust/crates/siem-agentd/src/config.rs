@@ -86,7 +86,7 @@ pub fn read(
     labels: &mut Vec<Label>,
     pu: &mut bool,
 ) -> std::result::Result<(), ()> {
-    let mut ctx = ConfigContext::new(Platform::LINUX_AGENT);
+    let mut ctx = ConfigContext::new(Platform::AGENT);
     if mods & CAGENT_CONFIG != 0 {
         ctx.agent = agent_identity();
     }
@@ -291,4 +291,31 @@ pub fn get_agent_internal_options(ag: &Agentd) -> Json {
     let mut root = Json::object();
     root.add("internal", internals);
     root
+}
+
+/// `Validate_IPv6_Link_Local_Interface`
+pub fn validate_ipv6_link_local_interface(ag: &Agentd, servers: &[siem_config::client::AgentServer]) -> bool {
+    let mut ret = false;
+    for s in servers {
+        let ip = match s.rip.find('/') {
+            Some(p) => Some(s.rip[p + 1..].to_string()),
+            None => siem_ipc::os_net::get_host(&s.rip, 3),
+        };
+        let Some(ip) = ip.filter(|i| !i.is_empty()) else {
+            ag.log.debug1(format!("Could not resolve hostname '{}'", s.rip.strip_suffix('/').unwrap_or(&s.rip)));
+            ret = true;
+            continue;
+        };
+        if ip.contains(':') {
+            let link_local = ip.len() >= 20 && &ip.as_bytes()[..20] == siem_ipc::os_net::IPV6_LINK_LOCAL_PREFIX.as_bytes();
+            if !link_local || s.network_interface > 0 {
+                ret = true;
+                continue;
+            }
+            ag.log.warn(format!("No network interface index provided to use {ip} link-local IPv6 address."));
+        } else {
+            ret = true;
+        }
+    }
+    ret
 }

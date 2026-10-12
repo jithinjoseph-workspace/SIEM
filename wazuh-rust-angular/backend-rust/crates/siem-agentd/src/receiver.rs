@@ -5,11 +5,12 @@
 //! `etc/shared`, with `merged.mg` unmerged and the remote configuration
 //! checked.
 
-use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::Ordering;
 
-use siem_ipc::mq_op::{os_delwait, os_setwait, start_mq, WRITE};
+use siem_ipc::mq_op::{os_delwait, os_setwait};
+#[cfg(unix)]
+use siem_ipc::mq_op::{start_mq, WRITE};
 use siem_ipc::os_net;
 
 use crate::sendmsg::send_msg;
@@ -20,15 +21,32 @@ use crate::*;
 /// The statics of receiver.c.
 #[derive(Default)]
 pub struct RecvState {
-    fp: Option<File>,
+    fp: Option<siem_fileop::crt::TextFile>,
     file_sum: String,
     file: String,
     undefined_msg_logged: bool,
 }
 
-/// `ag_send_syscheck` (shared/syscheck_op.c)
+/// `ag_send_syscheck` (Windows): `syscom_dispatch(message, &response)`.
+#[cfg(windows)]
 pub fn ag_send_syscheck(ag: &Agentd, message: &[u8]) {
-    let sock = os_net::connect_unix_domain(SYS_LOCAL_SOCK, libc::SOCK_STREAM, os_net::OS_MAXSTR);
+    if let Some(d) = ag.hooks.get().and_then(|h| h.find(b"syscheck")) {
+        d(message);
+    }
+}
+
+/// `wmcom_send` (Windows): `wmcom_sync(message)`.
+#[cfg(windows)]
+pub fn wmcom_send(ag: &Agentd, message: &[u8]) {
+    if let Some(f) = ag.hooks.get().and_then(|h| h.wmcom_sync.as_ref()) {
+        f(message);
+    }
+}
+
+/// `ag_send_syscheck` (shared/syscheck_op.c)
+#[cfg(unix)]
+pub fn ag_send_syscheck(ag: &Agentd, message: &[u8]) {
+    let sock = os_net::connect_unix_domain(SYS_LOCAL_SOCK, os_net::SOCK_STREAM, os_net::OS_MAXSTR);
     if sock < 0 {
         let e = errno();
         ag.log.warn(format!("dbsync: cannot connect to syscheck: {} ({e})", strerror(e)));
@@ -38,16 +56,16 @@ pub fn ag_send_syscheck(ag: &Agentd, message: &[u8]) {
         let e = errno();
         ag.log.warn(format!("Cannot send message to syscheck: {} ({e})", strerror(e)));
     }
-    // SAFETY: closing our own socket.
-    unsafe { libc::close(sock) };
+    os_net::close_fd(sock);
 }
 
 /// `wmcom_send` (wazuh_modules/wmcom.c)
+#[cfg(unix)]
 pub fn wmcom_send(ag: &Agentd, message: &[u8]) {
-    let sock = os_net::connect_unix_domain(WM_LOCAL_SOCK, libc::SOCK_STREAM, os_net::OS_MAXSTR);
+    let sock = os_net::connect_unix_domain(WM_LOCAL_SOCK, os_net::SOCK_STREAM, os_net::OS_MAXSTR);
     if sock < 0 {
         let e = errno();
-        if e == libc::ECONNREFUSED {
+        if e == os_net::ECONNREFUSED {
             ag.log.debug1("Target wmodules refused connection. The component might be disabled");
         } else {
             ag.log.debug1(format!("Could not connect to socket wmodules: {} ({e}).", strerror(e)));
@@ -55,22 +73,32 @@ pub fn wmcom_send(ag: &Agentd, message: &[u8]) {
         return;
     }
     os_net::send_secure_tcp(sock, message);
-    // SAFETY: closing our own socket.
-    unsafe { libc::close(sock) };
+    os_net::close_fd(sock);
 }
 
+#[cfg(unix)]
 fn sca_unavailable(ag: &Agentd) {
     ag.log.debug1("Unable to connect to the Security configuration assessment queue (disabled).");
     ag.cfgadq.store(-1, Ordering::SeqCst);
 }
 
+#[cfg(unix)]
 fn sca_error(ag: &Agentd, q: i32) {
     ag.log.debug1("Error communicating with Security configuration assessment");
-    // SAFETY: closing our own socket.
-    unsafe { libc::close(q) };
+    os_net::close_fd(q);
+}
+
+/// The `sca-dump` branch of `receive_msg` (Windows):
+/// `wm_sca_push_request_win(msg)`.
+#[cfg(windows)]
+fn send_sca(ag: &Agentd, msg: &[u8]) {
+    if let Some(f) = ag.hooks.get().and_then(|h| h.sca_push.as_ref()) {
+        f(msg);
+    }
 }
 
 /// The `sca-dump` branch of `receive_msg`.
+#[cfg(unix)]
 fn send_sca(ag: &Agentd, msg: &[u8]) {
     let q = ag.cfgadq.load(Ordering::SeqCst);
     if q >= 0 {
@@ -119,10 +147,16 @@ pub fn receive_msg(ag: &Agentd) -> i32 {
                 if r == os_net::OS_SOCKTERR as isize {
                     ag.log.error("Corrupt payload (exceeding size) received.");
                 } else if r == -1 {
-                    if e == libc::ENOTCONN {
+                    #[cfg(unix)]
+                    if e == os_net::ENOTCONN {
                         ag.log.debug1("Manager disconnected (ENOTCONN).");
                     } else {
                         ag.log.error(format!("Connection socket: {} ({e})", strerror(e)));
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = e;
+                        ag.log.error(format!("Connection socket: {} ({})", win_strerror_last(), os_net::wsa_errno()));
                     }
                 } else if r == 0 {
                     ag.log.debug1("Manager disconnected.");
@@ -131,8 +165,7 @@ pub fn receive_msg(ag: &Agentd) -> i32 {
             }
             r
         } else {
-            // SAFETY: recv into a buffer of OS_MAXSTR + 1 bytes.
-            let r = unsafe { libc::recv(sock, buffer.as_mut_ptr().cast(), OS_MAXSTR, libc::MSG_DONTWAIT) };
+            let r = os_net::recv_flags(sock, &mut buffer[..OS_MAXSTR], true);
             if r <= 0 {
                 break;
             }
@@ -140,7 +173,7 @@ pub fn receive_msg(ag: &Agentd) -> i32 {
         };
         buffer.truncate(recv_b as usize);
 
-        let Some(payload) = crate::keys::read_msg(ag, &buffer) else {
+        let Some(payload) = crate::keys::read_msg(ag, &buffer, &ag.current_server().rip) else {
             ag.log.warn(format!("(1214): Problem receiving message from '{}'.", ag.current_server().rip));
             continue;
         };
@@ -179,8 +212,16 @@ pub fn handle_message(ag: &Agentd, payload: &[u8]) {
     if starts(EXECD_HEADER) {
         let rest = &msg[EXECD_HEADER.len()..];
         let q = ag.execdq.load(Ordering::SeqCst);
+        #[cfg(unix)]
         if q >= 0 && os_net::send_unix(q, rest, 0) < 0 {
             ag.log.debug1("Error communicating with execd");
+        }
+        // queue_push_ex(winexec_queue, strdup(tmp_msg))
+        #[cfg(windows)]
+        if q >= 0 {
+            if let Some(f) = ag.hooks.get().and_then(|h| h.execd_push.as_ref()) {
+                f(rest);
+            }
         }
         return;
     }
@@ -257,7 +298,7 @@ pub fn handle_message(ag: &Agentd, payload: &[u8]) {
         }
         let file = format!("{SHAREDCFG_DIR}/{}", String::from_utf8_lossy(&name));
         st.file = String::from_utf8_lossy(&trunc_bytes(file.into_bytes(), OS_SIZE_1024)).into_owned();
-        match File::create(&st.file) {
+        match siem_fileop::crt::TextFile::create(&st.file) {
             Ok(f) => st.fp = Some(f),
             Err(e) => ag.log.error(fopen_error(&st.file, e.raw_os_error().unwrap_or(0))),
         }

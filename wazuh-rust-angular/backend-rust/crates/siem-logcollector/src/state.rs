@@ -1,172 +1,232 @@
-//! Wazuh Logcollector State Manager (src/logcollector/state.c, state.h)
-//!
-//! Manages persistent file positions and SHA-1 hashes saved in `file_status.json`.
-//! This ensures that when the logcollector daemon restarts, it resumes reading
-//! from the exact byte offset where it left off, avoiding duplicate alert processing.
+//! `logcollector/state.c`: per-file event/byte counts and per-target
+//! drops, global and per-interval, the `wazuh-logcollector.state` file and
+//! the `getstate` JSON.
 
-use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Mutex;
 
-/// Status for a single monitored file matching `file_status.json`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FileStateEntry {
-    pub path: String,
-    pub offset: u64,
-    pub hash: String,
-    #[serde(default)]
-    pub lines_read: u64,
-    #[serde(default)]
-    pub drop_lines: u64,
-    #[serde(default)]
-    pub status: String,
-}
+use siem_cjson::Json;
 
-impl Default for FileStateEntry {
-    fn default() -> Self {
-        Self {
-            path: String::new(),
-            offset: 0,
-            hash: String::new(),
-            lines_read: 0,
-            drop_lines: 0,
-            status: "active".to_string(),
-        }
-    }
-}
+use crate::*;
 
-/// JSON container for `file_status.json`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct FileStatusJson {
-    pub files: Vec<FileStateEntry>,
-}
+pub const LC_STATE_GLOBAL: u32 = 1;
+pub const LC_STATE_INTERVAL: u32 = 2;
 
-/// Thread-safe File State Manager
+/// `w_lc_state_target_t`
 #[derive(Debug, Clone)]
-pub struct FileStateManager {
-    status_file: PathBuf,
-    entries: Arc<Mutex<HashMap<String, FileStateEntry>>>,
+pub struct Target {
+    pub name: String,
+    pub drops: u64,
 }
 
-impl FileStateManager {
-    pub fn new<P: AsRef<Path>>(status_file: P) -> Self {
-        let manager = Self {
-            status_file: status_file.as_ref().to_path_buf(),
-            entries: Arc::new(Mutex::new(HashMap::new())),
-        };
-        let _ = manager.load();
-        manager
-    }
+/// `w_lc_state_file_t`
+#[derive(Debug, Clone, Default)]
+pub struct FileStat {
+    pub bytes: u64,
+    pub events: u64,
+    pub targets: Vec<Target>,
+}
 
-    /// Load existing state from `file_status.json`
-    pub fn load(&self) -> Result<(), String> {
-        if !self.status_file.exists() {
-            return Ok(());
+/// `w_lc_state_storage_t` (the hash table in insertion order: the C
+/// table is randomly seeded, so its order carries no meaning).
+#[derive(Debug, Default)]
+pub struct Storage {
+    pub start: i64,
+    pub states: Vec<(String, FileStat)>,
+}
+
+impl Storage {
+    fn get_mut(&mut self, k: &str) -> &mut FileStat {
+        if let Some(p) = self.states.iter().position(|(n, _)| n == k) {
+            return &mut self.states[p].1;
         }
-
-        let content = std::fs::read_to_string(&self.status_file).map_err(|e| e.to_string())?;
-        let json: FileStatusJson = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-
-        let mut map = self.entries.lock().unwrap();
-        for entry in json.files {
-            map.insert(entry.path.clone(), entry);
-        }
-
-        Ok(())
-    }
-
-    /// Persist current state to `file_status.json`
-    pub fn save(&self) -> Result<(), String> {
-        if let Some(parent) = self.status_file.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let map = self.entries.lock().unwrap();
-        let json = FileStatusJson {
-            files: map.values().cloned().collect(),
-        };
-
-        let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
-        std::fs::write(&self.status_file, content).map_err(|e| e.to_string())?;
-
-        Ok(())
-    }
-
-    /// Updates offset, lines, and hash for a given file path
-    pub fn update(&self, path: &str, offset: u64, hash: &str, lines: u64, drops: u64) {
-        let mut map = self.entries.lock().unwrap();
-        let entry = map.entry(path.to_string()).or_default();
-        entry.path = path.to_string();
-        entry.offset = offset;
-        entry.hash = hash.to_string();
-        entry.lines_read += lines;
-        entry.drop_lines += drops;
-        entry.status = "active".to_string();
-    }
-
-    /// Gets current offset for a file
-    pub fn get_offset(&self, path: &str) -> Option<u64> {
-        let map = self.entries.lock().unwrap();
-        map.get(path).map(|e| e.offset)
-    }
-
-    /// Checks if a file has changed its identity or rotated by inspecting initial SHA-1 hash
-    pub fn calculate_file_hash<P: AsRef<Path>>(path: P, bytes_to_hash: usize) -> Result<String, String> {
-        let mut file = File::open(path).map_err(|e| e.to_string())?;
-        let mut buffer = vec![0u8; bytes_to_hash];
-        let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
-
-        let mut hasher = Sha1::new();
-        hasher.update(&buffer[..bytes_read]);
-        let result = hasher.finalize();
-
-        Ok(format!("{:x}", result))
-    }
-
-    /// Returns JSON state for `lccom` `getstate` command
-    pub fn get_state_json(&self) -> serde_json::Value {
-        let map = self.entries.lock().unwrap();
-        let list: Vec<serde_json::Value> = map.values().map(|e| {
-            serde_json::json!({
-                "path": e.path,
-                "offset": e.offset,
-                "hash": e.hash,
-                "lines_read": e.lines_read,
-                "drop_lines": e.drop_lines,
-                "status": e.status,
-            })
-        }).collect();
-
-        serde_json::json!({
-            "files": list,
-            "total_files": list.len(),
-        })
+        self.states.push((k.to_string(), FileStat::default()));
+        &mut self.states.last_mut().unwrap().1
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::NamedTempFile;
+#[derive(Default)]
+pub struct LcState {
+    pub state_type: AtomicU32,
+    pub file_enabled: AtomicBool,
+    /// `g_lc_raw_stats_mutex` over (global, interval)
+    pub raw: Mutex<(Option<Storage>, Option<Storage>)>,
+    /// `g_lc_json_stats_mutex` over `g_lc_json_stats`
+    pub json: Mutex<Option<Json>>,
+}
 
-    #[test]
-    fn test_file_state_persistence_and_update() {
-        let tmp = NamedTempFile::new().unwrap();
-        let state_path = tmp.path().to_path_buf();
+/// `w_logcollector_state_init`
+pub fn init(lc: &Lc, state_type: u32, file_enabled: bool) {
+    let mut r = lc.state.raw.lock().unwrap();
+    if state_type & LC_STATE_GLOBAL != 0 {
+        r.0 = Some(Storage { start: now(), states: Vec::new() });
+    }
+    if state_type & LC_STATE_INTERVAL != 0 {
+        r.1 = Some(Storage { start: now(), states: Vec::new() });
+    }
+    lc.state.state_type.store(state_type, Ordering::SeqCst);
+    lc.state.file_enabled.store(file_enabled, Ordering::SeqCst);
+}
 
-        let manager = FileStateManager::new(&state_path);
-        manager.update("/var/log/syslog", 1024, "abcd1234sha1", 50, 2);
-        manager.save().unwrap();
+fn each(lc: &Lc, f: impl Fn(&mut Storage)) {
+    let t = lc.state.state_type.load(Ordering::SeqCst);
+    let mut r = lc.state.raw.lock().unwrap();
+    if t & LC_STATE_GLOBAL != 0 {
+        if let Some(s) = r.0.as_mut() {
+            f(s);
+        }
+    }
+    if t & LC_STATE_INTERVAL != 0 {
+        if let Some(s) = r.1.as_mut() {
+            f(s);
+        }
+    }
+}
 
-        let manager2 = FileStateManager::new(&state_path);
-        assert_eq!(manager2.get_offset("/var/log/syslog"), Some(1024));
+/// `w_logcollector_state_update_file` (`w_logcollector_state_add_file` with 0 bytes)
+pub fn update_file(lc: &Lc, fpath: &str, bytes: u64) {
+    each(lc, |s| {
+        let d = s.get_mut(fpath);
+        if bytes > 0 {
+            d.events += 1;
+            d.bytes += bytes;
+        }
+    });
+}
 
-        let json = manager2.get_state_json();
-        assert_eq!(json["total_files"], 1);
-        assert_eq!(json["files"][0]["hash"], "abcd1234sha1");
+/// `w_logcollector_state_update_target` (`w_logcollector_state_add_target` when not dropped)
+pub fn update_target(lc: &Lc, fpath: &str, target: &str, dropped: bool) {
+    each(lc, |s| {
+        let d = s.get_mut(fpath);
+        let t = match d.targets.iter().position(|t| t.name == target) {
+            Some(p) => &mut d.targets[p],
+            None => {
+                d.targets.push(Target { name: target.to_string(), drops: 0 });
+                d.targets.last_mut().unwrap()
+            }
+        };
+        if dropped {
+            t.drops += 1;
+        }
+    });
+}
+
+/// `w_logcollector_state_delete_file`
+pub fn delete_file(lc: &Lc, fpath: &str) {
+    each(lc, |s| s.states.retain(|(n, _)| n != fpath));
+}
+
+fn fmt_time(t: i64) -> String {
+    use chrono::TimeZone;
+    match chrono::Local.timestamp_opt(t, 0) {
+        chrono::LocalResult::Single(d) | chrono::LocalResult::Ambiguous(d, _) => d.format("%Y-%m-%d %H:%M:%S").to_string(),
+        chrono::LocalResult::None => String::new(),
+    }
+}
+
+/// `_w_logcollector_generate_state`
+fn generate(s: &mut Storage, restart: bool) -> Option<Json> {
+    if s.states.is_empty() {
+        return None;
+    }
+    let mut files = Json::array();
+    for (loc, d) in s.states.iter_mut() {
+        let mut targets = Json::array();
+        for t in d.targets.iter_mut() {
+            let mut o = Json::object();
+            o.add("name", Json::string(&t.name));
+            o.add("drops", Json::number(t.drops as f64));
+            targets.push(o);
+            if restart {
+                t.drops = 0;
+            }
+        }
+        let mut f = Json::object();
+        f.add("location", Json::string(loc));
+        f.add("events", Json::number(d.events as f64));
+        f.add("bytes", Json::number(d.bytes as f64));
+        f.add("targets", targets);
+        if restart {
+            d.bytes = 0;
+            d.events = 0;
+        }
+        files.push(f);
+    }
+    let mut root = Json::object();
+    root.add("start", Json::string(fmt_time(s.start)));
+    root.add("end", Json::string(fmt_time(now())));
+    root.add("files", files);
+    if restart {
+        s.start = now();
+    }
+    Some(root)
+}
+
+/// `w_logcollector_state_generate`
+pub fn generate_state(lc: &Lc) {
+    let t = lc.state.state_type.load(Ordering::SeqCst);
+    let mut js = lc.state.json.lock().unwrap();
+    let mut r = lc.state.raw.lock().unwrap();
+    let mut root = Json::object();
+    if t & LC_STATE_GLOBAL != 0 {
+        // cJSON_AddItemToObject with a NULL item adds nothing
+        if let Some(g) = r.0.as_mut().and_then(|s| generate(s, false)) {
+            root.add("global", g);
+        }
+    }
+    if t & LC_STATE_INTERVAL != 0 {
+        if let Some(g) = r.1.as_mut().and_then(|s| generate(s, true)) {
+            root.add("interval", g);
+        }
+    }
+    *js = Some(root);
+}
+
+/// `w_logcollector_state_get`
+pub fn state_get(lc: &Lc) -> Option<Json> {
+    let t = lc.state.state_type.load(Ordering::SeqCst);
+    if t & LC_STATE_INTERVAL != 0 {
+        lc.state.json.lock().unwrap().clone()
+    } else if t & LC_STATE_GLOBAL != 0 {
+        let mut r = lc.state.raw.lock().unwrap();
+        r.0.as_mut().and_then(|s| generate(s, false))
+    } else {
+        None
+    }
+}
+
+/// `w_logcollector_state_dump`
+fn dump(lc: &Lc) {
+    let s = match state_get(lc) {
+        Some(j) => j.to_string_formatted(),
+        None => return,
+    };
+    let mut s = s.into_bytes();
+    s.push(b'\n');
+    match siem_fileop::crt::TextFile::create(LOGCOLLECTOR_STATE) {
+        Ok(mut f) => {
+            use std::io::Write;
+            if f.write_all(&s).is_err() {
+                let e = errno();
+                lc.log.error(format!(
+                    "(1110): Could not write file '{LOGCOLLECTOR_STATE}' due to [({e})-({})].",
+                    strerror(e)
+                ));
+            }
+        }
+        Err(e) => lc.log.error(fopen_error(LOGCOLLECTOR_STATE, e.raw_os_error().unwrap_or(0))),
+    }
+}
+
+/// `w_logcollector_state_main`
+pub fn state_main(lc: &Lc, interval: i32) {
+    if interval > 0 {
+        loop {
+            sleep_secs(interval as i64);
+            generate_state(lc);
+            if lc.state.file_enabled.load(Ordering::SeqCst) {
+                dump(lc);
+            }
+        }
     }
 }

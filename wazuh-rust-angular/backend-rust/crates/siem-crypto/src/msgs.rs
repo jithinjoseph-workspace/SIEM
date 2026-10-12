@@ -255,12 +255,44 @@ pub fn create_sec_msg_sized(
 pub struct ReadOptions {
     /// `remoted.verify_msg_id` (internal option, default 0 on the manager).
     pub verify_counter: bool,
+    /// Agent-side read (`CLIENT` build): the key's configured cipher is
+    /// used whatever the message prefix says.
+    pub client: bool,
 }
 
 impl Default for ReadOptions {
     fn default() -> Self {
-        Self { verify_counter: false }
+        Self { verify_counter: false, client: false }
     }
+}
+
+/// Why the last [`read_sec_msg`] on this thread rejected a message, so
+/// callers can log what `ReadSecMSG` logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RejectReason {
+    /// `ENCFORMAT_ERROR` (id, srcip)
+    Format,
+    /// `ENCKEY_ERROR` (id, key ip): decryption failed
+    EncKey,
+    /// `ENCKEY_ERROR` (id, srcip): the final fall-through
+    EncKeySrc,
+    /// `UNCOMPRESS_ERR`
+    Uncompress,
+    /// Decompressed message shorter than `MSG_OVERHEAD` (`UNCOMPRESS_ERR` on agents)
+    TooShort,
+    /// `ENCSUM_ERROR` (id, key ip)
+    Sum,
+    /// Replayed counter
+    Rids,
+}
+
+thread_local! {
+    static LAST_REJECT: std::cell::Cell<RejectReason> = const { std::cell::Cell::new(RejectReason::EncKeySrc) };
+}
+
+/// The reason of the last rejection by [`read_sec_msg`] on this thread.
+pub fn last_reject_reason() -> RejectReason {
+    LAST_REJECT.with(|c| c.get())
 }
 
 /// Result of a successful [`read_sec_msg`].
@@ -278,25 +310,34 @@ pub struct ReadResult {
 /// received counters in `key` are updated as the C code does. Persist them
 /// through a [`CounterStore`].
 pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Result<ReadResult, MsgError> {
-    let reject = |s: KeyState| Err(MsgError::Rejected(s));
+    let reject_why = |s: KeyState, r: RejectReason| {
+        LAST_REJECT.with(|c| c.set(r));
+        Err(MsgError::Rejected(s))
+    };
 
     let mut buf = buffer;
     // In C, buffer_size = recv_b - 1: the full length minus the ':' byte.
     let mut buffer_size = buffer.len().saturating_sub(1);
 
+    // The manager takes the cipher from the prefix; an agent (CLIENT
+    // build) keeps its configured one and only skips the prefix.
     let method = if buf.starts_with(b"#AES") {
         buf = &buf[4..];
-        key.crypto_method = CryptoMethod::Aes;
-        CryptoMethod::Aes
+        if !opts.client {
+            key.crypto_method = CryptoMethod::Aes;
+        }
+        key.crypto_method
     } else {
-        key.crypto_method = CryptoMethod::Blowfish;
-        CryptoMethod::Blowfish
+        if !opts.client {
+            key.crypto_method = CryptoMethod::Blowfish;
+        }
+        key.crypto_method
     };
 
     if buf.first() == Some(&b':') {
         buf = &buf[1..];
     } else {
-        return reject(KeyState::Corrupt);
+        return reject_why(KeyState::Corrupt, RejectReason::Format);
     }
 
     let cleartext: Vec<u8> = match method {
@@ -305,7 +346,7 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
             let whole = n - n % 8;
             match os_bf_str(&buf[..whole], &key.encryption_key, false) {
                 Ok(v) => v,
-                Err(_) => return reject(KeyState::EncKey),
+                Err(_) => return reject_why(KeyState::EncKey, RejectReason::EncKey),
             }
         }
         CryptoMethod::Aes => {
@@ -313,7 +354,7 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
             let n = buffer_size.min(buf.len());
             match os_aes_str(&buf[..n], &key.encryption_key, false) {
                 Ok(v) if !v.is_empty() => v,
-                _ => return reject(KeyState::EncKey),
+                _ => return reject_why(KeyState::EncKey, RejectReason::EncKey),
             }
         }
     };
@@ -334,27 +375,27 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
 
         let decompressed = match os_zlib_uncompress(src) {
             Ok(v) if !v.is_empty() && v.len() <= OS_MAXSTR => v,
-            _ => return reject(KeyState::Corrupt),
+            _ => return reject_why(KeyState::Corrupt, RejectReason::Uncompress),
         };
         if decompressed.len() < MSG_OVERHEAD {
-            return reject(KeyState::Corrupt);
+            return reject_why(KeyState::Corrupt, RejectReason::TooShort);
         }
 
         // CheckSum
         let checksum = md5_hex(&decompressed[32..]);
         if !strncmp32_eq(&checksum, &decompressed[..32]) {
-            return reject(KeyState::Corrupt);
+            return reject_why(KeyState::Corrupt, RejectReason::Sum);
         }
 
         let f = &decompressed[32..];
         // Remove random, then "%010u:%04u:"
         let msg_global = atoi_u32(&f[5..]);
         if f.get(15) != Some(&b':') {
-            return reject(KeyState::Corrupt);
+            return reject_why(KeyState::Corrupt, RejectReason::Format);
         }
         let msg_local = atoi_u32(&f[16..]);
         if f.get(20) != Some(&b':') {
-            return reject(KeyState::Corrupt);
+            return reject_why(KeyState::Corrupt, RejectReason::Format);
         }
         let payload = f[21..].to_vec();
 
@@ -371,10 +412,10 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
         }
 
         if msg_global == key.global_counter {
-            return reject(KeyState::Rids);
+            return reject_why(KeyState::Rids, RejectReason::Rids);
         }
         // An older global counter falls through to the final KS_ENCKEY.
-        return reject(KeyState::EncKey);
+        return reject_why(KeyState::EncKey, RejectReason::EncKeySrc);
     } else if clear_at(0) == b':' {
         // Legacy format: ':' + md5(32) + "<time>:<count>:..." (pre-compression agents)
         let size = buffer_size;
@@ -384,7 +425,7 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
         // cleartext++ ; CheckSum(cleartext, buffer_size): md5 over [33, 1 + size)
         let body = &ct[33..(1 + size).max(33)];
         if !strncmp32_eq(&md5_hex(body), &ct[1..33]) {
-            return reject(KeyState::Corrupt);
+            return reject_why(KeyState::Corrupt, RejectReason::Sum);
         }
         // f_msg = cleartext + 32 => index 33; the C string ends at index `size`.
         let tail = &ct[33..size.max(33)];
@@ -404,7 +445,7 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
             key.local_counter = 0;
             return match colon {
                 Some(p) => Ok(ReadResult { payload: after[p + 1..].to_vec(), global: msg_time, local: msg_count }),
-                None => reject(KeyState::Corrupt),
+                None => reject_why(KeyState::Corrupt, RejectReason::Format),
             };
         }
 
@@ -413,13 +454,13 @@ pub fn read_sec_msg(key: &mut ClientKey, buffer: &[u8], opts: ReadOptions) -> Re
             key.local_counter = msg_count;
             return match colon {
                 Some(p) => Ok(ReadResult { payload: after[p + 1..].to_vec(), global: msg_time, local: msg_count }),
-                None => reject(KeyState::Corrupt),
+                None => reject_why(KeyState::Corrupt, RejectReason::Format),
             };
         }
-        return reject(KeyState::Rids);
+        return reject_why(KeyState::Rids, RejectReason::Rids);
     }
 
-    reject(KeyState::EncKey)
+    reject_why(KeyState::EncKey, RejectReason::EncKeySrc)
 }
 
 /// Persistence of message counters in `queue/rids/` (`OS_StartCounter`,
@@ -586,7 +627,7 @@ mod tests {
             let msg = b"1:/var/log/auth.log:Oct  5 10:00:00 host sshd[1]: Accepted password";
             let enc = create_sec_msg(&sender, &mut ctr, msg, CreateOptions::default()).unwrap();
             assert_eq!(ctr, SenderCounter { global: 0, local: 1 });
-            let opts = ReadOptions { verify_counter: true };
+            let opts = ReadOptions { verify_counter: true, client: false };
             let r = read_sec_msg(&mut receiver, &enc, opts).unwrap();
             assert_eq!(r.payload, msg);
             assert_eq!(read_sec_msg(&mut receiver, &enc, opts).unwrap_err().key_state(), Some(KeyState::Rids));

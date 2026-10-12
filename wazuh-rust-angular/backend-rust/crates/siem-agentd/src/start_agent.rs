@@ -73,7 +73,10 @@ pub fn connect_server(ag: &Agentd, server_id: usize, verbose: bool) -> bool {
         os_net::connect_tcp(server.port as u16, &ip_address, ipv6, server.network_interface)
     };
     if s < 0 {
-        let e = errno();
+        #[cfg(unix)]
+        let reason = strerror(errno());
+        #[cfg(windows)]
+        let reason = win_strerror_last();
         ag.sock.store(-1, Ordering::SeqCst);
         if verbose {
             ag.log.error(format!(
@@ -81,10 +84,15 @@ pub fn connect_server(ag: &Agentd, server_id: usize, verbose: bool) -> bool {
                 ip_address,
                 server.port,
                 proto_str(server.protocol),
-                strerror(e)
+                reason
             ));
         }
         return false;
+    }
+    // Set the UDP socket to non-blocking
+    #[cfg(windows)]
+    if server.protocol == IPPROTO_UDP {
+        os_net::set_nonblocking(s);
     }
     ag.sock.store(s, Ordering::SeqCst);
     ag.rip_id.store(server_id, Ordering::SeqCst);
@@ -198,8 +206,7 @@ fn receive_message(ag: &Agentd, max_length: usize) -> Option<Vec<u8>> {
         _ => {
             let mut buf = vec![0u8; max_length];
             let recv_b: isize = if ag.is_udp() {
-                // SAFETY: recv into a buffer of max_length bytes.
-                unsafe { libc::recv(sock, buf.as_mut_ptr().cast(), max_length, libc::MSG_DONTWAIT) }
+                os_net::recv_flags(sock, &mut buf, true)
             } else {
                 os_net::recv_secure_tcp(sock, &mut buf, max_length as u32)
             };
@@ -210,10 +217,13 @@ fn receive_message(ag: &Agentd, max_length: usize) -> Option<Vec<u8>> {
             let e = errno();
             if recv_b == os_net::OS_SOCKTERR as isize {
                 ag.log.error("Corrupt payload (exceeding size) received.");
-            } else if e == libc::EAGAIN || e == libc::EWOULDBLOCK {
+            } else if e == os_net::EAGAIN || e == os_net::EWOULDBLOCK {
                 ag.log.info("Unable to receive start response: Timeout reached");
             } else {
+                #[cfg(unix)]
                 ag.log.debug1(format!("Connection socket: {} ({e})", strerror(e)));
+                #[cfg(windows)]
+                ag.log.debug1(format!("Connection socket: {} ({})", win_strerror_last(), os_net::wsa_errno()));
             }
             None
         }
@@ -251,7 +261,7 @@ pub fn handshake_to_server(ag: &Agentd, server_id: usize, is_startup: bool) -> b
     let server = ag.server(server_id).unwrap_or_default();
     send_msg(ag, msg.as_bytes());
     let Some(buffer) = receive_message(ag, OS_MAXSTR) else { return false };
-    let Some(payload) = crate::keys::read_msg(ag, &buffer) else {
+    let Some(payload) = crate::keys::read_msg(ag, &buffer, &server.rip) else {
         ag.log.warn(format!("(1214): Problem receiving message from '{}'.", server.rip));
         return false;
     };

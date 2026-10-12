@@ -11,6 +11,8 @@ pub mod agentdb;
 pub mod config;
 #[cfg(target_os = "linux")]
 pub mod daemon;
+#[cfg(not(target_os = "linux"))]
+pub mod daemon_portable;
 pub mod delta;
 pub mod fim;
 pub mod global;
@@ -32,6 +34,7 @@ pub mod state;
 pub mod stmts;
 pub mod syscollector;
 pub mod tables;
+pub mod threads;
 pub mod task;
 pub mod upgrade;
 

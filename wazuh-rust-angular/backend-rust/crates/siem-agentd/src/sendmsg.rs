@@ -30,10 +30,16 @@ pub fn send_msg_len(ag: &Agentd, msg: &[u8]) -> i32 {
     if retval == 0 {
         ag.state.update(Update::IncrementMsgSend);
     } else {
+        #[cfg(unix)]
         match error {
-            libc::EPIPE => ag.log.debug2(TCP_EPIPE),
-            libc::ECONNREFUSED => ag.log.debug2(CONN_REF),
+            os_net::EPIPE => ag.log.debug2(TCP_EPIPE),
+            os_net::ECONNREFUSED => ag.log.debug2(CONN_REF),
             e => ag.log.warn(format!("(1218): Unable to send message to 'server': {}", strerror(e))),
+        }
+        #[cfg(windows)]
+        {
+            let _ = error;
+            ag.log.warn(format!("(1218): Unable to send message to 'server': {}", win_strerror_last()));
         }
         sleep_secs(1);
     }
@@ -42,12 +48,12 @@ pub fn send_msg_len(ag: &Agentd, msg: &[u8]) -> i32 {
 
 /// `EventForward`: drain the local queue into the buffer (or straight to
 /// the manager when the buffer is disabled).
+#[cfg(unix)]
 pub fn event_forward(ag: &Agentd) {
     let q = ag.m_queue.load(std::sync::atomic::Ordering::SeqCst);
     let mut msg = vec![0u8; OS_MAXSTR + 1];
     loop {
-        // SAFETY: recv into a buffer of OS_MAXSTR + 1 bytes.
-        let r = unsafe { libc::recv(q, msg.as_mut_ptr().cast(), OS_MAXSTR, libc::MSG_DONTWAIT) };
+        let r = os_net::recv_flags(q, &mut msg[..OS_MAXSTR], true);
         if r <= 0 {
             break;
         }

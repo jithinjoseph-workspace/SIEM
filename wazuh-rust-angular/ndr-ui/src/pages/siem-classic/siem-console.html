@@ -2394,10 +2394,10 @@
         <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'windows'">
           <div class="text-xs text-muted mono">
             <span class="text-cyan font-bold">WINDOWS SERVICE MANAGEMENT CLI:</span><br/>
-            &bull; Start Service: <code class="text-cyan">net start WazuhRustSvc</code><br/>
-            &bull; Stop Service: <code class="text-cyan">net stop WazuhRustSvc</code><br/>
-            &bull; Check Status: <code class="text-cyan">sc query WazuhRustSvc</code><br/>
-            &bull; Uninstall: <code class="text-cyan">.\siem-agent.exe uninstall-service</code>
+            &bull; Start Service: <code class="text-cyan">net start WazuhSvc</code><br/>
+            &bull; Stop Service: <code class="text-cyan">net stop WazuhSvc</code><br/>
+            &bull; Check Status: <code class="text-cyan">sc query WazuhSvc</code><br/>
+            &bull; Uninstall: <code class="text-cyan">"C:\Program Files (x86)\ossec-agent\wazuh-agent.exe" uninstall-service</code>
           </div>
         </div>
       </div>

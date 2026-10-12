@@ -29,36 +29,23 @@ extern "C" fn stopped_hook() {
     }
 }
 
+/// `w_create_thread` (`CreateThreadJoinable` with the
+/// `wazuh.thread_stack_size` stack).
 fn spawn(name: &str, ag: &Arc<Agentd>, f: fn(&Agentd)) {
+    let kib = ag.define_int("wazuh", "thread_stack_size", 2048, 65536) as usize;
+    ag.log.debug2(format!("Thread stack size set to: {kib} KiB"));
     let a = Arc::clone(ag);
-    let _ = std::thread::Builder::new().name(name.to_string()).spawn(move || f(&a));
+    let _ = std::thread::Builder::new().name(name.to_string()).stack_size(kib * 1024).spawn(move || f(&a));
 }
 
-/// `w_seconds_to_time_value` / `w_seconds_to_time_unit(s, TRUE)`
-fn time_value_unit(s: i64) -> (i64, &'static str) {
-    const W: i64 = 604800;
-    const D: i64 = 86400;
-    const H: i64 = 3600;
-    const M: i64 = 60;
-    if s < 0 {
-        (-1, "invalid")
-    } else if s >= W {
-        (s / W, "week(s)")
-    } else if s >= D {
-        (s / D, "day(s)")
-    } else if s >= H {
-        (s / H, "hour(s)")
-    } else if s >= M {
-        (s / M, "minute(s)")
-    } else {
-        (s, "second(s)")
-    }
-}
 
 /// `AgentdStart`
 pub fn agentd_start(ag: Arc<Agentd>, home: &Path, user: &str, group: &str, run_foreground: bool) -> ! {
     let _ = AGENTD.set(Arc::clone(&ag));
     ag.available_server.store(0, Ordering::SeqCst);
+
+    // Initial random numbers must happen before chroot
+    crate::keys::srandom_init();
 
     if !run_foreground {
         ag.log.now_daemon();
@@ -151,7 +138,7 @@ pub fn agentd_start(ag: Arc<Agentd>, home: &Path, user: &str, group: &str, run_f
     spawn("req_receiver", &ag, crate::request::req_receiver);
 
     // SAFETY: registering an extern "C" hook.
-    unsafe { libc::atexit(stopped_hook) };
+    siem_log::cexit::register(stopped_hook);
 
     crate::notify::run_notify(&ag);
 

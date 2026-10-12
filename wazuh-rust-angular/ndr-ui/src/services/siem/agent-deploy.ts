@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, map, of } from 'rxjs';
 
 /**
- * Agent deployment commands for the SIEM agents (siem-agent.exe on Windows,
+ * Agent deployment commands (the Wazuh agent, wazuh-agent.exe, on Windows;
  * siem-agent-linux + install.sh on Linux).
  *
  * Every command passes the manager URL, the agent name, the group and the
@@ -25,7 +25,7 @@ export interface DeployParams {
   winMode: WinInstallMode;
 }
 
-export const WINDOWS_SERVICE = 'WazuhRustSvc';
+export const WINDOWS_SERVICE = 'WazuhSvc';
 export const LINUX_SERVICE = 'wazuh-rust-agent';
 
 /** Default manager URL: the console's own origin (the dev server and Caddy
@@ -66,15 +66,47 @@ const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 /** Double-quote for PowerShell. */
 const pq = (s: string) => `"${s.replace(/[`"$]/g, m => '`' + m)}"`;
 
-/** The PowerShell that installs and starts the Windows service (needs admin). */
+/** Install directory of the Windows agent (the MSI's default). */
+export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
+
+/** The files of the Windows agent package served by the manager. */
+const WINDOWS_AGENT_FILES = ['wazuh-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
+
+/** The directories the MSI creates under the install directory. */
+const WINDOWS_AGENT_DIRS = [
+  'active-response\\bin', 'bookmarks', 'incoming', 'logs', 'queue\\diff', 'queue\\fim\\db', 'queue\\syscollector\\db',
+  'queue\\logcollector', 'rids', 'ruleset\\sca', 'shared', 'syscheck', 'tmp', 'upgrade', 'wodles',
+];
+
+/**
+ * The PowerShell that installs the Wazuh agent (`wazuh-agent.exe`, the
+ * `WazuhSvc` service) like the MSI does, and starts it (needs admin):
+ * downloads the package, enrolls through the manager API (the tenant key
+ * picks the tenant), writes `client.keys` and `ossec.conf` (manager address
+ * = the console host, port 1514/tcp), installs and starts the service.
+ */
 export function windowsInstallScript(p: DeployParams): string {
   const c = clean(p);
   return [
-    `$d = "$env:ProgramFiles\\Wazuh-Agent"`,
-    `New-Item -ItemType Directory -Force -Path $d | Out-Null`,
-    `Invoke-WebRequest -UseBasicParsing -Uri ${pq(c.url + '/downloads/siem-agent.exe')} -OutFile "$d\\siem-agent.exe"`,
-    `& "$d\\siem-agent.exe" install-service ${pq(c.url)} ${pq(c.name)} ${pq(c.group)} ${pq(c.key)}`,
-    `Start-Service -Name ${WINDOWS_SERVICE} -ErrorAction SilentlyContinue`,
+    `$ErrorActionPreference = 'Stop'`,
+    `$ProgressPreference = 'SilentlyContinue'`,
+    `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`,
+    `$u = ${pq(c.url)}`,
+    `$d = "${WINDOWS_AGENT_DIR}"`,
+    `if (Get-Service ${WINDOWS_SERVICE} -ErrorAction SilentlyContinue) { Stop-Service ${WINDOWS_SERVICE} -Force -ErrorAction SilentlyContinue }`,
+    `foreach ($s in @(${WINDOWS_AGENT_DIRS.map(x => `'${x}'`).join(',')})) { New-Item -ItemType Directory -Force -Path "$d\\$s" | Out-Null }`,
+    `if (-not (Test-Path "$d\\active-response\\active-responses.log")) { New-Item -ItemType File -Path "$d\\active-response\\active-responses.log" | Out-Null }`,
+    `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
+    `$h = @{}`,
+    c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
+    `$b = @{ name = ${pq(c.name)}; groups = ${pq(c.group)}; os_type = 'windows' } | ConvertTo-Json`,
+    `$r = Invoke-RestMethod -Method Post -Uri "$u/api/v1/agents/enroll" -Headers $h -ContentType 'application/json' -Body $b`,
+    `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
+    `$m = ([Uri]$u).Host`,
+    `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/ossec.conf?manager=$m" -OutFile "$d\\ossec.conf"`,
+    `& "$d\\wazuh-agent.exe" install-service | Out-Null`,
+    `Start-Service -Name ${WINDOWS_SERVICE}`,
+    `Write-Host "Wazuh agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,
     `Get-Service ${WINDOWS_SERVICE}`,
   ].join('; ');
 }

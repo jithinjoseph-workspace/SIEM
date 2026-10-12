@@ -309,3 +309,27 @@ pub fn ip_found_list(ip_address: &str, list: &[OsIp]) -> bool {
     }
     !truth
 }
+
+/// `OS_CIDRtoStr`: `ip/prefix` for a network, the address alone for a
+/// single host or "any"; None when an IPv4 netmask is not a prefix (-1).
+pub fn cidr_to_str(ip: &OsIp) -> Option<String> {
+    let is_ipv6 = ip.ip.contains(':');
+    match &ip.net {
+        IpNet::V6 { netmask, .. } if is_ipv6 => {
+            // getCIDRipv6: the set bits of the netmask
+            let imask: u32 = netmask.iter().map(|b| b.count_ones()).sum();
+            if imask < 128 {
+                return Some(format!("{}/{imask}", ip.ip));
+            }
+            Some(ip.ip.clone())
+        }
+        IpNet::V4 { netmask, .. } if !is_ipv6 && *netmask != 0xFFFF_FFFF && ip.ip != "any" => {
+            // ntohl, then the index of the matching _netmasks entry
+            let hmask = u32::from_be_bytes(netmask.to_ne_bytes());
+            (0..32u32)
+                .find(|&i| (if i == 0 { 0 } else { u32::MAX << (32 - i) }) == hmask)
+                .map(|i| format!("{}/{i}", ip.ip))
+        }
+        _ => Some(ip.ip.clone()),
+    }
+}

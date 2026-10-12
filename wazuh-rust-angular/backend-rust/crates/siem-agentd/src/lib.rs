@@ -5,11 +5,15 @@
 //!
 //! The structure follows the C code: [`Agentd`] holds what C keeps in the
 //! globals `agt`, `keys` and friends, and each module ports one C file.
-//! Like the C daemon it uses blocking sockets and threads. Unix only.
-
-#![cfg(unix)]
+//! Like the C daemon it uses blocking sockets and threads.
+//!
+//! On Windows these modules run inside `wazuh-agent.exe` (`win32/`): there
+//! is no `wazuh-agentd` main ([`agentd`] is Unix only); `local_start` drives
+//! them, and the in-process components the C code calls directly (execd,
+//! logcollector, syscheck, modules) are reached through [`WinHooks`].
 
 pub mod agcom;
+#[cfg(unix)]
 pub mod agentd;
 pub mod buffer;
 pub mod config;
@@ -24,6 +28,8 @@ pub mod sendmsg;
 pub mod start_agent;
 pub mod state;
 pub mod uninstall;
+#[cfg(windows)]
+pub mod win;
 
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -34,7 +40,10 @@ use siem_config::labels::Label;
 use siem_log::WLog;
 
 /// `ARGV0`
+#[cfg(unix)]
 pub const ARGV0: &str = "wazuh-agentd";
+#[cfg(windows)]
+pub const ARGV0: &str = "wazuh-agent";
 /// `__ossec_name` / `__ossec_version`
 pub const OSSEC_NAME: &str = "Wazuh";
 pub const OSSEC_VERSION: &str = "v4.14.7";
@@ -60,19 +69,37 @@ pub const HC_ERROR: &str = "err ";
 /// `REQ_RESPONSE_LENGTH`
 pub const REQ_RESPONSE_LENGTH: usize = 64;
 
-// defs.h (Unix paths, relative to the Wazuh home)
-pub const OSSECCONF: &str = "etc/ossec.conf";
-pub const AGENTCONFIG: &str = "etc/shared/agent.conf";
-pub const SHAREDCFG_DIR: &str = "etc/shared";
-pub const SHAREDCFG_FILE: &str = "etc/shared/merged.mg";
+// defs.h (relative to the Wazuh home / the Windows install directory)
+#[cfg(unix)]
+#[allow(dead_code)]
+mod paths {
+    pub const OSSECCONF: &str = "etc/ossec.conf";
+    pub const AGENTCONFIG: &str = "etc/shared/agent.conf";
+    pub const SHAREDCFG_DIR: &str = "etc/shared";
+    pub const SHAREDCFG_FILE: &str = "etc/shared/merged.mg";
+    pub const KEYS_FILE: &str = "etc/client.keys";
+    pub const AGENT_INFO_FILE: &str = "queue/sockets/.agent_info";
+}
+#[cfg(windows)]
+#[allow(dead_code)]
+mod paths {
+    pub const OSSECCONF: &str = "ossec.conf";
+    pub const AGENTCONFIG: &str = "shared/agent.conf";
+    pub const SHAREDCFG_DIR: &str = "shared";
+    pub const SHAREDCFG_FILE: &str = "shared/merged.mg";
+    pub const KEYS_FILE: &str = "client.keys";
+    pub const AGENT_INFO_FILE: &str = ".agent_info";
+}
+pub use paths::*;
 pub const SHAREDCFG_FILENAME: &str = "merged.mg";
-pub const KEYS_FILE: &str = "etc/client.keys";
+#[cfg(unix)]
 pub const RIDS_DIR: &str = "queue/rids";
+#[cfg(windows)]
+pub const RIDS_DIR: &str = "rids";
 pub const SENDER_COUNTER: &str = "sender_counter";
 pub const DEFAULTQUEUE: &str = "queue/sockets/queue";
 pub const EXECQUEUE: &str = "queue/alerts/execq";
 pub const CFGAQUEUE: &str = "queue/alerts/cfgaq";
-pub const AGENT_INFO_FILE: &str = "queue/sockets/.agent_info";
 pub const COM_LOCAL_SOCK: &str = "queue/sockets/com";
 pub const SYS_LOCAL_SOCK: &str = "queue/sockets/syscheck";
 pub const WM_LOCAL_SOCK: &str = "queue/sockets/wmodules";
@@ -139,18 +166,85 @@ pub fn errno() -> i32 {
     siem_ipc::os_net::errno()
 }
 
+/// `win_strerror(WSAGetLastError())`
+#[cfg(windows)]
+pub fn win_strerror_last() -> String {
+    siem_ipc::os_net::win_strerror(siem_ipc::os_net::wsa_errno() as u32)
+}
+
 /// `time(NULL)`
 pub fn now() -> i64 {
-    // SAFETY: time(NULL) has no preconditions.
-    unsafe { libc::time(std::ptr::null_mut()) as i64 }
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
 /// `w_get_monotonic_time`
+#[cfg(unix)]
 pub fn monotonic() -> i64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
     // SAFETY: valid pointer to a timespec.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
     ts.tv_sec as i64
+}
+
+/// `w_get_monotonic_time`: `GetTickCount64() / 1000`
+#[cfg(windows)]
+pub fn monotonic() -> i64 {
+    // SAFETY: no preconditions.
+    (unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() } / 1000) as i64
+}
+
+/// A dispatcher of the in-process components (`*com_dispatch(command, &output)`).
+#[cfg(windows)]
+pub type Dispatch = Box<dyn Fn(&[u8]) -> Vec<u8> + Send + Sync>;
+
+/// What `wazuh-agent.exe` links agentd against: the components the C code
+/// calls directly instead of through their sockets.
+#[cfg(windows)]
+#[derive(Default)]
+pub struct WinHooks {
+    /// `req_receiver` targets other than "agent", matched with
+    /// `strncmp(target, name, strlen(name))` in this order: "logcollector"
+    /// (`lccom_dispatch`), "com" (`wcom_dispatch`), "syscheck"
+    /// (`syscom_dispatch`), "wmodules" (`wmcom_dispatch`), "upgrade"
+    /// (`wm_agent_upgrade_process_command`).
+    pub dispatch: Vec<(&'static str, Dispatch)>,
+    /// `queue_push_ex(winexec_queue, strdup(msg))`
+    pub execd_push: Option<Box<dyn Fn(&[u8]) + Send + Sync>>,
+    /// `ExecdTimeoutRun()`
+    pub execd_timeout_run: Option<Box<dyn Fn() + Send + Sync>>,
+    /// `wm_sca_push_request_win(msg)`
+    pub sca_push: Option<Box<dyn Fn(&[u8]) + Send + Sync>>,
+    /// `wmcom_sync(msg)` (syscollector sync messages)
+    pub wmcom_sync: Option<Box<dyn Fn(&[u8]) + Send + Sync>>,
+}
+
+#[cfg(windows)]
+impl WinHooks {
+    /// The dispatcher for `target` (`strncmp` against each name).
+    pub fn find(&self, target: &[u8]) -> Option<&Dispatch> {
+        self.dispatch.iter().find(|(n, _)| target.starts_with(n.as_bytes())).map(|(_, d)| d)
+    }
+}
+
+/// `w_seconds_to_time_value` / `w_seconds_to_time_unit(s, TRUE)`
+pub fn time_value_unit(s: i64) -> (i64, &'static str) {
+    const W: i64 = 604800;
+    const D: i64 = 86400;
+    const H: i64 = 3600;
+    const M: i64 = 60;
+    if s < 0 {
+        (-1, "invalid")
+    } else if s >= W {
+        (s / W, "week(s)")
+    } else if s >= D {
+        (s / D, "day(s)")
+    } else if s >= H {
+        (s / H, "hour(s)")
+    } else if s >= M {
+        (s / M, "minute(s)")
+    } else {
+        (s, "second(s)")
+    }
 }
 
 /// `sleep(n)` for a C `int`/`time_t` (negative values sleep 0).
@@ -228,6 +322,11 @@ pub struct Agentd {
     pub recv: Mutex<receiver::RecvState>,
     /// `needs_config_reload` (set by SIGUSR1)
     pub needs_config_reload: AtomicBool,
+    /// `win_debug_level` (`windows.debug`)
+    #[cfg(windows)]
+    pub win_debug_level: AtomicI32,
+    #[cfg(windows)]
+    pub hooks: std::sync::OnceLock<WinHooks>,
 }
 
 impl Agentd {
@@ -255,19 +354,23 @@ impl Agentd {
             notify: Mutex::new(notify::NotifyState::default()),
             recv: Mutex::new(receiver::RecvState::default()),
             needs_config_reload: AtomicBool::new(false),
+            #[cfg(windows)]
+            win_debug_level: AtomicI32::new(0),
+            #[cfg(windows)]
+            hooks: std::sync::OnceLock::new(),
         }
     }
 
     /// `merror_exit`: CRITICAL log, then `exit(1)` (running the atexit hooks).
     pub fn exit_critical(&self, msg: impl AsRef<[u8]>) -> ! {
         self.log.critical(msg);
-        std::process::exit(1);
+        siem_log::cexit::fatal_exit();
     }
 
     /// `mlerror_exit(LOGLEVEL_ERROR, msg)`
     pub fn exit_error(&self, msg: impl AsRef<[u8]>) -> ! {
         self.log.error(msg);
-        std::process::exit(1);
+        siem_log::cexit::fatal_exit();
     }
 
     /// `getDefine_Int`: exits on a missing or invalid option, as C does.

@@ -91,7 +91,7 @@ fn rust_and_c_interoperate() {
                 // C -> Rust
                 let wire = oracle.create(method, &k, raw, g, l, rand, false, msg);
                 let mut rk = k.clone();
-                let r = read_sec_msg(&mut rk, &wire, ReadOptions { verify_counter: true })
+                let r = read_sec_msg(&mut rk, &wire, ReadOptions { verify_counter: true, client: false })
                     .unwrap_or_else(|e| panic!("Rust failed to read C message ({method:?}, len {}): {e}", msg.len()));
                 assert_eq!(&r.payload, msg);
                 let (eg, el) = if l >= 9997 { (g + 1, 1) } else { (g, l + 1) };
@@ -123,7 +123,7 @@ fn rust_and_c_interoperate() {
                     let mut rk = k.clone();
                     rk.global_counter = sg;
                     rk.local_counter = sl;
-                    let rst = match read_sec_msg(&mut rk, &ours, ReadOptions { verify_counter: true }) {
+                    let rst = match read_sec_msg(&mut rk, &ours, ReadOptions { verify_counter: true, client: false }) {
                         Ok(_) => 0,
                         Err(e) => e.key_state().unwrap() as u8,
                     };

@@ -1,0 +1,2 @@
+# keep-alives only, plus one request
+3 send #!-req 1 agent getstate

@@ -1,0 +1,11 @@
+2026-10-10T04:36:50.593436Z  INFO siem_remoted: Started (pid: 16992). Listening on port 1514/TCP (secure).
+2026-10-10T04:36:50.593539Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-10T04:37:47.043498Z  WARN siem_remoted::server: (1408): Invalid ID 013 for the source ip: '127.0.0.1' (name 'unknown').
+2026-10-10T04:37:50.629524Z  INFO siem_remoted::forwarders: (1752): File client.keys changed. Reloading.
+2026-10-10T04:40:43.809419Z  INFO siem_remoted: Started (pid: 31472). Listening on port 1514/TCP (secure).
+2026-10-10T04:40:43.809526Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-10T04:48:49.521208Z  INFO siem_remoted: Started (pid: 22252). Listening on port 1514/TCP (secure).
+2026-10-10T04:48:49.521421Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-10T09:06:26.881092Z ERROR siem_ipc::wdbc: Connection with wazuh-db lost. Reconnecting.
+2026-10-10T09:06:30.479731Z  INFO siem_remoted: Started (pid: 14876). Listening on port 1514/TCP (secure).
+2026-10-10T09:06:30.479893Z  INFO siem_remoted: (1410): Reading authentication keys file.

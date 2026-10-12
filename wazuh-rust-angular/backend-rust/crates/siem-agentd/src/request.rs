@@ -31,8 +31,7 @@ impl Drop for ReqNode {
     /// `req_free`
     fn drop(&mut self) {
         if self.sock >= 0 {
-            // SAFETY: closing the node's own socket.
-            unsafe { libc::close(self.sock) };
+            os_net::close_fd(self.sock);
         }
     }
 }
@@ -101,13 +100,14 @@ pub fn req_push(ag: &Agentd, buffer: &[u8]) -> i32 {
     let target = String::from_utf8_lossy(&target_c[..sp2]).into_owned();
     let payload = &target_raw[sp2 + 1..];
 
+    // In Windows the target is dispatched in-process (req_receiver)
     let mut sock = -1;
-    if target != "agent" {
+    if cfg!(unix) && target != "agent" {
         let sockname = format!("queue/sockets/{target}");
-        sock = os_net::connect_unix_domain(&sockname, libc::SOCK_STREAM, os_net::OS_MAXSTR);
+        sock = connect_target(&sockname);
         if sock < 0 {
             let e = errno();
-            if e == libc::ECONNREFUSED {
+            if e == os_net::ECONNREFUSED {
                 ag.log.debug1(format!(
                     "At req_push(): Target '{target}' refused connection. The component might be disabled"
                 ));
@@ -158,6 +158,28 @@ pub fn req_push(ag: &Agentd, buffer: &[u8]) -> i32 {
     0
 }
 
+#[cfg(unix)]
+fn connect_target(sockname: &str) -> i32 {
+    os_net::connect_unix_domain(sockname, os_net::SOCK_STREAM, os_net::OS_MAXSTR)
+}
+
+#[cfg(windows)]
+fn connect_target(_sockname: &str) -> i32 {
+    -1
+}
+
+/// In Windows, the request goes to the component in this process.
+#[cfg(windows)]
+fn dispatch_local(ag: &Agentd, target: &str, buffer: &[u8]) -> Vec<u8> {
+    if target.starts_with("agent") {
+        return crate::agcom::agcom_dispatch(ag, buffer);
+    }
+    match ag.hooks.get().and_then(|h| h.find(target.as_bytes())) {
+        Some(d) => d(buffer),
+        None => b"err Could not get requested section".to_vec(),
+    }
+}
+
 /// `req_receiver` thread.
 pub fn req_receiver(ag: &Agentd) {
     loop {
@@ -172,6 +194,9 @@ pub fn req_receiver(ag: &Agentd) {
         };
         let mut d = node.data.lock().unwrap();
 
+        #[cfg(windows)]
+        let mut buffer: Vec<u8> = dispatch_local(ag, &node.target, crate::keys::cstr(&d.buffer));
+        #[cfg(unix)]
         let mut buffer: Vec<u8> = if node.target.starts_with("agent") {
             crate::agcom::agcom_dispatch(ag, crate::keys::cstr(&d.buffer))
         } else {

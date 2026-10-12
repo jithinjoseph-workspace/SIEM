@@ -9,7 +9,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use siem_crypto::keys::{ClientKey, CryptoMethod};
 use siem_crypto::keystore::KeyStore;
-use siem_crypto::msgs::{self, CreateOptions, KeyState, MsgError, ReadOptions, SenderCounter};
+use siem_crypto::msgs::{self, CreateOptions, KeyState, MsgError, ReadOptions, RejectReason, SenderCounter};
 use siem_config::client::W_METH_BLOWFISH;
 
 use crate::*;
@@ -64,9 +64,16 @@ impl AgentKeys {
 }
 
 /// `File_Inode`: 0 when the file cannot be stat'ed.
+#[cfg(unix)]
 fn file_inode(path: &str) -> u64 {
     use std::os::unix::fs::MetadataExt;
     std::fs::metadata(path).map(|m| m.ino()).unwrap_or(0)
+}
+
+/// `File_Inode` (Windows): msvcrt's `stat` always reports `st_ino` 0.
+#[cfg(windows)]
+fn file_inode(_path: &str) -> u64 {
+    0
 }
 
 /// `File_DateofChange` >= 0
@@ -446,7 +453,7 @@ pub fn create_msg(ag: &Agentd, msg: &[u8]) -> Option<Vec<u8>> {
 
     reload_sender_counter(ag, &mut k);
     let mut counter = k.sender;
-    let r = msgs::create_sec_msg_sized(&key, &mut counter, msg, CreateOptions { dynamic_prefix, random: None });
+    let r = msgs::create_sec_msg_sized(&key, &mut counter, msg, CreateOptions { dynamic_prefix, random: Some(os_random() as u16) });
     k.sender = counter;
     match r {
         Ok((out, cmp_size)) => {
@@ -483,7 +490,7 @@ pub fn create_msg(ag: &Agentd, msg: &[u8]) -> Option<Vec<u8>> {
 
 /// `ReadSecMSG(&keys, buffer, cleartext, 0, recv_b - 1, ...)`: the payload
 /// when the message is `KS_VALID`.
-pub fn read_msg(ag: &Agentd, buffer: &[u8]) -> Option<Vec<u8>> {
+pub fn read_msg(ag: &Agentd, buffer: &[u8], srcip: &str) -> Option<Vec<u8>> {
     let mut k = ag.keys.lock().unwrap();
     let verify = k.verify_counter;
     if verify && k.rcv_count >= k.recv_flush {
@@ -495,7 +502,7 @@ pub fn read_msg(ag: &Agentd, buffer: &[u8]) -> Option<Vec<u8>> {
     };
     let r = {
         let e = k.entry.as_mut()?;
-        msgs::read_sec_msg(&mut e.key, buffer, ReadOptions { verify_counter: verify })
+        msgs::read_sec_msg(&mut e.key, buffer, ReadOptions { verify_counter: verify, client: true })
     };
     match r {
         Ok(res) => {
@@ -516,6 +523,30 @@ pub fn read_msg(ag: &Agentd, buffer: &[u8]) -> Option<Vec<u8>> {
             ag.log.error(format!("(1407): Duplicated counter for '{name}'."));
             None
         }
+        Err(MsgError::Rejected(_)) => {
+            let e = k.entry.as_ref()?;
+            match msgs::last_reject_reason() {
+                RejectReason::Format => ag.log.error(format!(
+                    "(1403): Incorrectly formatted message from agent '{}' (host '{srcip}').",
+                    e.id
+                )),
+                RejectReason::EncKey => ag.log.warn(format!(
+                    "(1404): Authentication error. Wrong key or corrupt payload. Message received from agent '{}' at '{}'.",
+                    e.id, e.ip
+                )),
+                RejectReason::EncKeySrc => ag.log.warn(format!(
+                    "(1404): Authentication error. Wrong key or corrupt payload. Message received from agent '{}' at '{srcip}'.",
+                    e.id
+                )),
+                RejectReason::Uncompress | RejectReason::TooShort => ag.log.error("(2202): Error uncompressing string."),
+                RejectReason::Sum => ag.log.error(format!(
+                    "(1406): Checksum mismatch. Message received from agent '{}' at '{}'.",
+                    e.id, e.ip
+                )),
+                RejectReason::Rids => {}
+            }
+            None
+        }
         Err(_) => None,
     }
 }
@@ -523,7 +554,7 @@ pub fn read_msg(ag: &Agentd, buffer: &[u8]) -> Option<Vec<u8>> {
 /// The counters of a message (decrypted without verification).
 fn peek_counters(key: &ClientKey, buffer: &[u8]) -> Option<(u32, u32)> {
     let mut k = key.clone();
-    msgs::read_sec_msg(&mut k, buffer, ReadOptions { verify_counter: false }).ok().map(|r| (r.global, r.local))
+    msgs::read_sec_msg(&mut k, buffer, ReadOptions { verify_counter: false, client: true }).ok().map(|r| (r.global, r.local))
 }
 
 /// The C string view of a buffer (up to the first NUL).
@@ -557,4 +588,83 @@ mod tests {
         let v = fgets_lines(&long, 2048);
         assert_eq!(v.iter().map(|c| c.len()).collect::<Vec<_>>(), vec![2047, 2047, 906]);
     }
+}
+
+/// `RAND_MAX` of the C library the agent links (glibc / msvcrt).
+#[cfg(unix)]
+const RAND_MAX: i32 = 2147483647;
+#[cfg(windows)]
+const RAND_MAX: i32 = 32767;
+
+/// `randombytes` (`shared/randombytes.c`): `/dev/urandom` (or `/dev/random`)
+/// on Unix. No thread-local state, so it also works in the `atexit` hook.
+#[cfg(unix)]
+pub fn randombytes(buf: &mut [u8]) {
+    let ok = std::fs::File::open("/dev/urandom")
+        .or_else(|_| std::fs::File::open("/dev/random"))
+        .and_then(|mut f| f.read_exact(buf))
+        .is_ok();
+    if !ok {
+        randombytes_failed();
+    }
+}
+
+/// `randombytes` (Windows): `CryptGenRandom` on a `PROV_RSA_FULL` context.
+#[cfg(windows)]
+pub fn randombytes(buf: &mut [u8]) {
+    use windows_sys::Win32::Security::Cryptography::{
+        CryptAcquireContextA, CryptGenRandom, CRYPT_DELETEKEYSET, CRYPT_NEWKEYSET, PROV_RSA_FULL,
+    };
+    use windows_sys::Win32::Foundation::{GetLastError, NTE_BAD_KEYSET, NTE_KEYSET_ENTRY_BAD};
+    static PROV: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let mut failed = false;
+    let mut prov = PROV.load(Ordering::SeqCst);
+    // SAFETY: CryptoAPI calls with an out-pointer to the provider handle.
+    unsafe {
+        if prov == 0 {
+            let acquire = |p: &mut usize, flags: u32| CryptAcquireContextA(p, std::ptr::null(), std::ptr::null(), PROV_RSA_FULL, flags) != 0;
+            if !acquire(&mut prov, 0) {
+                let e = GetLastError();
+                if e == NTE_BAD_KEYSET as u32 {
+                    if !acquire(&mut prov, CRYPT_NEWKEYSET) {
+                        failed = true;
+                    }
+                } else if e == NTE_KEYSET_ENTRY_BAD as u32 {
+                    if !acquire(&mut prov, CRYPT_DELETEKEYSET) {
+                        failed = true;
+                    }
+                    if !acquire(&mut prov, CRYPT_NEWKEYSET) {
+                        failed = true;
+                    }
+                } else {
+                    failed = true;
+                }
+            }
+            PROV.store(prov, Ordering::SeqCst);
+        }
+        if !failed && CryptGenRandom(prov, buf.len() as u32, buf.as_mut_ptr()) == 0 {
+            failed = true;
+        }
+    }
+    if failed {
+        randombytes_failed();
+    }
+}
+
+fn randombytes_failed() -> ! {
+    eprintln!("randombytes failed for all possible methods for accessing random data");
+    std::process::exit(1);
+}
+
+/// `os_random`: random bytes as an `int`, `% RAND_MAX`.
+pub fn os_random() -> i64 {
+    let mut b = [0u8; 4];
+    randombytes(&mut b);
+    (i32::from_ne_bytes(b) % RAND_MAX) as i64
+}
+
+/// `srandom_init`: seeds the C library generator (nothing here reads it).
+pub fn srandom_init() {
+    let mut seed = [0u8; 4];
+    randombytes(&mut seed);
 }

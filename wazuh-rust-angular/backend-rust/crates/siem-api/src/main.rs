@@ -33,6 +33,7 @@ pub mod db;
 pub mod syslog;
 pub mod corroboration;
 pub mod tenancy;
+pub mod wazuh_manager;
 use db::ClickHouseDb;
 use tenancy::AuthCtx;
 
@@ -317,6 +318,9 @@ async fn main() {
     tenancy::sync_tenants(&state).await;
     tenancy::spawn_tenant_sync(state.clone());
 
+    // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
+    wazuh_manager::start(state.clone());
+
 
     // Start background Syslog listeners (UDP 514 / TCP 601) for firewall & network appliance ingestion
     syslog::start_syslog_listeners(state.clone());
@@ -435,6 +439,8 @@ async fn main() {
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
         .route("/api/v1/rootcheck/signatures", get(get_rootcheck_signatures_handler))
         .route("/downloads/siem-agent.exe", get(download_agent))
+        .route("/downloads/wazuh-agent.exe", get(|| download_windows_binary("wazuh-agent.exe".to_string())))
+        .route("/downloads/windows/:file", get(download_windows_file))
         .route("/downloads/siem-agent-linux", get(download_linux_agent))
         .route("/downloads/install.sh", get(download_install_script))
         .route("/ws/alerts", get(ws_alerts_handler))
@@ -932,6 +938,9 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         // row stays, marked deleted, so the id is never issued again.
         let e = state.enrolled.write().unwrap().remove(id);
         let _ = state.auth_keystore.write().unwrap().delete_key(id);
+        wazuh_manager::save_keys(state);
+        let wid = id.to_string();
+        tokio::spawn(async move { wazuh_manager::remove_agent(&wid).await });
         persist_registry(state, id, &tenant, e.as_ref(), true);
     }
     removed
@@ -1569,6 +1578,32 @@ async fn download_agent() -> Result<impl IntoResponse, StatusCode> {
     }
 
     Err(StatusCode::NOT_FOUND)
+}
+
+/// `GET /downloads/windows/:file`: the Windows agent package
+/// (`wazuh-agent.exe` and the files installed next to it).
+async fn download_windows_file(
+    Path(file): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<axum::response::Response, StatusCode> {
+    if file == "ossec.conf" {
+        let manager = q.get("manager").map(|s| s.trim().to_string()).unwrap_or_default();
+        let conf = wazuh_manager::windows_agent_conf(&manager).ok_or(StatusCode::BAD_REQUEST)?;
+        return Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], conf).into_response());
+    }
+    Ok(download_windows_binary(file).await?.into_response())
+}
+
+async fn download_windows_binary(file: String) -> Result<impl IntoResponse, StatusCode> {
+    let path = wazuh_manager::windows_agent_file(&file).ok_or(StatusCode::NOT_FOUND)?;
+    let bytes = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{file}\"")),
+        ],
+        bytes,
+    ))
 }
 
 async fn download_linux_agent() -> Result<impl IntoResponse, StatusCode> {
@@ -4720,6 +4755,9 @@ async fn post_agent_enroll_handler(
         let _ = keystore.delete_key(&agent_id);
         siem_authd::enrollment::add_agent_to_keystore(&mut keystore, &name, &ip, Some(&agent_id), None)
     };
+    // remoted reads the keys from etc/client.keys, the agent row from global.db
+    wazuh_manager::save_keys(&state);
+    wazuh_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &groups).await;
 
     state.agent_tenants.write().unwrap().insert(agent_id.clone(), tenant.clone());
     {

@@ -27,6 +27,8 @@ pub struct OsInfo {
     pub os_build: Option<String>,
     pub os_version: Option<String>,
     pub os_codename: Option<String>,
+    /// `os_release` (Windows: release id or service pack)
+    pub os_release: Option<String>,
     pub os_platform: Option<String>,
     pub sysname: Option<String>,
     pub nodename: Option<String>,
@@ -595,6 +597,13 @@ pub fn getuname_with(p: &dyn Probe) -> String {
 }
 
 /// `getuname()`: computed once per process.
+#[cfg(windows)]
+pub fn getuname() -> &'static str {
+    crate::win_version::getuname()
+}
+
+/// `getuname()`: computed once per process.
+#[cfg(not(windows))]
 pub fn getuname() -> &'static str {
     static U: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     U.get_or_init(|| getuname_with(&System))

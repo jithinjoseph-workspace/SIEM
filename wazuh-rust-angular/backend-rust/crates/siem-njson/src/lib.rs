@@ -735,6 +735,14 @@ pub fn parse(s: &[u8]) -> Result<Value, Vec<u8>> {
     Ok(v)
 }
 
+/// `stream >> json` (`parse(strict = false)`): the first value; whatever
+/// follows it is left unread.
+pub fn parse_stream(s: &[u8]) -> Result<Value, Vec<u8>> {
+    let mut p = Parser { lexer: Lexer::new(s), last_token: Tok::Uninitialized };
+    p.get_token();
+    p.parse_internal()
+}
+
 /// `static_cast<int64_t>(double)` on x86-64 (cvttsd2si): out of range and
 /// NaN give INT64_MIN.
 pub fn f64_to_i64(d: f64) -> i64 {

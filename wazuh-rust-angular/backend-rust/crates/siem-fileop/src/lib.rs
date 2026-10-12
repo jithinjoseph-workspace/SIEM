@@ -6,7 +6,10 @@
 //! Paths are handled as `/`-separated strings, as Wazuh does: the relative
 //! names written into `merged.mg` must be byte-identical to a C manager's.
 
+pub mod crt;
 pub mod version_op;
+#[cfg(windows)]
+pub mod win_version;
 
 use md5::{Digest, Md5};
 use std::fs;
@@ -160,11 +163,19 @@ pub fn test_unmerge_files(path: &str) -> bool {
     ret
 }
 
-/// `UnmergeFiles`: extract every file of a merged file into `optdir`
-/// (rejecting names containing `..`). Returns (ok, relative names written).
+/// `UnmergeFiles(path, optdir, OS_TEXT, ...)`: extract every file of a
+/// merged file into `optdir` (rejecting names containing `..`). Returns (ok,
+/// relative names written). Text mode: see [`crt`].
 pub fn unmerge_files(path: &str, optdir: Option<&str>) -> (bool, Vec<String>) {
+    unmerge_files_mode(path, optdir, true)
+}
+
+/// `UnmergeFiles(path, optdir, mode, ...)`: `text` for `OS_TEXT`, false for
+/// `OS_BINARY` (no stream translation on Windows).
+pub fn unmerge_files_mode(path: &str, optdir: Option<&str>, text: bool) -> (bool, Vec<String>) {
     let mut names = Vec::new();
-    let Ok(data) = fs::read(path) else {
+    let read = if text { crt::read_text(path) } else { fs::read(path) };
+    let Ok(data) = read else {
         tracing::error!("Unable to read merged file: '{path}'.");
         return (false, names);
     };
@@ -202,7 +213,8 @@ pub fn unmerge_files(path: &str, optdir: Option<&str>) -> (bool, Vec<String>) {
         pos += read;
         if state_ok {
             let tmp = format!("{final_name}.tmp-unmerge");
-            if fs::write(&tmp, content).is_err() || fs::rename(&tmp, &final_name).is_err() {
+            let w = if text { crt::write_text(&tmp, content) } else { fs::write(&tmp, content) };
+            if w.is_err() || fs::rename(&tmp, &final_name).is_err() {
                 let _ = fs::remove_file(&tmp);
                 ret = false;
                 break;
@@ -292,9 +304,10 @@ pub fn cldir_ex_ignore(dir: &str, ignore: &[&str]) -> io::Result<()> {
     cldir_rec(dir, dir, ignore)
 }
 
-/// `OS_MD5_File` (hex digest), `None` when the file cannot be read.
+/// `OS_MD5_File(path, md5, OS_TEXT)` (hex digest), `None` when the file
+/// cannot be read.
 pub fn md5_file(path: &str) -> Option<String> {
-    let data = fs::read(path).ok()?;
+    let data = crt::read_text(path).ok()?;
     Some(md5_hex(&data))
 }
 

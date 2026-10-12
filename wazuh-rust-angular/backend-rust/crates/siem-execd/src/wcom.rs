@@ -1,301 +1,526 @@
-//! Wazuh Active Response Management IPC Protocol (`src/os_execd/wcom.c`)
-//!
-//! Provides the Unix domain IPC control dispatcher for `wazuh-execd`:
-//! - `restart`, `reload` (with `lock_restart` protection)
-//! - `lock_restart <timeout>`
-//! - `unmerge <file_path>`
-//! - `uncompress <source> <target>`
-//! - `getconfig <section>` (`active-response`, `internal`, `logging`, `cluster`)
-//! - `check-manager-configuration`
+//! `os_execd/wcom.c`: the `com` requests (`unmerge`, `uncompress`,
+//! `restart`, `reload`, `lock_restart`, `getconfig`,
+//! `check-manager-configuration`) and, on Unix, the `queue/sockets/com`
+//! server thread. On Windows agentd calls [`wcom_dispatch`] directly.
 
-use crate::config::ExecdConfig;
-use flate2::read::GzDecoder;
-use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::Ordering;
 
-/// Atomic timestamp until which restart is locked (matching `pending_upg` in C).
-static PENDING_UPG: AtomicI64 = AtomicI64::new(0);
+use crate::*;
 
-fn get_current_epoch() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
+/// `PATH_MAX`
+#[cfg(unix)]
+const PATH_MAX: usize = 4096;
+#[cfg(windows)]
+const PATH_MAX: usize = 260;
+/// `EXECVE_ERROR`
+const EXECVE_ERROR: i32 = 0x7F;
 
-/// Jails a path to a base directory, rejecting directory traversal attempts (`_jailfile`).
-pub fn jail_file(base_dir: &Path, file_path: &str) -> Option<PathBuf> {
-    if file_path.contains("..") || file_path.starts_with('/') || file_path.starts_with('\\') {
+/// `_jailfile`: `basedir/filename`, refused when the name has `..` or the
+/// path is too long.
+fn jailfile(basedir: &str, filename: &str) -> Option<String> {
+    if siem_fileop::ref_parent_folder(filename) {
         return None;
     }
-    Some(base_dir.join(file_path))
+    #[cfg(unix)]
+    let p = format!("{basedir}/{filename}");
+    #[cfg(windows)]
+    let p = format!("{basedir}\\{filename}");
+    (p.len() <= PATH_MAX).then_some(p)
 }
 
-/// Dispatches a command string matching `wcom_dispatch` in `wcom.c`.
-pub fn wcom_dispatch(command: &str, config: &ExecdConfig, incoming_dir: &Path) -> String {
-    let trimmed = command.trim();
-    let mut parts = trimmed.splitn(2, ' ');
-    let rcv_comm = parts.next().unwrap_or("");
-    let rcv_args = parts.next().map(|s| s.trim());
-
-    match rcv_comm {
-        "restart" | "restart-wazuh" => wcom_restart(),
-        "reload" => wcom_reload(),
-        "lock_restart" => {
-            let timeout = rcv_args.and_then(|a| a.parse::<i32>().ok()).unwrap_or(-2);
-            wcom_lock_restart(timeout, config.max_restart_lock)
-        }
-        "getconfig" => {
-            if let Some(section) = rcv_args {
-                wcom_getconfig(section, config)
-            } else {
-                "err WCOM getconfig needs arguments".to_string()
-            }
-        }
-        "unmerge" => {
-            if let Some(file_path) = rcv_args {
-                wcom_unmerge(incoming_dir, file_path)
-            } else {
+/// `wcom_dispatch`
+pub fn wcom_dispatch(ex: &Execd, command: &[u8]) -> Vec<u8> {
+    let command = String::from_utf8_lossy(&command[..command.iter().position(|&c| c == 0).unwrap_or(command.len())]).into_owned();
+    let (rcv_comm, rcv_args) = match command.find(' ') {
+        Some(p) => (&command[..p], Some(&command[p + 1..])),
+        None => (command.as_str(), None),
+    };
+    let out = match rcv_comm {
+        "unmerge" => match rcv_args {
+            None => {
+                ex.log.debug1("WCOM unmerge needs arguments.");
                 "err WCOM unmerge needs arguments".to_string()
             }
-        }
-        "uncompress" => {
-            if let Some(args) = rcv_args {
-                let mut comp_parts = args.splitn(2, ' ');
-                let src = comp_parts.next().unwrap_or("");
-                let dst = comp_parts.next().unwrap_or("");
-                if src.is_empty() || dst.is_empty() {
-                    "err Too few commands".to_string()
-                } else {
-                    wcom_uncompress(incoming_dir, src, dst)
-                }
-            } else {
+            Some(a) => wcom_unmerge(ex, a),
+        },
+        "uncompress" => match rcv_args {
+            None => {
+                ex.log.debug1("WCOM uncompress needs arguments.");
                 "err WCOM uncompress needs arguments".to_string()
             }
-        }
-        "check-manager-configuration" => wcom_check_manager_config(),
-        _ => "err Unrecognized command".to_string(),
-    }
-}
-
-/// Port of `wcom_restart`: verifies restart lock and triggers restart.
-pub fn wcom_restart() -> String {
-    let now = get_current_epoch();
-    let lock = PENDING_UPG.load(Ordering::SeqCst) - now;
-    if lock > 0 {
-        // Locked
-        "ok ".to_string()
-    } else {
-        // Unlocked: In real environment, fork/execs restart script
-        "ok ".to_string()
-    }
-}
-
-/// Port of `wcom_reload`: verifies restart lock and triggers reload.
-pub fn wcom_reload() -> String {
-    let now = get_current_epoch();
-    let lock = PENDING_UPG.load(Ordering::SeqCst) - now;
-    if lock > 0 {
-        "ok ".to_string()
-    } else {
-        "ok ".to_string()
-    }
-}
-
-/// Port of `lock_restart`: sets lock timestamp.
-pub fn wcom_lock_restart(mut timeout: i32, max_restart_lock: u32) -> String {
-    if timeout < -1 {
-        return "err Invalid timeout".to_string();
-    }
-
-    let max_lock = if max_restart_lock == 0 { 3600 } else { max_restart_lock as i32 };
-    if timeout == -1 || timeout > max_lock {
-        timeout = max_lock;
-    }
-
-    let target = get_current_epoch() + timeout as i64;
-    PENDING_UPG.store(target, Ordering::SeqCst);
-    "ok ".to_string()
-}
-
-/// Port of `wcom_getconfig`: returns JSON section representation.
-pub fn wcom_getconfig(section: &str, config: &ExecdConfig) -> String {
-    match section {
-        "active-response" => {
-            let json = config.get_ar_config();
-            format!("ok {}", json)
-        }
-        "internal" => {
-            let json = config.get_internal_options();
-            format!("ok {}", json)
-        }
-        "logging" => {
-            let json = serde_json::json!({
-                "logging": {
-                    "debug": 0
+            Some(a) => match a.find(' ') {
+                Some(p) => wcom_uncompress(ex, &a[..p], &a[p + 1..]),
+                None => {
+                    ex.log.debug1("Bad WCOM uncompress message.");
+                    "err Too few commands".to_string()
                 }
-            });
-            format!("ok {}", json)
-        }
-        "cluster" => {
-            let json = serde_json::json!({
-                "cluster": {
-                    "disabled": "yes"
+            },
+        },
+        "restart" | "restart-wazuh" => wcom_restart(ex, false),
+        "reload" => wcom_restart(ex, true),
+        "lock_restart" => {
+            let max = ex.define_int("execd", "max_restart_lock", 0, 3600);
+            ex.max_restart_lock.store(max, Ordering::SeqCst);
+            let mut timeout = rcv_args.map(siem_config::util::atoi).unwrap_or(-2);
+            let out = if timeout < -1 {
+                "err Invalid timeout".to_string()
+            } else {
+                if timeout == -1 || timeout > max {
+                    if timeout > max {
+                        ex.log.warn("Timeout exceeds the maximum allowed.");
+                    }
+                    timeout = max;
                 }
-            });
-            format!("ok {}", json)
+                "ok ".to_string()
+            };
+            lock_restart(ex, timeout);
+            out
         }
-        _ => "err Could not get requested section".to_string(),
-    }
-}
-
-/// Port of `wcom_unmerge`: extracts unmerged multi-file archives.
-pub fn wcom_unmerge(incoming_dir: &Path, file_path: &str) -> String {
-    let full_path = match jail_file(incoming_dir, file_path) {
-        Some(p) => p,
-        None => return "err Invalid file name".to_string(),
+        "getconfig" => match rcv_args {
+            None => {
+                ex.log.debug1("WCOM getconfig needs arguments.");
+                "err WCOM getconfig needs arguments".to_string()
+            }
+            Some(a) => return wcom_getconfig(ex, a),
+        },
+        "check-manager-configuration" => return wcom_check_manager_config(ex),
+        other => {
+            ex.log.debug1(format!("WCOM Unrecognized command '{other}'."));
+            "err Unrecognized command".to_string()
+        }
     };
+    out.into_bytes()
+}
 
-    if !full_path.exists() {
+/// `wcom_unmerge`
+fn wcom_unmerge(ex: &Execd, file_path: &str) -> String {
+    let Some(final_path) = jailfile(INCOMING_DIR, file_path) else {
+        ex.log.error("At WCOM unmerge: Invalid file name");
+        return "err Invalid file name".to_string();
+    };
+    if !siem_fileop::unmerge_files_mode(&final_path, Some(INCOMING_DIR), false).0 {
+        ex.log.error(format!("At WCOM unmerge: Error unmerging file '{final_path}.'"));
         return "err Cannot unmerge file".to_string();
     }
-
-    // In Wazuh, multi-file bundle format lines start with !<size> <filename> followed by bytes.
-    // For general archives, unmerge parses file blocks.
     "ok ".to_string()
 }
 
-/// Port of `wcom_uncompress`: gunzips `source` into `target` in `incoming_dir`.
-pub fn wcom_uncompress(incoming_dir: &Path, source: &str, target: &str) -> String {
-    let src_path = match jail_file(incoming_dir, source) {
-        Some(p) => p,
-        None => return "err Invalid file name".to_string(),
+/// `wcom_uncompress`: gunzip `source` into `target` (`gzread` passes
+/// non-gzip data through), then remove the source.
+fn wcom_uncompress(ex: &Execd, source: &str, target: &str) -> String {
+    let (Some(fs), Some(ft)) = (jailfile(INCOMING_DIR, source), jailfile(INCOMING_DIR, target)) else {
+        ex.log.error("At WCOM uncompress: Invalid file name");
+        return "err Invalid file name".to_string();
     };
-
-    let dst_path = match jail_file(incoming_dir, target) {
-        Some(p) => p,
-        None => return "err Invalid file name".to_string(),
+    let Ok(mut src) = std::fs::File::open(&fs) else {
+        ex.log.error(format!("At WCOM uncompress: Unable to open '{fs}'"));
+        return "err Unable to open source".to_string();
     };
-
-    let src_file = match File::open(&src_path) {
-        Ok(f) => f,
-        Err(_) => return "err Unable to open source".to_string(),
+    let Ok(mut dst) = std::fs::File::create(&ft) else {
+        ex.log.error(format!("At WCOM uncompress: Unable to open '{ft}'"));
+        return "err Unable to open target".to_string();
     };
-
-    let mut decoder = GzDecoder::new(src_file);
-    let mut buffer = Vec::new();
-    if let Err(_) = decoder.read_to_end(&mut buffer) {
+    let mut raw = Vec::new();
+    let read_ok = src.read_to_end(&mut raw).is_ok();
+    let data = if raw.starts_with(&[0x1f, 0x8b]) {
+        let mut d = Vec::new();
+        match flate2::read::MultiGzDecoder::new(&raw[..]).read_to_end(&mut d) {
+            Ok(_) => Some(d),
+            Err(_) => None,
+        }
+    } else if read_ok {
+        Some(raw)
+    } else {
+        None
+    };
+    let Some(data) = data else {
+        ex.log.error(format!("At WCOM uncompress: Unable to read '{fs}'"));
         return "err Unable to read source".to_string();
-    }
-
-    let mut dst_file = match File::create(&dst_path) {
-        Ok(f) => f,
-        Err(_) => return "err Unable to open target".to_string(),
     };
-
-    if let Err(_) = dst_file.write_all(&buffer) {
+    if dst.write_all(&data).is_err() {
+        ex.log.error(format!("At WCOM uncompress: Unable to write '{ft}'"));
         return "err Unable to write target".to_string();
     }
-
-    // Remove source file on success matching wcom_uncompress
-    let _ = std::fs::remove_file(&src_path);
-
+    drop(src);
+    let _ = std::fs::remove_file(&fs);
     "ok ".to_string()
 }
 
-/// Port of `wcom_check_manager_config`.
-pub fn wcom_check_manager_config() -> String {
-    let res = serde_json::json!({
-        "error": 0,
-        "message": "ok"
-    });
-    res.to_string()
+/// `wcom_restart` / `wcom_reload`
+fn wcom_restart(ex: &Execd, reload: bool) -> String {
+    let lock = ex.pending_upg.load(Ordering::SeqCst) - now();
+    if lock > 0 {
+        ex.log.info(format!("Agent auto-restart locked for {lock} seconds."));
+        return "ok ".to_string();
+    }
+    #[cfg(unix)]
+    {
+        let what = if reload { "reload" } else { "restart" };
+        let cmd: Vec<&str> = if std::path::Path::new("active-response/bin/restart.sh").exists() {
+            if reload {
+                vec!["active-response/bin/restart.sh", "agent", "reload"]
+            } else {
+                vec!["active-response/bin/restart.sh", "agent"]
+            }
+        } else {
+            vec!["bin/wazuh-control", what]
+        };
+        crate::exec::exec_cmd(ex, &cmd);
+        "ok ".to_string()
+    }
+    #[cfg(windows)]
+    {
+        let _ = reload;
+        let command = trunc(&format!("{AR_BINDIR}/restart-wazuh.exe"), OS_FLSIZE);
+        let params = br#"{"version":1,"origin":{"name":"","module":"wazuh-execd"},"command":"add","parameters":{"extra_args":[],"alert":{},"program":"restart-wazuh.exe"}}"#;
+        match crate::wfd::wpopenv(&ex.log, &command, &[&command], crate::wfd::W_BIND_STDIN) {
+            Some(mut w) => {
+                w.write_line(params);
+                crate::wfd::wpclose(&ex.log, w);
+                "ok ".to_string()
+            }
+            None => {
+                ex.log.error("At WCOM restart: Cannot execute restart process");
+                "err Cannot execute restart process".to_string()
+            }
+        }
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use tempfile::tempdir;
+/// `"ok " + json` (`os_strdup("ok ") + wm_strcat(json, ' ')`: two spaces).
+fn ok_json(j: siem_cjson::Json) -> Vec<u8> {
+    let mut out = b"ok  ".to_vec();
+    out.extend_from_slice(&j.print_unformatted());
+    out
+}
 
-    #[test]
-    fn test_wcom_dispatch_commands() {
-        let config = ExecdConfig {
-            disabled: false,
-            repeated_offenders: vec![30, 60],
-            request_timeout: 10,
-            max_restart_lock: 600,
+/// `wcom_getconfig`
+fn wcom_getconfig(ex: &Execd, section: &str) -> Vec<u8> {
+    match section {
+        "active-response" => return ok_json(crate::config::get_ar_config(ex)),
+        "logging" => return ok_json(ex.log.config_json()),
+        "internal" => return ok_json(crate::config::get_internal_options(ex)),
+        #[cfg(unix)]
+        "cluster" => {
+            let s = siem_ipc::os_net::connect_unix_domain(CLUSTER_SOCK, siem_ipc::os_net::SOCK_STREAM, OS_MAXSTR as i32);
+            if s < 0 {
+                return b"err Unable to connect with socket. The component might be disabled".to_vec();
+            }
+            siem_ipc::os_net::close_fd(s);
+            if let Some(j) = crate::config::get_cluster_config(ex) {
+                return ok_json(j);
+            }
+        }
+        _ => {}
+    }
+    ex.log.debug1(format!("At WCOM getconfig: Could not get '{section}' section"));
+    b"err Could not get requested section".to_vec()
+}
+
+/// `wm_exec(command, &output, &status, secs, NULL)`: Err(()) when the
+/// command could not run (`status` keeps its value).
+#[cfg(unix)]
+fn wm_exec(ex: &Execd, command: &str, status: &mut i32) -> Result<String, ()> {
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    match std::process::Command::new(parts[0]).args(&parts[1..]).output() {
+        Ok(o) => {
+            *status = o.status.code().unwrap_or(-1);
+            let mut s = o.stdout;
+            s.extend_from_slice(&o.stderr);
+            Ok(String::from_utf8_lossy(&s).into_owned())
+        }
+        Err(e) => {
+            // the child exits with EXECVE_ERROR when execvp fails
+            let _ = e;
+            *status = EXECVE_ERROR;
+            ex.log.debug1(format!("Cannot run '{command}'"));
+            Err(())
+        }
+    }
+}
+
+/// `wm_exec` (Windows, `wazuh_modules/wm_exec.c`): `CreateProcessW` of the
+/// command line with stdout and stderr on a pipe, waited 2000 s.
+#[cfg(windows)]
+fn wm_exec(ex: &Execd, command: &str, status: &mut i32) -> Result<String, ()> {
+    use std::os::windows::io::FromRawHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::System::Threading::{
+        CreateProcessW, GetExitCodeProcess, TerminateProcess, WaitForSingleObject, NORMAL_PRIORITY_CLASS,
+        PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOW,
+    };
+    const SECS: u32 = 2000;
+    const WM_STRING_MAX: usize = 67108864;
+    // SAFETY: a pipe and a process created here and closed below.
+    unsafe {
+        let mut sinfo: STARTUPINFOW = std::mem::zeroed();
+        sinfo.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        sinfo.dwFlags = STARTF_USESTDHANDLES;
+        let (mut rd, mut wr): (HANDLE, HANDLE) = (std::ptr::null_mut(), std::ptr::null_mut());
+        if CreatePipe(&mut rd, &mut wr, std::ptr::null(), 0) == 0 {
+            let e = GetLastError();
+            ex.log.error(format!("at wm_exec(): CreatePipe({e}): {}", siem_ipc::os_net::win_strerror(e)));
+            return Err(());
+        }
+        sinfo.hStdOutput = wr;
+        sinfo.hStdError = wr;
+        if SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 1) == 0 {
+            let e = GetLastError();
+            ex.log.error(format!("at wm_exec(): SetHandleInformation({e}): {}", siem_ipc::os_net::win_strerror(e)));
+            CloseHandle(rd);
+            CloseHandle(wr);
+            return Err(());
+        }
+        let mut wcmd: Vec<u16> = command.encode_utf16().chain(std::iter::once(0)).collect();
+        ex.log.debug2(format!("UTF-8 command: {command}"));
+        let mut pinfo: PROCESS_INFORMATION = std::mem::zeroed();
+        if CreateProcessW(
+            std::ptr::null(),
+            wcmd.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+            NORMAL_PRIORITY_CLASS,
+            std::ptr::null(),
+            std::ptr::null(),
+            &sinfo,
+            &mut pinfo,
+        ) == 0
+        {
+            let e = GetLastError();
+            ex.log.warn(format!("Cannot run '{command}': {} ({e})", siem_ipc::os_net::win_strerror(e)));
+            CloseHandle(rd);
+            CloseHandle(wr);
+            return Err(());
+        }
+        CloseHandle(wr);
+        let mut pipe = std::fs::File::from_raw_handle(rd as _);
+        let log = std::sync::Arc::clone(&ex.log);
+        let reader = std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                match pipe.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if out.len() + n <= WM_STRING_MAX {
+                            out.extend_from_slice(&buf[..n]);
+                        } else {
+                            log.warn("String limit reached.");
+                            break;
+                        }
+                    }
+                }
+            }
+            out
+        });
+        let mut retval: Result<(), i32> = Ok(());
+        match WaitForSingleObject(pinfo.hProcess, SECS * 1000) {
+            WAIT_OBJECT_0 => {
+                let mut code = 0u32;
+                GetExitCodeProcess(pinfo.hProcess, &mut code);
+                *status = code as i32;
+            }
+            WAIT_TIMEOUT => {
+                TerminateProcess(pinfo.hProcess, 1);
+                retval = Err(1);
+            }
+            _ => {
+                let e = GetLastError();
+                ex.log.error(format!("at wm_exec(): WaitForSingleObject({e}): {}", siem_ipc::os_net::win_strerror(e)));
+                TerminateProcess(pinfo.hProcess, 1);
+                retval = Err(-1);
+            }
+        }
+        let out = reader.join().unwrap_or_default();
+        CloseHandle(pinfo.hProcess);
+        CloseHandle(pinfo.hThread);
+        match retval {
+            Ok(()) => Ok(String::from_utf8_lossy(&out).into_owned()),
+            // WM_ERROR_TIMEOUT (>= 0): the output is kept, the command "ran"
+            Err(1) => Ok(String::from_utf8_lossy(&out).into_owned()),
+            Err(_) => Err(()),
+        }
+    }
+}
+
+/// `wcom_check_manager_config`: run every daemon with `-t`.
+fn wcom_check_manager_config(ex: &Execd) -> Vec<u8> {
+    const DAEMONS: [&str; 13] = [
+        "bin/wazuh-authd",
+        "bin/wazuh-remoted",
+        "bin/wazuh-execd",
+        "bin/wazuh-analysisd",
+        "bin/wazuh-logcollector",
+        "bin/wazuh-integratord",
+        "bin/wazuh-syscheckd",
+        "bin/wazuh-maild",
+        "bin/wazuh-modulesd",
+        "bin/wazuh-clusterd",
+        "bin/wazuh-agentlessd",
+        "bin/wazuh-integratord",
+        "bin/wazuh-csyslogd",
+    ];
+    let mut retval = 0;
+    let mut response: Option<String> = None;
+    if siem_xml::OsXml::read_file(OSSECCONF, false).is_err() {
+        // snprintf(NULL, 0, ...) writes nothing
+        retval = EXECVE_ERROR;
+    } else {
+        for d in DAEMONS {
+            retval = 0;
+            let command_in = format!("{d} -t");
+            match wm_exec(ex, &command_in, &mut retval) {
+                Err(()) => {
+                    if retval == EXECVE_ERROR {
+                        ex.log.warn(format!("Path is invalid or file has insufficient permissions. {command_in}"));
+                    } else {
+                        ex.log.warn(format!("Error executing [{command_in}]"));
+                    }
+                    // snprintf(response, size, ...) with size = strlen: the
+                    // last character is cut
+                    let mut s = format!("Error executing {command_in} - ({retval})");
+                    s.pop();
+                    response = Some(s);
+                    break;
+                }
+                Ok(mut out) => {
+                    if !out.is_empty() {
+                        if out.ends_with('\n') {
+                            out.pop();
+                        }
+                        match response.as_mut() {
+                            Some(r) => {
+                                r.push(' ');
+                                r.push_str(&out);
+                            }
+                            None => response = Some(out),
+                        }
+                    }
+                }
+            }
+            if retval != 0 {
+                break;
+            }
+        }
+    }
+    let mut j = siem_cjson::Json::object();
+    j.add("error", siem_cjson::Json::number(retval as f64));
+    if retval != 0 {
+        let msg = trunc(response.as_deref().unwrap_or("(null)"), OS_SIZE_4096 - 27);
+        j.add("message", siem_cjson::Json::string(msg));
+    } else {
+        j.add("message", siem_cjson::Json::string("ok"));
+    }
+    j.print_unformatted()
+}
+
+/// `lock_restart`
+pub fn lock_restart(ex: &Execd, timeout: i32) {
+    ex.pending_upg.store(now() + timeout as i64, Ordering::SeqCst);
+}
+
+/// `wcom_main`: the `queue/sockets/com` server.
+#[cfg(unix)]
+pub fn wcom_main(ex: &Execd) {
+    use siem_ipc::os_net;
+    ex.log.debug1("Local requests thread ready");
+    let sock = os_net::bind_unix_domain(COM_LOCAL_SOCK, os_net::SOCK_STREAM, OS_MAXSTR as i32);
+    if sock < 0 {
+        let e = errno();
+        ex.log.error(format!("Unable to bind to socket '{COM_LOCAL_SOCK}': ({e}) {}.", strerror(e)));
+        return;
+    }
+    loop {
+        // SAFETY: select/accept on our own socket.
+        let rc = unsafe {
+            let mut set: libc::fd_set = std::mem::zeroed();
+            libc::FD_ZERO(&mut set);
+            libc::FD_SET(sock, &mut set);
+            libc::select(sock + 1, &mut set, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
         };
-        let dir = tempdir().unwrap();
-
-        // 1. Restart
-        let res = wcom_dispatch("restart", &config, dir.path());
-        assert_eq!(res, "ok ");
-
-        // 2. Lock restart
-        let res = wcom_dispatch("lock_restart 300", &config, dir.path());
-        assert_eq!(res, "ok ");
-
-        // 3. Invalid lock timeout
-        let res = wcom_dispatch("lock_restart -5", &config, dir.path());
-        assert_eq!(res, "err Invalid timeout");
-
-        // 4. getconfig active-response
-        let res = wcom_dispatch("getconfig active-response", &config, dir.path());
-        assert!(res.starts_with("ok "));
-        assert!(res.contains("repeated_offenders"));
-
-        // 5. getconfig missing args
-        let res = wcom_dispatch("getconfig", &config, dir.path());
-        assert_eq!(res, "err WCOM getconfig needs arguments");
-
-        // 6. getconfig invalid section
-        let res = wcom_dispatch("getconfig non_existing", &config, dir.path());
-        assert_eq!(res, "err Could not get requested section");
-
-        // 7. check-manager-configuration
-        let res = wcom_dispatch("check-manager-configuration", &config, dir.path());
-        assert!(res.contains("\"error\":0"));
-
-        // 8. unrecognized command
-        let res = wcom_dispatch("bad_cmd", &config, dir.path());
-        assert_eq!(res, "err Unrecognized command");
+        if rc == -1 {
+            let e = errno();
+            if e != libc::EINTR {
+                ex.exit_critical(format!("At wcom_main(): select(): {}", strerror(e)));
+            }
+            continue;
+        } else if rc == 0 {
+            continue;
+        }
+        // SAFETY: accept on our listening socket.
+        let peer = unsafe { libc::accept(sock, std::ptr::null_mut(), std::ptr::null_mut()) };
+        if peer < 0 {
+            let e = errno();
+            if e != libc::EINTR {
+                ex.log.error(format!("At wcom_main(): accept(): {}", strerror(e)));
+            }
+            continue;
+        }
+        let mut buf = Vec::new();
+        match os_net::recv_secure_tcp(peer, &mut buf, OS_MAXSTR as u32) {
+            r if r == os_net::OS_SOCKTERR as isize => {
+                ex.log.error("At wcom_main(): OS_RecvSecureTCP(): response size is bigger than expected");
+            }
+            -1 => ex.log.error(format!("At wcom_main(): OS_RecvSecureTCP(): {}", strerror(errno()))),
+            0 => {
+                ex.log.debug1("Empty message from local client.");
+                os_net::close_fd(peer);
+            }
+            _ => {
+                let resp = wcom_dispatch(ex, &buf);
+                os_net::send_secure_tcp(peer, &resp);
+                os_net::close_fd(peer);
+            }
+        }
     }
+}
 
-    #[test]
-    fn test_wcom_uncompress_gunzip() {
-        let dir = tempdir().unwrap();
-        let src_path = dir.path().join("test.gz");
-        let dst_path = dir.path().join("test.txt");
-
-        // Create compressed file
-        let content = b"Wazuh active-response uncompress test";
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(content).unwrap();
-        let compressed = encoder.finish().unwrap();
-        std::fs::write(&src_path, compressed).unwrap();
-
-        let config = ExecdConfig::default();
-        let res = wcom_dispatch("uncompress test.gz test.txt", &config, dir.path());
-        assert_eq!(res, "ok ");
-
-        // Check target file content
-        let decompressed = std::fs::read(&dst_path).unwrap();
-        assert_eq!(&decompressed, content);
-
-        // Verify source was unlinked
-        assert!(!src_path.exists());
+/// `OS_SendSecureTCPCluster`
+#[cfg(unix)]
+pub fn send_secure_tcp_cluster(sock: i32, command: &[u8], payload: &[u8]) -> i32 {
+    const COMMAND_SIZE: usize = 12;
+    let mut seed = [0u8; 4];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut seed));
+    let counter = (i32::from_ne_bytes(seed) % i32::MAX) as u32;
+    let mut b = Vec::with_capacity(20 + payload.len());
+    b.extend_from_slice(&counter.to_be_bytes());
+    b.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    b.extend_from_slice(command);
+    b.push(b' ');
+    b.resize(8 + COMMAND_SIZE, b'-');
+    b.extend_from_slice(payload);
+    // SAFETY: send on our own socket.
+    let r = unsafe { libc::send(sock, b.as_ptr().cast(), b.len(), 0) };
+    if r == b.len() as isize {
+        0
+    } else {
+        siem_ipc::os_net::OS_SOCKTERR
     }
+}
 
-    #[test]
-    fn test_jailfile_traversal() {
-        let dir = tempdir().unwrap();
-        assert!(jail_file(dir.path(), "../etc/passwd").is_none());
-        assert!(jail_file(dir.path(), "/etc/shadow").is_none());
-        assert!(jail_file(dir.path(), "safe_file.txt").is_some());
+/// `OS_RecvSecureClusterTCP`: the payload size, 0, -1, or -2 for an `err`
+/// reply.
+#[cfg(unix)]
+pub fn recv_secure_cluster_tcp(sock: i32, ret: &mut Vec<u8>, length: usize) -> isize {
+    let mut hdr = [0u8; 20];
+    let r = siem_ipc::os_net::recv_waitall(sock, &mut hdr);
+    if r <= 0 {
+        return r;
     }
+    if r != 20 {
+        return -1;
+    }
+    let size = u32::from_be_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as usize;
+    if size > length {
+        return -1;
+    }
+    ret.resize(size, 0);
+    let n = siem_ipc::os_net::recv_waitall(sock, ret);
+    if &hdr[8..20] == b"err --------" {
+        return -2;
+    }
+    n
 }

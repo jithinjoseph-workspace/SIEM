@@ -24,7 +24,9 @@ enum Level {
 struct Inner {
     /// `buffer` (`None` before `buffer_init` / after a free).
     slots: Option<Vec<Option<Vec<u8>>>>,
-    /// `agt->buflength` the ring was sized for.
+    /// `agt->buflength` as last read from the configuration. Like C, the
+    /// ring arithmetic uses the configured length, which a reload changes
+    /// before the ring itself is resized (accesses stay bounds-checked).
     buflength: usize,
     i: usize,
     j: usize,
@@ -88,9 +90,16 @@ pub fn buffer_init(ag: &Agentd) {
     ag.log.debug1("Agent buffer created.");
 }
 
+/// `agt->buflength`
+fn cfg_len(ag: &Agentd) -> usize {
+    ag.cfg.read().unwrap().buflength.max(0) as usize
+}
+
 /// `buffer_append`
 pub fn buffer_append(ag: &Agentd, msg: &[u8]) -> i32 {
+    let len = cfg_len(ag);
     let mut b = ag.buffer.inner.lock().unwrap();
+    b.buflength = len;
     let warn_level = level(&ag.ints.warn_level);
     match b.state {
         Level::Normal => {
@@ -148,6 +157,8 @@ pub fn dispatch_buffer(ag: &Agentd) {
             ag.log.info("Dispatch buffer thread received stop signal. Exiting.");
             break;
         }
+        // (no lock takes the buffer mutex while holding the config write lock)
+        b.buflength = cfg_len(ag);
         let warn_level = level(&ag.ints.warn_level);
         let normal_level = level(&ag.ints.normal_level);
         match b.state {
@@ -219,8 +230,8 @@ pub fn get_buffer_length(ag: &Agentd) -> i32 {
     if !ag.buffer_enabled() {
         return -1;
     }
+    let n = cfg_len(ag) as i64 + 1;
     let b = ag.buffer.inner.lock().unwrap();
-    let n = b.buflength as i64 + 1;
     let mut r = (b.i as i64 - b.j as i64) % n;
     if r < 0 {
         r += n;

@@ -15,6 +15,7 @@ pub mod cluster;
 pub mod global;
 pub mod internal_options;
 pub mod labels;
+pub mod localfile;
 pub mod logtest;
 pub mod messages;
 pub mod remote;
@@ -80,6 +81,11 @@ impl Platform {
     pub const MANAGER: Platform = Platform { client: false, windows: false };
     pub const LINUX_AGENT: Platform = Platform { client: true, windows: false };
     pub const WINDOWS_AGENT: Platform = Platform { client: true, windows: true };
+    /// The agent this build is.
+    #[cfg(windows)]
+    pub const AGENT: Platform = Platform::WINDOWS_AGENT;
+    #[cfg(not(windows))]
+    pub const AGENT: Platform = Platform::LINUX_AGENT;
 }
 
 /// Identity of the agent evaluating `<agent_config name/os/profile>` filters
@@ -479,7 +485,8 @@ pub fn read_config_xml(
                     match a.as_str() {
                         "name" => {
                             if ctx.platform.client {
-                                passed &= agent_filter(ctx, "name", v, ctx.agent.name.clone());
+                                let n = read_agent_name(ctx);
+                                passed &= agent_filter(ctx, "name", v, n);
                             }
                         }
                         "os" => {
@@ -489,7 +496,8 @@ pub fn read_config_xml(
                         }
                         "profile" => {
                             if ctx.platform.client {
-                                passed &= agent_filter(ctx, "profile", v, ctx.agent.profile.clone());
+                                let p = read_agent_profile(ctx);
+                                passed &= agent_filter(ctx, "profile", v, p);
                             }
                         }
                         "overwrite" => {}
@@ -501,8 +509,9 @@ pub fn read_config_xml(
             } else if ctx.platform.client {
                 // Generic block: only read when the agent has no profile... the C
                 // code inverts this (passed = 0 when the agent has NO profile).
+                let profile = read_agent_profile(ctx);
                 ctx.debug2("agent_config element does not have any attributes.");
-                if ctx.agent.profile.is_none() {
+                if profile.is_none() {
                     ctx.debug2("but agent has a profile name.");
                     passed = false;
                 }
@@ -524,6 +533,27 @@ pub fn read_config_xml(
         }
     }
     Ok(())
+}
+
+/// `os_read_agent_name` (its debug lines; the value comes from
+/// [`AgentIdentity`]).
+fn read_agent_name(ctx: &mut ConfigContext) -> Option<String> {
+    ctx.debug2("Calling os_read_agent_name().");
+    let n = ctx.agent.name.clone();
+    if let Some(v) = &n {
+        ctx.debug2(format!("os_read_agent_name returned ({v})."));
+    }
+    n
+}
+
+/// `os_read_agent_profile` (its debug lines).
+fn read_agent_profile(ctx: &mut ConfigContext) -> Option<String> {
+    ctx.debug2("Calling os_read_agent_profile().");
+    let p = ctx.agent.profile.clone();
+    if let Some(v) = &p {
+        ctx.debug2(format!("os_read_agent_profile() = [{v}]"));
+    }
+    p
 }
 
 fn agent_filter(ctx: &mut ConfigContext, what: &str, pattern: &str, value: Option<String>) -> bool {

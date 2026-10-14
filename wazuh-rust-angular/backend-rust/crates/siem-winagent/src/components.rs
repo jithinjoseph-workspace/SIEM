@@ -28,11 +28,38 @@ pub fn win_execd_start(ag: &Agentd) -> bool {
 /// The `skthread` (`Start_win32_Syscheck`).
 pub fn start_syscheck(_ag: &Agentd) {}
 
+static WMODULES: OnceLock<Arc<crate::wmodules::WModules>> = OnceLock::new();
+
 /// `wm_children_pool_init` + `wm_config` + the module threads.
-pub fn start_wmodules(_ag: &Agentd) {}
+pub fn start_wmodules(ag: &Agentd) {
+    match crate::wmodules::WModules::config(ag) {
+        Ok(w) => {
+            let w = Arc::new(w);
+            let _ = WMODULES.set(w.clone());
+            if w.check() {
+                w.start();
+            }
+        }
+        // mlerror_exit(LOGLEVEL_ERROR, CONFIG_ERROR, cfg)
+        Err(()) => ag.exit_error("(1202): Configuration error at 'ossec.conf'."),
+    }
+}
 
 /// The dispatchers and queues of these components.
 pub fn register_hooks(_ag: &Agentd, hooks: &mut WinHooks) {
+    // req_receiver: "wmodules" -> wmcom_dispatch; receiver: syscollector dbsync -> wmcom_sync
+    hooks.dispatch.push((
+        "wmodules",
+        Box::new(|b: &[u8]| match WMODULES.get() {
+            Some(w) => w.dispatch(b),
+            None => b"err Unrecognized command".to_vec(),
+        }),
+    ));
+    hooks.wmcom_sync = Some(Box::new(|b: &[u8]| {
+        if let Some(w) = WMODULES.get() {
+            w.wmcom_sync(&String::from_utf8_lossy(b));
+        }
+    }));
     if let Some((ex, q)) = EXECD.get() {
         let (e1, e2, q1) = (Arc::clone(ex), Arc::clone(ex), Arc::clone(q));
         // queue_push_ex(winexec_queue, strdup(msg))

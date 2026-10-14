@@ -3,6 +3,7 @@ pub mod delta_sync;
 pub mod normalizer;
 pub mod provider;
 pub mod tables;
+pub mod port;
 
 pub use collector::{SyscollectorConfig, SyscollectorEngine};
 pub use delta_sync::{get_item_checksum, get_item_id, SyncDelta, SyncOperation, TableSyncCache};

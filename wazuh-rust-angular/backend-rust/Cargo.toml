@@ -49,5 +49,6 @@ members = [
     "crates/siem-winagent",
     "crates/siem-modulesd",
     "crates/siem-sysinfo",
+    "crates/siem-sca",
 ]
 

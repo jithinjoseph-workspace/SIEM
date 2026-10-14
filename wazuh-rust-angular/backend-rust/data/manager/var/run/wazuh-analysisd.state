@@ -2,13 +2,13 @@
 # THIS FILE WILL BE DEPRECATED IN FUTURE VERSIONS
 
 # Total events decoded
-total_events_decoded='16023'
+total_events_decoded='1484'
 
 # Syscheck events decoded
 syscheck_events_decoded='0'
 
 # Syscollector events decoded
-syscollector_events_decoded='0'
+syscollector_events_decoded='569'
 
 # Rootcheck events decoded
 rootcheck_events_decoded='0'
@@ -17,25 +17,25 @@ rootcheck_events_decoded='0'
 sca_events_decoded='0'
 
 # Winevt events decoded
-winevt_events_decoded='16023'
+winevt_events_decoded='902'
 
 # Database synchronization messages dispatched
-dbsync_messages_dispatched='0'
+dbsync_messages_dispatched='13'
 
 # Other events decoded
 other_events_decoded='0'
 
 # Events processed (Rule matching)
-events_processed='16023'
+events_processed='1471'
 
 # Events received
-events_received='16023'
+events_received='1484'
 
 # Events dropped
 events_dropped='0'
 
 # Alerts written to disk
-alerts_written='32'
+alerts_written='0'
 
 # Firewall alerts written to disk
 firewall_written='0'

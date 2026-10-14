@@ -16,6 +16,7 @@ pub mod exec;
 pub mod execd;
 pub mod wcom;
 pub mod wfd;
+pub mod wm_exec;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};

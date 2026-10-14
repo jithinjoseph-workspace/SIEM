@@ -218,131 +218,16 @@ fn wcom_getconfig(ex: &Execd, section: &str) -> Vec<u8> {
     b"err Could not get requested section".to_vec()
 }
 
-/// `wm_exec(command, &output, &status, secs, NULL)`: Err(()) when the
-/// command could not run (`status` keeps its value).
-#[cfg(unix)]
+/// `wm_exec(command, &output, &status, 2000, NULL)`: Err(()) when it
+/// returns < 0 (`status` keeps its value unless the C code sets it).
 fn wm_exec(ex: &Execd, command: &str, status: &mut i32) -> Result<String, ()> {
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    match std::process::Command::new(parts[0]).args(&parts[1..]).output() {
-        Ok(o) => {
-            *status = o.status.code().unwrap_or(-1);
-            let mut s = o.stdout;
-            s.extend_from_slice(&o.stderr);
-            Ok(String::from_utf8_lossy(&s).into_owned())
-        }
-        Err(e) => {
-            // the child exits with EXECVE_ERROR when execvp fails
-            let _ = e;
-            *status = EXECVE_ERROR;
-            ex.log.debug1(format!("Cannot run '{command}'"));
-            Err(())
-        }
+    let r = crate::wm_exec::wm_exec(&ex.log, command, 2000);
+    if let Some(s) = r.status {
+        *status = s;
     }
-}
-
-/// `wm_exec` (Windows, `wazuh_modules/wm_exec.c`): `CreateProcessW` of the
-/// command line with stdout and stderr on a pipe, waited 2000 s.
-#[cfg(windows)]
-fn wm_exec(ex: &Execd, command: &str, status: &mut i32) -> Result<String, ()> {
-    use std::os::windows::io::FromRawHandle;
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT, WAIT_OBJECT_0, WAIT_TIMEOUT};
-    use windows_sys::Win32::System::Pipes::CreatePipe;
-    use windows_sys::Win32::System::Threading::{
-        CreateProcessW, GetExitCodeProcess, TerminateProcess, WaitForSingleObject, NORMAL_PRIORITY_CLASS,
-        PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOW,
-    };
-    const SECS: u32 = 2000;
-    const WM_STRING_MAX: usize = 67108864;
-    // SAFETY: a pipe and a process created here and closed below.
-    unsafe {
-        let mut sinfo: STARTUPINFOW = std::mem::zeroed();
-        sinfo.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-        sinfo.dwFlags = STARTF_USESTDHANDLES;
-        let (mut rd, mut wr): (HANDLE, HANDLE) = (std::ptr::null_mut(), std::ptr::null_mut());
-        if CreatePipe(&mut rd, &mut wr, std::ptr::null(), 0) == 0 {
-            let e = GetLastError();
-            ex.log.error(format!("at wm_exec(): CreatePipe({e}): {}", siem_ipc::os_net::win_strerror(e)));
-            return Err(());
-        }
-        sinfo.hStdOutput = wr;
-        sinfo.hStdError = wr;
-        if SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 1) == 0 {
-            let e = GetLastError();
-            ex.log.error(format!("at wm_exec(): SetHandleInformation({e}): {}", siem_ipc::os_net::win_strerror(e)));
-            CloseHandle(rd);
-            CloseHandle(wr);
-            return Err(());
-        }
-        let mut wcmd: Vec<u16> = command.encode_utf16().chain(std::iter::once(0)).collect();
-        ex.log.debug2(format!("UTF-8 command: {command}"));
-        let mut pinfo: PROCESS_INFORMATION = std::mem::zeroed();
-        if CreateProcessW(
-            std::ptr::null(),
-            wcmd.as_mut_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-            1,
-            NORMAL_PRIORITY_CLASS,
-            std::ptr::null(),
-            std::ptr::null(),
-            &sinfo,
-            &mut pinfo,
-        ) == 0
-        {
-            let e = GetLastError();
-            ex.log.warn(format!("Cannot run '{command}': {} ({e})", siem_ipc::os_net::win_strerror(e)));
-            CloseHandle(rd);
-            CloseHandle(wr);
-            return Err(());
-        }
-        CloseHandle(wr);
-        let mut pipe = std::fs::File::from_raw_handle(rd as _);
-        let log = std::sync::Arc::clone(&ex.log);
-        let reader = std::thread::spawn(move || {
-            let mut out = Vec::new();
-            let mut buf = [0u8; 1024];
-            loop {
-                match pipe.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        if out.len() + n <= WM_STRING_MAX {
-                            out.extend_from_slice(&buf[..n]);
-                        } else {
-                            log.warn("String limit reached.");
-                            break;
-                        }
-                    }
-                }
-            }
-            out
-        });
-        let mut retval: Result<(), i32> = Ok(());
-        match WaitForSingleObject(pinfo.hProcess, SECS * 1000) {
-            WAIT_OBJECT_0 => {
-                let mut code = 0u32;
-                GetExitCodeProcess(pinfo.hProcess, &mut code);
-                *status = code as i32;
-            }
-            WAIT_TIMEOUT => {
-                TerminateProcess(pinfo.hProcess, 1);
-                retval = Err(1);
-            }
-            _ => {
-                let e = GetLastError();
-                ex.log.error(format!("at wm_exec(): WaitForSingleObject({e}): {}", siem_ipc::os_net::win_strerror(e)));
-                TerminateProcess(pinfo.hProcess, 1);
-                retval = Err(-1);
-            }
-        }
-        let out = reader.join().unwrap_or_default();
-        CloseHandle(pinfo.hProcess);
-        CloseHandle(pinfo.hThread);
-        match retval {
-            Ok(()) => Ok(String::from_utf8_lossy(&out).into_owned()),
-            // WM_ERROR_TIMEOUT (>= 0): the output is kept, the command "ran"
-            Err(1) => Ok(String::from_utf8_lossy(&out).into_owned()),
-            Err(_) => Err(()),
-        }
+    match r.output {
+        Some(o) if r.retval >= 0 => Ok(String::from_utf8_lossy(&o).into_owned()),
+        _ => Err(()),
     }
 }
 

@@ -12,6 +12,14 @@ chrono = { version = "0.4", features = ["serde"] }
 sha1_smol = "1.0"
 thiserror = "1.0"
 siem-core = { path = "../siem-core" }
+siem-njson = { path = "../siem-njson" }
+siem-dbsync = { path = "../siem-dbsync" }
+siem-sysinfo = { path = "../siem-sysinfo" }
+siem-xml = { path = "../siem-xml" }
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+sha1 = "0.10"
+parking_lot = "0.12"
 
 [[bin]]
 name = "wazuh-sysinfo"

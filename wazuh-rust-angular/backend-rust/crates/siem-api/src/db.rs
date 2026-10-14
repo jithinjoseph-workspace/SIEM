@@ -435,43 +435,51 @@ impl ClickHouseDb {
     }
 
     pub async fn insert_event(&self, event: &RawEvent) {
+        self.insert_events(std::slice::from_ref(event)).await
+    }
+
+    /// One INSERT per tenant for the whole batch (ClickHouse makes a part per insert).
+    pub async fn insert_events(&self, events: &[RawEvent]) {
         if !self.is_connected() {
             return;
         }
-
-        let metadata_str = serde_json::to_string(&event.metadata).unwrap_or_default();
-        let source_str = serde_json::to_string(&event.source)
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string();
-
-        let row = ClickHouseEventRow {
-            id: event.id.to_string(),
-            timestamp: event.timestamp.timestamp_millis() as u64,
-            agent_id: event.agent_id.clone(),
-            source: source_str,
-            location: event.location.clone(),
-            message: event.message.clone(),
-            raw_metadata: metadata_str,
-        };
-
-        let tenant = event.metadata.get("tenant_id").map(|s| s.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT);
-        let client = self.tenant_client(tenant);
-        let mut insert = match client.insert("siem_events") {
-            Ok(ins) => ins,
-            Err(e) => {
-                warn!("ClickHouse insert handle error: {}", e);
-                return;
-            }
-        };
-
-        if let Err(e) = insert.write(&row).await {
-            warn!("Failed to stream event to ClickHouse: {}", e);
-            return;
+        let mut by_tenant: std::collections::BTreeMap<&str, Vec<ClickHouseEventRow>> = std::collections::BTreeMap::new();
+        for event in events {
+            let source_str = serde_json::to_string(&event.source).unwrap_or_default().trim_matches('"').to_string();
+            let row = ClickHouseEventRow {
+                id: event.id.to_string(),
+                timestamp: event.timestamp.timestamp_millis() as u64,
+                agent_id: event.agent_id.clone(),
+                source: source_str,
+                location: event.location.clone(),
+                message: event.message.clone(),
+                raw_metadata: serde_json::to_string(&event.metadata).unwrap_or_default(),
+            };
+            let tenant = event.metadata.get("tenant_id").map(|s| s.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT);
+            by_tenant.entry(tenant).or_default().push(row);
         }
-
-        if let Err(e) = insert.end().await {
-            warn!("Failed to commit event to ClickHouse: {}", e);
+        for (tenant, rows) in by_tenant {
+            let client = self.tenant_client(tenant);
+            let mut insert = match client.insert("siem_events") {
+                Ok(ins) => ins,
+                Err(e) => {
+                    warn!("ClickHouse insert handle error: {}", e);
+                    continue;
+                }
+            };
+            let mut ok = true;
+            for row in &rows {
+                if let Err(e) = insert.write(row).await {
+                    warn!("Failed to stream event to ClickHouse: {}", e);
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                if let Err(e) = insert.end().await {
+                    warn!("Failed to commit event to ClickHouse: {}", e);
+                }
+            }
         }
     }
 

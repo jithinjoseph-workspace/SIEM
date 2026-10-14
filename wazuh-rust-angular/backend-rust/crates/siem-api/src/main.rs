@@ -5127,6 +5127,10 @@ async fn get_agent_inventory_handler(
     Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
 ) -> axum::response::Response {
+    // Wazuh agents: what their syscollector synced to wazuh-db
+    if let Some(inv) = wazuh_manager::agent_inventory(&agent_id).await {
+        return Json(inv).into_response();
+    }
     let from_memory = {
         let events = state.events.read().unwrap();
         events

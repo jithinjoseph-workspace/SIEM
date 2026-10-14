@@ -1,0 +1,10 @@
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-agentd\tests\oracle\script.txt
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-agentd\tests\oracle\script_min.txt
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-analysisd\tools\oracle\README.md
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-crypto\tools\README.md
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-dbsync\README.md
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-logcollector\legacy\README.txt
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-remoted\legacy\README.txt
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-router\README.md
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\siem-wdb\README.md
+E:\wazhu-Siem-code\wazuh-rust-angular\backend-rust\crates\provigil-common\src\soar\promasecure.png

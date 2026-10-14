@@ -7,6 +7,9 @@ use std::collections::{BTreeSet, VecDeque};
 
 use super::registry::*;
 use super::{fsx, helpers, Error};
+
+/// The C++ `std::function<void(nlohmann::json&)>`: Err is an exception it throws.
+pub type Cb<'a> = &'a mut dyn FnMut(Value) -> Result<(), String>;
 use crate::json::{i, s, Obj, Value};
 use crate::{strings, UNKNOWN_VALUE};
 
@@ -26,7 +29,7 @@ fn str_of(v: Option<Vec<u8>>) -> Option<String> {
 }
 
 /// `getPackagesFromReg`
-fn packages_from_reg(key: HKEY, sub_key: &str, access: u32, cb: &mut dyn FnMut(Value)) {
+fn packages_from_reg(key: HKEY, sub_key: &str, access: u32, cb: Cb<'_>) {
     let _ = (|| -> R<()> {
         let root = Registry::open(key, sub_key, access | KEY_ENUMERATE_SUB_KEYS | KEY_READ)?;
         root.enumerate_cb(|package| {
@@ -61,7 +64,8 @@ fn packages_from_reg(key: HKEY, sub_key: &str, access: u32, cb: &mut dyn FnMut(V
                 o.set("location", s(unk(&location)));
                 o.set("architecture", s(architecture));
                 o.set("format", s("win"));
-                cb(o.into_value());
+                // an exception ends the enumeration (caught by the catch(...))
+                cb(o.into_value()).map_err(RegError)?;
             }
             Ok(())
         })
@@ -241,7 +245,7 @@ impl<'a> Appx<'a> {
 }
 
 /// `getStorePackages`
-fn store_packages(key: HKEY, user: &str, cb: &mut dyn FnMut(Value)) {
+fn store_packages(key: HKEY, user: &str, cb: Cb<'_>) {
     let _ = (|| -> R<()> {
         let cache: BTreeSet<String> =
             Registry::open(key, &format!("{user}\\{CACHE_NAME_REGISTRY}"), KEY_READ | KEY_ENUMERATE_SUB_KEYS)?.enumerate()?.into_iter().collect();
@@ -249,7 +253,7 @@ fn store_packages(key: HKEY, user: &str, cb: &mut dyn FnMut(Value)) {
         root.enumerate_cb(|app| {
             let o = Appx::new(key, user, app, &cache)?.build();
             if !crate::json::as_str(o.get("name")).is_empty() {
-                cb(o.into_value());
+                cb(o.into_value()).map_err(RegError)?;
             }
             Ok(())
         })
@@ -294,7 +298,7 @@ fn node_directories() -> BTreeSet<String> {
 }
 
 /// `PYPI::parseMetadata`
-fn pypi_parse_metadata(path: &str, cb: &mut dyn FnMut(Value)) -> Result<(), String> {
+fn pypi_parse_metadata(path: &str, cb: Cb<'_>) -> Result<(), String> {
     // "Author: ", "Home-page: ", "Name: ", "Summary: ", "Version: " (map order)
     const FIELDS: [(&str, &str); 5] = [("Author: ", "vendor"), ("Home-page: ", "source"), ("Name: ", "name"), ("Summary: ", "description"), ("Version: ", "version")];
     let mut o = Obj::new();
@@ -319,13 +323,13 @@ fn pypi_parse_metadata(path: &str, cb: &mut dyn FnMut(Value)) -> Result<(), Stri
         }
     }
     if o.contains("name") && o.contains("version") {
-        cb(o.into_value());
+        cb(o.into_value())?;
     }
     Ok(())
 }
 
 /// `PYPI::getPackages`
-fn pypi_packages(roots: &BTreeSet<String>, cb: &mut dyn FnMut(Value)) {
+fn pypi_packages(roots: &BTreeSet<String>, cb: Cb<'_>) {
     for root in roots {
         let mut expanded = VecDeque::new();
         if fsx::expand_absolute_path(root, &mut expanded).is_err() {
@@ -360,7 +364,7 @@ fn pypi_packages(roots: &BTreeSet<String>, cb: &mut dyn FnMut(Value)) {
 }
 
 /// `NPM::parsePackage`
-fn npm_parse_package(folder: &str, cb: &mut dyn FnMut(Value)) {
+fn npm_parse_package(folder: &str, cb: Cb<'_>) {
     let path = fsx::join(folder, "package.json");
     let r = (|| -> Result<(), String> {
         if fsx::exists(&path)? {
@@ -384,7 +388,7 @@ fn npm_parse_package(folder: &str, cb: &mut dyn FnMut(Value)) {
                 }
             }
             if o.contains("name") && o.contains("version") {
-                cb(o.into_value());
+                cb(o.into_value())?;
             }
         }
         Ok(())
@@ -395,7 +399,7 @@ fn npm_parse_package(folder: &str, cb: &mut dyn FnMut(Value)) {
 }
 
 /// `NPM::getPackages`
-fn npm_packages(roots: &BTreeSet<String>, cb: &mut dyn FnMut(Value)) {
+fn npm_packages(roots: &BTreeSet<String>, cb: Cb<'_>) {
     for root in roots {
         let mut expanded = VecDeque::new();
         if fsx::expand_absolute_path(root, &mut expanded).is_err() {
@@ -418,18 +422,19 @@ fn npm_packages(roots: &BTreeSet<String>, cb: &mut dyn FnMut(Value)) {
 }
 
 /// `SysInfo::getPackages(callback)`
-pub fn get_packages(cb: &mut dyn FnMut(Value)) -> Result<(), Error> {
+pub fn get_packages(cb: Cb<'_>) -> Result<(), Error> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
     {
-        let mut fill = |v: Value| {
+        let mut fill = |v: Value| -> Result<(), String> {
             let k = format!(
                 "{}{}",
                 String::from_utf8_lossy(v.find(b"name").and_then(|x| x.get_str().ok()).unwrap_or(b"")),
                 String::from_utf8_lossy(v.find(b"version").and_then(|x| x.get_str().ok()).unwrap_or(b""))
             );
             if seen.insert(k) {
-                cb(v);
+                cb(v)?;
             }
+            Ok(())
         };
         packages_from_reg(HKEY_LOCAL_MACHINE, UNINSTALL_REGISTRY, KEY_WOW64_64KEY, &mut fill);
         packages_from_reg(HKEY_LOCAL_MACHINE, UNINSTALL_REGISTRY, KEY_WOW64_32KEY, &mut fill);

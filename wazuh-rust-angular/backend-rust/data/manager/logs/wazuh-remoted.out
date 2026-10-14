@@ -9,3 +9,23 @@
 2026-10-10T09:06:26.881092Z ERROR siem_ipc::wdbc: Connection with wazuh-db lost. Reconnecting.
 2026-10-10T09:06:30.479731Z  INFO siem_remoted: Started (pid: 14876). Listening on port 1514/TCP (secure).
 2026-10-10T09:06:30.479893Z  INFO siem_remoted: (1410): Reading authentication keys file.
+[2m2026-10-12T05:37:50.990434Z[0m [32m INFO[0m [2msiem_remoted[0m[2m:[0m Started (pid: 28392). Listening on port 1514/TCP (secure).
+[2m2026-10-12T05:37:50.990721Z[0m [32m INFO[0m [2msiem_remoted[0m[2m:[0m (1410): Reading authentication keys file.
+[2m2026-10-12T05:43:41.252499Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+[2m2026-10-12T05:44:31.288334Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+[2m2026-10-12T05:46:41.361455Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+[2m2026-10-12T05:47:11.378271Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+[2m2026-10-12T05:49:21.497098Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+[2m2026-10-12T05:55:09.446800Z[0m [33m WARN[0m [2msiem_remoted::server[0m[2m:[0m (1408): Invalid ID 016 for the source ip: '127.0.0.1' (name 'unknown').
+[2m2026-10-12T05:55:11.748400Z[0m [32m INFO[0m [2msiem_remoted::forwarders[0m[2m:[0m (1752): File client.keys changed. Reloading.
+2026-10-14T05:52:24.873627Z  INFO siem_remoted: Started (pid: 7984). Listening on port 1514/TCP (secure).
+2026-10-14T05:52:24.874803Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-14T05:56:44.493736Z  INFO siem_remoted: Started (pid: 25576). Listening on port 1514/TCP (secure).
+2026-10-14T05:56:44.493830Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-14T05:58:14.150419Z ERROR siem_ipc::wdbc: Connection with wazuh-db lost. Reconnecting.
+2026-10-14T05:58:16.882763Z  INFO siem_remoted: Started (pid: 22808). Listening on port 1514/TCP (secure).
+2026-10-14T05:58:16.882870Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-14T05:59:50.706255Z  INFO siem_remoted: Started (pid: 37720). Listening on port 1514/TCP (secure).
+2026-10-14T05:59:50.706346Z  INFO siem_remoted: (1410): Reading authentication keys file.
+2026-10-14T06:27:37.429509Z  INFO siem_remoted: Started (pid: 26212). Listening on port 1514/TCP (secure).
+2026-10-14T06:27:37.429991Z  INFO siem_remoted: (1410): Reading authentication keys file.

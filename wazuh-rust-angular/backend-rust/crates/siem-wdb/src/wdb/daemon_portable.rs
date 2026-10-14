@@ -162,6 +162,9 @@ fn port_file(path: &str) -> String {
 }
 
 /// `OS_BindUnixDomain(WDB_LOCAL_SOCK)` on the loopback mapping.
+/// shortcut: any local user can reach this port (the Unix socket is 0660 to wazuh), so it
+/// exposes global.db and the agent keys; run the manager on a single-user host, or move
+/// this to a named pipe with an ACL before sharing the machine.
 pub fn bind_local(path: &str) -> std::io::Result<TcpListener> {
     if let Some(dir) = std::path::Path::new(path).parent() {
         if !dir.as_os_str().is_empty() {

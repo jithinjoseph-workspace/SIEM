@@ -317,3 +317,5 @@ mod win {
 mod components;
 #[cfg(windows)]
 mod dll_verify;
+#[cfg(windows)]
+mod wmodules;

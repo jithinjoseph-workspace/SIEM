@@ -174,8 +174,8 @@ fn prepare_home(home: &Path) -> Result<(), String> {
 }
 
 /// The files of the Windows agent package (`/downloads/windows/<file>`).
-pub const WINDOWS_AGENT_FILES: [&str; 5] =
-    ["wazuh-agent.exe", "internal_options.conf", "local_internal_options.conf", "vista_sec.txt", "help.txt"];
+pub const WINDOWS_AGENT_FILES: [&str; 6] =
+    ["wazuh-agent.exe", "internal_options.conf", "local_internal_options.conf", "vista_sec.txt", "help.txt", "norm_config.json"];
 
 fn agent_dist_dir() -> PathBuf {
     crate::data_file_path("agent-dist").join("windows")
@@ -192,6 +192,8 @@ fn prepare_agent_dist() {
         (src.join("etc/local_internal_options-win.conf"), "local_internal_options.conf"),
         (src.join("src/win32/vista_sec.txt"), "vista_sec.txt"),
         (src.join("src/win32/help.txt"), "help.txt"),
+        // the MSI installs it as queue\syscollector\norm_config.json
+        (src.join("src/wazuh_modules/syscollector/norm_config.json"), "norm_config.json"),
     ] {
         let dst = dir.join(to);
         if !dst.exists() {
@@ -283,8 +285,11 @@ fn build_mitre_db(home: &Path) {
         warn!("Wazuh manager: wazuh-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
         return;
     };
-    match Command::new(tool).arg("-d").arg(&db).arg("-j").arg(&json).stdout(Stdio::null()).status() {
-        Ok(s) if s.success() => info!("Wazuh manager: built {}", db.display()),
+    // built under another name: a half-built file must not look finished
+    let tmp = db.with_extension("db.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    match Command::new(tool).arg("-d").arg(&tmp).arg("-j").arg(&json).stdout(Stdio::null()).status() {
+        Ok(s) if s.success() && std::fs::rename(&tmp, &db).is_ok() => info!("Wazuh manager: built {}", db.display()),
         other => warn!("Wazuh manager: building mitre.db failed: {other:?}"),
     }
 }
@@ -295,9 +300,16 @@ fn kill_stale(home: &Path) {
     if let Ok(s) = std::fs::read_to_string(&f) {
         for pid in s.split_whitespace().filter_map(|p| p.parse::<u32>().ok()) {
             #[cfg(windows)]
-            let _ = Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            let _ = Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string(), "/FI", "IMAGENAME eq wazuh-*"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            // after a reboot the pid may belong to another program
             #[cfg(unix)]
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            if std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.starts_with("wazuh-")) {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            }
         }
     }
     let _ = std::fs::remove_file(f);
@@ -432,6 +444,90 @@ pub async fn remove_agent(id: &str) {
     }
 }
 
+/// `agent <id> sql <query>`: the rows, or None (no agent DB, not running).
+async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
+    let r = wdb().query(&format!("agent {id} sql {sql}")).await.ok()?;
+    let json = r.strip_prefix("ok ")?;
+    serde_json::from_str::<serde_json::Value>(json).ok()?.as_array().cloned()
+}
+
+/// The inventory syscollector reported for an agent, from wazuh-db, in the
+/// console's `AgentInventory` shape. None when the agent has no inventory.
+pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
+    if !enabled() {
+        return None;
+    }
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let os = agent_sql(&id, "SELECT hostname, os_name, os_version, architecture FROM sys_osinfo LIMIT 1;").await?;
+    let os = os.first()?.clone();
+    let hw = agent_sql(&id, "SELECT cpu_cores, ram_total FROM sys_hwinfo LIMIT 1;").await.unwrap_or_default();
+    let hw = hw.first().cloned().unwrap_or_default();
+    let count = |t: &'static str| {
+        let id = id.clone();
+        async move {
+            agent_sql(&id, &format!("SELECT count(*) AS n FROM {t};"))
+                .await
+                .and_then(|r| r.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()))
+                .unwrap_or(0)
+        }
+    };
+    let list = |sql: &'static str, f: fn(&serde_json::Value) -> String| {
+        let id = id.clone();
+        async move { agent_sql(&id, sql).await.unwrap_or_default().iter().map(f).filter(|x| !x.trim().is_empty()).collect::<Vec<String>>() }
+    };
+    let txt = |v: &serde_json::Value, k: &str| match v.get(k) {
+        Some(serde_json::Value::String(x)) => x.clone(),
+        Some(serde_json::Value::Null) | None => String::new(),
+        Some(o) => o.to_string(),
+    };
+    let ports = list("SELECT protocol, local_ip, local_port, process FROM sys_ports WHERE state = 'listening' OR protocol LIKE 'udp%' ORDER BY local_port LIMIT 500;", |r| {
+        let t = |k: &str| match r.get(k) {
+            Some(serde_json::Value::String(x)) => x.clone(),
+            Some(serde_json::Value::Null) | None => String::new(),
+            Some(o) => o.to_string(),
+        };
+        format!("{}/{}:{} ({})", t("protocol"), t("local_ip"), t("local_port"), t("process").trim())
+    })
+    .await;
+    let processes = list("SELECT DISTINCT name FROM sys_processes ORDER BY name LIMIT 500;", |r| r.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string()).await;
+    let software = list("SELECT name, version FROM sys_programs ORDER BY name LIMIT 500;", |r| {
+        let n = r.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let v = r.get("version").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if v.is_empty() { n.to_string() } else { format!("{n} {v}") }
+    })
+    .await;
+    let services = list("SELECT service_id, service_state FROM sys_services WHERE service_state = 'RUNNING' ORDER BY service_id LIMIT 500;", |r| {
+        r.get("service_id").and_then(|v| v.as_str()).unwrap_or("").to_string()
+    })
+    .await;
+    let users = list("SELECT user_name FROM sys_users ORDER BY user_name LIMIT 500;", |r| r.get("user_name").and_then(|v| v.as_str()).unwrap_or("").to_string()).await;
+    let adapters = list("SELECT iface, address FROM sys_netaddr ORDER BY iface LIMIT 500;", |r| {
+        format!("{} {}", r.get("iface").and_then(|v| v.as_str()).unwrap_or(""), r.get("address").and_then(|v| v.as_str()).unwrap_or(""))
+    })
+    .await;
+    let ram_kb = hw.get("ram_total").and_then(|v| v.as_u64()).unwrap_or(0);
+    Some(serde_json::json!({
+        "hostname": txt(&os, "hostname"),
+        "os": format!("{} {}", txt(&os, "os_name"), txt(&os, "os_version")).trim().to_string(),
+        "arch": txt(&os, "architecture"),
+        "cpu_cores": hw.get("cpu_cores").and_then(|v| v.as_u64()).unwrap_or(0),
+        "ram_mb": ram_kb / 1024,
+        "running_processes_count": count("sys_processes").await,
+        "open_ports_count": count("sys_ports").await,
+        "installed_packages_count": count("sys_programs").await,
+        "services_count": count("sys_services").await,
+        "users_count": count("sys_users").await,
+        "hotfixes_count": count("sys_hotfixes").await,
+        "listening_ports": ports,
+        "running_processes": processes,
+        "installed_software": software,
+        "active_services": services,
+        "local_users": users,
+        "network_adapters": adapters,
+        "source": "wazuh-db",
+    }))
+}
+
 /// Writes the platform keystore to `etc/client.keys` (remoted reloads it).
 pub fn save_keys(state: &AppState) {
     if !enabled() {
@@ -466,11 +562,11 @@ pub fn start(state: AppState) {
             }
         }
     }
+    kill_stale(&home);
     if let Err(e) = install_binaries(&home) {
         warn!("Wazuh manager not started: {e}");
         return;
     }
-    kill_stale(&home);
     build_mitre_db(&home);
     info!("Wazuh manager home: {}", home.display());
     let h = home.clone();
@@ -486,11 +582,11 @@ pub fn start(state: AppState) {
     let s = state.clone();
     let p = home.join("logs/alerts/alerts.json");
     let o = home.join("var/run/siem-api.alerts.offset");
-    tokio::spawn(async move { tail_json(p, o, move |v| on_alert(s.clone(), v)).await });
+    tokio::spawn(async move { tail_json(p, o, move |vs| on_alerts(s.clone(), vs)).await });
     let s = state.clone();
     let p = home.join("logs/archives/archives.json");
     let o = home.join("var/run/siem-api.archives.offset");
-    tokio::spawn(async move { tail_json(p, o, move |v| on_event(s.clone(), v)).await });
+    tokio::spawn(async move { tail_json(p, o, move |vs| on_events(s.clone(), vs)).await });
     let s = state.clone();
     tokio::spawn(async move { agent_status_loop(s).await });
 }
@@ -499,7 +595,7 @@ pub fn start(state: AppState) {
 /// the file was truncated or rotated).
 async fn tail_json<F, Fut>(path: PathBuf, offset_file: PathBuf, mut f: F)
 where
-    F: FnMut(serde_json::Value) -> Fut,
+    F: FnMut(Vec<serde_json::Value>) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let mut offset: u64 = std::fs::read_to_string(&offset_file).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
@@ -525,14 +621,18 @@ where
         offset += buf.len() as u64;
         partial.extend_from_slice(&buf);
         let mut start = 0;
+        let mut batch = Vec::new();
         while let Some(nl) = partial[start..].iter().position(|&b| b == b'\n') {
             let line = &partial[start..start + nl];
             start += nl + 1;
             if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
-                f(v).await;
+                batch.push(v);
             }
         }
         partial.drain(..start);
+        if !batch.is_empty() {
+            f(batch).await;
+        }
         let _ = std::fs::write(&offset_file, (offset - partial.len() as u64).to_string());
     }
 }
@@ -645,10 +745,12 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     }
 }
 
-async fn on_alert(state: AppState, v: serde_json::Value) {
-    let alert = to_alert(&state, &v);
-    let tenant = tenant_of(&state, &alert.agent.id);
-    record_alert(&state, &tenant, alert).await;
+async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
+    for v in vs {
+        let alert = to_alert(&state, &v);
+        let tenant = tenant_of(&state, &alert.agent.id);
+        record_alert(&state, &tenant, alert).await;
+    }
 }
 
 fn event_source(location: &str, decoder: &str) -> EventSource {
@@ -664,9 +766,22 @@ fn event_source(location: &str, decoder: &str) -> EventSource {
 }
 
 /// One `archives.json` line (every event analysisd received) as a platform event.
-async fn on_event(state: AppState, v: serde_json::Value) {
+async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
+    let events: Vec<RawEvent> = vs.iter().map(|v| to_event(&state, v)).collect();
+    state.db.insert_events(&events).await;
+    let mut ev = state.events.write().unwrap();
+    ev.extend(events);
+    // The in-memory copy is a recent window; ClickHouse keeps everything.
+    let n = ev.len();
+    if n > 50_000 {
+        ev.drain(..n - 50_000);
+    }
+}
+
+fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {
+    let v = v.clone();
     let agent_id = s(&v, &["agent", "id"]);
-    let tenant = tenant_of(&state, &agent_id);
+    let tenant = tenant_of(state, &agent_id);
     let location = s(&v, &["location"]);
     let decoder = s(&v, &["decoder", "name"]);
     let mut metadata: HashMap<String, String> = HashMap::new();
@@ -686,7 +801,7 @@ async fn on_event(state: AppState, v: serde_json::Value) {
     if !ip.is_empty() {
         metadata.insert("ip".into(), ip);
     }
-    let event = RawEvent {
+    RawEvent {
         id: uuid::Uuid::new_v4(),
         timestamp: timestamp(&v),
         agent_id,
@@ -694,14 +809,6 @@ async fn on_event(state: AppState, v: serde_json::Value) {
         location,
         message: s(&v, &["full_log"]),
         metadata,
-    };
-    state.db.insert_event(&event).await;
-    let mut ev = state.events.write().unwrap();
-    ev.push(event);
-    // The in-memory copy is a recent window; ClickHouse keeps everything.
-    let n = ev.len();
-    if n > 50_000 {
-        ev.drain(..n - 50_000);
     }
 }
 

@@ -78,6 +78,19 @@ const WINDOWS_AGENT_DIRS = [
   'queue\\logcollector', 'rids', 'ruleset\\sca', 'shared', 'syscheck', 'tmp', 'upgrade', 'wodles',
 ];
 
+/** `icacls` steps of the MSI (S-1-5-32-544 Administrators, S-1-5-18 SYSTEM, S-1-5-11 Authenticated Users). */
+const WINDOWS_AGENT_ACLS = [
+  `icacls "$d" /reset /t /q | Out-Null`,
+  `icacls "$d" /inheritancelevel:r /q | Out-Null`,
+  `icacls "$d" /grant '*S-1-5-32-544:(OI)(CI)F' /q | Out-Null`,
+  `icacls "$d" /grant '*S-1-5-18:(OI)(CI)F' /q | Out-Null`,
+  `icacls "$d\\*" /grant '*S-1-5-11:(OI)(CI)RX' /q | Out-Null`,
+  `icacls "$d\\*" /grant '*S-1-5-11:RX' /q | Out-Null`,
+  `icacls "$d" /grant '*S-1-5-11:RX' /q | Out-Null`,
+  `icacls "$d\\*ossec.conf" /remove '*S-1-5-11' /q | Out-Null`,
+  `icacls "$d\\client.keys" /remove '*S-1-5-11' /q | Out-Null`,
+];
+
 /**
  * The PowerShell that installs the Wazuh agent (`wazuh-agent.exe`, the
  * `WazuhSvc` service) like the MSI does, and starts it (needs admin):
@@ -97,6 +110,8 @@ export function windowsInstallScript(p: DeployParams): string {
     `foreach ($s in @(${WINDOWS_AGENT_DIRS.map(x => `'${x}'`).join(',')})) { New-Item -ItemType Directory -Force -Path "$d\\$s" | Out-Null }`,
     `if (-not (Test-Path "$d\\active-response\\active-responses.log")) { New-Item -ItemType File -Path "$d\\active-response\\active-responses.log" | Out-Null }`,
     `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
+    // where the MSI installs the syscollector normalizer
+    `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/norm_config.json" -OutFile "$d\\queue\\syscollector\\norm_config.json"`,
     `$h = @{}`,
     c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
     `$b = @{ name = ${pq(c.name)}; groups = ${pq(c.group)}; os_type = 'windows' } | ConvertTo-Json`,
@@ -104,6 +119,8 @@ export function windowsInstallScript(p: DeployParams): string {
     `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
     `$m = ([Uri]$u).Host`,
     `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/ossec.conf?manager=$m" -OutFile "$d\\ossec.conf"`,
+    // the MSI's permissions (InstallerScripts.vbs): only Administrators and SYSTEM may read the key
+    ...WINDOWS_AGENT_ACLS,
     `& "$d\\wazuh-agent.exe" install-service | Out-Null`,
     `Start-Service -Name ${WINDOWS_SERVICE}`,
     `Write-Host "Wazuh agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,

@@ -2876,6 +2876,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-sca"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "parking_lot",
+ "sha2",
+ "siem-cjson",
+ "siem-execd",
+ "siem-fileop",
+ "siem-ipc",
+ "siem-log",
+ "siem-regex",
+ "siem-sysinfo",
+ "siem-xml",
+ "unsafe-libyaml",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "siem-shared"
 version = "0.1.0"
 dependencies = [
@@ -2941,11 +2960,19 @@ name = "siem-syscollector"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",
+ "sha1",
  "sha1_smol",
+ "siem-cjson",
+ "siem-config",
  "siem-core",
+ "siem-dbsync",
+ "siem-njson",
+ "siem-sysinfo",
+ "siem-xml",
  "thiserror 1.0.69",
 ]
 
@@ -3033,12 +3060,16 @@ name = "siem-winagent"
 version = "0.1.0"
 dependencies = [
  "siem-agentd",
+ "siem-cjson",
  "siem-config",
  "siem-execd",
  "siem-fileop",
  "siem-ipc",
  "siem-log",
  "siem-logcollector",
+ "siem-syscollector",
+ "siem-sysinfo",
+ "siem-xml",
  "windows-sys 0.61.2",
 ]
 

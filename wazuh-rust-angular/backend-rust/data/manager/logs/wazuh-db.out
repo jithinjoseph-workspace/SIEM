@@ -113,3 +113,9 @@
 2026/10/10 10:18:47 wazuh-db: INFO: Started (pid: 16592).
 2026/10/10 10:18:49 wazuh-db: ERROR: Can't open SQLite database 'var/db/mitre.db': unable to open database file
 2026/10/10 14:36:28 wazuh-db: INFO: Started (pid: 22872).
+2026/10/12 11:07:47 wazuh-db: INFO: Started (pid: 16764).
+2026/10/14 11:22:21 wazuh-db: INFO: Started (pid: 18456).
+2026/10/14 11:26:42 wazuh-db: INFO: Started (pid: 4240).
+2026/10/14 11:28:14 wazuh-db: INFO: Started (pid: 8312).
+2026/10/14 11:29:48 wazuh-db: INFO: Started (pid: 3816).
+2026/10/14 11:57:34 wazuh-db: INFO: Started (pid: 35532).

@@ -108,6 +108,7 @@ pub fn get_ports() -> Result<Value, Error> {
     let mut list: BTreeMap<i32, Vec<u8>> = BTreeMap::new();
     processes::fill_processes_data(|pe| {
         list.insert(pe.pid as i32, pe.exe_file.clone());
+        Ok(())
     })?;
     let mut ports: Vec<Value> = Vec::new();
     // SAFETY: each buffer holds the table the API wrote.

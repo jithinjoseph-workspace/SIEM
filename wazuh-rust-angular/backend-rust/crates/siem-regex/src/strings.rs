@@ -33,14 +33,20 @@ pub fn str_how_closed_match(a: &str, b: &str) -> usize {
 /// preceded by `\` is kept literally (the backslash is removed) except inside
 /// the last piece. Returns `None` when `size == 0`.
 pub fn str_break(sep: char, s: &str, size: usize) -> Option<Vec<String>> {
+    let v = str_break_bytes(sep as u32 as u8, s.as_bytes(), size)?;
+    Some(v.iter().map(|p| String::from_utf8_lossy(p).into_owned()).collect())
+}
+
+/// [`str_break`] on bytes (C strings: the input ends at the first NUL).
+pub fn str_break_bytes(sep: u8, s: &[u8], size: usize) -> Option<Vec<Vec<u8>>> {
     if size == 0 {
         return None;
     }
-    let sep = sep as u32 as u8;
-    let mut out: Vec<String> = Vec::new();
+    let s = &s[..s.iter().position(|&c| c == 0).unwrap_or(s.len())];
+    let mut out: Vec<Vec<u8>> = Vec::new();
     let mut cur: Vec<u8> = Vec::new();
     let mut prev: Option<u8> = None;
-    for &c in s.as_bytes() {
+    for &c in s {
         if out.len() < size - 1 && c == sep {
             if prev == Some(b'\\') {
                 cur.pop();
@@ -48,15 +54,14 @@ pub fn str_break(sep: char, s: &str, size: usize) -> Option<Vec<String>> {
                 prev = Some(c);
                 continue;
             }
-            out.push(String::from_utf8_lossy(&cur).into_owned());
-            cur.clear();
+            out.push(std::mem::take(&mut cur));
             prev = Some(c);
             continue;
         }
         cur.push(c);
         prev = Some(c);
     }
-    out.push(String::from_utf8_lossy(&cur).into_owned());
+    out.push(cur);
     Some(out)
 }
 

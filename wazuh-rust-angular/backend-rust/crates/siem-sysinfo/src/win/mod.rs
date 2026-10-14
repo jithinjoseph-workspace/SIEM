@@ -50,12 +50,15 @@ impl SysInfo {
     /// `processes()`: the list (null when empty, like a default nlohmann json).
     pub fn processes(&self) -> Result<Value, Error> {
         let mut v = Vec::new();
-        processes::get_processes_info(|p| v.push(p))?;
+        processes::get_processes_info(|p| {
+            v.push(p);
+            Ok(())
+        })?;
         Ok(if v.is_empty() { Value::Null } else { Value::Array(v) })
     }
 
     /// `processes(callback)`
-    pub fn processes_cb(&self, cb: impl FnMut(Value)) -> Result<(), Error> {
+    pub fn processes_cb(&self, cb: impl FnMut(Value) -> Result<(), Error>) -> Result<(), Error> {
         processes::get_processes_info(cb)
     }
 
@@ -86,7 +89,10 @@ impl SysInfo {
     /// `packages()`: the list (null when empty).
     pub fn packages(&self) -> Result<Value, Error> {
         let mut v = Vec::new();
-        packages::get_packages(&mut |p| v.push(p))?;
+        packages::get_packages(&mut |p| {
+            v.push(p);
+            Ok(())
+        })?;
         Ok(if v.is_empty() { Value::Null } else { Value::Array(v) })
     }
 
@@ -95,7 +101,7 @@ impl SysInfo {
     }
 
     /// `packages(callback)`
-    pub fn packages_cb(&self, cb: &mut dyn FnMut(Value)) -> Result<(), Error> {
+    pub fn packages_cb(&self, cb: packages::Cb<'_>) -> Result<(), Error> {
         packages::get_packages(cb)
     }
 }

@@ -36,7 +36,7 @@ pub struct ProcessEntry {
 }
 
 /// `fillProcessesData`
-pub fn fill_processes_data(mut f: impl FnMut(&ProcessEntry)) -> Result<(), Error> {
+pub fn fill_processes_data(mut f: impl FnMut(&ProcessEntry) -> Result<(), Error>) -> Result<(), Error> {
     // SAFETY: a snapshot handle closed on every path.
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -51,7 +51,11 @@ pub fn fill_processes_data(mut f: impl FnMut(&ProcessEntry)) -> Result<(), Error
         }
         loop {
             let name: Vec<u8> = pe.szExeFile.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
-            f(&ProcessEntry { pid: pe.th32ProcessID, ppid: pe.th32ParentProcessID, threads: pe.cntThreads, pri_class_base: pe.pcPriClassBase, exe_file: name });
+            // an exception from the callback leaves (the C++ leaks the snapshot handle)
+            if let Err(e) = f(&ProcessEntry { pid: pe.th32ProcessID, ppid: pe.th32ParentProcessID, threads: pe.cntThreads, pri_class_base: pe.pcPriClassBase, exe_file: name }) {
+                CloseHandle(snap);
+                return Err(e);
+            }
             if Process32Next(snap, &mut pe) == 0 {
                 break;
             }
@@ -313,10 +317,11 @@ fn get_process_info(pe: &ProcessEntry) -> Option<Value> {
 }
 
 /// `SysInfo::getProcessesInfo(callback)`
-pub fn get_processes_info(mut cb: impl FnMut(Value)) -> Result<(), Error> {
+pub fn get_processes_info(mut cb: impl FnMut(Value) -> Result<(), Error>) -> Result<(), Error> {
     fill_processes_data(|pe| {
         if let Some(v) = get_process_info(pe) {
-            cb(v);
+            cb(v)?;
         }
+        Ok(())
     })
 }

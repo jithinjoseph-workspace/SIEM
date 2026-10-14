@@ -1,0 +1,26 @@
+[package]
+name = "siem-sca"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh 4.14.7 wm_sca (Security Configuration Assessment), shared/yaml2json.c and shared/schedule_scan.c"
+
+[[bin]]
+name = "sca-yaml2json"
+path = "src/bin/sca-yaml2json.rs"
+
+[dependencies]
+siem-cjson = { path = "../siem-cjson" }
+siem-regex = { path = "../siem-regex" }
+siem-log = { path = "../siem-log" }
+siem-fileop = { path = "../siem-fileop" }
+siem-xml = { path = "../siem-xml" }
+siem-execd = { path = "../siem-execd" }
+siem-ipc = { path = "../siem-ipc" }
+sha2 = "0.10"
+unsafe-libyaml = "0.2.11"
+libc = "0.2"
+parking_lot = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+siem-sysinfo = { path = "../siem-sysinfo" }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_Storage_FileSystem"] }

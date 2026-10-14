@@ -5,6 +5,8 @@ dist/
 .angular/
 build/
 bin/
+!wazuh-rust-angular/backend-rust/crates/**/bin/
+!wazuh-rust-angular/backend-rust/crates/**/src/bin/
 
 # Dependencies
 node_modules/

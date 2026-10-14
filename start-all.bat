@@ -54,12 +54,47 @@ if errorlevel 1 goto :dependency_error
 call :wait_port 6379 "Valkey" 35
 if errorlevel 1 goto :dependency_error
 
+if "%~1"=="--rebuild" goto :do_rebuild
+if "%~1"=="-r" goto :do_rebuild
+goto :check_binaries
+
+:do_rebuild
+echo [*] Rebuild requested (%~1). Stopping existing services...
+taskkill /F /IM auth-service.exe >nul 2>&1
+taskkill /F /IM siem-api.exe >nul 2>&1
+echo [*] Compiling release binaries (auth-service, siem-api)...
+pushd "%BACKEND_DIR%"
+call cargo build --release -p auth-service -p siem-api
+popd
+goto :check_node
+
+:check_binaries
+call :port_open 3001
+if errorlevel 1 (
+  echo [*] Ensuring auth-service is built and up to date...
+  pushd "%BACKEND_DIR%"
+  call cargo build --release -p auth-service
+  popd
+)
+call :port_open 8088
+if errorlevel 1 (
+  if not exist "%BACKEND_DIR%\target\release\siem-api.exe" (
+    echo [*] Ensuring siem-api is built...
+    pushd "%BACKEND_DIR%"
+    call cargo build --release -p siem-api
+    popd
+  )
+)
+
+
+:check_node
 if not exist "%FRONTEND_DIR%\node_modules" (
   echo [*] Node dependencies not found. Running 'npm install' in %FRONTEND_DIR%...
   pushd "%FRONTEND_DIR%"
   call npm install
   popd
 )
+
 
 call :port_open 3001
 if errorlevel 1 (

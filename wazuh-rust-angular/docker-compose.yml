@@ -34,7 +34,7 @@ services:
       CLICKHOUSE_DB: ndr
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-      CLICKHOUSE_PASSWORD: change-me-clickhouse-password
+      CLICKHOUSE_PASSWORD: ""
     ports:
       - "8123:8123" # HTTP API port
       - "9000:9000" # Native TCP client port
@@ -76,8 +76,8 @@ services:
       - LISTEN_ADDR=0.0.0.0:3001
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
-      - CLICKHOUSE_USER=ndr
-      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
       - VALKEY_URL=redis://valkey:6379
       - REDIS_URL=redis://valkey:6379
       - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
@@ -105,8 +105,8 @@ services:
       - SYSLOG_TCP_PORT=601
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
-      - CLICKHOUSE_USER=ndr
-      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
       - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
     depends_on:
       clickhouse:

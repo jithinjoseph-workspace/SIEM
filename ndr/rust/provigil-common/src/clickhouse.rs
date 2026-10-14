@@ -25,10 +25,7 @@ impl ClickHouseConfig {
             .unwrap_or_else(|_| DEFAULT_CLICKHOUSE_DB.to_string());
         let user     = std::env::var(ENV_CLICKHOUSE_USER)
             .unwrap_or_else(|_| DEFAULT_CLICKHOUSE_USER.to_string());
-        let password = std::env::var(ENV_CLICKHOUSE_PASSWORD).unwrap_or_else(|_| {
-            tracing::error!("CLICKHOUSE_PASSWORD not set — connection will likely fail");
-            String::new()
-        });
+        let password = std::env::var(ENV_CLICKHOUSE_PASSWORD).unwrap_or_default();
         Self { url, database, user, password }
     }
 

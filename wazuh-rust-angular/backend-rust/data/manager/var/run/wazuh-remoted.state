@@ -12,19 +12,19 @@ total_queue_size='131072'
 tcp_sessions='2'
 
 # Events sent to Analysisd
-evt_count='1484'
+evt_count='2962'
 
 # Control messages received
-ctrl_msg_count='174'
+ctrl_msg_count='220'
 
 # Discarded messages
 discarded_count='0'
 
 # Total number of bytes sent
-sent_bytes='15486'
+sent_bytes='19580'
 
 # Total number of bytes received
-recv_bytes='1043804'
+recv_bytes='2308868'
 
 # Messages dequeued after the agent closes the connection
 dequeued_after_close='0'
@@ -33,7 +33,7 @@ dequeued_after_close='0'
 ctrl_msg_queue_usage='0'
 
 # Control messages queue breakdown
-ctrl_msg_queue_inserted='174'
+ctrl_msg_queue_inserted='220'
 ctrl_msg_queue_replaced='0'
-ctrl_msg_queue_processed='174'
+ctrl_msg_queue_processed='220'
 

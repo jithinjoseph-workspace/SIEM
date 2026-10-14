@@ -182,6 +182,10 @@ impl ClickHouseDb {
             }
         };
 
+        // Ensure global ndr.tenants table schema has ai_enabled and updated_at columns
+        let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").execute().await;
+        let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
+
         let client = root_client.clone().with_database(&database);
 
         // Create siem_events table

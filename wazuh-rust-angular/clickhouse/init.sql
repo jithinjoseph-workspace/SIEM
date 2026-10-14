@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS ndr.users (
     active UInt8 DEFAULT 1,
     gmail String DEFAULT '',
     secret_code String DEFAULT '',
-    created_at DateTime DEFAULT now()
+    created_at DateTime DEFAULT now(),
+    last_login DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(created_at)
 ORDER BY username;
 
@@ -174,9 +175,15 @@ CREATE TABLE IF NOT EXISTS ndr.tenants (
     plan String DEFAULT 'enterprise',
     features String DEFAULT 'siem,ndr',
     active UInt8 DEFAULT 1,
-    created_at DateTime DEFAULT now()
-) ENGINE = ReplacingMergeTree(created_at)
+    ai_enabled UInt8 DEFAULT 1,
+    created_at DateTime DEFAULT now(),
+    updated_at DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY id;
+
+ALTER TABLE ndr.users ADD COLUMN IF NOT EXISTS last_login DateTime DEFAULT now();
+ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1;
+ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now();
 
 -- Pre-seed default organization & analyst user
 INSERT INTO ndr.tenants (id, name, plan, features, active) VALUES

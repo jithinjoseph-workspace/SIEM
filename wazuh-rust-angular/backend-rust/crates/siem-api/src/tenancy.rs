@@ -460,27 +460,21 @@ pub async fn sync_tenants(state: &AppState) {
     if !state.db.is_connected() {
         return;
     }
-    let rows = match state
-        .db
-        .root()
-        .query("SELECT id, name, active, ai_enabled, coalesce(features, '') AS features FROM ndr.tenants FINAL")
-        .fetch_all::<NdrTenantRow>()
-        .await
-    {
-        Ok(r) if !r.is_empty() => r,
-        _ => match state
-            .db
-            .root()
-            .query("SELECT id, name, active, ai_enabled, coalesce(features, '') AS features FROM ndr.tenants FINAL")
-            .fetch_all::<NdrTenantRow>()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!("Tenant registry sync: cannot read tenants from ClickHouse: {}", e);
-                return;
+    let query = "SELECT id, name, active, ai_enabled, coalesce(features, '') AS features FROM ndr.tenants FINAL";
+    let rows = match state.db.root().query(query).fetch_all::<NdrTenantRow>().await {
+        Ok(r) => r,
+        Err(_) => {
+            // Self-healing: ensure ai_enabled and updated_at exist in ndr.tenants
+            let _ = state.db.root().query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").execute().await;
+            let _ = state.db.root().query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
+            match state.db.root().query(query).fetch_all::<NdrTenantRow>().await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("Tenant registry sync: cannot read tenants from ClickHouse: {}", e);
+                    return;
+                }
             }
-        },
+        }
     };
     let mut list = Vec::with_capacity(rows.len());
     for r in rows {

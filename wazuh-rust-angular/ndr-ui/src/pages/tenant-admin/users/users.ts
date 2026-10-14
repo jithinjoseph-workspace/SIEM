@@ -470,6 +470,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { key: 'ai-activity',  label: 'AI Activity',      description: 'Aria interactions',           icon: Bot,             requiredFeatures: ['ai'] },
     { key: 'ai-report',    label: 'AI Report',        description: 'AI-generated reports',        icon: Bot,             requiredFeatures: ['ai'] },
     // SIEM pages
+    { key: 'siem',                 label: 'SIEM Suite (All Pages)', description: 'Full access to all SIEM & host monitoring pages', icon: Layers, requiredFeatures: ['siem'] },
     { key: 'siem-dashboard', label: 'SIEM Dashboard', description: 'Security events overview',   icon: ShieldAlert,     requiredFeatures: ['siem'] },
     { key: 'siem-logs',      label: 'SIEM Logs',      description: 'Ingested log stream',         icon: ScrollText,      requiredFeatures: ['siem'] },
     { key: 'siem-sources',   label: 'SIEM Sources',   description: 'Log source management',       icon: Database,        requiredFeatures: ['siem'] },
@@ -492,7 +493,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { title: 'SECURITY',   keys: ['intel', 'rules', 'evidence'] },
     { title: 'ENFORCE',    keys: ['honeypots', 'retrospective'] },
     { title: 'OPERATIONS', keys: ['health', 'soar', 'ai-activity', 'ai-report'] },
-    { title: 'SIEM',       keys: ['siem-dashboard', 'siem-logs', 'siem-sources', 'siem-agents', 'siem-parsers', 'siem-mitre',
+    { title: 'SIEM',       keys: ['siem', 'siem-dashboard', 'siem-logs', 'siem-sources', 'siem-agents', 'siem-parsers', 'siem-mitre',
                               'siem-vulnerabilities', 'siem-compliance', 'siem-fim', 'siem-active-response', 'siem-logtest',
                               'siem-console', 'siem-alerts', 'siem-rules'] },
   ];
@@ -1766,13 +1767,47 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
+  isCategoryAllSelected(cat: { title: string, options: PermissionOption[] }): boolean {
+    if (!cat.options.length) return false;
+    return cat.options.every(o => this.hasPermission(o.key));
+  }
+
+  toggleCategory(cat: { title: string, options: PermissionOption[] }) {
+    const allSelected = this.isCategoryAllSelected(cat);
+    const catKeys = new Set(cat.options.map(o => o.key));
+    const current = new Set(this.userForm.permissions);
+
+    if (allSelected) {
+      for (const k of catKeys) current.delete(k);
+    } else {
+      for (const k of catKeys) current.add(k);
+    }
+    this.userForm.permissions = Array.from(current);
+  }
+
   togglePermission(permission: string) {
+    if (permission === 'siem') {
+      const siemCat = this.permissionCategories().find(c => c.title === 'SIEM');
+      if (siemCat) {
+        this.toggleCategory(siemCat);
+        return;
+      }
+    }
     const selected = new Set(this.userForm.permissions);
     if (selected.has(permission)) selected.delete(permission); else selected.add(permission);
     this.userForm.permissions = Array.from(selected);
   }
 
-  hasPermission(permission: string) { return this.userForm.permissions.includes(permission); }
+  hasPermission(permission: string) {
+    if (permission === 'siem') {
+      const siemCat = this.permissionCategories().find(c => c.title === 'SIEM');
+      if (siemCat && siemCat.options.length > 1) {
+        const nonMaster = siemCat.options.filter(o => o.key !== 'siem');
+        if (nonMaster.length > 0 && nonMaster.every(o => this.userForm.permissions.includes(o.key))) return true;
+      }
+    }
+    return this.userForm.permissions.includes(permission);
+  }
 
   onRoleChange() {
     if (!this.editingUser()) this.userForm.permissions = this.defaultPermissionsFor(this.userForm.role);

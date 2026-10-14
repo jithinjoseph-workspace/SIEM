@@ -209,7 +209,13 @@ export class AuthService implements OnDestroy {
     if (!user) return false;
     if (this.isAdmin() || user.role === 'tenant_admin') return true;
 
-    return this.normalizePermissions(user.permissions).includes(permission);
+    const perms = this.normalizePermissions(user.permissions);
+
+    // If 'siem' master suite permission is assigned or role is analyst, grant all SIEM pages
+    if (permission.startsWith('siem') && (perms.includes('siem') || user.role === 'analyst')) return true;
+    if (permission === 'dashboard' && (perms.includes('dashboard') || user.role === 'analyst')) return true;
+
+    return perms.includes(permission);
   }
 
   getDefaultRoute(): string {

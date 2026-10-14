@@ -1098,10 +1098,19 @@ input[type="checkbox"]:checked::after {
 
 .perm-category-block { display: flex; flex-direction: column; }
 
+.perm-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
 .perm-category-label {
   font-size: 10px; font-weight: 700; color: #38bdf8;
-  letter-spacing: 0.14em; margin-bottom: 8px; text-transform: uppercase;
+  letter-spacing: 0.14em; text-transform: uppercase;
   display: flex; align-items: center; gap: 10px;
+  flex: 1;
 }
 .perm-category-label::before {
   content: ''; width: 20px; height: 1px;
@@ -1110,6 +1119,45 @@ input[type="checkbox"]:checked::after {
 .perm-category-label::after {
   content: ''; flex: 1; height: 1px;
   background: linear-gradient(90deg, rgba(56, 189, 248, 0.20), transparent);
+}
+
+.perm-category-toggle-btn {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.perm-category-toggle-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.2);
+}
+
+.perm-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: all 160ms ease;
+}
+
+.perm-toggle-dot.all-active {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
 }
 
 /* Permission grid */

@@ -1066,7 +1066,13 @@
         </div>
         <div class="permissions-scroll-area">
           <div *ngFor="let cat of licensedPermissionCategories()" class="perm-category-block">
-            <div class="perm-category-label">{{ cat.title }}</div>
+            <div class="perm-category-header">
+              <div class="perm-category-label">{{ cat.title }}</div>
+              <button type="button" class="perm-category-toggle-btn" (click)="toggleCategory(cat)">
+                <span class="perm-toggle-dot" [class.all-active]="isCategoryAllSelected(cat)"></span>
+                {{ isCategoryAllSelected(cat) ? 'Deselect All' : 'Select All ' + cat.title }}
+              </button>
+            </div>
             <div class="permission-grid">
               <button *ngFor="let p of cat.options" type="button" class="perm-btn"
                       [class.selected]="hasPermission(p.key)" (click)="togglePermission(p.key)">

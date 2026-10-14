@@ -93,7 +93,12 @@ pub fn default_permissions(role: &str) -> Vec<String> {
             "dashboard","alerts","intel","evidence","rules","soar","reports",
             "settings","users","sensors",
         ],
-        _ => vec!["dashboard","alerts","intel","evidence"],
+        _ => vec![
+            "dashboard","alerts","intel","evidence",
+            "siem-dashboard","siem-alerts","siem-logs","siem-agents","siem-parsers",
+            "siem-mitre","siem-vulnerabilities","siem-compliance","siem-fim",
+            "siem-rules","siem-active-response","siem-logtest","siem-console","siem-sources",
+        ],
     }
     .into_iter().map(String::from).collect()
 }

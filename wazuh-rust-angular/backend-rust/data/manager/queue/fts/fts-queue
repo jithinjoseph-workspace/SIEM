@@ -1,2 +1,0 @@
-ossec        (e2e-ui-pc) any->wazuh-agent
-ossec        (win-node-11a2) any->wazuh-agent

@@ -23,7 +23,11 @@ pub struct AuthDb {
 impl AuthDb {
     pub async fn new(_url: &str) -> Result<Self> {
         let cfg = provigil_common::clickhouse::ClickHouseConfig::from_env();
-        Ok(Self { client: cfg.build_client() })
+        let client = cfg.build_client();
+        let _ = client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login DateTime DEFAULT now()").execute().await;
+        let _ = client.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").execute().await;
+        let _ = client.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
+        Ok(Self { client })
     }
 
     /// Fetch a user by username within a tenant.
@@ -446,7 +450,7 @@ impl AuthDb {
         // parser (and has_feature()) can't read back correctly.
         let q = format!(
             "INSERT INTO tenants (id, name, active, ai_enabled, updated_at, created_at, features) \
-             VALUES ('{}', '{}', 1, 0, now(), now(), 'ndr')",
+             VALUES ('{}', '{}', 1, 1, now(), now(), 'siem,ndr')",
             escape(id), escape(name)
         );
         self.client.query(&q).execute().await?;

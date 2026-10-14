@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { SiemService } from './core/services/siem.service';
 import {
   AgentDeployService, DeployParams, defaultManagerUrl, downloadText, generateAgentName, installCommand,
-  isValidAgentName, linuxDeployScript, startCommand, windowsBatScript, windowsInstallScript,
+  isValidAgentName, linuxDeployScript, startCommand, windowsBatScript, windowsInstallScript, copyToClipboard,
 } from '../../services/siem/agent-deploy';
 import {
   Agent,
@@ -239,6 +239,32 @@ export class SiemConsole implements OnInit, OnDestroy {
       : this.deployNameValid() ? installCommand(this.deployParams()) : '# Fix the agent name (2-128 chars: letters, digits, . _ -)');
 
   deployStartCommand = computed(() => startCommand(this.deployParams()));
+  isLocalhostManager = computed(() => /localhost|127\.0\.0\.1/i.test(this.deployManagerUrl()));
+
+  detectedAgent = computed(() => {
+    const name = this.deployAgentName().trim().toLowerCase();
+    if (!name) return null;
+    return this.agents().find((a: any) => a.name?.toLowerCase() === name) || null;
+  });
+
+  suggestedUrls = computed(() => {
+    if (typeof window === 'undefined') return [];
+    const list: { label: string; url: string }[] = [];
+    const origin = window.location.origin;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    list.push({ label: 'Console Origin (:4200)', url: origin });
+    list.push({ label: 'Direct SIEM API (:8088)', url: `${protocol}//${hostname}:8088` });
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      list.push({ label: 'LAN Direct IP (:8088)', url: 'http://192.168.220.33:8088' });
+      list.push({ label: 'VM Host-Only (:8088)', url: 'http://192.168.56.1:8088' });
+    }
+    return list;
+  });
+
+  setManagerUrl(url: string) {
+    this.deployManagerUrl.set(url);
+  }
 
   selectDeployOs(os: 'windows' | 'linux' | 'macos') {
     this.deployOs.set(os);
@@ -262,18 +288,20 @@ export class SiemConsole implements OnInit, OnDestroy {
     this.showDeployModal.set(false);
   }
 
-  copyDeployCommand() {
-    navigator.clipboard.writeText(this.deployInstallCommand()).then(() => {
+  async copyDeployCommand() {
+    const ok = await copyToClipboard(this.deployInstallCommand());
+    if (ok) {
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 3000);
-    });
+    }
   }
 
-  copyDeployStartCommand() {
-    navigator.clipboard.writeText(this.deployStartCommand()).then(() => {
+  async copyDeployStartCommand() {
+    const ok = await copyToClipboard(this.deployStartCommand());
+    if (ok) {
       this.copiedStart.set(true);
       setTimeout(() => this.copiedStart.set(false), 3000);
-    });
+    }
   }
 
   downloadDeployScript() {

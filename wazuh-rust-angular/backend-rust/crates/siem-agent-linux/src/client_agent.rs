@@ -102,6 +102,9 @@ impl ClientAgent {
                         if let Some(g) = parsed.get("agent_group").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
                             cfg.agent_group = g.to_string();
                         }
+                        if let Some(tk) = parsed.get("tenant_key").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                            cfg.tenant_key = Some(tk.to_string());
+                        }
                         config_json = Some(parsed.clone());
                         info!("ClientAgent: Loaded configuration from {}", cand.display());
                         break;

@@ -3,7 +3,7 @@ title PROVIGIL AETHER SIEM - STOP SERVICES
 color 0c
 
 echo ==============================================================================
-echo            STOPPING PROVIGIL SIEM & EDR SERVICES
+echo            STOPPING PROVIGIL SIEM AND EDR SERVICES
 echo ==============================================================================
 echo.
 
@@ -26,4 +26,4 @@ taskkill /F /IM auth-service.exe >nul 2>&1
 echo.
 echo [OK] All services on ports 3001, 8088 and 4200 have been stopped.
 echo ==============================================================================
-timeout /t 3
+ping -n 3 127.0.0.1 >nul

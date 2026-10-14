@@ -378,19 +378,36 @@
           <h2 class="text-lg font-bold text-white">Deploy & Enroll Wazuh Agent</h2>
           <p class="text-xs text-slate-400">The agent enrolls on first start, gets a unique agent id and joins this tenant.</p>
         </div>
-        <button (click)="showDeployModal.set(false)" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+        <button (click)="closeDeployModal()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
           <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
         </button>
       </div>
 
       <div class="p-6 overflow-y-auto space-y-5 text-sm">
+        <!-- Live Enrollment Success Detection Banner -->
+        <div *ngIf="detectedAgent() as da" class="p-3.5 rounded-xl border border-emerald-500/60 bg-emerald-950/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg shadow-emerald-950/40">
+          <div class="flex items-center gap-2.5">
+            <span class="flex h-3 w-3 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <div>
+              <span class="text-xs font-bold text-emerald-300">✓ LIVE AGENT CONNECTED: {{ da.name }}</span>
+              <span class="block text-[11px] text-slate-300 font-mono">ID: {{ da.id }} • Status: {{ da.status | uppercase }} • IP: {{ da.ip }} • {{ da.os }}</span>
+            </div>
+          </div>
+          <button (click)="inspectEnrolledAgent(da)" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow transition">
+            Inspect Agent Specs →
+          </button>
+        </div>
+
         <!-- 1. Operating system -->
         <div>
           <div class="text-xs font-semibold text-slate-400 uppercase mb-2">1. Operating system</div>
           <div class="grid grid-cols-3 gap-3">
             <button (click)="selectDeployOs('linux')" [class.border-cyan-500]="deployOs() === 'linux'" [class.bg-cyan-950]="deployOs() === 'linux'"
               class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
-              Linux <span class="block text-[11px] font-normal text-slate-400">install.sh (any distro, systemd)</span>
+              Linux <span class="block text-[11px] font-normal text-slate-400">install.sh (Universal binary daemon)</span>
             </button>
             <button (click)="selectDeployOs('windows')" [class.border-cyan-500]="deployOs() === 'windows'" [class.bg-cyan-950]="deployOs() === 'windows'"
               class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
@@ -400,6 +417,18 @@
               class="p-3 rounded-lg border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition">
               macOS <span class="block text-[11px] font-normal text-slate-400">no package yet</span>
             </button>
+          </div>
+
+          <!-- Linux supported distros -->
+          <div *ngIf="deployOs() === 'linux'" class="mt-2.5 flex flex-wrap gap-1.5 items-center text-[11px] text-slate-400">
+            <span class="text-slate-500 font-medium">Distro support:</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Ubuntu</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Debian</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">RHEL / CentOS</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Rocky / AlmaLinux</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Fedora</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Alpine</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-slate-300">Arch / Manjaro</span>
           </div>
         </div>
 
@@ -416,6 +445,17 @@
                 <span class="text-xs text-slate-400">Manager URL (reachable from the endpoint)</span>
                 <input class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
                   [ngModel]="deployManagerUrl()" (ngModelChange)="deployManagerUrl.set($event)" />
+                <div class="mt-1.5 flex flex-wrap gap-1.5 items-center text-[11px]">
+                  <span class="text-slate-500">Quick-Fill:</span>
+                  <button *ngFor="let s of suggestedUrls()" type="button" (click)="setManagerUrl(s.url)"
+                    [class.bg-cyan-950]="deployManagerUrl() === s.url" [class.border-cyan-700]="deployManagerUrl() === s.url" [class.text-cyan-300]="deployManagerUrl() === s.url"
+                    class="px-2 py-0.5 rounded border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-600 transition">
+                    {{ s.label }}
+                  </button>
+                </div>
+                <span *ngIf="isLocalhostManager()" class="block mt-1 text-[11px] text-amber-400">
+                  ⚠️ Note: If deploying to a remote VM or external machine, replace <span class="font-mono bg-slate-900 px-1 rounded">localhost</span> with your host LAN IP (e.g. <span class="font-mono bg-slate-900 px-1 rounded">http://192.168.x.x:4200</span>).
+                </span>
               </label>
               <label class="block">
                 <span class="text-xs text-slate-400">Agent name (auto-generated, editable)</span>
@@ -466,8 +506,11 @@
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
             <div class="flex justify-between items-center">
               <span class="text-xs font-semibold text-slate-400 uppercase">3. Run this on the endpoint {{ deployOs() === 'windows' ? '(PowerShell)' : '(as root / sudo)' }}</span>
-              <button (click)="copyInstallCommand()" [disabled]="!deployInstallCommand()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold disabled:opacity-40">
-                {{ copied() ? '✓ Copied!' : 'Copy Command' }}
+              <button (click)="copyInstallCommand()" [disabled]="!deployInstallCommand()"
+                [class.text-emerald-400]="copied()" [class.text-cyan-400]="!copied()"
+                class="inline-flex items-center gap-1.5 text-xs hover:underline font-semibold disabled:opacity-40 transition">
+                <lucide-angular [img]="copied() ? CopiedIcon : CopyIcon" class="w-3.5 h-3.5"></lucide-angular>
+                {{ copied() ? '✓ Copied to clipboard!' : 'Copy Command' }}
               </button>
             </div>
             <pre class="p-3 bg-slate-900 border border-slate-800 rounded font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap break-all">{{ deployInstallCommand() || 'Fix the agent name to generate the command.' }}</pre>
@@ -477,24 +520,31 @@
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
             <div class="flex justify-between items-center">
               <span class="text-xs font-semibold text-slate-400 uppercase">4. Start / check the service</span>
-              <button (click)="copyStartCommand()" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">
-                {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
+              <button (click)="copyStartCommand()"
+                [class.text-emerald-400]="copiedStart()" [class.text-cyan-400]="!copiedStart()"
+                class="inline-flex items-center gap-1.5 text-xs hover:underline font-semibold transition">
+                <lucide-angular [img]="copiedStart() ? CopiedIcon : CopyIcon" class="w-3.5 h-3.5"></lucide-angular>
+                {{ copiedStart() ? '✓ Copied to clipboard!' : 'Copy Command' }}
               </button>
             </div>
             <pre class="p-3 bg-slate-900 border border-slate-800 rounded font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">{{ deployStartCommand() }}</pre>
           </div>
 
-          <!-- Downloads -->
-          <div class="flex flex-wrap gap-3">
-            <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployNameValid()"
-              class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40">
-              <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline"></lucide-angular> Download 1-Click .BAT
+          <!-- Downloads & Footer Actions -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div class="flex flex-wrap gap-2.5">
+              <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployNameValid()"
+                class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40 shadow transition">
+                <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline mr-1"></lucide-angular> Download 1-Click .BAT
+              </button>
+              <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployNameValid()"
+                class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40 shadow transition">
+                <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline mr-1"></lucide-angular> Download Deployment Script (.sh)
+              </button>
+            </div>
+            <button (click)="closeDeployModal()" class="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition">
+              Close
             </button>
-            <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployNameValid()"
-              class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold disabled:opacity-40">
-              <lucide-angular [img]="DownloadIcon" class="w-4 h-4 inline"></lucide-angular> Download Deployment Script
-            </button>
-            <button (click)="showDeployModal.set(false)" class="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs">Close</button>
           </div>
         </ng-container>
       </div>

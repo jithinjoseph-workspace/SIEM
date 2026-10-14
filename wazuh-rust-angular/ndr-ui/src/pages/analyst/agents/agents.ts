@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -11,7 +11,7 @@ import { SiemService } from '../../../services/siem/siem.service';
 import {
   AgentDeployService, DeployOs, DeployParams, WinInstallMode,
   defaultManagerUrl, downloadText, generateAgentName, installCommand, isValidAgentName,
-  linuxDeployScript, startCommand, windowsBatScript,
+  linuxDeployScript, startCommand, windowsBatScript, copyToClipboard,
 } from '../../../services/siem/agent-deploy';
 import { Agent, AgentInventory, ScaCheckResult, RawEvent } from '../../../services/siem/siem.models';
 
@@ -24,7 +24,7 @@ type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fi
   templateUrl: './agents.html',
   styleUrl: './agents.css',
 })
-export class Agents implements OnInit {
+export class Agents implements OnInit, OnDestroy {
   private siem = inject(SiemService);
   private deploy = inject(AgentDeployService);
 
@@ -92,6 +92,28 @@ export class Agents implements OnInit {
   });
   deployInstallCommand = computed(() => (this.deployNameValid() ? installCommand(this.deployParams()) : ''));
   deployStartCommand = computed(() => startCommand(this.deployParams()));
+  isLocalhostManager = computed(() => /localhost|127\.0\.0\.1/i.test(this.deployManagerUrl()));
+
+  detectedAgent = computed(() => {
+    const name = this.deployAgentName().trim().toLowerCase();
+    if (!name) return null;
+    return this.agents().find(a => a.name.toLowerCase() === name) || null;
+  });
+
+  suggestedUrls = computed(() => {
+    if (typeof window === 'undefined') return [];
+    const list: { label: string; url: string }[] = [];
+    const origin = window.location.origin;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    list.push({ label: 'Console Origin (:4200)', url: origin });
+    list.push({ label: 'Direct SIEM API (:8088)', url: `${protocol}//${hostname}:8088` });
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      list.push({ label: 'LAN Direct IP (:8088)', url: 'http://192.168.220.33:8088' });
+      list.push({ label: 'VM Host-Only (:8088)', url: 'http://192.168.56.1:8088' });
+    }
+    return list;
+  });
 
   filteredAgents = computed(() => {
     let list = this.agents();
@@ -265,6 +287,12 @@ export class Agents implements OnInit {
     if (this.validIp(ip)) this.triggerAgentAction('unblock_ip', ip);
   }
 
+  private deployPollInterval: any = null;
+
+  setManagerUrl(url: string) {
+    this.deployManagerUrl.set(url);
+  }
+
   openDeployModal() {
     this.selectDeployOs(this.deployOs());
     this.copied.set(false);
@@ -276,6 +304,39 @@ export class Agents implements OnInit {
       this.deployTenantId.set(r.tenant);
       this.deployKeyError.set(r.error ?? null);
     });
+    this.startDeployPolling();
+  }
+
+  closeDeployModal() {
+    this.stopDeployPolling();
+    this.showDeployModal.set(false);
+  }
+
+  startDeployPolling() {
+    this.stopDeployPolling();
+    this.deployPollInterval = setInterval(() => {
+      if (this.showDeployModal()) {
+        this.loadAgents();
+      } else {
+        this.stopDeployPolling();
+      }
+    }, 3000);
+  }
+
+  stopDeployPolling() {
+    if (this.deployPollInterval) {
+      clearInterval(this.deployPollInterval);
+      this.deployPollInterval = null;
+    }
+  }
+
+  inspectEnrolledAgent(ag: Agent) {
+    this.closeDeployModal();
+    this.openAgentDetails(ag);
+  }
+
+  ngOnDestroy() {
+    this.stopDeployPolling();
   }
 
   /** Picks the OS and proposes a fresh, unused agent name for it. */
@@ -296,15 +357,19 @@ export class Agents implements OnInit {
     downloadText(`install-${this.deployAgentName().trim()}.sh`, linuxDeployScript(this.deployParams()), 'text/x-shellscript');
   }
 
-  copyInstallCommand() {
-    navigator.clipboard?.writeText(this.deployInstallCommand());
-    this.copied.set(true);
-    setTimeout(() => this.copied.set(false), 2500);
+  async copyInstallCommand() {
+    const ok = await copyToClipboard(this.deployInstallCommand());
+    if (ok) {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2500);
+    }
   }
 
-  copyStartCommand() {
-    navigator.clipboard?.writeText(this.deployStartCommand());
-    this.copiedStart.set(true);
-    setTimeout(() => this.copiedStart.set(false), 2500);
+  async copyStartCommand() {
+    const ok = await copyToClipboard(this.deployStartCommand());
+    if (ok) {
+      this.copiedStart.set(true);
+      setTimeout(() => this.copiedStart.set(false), 2500);
+    }
   }
 }

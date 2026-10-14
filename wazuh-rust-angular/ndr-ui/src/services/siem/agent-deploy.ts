@@ -202,6 +202,40 @@ export function linuxDeployScript(p: DeployParams): string {
   ].join('\n');
 }
 
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+  // 1. Try modern navigator.clipboard if available
+  if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to textarea fallback
+    }
+  }
+  // 2. Fallback for non-HTTPS or headless/embedded contexts
+  if (typeof document !== 'undefined') {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.left = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      console.error('Fallback clipboard copy failed:', e);
+      return false;
+    }
+  }
+  return false;
+}
+
 export function downloadText(filename: string, text: string, mime = 'text/plain') {
   const blob = new Blob([text], { type: mime });
   const a = document.createElement('a');

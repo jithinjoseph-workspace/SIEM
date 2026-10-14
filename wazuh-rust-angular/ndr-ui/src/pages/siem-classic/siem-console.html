@@ -2287,6 +2287,17 @@
           Select target OS, configure manager endpoint, and copy the automated enrollment command.
         </p>
 
+        <!-- Live Enrollment Success Detection Banner -->
+        <div *ngIf="detectedAgent() as da" class="alert-banner mb-4 p-3 rounded flex items-center justify-between" style="border: 1px solid #10b981; background: rgba(6, 78, 59, 0.4);">
+          <div>
+            <span class="mono text-xs text-emerald font-bold">✓ LIVE AGENT CONNECTED: {{ da.name }}</span>
+            <div class="mono text-muted text-xs">ID: {{ da.id }} • Status: {{ (da.status || 'active') | uppercase }} • IP: {{ da.ip }} • {{ da.os }}</div>
+          </div>
+          <button class="btn btn-sm btn-cyan" (click)="openAgentDetails(da); closeDeployModal()">
+            Inspect Agent Specs →
+          </button>
+        </div>
+
         <!-- OS Selection Buttons -->
         <div class="os-selector mb-4">
           <button class="os-btn" [class.active]="deployOs() === 'linux'" (click)="selectDeployOs('linux')">
@@ -2305,7 +2316,7 @@
 
         <!-- Linux: one universal installer (install.sh) for every distro -->
         <div class="mb-4 text-xs text-muted" *ngIf="deployOs() === 'linux'">
-          Linux agents install with the universal <span class="mono">install.sh</span> (any systemd distro). The agent enrolls on
+          Linux agents install with the universal <span class="mono">install.sh</span> (any systemd distro: Ubuntu, Debian, RHEL, CentOS, Rocky, AlmaLinux, Fedora, Alpine, Arch). The agent enrolls on
           first start and gets a unique agent id from the manager.
         </div>
 
@@ -2314,6 +2325,17 @@
           <div class="form-group">
             <label class="text-xs text-muted">SIEM Manager Endpoint</label>
             <input type="text" class="input-text" [(ngModel)]="deployManagerUrl">
+            <div class="flex flex-wrap gap-1 items-center mt-1 text-xs">
+              <span class="text-muted" style="font-size: 11px;">Quick-Fill:</span>
+              <button *ngFor="let s of suggestedUrls()" type="button" (click)="setManagerUrl(s.url)"
+                class="btn btn-xs btn-outline py-0 px-1" style="font-size: 10px;"
+                [class.btn-cyan]="deployManagerUrl() === s.url">
+                {{ s.label }}
+              </button>
+            </div>
+            <div *ngIf="isLocalhostManager()" class="text-xs text-amber-400 mt-1" style="font-size: 11px;">
+              ⚠️ Note: When deploying to a remote VM, replace <code>localhost</code> with your host LAN IP (e.g. <code>http://192.168.x.x:4200</code>).
+            </div>
           </div>
           <div class="form-group">
             <label class="text-xs text-muted">Agent Hostname / ID</label>

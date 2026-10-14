@@ -62,16 +62,50 @@ esac
 echo "[+] Detected Linux Distribution: ${DIST_NAME} (Version: ${DIST_VER})"
 echo "[+] Target Package Family:       ${PKG_TYPE}"
 
-# Settings: SIEM_* names, or the official WAZUH_* deployment variables.
+# Settings: Support CLI flags, SIEM_* environment variables, or official WAZUH_* deployment variables.
 MANAGER_URL=${SIEM_MANAGER_URL:-${WAZUH_MANAGER:-"http://127.0.0.1:8088"}}
+AGENT_NAME=${SIEM_AGENT_NAME:-${WAZUH_AGENT_NAME:-$(hostname)}}
+AGENT_GROUP=${SIEM_AGENT_GROUP:-${WAZUH_AGENT_GROUP:-"default"}}
+TENANT_KEY=${SIEM_TENANT_KEY:-${WAZUH_TENANT_KEY:-""}}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -m|--manager|--manager-url)
+            MANAGER_URL="$2"
+            shift 2
+            ;;
+        -n|--name|--agent-name)
+            AGENT_NAME="$2"
+            shift 2
+            ;;
+        -g|--group|--agent-group)
+            AGENT_GROUP="$2"
+            shift 2
+            ;;
+        -k|--key|--tenant-key)
+            TENANT_KEY="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  -m, --manager <url>      SIEM Manager Endpoint (e.g. http://192.168.1.10:8088)"
+            echo "  -n, --name <name>        Agent hostname/name (default: hostname)"
+            echo "  -g, --group <group>      Agent group (default: 'default')"
+            echo "  -k, --tenant-key <key>   Tenant agent key"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 case "${MANAGER_URL}" in
     http://*|https://*) ;;
     *) MANAGER_URL="http://${MANAGER_URL}:${WAZUH_MANAGER_PORT:-8088}" ;;
 esac
 MANAGER_URL="${MANAGER_URL%/}"
-AGENT_NAME=${SIEM_AGENT_NAME:-${WAZUH_AGENT_NAME:-$(hostname)}}
-AGENT_GROUP=${SIEM_AGENT_GROUP:-${WAZUH_AGENT_GROUP:-"default"}}
-TENANT_KEY=${SIEM_TENANT_KEY:-${WAZUH_TENANT_KEY:-""}}
 INSTALL_DIR="/var/ossec"
 USER="wazuh"
 GROUP="wazuh"

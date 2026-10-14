@@ -66,6 +66,10 @@ echo [*] Compiling release binaries (auth-service, siem-api)...
 pushd "%BACKEND_DIR%"
 call cargo build --release -p auth-service -p siem-api
 popd
+if not exist "%BACKEND_DIR%\target\release\siem-agent-linux" (
+  echo [*] Compiling Linux agent ELF binary [siem-agent-linux] via Docker container...
+  docker run --rm -v "%BACKEND_DIR%:/app" -w /app rust:slim cargo build --release -p siem-agent-linux
+)
 goto :check_node
 
 :check_binaries
@@ -84,6 +88,10 @@ if errorlevel 1 (
     call cargo build --release -p siem-api
     popd
   )
+)
+if not exist "%BACKEND_DIR%\target\release\siem-agent-linux" (
+  echo [*] Ensuring Linux agent binary [siem-agent-linux] exists for downloads...
+  docker run --rm -v "%BACKEND_DIR%:/app" -w /app rust:slim cargo build --release -p siem-agent-linux
 )
 
 
@@ -147,7 +155,7 @@ for /L %%i in (1,1,%WAIT_SECONDS%) do (
     echo [OK] %WAIT_NAME% is listening on :%WAIT_PORT%
     exit /b 0
   )
-  timeout /t 1 /nobreak >nul
+  ping -n 2 127.0.0.1 >nul
 )
 echo [FAIL] %WAIT_NAME% did not start on :%WAIT_PORT%. Check its terminal window for the error.
 exit /b 1

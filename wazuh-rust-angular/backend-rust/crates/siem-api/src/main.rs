@@ -1610,11 +1610,15 @@ async fn download_linux_agent() -> Result<impl IntoResponse, StatusCode> {
     let possible_paths = [
         "target/release/siem-agent-linux",
         "backend-rust/target/release/siem-agent-linux",
+        "target/x86_64-unknown-linux-gnu/release/siem-agent-linux",
+        "target/x86_64-unknown-linux-musl/release/siem-agent-linux",
+        "backend-rust/target/x86_64-unknown-linux-gnu/release/siem-agent-linux",
+        "crates/siem-agent-linux/siem-agent-linux",
+        "backend-rust/crates/siem-agent-linux/siem-agent-linux",
+        "c:/NDR_SIEM_Combined/wazuh-rust-angular/backend-rust/target/release/siem-agent-linux",
         "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/release/siem-agent-linux",
         "target/debug/siem-agent-linux",
         "backend-rust/target/debug/siem-agent-linux",
-        "target/debug/siem-agent-linux.exe",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/debug/siem-agent-linux.exe",
     ];
 
     for path in possible_paths {

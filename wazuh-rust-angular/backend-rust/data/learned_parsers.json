@@ -46,12 +46,12 @@
       }
     ],
     "normalization": {
-      "laddr": "data.laddr",
       "lport": "srcport",
-      "type": "data.type",
+      "saddr": "data.saddr",
+      "laddr": "data.laddr",
       "saddr_fam": "data.saddr_fam",
       "msg": "data.msg",
-      "saddr": "data.saddr"
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -103,8 +103,8 @@
       }
     ],
     "normalization": {
-      "hostname": "hostname",
-      "program": "program_name"
+      "program": "program_name",
+      "hostname": "hostname"
     },
     "confidence": 0.9,
     "version": 1,
@@ -176,11 +176,11 @@
     "normalization": {
       "msg": "data.msg",
       "a2": "data.a2",
-      "a3": "data.a3",
-      "a0": "data.a0",
       "a1": "data.a1",
+      "argc": "data.argc",
+      "a0": "data.a0",
       "type": "data.type",
-      "argc": "data.argc"
+      "a3": "data.a3"
     },
     "confidence": 0.92,
     "version": 1,
@@ -244,12 +244,12 @@
       }
     ],
     "normalization": {
-      "a1": "data.a1",
-      "argc": "data.argc",
-      "type": "data.type",
-      "a0": "data.a0",
       "a2": "data.a2",
-      "msg": "data.msg"
+      "a1": "data.a1",
+      "msg": "data.msg",
+      "argc": "data.argc",
+      "a0": "data.a0",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -313,12 +313,12 @@
       }
     ],
     "normalization": {
-      "a0": "data.a0",
-      "a1": "data.a1",
-      "a2": "data.a2",
+      "msg": "data.msg",
       "type": "data.type",
+      "a0": "data.a0",
       "argc": "data.argc",
-      "msg": "data.msg"
+      "a2": "data.a2",
+      "a1": "data.a1"
     },
     "confidence": 0.92,
     "version": 1,
@@ -376,11 +376,11 @@
       }
     ],
     "normalization": {
-      "a0": "data.a0",
-      "a1": "data.a1",
       "argc": "data.argc",
+      "msg": "data.msg",
       "type": "data.type",
-      "msg": "data.msg"
+      "a0": "data.a0",
+      "a1": "data.a1"
     },
     "confidence": 0.92,
     "version": 1,
@@ -438,11 +438,11 @@
       }
     ],
     "normalization": {
-      "type": "data.type",
-      "saddr": "data.saddr",
       "saddr_fam": "data.saddr_fam",
       "msg": "data.msg",
-      "path": "data.path"
+      "saddr": "data.saddr",
+      "path": "data.path",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -572,23 +572,23 @@
       }
     ],
     "normalization": {
-      "type": "data.type",
-      "cap_fver": "data.cap_fver",
-      "ouid": "data.ouid",
-      "ogid": "data.ogid",
-      "msg": "data.msg",
-      "name": "data.name",
-      "mode": "data.mode",
-      "cap_fi": "data.cap_fi",
-      "OGID": "data.ogid",
-      "nametype": "data.nametype",
-      "item": "data.item",
       "inode": "data.inode",
-      "rdev": "data.rdev",
       "cap_fe": "data.cap_fe",
-      "cap_fp": "data.cap_fp",
+      "ogid": "data.ogid",
+      "OGID": "data.ogid",
       "cap_frootid": "data.cap_frootid",
-      "dev": "data.dev"
+      "cap_fver": "data.cap_fver",
+      "name": "data.name",
+      "item": "data.item",
+      "rdev": "data.rdev",
+      "cap_fp": "data.cap_fp",
+      "cap_fi": "data.cap_fi",
+      "mode": "data.mode",
+      "msg": "data.msg",
+      "nametype": "data.nametype",
+      "type": "data.type",
+      "dev": "data.dev",
+      "ouid": "data.ouid"
     },
     "confidence": 0.92,
     "version": 1,
@@ -676,16 +676,16 @@
       }
     ],
     "normalization": {
-      "cap_fp": "data.cap_fp",
-      "cap_fe": "data.cap_fe",
-      "cap_fver": "data.cap_fver",
-      "type": "data.type",
-      "nametype": "data.nametype",
-      "cap_frootid": "data.cap_frootid",
       "msg": "data.msg",
+      "nametype": "data.nametype",
+      "cap_fe": "data.cap_fe",
+      "cap_frootid": "data.cap_frootid",
       "name": "data.name",
+      "cap_fi": "data.cap_fi",
       "item": "data.item",
-      "cap_fi": "data.cap_fi"
+      "cap_fp": "data.cap_fp",
+      "type": "data.type",
+      "cap_fver": "data.cap_fver"
     },
     "confidence": 0.92,
     "version": 1,
@@ -731,9 +731,9 @@
       }
     ],
     "normalization": {
-      "cwd": "data.cwd",
+      "type": "data.type",
       "msg": "data.msg",
-      "type": "data.type"
+      "cwd": "data.cwd"
     },
     "confidence": 0.92,
     "version": 1,
@@ -779,9 +779,9 @@
       }
     ],
     "normalization": {
+      "proctitle": "data.proctitle",
       "type": "data.type",
-      "msg": "data.msg",
-      "proctitle": "data.proctitle"
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1037,44 +1037,44 @@
       }
     ],
     "normalization": {
-      "UID": "data.uid",
-      "suid": "data.suid",
-      "type": "data.type",
-      "pid": "data.pid",
-      "fsgid": "data.fsgid",
-      "items": "data.items",
-      "a1": "data.a1",
-      "gid": "data.gid",
-      "syscall": "data.syscall",
-      "exe": "data.exe",
-      "AUID": "data.auid",
-      "SYSCALL": "data.syscall",
       "FSGID": "data.fsgid",
-      "FSUID": "data.fsuid",
-      "a3": "data.a3",
-      "ppid": "data.ppid",
-      "comm": "data.comm",
-      "auid": "data.auid",
-      "success": "data.success",
+      "type": "data.type",
+      "fsgid": "data.fsgid",
       "euid": "data.euid",
+      "exe": "data.exe",
       "EUID": "data.euid",
-      "egid": "data.egid",
-      "sgid": "data.sgid",
-      "a0": "data.a0",
-      "uid": "data.uid",
-      "tty": "data.tty",
       "key": "data.key",
       "SGID": "data.sgid",
-      "arch": "data.arch",
       "msg": "data.msg",
+      "UID": "data.uid",
+      "uid": "data.uid",
+      "EGID": "data.egid",
+      "gid": "data.gid",
+      "AUID": "data.auid",
+      "success": "data.success",
+      "a0": "data.a0",
+      "ppid": "data.ppid",
+      "arch": "data.arch",
+      "GID": "data.gid",
+      "FSUID": "data.fsuid",
+      "egid": "data.egid",
+      "subj": "data.subj",
+      "comm": "data.comm",
+      "ses": "data.ses",
+      "a2": "data.a2",
+      "a3": "data.a3",
+      "tty": "data.tty",
+      "sgid": "data.sgid",
+      "suid": "data.suid",
+      "syscall": "data.syscall",
       "exit": "data.exit",
       "SUID": "data.suid",
-      "EGID": "data.egid",
-      "ses": "data.ses",
-      "subj": "data.subj",
-      "GID": "data.gid",
-      "a2": "data.a2",
-      "fsuid": "data.fsuid"
+      "pid": "data.pid",
+      "fsuid": "data.fsuid",
+      "SYSCALL": "data.syscall",
+      "items": "data.items",
+      "a1": "data.a1",
+      "auid": "data.auid"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1138,12 +1138,12 @@
       }
     ],
     "normalization": {
+      "text": "data.text",
       "commandElements": "data.commandelements",
-      "type": "data.type",
       "a": "data.a",
+      "type": "data.type",
       "ceData_children": "data.cedata_children",
-      "redirections": "data.redirections",
-      "text": "data.text"
+      "redirections": "data.redirections"
     },
     "confidence": 0.94,
     "version": 1,

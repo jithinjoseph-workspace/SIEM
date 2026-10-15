@@ -19,5 +19,10 @@ pub mod win;
 #[cfg(windows)]
 pub use win::SysInfo;
 
+pub mod linux;
+
+#[cfg(target_os = "linux")]
+pub use linux::SysInfo;
+
 /// `UNKNOWN_VALUE` (sharedDefs.h)
 pub const UNKNOWN_VALUE: &str = " ";

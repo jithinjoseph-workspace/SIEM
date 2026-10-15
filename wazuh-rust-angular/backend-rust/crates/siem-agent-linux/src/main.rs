@@ -2,6 +2,7 @@ mod agcom;
 mod buffer;
 mod client_agent;
 mod control;
+mod docker;
 mod enroll;
 mod execd;
 mod logcollector;
@@ -201,6 +202,13 @@ async fn run_linux_agent() {
         config.agent_id.clone(),
         Arc::clone(&buffer),
         Duration::from_secs(120),
+    );
+
+    // Module 7: wazuh-docker (Docker Container Lifecycle & Security Event Monitor)
+    info!(" [✓] wazuh-docker (streaming /var/run/docker.sock container start/stop/die events)");
+    let _docker_handle = docker::spawn_docker_worker(
+        config.agent_id.clone(),
+        Arc::clone(&buffer),
     );
 
     info!("===============================================================");

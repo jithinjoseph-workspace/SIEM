@@ -7,11 +7,75 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
 
+/// Handles multiline log accumulation (e.g. Java exceptions, Python tracebacks)
+/// Mirroring Wazuh logcollector read_multiline_regex.c
+#[allow(dead_code)]
+pub struct MultilineAccumulator {
+    current_buffer: Vec<String>,
+    source: EventSource,
+    location: String,
+    last_flush: std::time::Instant,
+}
+
+impl MultilineAccumulator {
+    pub fn new(source: EventSource, location: String) -> Self {
+        Self {
+            current_buffer: Vec::new(),
+            source,
+            location,
+            last_flush: std::time::Instant::now(),
+        }
+    }
+
+    /// Tests if a line starts a new log entry vs is a continuation line
+    pub fn is_new_entry(line: &str) -> bool {
+        // Typical continuation lines start with whitespace or tab (indented stack trace)
+        if line.starts_with(' ') || line.starts_with('\t') {
+            return false;
+        }
+        if line.starts_with("Caused by:") || line.starts_with("at ") {
+            return false;
+        }
+        true
+    }
+
+    pub fn push_line(&mut self, line: String) -> Option<String> {
+        if Self::is_new_entry(&line) && !self.current_buffer.is_empty() {
+            let combined = self.current_buffer.join("\n");
+            self.current_buffer.clear();
+            self.current_buffer.push(line);
+            self.last_flush = std::time::Instant::now();
+            Some(combined)
+        } else {
+            self.current_buffer.push(line);
+            if self.current_buffer.len() > 100 || self.last_flush.elapsed() > Duration::from_secs(2) {
+                let combined = self.current_buffer.join("\n");
+                self.current_buffer.clear();
+                self.last_flush = std::time::Instant::now();
+                Some(combined)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn flush(&mut self) -> Option<String> {
+        if !self.current_buffer.is_empty() {
+            let combined = self.current_buffer.join("\n");
+            self.current_buffer.clear();
+            Some(combined)
+        } else {
+            None
+        }
+    }
+}
+
 /// Tracks the read byte offset for each monitored log file
 pub struct LogTracker {
     path: PathBuf,
     offset: u64,
     source: EventSource,
+    accumulator: MultilineAccumulator,
 }
 
 impl LogTracker {
@@ -23,10 +87,12 @@ impl LogTracker {
             0
         };
 
+        let loc = p.to_string_lossy().to_string();
         Self {
             path: p,
             offset,
-            source,
+            source: source.clone(),
+            accumulator: MultilineAccumulator::new(source, loc),
         }
     }
 
@@ -53,7 +119,7 @@ impl LogTracker {
             return Vec::new();
         }
 
-        let mut lines = Vec::new();
+        let mut logs = Vec::new();
         let mut line = String::new();
 
         while let Ok(bytes_read) = reader.read_line(&mut line) {
@@ -62,14 +128,88 @@ impl LogTracker {
             }
             let trimmed = line.trim_end();
             if !trimmed.is_empty() {
-                lines.push(trimmed.to_string());
+                if let Some(combined) = self.accumulator.push_line(trimmed.to_string()) {
+                    logs.push(combined);
+                }
             }
             self.offset += bytes_read as u64;
             line.clear();
         }
 
-        lines
+        if let Some(remaining) = self.accumulator.flush() {
+            logs.push(remaining);
+        }
+
+        logs
     }
+}
+
+/// Systemd journald stream collector (mirroring Wazuh read_journald.c)
+#[cfg(target_os = "linux")]
+pub fn spawn_journald_worker(agent_id: String, buffer: Arc<AgentBuffer>) -> Option<tokio::task::JoinHandle<()>> {
+    if !Path::new("/run/systemd/journal").exists() && !Path::new("/var/log/journal").exists() {
+        return None;
+    }
+
+    info!("wazuh-logcollector: Initializing systemd journald real-time stream...");
+
+    Some(tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        use tokio::process::Command;
+
+        let mut child = match Command::new("journalctl")
+            .args(["-f", "-n", "0", "-o", "json"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                info!("wazuh-logcollector: journalctl stream not available: {}. Relying on text log files.", e);
+                return;
+            }
+        };
+
+        if let Some(stdout) = child.stdout.take() {
+            let mut reader = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                    let msg = json.get("MESSAGE")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if msg.is_empty() {
+                        continue;
+                    }
+
+                    let unit = json.get("_SYSTEMD_UNIT")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("systemd");
+
+                    let ident = json.get("SYSLOG_IDENTIFIER")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(unit);
+
+                    let priority = json.get("PRIORITY")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("6");
+
+                    let formatted_log = format!("{}: {}", ident, msg);
+                    let mut event = RawEvent::new(
+                        &agent_id,
+                        EventSource::Syslog,
+                        format!("journald/{}", unit),
+                        formatted_log,
+                    );
+                    event.metadata.insert("systemd_unit".into(), unit.to_string());
+                    event.metadata.insert("syslog_identifier".into(), ident.to_string());
+                    event.metadata.insert("priority".into(), priority.to_string());
+                    event.metadata.insert("os_type".into(), "linux".into());
+
+                    buffer.push(event).await;
+                }
+            }
+        }
+    }))
 }
 
 /// Spawns the Linux logcollector worker (mirroring Wazuh logcollector daemon)
@@ -80,6 +220,11 @@ pub fn spawn_logcollector_worker(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         info!("wazuh-logcollector: Initializing target log streams...");
+
+        #[cfg(target_os = "linux")]
+        {
+            let _ = spawn_journald_worker(agent_id.clone(), buffer.clone());
+        }
 
         let mut trackers: Vec<LogTracker> = Vec::new();
 
@@ -119,7 +264,7 @@ pub fn spawn_logcollector_worker(
         loop {
             tokio::time::sleep(poll_interval).await;
 
-            // Dynamically attach if new logs are created or test files created
+            // Dynamically attach if new logs are created
             for (path_str, src) in &candidate_logs {
                 let p = Path::new(path_str);
                 if p.exists() && !trackers.iter().any(|t| t.path == p) {
@@ -141,7 +286,7 @@ pub fn spawn_logcollector_worker(
                     event.metadata.insert("log_file".into(), location);
                     event.metadata.insert("os_type".into(), "linux".into());
 
-                    // Categorize event based on standard Linux security patterns (matching decoders/syslog_rules)
+                    // Categorize event based on standard Linux security patterns
                     if log_line.contains("Failed password") || log_line.contains("authentication failure") {
                         event.metadata.insert("category".into(), "auth_failure".into());
                     } else if log_line.contains("Accepted password") || log_line.contains("Accepted publickey") {

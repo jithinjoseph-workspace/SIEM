@@ -2350,11 +2350,15 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
  "siem-core",
+ "siem-njson",
+ "siem-sca",
+ "siem-sysinfo",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2942,6 +2946,7 @@ name = "siem-syscheckd"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
  "quick-xml",
  "regex",
  "serde",

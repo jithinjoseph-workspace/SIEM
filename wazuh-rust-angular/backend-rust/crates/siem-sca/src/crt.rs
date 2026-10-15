@@ -15,9 +15,6 @@ extern "C" {
     fn _errno() -> *mut c_int;
     #[link_name = "_mktime64"]
     fn crt_mktime(tm: *mut libc::tm) -> i64;
-    fn opendir(name: *const c_char) -> *mut std::ffi::c_void;
-    fn readdir(d: *mut std::ffi::c_void) -> *const u8;
-    fn closedir(d: *mut std::ffi::c_void) -> c_int;
 }
 
 /// `errno`
@@ -109,28 +106,25 @@ pub const S_IFDIR: u32 = libc::S_IFDIR as u32;
 /// `opendir` + every `readdir` name + `closedir`, or the `errno` of
 /// `opendir`.
 pub fn read_dir(path: &[u8]) -> Result<Vec<Vec<u8>>, i32> {
-    let c = cstring(path);
-    let mut names = Vec::new();
-    // SAFETY: a DIR stream opened and closed here; each entry is read before the next call.
-    unsafe {
-        #[cfg(windows)]
-        {
-            let d = opendir(c.as_ptr());
-            if d.is_null() {
-                return Err(errno());
-            }
-            loop {
-                let e = readdir(d);
-                if e.is_null() {
-                    break;
-                }
-                // mingw struct dirent: long d_ino; unsigned short d_reclen, d_namlen; char d_name[260]
-                names.push(CStr::from_ptr(e.add(8) as *const c_char).to_bytes().to_vec());
-            }
-            closedir(d);
+    #[cfg(windows)]
+    {
+        let lossy = String::from_utf8_lossy(path);
+        let entries = match std::fs::read_dir(lossy.as_ref()) {
+            Ok(rd) => rd,
+            Err(e) => return Err(e.raw_os_error().unwrap_or(3)),
+        };
+        let mut names = Vec::new();
+        for entry in entries.flatten() {
+            names.push(entry.file_name().to_string_lossy().as_bytes().to_vec());
         }
-        #[cfg(unix)]
-        {
+        Ok(names)
+    }
+    #[cfg(unix)]
+    {
+        let c = cstring(path);
+        let mut names = Vec::new();
+        // SAFETY: a DIR stream opened and closed here; each entry is read before the next call.
+        unsafe {
             let d = libc::opendir(c.as_ptr());
             if d.is_null() {
                 return Err(errno());
@@ -144,8 +138,8 @@ pub fn read_dir(path: &[u8]) -> Result<Vec<Vec<u8>>, i32> {
             }
             libc::closedir(d);
         }
+        Ok(names)
     }
-    Ok(names)
 }
 
 /// `localtime_r(t)`

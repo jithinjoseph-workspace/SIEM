@@ -113,7 +113,8 @@ pub fn start_daemon(fim: &Arc<Fim>) {
         (c.process_priority, c.scan_time.is_some() || c.scan_day.is_some())
     };
     set_priority_windows_thread(prio);
-    // shortcut: rootcheck (w_rootcheck_thread) is not ported yet.
+    // w_rootcheck_thread (it scans only when rootcheck_init enabled it)
+    super::rootcheck::start_thread(fim.sk.rootcheck.clone(), fim.sk.cfg.read_recursive().rootcheck != 0);
     if has_sched {
         fim.sk.cfg.write().time = 604800;
     }

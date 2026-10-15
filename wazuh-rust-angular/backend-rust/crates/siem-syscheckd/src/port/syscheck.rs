@@ -53,6 +53,9 @@ pub struct Syscheck {
     pub sys_debug_level: i32,
     /// `rootcheck.tsleep`
     pub rootcheck_sleep: i32,
+    /// The rootcheck configuration (`rootcheck` global)
+    #[cfg(windows)]
+    pub rootcheck: std::sync::Arc<super::rootcheck::RkConfig>,
 }
 
 /// `read_internal(0)`
@@ -124,7 +127,15 @@ pub fn start_config(env: &Env) -> Syscheck {
         sc.registry = Some(Vec::new());
         env.log.info("(6001): File integrity monitoring disabled.");
     }
-    // rootcheck_init: rootcheck is ported separately; its sleep is reported by getconfig
+    // Rootcheck config: syscheck.rootcheck says whether its thread scans
+    #[cfg(windows)]
+    let (rk, rootcheck_sleep) = {
+        let (rk, r) = super::rootcheck::rootcheck_init(env);
+        sc.rootcheck = (r == 0) as i32;
+        let sleep = rk.tsleep;
+        (std::sync::Arc::new(rk), sleep)
+    };
+    #[cfg(unix)]
     let rootcheck_sleep = (env.define_int)("rootcheck", "sleep", 0, 1000);
     if sc.disabled == 0 {
         for r in sc.registry.iter().flatten() {
@@ -184,7 +195,13 @@ pub fn start_config(env: &Env) -> Syscheck {
         }
         env.log.info(format!("Started (pid: {}).", std::process::id()));
     }
-    Syscheck { cfg: RwLock::new(sc), sys_debug_level, rootcheck_sleep }
+    Syscheck {
+        cfg: RwLock::new(sc),
+        sys_debug_level,
+        rootcheck_sleep,
+        #[cfg(windows)]
+        rootcheck: rk,
+    }
 }
 
 impl Syscheck {
@@ -193,7 +210,8 @@ impl Syscheck {
         let cfg = match section {
             "syscheck" => get_syscheck_config(&self.cfg.read_recursive()),
             "internal" => Some(get_syscheck_internal_options(&self.cfg.read_recursive(), self.sys_debug_level, self.rootcheck_sleep)),
-            // "rootcheck": getRootcheckConfig, not ported yet
+            #[cfg(windows)]
+            "rootcheck" => Some(super::rootcheck::get_rootcheck_config(&self.rootcheck)),
             _ => None,
         };
         match cfg {
@@ -233,7 +251,10 @@ impl Syscheck {
                 };
                 return self.getconfig(log, args);
             } else if comm == "restart" {
+                // os_set_restart_syscheck: syscheck and rootcheck
                 super::run_check::RESTART_SYSCHECK.store(true, std::sync::atomic::Ordering::SeqCst);
+                #[cfg(windows)]
+                super::rootcheck::RESTART_ROOTCHECK.store(true, std::sync::atomic::Ordering::SeqCst);
                 return Vec::new();
             }
         }

@@ -4,10 +4,9 @@
 //! * execd (`WinExecdStart`): ported (`siem-execd`). agentd pushes `execd`
 //!   messages to its queue, runs `ExecdTimeoutRun` from its main loop and
 //!   sends the `com` requests to `wcom_dispatch`.
-//! * syscheck + rootcheck and the modules: their ports are the next step;
-//!   until then `local_start` sees them as the C code sees them when they
-//!   are disabled (no thread, no `syscheck` / `wmodules` / `upgrade`
-//!   request targets).
+//! * syscheck + rootcheck (`skthread`), the modules (`wmodules`) and the
+//!   agent-upgrade commands: the `syscheck`, `wmodules` and `upgrade`
+//!   request targets.
 
 use std::sync::{Arc, OnceLock};
 
@@ -105,6 +104,21 @@ pub fn register_hooks(_ag: &Agentd, hooks: &mut WinHooks) {
         Box::new(|b: &[u8]| match WMODULES.get() {
             Some(w) => w.dispatch(b),
             None => b"err Unrecognized command".to_vec(),
+        }),
+    ));
+    // req_receiver: "upgrade" -> wm_agent_upgrade_process_command
+    let (uplog, opts) = (Arc::clone(&_ag.log), _ag.opts.clone());
+    hooks.dispatch.push((
+        "upgrade",
+        Box::new(move |b: &[u8]| {
+            let define_int = |s: &str, n: &str, lo: i32, hi: i32| match opts.get_int(s, n, lo, hi) {
+                Ok(v) => v,
+                Err(e) => {
+                    uplog.critical(e.0);
+                    siem_log::cexit::fatal_exit()
+                }
+            };
+            crate::upgrade::process_command(&uplog, &define_int, b)
         }),
     ));
     // receiver: sca-dump -> wm_sca_push_request_win

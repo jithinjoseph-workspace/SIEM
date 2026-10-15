@@ -2,9 +2,9 @@
 //! config/wmodules-config.c as the Windows agent builds them): `wm_config`,
 //! `wm_check`, the module threads, `modulesSync` and `wmcom_dispatch`.
 //!
-//! Ported modules: syscollector. The other wodles the C agent can run
-//! (command, osquery, open-scap, cis-cat, SCA, agent-upgrade) are read as the
-//! C reads unknown-but-valid ones: they are skipped until their ports land.
+//! Ported modules: agent-upgrade, syscollector, SCA. The other wodles the C
+//! agent can run (command, osquery, open-scap, cis-cat) are read as the C reads
+//! unknown-but-valid ones: they are skipped until their ports land.
 
 use std::sync::{Arc, OnceLock};
 
@@ -25,6 +25,7 @@ const WM_MAX_WAIT: u64 = 500;
 
 /// A configured module (`wmodule`), in configuration order.
 enum Module {
+    Upgrade(Arc<crate::upgrade::Config>),
     Syscollector(Arc<WmSysModule>),
     Sca(Arc<siem_sca::wm::Sca>),
 }
@@ -32,6 +33,7 @@ enum Module {
 impl Module {
     fn tag(&self) -> &'static str {
         match self {
+            Module::Upgrade(_) => crate::upgrade::NAME,
             Module::Syscollector(_) => wmsys::NAME,
             Module::Sca(_) => siem_sca::wm::NAME,
         }
@@ -52,6 +54,7 @@ pub struct WModules {
 struct Handler<'a> {
     sys: &'a mut Option<WmSys>,
     sca: &'a mut Option<siem_sca::wm::WmSca>,
+    up: &'a mut crate::upgrade::Config,
     log: &'a WLog,
     order: &'a mut Vec<&'static str>,
 }
@@ -69,8 +72,14 @@ impl ConfigHandler for Handler<'_> {
             let sca = self.sca.get_or_insert_with(Default::default);
             return siem_sca::wm::wm_sca_read(self.log, xml, children, sca).map_err(|_| ConfigError::new(""));
         }
+        if section == Section::AgentUpgrade {
+            // Read_AgentUpgrade: the default module, read again
+            if children.is_none() {
+                ctx.debug1(format!("Empty configuration for module '{}'", node.element));
+            }
+            return crate::upgrade::read(ctx, self.log, Some(xml), children, self.up).map_err(|_| ConfigError::new(""));
+        }
         if section != Section::Wodle {
-            // the agent-upgrade section: its module is not ported yet
             return Ok(());
         }
         let Some(attr) = node.attributes.first() else {
@@ -139,12 +148,17 @@ impl WModules {
         siem_execd::wm_exec::WM_TASK_NICE.store(task_nice, std::sync::atomic::Ordering::Relaxed);
         let max_eps = ag.define_int("wazuh_modules", "max_eps", 1, 1000);
         let kill_timeout = ag.define_int("wazuh_modules", "kill_timeout", 0, 3600);
-        // wm_initialize_default_modules: agent-upgrade (not ported yet)
         let mut sys: Option<WmSys> = None;
         let mut sca: Option<siem_sca::wm::WmSca> = None;
-        let mut order: Vec<&'static str> = Vec::new();
         let mut ctx = ConfigContext::new(Platform::AGENT);
-        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, sca: &mut sca, log: &ag.log, order: &mut order });
+        // wm_initialize_default_modules: agent-upgrade
+        let mut up = crate::upgrade::Config::default();
+        let mut order: Vec<&'static str> = vec![crate::upgrade::NAME];
+        if crate::upgrade::read(&mut ctx, &ag.log, None, None, &mut up).is_err() {
+            siem_agentd::config::flush_ctx(ag, &mut ctx);
+            return Err(());
+        }
+        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order });
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         if r.is_err() {
             return Err(());
@@ -158,12 +172,14 @@ impl WModules {
             siem_config::modules::CWMODULE | siem_config::modules::CAGENT_CONFIG,
             AGENTCONFIG,
             remote,
-            &mut Handler { sys: &mut sys, sca: &mut sca, log: &ag.log, order: &mut order },
+            &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order },
         );
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         let mut modules = Vec::new();
         for tag in order {
-            if tag == wmsys::NAME {
+            if tag == crate::upgrade::NAME {
+                modules.push(Module::Upgrade(Arc::new(up.clone())));
+            } else if tag == wmsys::NAME {
                 if let Some(s) = sys.take() {
                     modules.push(Module::Syscollector(WmSysModule::new(s)));
                 }
@@ -203,6 +219,10 @@ impl WModules {
     pub fn start(self: &Arc<Self>) {
         for m in &self.modules {
             match m {
+                Module::Upgrade(c) => {
+                    let (c, log, eps) = (c.clone(), self.log.clone(), self.max_eps);
+                    let _ = std::thread::Builder::new().name("wm_agent_upgrade_main".into()).spawn(move || crate::upgrade::main(&c, &log, eps));
+                }
                 Module::Sca(s) => {
                     let s = s.clone();
                     let _ = std::thread::Builder::new().name("wm_sca_main".into()).spawn(move || s.main());
@@ -263,7 +283,7 @@ impl WModules {
                     if args.contains("dbsync") {
                         ret = match m {
                             Module::Syscollector(s) => s.sync_message(args),
-                        Module::Sca(_) => -1,
+                            Module::Sca(_) | Module::Upgrade(_) => -1,
                         };
                     }
                     break;
@@ -294,6 +314,9 @@ impl WModules {
         let mut arr = Json::array();
         for m in &self.modules {
             match m {
+                Module::Upgrade(c) => {
+                    arr.push(crate::upgrade::dump(c));
+                }
                 Module::Syscollector(s) => {
                     arr.push(wmsys::wm_sys_dump(&s.sys.lock()));
                 }

@@ -7,10 +7,11 @@ description = "Port of Wazuh shared/file_op.c helpers (merged.mg handling, direc
 [dependencies]
 md-5 = "0.10"
 tracing = "0.1"
+siem-log = { path = "../siem-log" }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3"

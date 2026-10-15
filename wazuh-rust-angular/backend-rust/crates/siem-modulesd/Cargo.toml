@@ -2,7 +2,7 @@
 name = "siem-modulesd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-modulesd (wazuh_modules/): the manager's database module (wm_database.c)"
+description = "Port of wazuh-modulesd (wazuh_modules/): the manager modules database, agent-upgrade, task-manager and download"
 
 [dependencies]
 siem-log = { path = "../siem-log" }
@@ -14,6 +14,10 @@ siem-regex = { path = "../siem-regex" }
 siem-fileop = { path = "../siem-fileop" }
 siem-xml = { path = "../siem-xml" }
 siem-remoted = { path = "../siem-remoted" }
+siem-cjson = { path = "../siem-cjson" }
+siem-execd = { path = "../siem-execd" }
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1.40", features = ["full"] }
 serde_json = "1.0"
 chrono = "0.4"

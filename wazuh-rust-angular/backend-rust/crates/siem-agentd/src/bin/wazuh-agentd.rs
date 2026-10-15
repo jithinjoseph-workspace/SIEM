@@ -147,6 +147,7 @@ mod unix {
         };
         let log = Arc::new(WLog::new(ARGV0, &home));
         siem_ipc::os_net::set_logger(Arc::clone(&log));
+        siem_fileop::set_logger(Arc::clone(&log));
 
         if let Err(e) = std::env::set_current_dir(&home) {
             let n = e.raw_os_error().unwrap_or(0);

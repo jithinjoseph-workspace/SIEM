@@ -172,7 +172,7 @@ pub fn read_rootcheck(ctx: &mut ConfigContext, nodes: Option<&[XmlNode]>, rk: &m
                     match OsMatch::compile(v, siem_regex::OS_CASE_SENSITIVE) {
                         Ok(m) => re = Some(m),
                         Err(e) => {
-                            ctx.error(format!("(1452): Syntax error on regex: '{v}': {}.", e.code()));
+                            ctx.error(format!("(1450): Syntax error on regex: '{v}': {}.", e as i32));
                             return Err(ConfigError::new(""));
                         }
                     }
@@ -506,7 +506,7 @@ impl<'a> Scan<'a> {
             match pattern {
                 None => {
                     if is_file(&cur) {
-                        self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]).into_bytes());
+                        self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]));
                         return true;
                     }
                 }
@@ -528,7 +528,7 @@ impl<'a> Scan<'a> {
                             mt("DEBUG2", cfmt("pt_result == %d and full_negate == %d", &[A::I(r as i64), A::I(full_negate as i64)]));
                             if r && !full_negate {
                                 mt("DEBUG", cfmt("Alerting file %s on line %s", &[A::B(&cur), A::B(&buf)]));
-                                self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]).into_bytes());
+                                self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]));
                                 return true;
                             } else if !r && full_negate {
                                 mt("DEBUG2", "Found a complete match for full_negate");
@@ -538,7 +538,7 @@ impl<'a> Scan<'a> {
                         }
                         if full_negate {
                             mt("DEBUG2", cfmt("Full_negate alerting - file %s", &[A::B(&cur)]));
-                            self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]).into_bytes());
+                            self.add_msg(cfmt(" File: %s.", &[A::B(&cur)]));
                             return true;
                         }
                     }
@@ -588,7 +588,7 @@ impl<'a> Scan<'a> {
         let Some(plist) = plist else { return false };
         for p in plist {
             if pt_matches(p, value) {
-                self.add_msg(cfmt(" Process: %s.", &[A::B(p)]).into_bytes());
+                self.add_msg(cfmt(" Process: %s.", &[A::B(p)]));
                 return true;
             }
         }
@@ -817,7 +817,7 @@ impl<'a> Scan<'a> {
                         cfmt("%s %s.%s", &[A::S(msg), A::B(&name), A::B(detail)])
                     };
                     if typ == RKCL_TYPE_DIR || j == 0 {
-                        notify_rk(ALERT_POLICY_VIOLATION, &cap(op.into_bytes(), OS_SIZE_1024 + 1));
+                        notify_rk(ALERT_POLICY_VIOLATION, &cap(op, OS_SIZE_1024 + 1));
                     }
                     if j < msgs.len() {
                         j += 1;
@@ -926,7 +926,7 @@ impl<'a> Scan<'a> {
             }
             if is_file(&file_path) {
                 let m = cfmt("Rootkit '%s' detected by the presence of file '%s'.", &[A::B(&name), A::B(&file_path)]);
-                notify_rk(ALERT_ROOTKIT_FOUND, &cap(m.into_bytes(), 2048));
+                notify_rk(ALERT_ROOTKIT_FOUND, &cap(m, 2048));
             }
         }
     }
@@ -977,7 +977,7 @@ impl<'a> Scan<'a> {
                 if *file == name {
                     self.sys_errors += 1;
                     let m = cfmt("Rootkit '%s' detected by the presence of file '%s/%s'.", &[A::B(rk), A::B(dir), A::B(file)]);
-                    notify_rk(ALERT_ROOTKIT_FOUND, &cap(m.into_bytes(), OS_SIZE_1024 + 1));
+                    notify_rk(ALERT_ROOTKIT_FOUND, &cap(m, OS_SIZE_1024 + 1));
                 }
             }
             // read_sys_file(f, 0)
@@ -1184,7 +1184,7 @@ fn os_check_ads(full_path: &[u8]) {
                     final_name.truncate(i);
                 }
                 let m = cfmt("NTFS Alternate data stream found: '%s'. Possible hidden content.", &[A::B(&final_name)]);
-                notify_rk(ALERT_ROOTKIT_FOUND, &cap(m.into_bytes(), OS_SIZE_1024 + 1));
+                notify_rk(ALERT_ROOTKIT_FOUND, &cap(m, OS_SIZE_1024 + 1));
             }
             let (mut lo, mut hi) = (0u32, 0u32);
             if BackupSeek(h, size as u32, (size >> 32) as u32, &mut lo, &mut hi, &mut ctx) == 0 {

@@ -2375,23 +2375,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "siem-agent-upgrade"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.21.7",
- "chrono",
- "serde",
- "serde_json",
- "sha1",
- "siem-task-manager",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "siem-agentd"
 version = "0.1.0"
 dependencies = [
@@ -2466,7 +2449,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "siem-agent-upgrade",
  "siem-authd",
  "siem-cdb",
  "siem-core",
@@ -2660,6 +2642,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "md-5",
+ "siem-log",
  "tempfile",
  "tracing",
  "windows-sys 0.61.2",
@@ -2759,12 +2742,16 @@ dependencies = [
 name = "siem-modulesd"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "libc",
+ "reqwest",
  "serde_json",
+ "siem-cjson",
  "siem-config",
  "siem-crypto",
  "siem-daemon",
+ "siem-execd",
  "siem-fileop",
  "siem-ipc",
  "siem-log",
@@ -2978,6 +2965,7 @@ dependencies = [
  "siem-log",
  "siem-njson",
  "siem-regex",
+ "siem-sca",
  "siem-sysinfo",
  "siem-wdb",
  "siem-xml",
@@ -3092,6 +3080,8 @@ dependencies = [
 name = "siem-winagent"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "openssl",
  "siem-agentd",
  "siem-cjson",
  "siem-config",

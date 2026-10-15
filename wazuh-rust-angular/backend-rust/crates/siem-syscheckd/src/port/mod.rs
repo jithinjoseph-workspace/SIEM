@@ -11,6 +11,8 @@ pub mod msgs;
 pub mod realtime;
 #[cfg(windows)]
 pub mod registry;
+#[cfg(windows)]
+pub mod rootcheck;
 pub mod run_check;
 pub mod syscheck;
 #[cfg(windows)]

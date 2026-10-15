@@ -1,13 +1,51 @@
 //! `wazuh-modulesd` (wazuh_modules/main.c): `wazuh-modulesd -[dfht]`.
 //!
-//! Runs the ported manager modules: `database` (from the `wazuh_database.*`
-//! internal options).
+//! Runs the ported manager modules, in the C list order: `agent-upgrade` and
+//! `task-manager` (default modules, read again from `<agent-upgrade>` /
+//! `<task-manager>` in ossec.conf), `database` and `download` (internal
+//! options).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use siem_config::{read_config, ConfigContext, ConfigError, ConfigHandler, Platform, Section};
 use siem_log::WLog;
 use siem_modulesd::database::{wm_database_read, Database};
+use siem_modulesd::{agent_upgrade, download, task_manager};
+use siem_xml::{OsXml, XmlNode};
+
+/// The `<agent-upgrade>` and `<task-manager>` sections (`Read_AgentUpgrade`, `Read_TaskManager`).
+/// shortcut: the other wodles of a manager ossec.conf are not read until their modules are ported.
+struct Handler<'a> {
+    up: &'a mut agent_upgrade::Config,
+    tm: &'a mut task_manager::Config,
+}
+
+impl ConfigHandler for Handler<'_> {
+    fn section(&mut self, ctx: &mut ConfigContext, _xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        if !matches!(section, Section::AgentUpgrade | Section::TaskManager) {
+            return Ok(());
+        }
+        if children.is_none() {
+            ctx.debug1(format!("Empty configuration for module '{}'", node.element));
+        }
+        let r = if section == Section::AgentUpgrade { agent_upgrade::read(ctx, children, self.up) } else { task_manager::read(ctx, children, self.tm) };
+        r.map_err(|_| ConfigError::new(""))
+    }
+}
+
+/// The configuration readers' messages, in order.
+fn flush(log: &WLog, ctx: &mut ConfigContext) {
+    for (lv, m) in ctx.log.drain(..) {
+        match lv {
+            siem_config::LogLevel::Debug1 => log.debug1(m),
+            siem_config::LogLevel::Debug2 => log.debug2(m),
+            siem_config::LogLevel::Info => log.info(m),
+            siem_config::LogLevel::Warn => log.warn(m),
+            siem_config::LogLevel::Error => log.error(m),
+        }
+    }
+}
 
 const ARGV0: &str = "wazuh-modulesd";
 
@@ -109,7 +147,15 @@ async fn main() {
         log.error(m.as_bytes());
     }
 
-    // wm_setup: wm_config (the database module on the manager)
+    // wm_setup: wm_config. wm_initialize_default_modules: agent-upgrade, task-manager
+    let mut up = agent_upgrade::Config::default();
+    let mut tm = task_manager::Config::default();
+    let mut ctx = ConfigContext::new(Platform::MANAGER);
+    let r = read_config(&mut ctx, siem_config::modules::CWMODULE, "etc/ossec.conf", None, &mut Handler { up: &mut up, tm: &mut tm });
+    flush(&log, &mut ctx);
+    if r.is_err() {
+        std::process::exit(1);
+    }
     let database = match wm_database_read(&opts) {
         Ok(d) => d,
         Err(e) => {
@@ -117,14 +163,17 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let download_enabled = match opts.get_int("wazuh_download", "enabled", 0, 1) {
+        Ok(v) => v != 0,
+        Err(e) => {
+            log.critical(e.0.as_bytes());
+            std::process::exit(1);
+        }
+    };
     if !foreground {
         siem_daemon::go_daemon(&log);
         log.now_daemon();
     }
-    let Some(database) = database else {
-        log.info("No configuration defined. Exiting...");
-        std::process::exit(0);
-    };
     if siem_daemon::create_pid(ARGV0, std::process::id(), &log).is_err() {
         log.critical("Couldn't create PID file: (Permission denied)");
         std::process::exit(1);
@@ -135,7 +184,24 @@ async fn main() {
     log.info(format!("Started (pid: {}).", std::process::id()));
 
     let db: Arc<dyn siem_ipc::wdbc::WdbQuery> = Arc::new(siem_ipc::wdbc::WdbcSocket::new(siem_modulesd::wdb::WDB_LOCAL_SOCK));
-    log.debug2("Created new thread for the 'database' module.");
-    Database::new(database, log.clone(), db).main().await;
+    let mut threads = Vec::new();
+    let m = Arc::new(agent_upgrade::UpgradeManager::new(up, log.clone(), db.clone()));
+    threads.push(tokio::spawn(m.main()));
+    log.debug2(format!("Created new thread for the '{}' module.", agent_upgrade::NAME));
+    let m = Arc::new(task_manager::TaskManager::new(tm, log.clone(), db.clone()));
+    threads.push(tokio::spawn(m.main()));
+    log.debug2(format!("Created new thread for the '{}' module.", task_manager::NAME));
+    if let Some(database) = database {
+        let d = Database::new(database, log.clone(), db.clone());
+        threads.push(tokio::spawn(async move { d.main().await }));
+        log.debug2("Created new thread for the 'database' module.");
+    }
+    let m = Arc::new(download::Download::new(download_enabled, log.clone()));
+    threads.push(tokio::spawn(m.main()));
+    log.debug2("Created new thread for the 'download' module.");
+    // pthread_join of every module thread
+    for t in threads {
+        let _ = t.await;
+    }
     siem_daemon::delete_pid(ARGV0, &log);
 }

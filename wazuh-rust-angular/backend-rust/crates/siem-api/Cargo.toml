@@ -33,7 +33,6 @@ siem-integratord = { path = "../siem-integratord" }
 siem-csyslogd = { path = "../siem-csyslogd" }
 siem-maild = { path = "../siem-maild" }
 siem-reportd = { path = "../siem-reportd" }
-siem-agent-upgrade = { path = "../siem-agent-upgrade" }
 siem-monitord = { path = "../siem-monitord" }
 siem-crypto = { path = "../siem-crypto" }
 siem-ipc = { path = "../siem-ipc" }

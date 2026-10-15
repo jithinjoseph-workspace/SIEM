@@ -473,7 +473,7 @@ async fn main() {
         .route("/api/v1/integrations/dispatch", post(post_integration_dispatch_handler))
         .route("/api/v1/syslog-forwarder/format", post(post_format_syslog_handler))
         .route("/api/v1/reports/summary", get(get_reports_summary_handler))
-        .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler))
+        .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler).get(get_agent_upgrade_handler))
         .layer(axum::middleware::from_fn_with_state(state.clone(), tenancy::auth_middleware))
         .layer(cors)
         .with_state(state);
@@ -5007,46 +5007,103 @@ async fn get_reports_summary_handler(
     }))
 }
 
+/// An agent upgrade, as the Wazuh API's `PUT /agents/upgrade` /
+/// `/agents/upgrade_custom` take it. `file_path` selects a custom upgrade.
 #[derive(Debug, Deserialize)]
 pub struct UpgradeAgentRequest {
+    /// `version` (default: the manager's)
     pub target_version: Option<String>,
+    pub wpk_repo: Option<String>,
+    pub use_http: Option<bool>,
+    pub force: Option<bool>,
+    /// "rpm" or "deb"
+    pub package_type: Option<String>,
+    /// Custom WPK on the manager, and its installer script.
+    pub file_path: Option<String>,
+    pub installer: Option<String>,
+}
+
+/// The agent's numeric id when the caller may act on it (`manage`: upgrades
+/// need the agent tenant's admin).
+fn upgrade_agent_id(state: &AppState, ctx: &AuthCtx, agent_id: &str, manage: bool) -> Result<i64, axum::response::Response> {
+    let id: i64 = agent_id.parse().map_err(|_| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "invalid agent id" }))).into_response())?;
+    let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap().clone(), agent_id);
+    let known = state.agents.read().unwrap().contains_key(agent_id);
+    if !known || tenant != ctx.scope() {
+        return Err((StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "Agent not found" }))).into_response());
+    }
+    if manage && !ctx.can_manage(&tenant) {
+        return Err(tenancy::forbidden());
+    }
+    Ok(id)
+}
+
+/// One request to modulesd's agent-upgrade socket (`queue/tasks/upgrade`), its JSON answer.
+async fn upgrade_module_request(req: serde_json::Value) -> axum::response::Response {
+    let path = wazuh_manager::home().join("queue/tasks/upgrade");
+    let res = async {
+        let mut s = siem_ipc::local::LocalStream::connect(&path).await.map_err(|e| e.to_string())?;
+        siem_ipc::framing::send(&mut s, req.to_string().as_bytes()).await.map_err(|e| e.to_string())?;
+        let r = siem_ipc::framing::recv(&mut s, 65536).await.map_err(|e| e.to_string())?;
+        serde_json::from_slice::<serde_json::Value>(&r).map_err(|e| e.to_string())?;
+        Ok::<_, String>(r)
+    };
+    // the module answers after its 30 s start-up wait
+    match tokio::time::timeout(std::time::Duration::from_secs(60), res).await {
+        // the module's JSON as it wrote it (key order kept)
+        Ok(Ok(v)) => (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/json")], v).into_response(),
+        Ok(Err(e)) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": format!("agent-upgrade module: {e}") }))).into_response(),
+        Err(_) => (StatusCode::GATEWAY_TIMEOUT, Json(serde_json::json!({ "error": "agent-upgrade module did not answer" }))).into_response(),
+    }
 }
 
 async fn post_agent_upgrade_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
-    Json(payload): Json<UpgradeAgentRequest>,
-) -> impl IntoResponse {
-    let target_ver = payload.target_version.unwrap_or_else(|| "v4.14.7".to_string());
-
-    let exists = {
-        let agents = state.agents.read().unwrap();
-        agents.contains_key(&agent_id)
+    Json(p): Json<UpgradeAgentRequest>,
+) -> axum::response::Response {
+    let id = match upgrade_agent_id(&state, &ctx, &agent_id, true) {
+        Ok(id) => id,
+        Err(r) => return r,
     };
+    let mut params = serde_json::Map::new();
+    params.insert("agents".into(), serde_json::json!([id]));
+    let command = if let Some(f) = p.file_path {
+        params.insert("file_path".into(), f.into());
+        if let Some(i) = p.installer {
+            params.insert("installer".into(), i.into());
+        }
+        "upgrade_custom"
+    } else {
+        if let Some(v) = p.target_version {
+            params.insert("version".into(), v.into());
+        }
+        if let Some(r) = p.wpk_repo {
+            params.insert("wpk_repo".into(), r.into());
+        }
+        if let Some(h) = p.use_http {
+            params.insert("use_http".into(), h.into());
+        }
+        if let Some(f) = p.force {
+            params.insert("force_upgrade".into(), f.into());
+        }
+        if let Some(t) = p.package_type {
+            params.insert("package_type".into(), t.into());
+        }
+        "upgrade"
+    };
+    info!("Agent upgrade: {command} requested for agent {agent_id} by {}", ctx.username);
+    upgrade_module_request(serde_json::json!({ "command": command, "parameters": params })).await
+}
 
-    if !exists {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "status": "error", "message": "Agent not found" })),
-        )
-            .into_response();
-    }
-
-    let task_id = uuid::Uuid::new_v4();
-    info!("Agent Upgrade: Initiated WPK remote upgrade for agent '{}' to version '{}' (Task ID: {})", agent_id, target_ver, task_id);
-
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "status": "success",
-            "task_id": task_id,
-            "agent_id": agent_id,
-            "target_version": target_ver,
-            "state": "In progress",
-            "message": format!("Upgrade task queued for agent '{}' with target version '{}'", agent_id, target_ver)
-        })),
-    )
-        .into_response()
+/// The agent's last upgrade task (`upgrade_result`).
+async fn get_agent_upgrade_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(agent_id): Path<String>) -> axum::response::Response {
+    let id = match upgrade_agent_id(&state, &ctx, &agent_id, false) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    upgrade_module_request(serde_json::json!({ "command": "upgrade_result", "parameters": { "agents": [id] } })).await
 }
 
 

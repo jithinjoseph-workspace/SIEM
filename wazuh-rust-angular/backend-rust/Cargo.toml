@@ -17,7 +17,6 @@ members = [
     "crates/siem-task-manager",
     "crates/siem-syscollector",
     "crates/siem-harvester",
-    "crates/siem-agent-upgrade",
     "crates/siem-util",
     "crates/siem-syscheckd",
     "crates/siem-shared-modules",

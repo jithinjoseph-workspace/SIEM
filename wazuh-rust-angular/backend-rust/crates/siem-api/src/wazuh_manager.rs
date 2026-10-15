@@ -401,10 +401,14 @@ fn wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
     WDB.get_or_init(|| siem_ipc::wdbc::WdbcSocket::new(home().join("queue/db/wdb")))
 }
 
+fn wdb_running() -> bool {
+    enabled() && CHILDREN.lock().unwrap().iter().any(|(n, _)| n == "wazuh-db")
+}
+
 /// What authd does for a new key (`wdb_insert_agent` + `wdb_set_agent_groups_csv`):
 /// the agent's row in global.db, which remoted and analysisd read.
 pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, groups: &str) {
-    if !enabled() {
+    if !wdb_running() {
         return;
     }
     let Ok(n) = id.parse::<i64>() else { return };
@@ -436,7 +440,7 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
 
 /// `wdb_remove_agent`
 pub async fn remove_agent(id: &str) {
-    if !enabled() {
+    if !wdb_running() {
         return;
     }
     if let Ok(n) = id.parse::<i64>() {

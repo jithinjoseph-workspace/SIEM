@@ -2465,6 +2465,7 @@ dependencies = [
  "siem-remoted",
  "siem-reportd",
  "siem-rootcheck",
+ "siem-sysinfo",
  "siem-task-manager",
  "siem-vuln-detector",
  "siem-wdb",

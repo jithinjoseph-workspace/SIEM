@@ -247,6 +247,43 @@ export function downloadText(filename: string, text: string, mime = 'text/plain'
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+export interface EnrollAgentResponse {
+  status: string;
+  agent_id: string;
+  agent_name: string;
+  agent_ip: string;
+  raw_key: string;
+  tenant_id: string;
+  groups: string;
+  reenrolled: boolean;
+  authd_response: string;
+}
+
+export interface EnrollAgentParams {
+  name: string;
+  groups?: string;
+  os_type: string;
+  ip?: string;
+  tenantKey?: string;
+}
+
+export interface NetworkEndpoint {
+  id: string;
+  address: string;
+  host: string;
+  port: number;
+  label: string;
+  is_recommended: boolean;
+  is_routable: boolean;
+  adapter_type: 'configured' | 'wifi' | 'lan' | 'vm_host_only' | 'loopback' | 'custom' | string;
+}
+
+export interface NetworkEndpointsResponse {
+  recommended_endpoint: string;
+  configured_public_url: string | null;
+  endpoints: NetworkEndpoint[];
+}
+
 /** Fetches the caller's tenant agent key (siem-api, X-Tenant-Key). */
 @Injectable({ providedIn: 'root' })
 export class AgentDeployService {
@@ -265,4 +302,43 @@ export class AgentDeployService {
       ),
     );
   }
+
+  /** Dynamically queries the SIEM host server for available reachable network interfaces (LAN, Wi-Fi, VM, FQDN). */
+  getNetworkEndpoints(): Observable<NetworkEndpointsResponse> {
+    return this.http.get<NetworkEndpointsResponse>('/api/v1/system/network-endpoints').pipe(
+      catchError(() =>
+        of({
+          recommended_endpoint: defaultManagerUrl(),
+          configured_public_url: null,
+          endpoints: [
+            {
+              id: 'fallback-detected',
+              address: defaultManagerUrl(),
+              host: typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1',
+              port: typeof window !== 'undefined' ? parseInt(window.location.port || '80', 10) : 8088,
+              label: 'Current Host Origin',
+              is_recommended: true,
+              is_routable: true,
+              adapter_type: 'lan',
+            },
+          ],
+        }),
+      ),
+    );
+  }
+
+  /** Registers/deploys the agent with the SIEM manager, reserving an ID in the fleet with Pending status. */
+  enrollAgent(params: EnrollAgentParams): Observable<EnrollAgentResponse> {
+    const headers: Record<string, string> = {};
+    if (params.tenantKey) {
+      headers['x-tenant-key'] = params.tenantKey;
+    }
+    return this.http.post<EnrollAgentResponse>('/api/v1/agents/enroll', {
+      name: params.name,
+      groups: params.groups || 'default',
+      os_type: params.os_type,
+      ip: params.ip || 'any',
+    }, { headers });
+  }
 }
+

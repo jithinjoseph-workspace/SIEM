@@ -9,7 +9,8 @@ import {
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import {
-  AgentDeployService, DeployOs, DeployParams, WinInstallMode,
+  AgentDeployService, DeployOs, DeployParams, WinInstallMode, EnrollAgentResponse,
+  NetworkEndpoint,
   defaultManagerUrl, downloadText, generateAgentName, installCommand, isValidAgentName,
   linuxDeployScript, startCommand, windowsBatScript, copyToClipboard,
 } from '../../../services/siem/agent-deploy';
@@ -57,15 +58,19 @@ export class Agents implements OnInit, OnDestroy {
   loading = signal<boolean>(false);
   searchQuery = signal<string>('');
   osFilter = signal<'all' | 'windows' | 'linux' | 'macos'>('all');
-  statusFilter = signal<'all' | 'active' | 'disconnected'>('all');
+  statusFilter = signal<'all' | 'active' | 'disconnected' | 'pending'>('all');
 
   selectedAgent = signal<Agent | null>(null);
   selectedAgentTab = signal<AgentDetailTab>('specs');
   agentActionFeedback = signal<string | null>(null);
 
-  // Deploy wizard: commands come from services/siem/agent-deploy.ts (enrollment
-  // with a unique agent id, tenant key, manager URL, name and group).
+  // Deploy wizard: 2-stage flow ('config' -> 'provision')
   showDeployModal = signal<boolean>(false);
+  deployStage = signal<'config' | 'provision'>('config');
+  deployLoading = signal<boolean>(false);
+  deployError = signal<string | null>(null);
+  enrolledAgentInfo = signal<EnrollAgentResponse | null>(null);
+
   deployOs = signal<DeployOs>('linux');
   deployManagerUrl = signal<string>(defaultManagerUrl());
   deployAgentName = signal<string>('');
@@ -100,20 +105,33 @@ export class Agents implements OnInit, OnDestroy {
     return this.agents().find(a => a.name.toLowerCase() === name) || null;
   });
 
+  networkEndpoints = signal<NetworkEndpoint[]>([]);
+  selectedEndpointId = signal<string>('');
+  isLoadingEndpoints = signal<boolean>(false);
+
   suggestedUrls = computed(() => {
+    const endpoints = this.networkEndpoints();
+    if (endpoints.length > 0) {
+      return endpoints.map(ep => ({ label: ep.label, url: ep.address }));
+    }
     if (typeof window === 'undefined') return [];
     const list: { label: string; url: string }[] = [];
     const origin = window.location.origin;
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
-    list.push({ label: 'Console Origin (:4200)', url: origin });
+    list.push({ label: 'Console Origin', url: origin });
     list.push({ label: 'Direct SIEM API (:8088)', url: `${protocol}//${hostname}:8088` });
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      list.push({ label: 'LAN Direct IP (:8088)', url: 'http://192.168.220.33:8088' });
-      list.push({ label: 'VM Host-Only (:8088)', url: 'http://192.168.56.1:8088' });
-    }
     return list;
   });
+
+  onEndpointSelected(endpointId: string) {
+    this.selectedEndpointId.set(endpointId);
+    if (endpointId === 'custom') return;
+    const found = this.networkEndpoints().find(e => e.id === endpointId);
+    if (found) {
+      this.deployManagerUrl.set(found.address);
+    }
+  }
 
   filteredAgents = computed(() => {
     let list = this.agents();
@@ -297,14 +315,72 @@ export class Agents implements OnInit, OnDestroy {
     this.selectDeployOs(this.deployOs());
     this.copied.set(false);
     this.copiedStart.set(false);
+    this.deployStage.set('config');
+    this.deployError.set(null);
+    this.enrolledAgentInfo.set(null);
     this.showDeployModal.set(true);
     this.deployKeyError.set(null);
+
+    // Dynamic endpoint auto-discovery
+    this.isLoadingEndpoints.set(true);
+    this.deploy.getNetworkEndpoints().subscribe(res => {
+      this.isLoadingEndpoints.set(false);
+      this.networkEndpoints.set(res.endpoints || []);
+
+      if (res.recommended_endpoint) {
+        // Auto-switch to recommended reachable endpoint if currently localhost or on dev port 4200
+        if (!this.deployManagerUrl() || /localhost|127\.0\.0\.1|:4200/i.test(this.deployManagerUrl())) {
+          this.deployManagerUrl.set(res.recommended_endpoint);
+          const matched = (res.endpoints || []).find(e => e.address === res.recommended_endpoint);
+          this.selectedEndpointId.set(matched ? matched.id : 'custom');
+        } else {
+          const matched = (res.endpoints || []).find(e => e.address === this.deployManagerUrl());
+          this.selectedEndpointId.set(matched ? matched.id : 'custom');
+        }
+      }
+    });
+
     this.deploy.tenantKey().subscribe(r => {
       this.deployTenantKey.set(r.key);
       this.deployTenantId.set(r.tenant);
       this.deployKeyError.set(r.error ?? null);
     });
     this.startDeployPolling();
+  }
+
+  deployAgent() {
+    if (!this.deployNameValid() || this.deployLoading()) return;
+    this.deployLoading.set(true);
+    this.deployError.set(null);
+
+    this.deploy.enrollAgent({
+      name: this.deployAgentName().trim(),
+      groups: this.deployGroup().trim(),
+      os_type: this.deployOs(),
+      tenantKey: this.deployTenantKey(),
+    }).subscribe({
+      next: (res) => {
+        this.enrolledAgentInfo.set(res);
+        this.deployLoading.set(false);
+        this.deployStage.set('provision');
+        this.loadAgents();
+      },
+      error: (err) => {
+        this.deployLoading.set(false);
+        this.deployError.set(err?.error?.message || 'Failed to deploy agent. Please verify connection and name.');
+      }
+    });
+  }
+
+  resetDeployToConfig() {
+    this.deployStage.set('config');
+  }
+
+  deployAnotherAgent() {
+    this.deployStage.set('config');
+    this.enrolledAgentInfo.set(null);
+    this.deployError.set(null);
+    this.regenerateAgentName();
   }
 
   closeDeployModal() {

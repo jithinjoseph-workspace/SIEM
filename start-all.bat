@@ -133,7 +133,7 @@ if errorlevel 1 (
   echo [*] Starting Angular UI on :4200...
   start "Provigil Angular UI (:4200)" /D "%FRONTEND_DIR%" cmd /k "npm start"
 )
-call :wait_port 4200 "Angular UI" 60
+call :wait_port 4200 "Angular UI" 120
 if errorlevel 1 goto :startup_error
 
 echo.

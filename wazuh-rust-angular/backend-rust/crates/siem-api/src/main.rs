@@ -34,6 +34,7 @@ pub mod syslog;
 pub mod corroboration;
 pub mod tenancy;
 pub mod wazuh_manager;
+pub mod network_info;
 use db::ClickHouseDb;
 use tenancy::AuthCtx;
 
@@ -343,7 +344,8 @@ async fn main() {
     let app = Router::new()
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))
-        .route("/api/v1/agents", get(get_agents))
+        .route("/api/v1/agents", get(get_agents).post(post_agent_enroll_handler))
+        .route("/api/agents", get(get_agents).post(post_agent_enroll_handler))
         .route("/api/v1/agents/:id", delete(delete_agent_handler))
         .route("/api/agents/:id", delete(delete_agent_handler))
         .route("/agents", delete(delete_agents_wazuh_handler))
@@ -443,6 +445,8 @@ async fn main() {
         .route("/downloads/windows/:file", get(download_windows_file))
         .route("/downloads/siem-agent-linux", get(download_linux_agent))
         .route("/downloads/install.sh", get(download_install_script))
+        .route("/api/v1/system/network-endpoints", get(get_network_endpoints_handler))
+        .route("/api/system/network-endpoints", get(get_network_endpoints_handler))
         .route("/ws/alerts", get(ws_alerts_handler))
         .route("/ws", get(ws_alerts_handler))
         .route("/api/ws", get(ws_alerts_handler))
@@ -857,14 +861,16 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
             for r in ch_agents {
                 let last_ka = chrono::DateTime::from_timestamp_millis(r.last_keepalive)
                     .unwrap_or_else(chrono::Utc::now);
-                let status = if (now - last_ka).num_seconds() > 60 {
-                    AgentStatus::Disconnected
-                } else {
-                    match r.status.as_str() {
-                        "Active" => AgentStatus::Active,
-                        "Pending" => AgentStatus::Pending,
-                        _ => AgentStatus::Disconnected,
+                let status = match r.status.as_str() {
+                    "Pending" => AgentStatus::Pending,
+                    "Active" => {
+                        if (now - last_ka).num_seconds() > 60 {
+                            AgentStatus::Disconnected
+                        } else {
+                            AgentStatus::Active
+                        }
                     }
+                    _ => AgentStatus::Disconnected,
                 };
                 guard.entry(r.id.clone())
                     .and_modify(|ag| {
@@ -915,7 +921,7 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         let now = Utc::now();
         for agent in agents_guard.values_mut() {
             // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 60s
-            if (now - agent.last_keepalive).num_seconds() > 60 {
+            if agent.status == AgentStatus::Active && (now - agent.last_keepalive).num_seconds() > 60 {
                 agent.status = AgentStatus::Disconnected;
             }
         }
@@ -1645,17 +1651,24 @@ async fn download_install_script() -> Result<impl IntoResponse, StatusCode> {
 
     for path in possible_paths {
         if let Ok(bytes) = tokio::fs::read(path).await {
+            // Strip any Windows carriage returns (\r) so the script is pure UNIX LF for Linux bash
+            let clean_bytes: Vec<u8> = bytes.into_iter().filter(|&b| b != b'\r').collect();
             return Ok((
                 [
-                    (header::CONTENT_TYPE, "text/x-shellscript"),
+                    (header::CONTENT_TYPE, "text/x-shellscript; charset=utf-8"),
                     (header::CONTENT_DISPOSITION, "inline; filename=\"install.sh\""),
                 ],
-                bytes,
+                clean_bytes,
             ));
         }
     }
 
     Err(StatusCode::NOT_FOUND)
+}
+
+async fn get_network_endpoints_handler() -> impl IntoResponse {
+    let endpoints = network_info::discover_network_endpoints(8088);
+    Json(endpoints)
 }
 
 #[derive(Debug, Deserialize)]
@@ -4781,16 +4794,16 @@ async fn post_agent_enroll_handler(
         entry.os_type = os_type.clone();
     }
 
-    // Persist to ClickHouse database for this tenant
+    // Persist to ClickHouse database for this tenant as Pending until first heartbeat
     let agent_to_save = Agent {
         id: agent_id.clone(),
         name: name.clone(),
         ip: client_key.ip.clone(),
-        status: AgentStatus::Active,
-        os: "Windows / Registered".to_string(),
+        status: AgentStatus::Pending,
+        os: format!("Registered ({})", payload.os_type.as_deref().unwrap_or("linux")),
         version: "v4.14.7".to_string(),
         last_keepalive: Utc::now(),
-        os_type: payload.os_type.clone().unwrap_or_else(|| "windows".to_string()),
+        os_type: payload.os_type.clone().unwrap_or_else(|| "linux".to_string()),
     };
     state.db.insert_or_update_agent(&tenant, &agent_to_save).await;
 

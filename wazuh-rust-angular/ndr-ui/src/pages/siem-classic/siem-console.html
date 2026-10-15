@@ -2278,156 +2278,239 @@
         <div class="modal-title-area">
           <span class="badge badge-high">DEPLOYMENT WIZARD</span>
           <h3>Deploy Next-Gen Wazuh Agent</h3>
+          <span *ngIf="deployStage() === 'provision'" class="badge badge-cyan ml-2">
+            ID: {{ enrolledAgentInfo()?.agent_id || detectedAgent()?.id || 'Assigned' }}
+          </span>
         </div>
         <button class="close-btn" (click)="closeDeployModal()">✕</button>
       </div>
 
-      <div class="modal-body">
-        <p class="text-muted text-sm mb-4">
-          Select target OS, configure manager endpoint, and copy the automated enrollment command.
-        </p>
-
-        <!-- Live Enrollment Success Detection Banner -->
-        <div *ngIf="detectedAgent() as da" class="alert-banner mb-4 p-3 rounded flex items-center justify-between" style="border: 1px solid #10b981; background: rgba(6, 78, 59, 0.4);">
-          <div>
-            <span class="mono text-xs text-emerald font-bold">✓ LIVE AGENT CONNECTED: {{ da.name }}</span>
-            <div class="mono text-muted text-xs">ID: {{ da.id }} • Status: {{ (da.status || 'active') | uppercase }} • IP: {{ da.ip }} • {{ da.os }}</div>
-          </div>
-          <button class="btn btn-sm btn-cyan" (click)="openAgentDetails(da); closeDeployModal()">
-            Inspect Agent Specs →
-          </button>
-        </div>
-
-        <!-- OS Selection Buttons -->
-        <div class="os-selector mb-4">
-          <button class="os-btn" [class.active]="deployOs() === 'linux'" (click)="selectDeployOs('linux')">
-            <span class="os-tag font-mono font-bold text-xs">LNX</span>
-            <span class="os-label">Linux (DEB / RPM)</span>
-          </button>
-          <button class="os-btn" [class.active]="deployOs() === 'windows'" (click)="selectDeployOs('windows')">
-            <span class="os-tag font-mono font-bold text-xs">WIN</span>
-            <span class="os-label">Windows (MSI / EXE)</span>
-          </button>
-          <button class="os-btn" [class.active]="deployOs() === 'macos'" (click)="selectDeployOs('macos')">
-            <span class="os-tag font-mono font-bold text-xs">MAC</span>
-            <span class="os-label">macOS (PKG)</span>
-          </button>
-        </div>
-
-        <!-- Linux: one universal installer (install.sh) for every distro -->
-        <div class="mb-4 text-xs text-muted" *ngIf="deployOs() === 'linux'">
-          Linux agents install with the universal <span class="mono">install.sh</span> (any systemd distro: Ubuntu, Debian, RHEL, CentOS, Rocky, AlmaLinux, Fedora, Alpine, Arch). The agent enrolls on
-          first start and gets a unique agent id from the manager.
-        </div>
-
-        <!-- Configuration Inputs -->
-        <div class="form-grid mb-4">
-          <div class="form-group">
-            <label class="text-xs text-muted">SIEM Manager Endpoint</label>
-            <input type="text" class="input-text" [(ngModel)]="deployManagerUrl">
-            <div class="flex flex-wrap gap-1 items-center mt-1 text-xs">
-              <span class="text-muted" style="font-size: 11px;">Quick-Fill:</span>
-              <button *ngFor="let s of suggestedUrls()" type="button" (click)="setManagerUrl(s.url)"
-                class="btn btn-xs btn-outline py-0 px-1" style="font-size: 10px;"
-                [class.btn-cyan]="deployManagerUrl() === s.url">
-                {{ s.label }}
-              </button>
-            </div>
-            <div *ngIf="isLocalhostManager()" class="text-xs text-amber-400 mt-1" style="font-size: 11px;">
-              ⚠️ Note: When deploying to a remote VM, replace <code>localhost</code> with your host LAN IP (e.g. <code>http://192.168.x.x:4200</code>).
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="text-xs text-muted">Agent Hostname / ID</label>
-            <input type="text" class="input-text" [(ngModel)]="deployAgentName">
-          </div>
-          <div class="form-group">
-            <label class="text-xs text-muted">Agent Group</label>
-            <input type="text" class="input-text" [(ngModel)]="deployGroup">
-          </div>
-        </div>
-        <div class="mb-4 text-xs mono" [class.text-emerald]="deployTenantKey()" [class.text-muted]="!deployTenantKey()">
-          Tenant agent key: {{ deployTenantKey() ? (deployTenantId() + ' · ' + deployTenantKey().slice(0, 10) + '…') : (deployKeyError() || 'loading…') }}
-          <span *ngIf="!deployTenantKey() && deployKeyError()"> — without a key the agent joins the default tenant.</span>
-        </div>
-
-        <!-- Windows Mode Toggle -->
-        <div class="flex items-center justify-between mb-2" *ngIf="deployOs() === 'windows'">
-          <div class="section-title mb-0">Windows Service Mode</div>
-          <div class="flex gap-2">
-            <button 
-              type="button"
-              class="btn btn-xs" 
-              [class.btn-cyan]="winInstallMode() === 'auto-elevate'" 
-              [class.btn-outline]="winInstallMode() !== 'auto-elevate'"
-              (click)="winInstallMode.set('auto-elevate')">
-              Auto-Elevate (Recommended)
-            </button>
-            <button 
-              type="button"
-              class="btn btn-xs" 
-              [class.btn-cyan]="winInstallMode() === 'admin-ps'" 
-              [class.btn-outline]="winInstallMode() !== 'admin-ps'"
-              (click)="winInstallMode.set('admin-ps')">
-              Admin PowerShell
-            </button>
-          </div>
-        </div>
-
-        <!-- Step 1: Install Command -->
-        <div class="mb-3">
-          <div class="section-title text-cyan mb-1 flex items-center justify-between">
-            <span>STEP 1: INSTALL THE AGENT</span>
-            <span class="text-xs text-muted font-mono" *ngIf="deployOs() === 'linux'">
-              Universal installer (install.sh)
-            </span>
-          </div>
-          <div class="command-box">
-            <pre class="mono text-xs text-cyan" style="white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow-y: auto;">{{ deployInstallCommand() }}</pre>
-            <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployCommand()">
-              {{ copied() ? '✓ Copied!' : 'Copy Command' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Step 2: Start Agent Command -->
-        <div class="mb-3">
-          <div class="section-title text-cyan mb-1">STEP 2: START THE AGENT</div>
-          <div class="command-box">
-            <pre class="mono text-xs text-emerald" style="white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto;">{{ deployStartCommand() }}</pre>
-            <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployStartCommand()">
-              {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Linux Management Cheatsheet -->
-        <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'linux'">
-          <div class="text-xs text-muted mono">
-            <span class="text-cyan font-bold">LINUX AGENT CONTROL CHEATSHEET:</span><br/>
-            &bull; Status Check: <code class="text-cyan">sudo systemctl status wazuh-rust-agent</code><br/>
-            &bull; Daemon CLI: <code class="text-cyan">wazuh-control status-service</code><br/>
-            &bull; Restart: <code class="text-cyan">sudo systemctl restart wazuh-rust-agent</code><br/>
-            &bull; View Live Telemetry: <code class="text-cyan">journalctl -u wazuh-rust-agent -f</code>
-          </div>
-        </div>
-
-        <!-- Windows Management Cheatsheet -->
-        <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'windows'">
-          <div class="text-xs text-muted mono">
-            <span class="text-cyan font-bold">WINDOWS SERVICE MANAGEMENT CLI:</span><br/>
-            &bull; Start Service: <code class="text-cyan">net start WazuhSvc</code><br/>
-            &bull; Stop Service: <code class="text-cyan">net stop WazuhSvc</code><br/>
-            &bull; Check Status: <code class="text-cyan">sc query WazuhSvc</code><br/>
-            &bull; Uninstall: <code class="text-cyan">"C:\Program Files (x86)\ossec-agent\wazuh-agent.exe" uninstall-service</code>
-          </div>
-        </div>
+      <!-- Stepper Header -->
+      <div class="flex gap-2 p-3 bg-dark-card border-b" style="border-color: var(--border-color, #1e293b);">
+        <button class="btn btn-xs" [class.btn-cyan]="deployStage() === 'config'" [class.btn-outline]="deployStage() !== 'config'" (click)="resetDeployToConfig()">
+          1. Configure & Register
+        </button>
+        <button class="btn btn-xs" [class.btn-cyan]="deployStage() === 'provision'" [class.btn-outline]="deployStage() !== 'provision'"
+          (click)="enrolledAgentInfo() ? deployStage.set('provision') : null" [disabled]="!enrolledAgentInfo()">
+          2. Provision & Connect
+        </button>
       </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-primary" *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()">Download 1-Click .BAT</button>
-        <button class="btn btn-cyan" (click)="downloadDeployScript()">Download Deployment Script</button>
-        <button class="btn btn-outline" (click)="closeDeployModal()">Close</button>
+      <div class="modal-body">
+        <!-- ================= STAGE 1: CONFIGURATION ================= -->
+        <ng-container *ngIf="deployStage() === 'config'">
+          <p class="text-muted text-sm mb-4">
+            Select target OS, configure endpoint parameters, and click <strong>Deploy Agent</strong> to register the agent identity in the SIEM fleet.
+          </p>
+
+          <!-- OS Selection Buttons -->
+          <div class="os-selector mb-4">
+            <button class="os-btn" [class.active]="deployOs() === 'linux'" (click)="selectDeployOs('linux')">
+              <span class="os-tag font-mono font-bold text-xs">LNX</span>
+              <span class="os-label">Linux (DEB / RPM)</span>
+            </button>
+            <button class="os-btn" [class.active]="deployOs() === 'windows'" (click)="selectDeployOs('windows')">
+              <span class="os-tag font-mono font-bold text-xs">WIN</span>
+              <span class="os-label">Windows (MSI / EXE)</span>
+            </button>
+            <button class="os-btn" [class.active]="deployOs() === 'macos'" (click)="selectDeployOs('macos')">
+              <span class="os-tag font-mono font-bold text-xs">MAC</span>
+              <span class="os-label">macOS (PKG)</span>
+            </button>
+          </div>
+
+          <!-- Linux: one universal installer (install.sh) for every distro -->
+          <div class="mb-4 text-xs text-muted" *ngIf="deployOs() === 'linux'">
+            Linux agents install with the universal <span class="mono">install.sh</span> (any systemd distro: Ubuntu, Debian, RHEL, CentOS, Rocky, AlmaLinux, Fedora, Alpine, Arch). The agent enrolls and receives its unique fleet agent ID.
+          </div>
+
+          <div *ngIf="deployOs() === 'macos'" class="p-3 mb-4 rounded border text-xs" style="border-color: #d97706; background: rgba(180, 83, 9, 0.2); color: #fde68a;">
+            There is no macOS agent build on this manager yet. Please select Linux or Windows.
+          </div>
+
+          <ng-container *ngIf="deployOs() !== 'macos'">
+            <!-- Configuration Inputs -->
+            <div class="form-grid mb-4">
+              <div class="form-group">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs text-muted">SIEM Manager Endpoint (Reachable from VM/Agent)</label>
+                  <span *ngIf="isLoadingEndpoints()" class="text-cyan-400" style="font-size: 10px;">Detecting host network…</span>
+                </div>
+                <!-- Dynamic Network Endpoint Dropdown -->
+                <div *ngIf="networkEndpoints().length > 0" class="mt-1 mb-1">
+                  <select
+                    class="input-text w-full text-xs mono"
+                    [ngModel]="selectedEndpointId()"
+                    (ngModelChange)="onEndpointSelected($event)">
+                    <option *ngFor="let ep of networkEndpoints()" [value]="ep.id">
+                      {{ ep.is_recommended ? '★ [Recommended] ' : '' }}{{ ep.label }}
+                    </option>
+                    <option value="custom">✏️ Custom Address / Domain...</option>
+                  </select>
+                </div>
+                <input type="text" class="input-text" [(ngModel)]="deployManagerUrl">
+                <div class="flex flex-wrap gap-1 items-center mt-1 text-xs">
+                  <span class="text-muted" style="font-size: 11px;">Quick-Fill:</span>
+                  <button *ngFor="let s of suggestedUrls()" type="button" (click)="setManagerUrl(s.url)"
+                    class="btn btn-xs btn-outline py-0 px-1" style="font-size: 10px;"
+                    [class.btn-cyan]="deployManagerUrl() === s.url">
+                    {{ s.label }}
+                  </button>
+                </div>
+                <div *ngIf="isLocalhostManager()" class="text-xs text-amber-400 mt-1" style="font-size: 11px;">
+                  ⚠️ Note: External VMs and machines cannot reach <code>localhost</code>. Please select a detected LAN or VM network interface above.
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="text-xs text-muted">Agent Hostname / ID</label>
+                <input type="text" class="input-text" [(ngModel)]="deployAgentName">
+              </div>
+              <div class="form-group">
+                <label class="text-xs text-muted">Agent Group</label>
+                <input type="text" class="input-text" [(ngModel)]="deployGroup">
+              </div>
+            </div>
+            <div class="mb-4 text-xs mono" [class.text-emerald]="deployTenantKey()" [class.text-muted]="!deployTenantKey()">
+              Tenant agent key: {{ deployTenantKey() ? (deployTenantId() + ' · ' + deployTenantKey().slice(0, 10) + '…') : (deployKeyError() || 'loading…') }}
+              <span *ngIf="!deployTenantKey() && deployKeyError()"> — without a key the agent joins the default tenant.</span>
+            </div>
+
+            <!-- Windows Mode Toggle -->
+            <div class="flex items-center justify-between mb-4" *ngIf="deployOs() === 'windows'">
+              <div class="section-title mb-0">Windows Service Mode</div>
+              <div class="flex gap-2">
+                <button 
+                  type="button"
+                  class="btn btn-xs" 
+                  [class.btn-cyan]="winInstallMode() === 'auto-elevate'" 
+                  [class.btn-outline]="winInstallMode() !== 'auto-elevate'"
+                  (click)="winInstallMode.set('auto-elevate')">
+                  Auto-Elevate (Recommended)
+                </button>
+                <button 
+                  type="button"
+                  class="btn btn-xs" 
+                  [class.btn-cyan]="winInstallMode() === 'admin-ps'" 
+                  [class.btn-outline]="winInstallMode() !== 'admin-ps'"
+                  (click)="winInstallMode.set('admin-ps')">
+                  Admin PowerShell
+                </button>
+              </div>
+            </div>
+
+            <!-- Error Banner -->
+            <div *ngIf="deployError()" class="p-3 mb-4 rounded border text-xs text-rose-300 bg-rose-950/40 border-rose-800">
+              {{ deployError() }}
+            </div>
+          </ng-container>
+        </ng-container>
+
+        <!-- ================= STAGE 2: PROVISIONING & CONNECTION ================= -->
+        <ng-container *ngIf="deployStage() === 'provision'">
+          <!-- Live Enrollment Success Detection Banner -->
+          <div *ngIf="detectedAgent() as da; else pendingStateBanner">
+            <div *ngIf="da.status === 'active'" class="alert-banner mb-4 p-3 rounded flex items-center justify-between" style="border: 1px solid #10b981; background: rgba(6, 78, 59, 0.4);">
+              <div>
+                <span class="mono text-xs text-emerald font-bold">✓ LIVE AGENT CONNECTED: {{ da.name }}</span>
+                <div class="mono text-muted text-xs">ID: {{ da.id }} • Status: ACTIVE • IP: {{ da.ip }} • {{ da.os }}</div>
+              </div>
+              <button class="btn btn-sm btn-cyan" (click)="openAgentDetails(da); closeDeployModal()">
+                Inspect Agent Specs →
+              </button>
+            </div>
+
+            <div *ngIf="da.status !== 'active'" class="alert-banner mb-4 p-3 rounded flex items-center justify-between" style="border: 1px solid #f59e0b; background: rgba(120, 53, 15, 0.3);">
+              <div>
+                <span class="mono text-xs text-amber-300 font-bold">⏳ AGENT REGISTERED IN FLEET: {{ da.name }}</span>
+                <div class="mono text-muted text-xs">ID: {{ da.id }} • Status: PENDING • Waiting for endpoint commands to run</div>
+              </div>
+              <span class="badge badge-high">Awaiting First Heartbeat</span>
+            </div>
+          </div>
+
+          <ng-template #pendingStateBanner>
+            <div class="alert-banner mb-4 p-3 rounded flex items-center justify-between" style="border: 1px solid #06b6d4; background: rgba(8, 51, 68, 0.4);">
+              <div>
+                <span class="mono text-xs text-cyan font-bold">✓ AGENT PRE-REGISTERED: {{ deployAgentName() }}</span>
+                <div class="mono text-muted text-xs">ID: {{ enrolledAgentInfo()?.agent_id || 'Allocated' }} • Ready to install on endpoint</div>
+              </div>
+              <span class="badge badge-cyan">Pre-Enrolled</span>
+            </div>
+          </ng-template>
+
+          <!-- Step 1: Install Command -->
+          <div class="mb-3">
+            <div class="section-title text-cyan mb-1 flex items-center justify-between">
+              <span>STEP 1: INSTALL THE AGENT</span>
+              <span class="text-xs text-muted font-mono" *ngIf="deployOs() === 'linux'">
+                Universal installer (install.sh)
+              </span>
+            </div>
+            <div class="command-box">
+              <pre class="mono text-xs text-cyan" style="white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow-y: auto;">{{ deployInstallCommand() }}</pre>
+              <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployCommand()">
+                {{ copied() ? '✓ Copied!' : 'Copy Command' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Start Agent Command -->
+          <div class="mb-3">
+            <div class="section-title text-cyan mb-1">STEP 2: START THE AGENT</div>
+            <div class="command-box">
+              <pre class="mono text-xs text-emerald" style="white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto;">{{ deployStartCommand() }}</pre>
+              <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployStartCommand()">
+                {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Linux Management Cheatsheet -->
+          <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'linux'">
+            <div class="text-xs text-muted mono">
+              <span class="text-cyan font-bold">LINUX AGENT CONTROL CHEATSHEET:</span><br/>
+              &bull; Status Check: <code class="text-cyan">sudo systemctl status wazuh-rust-agent</code><br/>
+              &bull; Daemon CLI: <code class="text-cyan">wazuh-control status-service</code><br/>
+              &bull; Restart: <code class="text-cyan">sudo systemctl restart wazuh-rust-agent</code><br/>
+              &bull; View Live Telemetry: <code class="text-cyan">journalctl -u wazuh-rust-agent -f</code>
+            </div>
+          </div>
+
+          <!-- Windows Management Cheatsheet -->
+          <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'windows'">
+            <div class="text-xs text-muted mono">
+              <span class="text-cyan font-bold">WINDOWS SERVICE MANAGEMENT CLI:</span><br/>
+              &bull; Start Service: <code class="text-cyan">net start WazuhSvc</code><br/>
+              &bull; Stop Service: <code class="text-cyan">net stop WazuhSvc</code><br/>
+              &bull; Check Status: <code class="text-cyan">sc query WazuhSvc</code><br/>
+              &bull; Uninstall: <code class="text-cyan">"C:\Program Files (x86)\ossec-agent\wazuh-agent.exe" uninstall-service</code>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <div class="modal-footer flex items-center justify-between">
+        <ng-container *ngIf="deployStage() === 'config'">
+          <div class="flex gap-2">
+            <button class="btn btn-primary" (click)="deployAgent()" [disabled]="!deployNameValid() || deployLoading()">
+              {{ deployLoading() ? 'Registering Agent...' : 'Deploy Agent' }}
+            </button>
+            <button class="btn btn-outline" (click)="deployStage.set('provision')">
+              Skip to Commands →
+            </button>
+          </div>
+          <button class="btn btn-outline" (click)="closeDeployModal()">Close</button>
+        </ng-container>
+
+        <ng-container *ngIf="deployStage() === 'provision'">
+          <div class="flex gap-2">
+            <button class="btn btn-primary" *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()">Download 1-Click .BAT</button>
+            <button class="btn btn-cyan" (click)="downloadDeployScript()">Download Deployment Script</button>
+            <button class="btn btn-outline" (click)="resetDeployToConfig()">← Back to Settings</button>
+            <button class="btn btn-outline" (click)="deployAnotherAgent()">+ Deploy Another Agent</button>
+          </div>
+          <button class="btn btn-outline" (click)="closeDeployModal()">Close</button>
+        </ng-container>
       </div>
     </div>
   </div>

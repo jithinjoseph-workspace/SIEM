@@ -261,7 +261,9 @@ fn is_public(method: &Method, path: &str) -> bool {
     matches!(
         p,
         "/api/health" | "/health" | "/api/v1/ingest" | "/api/events/ingest" | "/api/v1/agent/commands/ack" | "/api/v1/agents/enroll" | "/api/v1/agent/state"
-    ) || (method == Method::GET && p == "/api/v1/agent/commands")
+        | "/api/v1/system/network-endpoints" | "/api/system/network-endpoints"
+    ) || (method == Method::POST && (p == "/api/v1/agents" || p == "/api/agents"))
+        || (method == Method::GET && p == "/api/v1/agent/commands")
         || (method == Method::GET && p.starts_with("/api/agents/") && p.ends_with("/commands"))
         || p.starts_with("/downloads/")
         || (method == Method::POST && (p == "/api/client-errors" || p == "/api/admin/client-errors"))

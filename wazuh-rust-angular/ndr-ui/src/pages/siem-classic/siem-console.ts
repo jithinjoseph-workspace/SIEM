@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { SiemService } from './core/services/siem.service';
 import {
-  AgentDeployService, DeployParams, defaultManagerUrl, downloadText, generateAgentName, installCommand,
+  AgentDeployService, DeployParams, EnrollAgentResponse, NetworkEndpoint, defaultManagerUrl, downloadText, generateAgentName, installCommand,
   isValidAgentName, linuxDeployScript, startCommand, windowsBatScript, windowsInstallScript, copyToClipboard,
 } from '../../services/siem/agent-deploy';
 import {
@@ -212,6 +212,11 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   // Agent Deployment Wizard State (Mirroring Wazuh Dashboard register-agent)
   showDeployModal = signal<boolean>(false);
+  deployStage = signal<'config' | 'provision'>('config');
+  deployLoading = signal<boolean>(false);
+  deployError = signal<string | null>(null);
+  enrolledAgentInfo = signal<EnrollAgentResponse | null>(null);
+
   deployOs = signal<'windows' | 'linux' | 'macos'>('linux');
   deployLinuxPkgType = signal<'deb-amd64' | 'rpm-amd64' | 'deb-arm64' | 'rpm-arm64' | 'universal'>('deb-amd64');
   deployManagerUrl = signal<string>(defaultManagerUrl());
@@ -247,20 +252,33 @@ export class SiemConsole implements OnInit, OnDestroy {
     return this.agents().find((a: any) => a.name?.toLowerCase() === name) || null;
   });
 
+  networkEndpoints = signal<NetworkEndpoint[]>([]);
+  selectedEndpointId = signal<string>('');
+  isLoadingEndpoints = signal<boolean>(false);
+
   suggestedUrls = computed(() => {
+    const endpoints = this.networkEndpoints();
+    if (endpoints.length > 0) {
+      return endpoints.map(ep => ({ label: ep.label, url: ep.address }));
+    }
     if (typeof window === 'undefined') return [];
     const list: { label: string; url: string }[] = [];
     const origin = window.location.origin;
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
-    list.push({ label: 'Console Origin (:4200)', url: origin });
+    list.push({ label: 'Console Origin', url: origin });
     list.push({ label: 'Direct SIEM API (:8088)', url: `${protocol}//${hostname}:8088` });
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      list.push({ label: 'LAN Direct IP (:8088)', url: 'http://192.168.220.33:8088' });
-      list.push({ label: 'VM Host-Only (:8088)', url: 'http://192.168.56.1:8088' });
-    }
     return list;
   });
+
+  onEndpointSelected(endpointId: string) {
+    this.selectedEndpointId.set(endpointId);
+    if (endpointId === 'custom') return;
+    const found = this.networkEndpoints().find(e => e.id === endpointId);
+    if (found) {
+      this.deployManagerUrl.set(found.address);
+    }
+  }
 
   setManagerUrl(url: string) {
     this.deployManagerUrl.set(url);
@@ -274,14 +292,71 @@ export class SiemConsole implements OnInit, OnDestroy {
   openDeployModal() {
     this.selectDeployOs(this.deployOs());
     this.showDeployModal.set(true);
+    this.deployStage.set('config');
+    this.deployError.set(null);
+    this.enrolledAgentInfo.set(null);
     this.copied.set(false);
     this.copiedStart.set(false);
     this.deployKeyError.set(null);
+
+    // Dynamic endpoint auto-discovery
+    this.isLoadingEndpoints.set(true);
+    this.agentDeploy.getNetworkEndpoints().subscribe(res => {
+      this.isLoadingEndpoints.set(false);
+      this.networkEndpoints.set(res.endpoints || []);
+
+      if (res.recommended_endpoint) {
+        if (!this.deployManagerUrl() || /localhost|127\.0\.0\.1|:4200/i.test(this.deployManagerUrl())) {
+          this.deployManagerUrl.set(res.recommended_endpoint);
+          const matched = (res.endpoints || []).find(e => e.address === res.recommended_endpoint);
+          this.selectedEndpointId.set(matched ? matched.id : 'custom');
+        } else {
+          const matched = (res.endpoints || []).find(e => e.address === this.deployManagerUrl());
+          this.selectedEndpointId.set(matched ? matched.id : 'custom');
+        }
+      }
+    });
+
     this.agentDeploy.tenantKey().subscribe(r => {
       this.deployTenantKey.set(r.key);
       this.deployTenantId.set(r.tenant);
       this.deployKeyError.set(r.error ?? null);
     });
+  }
+
+  deployAgent() {
+    if (!this.deployNameValid() || this.deployLoading()) return;
+    this.deployLoading.set(true);
+    this.deployError.set(null);
+
+    this.agentDeploy.enrollAgent({
+      name: this.deployAgentName().trim(),
+      groups: this.deployGroup().trim(),
+      os_type: this.deployOs(),
+      tenantKey: this.deployTenantKey(),
+    }).subscribe({
+      next: (res) => {
+        this.enrolledAgentInfo.set(res);
+        this.deployLoading.set(false);
+        this.deployStage.set('provision');
+        this.fetchData();
+      },
+      error: (err) => {
+        this.deployLoading.set(false);
+        this.deployError.set(err?.error?.message || 'Failed to deploy agent. Please verify connection and name.');
+      }
+    });
+  }
+
+  resetDeployToConfig() {
+    this.deployStage.set('config');
+  }
+
+  deployAnotherAgent() {
+    this.deployStage.set('config');
+    this.enrolledAgentInfo.set(null);
+    this.deployError.set(null);
+    this.selectDeployOs(this.deployOs());
   }
 
   closeDeployModal() {

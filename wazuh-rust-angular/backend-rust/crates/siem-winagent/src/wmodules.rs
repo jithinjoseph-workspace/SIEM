@@ -26,12 +26,14 @@ const WM_MAX_WAIT: u64 = 500;
 /// A configured module (`wmodule`), in configuration order.
 enum Module {
     Syscollector(Arc<WmSysModule>),
+    Sca(Arc<siem_sca::wm::Sca>),
 }
 
 impl Module {
     fn tag(&self) -> &'static str {
         match self {
             Module::Syscollector(_) => wmsys::NAME,
+            Module::Sca(_) => siem_sca::wm::NAME,
         }
     }
 }
@@ -49,13 +51,26 @@ pub struct WModules {
 /// The `<wodle>` sections (`Read_WModule`).
 struct Handler<'a> {
     sys: &'a mut Option<WmSys>,
+    sca: &'a mut Option<siem_sca::wm::WmSca>,
+    log: &'a WLog,
     order: &'a mut Vec<&'static str>,
 }
 
 impl ConfigHandler for Handler<'_> {
     fn section(&mut self, ctx: &mut ConfigContext, xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> CResult<()> {
+        if section == Section::Sca {
+            // Read_SCA: one module, every <sca> block read into it
+            if !self.order.contains(&siem_sca::wm::NAME) {
+                self.order.push(siem_sca::wm::NAME);
+            }
+            if children.is_none() {
+                ctx.debug1(format!("Empty configuration for module '{}'", node.element));
+            }
+            let sca = self.sca.get_or_insert_with(Default::default);
+            return siem_sca::wm::wm_sca_read(self.log, xml, children, sca).map_err(|_| ConfigError::new(""));
+        }
         if section != Section::Wodle {
-            // <sca> (and the agent-upgrade section): their modules are not ported yet
+            // the agent-upgrade section: its module is not ported yet
             return Ok(());
         }
         let Some(attr) = node.attributes.first() else {
@@ -126,9 +141,10 @@ impl WModules {
         let kill_timeout = ag.define_int("wazuh_modules", "kill_timeout", 0, 3600);
         // wm_initialize_default_modules: agent-upgrade (not ported yet)
         let mut sys: Option<WmSys> = None;
+        let mut sca: Option<siem_sca::wm::WmSca> = None;
         let mut order: Vec<&'static str> = Vec::new();
         let mut ctx = ConfigContext::new(Platform::AGENT);
-        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, order: &mut order });
+        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, sca: &mut sca, log: &ag.log, order: &mut order });
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         if r.is_err() {
             return Err(());
@@ -142,7 +158,7 @@ impl WModules {
             siem_config::modules::CWMODULE | siem_config::modules::CAGENT_CONFIG,
             AGENTCONFIG,
             remote,
-            &mut Handler { sys: &mut sys, order: &mut order },
+            &mut Handler { sys: &mut sys, sca: &mut sca, log: &ag.log, order: &mut order },
         );
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         let mut modules = Vec::new();
@@ -150,6 +166,28 @@ impl WModules {
             if tag == wmsys::NAME {
                 if let Some(s) = sys.take() {
                     modules.push(Module::Syscollector(WmSysModule::new(s)));
+                }
+            } else if tag == siem_sca::wm::NAME {
+                if let Some(s) = sca.take() {
+                    let env = siem_sca::wm::Env {
+                        log: ag.log.clone(),
+                        // wm_sendmsg(.., WM_SCA_STAMP, SCA_MQ) -> SendMSG
+                        send: Box::new(|m| siem_ipc::mq_op::send_msg(0, m, siem_sca::wm::WM_SCA_STAMP, siem_sca::wm::SCA_MQ)),
+                        define_int: {
+                            // getDefine_Int: exits on an invalid option
+                            let (o, l) = (ag.opts.clone(), ag.log.clone());
+                            Box::new(move |s, n, lo, hi| match o.get_int(s, n, lo, hi) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    l.critical(e.0);
+                                    siem_log::cexit::fatal_exit()
+                                }
+                            })
+                        },
+                        max_eps,
+                        client: true,
+                    };
+                    modules.push(Module::Sca(siem_sca::wm::Sca::new(s, env)));
                 }
             }
         }
@@ -165,6 +203,10 @@ impl WModules {
     pub fn start(self: &Arc<Self>) {
         for m in &self.modules {
             match m {
+                Module::Sca(s) => {
+                    let s = s.clone();
+                    let _ = std::thread::Builder::new().name("wm_sca_main".into()).spawn(move || s.main());
+                }
                 Module::Syscollector(sys) => {
                     let log = tagged(&self.log, WM_SYS_LOGTAG);
                     let l2 = log.clone();
@@ -194,6 +236,15 @@ impl WModules {
         }
     }
 
+    /// `wm_sca_push_request_win(msg)`
+    pub fn sca_push(&self, msg: &[u8]) {
+        for m in &self.modules {
+            if let Module::Sca(s) = m {
+                s.push_request(msg);
+            }
+        }
+    }
+
     /// `modulesSync(args)`
     pub fn modules_sync(&self, args: &str) -> i32 {
         let mut ret = -1;
@@ -212,6 +263,7 @@ impl WModules {
                     if args.contains("dbsync") {
                         ret = match m {
                             Module::Syscollector(s) => s.sync_message(args),
+                        Module::Sca(_) => -1,
                         };
                     }
                     break;
@@ -244,6 +296,9 @@ impl WModules {
             match m {
                 Module::Syscollector(s) => {
                     arr.push(wmsys::wm_sys_dump(&s.sys.lock()));
+                }
+                Module::Sca(s) => {
+                    arr.push(siem_sca::wm::wm_sca_dump(&s.cfg));
                 }
             }
         }

@@ -10,7 +10,7 @@ import {
 import { SiemService } from '../../../services/siem/siem.service';
 import {
   AgentDeployService, DeployOs, DeployParams, WinInstallMode,
-  defaultManagerUrl, downloadText, generateAgentName, installCommand, isValidAgentName,
+  defaultManagerUrl, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
   linuxDeployScript, startCommand, windowsBatScript,
 } from '../../../services/siem/agent-deploy';
 import { Agent, AgentInventory, ScaCheckResult, RawEvent } from '../../../services/siem/siem.models';
@@ -68,6 +68,7 @@ export class Agents implements OnInit {
   showDeployModal = signal<boolean>(false);
   deployOs = signal<DeployOs>('linux');
   deployManagerUrl = signal<string>(defaultManagerUrl());
+  deployManagerLoopback = computed(() => isLoopbackManager(this.deployManagerUrl()));
   deployAgentName = signal<string>('');
   deployGroup = signal<string>('default');
   deployTenantKey = signal<string>('');

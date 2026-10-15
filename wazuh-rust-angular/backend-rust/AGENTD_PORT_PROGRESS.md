@@ -168,7 +168,7 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
     - Windows oracle scenario `arsc` (`dbg/arprog.c` test response, `shared/ar.conf` with a missing script and a bad line, repeated offenders, `!custom`, invalid name / JSON, com getconfig / lock_restart / restart / check-manager-configuration / unmerge / bogus): the AR program receives identical input, the manager view is identical, and the logs match.
   - **Command line / service**: `install-service`, `uninstall-service` (no admin rights), help, unknown option and the service dispatcher path match C byte for byte (exit code, stdout, stderr, log; `wincli.ps1`).
     - Bug fixed: stdout/stderr are text-mode CRT streams on Windows (LF -> CR LF, so C's "
-" is "
+" is "
 "); `siem_log::crt_stream` / `crt_print`.
 - **Gaps (Windows):**
   - syscheck (FIM + registry + whodata), rootcheck and the modules (syscollector, SCA, agent upgrade, ...) are not ported yet: shared with the Unix daemons, they are the next level and plug into `components.rs` / `WinHooks`. The service stop hook (`wm_kill_children`, `stop_wmodules`, `fim_db_teardown`) comes with them.
@@ -190,3 +190,25 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 * `siem-winagent::wmodules` — `wm_config` / `wm_check` / module threads / `modulesSync` / `wmcom_dispatch` (getconfig, query, sync); syscollector runs in `wazuh-agent.exe`.
 * End to end: agent 013 → remoted → analysisd → wazuh-db holds the full inventory (sys_* tables); siem-api serves it at `/api/v1/agents/:id/inventory`.
 * Not ported yet: the other wodles (command, osquery, open-scap, cis-cat), SCA, agent-upgrade, syscheck/rootcheck.
+
+## SCA (wm_sca) — 2026-10-14
+- New crate `siem-sca`: yaml2json (unsafe-libyaml), schedule_scan, the rule engine (f/d/c/p/r, n: compare, && / ! / NOT), registry (ANSI API, C buffers), process list (32-bit agent view), module (events, cis_db + integrity hashes, summary, dump thread, sca-dump requests), `<sca>` config reader. CRT calls (strtod/strtol/atoi/stat/opendir/strerror/mktime) go through msvcrt/mingwex like the C agent.
+- `siem-execd::wm_exec` is now the shared public `wm_exec` (timeout, wm_task_nice priority, 1 s reader wait); wcom uses it.
+- Wired into `siem-winagent` wmodules (`Section::Sca`, `sca_push` hook, getconfig dump). siem-api serves the 8 Windows CIS policies; the install script picks one like the MSI.
+- Verified: YAML→JSON byte-identical to libyaml 0.1.7+cJSON on all 77 bundled policies + edge cases; C vs Rust agent: all events identical for a 17-check feature policy and the full CIS Win11 run with dump (487 events). E2E: agent 013 → manager wazuh-db sca tables (482 checks).
+- Known gaps (shortcut comments): Unix wm_exec/process list simplified; libyaml 0.2.5 vs 0.1.7 on exotic syntax; C logs an uninitialized result_code when a command can't start.
+
+## syscheck (FIM) — step 1/6 config — 2026-10-14
+- `siem-syscheckd/src/port/`: `config.rs` (config/syscheck-config.c: directories/registry readers, env + wildcard expansion incl. registry `*`/`?`, diff/sync/whodata/limits, prefilter, Read_Syscheck_Config adjustments, getSyscheckConfig/getSyscheckInternalOptions dumps), `syscheck.rs` (read_internal, config part of Start_win32_Syscheck with its log lines, syscom_dispatch/getconfig). The crate-root modules are an older prototype (unused).
+- winagent: `skthread` loads it; requests to target `syscheck` go to syscom_dispatch.
+- `timeday.rs` moved from siem-analysisd to siem-config (shared validate_op.c); siem-config no longer logs an empty ConfigError (a reader that already logged returns "").
+- Verified vs the C agent (scenario winoracle/skcfg2): getconfig syscheck/internal + error replies byte-identical; config-stage log lines identical as a set.
+- Next: update_wildcards_config + FIM DB (db/*.cpp on siem-dbsync), create_db.c scans (files, registry), run_check.c scheduler/sync, fim_diff_changes.c, realtime + Windows whodata; rootcheck getconfig still "err".
+
+## syscheck (FIM) — steps 2–6 (scan, registry, daemon, report_changes, realtime) — 2026-10-15
+- `port/fimdb.rs` (FIMDB/DB on siem-dbsync + rsync), `create_db.rs` (fim_scan/checker/directory/file/get_data, transaction callbacks, events, DB-state alerts, wildcards update), `registry.rs` (registry.c + events.c incl. the C quirks: key checksum drops `:arch`, old `gid` falls back to `uid`), `run_check.rs` (fim_initialize, start_daemon loop with scan_time/scan_day, restart), `diff.rs` (fim_diff_changes.c on zlib + `fc /n`), `realtime.rs` (ReadDirectoryChangesW + completion routines in an alertable wait, fim_realtime_event, missing-entry deletes).
+- winagent: `skthread` runs `syscheck::start` (realtime_start → fim_initialize → start_daemon); syscom `fim_*` go to `push_message`, `restart` triggers a scan.
+- Verified vs the C agent (scenario winoracle/fim: files with ignore/restrict/recursion, registry both arches with ignore/restrict/recursion, report_changes files + registry + nodiff, realtime add/modify/delete/dir removal, sync): manager messages identical (53/53 when both run the same number of scans); all FIM event payloads byte-identical; ossec.log identical line for line apart from scan-count timing.
+- Fixed while verifying: `remove_path` sent `data:[[…]]` (realtime deletes failed); log formatting kept non-UTF-8 bytes lossily (cfmt now returns bytes).
+- Windows whodata (`whodata.rs`, win_whodata.c): SACL set/restore/refresh, auditpol backup/restore with retries, LSA policy check, Security-channel subscription (4656/4663/4658/4719), device→drive mapping, state checker thread, fallback to realtime. Verified (non-admin): the fallback path is identical line for line (SACL 1314 errors, 6 auditpol attempts, 6710, directories moved to realtime). The admin path (real whodata events) needs an elevated run to verify.
+- Not ported: rootcheck thread. Until it is, the Rust syscheck thread reaches its first send before agentd is online and waits one 5 s lock poll (the C spends that time in rootcheck_init).

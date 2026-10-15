@@ -37,4 +37,8 @@ siem-agent-upgrade = { path = "../siem-agent-upgrade" }
 siem-monitord = { path = "../siem-monitord" }
 siem-crypto = { path = "../siem-crypto" }
 siem-ipc = { path = "../siem-ipc" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+sha2 = "0.10"
 

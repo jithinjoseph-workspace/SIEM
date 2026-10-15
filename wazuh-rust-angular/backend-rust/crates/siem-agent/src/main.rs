@@ -42,7 +42,8 @@ pub async fn run_agent_loop() {
         ];
         let mut creds = (None, None);
         for cand in client_keys_candidates.into_iter().flatten() {
-            if let Some((id, name, _, _)) = siem_core::parse_client_keys(&cand) {
+            if let Some((id, name, _, key)) = siem_core::parse_client_keys(&cand) {
+                enroll::export_agent_key(&key);
                 creds = (Some(id), Some(name));
                 break;
             }
@@ -130,6 +131,7 @@ pub async fn run_agent_loop() {
             if let Err(err) = enroll::write_client_keys(&keys_path, &e) {
                 tracing::warn!("Could not store client.keys at {}: {}", keys_path.display(), err);
             }
+            enroll::export_agent_key(&e.raw_key);
             agent_name = e.agent_name.clone();
             e.agent_id
         }

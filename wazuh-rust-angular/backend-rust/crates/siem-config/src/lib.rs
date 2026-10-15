@@ -21,6 +21,7 @@ pub mod messages;
 pub mod remote;
 pub mod socket;
 pub mod util;
+pub mod timeday;
 
 use siem_xml::{OsXml, XmlNode};
 use std::path::Path;
@@ -468,8 +469,10 @@ pub fn read_config_xml(
         if mods & CAGENT_CONFIG == 0 && node.element == "ossec_config" {
             if let Some(ch) = xml.get_elements_by_node(Some(node)) {
                 if let Err(e) = read_main_elements(ctx, xml, mods, &ch, h) {
-                    // The reader's own merror, then PrintErrorAcordingToModules.
-                    ctx.error(e.0.clone());
+                    // The reader's own merror (empty: the reader logged it already), then PrintErrorAcordingToModules.
+                    if !e.0.is_empty() {
+                        ctx.error(e.0.clone());
+                    }
                     if mods == CSYSCHECK || mods == CROOTCHECK {
                         ctx.warn(messages::config_error(cfgname));
                     } else {
@@ -519,7 +522,9 @@ pub fn read_config_xml(
             if let Some(ch) = xml.get_elements_by_node(Some(node)) {
                 if passed {
                     if let Err(e) = read_main_elements(ctx, xml, mods, &ch, h) {
-                        ctx.error(e.0);
+                        if !e.0.is_empty() {
+                            ctx.error(e.0);
+                        }
                         let m = messages::config_error(cfgname);
                         ctx.error(m.clone());
                         return Err(ConfigError::new(m));

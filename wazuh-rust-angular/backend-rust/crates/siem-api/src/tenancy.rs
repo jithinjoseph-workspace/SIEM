@@ -41,6 +41,8 @@ pub const TENANT_TABLES: &[&str] = &[
     "siem_alerts",
     "siem_agents",
     "siem_active_responses",
+    "siem_vulnerabilities",
+    "siem_agent_commands",
     "ndr_network_flows",
     "ndr_threats",
     "xdr_incidents",

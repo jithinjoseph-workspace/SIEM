@@ -35,6 +35,17 @@ export function defaultManagerUrl(): string {
   return `${window.location.protocol}//${window.location.host}`;
 }
 
+/** True when the manager URL points at this machine (localhost, 127.x, ::1): the
+ *  agent can only reach it when installed on the manager host itself. */
+export function isLoopbackManager(url: string): boolean {
+  try {
+    const h = new URL(url.trim()).hostname.replace(/^\[|\]$/g, '');
+    return h === 'localhost' || h === '::1' || /^127\./.test(h);
+  } catch {
+    return false;
+  }
+}
+
 /** Wazuh agent names: letters, digits, '.', '_', '-' (2..128 chars). */
 export function isValidAgentName(name: string): boolean {
   return /^[A-Za-z0-9._-]{2,128}$/.test(name);
@@ -112,13 +123,22 @@ export function windowsInstallScript(p: DeployParams): string {
     `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
     // where the MSI installs the syscollector normalizer
     `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/norm_config.json" -OutFile "$d\\queue\\syscollector\\norm_config.json"`,
-    `$h = @{}`,
-    c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
-    `$b = @{ name = ${pq(c.name)}; groups = ${pq(c.group)}; os_type = 'windows' } | ConvertTo-Json`,
-    `$r = Invoke-RestMethod -Method Post -Uri "$u/api/v1/agents/enroll" -Headers $h -ContentType 'application/json' -Body $b`,
-    `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
+    // the CIS policy the MSI installs for this OS (wazuh-installer.wxs: build number, workstation or server)
+    `$os = Get-CimInstance Win32_OperatingSystem; $b = [int]$os.BuildNumber`,
+    `$sca = if ($os.ProductType -eq 1) { if ($b -ge 22000) { 'cis_win11_enterprise.yml' } elseif ($b -ge 10240) { 'cis_win10_enterprise.yml' } } else { @{ 9200 = 'cis_win2012_non_r2.yml'; 9600 = 'cis_win2012r2.yml'; 14393 = 'cis_win2016.yml'; 17763 = 'cis_win2019.yml'; 20348 = 'cis_win2022.yml'; 26100 = 'cis_win2025.yml' }[$b] }`,
+    // optional: a manager without the policy still installs the agent
+    `if ($sca) { try { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$sca" -OutFile "$d\\ruleset\\sca\\$sca" } catch { Write-Warning "SCA policy $sca not available from the manager" } }`,
     `$m = ([Uri]$u).Host`,
     `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/ossec.conf?manager=$m" -OutFile "$d\\ossec.conf"`,
+    // enroll last, so a failed download leaves no never-connected agent; a reinstall keeps
+    // the host's agent name (and so its id) instead of adding a second agent
+    `$n = ${pq(c.name)}`,
+    `if (Test-Path "$d\\client.keys") { $k = ((Get-Content "$d\\client.keys" -TotalCount 1) -split ' '); if ($k.Count -ge 4 -and $k[1]) { $n = $k[1] } }`,
+    `$h = @{}`,
+    c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
+    `$b = @{ name = $n; groups = ${pq(c.group)}; os_type = 'windows' } | ConvertTo-Json`,
+    `$r = Invoke-RestMethod -Method Post -Uri "$u/api/v1/agents/enroll" -Headers $h -ContentType 'application/json' -Body $b`,
+    `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
     // the MSI's permissions (InstallerScripts.vbs): only Administrators and SYSTEM may read the key
     ...WINDOWS_AGENT_ACLS,
     `& "$d\\wazuh-agent.exe" install-service | Out-Null`,

@@ -107,8 +107,8 @@ pub struct Engine<'a> {
     pub reason: Option<Vec<u8>>,
     /// `data->alert_msg` (up to 255)
     pub alert_msg: Vec<Vec<u8>>,
-    /// `p_list` (None until a process rule needs it)
-    pub p_list: Option<Option<Vec<Vec<u8>>>>,
+    /// `p_list` (read by each process rule while it is NULL)
+    pub p_list: Option<Vec<Vec<u8>>>,
 }
 
 impl<'a> Engine<'a> {
@@ -686,11 +686,15 @@ impl<'a> Engine<'a> {
     }
 
     /// `wm_sca_check_process_is_running` (the list is read on first use)
-    pub fn check_process_is_running(&mut self, value: &[u8], exp: ExpType) -> i32 {
+    /// `if (!p_list) p_list = w_os_get_process_list();` (lazy, per process rule)
+    pub fn load_process_list(&mut self) {
         if self.p_list.is_none() {
-            self.p_list = Some(crate::proc::process_list(self.log));
+            self.p_list = crate::proc::process_list(self.log);
         }
-        let Some(Some(list)) = self.p_list.clone() else {
+    }
+
+    pub fn check_process_is_running(&mut self, value: &[u8], exp: ExpType) -> i32 {
+        let Some(list) = self.p_list.clone() else {
             self.set_reason(b"Process list is empty.".to_vec());
             return RETURN_INVALID;
         };

@@ -1,0 +1,154 @@
+<section class="siem-sources-shell">
+  <div class="sources-header">
+    <div>
+      <div class="eyebrow">SIEM — Syslog</div>
+      <h2>Syslog Devices</h2>
+      <p>Firewalls, switches and servers send syslog over TLS with their own certificate, so every message lands in this tenant.</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-refresh" (click)="load()" title="Refresh">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+      <button class="btn-add" (click)="showDevice.set(true)">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        Add TLS Device
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="error()" class="error-banner">{{ error() }}</div>
+  <div *ngIf="loading()" class="loading-row"><span class="spinner"></span> Loading…</div>
+
+  <!-- TLS devices -->
+  <div *ngIf="!loading() && devices().length === 0" class="empty-state">
+    <lucide-icon [name]="TlsIcon" class="w-8 h-8 empty-icon"></lucide-icon>
+    <p>No TLS syslog devices yet.</p>
+    <p class="muted">Add a device to get its certificate, then point it at {{ host }}:6514.</p>
+  </div>
+
+  <div *ngIf="!loading() && devices().length > 0" class="source-grid">
+    <div *ngFor="let d of devices()" class="source-card">
+      <div class="source-card-top">
+        <div class="source-status-dot" [class.status-ok]="d.last_seen" [class.status-warn]="!d.last_seen"></div>
+        <div class="source-name">{{ d.name }}</div>
+        <button class="btn-delete" (click)="revoke(d)" title="Revoke">
+          <lucide-icon [name]="DeleteIcon" class="w-3 h-3"></lucide-icon>
+        </button>
+      </div>
+      <div class="source-type-chip">Syslog TLS :6514</div>
+      <div class="source-hint muted mono" [title]="d.fingerprint">SHA-256 {{ short(d.fingerprint) }}</div>
+      <div class="source-stats">
+        <div class="stat">
+          <div class="stat-value mono muted">{{ d.created_at | date: 'short' }}</div>
+          <div class="stat-label">Issued</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value mono muted">{{ d.last_seen ? (d.last_seen | date: 'short') : 'never' }}</div>
+          <div class="stat-label">Last connection</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Plain syslog sources -->
+  <div class="sources-header" style="margin-top: 2rem">
+    <div>
+      <div class="eyebrow">Plain syslog (UDP :514 / TCP :601)</div>
+      <h2>Source Addresses</h2>
+      <p class="muted">For devices without TLS, on a private network or VPN only: plain syslog is not authenticated. Unmapped senders go to the default tenant.</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-add" (click)="showSource.set(true)">
+        <lucide-icon [name]="NetIcon" class="w-4 h-4"></lucide-icon>
+        Map Address
+      </button>
+    </div>
+  </div>
+  <table *ngIf="sources().length > 0" class="endpoint-table">
+    <tr *ngFor="let s of sources()" class="ep-row">
+      <td class="ep-type mono">{{ s.ip }}</td>
+      <td class="ep-val">{{ s.label || '—' }}</td>
+      <td class="ep-val muted">{{ s.created_at | date: 'short' }}</td>
+      <td>
+        <button class="btn-delete" (click)="removeSource(s)" title="Remove">
+          <lucide-icon [name]="DeleteIcon" class="w-3 h-3"></lucide-icon>
+        </button>
+      </td>
+    </tr>
+  </table>
+  <p *ngIf="sources().length === 0" class="muted">No addresses mapped.</p>
+
+  <!-- Add device -->
+  <div *ngIf="showDevice()" class="modal-backdrop" (click)="showDevice.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Add TLS Syslog Device</h3>
+        <button class="modal-close" (click)="showDevice.set(false)">×</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="dev-name">Device name</label>
+        <input id="dev-name" class="form-input" [(ngModel)]="deviceName" maxlength="64" placeholder="e.g. fortigate-hq" (keyup.enter)="addDevice()" />
+        <p class="type-hint muted">Letters, digits, space, - _ . (1–64). A certificate is issued for this device.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="showDevice.set(false)">Cancel</button>
+        <button class="btn-add" [disabled]="saving() || !deviceName.trim()" (click)="addDevice()">Issue Certificate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Certificate bundle (shown once) -->
+  <div *ngIf="bundle() as b" class="modal-backdrop">
+    <div class="modal key-reveal-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Certificate for "{{ b.device.name }}"</h3>
+      </div>
+      <div class="modal-body">
+        <p class="key-warning">Download the files now: the private key is not stored and cannot be shown again.</p>
+        <div class="endpoint-table">
+          <div class="ep-row"><span class="ep-type">Server</span><span class="ep-val mono">{{ host }}:{{ b.port }} (TCP, TLS)</span></div>
+          <div class="ep-row"><span class="ep-type">CA</span><span class="ep-val mono">ca.crt</span></div>
+          <div class="ep-row"><span class="ep-type">Client cert / key</span><span class="ep-val mono">{{ b.device.name }}.crt / .key</span></div>
+        </div>
+        <button class="btn-add" (click)="downloadAll(b)">
+          <lucide-icon [name]="DownloadIcon" class="w-4 h-4"></lucide-icon>
+          Download ca.crt, certificate and key
+        </button>
+        <div class="setup-section-label">rsyslog (Linux)</div>
+        <div class="cmd-block-wrap">
+          <pre class="cmd-block">{{ rsyslogExample(b) }}</pre>
+          <button class="btn-copy cmd-copy-btn" (click)="copy(rsyslogExample(b))">Copy</button>
+        </div>
+        <p class="type-hint muted">
+          Firewalls (FortiGate, Palo Alto, Cisco FTD): import ca.crt as a trusted CA and the certificate + key as the device's
+          client certificate, then set the syslog server to {{ host }} port {{ b.port }}, TCP with TLS
+          (FortiGate: <span class="mono">config log syslogd setting → set mode reliable, set enc-algorithm high, set certificate &lt;cert&gt;</span>).
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-add" (click)="bundle.set(null)">I saved the files</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map address -->
+  <div *ngIf="showSource()" class="modal-backdrop" (click)="showSource.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Map a Plain-Syslog Address</h3>
+        <button class="modal-close" (click)="showSource.set(false)">×</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="src-ip">Sender IP address</label>
+        <input id="src-ip" class="form-input mono" [(ngModel)]="sourceIp" placeholder="10.0.0.25" />
+        <label class="form-label" for="src-label">Label <span class="optional">(optional)</span></label>
+        <input id="src-label" class="form-input" [(ngModel)]="sourceLabel" maxlength="64" placeholder="core switch" (keyup.enter)="addSource()" />
+        <p class="type-hint muted">An address belongs to one tenant only.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="showSource.set(false)">Cancel</button>
+        <button class="btn-add" [disabled]="saving() || !sourceIp.trim()" (click)="addSource()">Map Address</button>
+      </div>
+    </div>
+  </div>
+</section>

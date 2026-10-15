@@ -438,7 +438,8 @@ pub fn spawn_active_response_worker(
         let mut ticker = tokio::time::interval(interval);
         loop {
             ticker.tick().await;
-            if let Ok(resp) = client.get(&poll_url).send().await {
+            let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+            if let Ok(resp) = client.get(&poll_url).header("X-Agent-Key", key).send().await {
                 if resp.status().is_success() {
                     if let Ok(commands) = resp.json::<Vec<ActiveResponseCommand>>().await {
                         for cmd in commands {

@@ -36,8 +36,8 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
       CLICKHOUSE_PASSWORD: change-me-clickhouse-password
     ports:
-      - "8123:8123" # HTTP API port
-      - "9000:9000" # Native TCP client port
+      - "127.0.0.1:8123:8123" # HTTP API port
+      - "127.0.0.1:9000:9000" # Native TCP client port
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -60,7 +60,7 @@ services:
     container_name: xdr-valkey
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   # 4. Multi-Tenant JWT & RBAC Auth Microservice
   auth-service:
@@ -70,7 +70,7 @@ services:
     container_name: xdr-auth-service
     restart: always
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     environment:
       - PORT=3001
       - LISTEN_ADDR=0.0.0.0:3001
@@ -80,7 +80,7 @@ services:
       - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
       - VALKEY_URL=redis://valkey:6379
       - REDIS_URL=redis://valkey:6379
-      - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
+      - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # generate with openssl rand -hex 32
       - TOKEN_TTL_SECS=3600
     depends_on:
       clickhouse:
@@ -96,18 +96,24 @@ services:
     container_name: xdr-siem-api
     restart: always
     ports:
+      - "6514:6514"   # Syslog over TLS (RFC 5425), per-tenant client certificates
+      # Plain syslog has no sender authentication: publish it only on a private/VPN interface,
+      # e.g. "10.0.0.5:514:514/udp" (sources are mapped to tenants by IP in the UI).
       - "514:514/udp" # Syslog UDP
-      - "514:514"     # Syslog TCP
       - "601:601"     # Syslog RFC 6587 TCP
+    volumes:
+      - siem_data:/app/data # syslog CA, device registry, learned parsers
     environment:
       - SIEM_PORT=8088
       - SYSLOG_UDP_PORT=514
       - SYSLOG_TCP_PORT=601
+      - SYSLOG_TLS_PORT=6514
+      - SITE_DOMAIN=localhost # the syslog TLS certificate names (comma-separated: SYSLOG_TLS_HOSTNAMES)
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=ndr
       - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
-      - JWT_SECRET=super_secret_jwt_key_provigil_wazuh_siem
+      - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # the same value as auth-service
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -154,4 +160,6 @@ volumes:
   caddy_config:
     driver: local
   remoted_keys:
+    driver: local
+  siem_data:
     driver: local

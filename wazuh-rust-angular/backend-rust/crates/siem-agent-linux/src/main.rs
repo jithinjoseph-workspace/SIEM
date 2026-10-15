@@ -86,6 +86,7 @@ async fn run_linux_agent() {
         if let Err(err) = enroll::write_client_keys(&keys_path, &e) {
             tracing::warn!("Could not store client.keys at {}: {}", keys_path.display(), err);
         }
+        enroll::export_agent_key(&e.raw_key);
         config.agent_id = e.agent_id;
         config.agent_name = e.agent_name;
     }

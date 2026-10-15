@@ -3,12 +3,23 @@
 
 use siem_log::WLog;
 
+/// `ARGV0` of libwazuhshared in the Windows agent (its `mterror(ARGV0, ...)`)
+#[cfg(windows)]
+const ARGV0: &str = "wazuh-remoted";
+
 /// Windows: a Toolhelp snapshot without its first entry; `p_path` is the
 /// first module's `szExePath`, or `szExeFile` when the module snapshot
 /// fails. The C agent is a 32-bit process, whose module snapshots of 64-bit
 /// processes fail, so those report `szExeFile` here too. None on error.
 #[cfg(windows)]
 pub fn process_list(log: &WLog) -> Option<Vec<Vec<u8>>> {
+    process_list_as(log, ARGV0, "w_os_win32_setdebugpriv")
+}
+
+/// The same list for another caller: rootcheck's copy (`os_get_process_list`
+/// of `rootcheck/win-process.c`) logs with its own tag and `os_win32_setdebugpriv`.
+#[cfg(windows)]
+pub fn process_list_as(log: &WLog, tag: &str, setdebugpriv: &str) -> Option<Vec<Vec<u8>>> {
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_NO_TOKEN, HANDLE, INVALID_HANDLE_VALUE, LUID};
     use windows_sys::Win32::Security::{
         AdjustTokenPrivileges, ImpersonateSelf, LookupPrivilegeValueA, SecurityImpersonation, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
@@ -25,11 +36,25 @@ pub fn process_list(log: &WLog) -> Option<Vec<Vec<u8>>> {
         if LookupPrivilegeValueA(std::ptr::null(), c"SeDebugPrivilege".as_ptr() as *const u8, &mut luid) == 0 {
             return false;
         }
+        // read the current state, then set it: fails (ERROR_NOT_ALL_ASSIGNED) without the privilege
         let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
         tp.PrivilegeCount = 1;
         tp.Privileges[0].Luid = luid;
-        tp.Privileges[0].Attributes = if on { SE_PRIVILEGE_ENABLED } else { 0 };
-        AdjustTokenPrivileges(token, 0, &tp, std::mem::size_of::<TOKEN_PRIVILEGES>() as u32, std::ptr::null_mut(), std::ptr::null_mut()) != 0
+        let mut prev: TOKEN_PRIVILEGES = std::mem::zeroed();
+        let mut cb = std::mem::size_of::<TOKEN_PRIVILEGES>() as u32;
+        AdjustTokenPrivileges(token, 0, &tp, cb, &mut prev, &mut cb);
+        if GetLastError() != 0 {
+            return false;
+        }
+        prev.PrivilegeCount = 1;
+        prev.Privileges[0].Luid = luid;
+        if on {
+            prev.Privileges[0].Attributes |= SE_PRIVILEGE_ENABLED;
+        } else {
+            prev.Privileges[0].Attributes ^= SE_PRIVILEGE_ENABLED & prev.Privileges[0].Attributes;
+        }
+        AdjustTokenPrivileges(token, 0, &prev, cb, std::ptr::null_mut(), std::ptr::null_mut());
+        GetLastError() == 0
     }
 
     /// Whether a 32-bit process can snapshot this one's modules (it runs
@@ -54,32 +79,32 @@ pub fn process_list(log: &WLog) -> Option<Vec<Vec<u8>>> {
         if OpenThreadToken(GetCurrentThread(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, 0, &mut hpriv) == 0 {
             if GetLastError() == ERROR_NO_TOKEN {
                 if ImpersonateSelf(SecurityImpersonation) == 0 {
-                    log.error("os_get_win32_process_list -> ImpersonateSelf");
+                    log.tagged(tag, "ERROR", "os_get_win32_process_list -> ImpersonateSelf");
                     return None;
                 }
                 if OpenThreadToken(GetCurrentThread(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, 0, &mut hpriv) == 0 {
-                    log.error("os_get_win32_process_list -> OpenThread");
+                    log.tagged(tag, "ERROR", "os_get_win32_process_list -> OpenThread");
                     return None;
                 }
             } else {
-                log.error("os_get_win32_process_list -> OpenThread");
+                log.tagged(tag, "ERROR", "os_get_win32_process_list -> OpenThread");
                 return None;
             }
         }
         if !set_debug_priv(hpriv, true) {
-            log.error("w_os_win32_setdebugpriv");
+            log.tagged(tag, "ERROR", setdebugpriv);
             CloseHandle(hpriv);
             return None;
         }
         let hsnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if hsnap == INVALID_HANDLE_VALUE {
-            log.error("CreateToolhelp32Snapshot");
+            log.tagged(tag, "ERROR", "CreateToolhelp32Snapshot");
             return None;
         }
         let mut pe: PROCESSENTRY32 = std::mem::zeroed();
         pe.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
         if Process32First(hsnap, &mut pe) == 0 && Process32Next(hsnap, &mut pe) == 0 {
-            log.error("Process32First");
+            log.tagged(tag, "ERROR", "Process32First");
             CloseHandle(hsnap);
             return None;
         }

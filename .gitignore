@@ -51,3 +51,8 @@ wazuh-rust-angular/backend-rust/data/manager/logs/
 wazuh-rust-angular/backend-rust/data/manager/var/
 wazuh-rust-angular/backend-rust/data/manager/queue/
 wazuh-rust-angular/backend-rust/data/manager/stats/
+
+# Compose secrets (JWT_SECRET for docker-compose.yml)
+wazuh-rust-angular/.env
+# Secrets written at runtime by siem-api / the manager
+wazuh-rust-angular/backend-rust/data/syslog/

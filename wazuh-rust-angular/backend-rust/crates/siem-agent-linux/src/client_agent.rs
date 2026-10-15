@@ -53,7 +53,8 @@ impl ClientAgent {
         ];
 
         for keys_path in &client_keys_candidates {
-            if let Some((id, name, _ip, _key)) = siem_core::parse_client_keys(keys_path) {
+            if let Some((id, name, _ip, key)) = siem_core::parse_client_keys(keys_path) {
+                crate::enroll::export_agent_key(&key);
                 cfg.agent_id = id;
                 cfg.agent_name = name;
                 name_from_keys = true;

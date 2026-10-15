@@ -7,10 +7,10 @@
 {
     # Global options
     admin off
-    auto_https disable_redirects
 }
 
-:80, http://localhost {
+# The routes, shared by the HTTPS site and the local HTTP site.
+(xdr_routes) {
     # 1. High-Performance Compression
     encode zstd gzip
 
@@ -101,4 +101,15 @@
         file_server
         try_files {path} /index.html
     }
+}
+
+# Production: automatic TLS (Let's Encrypt / ZeroSSL) for SITE_DOMAIN, with HTTP->HTTPS redirects.
+# With the default (localhost) Caddy serves https://localhost with its local CA.
+{$SITE_DOMAIN:localhost} {
+    import xdr_routes
+}
+
+# Development over plain HTTP, only for loopback names (never a public hostname).
+http://localhost, http://127.0.0.1 {
+    import xdr_routes
 }

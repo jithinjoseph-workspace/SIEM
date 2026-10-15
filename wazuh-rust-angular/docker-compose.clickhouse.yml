@@ -8,8 +8,8 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123" # HTTP API port for siem-api
-      - "9000:9000" # Native TCP client port
+      - "127.0.0.1:8123:8123" # HTTP API port for siem-api
+      - "127.0.0.1:9000:9000" # Native TCP client port
     ulimits:
       nofile:
         soft: 262144

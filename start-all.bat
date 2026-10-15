@@ -61,6 +61,35 @@ if not exist "%FRONTEND_DIR%\node_modules" (
   popd
 )
 
+rem ── Build the backend from the current sources (a running exe cannot be replaced) ──
+echo [*] Stopping running backend processes before the build...
+taskkill /F /IM siem-api.exe >nul 2>&1
+taskkill /F /IM auth-service.exe >nul 2>&1
+for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd) do taskkill /F /IM %%p.exe >nul 2>&1
+echo [*] Building backend (auth-service, siem-api, wazuh manager daemons)...
+pushd "%BACKEND_DIR%"
+cargo build --release -p auth-service -p siem-api -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd
+if errorlevel 1 (
+  popd
+  echo [FAIL] Backend build failed. Fix the errors above, the old binaries were not started.
+  pause
+  exit /b 1
+)
+popd
+echo [OK] Backend built.
+
+rem The Windows agent (wazuh-agent.exe) is cross-built in WSL; skipped when WSL is not available.
+wsl -d Ubuntu-20.04 -- true >nul 2>&1
+if errorlevel 1 (
+  echo [WARN] WSL Ubuntu-20.04 not found: the Windows agent download keeps its previous build.
+) else (
+  echo [*] Building the Windows agent in WSL...
+  pushd "%BACKEND_DIR%"
+  wsl -d Ubuntu-20.04 -- bash tools/build-winagent.sh
+  if errorlevel 1 echo [WARN] Windows agent build failed: the download keeps its previous build.
+  popd
+)
+
 call :port_open 3001
 if errorlevel 1 (
   echo [*] Starting Auth Service on :3001...

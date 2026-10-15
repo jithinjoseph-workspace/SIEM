@@ -31,6 +31,8 @@ use siem_vuln_detector::{
 
 pub mod db;
 pub mod syslog;
+pub mod syslog_tenancy;
+pub mod persist;
 pub mod corroboration;
 pub mod tenancy;
 pub mod wazuh_manager;
@@ -308,8 +310,10 @@ async fn main() {
         max_agent_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
 
-    // Pre-seed sample active agents and multi-tenant auth accounts
-    seed_sample_data(&state);
+    // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
+    if std::env::var("SIEM_DEMO_DATA").is_ok_and(|v| v == "1") {
+        seed_sample_data(&state);
+    }
     // Agent registry and tenant agent keys live in ClickHouse.
     load_agent_registry(&state).await;
     state.agent_keys.load_from(&state.db).await;
@@ -317,6 +321,8 @@ async fn main() {
     // Tenants come from the shared auth-service registry (ndr.tenants).
     tenancy::sync_tenants(&state).await;
     tenancy::spawn_tenant_sync(state.clone());
+    // Active responses, vulnerability detections and queued agent commands (ClickHouse).
+    persist::load_all(&state).await;
 
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
     wazuh_manager::start(state.clone());
@@ -367,6 +373,11 @@ async fn main() {
         .route("/api/tenant/features", get(get_tenant_features_handler))
         .route("/api/v1/tenant/agent-key", get(get_tenant_agent_key_handler))
         .route("/api/v1/tenant/agent-key/rotate", post(rotate_tenant_agent_key_handler))
+        .route("/api/v1/syslog/devices", get(syslog_tenancy::list_devices).post(syslog_tenancy::create_device))
+        .route("/api/v1/syslog/devices/:id", delete(syslog_tenancy::revoke_device))
+        .route("/api/v1/syslog/sources", get(syslog_tenancy::list_sources).post(syslog_tenancy::add_source))
+        .route("/api/v1/syslog/sources/:ip", delete(syslog_tenancy::remove_source))
+        .route("/api/v1/syslog/ca", get(syslog_tenancy::get_ca))
         .route("/api/admin/stats-all-tenants", get(get_stats_all_tenants_handler))
         .route("/api/admin/severity-all-tenants", get(get_severity_all_tenants_handler))
         .route("/api/admin/top-ips-all-tenants", get(get_top_ips_all_tenants_handler))
@@ -982,7 +993,7 @@ async fn delete_agents_wazuh_handler(
     Query(params): Query<DeleteAgentsQuery>,
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
     let scope = ctx.scope();
     let mut removed = Vec::new();
     if let Some(list) = params.agents_list {
@@ -1001,7 +1012,7 @@ async fn delete_agents_wazuh_handler(
             "message": format!("Removed {} agent(s)", removed.len()),
             "affected_agents": removed
         })),
-    )
+    ).into_response()
 }
 
 async fn get_rules(State(state): State<AppState>) -> Json<Vec<Rule>> {
@@ -1145,6 +1156,7 @@ async fn ingest_event(
                                     vuln_guard.retain(|v| v.agent_id != event.agent_id);
                                     vuln_guard.extend(detections.clone());
                                 }
+                                persist::save_vulnerabilities(&state, &event.agent_id, &detections).await;
                                 for det in &detections {
                                     let alert = Alert {
                                         id: uuid::Uuid::new_v4(),
@@ -1659,14 +1671,39 @@ pub struct AgentCommandQuery {
     pub agent_id: Option<String>,
 }
 
+/// An agent fetching its commands proves who it is with its own key
+/// (`X-Agent-Key`, the key of its client.keys line).
+fn agent_key_ok(state: &AppState, agent_id: &str, headers: &axum::http::HeaderMap) -> bool {
+    let Some(sent) = headers.get("x-agent-key").and_then(|v| v.to_str().ok()) else { return false };
+    let ks = state.auth_keystore.read().unwrap();
+    let Some(k) = ks.find_by_id(agent_id) else { return false };
+    ct_eq(sent.trim().as_bytes(), k.raw_key.as_bytes())
+}
+
+/// Constant-time comparison (the time does not reveal how much of a key matched).
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Hands an agent its queued commands (and marks them delivered).
+async fn deliver_commands(state: &AppState, agent_id: &str, headers: &axum::http::HeaderMap) -> axum::response::Response {
+    if !agent_key_ok(state, agent_id, headers) {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "status": "error", "message": "invalid agent key" }))).into_response();
+    }
+    let commands = state.pending_commands.write().unwrap().remove(agent_id).unwrap_or_default();
+    persist::save_commands(state, agent_id, &commands, true).await;
+    Json(commands).into_response()
+}
+
 async fn get_agent_commands(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Query(query): axum::extract::Query<AgentCommandQuery>,
-) -> impl IntoResponse {
-    let agent_id = query.agent_id.unwrap_or_else(|| "001".into());
-    let mut map = state.pending_commands.write().unwrap();
-    let commands = map.remove(&agent_id).unwrap_or_default();
-    Json(commands)
+) -> axum::response::Response {
+    let Some(agent_id) = query.agent_id.filter(|a| !a.is_empty()) else {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "agent_id is required" }))).into_response();
+    };
+    deliver_commands(&state, &agent_id, &headers).await
 }
 
 async fn queue_agent_command(
@@ -1694,18 +1731,17 @@ async fn queue_agent_command(
         }
     }
 
-    let mut map = state.pending_commands.write().unwrap();
-    map.entry(agent_id).or_default().push(payload);
+    state.pending_commands.write().unwrap().entry(agent_id.clone()).or_default().push(payload.clone());
+    persist::save_commands(&state, &agent_id, &[payload], false).await;
     Json(serde_json::json!({ "status": "queued" })).into_response()
 }
 
 async fn get_agent_commands_by_path(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     axum::extract::Path(agent_id): axum::extract::Path<String>,
-) -> impl IntoResponse {
-    let mut map = state.pending_commands.write().unwrap();
-    let commands = map.remove(&agent_id).unwrap_or_default();
-    Json(commands)
+) -> axum::response::Response {
+    deliver_commands(&state, &agent_id, &headers).await
 }
 
 async fn ack_agent_command(
@@ -1738,15 +1774,15 @@ async fn put_syscheck_handler(
             .filter(|id| agent_in_scope(&state, &ctx, id))
             .collect()
     };
-    let mut map = state.pending_commands.write().unwrap();
-
     let mut affected = Vec::new();
     for agent_id in target_agents {
-        map.entry(agent_id.clone()).or_default().push(serde_json::json!({
+        let cmd = serde_json::json!({
             "command_id": uuid::Uuid::new_v4().to_string(),
             "action": "syscheck restart",
             "target": "all"
-        }));
+        });
+        state.pending_commands.write().unwrap().entry(agent_id.clone()).or_default().push(cmd.clone());
+        persist::save_commands(&state, &agent_id, &[cmd], false).await;
         affected.push(agent_id);
     }
 
@@ -3197,19 +3233,20 @@ async fn post_agent_packages(
         .vuln_scanner
         .scan_inventory(&payload.packages, &agent_id, &agent_name);
 
-    let mut vuln_guard = state.vulnerabilities.write().unwrap();
-    let previous_for_agent: Vec<VulnerabilityDetection> = vuln_guard
-        .iter()
-        .filter(|v| v.agent_id == agent_id)
-        .cloned()
-        .collect();
-
-    let (new_detected, newly_resolved) =
-        VulnerabilityScanner::diff_scans(&previous_for_agent, &new_scan);
-
-    vuln_guard.retain(|v| v.agent_id != agent_id);
-    vuln_guard.extend(new_scan.clone());
-    drop(vuln_guard);
+    // the guard ends with the block (it must not live across the awaits below)
+    let (new_detected, newly_resolved) = {
+        let mut vuln_guard = state.vulnerabilities.write().unwrap();
+        let previous_for_agent: Vec<VulnerabilityDetection> = vuln_guard
+            .iter()
+            .filter(|v| v.agent_id == agent_id)
+            .cloned()
+            .collect();
+        let diff = VulnerabilityScanner::diff_scans(&previous_for_agent, &new_scan);
+        vuln_guard.retain(|v| v.agent_id != agent_id);
+        vuln_guard.extend(new_scan.clone());
+        diff
+    };
+    persist::save_vulnerabilities(&state, &agent_id, &new_scan).await;
 
     for det in &new_detected {
         let (rule_id, rule_level) = match det.severity {
@@ -3264,8 +3301,9 @@ async fn post_agent_packages(
             data: HashMap::new(),
         };
 
-        let _ = state.broadcast_tx.send(alert.clone());
-        state.alerts.write().unwrap().push(alert);
+        // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
+        let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
+        record_alert(&state, &tenant, alert).await;
     }
 
     let active_count = new_scan.iter().filter(|v| v.status == DetectionStatus::Active).count();
@@ -3482,8 +3520,8 @@ async fn post_agent_fim_handler(
         agents.get(&agent_id).map(|a| a.name.clone()).unwrap_or_else(|| format!("agent-{}", agent_id))
     };
     let agent_db = state.wdb.get_or_create(&agent_id, &agent_name);
-    let mut db = agent_db.write().unwrap();
-    let delta = db.fim.upsert(entry);
+    // the guard ends with the statement (it must not live across the awaits below)
+    let delta = agent_db.write().unwrap().fim.upsert(entry);
 
     if let Some(ref d) = delta {
         let rule_id = match d.action {
@@ -3535,8 +3573,9 @@ async fn post_agent_fim_handler(
             data: HashMap::new(),
         };
 
-        let _ = state.broadcast_tx.send(alert.clone());
-        state.alerts.write().unwrap().push(alert);
+        // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
+        let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
+        record_alert(&state, &tenant, alert).await;
     }
 
     Json(serde_json::json!({
@@ -3760,8 +3799,9 @@ async fn post_agent_rootcheck_handler(
             data: HashMap::new(),
         };
 
-        let _ = state.broadcast_tx.send(alert.clone());
-        state.alerts.write().unwrap().push(alert);
+        // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
+        let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
+        record_alert(&state, &tenant, alert).await;
     }
 
     Json(serde_json::json!({
@@ -4402,7 +4442,6 @@ async fn post_active_response_block(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" })))
             .into_response();
     };
-    let mut list = state.active_responses.write().unwrap();
     let rec = ActiveResponseRecord {
         id: format!("ar-{}", uuid::Uuid::new_v4().to_string()[..8].to_string()),
         command: req.command.unwrap_or_else(|| "firewall-drop".to_string()),
@@ -4413,7 +4452,8 @@ async fn post_active_response_block(
         duration_seconds: req.duration_seconds.unwrap_or(3600),
         status: "Active".to_string(),
     };
-    list.insert(0, rec.clone());
+    state.active_responses.write().unwrap().insert(0, rec.clone());
+    persist::save_active_response(&state, &rec).await;
     (StatusCode::CREATED, Json(serde_json::json!({ "status": "success", "record": rec }))).into_response()
 }
 
@@ -4422,14 +4462,21 @@ async fn post_active_response_unblock(
     Extension(ctx): Extension<AuthCtx>,
     Json(req): Json<ArUnblockRequest>,
 ) -> impl IntoResponse {
-    let mut list = state.active_responses.write().unwrap();
-    let mut found = false;
-    for r in list.iter_mut() {
-        if r.target_ip == req.ip && r.status == "Active" && agent_in_scope(&state, &ctx, &r.agent_id) {
-            r.status = "Released".to_string();
-            found = true;
+    let released: Vec<ActiveResponseRecord> = {
+        let mut list = state.active_responses.write().unwrap();
+        let mut out = Vec::new();
+        for r in list.iter_mut() {
+            if r.target_ip == req.ip && r.status == "Active" && agent_in_scope(&state, &ctx, &r.agent_id) {
+                r.status = "Released".to_string();
+                out.push(r.clone());
+            }
         }
+        out
+    };
+    for r in &released {
+        persist::save_active_response(&state, r).await;
     }
+    let found = !released.is_empty();
     Json(serde_json::json!({
         "status": if found { "success" } else { "not_found" },
         "ip": req.ip
@@ -5210,12 +5257,14 @@ async fn deactivate_agent_handler(
     state.agents.write().unwrap().remove(&id);
     state.db.delete_agent(&ctx.scope(), &id).await;
     // The agent stops on its next command poll (or on its next upload: 410).
-    state.pending_commands.write().unwrap().entry(id.clone()).or_default().push(serde_json::json!({
+    let cmd = serde_json::json!({
         "command_id": format!("deactivate-{}", uuid::Uuid::new_v4()),
         "agent_id": id,
         "action": "deactivate",
         "target": "all"
-    }));
+    });
+    state.pending_commands.write().unwrap().entry(id.clone()).or_default().push(cmd.clone());
+    persist::save_commands(&state, &id, &[cmd], false).await;
     info!("Agent {} ('{}') deactivated in tenant {} by {}", id, entry.name, ctx.scope(), ctx.username);
     Json(serde_json::json!({ "status": "ok", "agent_id": id, "state": "deactivated" })).into_response()
 }
@@ -5271,4 +5320,15 @@ struct AgentStateQuery {
 async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<AgentStateQuery>) -> axum::response::Response {
     let st = if is_deactivated(&state, &q.agent_id) { "deactivated" } else { "active" };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()
+}
+
+#[cfg(test)]
+mod agent_key_tests {
+    #[test]
+    fn ct_eq() {
+        assert!(super::ct_eq(b"abc", b"abc"));
+        assert!(!super::ct_eq(b"abc", b"abd"));
+        assert!(!super::ct_eq(b"abc", b"abcd"));
+        assert!(!super::ct_eq(b"", b"x"));
+    }
 }

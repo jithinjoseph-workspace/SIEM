@@ -42,6 +42,14 @@ pub fn export_tenant_key(key: Option<&str>) {
     }
 }
 
+/// The agent's own key (its client.keys line), sent as `X-Agent-Key` when it
+/// fetches its commands.
+pub fn export_agent_key(key: &str) {
+    if !key.trim().is_empty() {
+        std::env::set_var("SIEM_AGENT_KEY", key.trim());
+    }
+}
+
 /// Wazuh agent names: letters, digits, '.', '_', '-' (anything else becomes '-').
 pub fn sanitize_name(name: &str) -> String {
     let s: String = name

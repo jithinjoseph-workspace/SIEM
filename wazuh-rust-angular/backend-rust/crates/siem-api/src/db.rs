@@ -147,6 +147,63 @@ pub struct ClickHouseDb {
     is_available: Arc<AtomicBool>,
 }
 
+/// The statements of a ClickHouse SQL script: `--` comments dropped, split
+/// on `;` outside string literals.
+fn sql_statements(sql: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote = false;
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        if quote {
+            cur.push(c);
+            if c == '\\' {
+                if let Some(n) = chars.next() {
+                    cur.push(n);
+                }
+            } else if c == '\'' {
+                quote = false;
+            }
+        } else if c == '\'' {
+            quote = true;
+            cur.push(c);
+        } else if c == '-' && chars.peek() == Some(&'-') {
+            while chars.peek().is_some_and(|&n| n != '\n') {
+                chars.next();
+            }
+        } else if c == ';' {
+            out.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(c);
+        }
+    }
+    out.push(cur);
+    out.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+}
+
+/// The global `ndr` schema of the NDR install (`<INSTALL_DIR>/config/clickhouse/init.sql`,
+/// which the ClickHouse container only loads on a fresh volume): auth-service reads
+/// `ndr.settings`, `ndr.announcements`, ... from it. Idempotent (IF NOT EXISTS).
+async fn apply_ndr_init_sql(root: &Client) {
+    let dir = std::env::var("INSTALL_DIR").unwrap_or_else(|_| ".".into());
+    let paths = [format!("{dir}/config/clickhouse/init.sql"), "./config/clickhouse/init.sql".into(), "../../ndr/config/clickhouse/init.sql".into()];
+    let Some((path, sql)) = paths.iter().find_map(|p| std::fs::read_to_string(p).ok().map(|s| (p.clone(), s))) else {
+        warn!("NDR init.sql not found (INSTALL_DIR={dir}); global ndr tables such as ndr.settings may be missing");
+        return;
+    };
+    let (mut ok, mut failed) = (0, 0);
+    for stmt in sql_statements(&sql) {
+        match root.query(&stmt).execute().await {
+            Ok(_) => ok += 1,
+            Err(e) => {
+                failed += 1;
+                warn!("init.sql statement failed: {}: {e}", stmt.lines().next().unwrap_or(""));
+            }
+        }
+    }
+    info!("Global ndr schema from {path}: {ok} statements applied, {failed} failed");
+}
+
 impl ClickHouseDb {
     pub async fn init() -> Self {
         let url = std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into());
@@ -181,6 +238,10 @@ impl ClickHouseDb {
                 };
             }
         };
+
+        if database == "ndr" {
+            apply_ndr_init_sql(&root_client).await;
+        }
 
         // Ensure global ndr.tenants table schema has ai_enabled and updated_at columns
         let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").execute().await;
@@ -273,19 +334,8 @@ impl ClickHouseDb {
         let _ = client.query(create_threat_intel_sql).execute().await;
 
         // Remaining SIEM data tables: every tenant database gets a copy of them.
-        let create_active_responses_sql = r#"
-            CREATE TABLE IF NOT EXISTS siem_active_responses (
-                id UUID DEFAULT generateUUIDv4(),
-                timestamp DateTime64(3, 'UTC'),
-                agent_id LowCardinality(String),
-                action LowCardinality(String),
-                target String,
-                success UInt8,
-                reverted UInt8 DEFAULT 0
-            ) ENGINE = MergeTree()
-            ORDER BY (timestamp, agent_id);
-        "#;
-        let _ = client.query(create_active_responses_sql).execute().await;
+        // active responses, vulnerability detections, queued agent commands
+        crate::persist::ensure_tables(&root_client, &database).await;
         let create_flows_sql = r#"
             CREATE TABLE IF NOT EXISTS ndr_network_flows (
                 id UUID DEFAULT generateUUIDv4(),
@@ -439,13 +489,15 @@ impl ClickHouseDb {
     }
 
     pub async fn insert_event(&self, event: &RawEvent) {
-        self.insert_events(std::slice::from_ref(event)).await
+        self.insert_events(std::slice::from_ref(event)).await;
     }
 
     /// One INSERT per tenant for the whole batch (ClickHouse makes a part per insert).
-    pub async fn insert_events(&self, events: &[RawEvent]) {
+    /// The tenants whose rows could not be written (empty when ClickHouse is not in use).
+    pub async fn insert_events(&self, events: &[RawEvent]) -> Vec<String> {
+        let mut failed = Vec::new();
         if !self.is_connected() {
-            return;
+            return failed;
         }
         let mut by_tenant: std::collections::BTreeMap<&str, Vec<ClickHouseEventRow>> = std::collections::BTreeMap::new();
         for event in events {
@@ -468,6 +520,7 @@ impl ClickHouseDb {
                 Ok(ins) => ins,
                 Err(e) => {
                     warn!("ClickHouse insert handle error: {}", e);
+                    failed.push(tenant.to_string());
                     continue;
                 }
             };
@@ -482,14 +535,20 @@ impl ClickHouseDb {
             if ok {
                 if let Err(e) = insert.end().await {
                     warn!("Failed to commit event to ClickHouse: {}", e);
+                    ok = false;
                 }
             }
+            if !ok {
+                failed.push(tenant.to_string());
+            }
         }
+        failed
     }
 
-    pub async fn insert_alert(&self, alert: &Alert) {
+    /// false when ClickHouse is in use and the row could not be written.
+    pub async fn insert_alert(&self, alert: &Alert) -> bool {
         if !self.is_connected() {
-            return;
+            return true;
         }
 
         let row = ClickHouseAlertRow {
@@ -517,18 +576,20 @@ impl ClickHouseDb {
             Ok(ins) => ins,
             Err(e) => {
                 warn!("ClickHouse insert handle error: {}", e);
-                return;
+                return false;
             }
         };
 
         if let Err(e) = insert.write(&row).await {
             warn!("Failed to stream alert to ClickHouse: {}", e);
-            return;
+            return false;
         }
 
         if let Err(e) = insert.end().await {
             warn!("Failed to commit alert to ClickHouse: {}", e);
+            return false;
         }
+        true
     }
 
     pub async fn fetch_alerts(&self, tenant_id: &str, limit: usize, min_level: u8) -> Option<Vec<ClickHouseAlertRow>> {
@@ -817,3 +878,12 @@ pub struct ClickHouseIncidentRow {
     pub status: String,
 }
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sql_statements_skip_comment_semicolons() {
+        let s = super::sql_statements("-- a; b\nCREATE x (a String, -- c; d\n b String DEFAULT 'x;y');\nINSERT 1;");
+        assert_eq!(s, vec!["CREATE x (a String, \n b String DEFAULT 'x;y')", "INSERT 1"]);
+    }
+}

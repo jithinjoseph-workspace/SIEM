@@ -49,17 +49,44 @@ CREATE TABLE IF NOT EXISTS ndr.siem_agents (
 ) ENGINE = ReplacingMergeTree(last_keepalive)
 ORDER BY (id);
 
--- 4. Active Response Remediation Audit Trail
+-- 4. Active Response Remediation Audit Trail (a release re-inserts the row with a newer updated_at)
+--    Same definitions as siem-api's persist.rs, which also creates them in every tenant database.
 CREATE TABLE IF NOT EXISTS ndr.siem_active_responses (
-    id UUID DEFAULT generateUUIDv4(),
-    timestamp DateTime64(3, 'UTC'),
+    id String,
+    triggered_at UInt64,
     agent_id LowCardinality(String),
-    action LowCardinality(String),
-    target String,
-    success UInt8,
-    reverted UInt8 DEFAULT 0
-) ENGINE = MergeTree()
-ORDER BY (timestamp, agent_id);
+    command LowCardinality(String),
+    target_ip String,
+    reason String,
+    duration_seconds UInt64,
+    status LowCardinality(String),
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY id;
+
+-- 4b. Vulnerability detections: a snapshot per agent scan, the latest one is current
+CREATE TABLE IF NOT EXISTS ndr.siem_vulnerabilities (
+    snapshot_at UInt64,
+    agent_id LowCardinality(String),
+    cve_id String,
+    package_name String,
+    severity LowCardinality(String),
+    status LowCardinality(String),
+    detection String
+) ENGINE = MergeTree
+ORDER BY (agent_id, snapshot_at)
+TTL toDateTime(intDiv(snapshot_at, 1000)) + INTERVAL 180 DAY;
+
+-- 4c. Commands queued for agents until they fetch them (delivered = 1)
+CREATE TABLE IF NOT EXISTS ndr.siem_agent_commands (
+    agent_id LowCardinality(String),
+    command_id String,
+    payload String,
+    created_at UInt64,
+    delivered UInt8,
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (agent_id, command_id);
 
 -- 5. NDR Network Flows (Zeek / Suricata / eBPF flow logs)
 CREATE TABLE IF NOT EXISTS ndr.ndr_network_flows (

@@ -416,6 +416,7 @@
                 <span class="text-xs text-slate-400">Manager URL (reachable from the endpoint)</span>
                 <input class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
                   [ngModel]="deployManagerUrl()" (ngModelChange)="deployManagerUrl.set($event)" />
+                <span *ngIf="deployManagerLoopback()" class="block mt-1 text-xs text-amber-400">This address only works when the agent runs on this same machine. For other endpoints use http://&lt;this server's LAN IP&gt;:8088 (siem-api) and allow TCP 1514 and 8088 in its firewall.</span>
               </label>
               <label class="block">
                 <span class="text-xs text-slate-400">Agent name (auto-generated, editable)</span>

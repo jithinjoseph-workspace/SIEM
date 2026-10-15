@@ -441,6 +441,7 @@ impl Sca {
             self.info("Module disabled. Exiting.");
             return;
         }
+        self.info("Module started.");
         if self.cfg.policies.is_empty() {
             self.info("No policies defined. Exiting.");
             return;
@@ -975,6 +976,7 @@ impl Sca {
                         self.d2(format!("Check directory rule result: {found}"));
                     }
                     3 => {
+                        eng.load_process_list();
                         self.d2(cat(&[b"Checking process: '", value, b"'"]));
                         if eng.check_process_is_running(value, exp) != 0 {
                             self.d2("Process found.");

@@ -49,7 +49,7 @@ TTL timestamp + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192, deduplicate_merge_projection_mode = 'rebuild';
 
 -- Migration: add sensor_id index and projection to existing tables
--- (CREATE TABLE above has these inline for fresh installs;
+-- (CREATE TABLE above has these inline for fresh installs,
 --  these ALTER statements are idempotent and handle existing tables)
 ALTER TABLE ndr.ndr_events ON CLUSTER ndr_cluster ADD INDEX IF NOT EXISTS idx_sensor_id sensor_id TYPE bloom_filter GRANULARITY 1;
 ALTER TABLE ndr.ndr_events ON CLUSTER ndr_cluster ADD PROJECTION IF NOT EXISTS proj_by_sensor (SELECT * ORDER BY (tenant_id, sensor_id, timestamp));
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS ndr.settings ON CLUSTER ndr_cluster
 ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/ndr/settings', '{replica}', updated_at)
 ORDER BY key;
 
--- Active IP blocks — created by SOAR playbooks or manual action; revoked from UI
+-- Active IP blocks — created by SOAR playbooks or manual action, revoked from UI
 CREATE TABLE IF NOT EXISTS ndr.active_blocks ON CLUSTER ndr_cluster
 (
     id               String,
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS ndr.trusted_domains ON CLUSTER ndr_cluster
 (
     domain      String,
     category    String,   -- 'dns_beacon', 'threat_intel', or 'both'
-    tenant_id   String,   -- '' = global/shared; specific value = that tenant only
+    tenant_id   String,   -- '' = global/shared, specific value = that tenant only
     note        String,
     added_by    String,
     added_at    DateTime DEFAULT now()
@@ -966,7 +966,7 @@ ALTER TABLE ndr.soar_case_comments ON CLUSTER ndr_cluster MODIFY TTL created_at 
 
 
 -- ── Unified Alerts — ONE table for ALL alert sources (NDR + SIEM + corroborated) ──
--- ndr-engine writes here with source='ndr'; siem-engine with source='siem';
+-- ndr-engine writes here with source='ndr', siem-engine with source='siem',
 -- correlation engine writes corroborated alerts with source='corroborated'.
 CREATE TABLE IF NOT EXISTS ndr.unified_alerts ON CLUSTER ndr_cluster
 (

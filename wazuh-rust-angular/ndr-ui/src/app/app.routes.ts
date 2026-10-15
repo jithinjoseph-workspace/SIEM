@@ -146,6 +146,7 @@ export const routes: Routes = [
       { path: 'profile',        loadComponent: () => import('../pages/tenant-admin/profile/profile').then(m => m.Profile) },
       { path: 'setup',          loadComponent: () => import('../pages/tenant-admin/setup/setup').then(m => m.Setup) },
       { path: 'siem-sources',   loadComponent: () => import('../pages/siem/sources/siem-sources').then(m => m.SiemSources) },
+      { path: 'syslog-devices', loadComponent: () => import('../pages/tenant-admin/syslog-devices/syslog-devices').then(m => m.SyslogDevices) },
       { path: 'settings',       loadComponent: () => import('../pages/tenant-admin/settings/settings').then(m => m.TenantSettings) },
       { path: 'support',        loadComponent: () => import('../pages/tenant-admin/support/support').then(m => m.TenantSupport) },
     ]

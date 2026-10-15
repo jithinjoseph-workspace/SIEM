@@ -1897,6 +1897,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcgen"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
+dependencies = [
+ "pem",
+ "ring",
+ "rustls-pki-types",
+ "time",
+ "yasna",
+]
+
+[[package]]
 name = "rdkafka"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2446,10 +2459,13 @@ dependencies = [
  "clickhouse 0.13.3",
  "futures-util",
  "provigil-common",
+ "rcgen",
  "redis",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "siem-agent-upgrade",
  "siem-authd",
  "siem-cdb",
@@ -2469,6 +2485,7 @@ dependencies = [
  "siem-vuln-detector",
  "siem-wdb",
  "tokio",
+ "tokio-rustls",
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
@@ -2941,18 +2958,34 @@ name = "siem-syscheckd"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
+ "libz-sys",
+ "md-5",
+ "parking_lot",
  "quick-xml",
  "regex",
  "serde",
  "serde_json",
  "sha1",
  "sha2",
+ "siem-cjson",
+ "siem-config",
  "siem-core",
+ "siem-dbsync",
+ "siem-execd",
+ "siem-fileop",
+ "siem-ipc",
+ "siem-log",
+ "siem-njson",
+ "siem-regex",
+ "siem-sysinfo",
  "siem-wdb",
+ "siem-xml",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3067,6 +3100,8 @@ dependencies = [
  "siem-ipc",
  "siem-log",
  "siem-logcollector",
+ "siem-sca",
+ "siem-syscheckd",
  "siem-syscollector",
  "siem-sysinfo",
  "siem-xml",
@@ -4085,6 +4120,15 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
+]
 
 [[package]]
 name = "yoke"

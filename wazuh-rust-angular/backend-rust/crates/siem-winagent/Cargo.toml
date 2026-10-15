@@ -16,6 +16,8 @@ siem-fileop = { path = "../siem-fileop" }
 siem-agentd = { path = "../siem-agentd" }
 siem-logcollector = { path = "../siem-logcollector" }
 siem-execd = { path = "../siem-execd" }
+siem-syscheckd = { path = "../siem-syscheckd" }
+siem-sca = { path = "../siem-sca" }
 siem-syscollector = { path = "../siem-syscollector" }
 siem-sysinfo = { path = "../siem-sysinfo" }
 siem-cjson = { path = "../siem-cjson" }

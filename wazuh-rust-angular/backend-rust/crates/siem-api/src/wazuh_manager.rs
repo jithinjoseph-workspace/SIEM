@@ -22,7 +22,7 @@ use siem_core::{Agent, AgentAlertInfo, AgentStatus, Alert, DecodedFields, Decode
 use siem_ipc::wdbc::WdbQuery;
 use tracing::{info, warn};
 
-use crate::{record_alert, tenancy, AppState};
+use crate::{tenancy, AppState};
 
 /// The daemons, in start order.
 const DAEMONS: [&str; 4] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd"];
@@ -174,8 +174,23 @@ fn prepare_home(home: &Path) -> Result<(), String> {
 }
 
 /// The files of the Windows agent package (`/downloads/windows/<file>`).
-pub const WINDOWS_AGENT_FILES: [&str; 6] =
-    ["wazuh-agent.exe", "internal_options.conf", "local_internal_options.conf", "vista_sec.txt", "help.txt", "norm_config.json"];
+pub const WINDOWS_AGENT_FILES: &[&str] = &[
+    "wazuh-agent.exe",
+    "internal_options.conf",
+    "local_internal_options.conf",
+    "vista_sec.txt",
+    "help.txt",
+    "norm_config.json",
+    // rulesetsca: the MSI installs the one matching the OS (wazuh-installer.wxs)
+    "cis_win10_enterprise.yml",
+    "cis_win11_enterprise.yml",
+    "cis_win2012r2.yml",
+    "cis_win2012_non_r2.yml",
+    "cis_win2016.yml",
+    "cis_win2019.yml",
+    "cis_win2022.yml",
+    "cis_win2025.yml",
+];
 
 fn agent_dist_dir() -> PathBuf {
     crate::data_file_path("agent-dist").join("windows")
@@ -200,6 +215,12 @@ fn prepare_agent_dist() {
             let _ = std::fs::copy(from, dst);
         }
     }
+    for f in WINDOWS_AGENT_FILES.iter().filter(|f| f.ends_with(".yml")) {
+        let dst = dir.join(f);
+        if !dst.exists() {
+            let _ = std::fs::copy(src.join("ruleset/sca/windows").join(f), dst);
+        }
+    }
 }
 
 /// A file of the Windows agent package: `data/agent-dist/windows/<name>`,
@@ -221,7 +242,10 @@ pub fn windows_agent_file(name: &str) -> Option<PathBuf> {
 /// with the manager address (`WAZUH_MANAGER`) set. The key comes from the
 /// enrollment API, so the agent does not enroll on 1515 itself.
 pub fn windows_agent_conf(manager: &str) -> Option<String> {
-    let ok = !manager.is_empty() && manager.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '_'));
+    let manager = manager.trim_start_matches('[').trim_end_matches(']');
+    // "localhost" resolves to ::1 first on Windows, and remoted listens on IPv4 (0.0.0.0)
+    let manager = if manager.eq_ignore_ascii_case("localhost") || manager == "::1" { "127.0.0.1" } else { manager };
+    let ok =!manager.is_empty() && manager.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '_'));
     if !ok {
         return None;
     }
@@ -749,9 +773,21 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
     for v in vs {
         let alert = to_alert(&state, &v);
         let tenant = tenant_of(&state, &alert.agent.id);
-        record_alert(&state, &tenant, alert).await;
+        let alert = tenancy::tag_alert(alert, &tenant);
+        // the file offset moves on only once ClickHouse has the row
+        let mut wait = RETRY_MIN;
+        while !state.db.insert_alert(&alert).await {
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(RETRY_MAX);
+        }
+        state.alerts.write().unwrap().push(alert.clone());
+        let _ = state.broadcast_tx.send(alert);
     }
 }
+
+/// Backoff of the ClickHouse retries (the alerts/archives files hold the data meanwhile).
+const RETRY_MIN: Duration = Duration::from_secs(1);
+const RETRY_MAX: Duration = Duration::from_secs(30);
 
 fn event_source(location: &str, decoder: &str) -> EventSource {
     match (location, decoder) {
@@ -768,7 +804,22 @@ fn event_source(location: &str, decoder: &str) -> EventSource {
 /// One `archives.json` line (every event analysisd received) as a platform event.
 async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     let events: Vec<RawEvent> = vs.iter().map(|v| to_event(&state, v)).collect();
-    state.db.insert_events(&events).await;
+    // retry the tenants that failed until ClickHouse has them; the offset is saved after
+    let mut pending: Vec<&RawEvent> = events.iter().collect();
+    let mut wait = RETRY_MIN;
+    loop {
+        let batch: Vec<RawEvent> = pending.iter().map(|e| (*e).clone()).collect();
+        let failed = state.db.insert_events(&batch).await;
+        if failed.is_empty() {
+            break;
+        }
+        pending.retain(|e| {
+            let tenant = e.metadata.get("tenant_id").map(String::as_str).unwrap_or(tenancy::DEFAULT_TENANT);
+            failed.iter().any(|t| t == tenant)
+        });
+        tokio::time::sleep(wait).await;
+        wait = (wait * 2).min(RETRY_MAX);
+    }
     let mut ev = state.events.write().unwrap();
     ev.extend(events);
     // The in-memory copy is a recent window; ClickHouse keeps everything.

@@ -28,8 +28,16 @@
         <lucide-angular [img]="PlayIcon" class="w-4 h-4" [class.animate-spin]="isScanning()"></lucide-angular>
         {{ isScanning() ? 'Scanning Fleet...' : 'Run CVE Scan Now' }}
       </button>
+
+      <label *ngIf="isPlatformAdmin" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition cursor-pointer" title="Import a CVE feed JSON file (shared by every tenant)">
+        <lucide-angular [img]="DbIcon" class="w-4 h-4"></lucide-angular>
+        Update CVE Feed
+        <input type="file" accept=".json,application/json" class="hidden" (change)="uploadFeed($event)" />
+      </label>
     </div>
   </div>
+
+  <div *ngIf="scanMessage()" class="text-sm text-slate-300">{{ scanMessage() }}</div>
 
   <!-- KPI Cards -->
   <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">

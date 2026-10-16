@@ -2,8 +2,8 @@
 //! config/wmodules-config.c as the Windows agent builds them): `wm_config`,
 //! `wm_check`, the module threads, `modulesSync` and `wmcom_dispatch`.
 //!
-//! Ported modules: agent-upgrade, syscollector, SCA. The other wodles the C
-//! agent can run (command, osquery, open-scap, cis-cat) are read as the C reads
+//! Ported modules: agent-upgrade, syscollector, SCA, command, osquery. The other
+//! wodles the C agent can run (open-scap, cis-cat) are read as the C reads
 //! unknown-but-valid ones: they are skipped until their ports land.
 
 use std::sync::{Arc, OnceLock};
@@ -28,17 +28,25 @@ enum Module {
     Upgrade(Arc<crate::upgrade::Config>),
     Syscollector(Arc<WmSysModule>),
     Sca(Arc<siem_sca::wm::Sca>),
+    /// The module tag (`command:<tag>`; None when `<tag>` was missing) and the command.
+    Command(Option<String>, crate::wm_command::WmCommand),
+    Osquery(crate::wm_osquery::WmOsquery),
 }
 
 impl Module {
-    fn tag(&self) -> &'static str {
+    fn tag(&self) -> Option<&str> {
         match self {
-            Module::Upgrade(_) => crate::upgrade::NAME,
-            Module::Syscollector(_) => wmsys::NAME,
-            Module::Sca(_) => siem_sca::wm::NAME,
+            Module::Upgrade(_) => Some(crate::upgrade::NAME),
+            Module::Syscollector(_) => Some(wmsys::NAME),
+            Module::Sca(_) => Some(siem_sca::wm::NAME),
+            Module::Command(t, _) => t.as_deref(),
+            Module::Osquery(_) => Some(crate::wm_osquery::NAME),
         }
     }
 }
+
+/// The `command` wodles read so far, in order: (module tag, command).
+type Commands = Vec<(Option<String>, crate::wm_command::WmCommand)>;
 
 /// `wmodules` and the internal options `wm_config` reads.
 pub struct WModules {
@@ -46,8 +54,36 @@ pub struct WModules {
     task_nice: i32,
     max_eps: i32,
     kill_timeout: i32,
+    /// `wazuh_command.remote_commands`
+    remote_commands: bool,
+    /// `agent.remote_conf` (osquery reads the labels of agent.conf)
+    remote_conf: bool,
     log: Arc<WLog>,
     sys_env: OnceLock<Arc<Env>>,
+}
+
+/// `Test_WModule`: the module readers into throw-away configurations.
+pub struct WModuleTest {
+    sys: Option<WmSys>,
+    sca: Option<siem_sca::wm::WmSca>,
+    up: crate::upgrade::Config,
+    log: Arc<WLog>,
+    order: Vec<&'static str>,
+    commands: Commands,
+    osquery: Option<crate::wm_osquery::WmOsquery>,
+}
+
+impl WModuleTest {
+    pub fn new(log: Arc<WLog>) -> Self {
+        Self { sys: None, sca: None, up: Default::default(), log, order: Vec::new(), commands: Vec::new(), osquery: None }
+    }
+}
+
+impl ConfigHandler for WModuleTest {
+    fn section(&mut self, ctx: &mut ConfigContext, xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> CResult<()> {
+        let mut h = Handler { sys: &mut self.sys, sca: &mut self.sca, up: &mut self.up, log: &self.log, order: &mut self.order, commands: &mut self.commands, osquery: &mut self.osquery, agent_cfg: true };
+        h.section(ctx, xml, section, node, children)
+    }
 }
 
 /// The `<wodle>` sections (`Read_WModule`).
@@ -57,6 +93,10 @@ struct Handler<'a> {
     up: &'a mut crate::upgrade::Config,
     log: &'a WLog,
     order: &'a mut Vec<&'static str>,
+    commands: &'a mut Commands,
+    osquery: &'a mut Option<crate::wm_osquery::WmOsquery>,
+    /// Reading agent.conf (`modules & CAGENT_CONFIG`).
+    agent_cfg: bool,
 }
 
 impl ConfigHandler for Handler<'_> {
@@ -109,8 +149,28 @@ impl ConfigHandler for Handler<'_> {
                 }
                 r.map_err(ConfigError::new)?;
             }
+            "command" => {
+                // Read_WModule reuses a module whose tag equals the wodle name ("command": an empty <tag>)
+                let reuse = self.commands.iter().position(|(t, _)| t.as_deref() == Some(crate::wm_command::NAME));
+                let mut tag = reuse.and_then(|i| self.commands[i].0.clone());
+                let c = crate::wm_command::read(self.log, children, self.agent_cfg, &mut tag).map_err(|_| ConfigError::new(""))?;
+                match reuse {
+                    Some(i) => self.commands[i] = (tag, c),
+                    None => {
+                        self.order.push(crate::wm_command::NAME);
+                        self.commands.push((tag, c));
+                    }
+                }
+            }
+            "osquery" => {
+                // Read_WModule reuses the module tagged "osquery": a new configuration replaces it
+                if !self.order.contains(&crate::wm_osquery::NAME) {
+                    self.order.push(crate::wm_osquery::NAME);
+                }
+                *self.osquery = Some(crate::wm_osquery::read(self.log, children).map_err(|_| ConfigError::new(""))?);
+            }
             // Read by modules not ported yet (no message in the C either)
-            "command" | "osquery" | "open-scap" | "cis-cat" => {}
+            "open-scap" | "cis-cat" => {}
             "aws-s3" | "aws-cloudtrail" => ctx.warn(format!("The '{name}' module is not available on Windows systems. Ignoring.")),
             "docker-listener" => ctx.warn(format!("The '{name}' module is not available on Windows systems. Ignoring it.")),
             "vulnerability-detector" | "azure-logs" | "agent-key-polling" => ctx.warn(format!("The '{name}' module only works for the manager")),
@@ -138,6 +198,47 @@ fn tagged(log: &Arc<WLog>, tag: &'static str) -> Arc<dyn Fn(LogLevel, &str) + Se
     })
 }
 
+/// The `<labels>` of a read.
+struct LabelsHandler<'a>(&'a mut Vec<siem_config::labels::Label>);
+
+impl ConfigHandler for LabelsHandler<'_> {
+    fn section(&mut self, ctx: &mut ConfigContext, _xml: &OsXml, section: Section, _node: &XmlNode, children: Option<&[XmlNode]>) -> CResult<()> {
+        if section == Section::Labels {
+            siem_config::labels::read_labels(ctx, children.unwrap_or(&[]), self.0)?;
+        }
+        Ok(())
+    }
+}
+
+/// Logs what a `ReadConfig` collected.
+fn flush_log(log: &WLog, ctx: &mut ConfigContext) {
+    use siem_config::LogLevel as L;
+    for (lv, m) in ctx.log.drain(..) {
+        match lv {
+            L::Debug1 => log.debug1(m),
+            L::Debug2 => log.debug2(m),
+            L::Info => log.info(m),
+            L::Warn => log.warn(m),
+            L::Error => log.error(m),
+        }
+    }
+}
+
+/// `ReadConfig(CLABELS, OSSECCONF)` then `ReadConfig(CLABELS | CAGENT_CONFIG, AGENTCONFIG)`.
+fn read_labels(log: &WLog, remote_conf: bool) -> std::result::Result<Vec<siem_config::labels::Label>, ()> {
+    use siem_config::modules::{CAGENT_CONFIG, CLABELS};
+    let mut labels = Vec::new();
+    let mut ctx = ConfigContext::new(Platform::AGENT);
+    let r = read_config(&mut ctx, CLABELS, OSSECCONF, None, &mut LabelsHandler(&mut labels));
+    flush_log(log, &mut ctx);
+    r.map_err(|_| ())?;
+    let mut ctx = ConfigContext::new(Platform::AGENT);
+    ctx.agent = siem_agentd::config::agent_identity();
+    let _ = read_config(&mut ctx, CLABELS | CAGENT_CONFIG, AGENTCONFIG, Some(remote_conf), &mut LabelsHandler(&mut labels));
+    flush_log(log, &mut ctx);
+    Ok(labels)
+}
+
 /// `WM_SYS_LOGTAG` (ARGV0 ":syscollector")
 const WM_SYS_LOGTAG: &str = "wazuh-agent:syscollector";
 
@@ -158,7 +259,9 @@ impl WModules {
             siem_agentd::config::flush_ctx(ag, &mut ctx);
             return Err(());
         }
-        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order });
+        let mut commands: Commands = Vec::new();
+        let mut osquery: Option<crate::wm_osquery::WmOsquery> = None;
+        let r = read_config(&mut ctx, siem_config::modules::CWMODULE, OSSECCONF, None, &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order, commands: &mut commands, osquery: &mut osquery, agent_cfg: false });
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         if r.is_err() {
             return Err(());
@@ -172,11 +275,24 @@ impl WModules {
             siem_config::modules::CWMODULE | siem_config::modules::CAGENT_CONFIG,
             AGENTCONFIG,
             remote,
-            &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order },
+            &mut Handler { sys: &mut sys, sca: &mut sca, up: &mut up, log: &ag.log, order: &mut order, commands: &mut commands, osquery: &mut osquery, agent_cfg: true },
         );
         siem_agentd::config::flush_ctx(ag, &mut ctx);
         let mut modules = Vec::new();
+        let mut commands = commands.into_iter();
         for tag in order {
+            if tag == crate::wm_command::NAME {
+                if let Some((t, c)) = commands.next() {
+                    modules.push(Module::Command(t, c));
+                }
+                continue;
+            }
+            if tag == crate::wm_osquery::NAME {
+                if let Some(o) = osquery.take() {
+                    modules.push(Module::Osquery(o));
+                }
+                continue;
+            }
             if tag == crate::upgrade::NAME {
                 modules.push(Module::Upgrade(Arc::new(up.clone())));
             } else if tag == wmsys::NAME {
@@ -207,7 +323,10 @@ impl WModules {
                 }
             }
         }
-        Ok(WModules { modules, task_nice, max_eps, kill_timeout, log: ag.log.clone(), sys_env: OnceLock::new() })
+        // getDefine_Int("wazuh_command", "remote_commands", 0, 1), read by each command thread in C
+        let remote_commands = modules.iter().any(|m| matches!(m, Module::Command(..))) && ag.define_int("wazuh_command", "remote_commands", 0, 1) != 0;
+        let remote_conf = ag.define_int("agent", "remote_conf", 0, 1) != 0;
+        Ok(WModules { modules, task_nice, max_eps, kill_timeout, remote_commands, remote_conf, log: ag.log.clone(), sys_env: OnceLock::new() })
     }
 
     /// `wm_check()`: false when no module is configured.
@@ -226,6 +345,16 @@ impl WModules {
                 Module::Sca(s) => {
                     let s = s.clone();
                     let _ = std::thread::Builder::new().name("wm_sca_main".into()).spawn(move || s.main());
+                }
+                Module::Command(_, c) => {
+                    let (c, log, eps, remote) = (c.clone(), self.log.clone(), self.max_eps, self.remote_commands);
+                    let _ = std::thread::Builder::new().name("wm_command_main".into()).spawn(move || crate::wm_command::main(c, log, eps, remote));
+                }
+                Module::Osquery(o) => {
+                    let (l, remote) = (self.log.clone(), self.remote_conf);
+                    let env = crate::wm_osquery::Env { log: self.log.clone(), max_eps: self.max_eps, read_labels: Box::new(move || read_labels(&l, remote)) };
+                    let o = o.clone();
+                    let _ = std::thread::Builder::new().name("wm_osquery_main".into()).spawn(move || crate::wm_osquery::main(o, env));
                 }
                 Module::Syscollector(sys) => {
                     let log = tagged(&self.log, WM_SYS_LOGTAG);
@@ -256,6 +385,17 @@ impl WModules {
         }
     }
 
+    /// `stop_wmodules`: the modules' `stop` callbacks (only syscollector has one on Windows).
+    pub fn stop_wmodules(&self) {
+        for m in &self.modules {
+            if let Module::Syscollector(s) = m {
+                if let Some(env) = self.sys_env.get() {
+                    s.stop(env);
+                }
+            }
+        }
+    }
+
     /// `wm_sca_push_request_win(msg)`
     pub fn sca_push(&self, msg: &[u8]) {
         for m in &self.modules {
@@ -277,13 +417,13 @@ impl WModules {
             }
             cur = None;
             for m in &self.modules {
-                if args.contains(m.tag()) {
+                if m.tag().is_some_and(|t| args.contains(t)) {
                     cur = Some(m);
                     ret = 0;
                     if args.contains("dbsync") {
                         ret = match m {
                             Module::Syscollector(s) => s.sync_message(args),
-                            Module::Sca(_) | Module::Upgrade(_) => -1,
+                            Module::Sca(_) | Module::Upgrade(_) | Module::Command(..) | Module::Osquery(_) => -1,
                         };
                     }
                     break;
@@ -295,7 +435,7 @@ impl WModules {
             }
         }
         if ret != 0 {
-            self.log.error(format!("At modulesSync(): Unable to sync module '{}': ({ret})", cur.map(|m| m.tag()).unwrap_or("")));
+            self.log.error(format!("At modulesSync(): Unable to sync module '{}': ({ret})", cur.and_then(|m| m.tag()).unwrap_or("")));
         }
         ret
     }
@@ -322,6 +462,12 @@ impl WModules {
                 }
                 Module::Sca(s) => {
                     arr.push(siem_sca::wm::wm_sca_dump(&s.cfg));
+                }
+                Module::Command(_, c) => {
+                    arr.push(crate::wm_command::dump(c));
+                }
+                Module::Osquery(o) => {
+                    arr.push(crate::wm_osquery::dump(o));
                 }
             }
         }
@@ -374,7 +520,7 @@ impl WModules {
                 return br#"err {"error":1,"message":"Module query needs arguments"}"#.to_vec();
             };
             let name = &q[..sp];
-            return if self.modules.iter().any(|m| m.tag() == name) {
+            return if self.modules.iter().any(|m| m.tag() == Some(name)) {
                 br#"err {"error":3,"message":"This module does not support queries"}"#.to_vec()
             } else {
                 br#"err {"error":2,"message":"Module not found or not configured"}"#.to_vec()

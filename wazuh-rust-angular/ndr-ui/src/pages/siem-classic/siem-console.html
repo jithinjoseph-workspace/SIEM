@@ -1308,7 +1308,14 @@
       <!-- Manual Remediation Dispatch Form -->
       <div class="card p-4 mb-4">
         <h3 class="text-sm font-bold text-white mb-3">MANUAL ACTIVE RESPONSE DISPATCH</h3>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div>
+            <label class="block text-xs text-muted mb-1">AGENT</label>
+            <select class="siem-input w-full" [ngModel]="arAgentId()" (ngModelChange)="arAgentId.set($event)">
+              <option value="">Select an agent</option>
+              <option *ngFor="let a of agents()" [value]="a.id">{{ a.id }} · {{ a.name }} ({{ a.status }})</option>
+            </select>
+          </div>
           <div>
             <label class="block text-xs text-muted mb-1">TARGET IP ADDRESS</label>
             <input type="text" class="siem-input w-full mono" [ngModel]="arTargetIp()" (ngModelChange)="arTargetIp.set($event)" placeholder="e.g. 198.51.100.42" />
@@ -1319,19 +1326,19 @@
               <option [value]="600">10 Minutes (600s)</option>
               <option [value]="3600">1 Hour (3600s)</option>
               <option [value]="86400">24 Hours (86400s)</option>
-              <option [value]="0">Permanent (0s)</option>
             </select>
           </div>
           <div class="md:col-span-2">
             <label class="block text-xs text-muted mb-1">REASON / AUDIT RATIONALE</label>
             <div class="flex gap-2">
               <input type="text" class="siem-input flex-1" [ngModel]="arReason()" (ngModelChange)="arReason.set($event)" placeholder="Reason for blocking..." />
-              <button class="btn btn-danger btn-sm whitespace-nowrap" [disabled]="isBlocking()" (click)="blockIpAction()">
+              <button class="btn btn-danger btn-sm whitespace-nowrap" [disabled]="isBlocking() || !arAgentId() || !arTargetIp().trim()" (click)="blockIpAction()">
                 {{ isBlocking() ? 'Deploying Drop...' : 'Block IP Now' }}
               </button>
             </div>
           </div>
         </div>
+        <div *ngIf="arFeedback()" class="text-xs mt-2">{{ arFeedback() }}</div>
       </div>
 
       <!-- Active Responses History Table -->

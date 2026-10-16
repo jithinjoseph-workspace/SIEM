@@ -79,9 +79,12 @@ impl AuthCtx {
         normalize_tenant(&self.tenant_id)
     }
 
-    /// Page permission check, as in the UI: admin roles have every page.
+    /// Page permission check, as in the UI (`AuthService.hasPermission`): admin roles have
+    /// every page; others need the page, `all`, or for SIEM pages the `siem` suite.
     pub fn has_permission(&self, perm: &str) -> bool {
-        self.is_super() || self.is_tenant_admin() || self.permissions.iter().any(|p| p == perm || p == "all")
+        self.is_super()
+            || self.is_tenant_admin()
+            || self.permissions.iter().any(|p| p == perm || p == "all" || (p == "siem" && perm.starts_with("siem")))
     }
 
     /// Whether the caller administers `tenant`.
@@ -555,5 +558,17 @@ mod tests {
         c.requested_tenant = None;
         c.tenant_id = "default".into();
         assert_eq!(c.scope(), "default");
+    }
+
+    #[test]
+    fn page_permissions() {
+        let mut c = AuthCtx { username: "u".into(), role: "analyst".into(), tenant_id: "acm".into(), permissions: vec![], features: vec![], requested_tenant: None };
+        assert!(!c.has_permission("siem-agents"));
+        c.permissions = vec!["siem-agents".into()];
+        assert!(c.has_permission("siem-agents") && !c.has_permission("siem-fim"));
+        c.permissions = vec!["siem".into()];
+        assert!(c.has_permission("siem-fim") && !c.has_permission("dashboard"));
+        c.permissions = vec!["all".into()];
+        assert!(c.has_permission("dashboard"));
     }
 }

@@ -167,6 +167,7 @@ fn prepare_home(home: &Path) -> Result<(), String> {
     if !conf.exists() {
         std::fs::write(&conf, ossec_conf()).map_err(|e| format!("ossec.conf: {e}"))?;
     }
+    ensure_ar_commands(&conf);
     if !keys_file(home).exists() {
         std::fs::write(keys_file(home), "").map_err(|e| format!("client.keys: {e}"))?;
     }
@@ -176,6 +177,10 @@ fn prepare_home(home: &Path) -> Result<(), String> {
 /// The files of the Windows agent package (`/downloads/windows/<file>`).
 pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "wazuh-agent.exe",
+    // active-responsein (siem-active-response)
+    "netsh.exe",
+    "restart-wazuh.exe",
+    "route-null.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -230,7 +235,7 @@ pub fn windows_agent_file(name: &str) -> Option<PathBuf> {
         return None;
     }
     let mut cands = vec![agent_dist_dir().join(name)];
-    if name == "wazuh-agent.exe" {
+    if name.ends_with(".exe") {
         for rel in ["target/x86_64-pc-windows-gnu/release", "target/release", "backend-rust/target/x86_64-pc-windows-gnu/release"] {
             cands.push(PathBuf::from(rel).join(name));
         }
@@ -380,9 +385,9 @@ fn spawn(home: &Path, d: &str) -> std::io::Result<Child> {
 fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>) {
     let mut first = Some(first);
     loop {
-        if let Some(m) = ready_marker(&home, d) {
-            let _ = std::fs::remove_file(&m);
-        }
+        // the marker is kept (not deleted): a restarted receiver takes its old port back
+        // from it, so senders still connected to that port keep delivering
+        let spawned = std::time::SystemTime::now();
         match spawn(&home, d) {
             Ok(mut child) => {
                 let pid = child.id();
@@ -397,7 +402,7 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     // The next daemon starts once this one listens.
                     if let Some(m) = ready_marker(&home, d) {
                         for _ in 0..300 {
-                            if m.exists() {
+                            if m.metadata().and_then(|x| x.modified()).is_ok_and(|t| t >= spawned) {
                                 break;
                             }
                             std::thread::sleep(Duration::from_millis(100));
@@ -458,6 +463,36 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
     }
 }
 
+/// Wazuh API `set_agent_group_relationship` (override): the agent's whole group list.
+pub async fn set_agent_groups(id: &str, groups: &[String]) -> bool {
+    let Ok(n) = id.parse::<i64>() else { return false };
+    let set = serde_json::json!({ "mode": "override", "sync_status": "syncreq", "data": [{ "id": n, "groups": groups }] });
+    match wdb().query(&format!("global set-agent-groups {set}")).await {
+        Ok(r) if r.starts_with("ok") => true,
+        Ok(r) => {
+            warn!("Wazuh manager: set-agent-groups {id}: {r}");
+            false
+        }
+        Err(e) => {
+            warn!("Wazuh manager: set-agent-groups {id}: {e}");
+            false
+        }
+    }
+}
+
+/// What wm_database does when it finds a new or removed `etc/shared` folder
+/// (`wdb_insert_group` / `wdb_remove_group_db`), done now instead of on its next sync.
+pub async fn sync_group(name: &str, exists: bool) -> bool {
+    let cmd = if exists { "insert-agent-group" } else { "delete-group" };
+    match wdb().query(&format!("global {cmd} {name}")).await {
+        Ok(r) if r.starts_with("ok") => true,
+        r => {
+            warn!("Wazuh manager: {cmd} {name}: {r:?}");
+            false
+        }
+    }
+}
+
 /// `wdb_remove_agent`
 pub async fn remove_agent(id: &str) {
     if !enabled() {
@@ -465,6 +500,8 @@ pub async fn remove_agent(id: &str) {
     }
     if let Ok(n) = id.parse::<i64>() {
         let _ = wdb().query(&format!("global delete-agent {n}")).await;
+        // OS_RemoveCounter (only a well-formed id names a file under queue/rids)
+        let _ = std::fs::remove_file(home().join("queue/rids").join(format!("{n:03}")));
     }
 }
 
@@ -473,6 +510,133 @@ async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
     let r = wdb().query(&format!("agent {id} sql {sql}")).await.ok()?;
     let json = r.strip_prefix("ok ")?;
     serde_json::from_str::<serde_json::Value>(json).ok()?.as_array().cloned()
+}
+
+/// Whether the id is an agent of the Wazuh manager (it has a row in global.db).
+pub async fn is_wazuh_agent(agent_id: &str) -> bool {
+    let Ok(n) = agent_id.parse::<u32>() else { return false };
+    enabled() && wdb().query(&format!("global get-agent-info {n}")).await.is_ok_and(|r| r.starts_with("ok [{"))
+}
+
+/// One message to remoted's active-response queue (`queue/alerts/ar`), as
+/// the Wazuh API's `WazuhQueue.send_msg_to_agent` writes it.
+async fn send_ar_queue(msg: &str) -> Result<(), String> {
+    let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar")).await.map_err(|e| format!("remoted active-response queue: {e}"))?;
+    s.send(msg.as_bytes()).await.map_err(|e| format!("remoted active-response queue: {e}"))
+}
+
+/// `send_restart_command` (agents >= 4.2: the JSON `restart-wazuh0` message).
+pub async fn restart_agent(agent_id: &str) -> Result<(), String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-wazuh0", "parameters": {"extra_args": [], "alert": {}}}"#;
+    send_ar_queue(&format!("(msg_to_agent) [] NNS {id} {m} - null (from_the_server) (no_rule_id)")).await
+}
+
+/// `PUT /syscheck` / `PUT /rootcheck`: `syscheck restart` runs a FIM and a rootcheck scan.
+pub async fn syscheck_restart(agent_id: &str) -> Result<(), String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    send_ar_queue(&format!("(msg_to_agent) [] N!S {id} syscheck restart")).await
+}
+
+/// The block durations the manager defines active responses for (`ar.conf`
+/// names are the command name plus the timeout).
+pub const AR_TIMEOUTS: [u64; 3] = [600, 3600, 86400];
+
+/// `PUT /active-response`: block `ip` on the agent's firewall (firewall-drop
+/// on Unix, netsh on Windows) for `timeout` seconds; the agent's execd removes
+/// the rule when it expires.
+pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64) -> Result<String, String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
+    let command = format!("{}{timeout}", if windows { "netsh" } else { "firewall-drop" });
+    let m = serde_json::json!({
+        "version": 1,
+        "origin": { "name": serde_json::Value::Null, "module": "api" },
+        "command": command,
+        "parameters": { "extra_args": [], "alert": { "data": { "srcip": ip } } },
+    });
+    send_ar_queue(&format!("(msg_to_agent) [] NNS {id} {m}")).await?;
+    Ok(command)
+}
+
+/// The `<command>` and `<active-response>` blocks of the manager's
+/// ossec.conf: the commands the console uses, at level 20 so no rule triggers them.
+fn ar_conf_section() -> String {
+    let mut s = String::from(
+        "  <command>\n    <name>firewall-drop</name>\n    <executable>firewall-drop</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n  \
+         <command>\n    <name>netsh</name>\n    <executable>netsh.exe</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n",
+    );
+    for c in ["firewall-drop", "netsh"] {
+        for t in AR_TIMEOUTS {
+            s.push_str(&format!("  <active-response>\n    <command>{c}</command>\n    <location>local</location>\n    <level>20</level>\n    <timeout>{t}</timeout>\n  </active-response>\n"));
+        }
+    }
+    s
+}
+
+/// Adds the console's active-response commands to an existing ossec.conf.
+fn ensure_ar_commands(conf: &Path) {
+    let Ok(t) = std::fs::read_to_string(conf) else { return };
+    if t.contains("<name>firewall-drop</name>") {
+        return;
+    }
+    if let Some(p) = t.rfind("</ossec_config>") {
+        let mut n = t.clone();
+        n.insert_str(p, &ar_conf_section());
+        let _ = std::fs::write(conf, n);
+    }
+}
+
+fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
+    match v.and_then(|x| x.as_i64()) {
+        Some(t) => serde_json::Value::String(chrono::DateTime::from_timestamp(t, 0).map(|d| d.to_rfc3339()).unwrap_or_default()),
+        None => serde_json::Value::Null,
+    }
+}
+
+/// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
+pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let rows = agent_sql(&id, "SELECT full_path, type, date, changes, arch, value_name, size, perm, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC LIMIT 1000;").await?;
+    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await.and_then(|r| r.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64())).unwrap_or(rows.len() as u64);
+    let entries: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|mut r| {
+            let (d, m) = (ts(r.get("date")), ts(r.get("mtime")));
+            r["date"] = d;
+            r["mtime"] = m;
+            r
+        })
+        .collect();
+    Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "wazuh-db" }))
+}
+
+/// The rootcheck findings of a Wazuh agent (`pm_event` in its wazuh-db database).
+pub async fn agent_rootcheck(agent_id: &str) -> Option<serde_json::Value> {
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let rows = agent_sql(&id, "SELECT date_first, date_last, log, pci_dss, cis FROM pm_event ORDER BY date_last DESC LIMIT 1000;").await?;
+    let events: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|mut r| {
+            let (f, l) = (ts(r.get("date_first")), ts(r.get("date_last")));
+            r["date_first"] = f;
+            r["date_last"] = l;
+            r
+        })
+        .collect();
+    Some(serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "wazuh-db" }))
+}
+
+/// The packages syscollector reported for an agent (`sys_programs`).
+pub async fn agent_packages(agent_id: &str) -> Option<Vec<siem_vuln_detector::PackageInfo>> {
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let rows = agent_sql(&id, "SELECT name, version, architecture, vendor FROM sys_programs WHERE name IS NOT NULL AND version IS NOT NULL;").await?;
+    let s = |r: &serde_json::Value, k: &str| r.get(k).and_then(|v| v.as_str()).map(str::to_string).filter(|x| !x.is_empty());
+    Some(
+        rows.iter()
+            .filter_map(|r| Some(siem_vuln_detector::PackageInfo { name: s(r, "name")?, version: s(r, "version")?, architecture: s(r, "architecture"), vendor: s(r, "vendor") }))
+            .collect(),
+    )
 }
 
 /// The inventory syscollector reported for an agent, from wazuh-db, in the
@@ -770,19 +934,34 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
 }
 
 async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
-    for v in vs {
-        let alert = to_alert(&state, &v);
-        let tenant = tenant_of(&state, &alert.agent.id);
-        let alert = tenancy::tag_alert(alert, &tenant);
-        // the file offset moves on only once ClickHouse has the row
-        let mut wait = RETRY_MIN;
-        while !state.db.insert_alert(&alert).await {
-            tokio::time::sleep(wait).await;
-            wait = (wait * 2).min(RETRY_MAX);
+    let alerts: Vec<Alert> = vs
+        .iter()
+        .map(|v| {
+            let alert = to_alert(&state, v);
+            let tenant = tenant_of(&state, &alert.agent.id);
+            tenancy::tag_alert(alert, &tenant)
+        })
+        .collect();
+    // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
+    let mut pending: Vec<&Alert> = alerts.iter().collect();
+    let mut wait = RETRY_MIN;
+    loop {
+        let batch: Vec<Alert> = pending.iter().map(|a| (*a).clone()).collect();
+        let failed = state.db.insert_alerts(&batch).await;
+        if failed.is_empty() {
+            break;
         }
-        state.alerts.write().unwrap().push(alert.clone());
-        let _ = state.broadcast_tx.send(alert);
+        pending.retain(|a| {
+            let tenant = a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT);
+            failed.iter().any(|t| t == tenant)
+        });
+        tokio::time::sleep(wait).await;
+        wait = (wait * 2).min(RETRY_MAX);
     }
+    for a in &alerts {
+        let _ = state.broadcast_tx.send(a.clone());
+    }
+    crate::keep_alerts(&state, alerts);
 }
 
 /// Backoff of the ClickHouse retries (the alerts/archives files hold the data meanwhile).
@@ -820,13 +999,8 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
     }
-    let mut ev = state.events.write().unwrap();
-    ev.extend(events);
-    // The in-memory copy is a recent window; ClickHouse keeps everything.
-    let n = ev.len();
-    if n > 50_000 {
-        ev.drain(..n - 50_000);
-    }
+    // the in-memory copy is a recent window; ClickHouse keeps everything
+    crate::keep_events(&state, events);
 }
 
 fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {

@@ -45,12 +45,24 @@ pub fn reload_agent(ag: &Agentd) {
 
 /// `Test_<name>`: read `path` for `mods` into throw-away structures.
 ///
-/// The syscheck, rootcheck and wodle section readers belong to those
-/// daemons' ports; until they land, their sections are accepted as long as
-/// the document and its `<agent_config>` blocks are valid.
+/// The syscheck, rootcheck and wodle readers come from the daemons the agent
+/// runs ([`Agentd::conf_tests`]); without one, those sections are accepted as
+/// long as the document and its `<agent_config>` blocks are valid.
 fn test(ag: &Agentd, mods: u32, name: &str, path: &str) -> i32 {
     if mods & CLOCALFILE != 0 {
         return test_localfile(ag, path);
+    }
+    if let Some(mut h) = ag.conf_tests.get().and_then(|f| f(mods)) {
+        let mut ctx = siem_config::ConfigContext::new(siem_config::Platform::AGENT);
+        ctx.agent = crate::config::agent_identity();
+        let remote = Some(ag.define_int("agent", "remote_conf", 0, 1) != 0);
+        let r = siem_config::read_config(&mut ctx, CAGENT_CONFIG | mods, path, remote, h.as_mut());
+        crate::config::flush_ctx(ag, &mut ctx);
+        if r.is_err() {
+            ag.log.error(format!("(1207): {name} remote configuration in '{path}' is corrupted."));
+            return -1;
+        }
+        return 0;
     }
     let mut agent = AgentConfig::client_defaults(OSSEC_VERSION);
     let mut labels: Vec<Label> = Vec::new();

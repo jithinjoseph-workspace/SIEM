@@ -1,0 +1,15 @@
+[package]
+name = "loadgen"
+version = "0.1.0"
+edition = "2021"
+description = "Simulated Windows agents for manager load tests (see docs/LOAD_TEST_RESULTS.md)"
+
+# standalone: not part of the backend workspace build
+[workspace]
+
+[dependencies]
+siem-crypto = { path = "../../crates/siem-crypto" }
+tokio = { version = "1.40", features = ["full"] }
+rand = "0.8"
+md-5 = "0.10"
+hex = "0.4"

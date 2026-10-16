@@ -217,6 +217,16 @@ impl ConfigHandler for Handler<'_> {
     }
 }
 
+/// `Test_Rootcheck`: the `<rootcheck>` reader into a throw-away configuration.
+#[derive(Default)]
+pub struct RootcheckTest(pub RkConfig);
+
+impl ConfigHandler for RootcheckTest {
+    fn section(&mut self, ctx: &mut ConfigContext, xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> CResult<()> {
+        Handler(&mut self.0).section(ctx, xml, section, node, children)
+    }
+}
+
 /// `Read_Rootcheck_Config`: false on a configuration error.
 fn read_rootcheck_config(env: &super::syscheck::Env, rk: &mut RkConfig) -> bool {
     use siem_config::modules::{CAGENT_CONFIG, CROOTCHECK};

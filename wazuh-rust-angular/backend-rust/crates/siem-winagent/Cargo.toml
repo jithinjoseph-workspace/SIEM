@@ -18,6 +18,9 @@ siem-logcollector = { path = "../siem-logcollector" }
 siem-execd = { path = "../siem-execd" }
 siem-syscheckd = { path = "../siem-syscheckd" }
 siem-sca = { path = "../siem-sca" }
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
 siem-syscollector = { path = "../siem-syscollector" }
 siem-sysinfo = { path = "../siem-sysinfo" }
 siem-cjson = { path = "../siem-cjson" }

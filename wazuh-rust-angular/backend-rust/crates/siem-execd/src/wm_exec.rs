@@ -17,6 +17,52 @@ const WM_STRING_MAX: usize = 67108864;
 /// `wm_task_nice` (set by `wm_config` from `wazuh_modules.task_nice`).
 pub static WM_TASK_NICE: AtomicI32 = AtomicI32::new(0);
 
+/// `wm_children_list` (Windows): the process handles long-running module
+/// children registered (osquery); None after `wm_kill_children`.
+#[cfg(windows)]
+static CHILDREN: std::sync::Mutex<Option<Vec<isize>>> = std::sync::Mutex::new(None);
+
+/// `wm_children_pool_init`
+#[cfg(windows)]
+pub fn wm_children_pool_init() {
+    *CHILDREN.lock().unwrap_or_else(|e| e.into_inner()) = Some(Vec::new());
+}
+
+/// `wm_append_handle`
+#[cfg(windows)]
+pub fn wm_append_handle(h: isize) {
+    if let Some(l) = CHILDREN.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        l.push(h);
+    }
+}
+
+/// `wm_remove_handle`
+#[cfg(windows)]
+pub fn wm_remove_handle(log: &WLog, h: isize) {
+    if let Some(l) = CHILDREN.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        match l.iter().position(|&x| x == h) {
+            Some(p) => {
+                l.remove(p);
+            }
+            None => log.warn(format!("Child process handle {h:#x} could not be removed because it was not found in the children list.")),
+        }
+    }
+}
+
+/// `wm_kill_children`: terminate every registered child (does not wait) and drop the list.
+#[cfg(windows)]
+pub fn wm_kill_children() {
+    use windows_sys::Win32::System::Threading::TerminateProcess;
+    // ERROR_PROC_NOT_FOUND
+    const EXIT: u32 = 127;
+    if let Some(l) = CHILDREN.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        for h in l {
+            // SAFETY: handles the modules registered and still own.
+            unsafe { TerminateProcess(h as _, EXIT) };
+        }
+    }
+}
+
 /// What `wm_exec(command, &output, &status, secs, NULL)` leaves.
 pub struct Exec {
     /// 0, `WM_ERROR_TIMEOUT` or -1.

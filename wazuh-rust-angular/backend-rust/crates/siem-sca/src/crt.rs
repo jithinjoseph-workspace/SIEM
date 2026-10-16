@@ -81,6 +81,15 @@ pub fn strtoul0(s: &[u8]) -> (std::ffi::c_ulong, usize) {
     (v, end as usize - c.as_ptr() as usize)
 }
 
+/// `strtol(s, &end, 0)` (a C `long`) and the bytes consumed.
+pub fn strtol0(s: &[u8]) -> (c_long, usize) {
+    let c = cstring(s);
+    let mut end: *mut c_char = std::ptr::null_mut();
+    // SAFETY: as above.
+    let v = unsafe { libc::strtol(c.as_ptr(), &mut end, 0) };
+    (v, end as usize - c.as_ptr() as usize)
+}
+
 /// `atoi(s)`
 pub fn atoi(s: &[u8]) -> i32 {
     let c = cstring(s);

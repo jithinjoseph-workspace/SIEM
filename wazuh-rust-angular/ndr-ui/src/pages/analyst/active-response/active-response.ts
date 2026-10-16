@@ -6,7 +6,7 @@ import {
   Zap, RefreshCw, ShieldAlert, ShieldCheck, Play, Trash2, Clock
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
-import { ActiveResponseRecord } from '../../../services/siem/siem.models';
+import { ActiveResponseRecord, Agent } from '../../../services/siem/siem.models';
 
 @Component({
   selector: 'app-active-response',
@@ -34,12 +34,24 @@ export class ActiveResponse implements OnInit {
   isBlocking = signal<boolean>(false);
 
   // Form
-  targetIp = signal<string>('198.51.100.42');
+  agents = signal<Agent[]>([]);
+  agentId = signal<string>('');
+  feedback = signal<string | null>(null);
+  targetIp = signal<string>('');
   durationSeconds = signal<number>(3600);
   reason = signal<string>('SOC Analyst manual containment: Suspicious SSH activity');
 
   ngOnInit() {
     this.loadRecords();
+    this.siem.getAgents().subscribe(list => {
+      this.agents.set(list);
+      if (!this.agentId() && list.length) this.agentId.set((list.find(a => a.status === 'active') || list[0]).id);
+    });
+  }
+
+  /** Blocks sent to Wazuh agents expire on the agent; they cannot be removed earlier. */
+  autoExpires(r: ActiveResponseRecord): boolean {
+    return /^(firewall-drop|netsh)\d+$/.test((r as any).command || '');
   }
 
   loadRecords() {
@@ -56,15 +68,18 @@ export class ActiveResponse implements OnInit {
 
   blockIp() {
     const ip = this.targetIp().trim();
-    if (!ip) return;
+    if (!ip || !this.agentId()) return;
     this.isBlocking.set(true);
-    this.siem.blockIp(ip, this.durationSeconds(), this.reason()).subscribe({
-      next: () => {
+    this.feedback.set(null);
+    this.siem.blockIp(ip, +this.durationSeconds(), this.reason(), this.agentId()).subscribe({
+      next: (r: any) => {
         this.isBlocking.set(false);
+        this.feedback.set(`✓ ${r?.message || 'Block sent'}`);
         this.loadRecords();
       },
-      error: () => {
+      error: (err) => {
         this.isBlocking.set(false);
+        this.feedback.set(`✗ ${err?.error?.message || 'request failed'}`);
         this.loadRecords();
       }
     });

@@ -271,9 +271,12 @@ unsafe extern "system" fn service_ctrl_handler(opcode: u32) {
         st.dwCurrentState = SERVICE_STOP_PENDING;
         set_status(&st);
         log().plain("INFO", "Set pending exit signal.");
+        // not under the lock: a fatal error while stopping comes back here (WinSetError)
+        drop(st);
         if let Some(f) = ON_STOP.get() {
             f();
         }
+        let mut st = STATUS.lock().unwrap_or_else(|e| e.into_inner());
         st.dwCurrentState = SERVICE_STOPPED;
         set_status(&st);
         log().plain("INFO", "Exit completed successfully.");

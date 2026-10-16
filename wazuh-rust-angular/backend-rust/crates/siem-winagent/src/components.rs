@@ -26,8 +26,8 @@ pub fn win_execd_start(ag: &Agentd) -> bool {
 
 static SYSCHECK: OnceLock<Arc<siem_syscheckd::port::syscheck::Syscheck>> = OnceLock::new();
 
-/// The `skthread` (`Start_win32_Syscheck`): reads the syscheck configuration.
-/// shortcut: realtime/whodata, report_changes and the registry scan are not ported yet.
+/// The `skthread` (`Start_win32_Syscheck`): FIM (files, registry, report_changes,
+/// realtime, whodata) and rootcheck.
 pub fn start_syscheck(ag: &Agentd) {
     let opts = ag.opts.clone();
     let log = Arc::clone(&ag.log);
@@ -65,7 +65,9 @@ pub fn start_syscheck(ag: &Agentd) {
         let sk = Arc::new(siem_syscheckd::port::syscheck::start_config(&env));
         let _ = SYSCHECK.set(Arc::clone(&sk));
         // fim_send_msg: SendMSGPredicated(syscheck.queue, msg, location, mq, fim_shutdown_process_on)
-        let send = Box::new(|mq: u8, loc: &str, msg: &[u8]| siem_ipc::mq_op::send_msg_predicated(0, msg, loc, mq, &|| false));
+        let send = Box::new(|mq: u8, loc: &str, msg: &[u8]| {
+            siem_ipc::mq_op::send_msg_predicated(0, msg, loc, mq, &siem_syscheckd::port::syscheck::fim_shutdown_process_on)
+        });
         siem_syscheckd::port::syscheck::start(sk, send);
     });
 }
@@ -74,6 +76,7 @@ static WMODULES: OnceLock<Arc<crate::wmodules::WModules>> = OnceLock::new();
 
 /// `wm_children_pool_init` + `wm_config` + the module threads.
 pub fn start_wmodules(ag: &Agentd) {
+    siem_execd::wm_exec::wm_children_pool_init();
     match crate::wmodules::WModules::config(ag) {
         Ok(w) => {
             let w = Arc::new(w);
@@ -85,6 +88,16 @@ pub fn start_wmodules(ag: &Agentd) {
         // mlerror_exit(LOGLEVEL_ERROR, CONFIG_ERROR, cfg)
         Err(()) => ag.exit_error("(1202): Configuration error at 'ossec.conf'."),
     }
+}
+
+/// What the service stop runs (`OssecServiceCtrlHandler`, SERVICE_CONTROL_STOP):
+/// `wm_kill_children(); stop_wmodules(); is_fim_shutdown = true; fim_db_teardown();`
+pub fn on_service_stop() {
+    siem_execd::wm_exec::wm_kill_children();
+    if let Some(w) = WMODULES.get() {
+        w.stop_wmodules();
+    }
+    siem_syscheckd::port::syscheck::shutdown();
 }
 
 /// The dispatchers and queues of these components.

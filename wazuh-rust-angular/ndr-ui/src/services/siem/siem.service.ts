@@ -117,13 +117,83 @@ export class SiemService {
     );
   }
 
-  sendAgentCommand(agentId: string, action: string, target: string = 'all'): Observable<any> {
+  sendAgentCommand(agentId: string, action: string, target: string = 'all', durationSeconds?: number): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, {
       command_id: 'cmd-' + Date.now(),
       agent_id: agentId,
       action,
-      target
+      target,
+      ...(durationSeconds ? { duration_seconds: durationSeconds } : {}),
     });
+  }
+
+  /** FIM entries of an agent (wazuh-db fim_entry). */
+  getAgentFim(agentId: string): Observable<{ total: number; entries: any[] }> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/fim`).pipe(
+      catchError(() => of({ total: 0, entries: [] }))
+    );
+  }
+
+  /** Rootcheck findings of an agent (wazuh-db pm_event). */
+  getAgentRootcheck(agentId: string): Observable<{ total: number; events: any[] }> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/rootcheck`).pipe(
+      catchError(() => of({ total: 0, events: [] }))
+    );
+  }
+
+  /** Starts a rootcheck (and FIM) scan on the agent. */
+  runRootcheck(agentId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agents/${agentId}/rootcheck/scan`, {});
+  }
+
+  /** Upgrade an agent (WPK from the repository, or a custom WPK with file_path). */
+  upgradeAgent(agentId: string, body: { target_version?: string; force?: boolean; use_http?: boolean; wpk_repo?: string; package_type?: string; file_path?: string; installer?: string }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agents/${agentId}/upgrade`, body);
+  }
+
+  /** The agent's last upgrade task. */
+  getAgentUpgrade(agentId: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/upgrade`).pipe(
+      catchError((e) => of({ error: -1, data: [], message: e?.error?.error || e?.error?.message || 'unavailable' }))
+    );
+  }
+
+  /** New agent key for the caller's tenant (agents enrolled before keep working). */
+  rotateTenantAgentKey(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/tenant/agent-key/rotate`, {});
+  }
+
+  /** Agent groups of the tenant (centralized agent.conf). */
+  getGroups(): Observable<{ name: string; agents: number; agent_ids: string[]; editable: boolean }[]> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/groups`).pipe(
+      map(r => r?.groups || []),
+      catchError(() => of([]))
+    );
+  }
+
+  createGroup(name: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/groups`, { name });
+  }
+
+  deleteGroup(name: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/groups/${encodeURIComponent(name)}`);
+  }
+
+  getGroupConf(name: string): Observable<string> {
+    return this.http.get(`${this.apiUrl}/api/v1/groups/${encodeURIComponent(name)}/agent.conf`, { responseType: 'text' });
+  }
+
+  saveGroupConf(name: string, conf: string): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/groups/${encodeURIComponent(name)}/agent.conf`, conf, { headers: { 'Content-Type': 'text/plain' } });
+  }
+
+  setAgentGroups(agentId: string, groups: string[]): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/agents/${agentId}/groups`, { groups });
+  }
+
+  /** Refresh the vulnerability feed. */
+  syncVulnerabilityFeed(feedJson: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/vulnerabilities/sync-feed`, { feed_json: feedJson });
   }
 
   /** Deactivate: the agent is kept (not deleted), stops reporting and is told to stop. */
@@ -178,8 +248,9 @@ export class SiemService {
     return this.http.get<VulnerabilitiesResponse>(url);
   }
 
-  triggerVulnScan(agentId: string = '001'): Observable<any> {
-    return this.http.post(`${this.apiUrl}/api/v1/vulnerabilities`, { agent_id: agentId });
+  /** Checks the packages the agents reported against the CVE feed again (all agents of the tenant without an id). */
+  triggerVulnScan(agentId?: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/vulnerabilities`, agentId ? { agent_id: agentId } : {});
   }
 
   getFimSummary(): Observable<FimSummaryResponse> {
@@ -190,9 +261,10 @@ export class SiemService {
     return this.http.get<ActiveResponseListResponse>(`${this.apiUrl}/api/v1/active-response/actions`);
   }
 
-  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action'): Observable<any> {
+  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action', agentId?: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/active-response/actions`, {
       ip,
+      agent_id: agentId,
       duration_seconds: durationSeconds,
       reason
     });

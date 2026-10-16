@@ -139,9 +139,10 @@ export class SiemService {
     return this.http.get<ActiveResponseListResponse>(`${this.apiUrl}/api/v1/active-response/actions`);
   }
 
-  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action'): Observable<any> {
+  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action', agentId?: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/active-response/actions`, {
       ip,
+      agent_id: agentId,
       duration_seconds: durationSeconds,
       reason
     });

@@ -83,7 +83,7 @@ Bugs the oracle found, now fixed:
 
 ## Known gaps
 
-1. **`verifyRemoteConf`:** the localfile check is real now (`siem_config::localfile`). The syscheck, rootcheck and wodle checks still accept their sections until syscheckd and modulesd are ported.
+1. **`verifyRemoteConf`:** the localfile check is real now (`siem_config::localfile`). Since 2026-10-16 the Windows agent also runs the real syscheck, rootcheck and wodle readers (`Agentd::conf_tests`); the Unix agentd still accepts those sections until it registers its own.
 2. **Compressed rotated logs:** flate2 output is not byte-identical to zlib `gzopen` output. The file format and content are the same, as verified by the rotate scenario.
 3. **siem-crypto `KeyStore::parse`** (remoted) now uses the C `INVALID_KEY` text; it still logs through `tracing`, not `ossec.log`.
 
@@ -171,15 +171,14 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 " is "
 "); `siem_log::crt_stream` / `crt_print`.
 - **Gaps (Windows):**
-  - syscheck (FIM + registry + whodata), rootcheck and the modules (syscollector, SCA, agent upgrade, ...) are not ported yet: shared with the Unix daemons, they are the next level and plug into `components.rs` / `WinHooks`. The service stop hook (`wm_kill_children`, `stop_wmodules`, `fim_db_teardown`) comes with them.
-  - The service itself (SCM install / start / stop) needs an elevated shell to test.
+  - (done since: syscheck incl. registry/whodata, rootcheck, syscollector, SCA, agent-upgrade and the service stop hook; service mode tested elevated 2026-10-16.)
   - The Unix `wazuh-execd` binary is ported but not yet diffed against the C daemon.
 
 ## Next steps
 
-1. Windows: test the service mode in an elevated shell; diff the Unix wazuh-execd against C.
+1. Diff the Unix wazuh-execd against C.
 2. **macOS** readers (`macos_log`, `read_macos`): port and type-check with the Darwin target. They cannot be oracle-tested here without a Mac.
-3. **syscheckd** (FIM, realtime/whodata, Windows registry, on siem-dbsync), then **modulesd/syscollector**, **execd**, **rootcheck** and **agent upgrade**, each wired into both the Unix daemons and `wazuh-agent.exe`.
+3. Done for `wazuh-agent.exe` (see the sections below); the Unix daemons are the Linux agent's work.
 4. Merge the old prototype agent crates (siem-agent, siem-agent-linux) onto the faithful daemons.
 5. Roadmap step 7: wodles.
 
@@ -203,7 +202,7 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 - winagent: `skthread` loads it; requests to target `syscheck` go to syscom_dispatch.
 - `timeday.rs` moved from siem-analysisd to siem-config (shared validate_op.c); siem-config no longer logs an empty ConfigError (a reader that already logged returns "").
 - Verified vs the C agent (scenario winoracle/skcfg2): getconfig syscheck/internal + error replies byte-identical; config-stage log lines identical as a set.
-- Next: update_wildcards_config + FIM DB (db/*.cpp on siem-dbsync), create_db.c scans (files, registry), run_check.c scheduler/sync, fim_diff_changes.c, realtime + Windows whodata; rootcheck getconfig still "err".
+- (Those next steps are done; see the sections below.)
 
 ## syscheck (FIM) — steps 2–6 (scan, registry, daemon, report_changes, realtime) — 2026-10-15
 - `port/fimdb.rs` (FIMDB/DB on siem-dbsync + rsync), `create_db.rs` (fim_scan/checker/directory/file/get_data, transaction callbacks, events, DB-state alerts, wildcards update), `registry.rs` (registry.c + events.c incl. the C quirks: key checksum drops `:arch`, old `gid` falls back to `uid`), `run_check.rs` (fim_initialize, start_daemon loop with scan_time/scan_day, restart), `diff.rs` (fim_diff_changes.c on zlib + `fc /n`), `realtime.rs` (ReadDirectoryChangesW + completion routines in an alertable wait, fim_realtime_event, missing-entry deletes).
@@ -227,3 +226,75 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 - Verified vs C (WSL harness scratchpad/upgen/oracle: `build.sh` compiles the C modules with the server flags from ~/wazuh-server-src; `run.py c|rs` runs the same scenario against the Rust wazuh-db, a fake remoted, a local WPK repo; `cmpall.sh` diffs): 75/75 API answers, 81/81 agent requests (JSON and legacy `com` transfers, sha1 mismatch, open retries, clear_upgrade_result) and 327/327 log lines identical (3 start-up lines differ in order only: thread scheduling).
 - Live: API -> modulesd -> remoted -> the Rust Windows agent: open/write/close/sha1/upgrade, WPK signature checked with the agent's CA; non-elevated, the agent's unmerge fails as C's does (Admin/SYSTEM temp files).
 - Not ported: the wmcom getconfig dumps of these modules (the Rust modulesd has no wmcom socket yet); curl error texts other than HTTP status errors.
+
+## Console agent actions on Wazuh agents + active-response programs — 2026-10-15
+- siem-api sends agent actions the way the Wazuh API does (remoted's `queue/alerts/ar`): restart (`restart-wazuh0` JSON), FIM + rootcheck scan (`syscheck restart`), Block IP (`netsh<timeout>` on Windows, `firewall-drop<timeout>` on Unix). The manager ossec.conf gets the `firewall-drop` / `netsh` commands with 600/3600/86400 s active responses at level 20 (never rule-triggered), so `ar.conf` carries them. SCA/inventory scans have no on-demand Wazuh command (schedule + agent start); unblock is the agent's timeout. Old `siem-agent` (HTTP polling) agents keep the command queue.
+- FIM and rootcheck per agent read wazuh-db (`fim_entry`, `pm_event`); the vulnerability rescan uses the packages in `sys_programs` (no hard-coded packages); the CVE feed import is platform-admin only.
+- New crate `siem-active-response`: active_responses.c helpers + `netsh` (Windows), `restart-wazuh`, `firewall-drop` (Linux iptables branch). Byte-identical to the C programs (Windows: 12 runs incl. CRLF input, 65 log lines, 17 netsh/reg command lines with a recording fake; Linux: iptables/ip6tables and wazuh-control calls, 43 log lines). The C 4.14.7 netsh.exe never calls WSAStartup, so its IP check always fails ("Cannot read 'srcip'"): the oracle used a copy with WSAStartup added; the port keeps the intended behaviour.
+- The Windows agent package (`data/agent-dist/windows`) serves netsh.exe and restart-wazuh.exe; the install script puts them in `active-response\bin`.
+- UI: agent details tabs File Integrity, Rootcheck, Upgrade (tenant admins); block duration; Active Response pages (analyst + classic console) pick the agent; tenant settings show/rotate the agent key; Vulnerabilities page: fleet rescan + CVE feed upload (platform admins).
+- Not ported: the ipf/AIX branches of firewall-drop; the Linux deploy still installs siem-agent-linux, not the ported wazuh-agentd.
+
+## Agent groups / centralized agent.conf (siem-api + UI) — 2026-10-16
+- `crates/siem-api/src/groups.rs`: list/create/delete groups, get/put `agent.conf`, `PUT /api/v1/agents/:id/groups`.
+  Mirrors the Wazuh API (`create_group` template folder, `delete_groups`, `set-agent-groups` override) and
+  tells wazuh-db at once (`insert-agent-group` / `delete-group`, what wm_database does on its next sync).
+- Per tenant: tenant `acm`'s group `web` is the manager group `acm.web`; `default` is shared, edited by the platform admin only.
+- `agent.conf` is checked with siem-config `read_config_xml` (CAGENT_CONFIG + the agent's Test_* modules, localfile reader).
+- Enrollment now refuses groups that do not exist (authd "Invalid group") and registers the manager names.
+- Live check: 14/14 API status codes (roles, tenants, bad names, bad XML); remoted built `acm.winsrv/merged.mg`;
+  the installed Windows agent received it and unmerged the group's agent.conf.
+- UI: agents page "Agent groups" panel (create/delete/edit agent.conf), "Groups" tab per agent, deploy wizard group select.
+
+## Load test with simulated agents — 2026-10-16
+- Tool: `tools/loadgen` (standalone crate + scripts); results and how to rerun: `docs/LOAD_TEST_RESULTS.md`.
+- 10,000 connected agents OK; event capacity ~2,000 Windows EPS per manager (analysisd single thread,
+  blocking wazuh-db label lookups). Fix order in the report (analysisd thread pools first).
+- Fixed: concurrent enrollments got the same agent id (`next_free_agent_id`, atomic fetch_add).
+- Fixed (Windows manager build): analysisd restart lost all events until remoted restarted
+  (siem-ipc receiver re-binds its old UDP port; siem-api supervisor keeps the port file).
+- Known: deleting an agent leaves its `queue/rids/<id>` file (C removes it).
+
+## Whodata admin path verified live — 2026-10-16
+- Bug fixed: `set_sacl` passed the new SACL in the DACL slot of `SetNamedSecurityInfoW` (and NULL as the SACL), so
+  set_winsacl / w_update_sacl / restore_sacls *deleted* the SACL of every whodata directory; the state checker then
+  reported (6021) and moved it to realtime. Never caught by the oracle runs (non-admin fallback path only).
+- Live test on the installed agent (service, LocalSystem), config via the groups API: SACL "Everyone / Success" set;
+  add/modify/delete alerts in mode whodata with audit user and process (powershell.exe, cmd.exe).
+- Still to do: byte-for-byte comparison with the C agent on the admin path (scratchpad admin_checks.ps1).
+- Elevated C-vs-Rust runs (admin_checks.ps1, 2026-10-16, after the SACL fix):
+  - whodata/FIM (`runs/fim-20261016-095116`): 57 manager messages identical (incl. the whodata event with audit data);
+    agent log identical except C's (6267)/(6263) SACL-setup lines: both agents watch the same folder and C set the SACL first.
+  - upgrade (`runs/up-20261016-095219`): full install path ran on both (`upgraded`); messages identical; log differs only in the install dir.
+  - rootcheck as administrator (`runs/rk-20261016-095350`): 49 manager messages and 1,059 log lines identical.
+  - service stop on the installed agent: "Exit completed successfully", clean restart.
+
+## verifyRemoteConf readers + small fixes — 2026-10-16
+- `Agentd::conf_tests`: the Windows agent registers `SyscheckTest`, `RootcheckTest`, `WModuleTest` (Test_Syscheck/Test_Rootcheck/Test_WModule); a received agent.conf with bad values is refused with (1207) and not applied. Test: siem-syscheckd `test_readers`.
+- siem-api agent delete also removes `queue/rids/<id>` (OS_RemoveCounter).
+- Known: siem-syscheckd does not build on Linux (pre-existing, `siem_ipc` use in diff.rs/run_check.rs/create_db.rs).
+
+## command wodle (Windows agent) — 2026-10-16
+- `siem-winagent/src/wm_command.rs`: wm_command.c + wmodules-command.c (reader, Read_WModule reuse of a "command"-tagged
+  module, schedule via siem-sca sched, w_strtok/get_binary_path/isabspath, MD5/SHA1/SHA256 checks, remote_commands for
+  agent.conf commands, output lines to queue 1 with location `command_<tag>`, getconfig dump). siem-sca `crt::strtol0`.
+- Verified vs C (scenario winoracle/cmd, 15 commands: output, exit codes, checksums ok/bad/skip, missing binary, timeout,
+  ignore_output, disabled, no/empty tags, hex interval, time): 53 manager messages identical per command; 204 log lines
+  identical as a set (threads interleave); getconfig wmodules identical.
+- Known platform difference: the C agent is 32-bit, so `System32` paths it hashes are the SysWOW64 files; the Rust agent is
+  64-bit and hashes the real System32 files (a verify_* hash taken with 64-bit tools now matches).
+
+## osquery wodle (Windows agent) — 2026-10-16
+- `siem-winagent/src/wm_osquery.rs`: wm_osquery_monitor.c + wmodules-osquery-monitor.c (Read_Log follower with
+  pack/subquery split, truncation/rotation/deletion; Execute_Osquery with stderr classification, already-running and
+  restart rules, child handle registered for the stop hook; packs + label decorators written to tmp/osquery.conf.tmp,
+  json_fread with json_strip; getconfig dump). siem-execd `Wfd::process_handle`.
+- Verified vs C: scenario osq1 (reader: lines, bad JSON, CRLF, truncate, delete/recreate) 8/8 manager messages and
+  19/19 log lines identical; scenario osq2 (fake osqueryd stderr, packs, labels, commented config) 6/6 manager messages
+  identical, tmp/osquery.conf.tmp byte-identical, log identical as a set (retry-line count depends on the run window).
+- Details matched: the osqueryd stderr pipe is binary (CRLF lines keep '\r'); waccess errors use the CRT errno mapping.
+
+## Analyst page permissions — 2026-10-16
+- UI `AuthService.hasPermission` and siem-api `AuthCtx::has_permission` now share one rule: admin roles see everything;
+  others need the page permission, `all`, or (SIEM pages) the `siem` suite. Analysts no longer see every SIEM page by
+  role alone (the API refused their data). Test: tenancy `page_permissions`; live check 403/403/200/200/200.

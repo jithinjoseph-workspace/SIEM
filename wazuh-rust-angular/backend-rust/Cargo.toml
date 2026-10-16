@@ -46,6 +46,7 @@ members = [
     "crates/siem-dbsync",
     "crates/siem-agentd",
     "crates/siem-winagent",
+    "crates/siem-active-response",
     "crates/siem-modulesd",
     "crates/siem-sysinfo",
     "crates/siem-sca",

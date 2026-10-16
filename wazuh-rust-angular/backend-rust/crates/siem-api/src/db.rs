@@ -547,11 +547,54 @@ impl ClickHouseDb {
 
     /// false when ClickHouse is in use and the row could not be written.
     pub async fn insert_alert(&self, alert: &Alert) -> bool {
-        if !self.is_connected() {
-            return true;
-        }
+        self.insert_alerts(std::slice::from_ref(alert)).await.is_empty()
+    }
 
-        let row = ClickHouseAlertRow {
+    /// One INSERT per tenant for the whole batch. The tenants whose rows
+    /// could not be written (empty when ClickHouse is not in use).
+    pub async fn insert_alerts(&self, alerts: &[Alert]) -> Vec<String> {
+        let mut failed = Vec::new();
+        if !self.is_connected() {
+            return failed;
+        }
+        let mut by_tenant: std::collections::BTreeMap<String, Vec<ClickHouseAlertRow>> = std::collections::BTreeMap::new();
+        for alert in alerts {
+            let tenant = alert.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT).to_string();
+            by_tenant.entry(tenant).or_default().push(Self::alert_row(alert));
+        }
+        for (tenant, rows) in by_tenant {
+            let client = self.tenant_client(&tenant);
+            let mut insert = match client.insert("siem_alerts") {
+                Ok(ins) => ins,
+                Err(e) => {
+                    warn!("ClickHouse insert handle error: {}", e);
+                    failed.push(tenant);
+                    continue;
+                }
+            };
+            let mut ok = true;
+            for row in &rows {
+                if let Err(e) = insert.write(row).await {
+                    warn!("Failed to stream alert to ClickHouse: {}", e);
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                if let Err(e) = insert.end().await {
+                    warn!("Failed to commit alert to ClickHouse: {}", e);
+                    ok = false;
+                }
+            }
+            if !ok {
+                failed.push(tenant);
+            }
+        }
+        failed
+    }
+
+    fn alert_row(alert: &Alert) -> ClickHouseAlertRow {
+        ClickHouseAlertRow {
             id: alert.id.to_string(),
             timestamp: alert.timestamp.timestamp_millis() as u64,
             agent_id: alert.agent.id.clone(),
@@ -568,28 +611,34 @@ impl ClickHouseDb {
             dst_ip: alert.decoded.dst_ip.clone().unwrap_or_default(),
             user: alert.decoded.user.clone().unwrap_or_default(),
             location: alert.location.clone(),
-        };
+        }
+    }
 
-        let tenant = alert.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT);
-        let client = self.tenant_client(tenant);
-        let mut insert = match client.insert("siem_alerts") {
-            Ok(ins) => ins,
+    /// Totals of a tenant: (events, alerts, critical 12-15, high 8-11, medium 4-7, low 0-3).
+    pub async fn tenant_totals(&self, tenant_id: &str) -> Option<(u64, u64, u64, u64, u64, u64)> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct Totals {
+            events: u64,
+            alerts: u64,
+            critical: u64,
+            high: u64,
+            medium: u64,
+            low: u64,
+        }
+        // a scalar subquery is Nullable: RowBinary would carry a null-flag byte
+        let q = "SELECT toUInt64(ifNull((SELECT count() FROM siem_events), 0)) AS events, count() AS alerts, \
+                 countIf(rule_level >= 12) AS critical, countIf(rule_level BETWEEN 8 AND 11) AS high, \
+                 countIf(rule_level BETWEEN 4 AND 7) AS medium, countIf(rule_level <= 3) AS low FROM siem_alerts";
+        match self.tenant_client(tenant_id).query(q).fetch_one::<Totals>().await {
+            Ok(t) => Some((t.events, t.alerts, t.critical, t.high, t.medium, t.low)),
             Err(e) => {
-                warn!("ClickHouse insert handle error: {}", e);
-                return false;
+                warn!("Failed to query totals from ClickHouse: {}", e);
+                None
             }
-        };
-
-        if let Err(e) = insert.write(&row).await {
-            warn!("Failed to stream alert to ClickHouse: {}", e);
-            return false;
         }
-
-        if let Err(e) = insert.end().await {
-            warn!("Failed to commit alert to ClickHouse: {}", e);
-            return false;
-        }
-        true
     }
 
     pub async fn fetch_alerts(&self, tenant_id: &str, limit: usize, min_level: u8) -> Option<Vec<ClickHouseAlertRow>> {

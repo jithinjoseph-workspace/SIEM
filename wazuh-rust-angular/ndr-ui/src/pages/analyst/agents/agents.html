@@ -137,6 +137,51 @@
     No agents matching search criteria.
   </div>
 
+  <!-- Agent groups: centralized agent.conf, pushed by the manager to the group's agents -->
+  <div class="mt-8">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wide">Agent groups ({{ groups().length }})</h2>
+      <div *ngIf="canUpgrade" class="flex items-center gap-2">
+        <label for="new-group" class="sr-only">New group name</label>
+        <input id="new-group" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono" placeholder="new-group-name"
+          [ngModel]="newGroupName()" (ngModelChange)="newGroupName.set($event)" (keyup.enter)="createGroup()" />
+        <button (click)="createGroup()" [disabled]="!newGroupName().trim()" class="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Create group</button>
+      </div>
+    </div>
+    <div *ngIf="groupFeedback()" class="mb-3 px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300">{{ groupFeedback() }}</div>
+    <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-900/40 text-xs text-slate-500">No groups (the Wazuh manager is not running).</div>
+    <div *ngIf="groups().length > 0" class="rounded-xl border border-slate-800 overflow-hidden">
+      <table class="w-full text-xs">
+        <thead class="bg-slate-950 text-slate-400 uppercase">
+          <tr><th class="text-left px-4 py-2">Group</th><th class="text-left px-4 py-2">Agents</th><th class="text-right px-4 py-2">Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let g of groups()" class="border-t border-slate-800 text-slate-300">
+            <td class="px-4 py-2 font-mono">{{ g.name }}<span *ngIf="g.name === 'default'" class="text-slate-500"> (every tenant; platform admin only)</span></td>
+            <td class="px-4 py-2">{{ g.agents }}</td>
+            <td class="px-4 py-2 text-right space-x-2">
+              <button (click)="editGroupConf(g.name)" class="px-3 py-1 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 font-semibold">{{ g.editable ? 'Edit agent.conf' : 'View agent.conf' }}</button>
+              <button *ngIf="g.editable && g.name !== 'default'" (click)="deleteGroup(g.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold">Delete</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div *ngIf="editingGroup() as eg" class="mt-3 p-4 rounded-xl border border-slate-700 bg-slate-950 space-y-2">
+      <div class="flex items-center justify-between">
+        <label for="group-conf" class="text-xs font-semibold text-white">agent.conf of <span class="font-mono">{{ eg }}</span></label>
+        <button (click)="editingGroup.set(null)" class="text-xs text-slate-400 hover:text-white">Close</button>
+      </div>
+      <textarea id="group-conf" rows="16" spellcheck="false" [readonly]="!isGroupEditable(eg)"
+        class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-slate-100 font-mono"
+        [ngModel]="groupConf()" (ngModelChange)="groupConf.set($event)"></textarea>
+      <div class="flex items-center gap-3">
+        <button *ngIf="isGroupEditable(eg)" (click)="saveGroupConf()" [disabled]="groupConfBusy()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Save and push to agents</button>
+        <span class="text-[11px] text-slate-500">Checked like the agent checks it (&lt;agent_config&gt; blocks; os/name/profile filters allowed). Agents pick it up on their next keepalive.</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Deactivated agents: kept in the registry, stopped on the endpoint -->
   <div class="mt-8">
     <div class="flex items-center justify-between mb-3">
@@ -194,7 +239,7 @@
       <!-- Detail Tabs -->
       <div class="flex border-b border-slate-800 px-6 gap-2 bg-slate-950/40 text-sm">
         <button 
-          (click)="selectedAgentTab.set('specs')" 
+          (click)="selectTab('specs')" 
           [class.border-cyan-400]="selectedAgentTab() === 'specs'"
           [class.text-cyan-400]="selectedAgentTab() === 'specs'"
           class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
@@ -202,7 +247,7 @@
           Hardware & OS
         </button>
         <button 
-          (click)="selectedAgentTab.set('network_ports')" 
+          (click)="selectTab('network_ports')" 
           [class.border-cyan-400]="selectedAgentTab() === 'network_ports'"
           [class.text-cyan-400]="selectedAgentTab() === 'network_ports'"
           class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
@@ -210,7 +255,7 @@
           Ports & Network
         </button>
         <button 
-          (click)="selectedAgentTab.set('users_services')" 
+          (click)="selectTab('users_services')" 
           [class.border-cyan-400]="selectedAgentTab() === 'users_services'"
           [class.text-cyan-400]="selectedAgentTab() === 'users_services'"
           class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
@@ -218,15 +263,47 @@
           Services & Software
         </button>
         <button 
-          (click)="selectedAgentTab.set('sca')" 
+          (click)="selectTab('sca')" 
           [class.border-cyan-400]="selectedAgentTab() === 'sca'"
           [class.text-cyan-400]="selectedAgentTab() === 'sca'"
           class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
         >
           CIS SCA Compliance
         </button>
+        <button
+          (click)="selectTab('fim')"
+          [class.border-cyan-400]="selectedAgentTab() === 'fim'"
+          [class.text-cyan-400]="selectedAgentTab() === 'fim'"
+          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
+        >
+          File Integrity
+        </button>
+        <button
+          (click)="selectTab('rootcheck')"
+          [class.border-cyan-400]="selectedAgentTab() === 'rootcheck'"
+          [class.text-cyan-400]="selectedAgentTab() === 'rootcheck'"
+          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
+        >
+          Rootcheck
+        </button>
+        <button
+          (click)="selectTab('groups')"
+          [class.border-cyan-400]="selectedAgentTab() === 'groups'"
+          [class.text-cyan-400]="selectedAgentTab() === 'groups'"
+          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
+        >
+          Groups
+        </button>
+        <button *ngIf="canUpgrade"
+          (click)="selectTab('upgrade')"
+          [class.border-cyan-400]="selectedAgentTab() === 'upgrade'"
+          [class.text-cyan-400]="selectedAgentTab() === 'upgrade'"
+          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
+        >
+          Upgrade
+        </button>
         <button 
-          (click)="selectedAgentTab.set('actions')" 
+          (click)="selectTab('actions')" 
           [class.border-cyan-400]="selectedAgentTab() === 'actions'"
           [class.text-cyan-400]="selectedAgentTab() === 'actions'"
           class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
@@ -237,10 +314,10 @@
 
       <!-- Modal Body -->
       <div class="p-6 overflow-y-auto space-y-4 text-sm text-slate-300">
-        <div *ngIf="inventoryLoading() && selectedAgentTab() !== 'sca' && selectedAgentTab() !== 'actions'" class="text-xs text-slate-500">Loading inventory…</div>
-        <div *ngIf="!inventoryLoading() && !selectedAgentInventory() && selectedAgentTab() !== 'sca' && selectedAgentTab() !== 'actions'"
+        <div *ngIf="inventoryLoading() && ['specs', 'network_ports', 'users_services'].includes(selectedAgentTab())" class="text-xs text-slate-500">Loading inventory…</div>
+        <div *ngIf="!inventoryLoading() && !selectedAgentInventory() && ['specs', 'network_ports', 'users_services'].includes(selectedAgentTab())"
           class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-          This agent has not reported a system inventory yet. Use <b>Agent Actions → Sync Syscollector Inventory</b> to request one.
+          This agent has not reported a system inventory yet. The agent sends it on its inventory schedule and when it starts (Agent Actions → Restart).
         </div>
 
         <!-- Specs Tab -->
@@ -316,13 +393,13 @@
         <div *ngIf="selectedAgentTab() === 'sca'" class="space-y-3">
           <div class="flex items-center justify-between">
             <h4 class="font-semibold text-white">CIS Security Configuration Benchmark Checks</h4>
-            <button (click)="triggerAgentAction('sca_scan')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Run SCA Audit</button>
+            <span class="text-[11px] text-slate-500">Runs on the agent's SCA schedule and at agent start</span>
           </div>
           <div *ngIf="scaSummary() as sca" class="text-xs text-slate-400">
             Policy {{ sca.policy_id || '—' }} · score {{ sca.score | number:'1.0-1' }}% · {{ sca.passed }} passed · {{ sca.failed }} failed
           </div>
           <div *ngIf="selectedAgentScaChecks().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-            No SCA results from this agent yet. Run an SCA audit.
+            No SCA results from this agent yet. They arrive after the agent's next SCA scan (or restart the agent).
           </div>
           <div *ngFor="let check of selectedAgentScaChecks()" class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
             <span class="text-xs text-slate-200">[{{ check.check_id }}] {{ check.title }}</span>
@@ -334,24 +411,132 @@
           </div>
         </div>
 
+
+        <!-- FIM Tab -->
+        <div *ngIf="selectedAgentTab() === 'fim'" class="space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="font-semibold text-white">Monitored files and registry ({{ fimTotal() }})</h4>
+            <div class="flex gap-2">
+              <input class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs w-56" placeholder="Filter by path"
+                [ngModel]="fimFilter()" (ngModelChange)="fimFilter.set($event)" />
+              <button (click)="triggerAgentAction('fim_scan')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
+              <button (click)="loadFim(selectedAgent()!.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">Refresh</button>
+            </div>
+          </div>
+          <div *ngIf="fimLoading()" class="text-xs text-slate-500">Loading…</div>
+          <div *ngIf="!fimLoading() && fimEntries().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
+            No FIM data from this agent yet. It is stored after the agent's first syscheck scan.
+          </div>
+          <div *ngIf="filteredFim().length > 0" class="overflow-x-auto max-h-96 rounded-lg border border-slate-800">
+            <table class="w-full text-xs">
+              <thead class="bg-slate-950 text-slate-400 sticky top-0">
+                <tr><th class="text-left p-2">Path</th><th class="text-left p-2">Type</th><th class="text-left p-2">Size</th><th class="text-left p-2">Owner</th><th class="text-left p-2">Modified</th><th class="text-left p-2">SHA1</th></tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let e of filteredFim()" class="border-t border-slate-800">
+                  <td class="p-2 font-mono text-slate-200 break-all">{{ e.arch ? e.arch + ' ' : '' }}{{ e.full_path }}{{ e.value_name ? ' → ' + e.value_name : '' }}</td>
+                  <td class="p-2 text-slate-400">{{ e.type }}</td>
+                  <td class="p-2 text-slate-400">{{ e.size ?? '—' }}</td>
+                  <td class="p-2 text-slate-400">{{ e.uname || '—' }}</td>
+                  <td class="p-2 text-slate-400">{{ e.mtime ? (e.mtime | date:'short') : '—' }}</td>
+                  <td class="p-2 font-mono text-slate-500">{{ e.sha1 ? (e.sha1 | slice:0:12) : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Rootcheck Tab -->
+        <div *ngIf="selectedAgentTab() === 'rootcheck'" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="font-semibold text-white">Rootcheck findings ({{ rootcheckEvents().length }})</h4>
+            <div class="flex gap-2">
+              <button (click)="runRootcheck()" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
+              <button (click)="loadRootcheck(selectedAgent()!.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">Refresh</button>
+            </div>
+          </div>
+          <div *ngIf="rootcheckLoading()" class="text-xs text-slate-500">Loading…</div>
+          <div *ngIf="!rootcheckLoading() && rootcheckEvents().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
+            No rootcheck findings stored for this agent.
+          </div>
+          <div *ngFor="let ev of rootcheckEvents()" class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+            <div class="text-xs text-slate-200">{{ ev.log }}</div>
+            <div class="text-[11px] text-slate-500">
+              First {{ ev.date_first | date:'short' }} · last {{ ev.date_last | date:'short' }}
+              <span *ngIf="ev.pci_dss"> · PCI DSS {{ ev.pci_dss }}</span><span *ngIf="ev.cis"> · CIS {{ ev.cis }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Groups Tab -->
+        <div *ngIf="selectedAgentTab() === 'groups'" class="space-y-3">
+          <h4 class="font-semibold text-white">Groups of this agent</h4>
+          <p class="text-xs text-slate-400">The agent applies the agent.conf of each group, in the order listed (later groups override earlier ones). No group means 'default'.</p>
+          <div class="space-y-1">
+            <label *ngFor="let g of groups()" class="flex items-center gap-2 text-xs text-slate-200">
+              <input type="checkbox" [disabled]="!canUpgrade" [ngModel]="agentGroupPick()[g.name]" (ngModelChange)="toggleAgentGroup(g.name, $event)" />
+              <span class="font-mono">{{ g.name }}</span>
+            </label>
+          </div>
+          <button *ngIf="canUpgrade" (click)="saveAgentGroups()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold">Save groups</button>
+          <div *ngIf="agentGroupFeedback()" class="text-xs text-cyan-300">{{ agentGroupFeedback() }}</div>
+        </div>
+
+        <!-- Upgrade Tab -->
+        <div *ngIf="selectedAgentTab() === 'upgrade' && canUpgrade" class="space-y-4">
+          <div class="text-xs text-slate-400">Current version: <span class="text-white font-mono">{{ selectedAgent()?.version || '—' }}</span></div>
+          <div class="flex gap-2">
+            <button (click)="upgradeMode.set('repo')" [class.border-cyan-500]="upgradeMode() === 'repo'" class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200">From the WPK repository</button>
+            <button (click)="upgradeMode.set('custom')" [class.border-cyan-500]="upgradeMode() === 'custom'" class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200">Custom WPK</button>
+          </div>
+          <div *ngIf="upgradeMode() === 'repo'" class="grid grid-cols-2 gap-3 text-xs">
+            <label class="space-y-1"><span class="text-slate-400">Version (empty = the manager's)</span>
+              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="v4.14.7" [ngModel]="upgradeVersion()" (ngModelChange)="upgradeVersion.set($event)" /></label>
+            <label class="space-y-1"><span class="text-slate-400">Repository (empty = packages.wazuh.com)</span>
+              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="packages.wazuh.com/4.x/wpk/" [ngModel]="upgradeRepo()" (ngModelChange)="upgradeRepo.set($event)" /></label>
+            <label class="space-y-1"><span class="text-slate-400">Linux package type</span>
+              <select class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100" [ngModel]="upgradePackageType()" (ngModelChange)="upgradePackageType.set($event)">
+                <option value="">Detect</option><option value="deb">deb</option><option value="rpm">rpm</option>
+              </select></label>
+            <div class="flex flex-col justify-end gap-2">
+              <label class="flex items-center gap-2 text-slate-300"><input type="checkbox" [ngModel]="upgradeForce()" (ngModelChange)="upgradeForce.set($event)" /> Force (same or older version, or newer than the manager)</label>
+              <label class="flex items-center gap-2 text-slate-300"><input type="checkbox" [ngModel]="upgradeUseHttp()" (ngModelChange)="upgradeUseHttp.set($event)" /> Use HTTP instead of HTTPS</label>
+            </div>
+          </div>
+          <div *ngIf="upgradeMode() === 'custom'" class="grid grid-cols-2 gap-3 text-xs">
+            <label class="space-y-1"><span class="text-slate-400">WPK file path on the manager</span>
+              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="/var/ossec/var/upgrade/agent.wpk" [ngModel]="upgradeFilePath()" (ngModelChange)="upgradeFilePath.set($event)" /></label>
+            <label class="space-y-1"><span class="text-slate-400">Installer in the package (empty = upgrade.bat / upgrade.sh)</span>
+              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" [ngModel]="upgradeInstaller()" (ngModelChange)="upgradeInstaller.set($event)" /></label>
+          </div>
+          <button (click)="startUpgrade()" [disabled]="upgradeBusy() || selectedAgent()?.status !== 'active'" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Upgrade agent</button>
+          <span *ngIf="selectedAgent()?.status !== 'active'" class="text-[11px] text-amber-400 ml-2">The agent must be connected.</span>
+          <div *ngIf="upgradeFeedback()" class="text-xs text-cyan-300">{{ upgradeFeedback() }}</div>
+          <div class="p-3 rounded-lg border border-slate-800 bg-slate-950/70 text-xs space-y-1">
+            <div class="font-semibold text-white">Last upgrade task</div>
+            <div *ngIf="!upgradeTask()" class="text-slate-500">No upgrade task for this agent.</div>
+            <ng-container *ngIf="upgradeTask() as t">
+              <div>Status: <span class="font-semibold" [class.text-emerald-400]="t.status === 'Updated'" [class.text-rose-400]="t.status === 'Error' || t.status === 'Timeout'" [class.text-cyan-300]="t.status === 'Updating' || t.status === 'In queue'">{{ t.status }}</span>
+                <span class="text-slate-500"> · task {{ t.task_id }} · {{ t.command }}</span></div>
+              <div *ngIf="t.error_msg" class="text-rose-300">{{ t.error_msg }}</div>
+              <div class="text-slate-500">Created {{ t.create_time }}<span *ngIf="t.update_time"> · updated {{ t.update_time }}</span></div>
+            </ng-container>
+          </div>
+        </div>
+
         <!-- Actions Tab -->
         <div *ngIf="selectedAgentTab() === 'actions'" class="space-y-4">
           <h4 class="font-semibold text-white">Remote Management & Diagnostic Dispatch</h4>
-          <p class="text-xs text-slate-500">Commands are queued on the manager; the agent picks them up on its next poll (a few seconds).</p>
+          <p class="text-xs text-slate-500">Sent to the agent through the manager (remoted), as the Wazuh API does.</p>
           <div class="grid grid-cols-2 gap-3">
             <button (click)="triggerAgentAction('restart_agent')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
               Restart Wazuh Agent Service
             </button>
             <button (click)="triggerAgentAction('fim_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
-              Run Instant FIM Syscheck
-            </button>
-            <button (click)="triggerAgentAction('sca_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
-              Run CIS SCA Compliance Audit
-            </button>
-            <button (click)="triggerAgentAction('syscollector_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
-              Sync Syscollector Inventory
+              Run FIM + Rootcheck Scan Now
             </button>
           </div>
+          <p class="text-[11px] text-slate-500">SCA and inventory scans run on the agent's schedule and when it starts: restart the agent to run them now.</p>
 
           <h4 class="font-semibold text-white pt-2">Agent Lifecycle</h4>
           <button (click)="deactivateAgent(selectedAgent()!)" class="w-full p-3 bg-amber-950/40 hover:bg-amber-900/40 border border-amber-800 rounded-lg text-left text-xs font-semibold text-amber-200 transition">
@@ -362,9 +547,14 @@
           <div class="flex gap-2">
             <input class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="IP address, e.g. 203.0.113.7"
               [ngModel]="actionIp()" (ngModelChange)="actionIp.set($event)" />
+            <select class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockSeconds()" (ngModelChange)="blockSeconds.set(+$event)">
+              <option [ngValue]="600">10 min</option>
+              <option [ngValue]="3600">1 hour</option>
+              <option [ngValue]="86400">24 hours</option>
+            </select>
             <button (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Block IP</button>
-            <button (click)="unblockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg border border-slate-700 text-slate-200 text-xs font-semibold disabled:opacity-40">Unblock IP</button>
           </div>
+          <p class="text-[11px] text-slate-500">The agent's firewall (firewall-drop on Linux, netsh on Windows) drops the IP and removes the rule when the time runs out.</p>
         </div>
       </div>
     </div>
@@ -436,8 +626,11 @@
               </label>
               <label class="block">
                 <span class="text-xs text-slate-400">Agent group</span>
-                <input class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
-                  [ngModel]="deployGroup()" (ngModelChange)="deployGroup.set($event)" />
+                <select class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs"
+                  [ngModel]="deployGroup()" (ngModelChange)="deployGroup.set($event)">
+                  <option value="default">default</option>
+                  <ng-container *ngFor="let g of groups()"><option *ngIf="g.name !== 'default'" [value]="g.name">{{ g.name }}</option></ng-container>
+                </select>
               </label>
               <div class="block">
                 <span class="text-xs text-slate-400">Tenant agent key</span>

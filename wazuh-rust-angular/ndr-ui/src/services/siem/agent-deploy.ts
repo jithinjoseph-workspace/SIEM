@@ -83,6 +83,9 @@ export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
 /** The files of the Windows agent package served by the manager. */
 const WINDOWS_AGENT_FILES = ['wazuh-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
 
+/** The active-response programs installed in active-response\bin. */
+const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe'];
+
 /** The directories the MSI creates under the install directory. */
 const WINDOWS_AGENT_DIRS = [
   'active-response\\bin', 'bookmarks', 'incoming', 'logs', 'queue\\diff', 'queue\\fim\\db', 'queue\\syscollector\\db',
@@ -121,6 +124,8 @@ export function windowsInstallScript(p: DeployParams): string {
     `foreach ($s in @(${WINDOWS_AGENT_DIRS.map(x => `'${x}'`).join(',')})) { New-Item -ItemType Directory -Force -Path "$d\\$s" | Out-Null }`,
     `if (-not (Test-Path "$d\\active-response\\active-responses.log")) { New-Item -ItemType File -Path "$d\\active-response\\active-responses.log" | Out-Null }`,
     `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
+    // the active responses the manager can run on the agent (netsh firewall block, restart)
+    `foreach ($f in @(${WINDOWS_AR_FILES.map(x => `'${x}'`).join(',')})) { try { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\active-response\\bin\\$f" } catch { Write-Warning "Active response $f not available from the manager" } }`,
     // where the MSI installs the syscollector normalizer
     `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/norm_config.json" -OutFile "$d\\queue\\syscollector\\norm_config.json"`,
     // the CIS policy the MSI installs for this OS (wazuh-installer.wxs: build number, workstation or server)

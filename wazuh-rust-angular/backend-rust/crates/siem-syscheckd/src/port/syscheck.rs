@@ -34,6 +34,16 @@ impl ConfigHandler for Handler<'_> {
     }
 }
 
+/// `Test_Syscheck`: the `<syscheck>` reader into a throw-away configuration.
+#[derive(Default)]
+pub struct SyscheckTest(pub SyscheckConfig);
+
+impl ConfigHandler for SyscheckTest {
+    fn section(&mut self, ctx: &mut ConfigContext, xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> CResult<()> {
+        Handler { sc: &mut self.0, agent_config: true }.section(ctx, xml, section, node, children)
+    }
+}
+
 /// What the agent passes in: its internal options and how config messages are logged.
 pub struct Env<'a> {
     pub log: &'a WLog,
@@ -284,3 +294,55 @@ pub fn start(sk: std::sync::Arc<Syscheck>, send: Box<dyn Fn(u8, &str, &[u8]) -> 
 /// The running module (for the syscom `fim_*` and `restart` requests).
 #[cfg(windows)]
 pub static FIM: std::sync::OnceLock<std::sync::Arc<super::create_db::Fim>> = std::sync::OnceLock::new();
+
+/// `is_fim_shutdown` before the module exists (a stop during start-up).
+#[cfg(windows)]
+static SHUTDOWN_EARLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `fim_shutdown_process_on`
+#[cfg(windows)]
+pub fn fim_shutdown_process_on() -> bool {
+    SHUTDOWN_EARLY.load(std::sync::atomic::Ordering::SeqCst) || FIM.get().is_some_and(|f| f.shutdown.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+/// The service stop: `is_fim_shutdown = true; fim_db_teardown();`
+#[cfg(windows)]
+pub fn shutdown() {
+    SHUTDOWN_EARLY.store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(f) = FIM.get() {
+        f.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    if let Some(db) = super::fimdb::instance() {
+        db.teardown();
+    }
+}
+
+#[cfg(test)]
+mod test_readers {
+    use super::*;
+    use siem_config::modules::{CAGENT_CONFIG, CROOTCHECK, CSYSCHECK};
+
+    fn check(mods: u32, h: &mut dyn ConfigHandler, conf: &str) -> bool {
+        let xml = OsXml::read_string(conf, false).unwrap();
+        let mut ctx = ConfigContext::new(siem_config::Platform::AGENT);
+        // generic <agent_config> blocks are read only by agents with a <config-profile> (Windows ships one)
+        ctx.agent.profile = Some("windows".into());
+        siem_config::read_config_xml(&mut ctx, CAGENT_CONFIG | mods, &xml, "agent.conf", h).is_ok()
+    }
+
+    #[test]
+    fn verify_remote_conf_readers() {
+        let ok = "<agent_config><syscheck><frequency>3600</frequency></syscheck><rootcheck><disabled>no</disabled></rootcheck></agent_config>";
+        let bad_sk = "<agent_config><syscheck><frequency>abc</frequency></syscheck></agent_config>";
+        let bad_rk = "<agent_config><rootcheck><disabled>maybe</disabled></rootcheck></agent_config>";
+        assert!(check(CSYSCHECK, &mut SyscheckTest::default(), ok));
+        assert!(!check(CSYSCHECK, &mut SyscheckTest::default(), bad_sk));
+        #[cfg(windows)]
+        {
+            use super::super::rootcheck::RootcheckTest;
+            assert!(check(CROOTCHECK, &mut RootcheckTest::default(), ok));
+            assert!(!check(CROOTCHECK, &mut RootcheckTest::default(), bad_rk));
+        }
+        let _ = (CROOTCHECK, bad_rk);
+    }
+}

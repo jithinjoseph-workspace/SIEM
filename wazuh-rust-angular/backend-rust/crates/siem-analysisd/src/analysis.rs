@@ -328,7 +328,7 @@ impl Engine {
             if ignore_time != 0 {
                 let ti = self.rules.infos[t_rule].time_ignored;
                 if ti == 0 {
-                    self.rules.infos[t_rule].time_ignored = ev.generate_time;
+                    std::sync::Arc::make_mut(&mut self.rules.infos[t_rule]).time_ignored = ev.generate_time;
                 } else if ev.generate_time - ti < ignore_time as i64 {
                     match ev.prev_rule {
                         Some(p) => {
@@ -340,7 +340,7 @@ impl Engine {
                         None => break,
                     }
                 } else {
-                    self.rules.infos[t_rule].time_ignored = ev.generate_time;
+                    std::sync::Arc::make_mut(&mut self.rules.infos[t_rule]).time_ignored = ev.generate_time;
                 }
             }
 

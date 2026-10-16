@@ -217,7 +217,7 @@ impl Engine {
         crate::rules::collect_dfs(&self.rules.tree, &mut |n| ids.push(n.rule));
         let mut out = Vec::new();
         for r in ids {
-            let ri = &mut self.rules.infos[r];
+            let ri = std::sync::Arc::make_mut(&mut self.rules.infos[r]);
             if ri.firedtimes != 0 {
                 out.push(format!("{}-{}-{}-{}", hour, ri.sigid, ri.level, ri.firedtimes));
                 ri.firedtimes = 0;
@@ -851,39 +851,39 @@ impl Engine {
                     let Some(v) = $val else {
                         return None;
                     };
-                    if !self.expr_ok(&$expr, &v) {
+                    if !self.expr_ok(&$expr, v) {
                         return None;
                     }
                 }
             };
         }
 
-        check_field!(r.program_name, ev.program_name.clone());
-        check_field!(r.id, ev.f[F_ID].clone());
-        check_field!(r.system_name, ev.f[F_SYSTEMNAME].clone());
-        check_field!(r.protocol, ev.f[F_PROTOCOL].clone());
-        check_field!(r.match_, Some(ev.log().to_vec()));
-        check_field!(r.regex, Some(ev.log().to_vec()));
-        check_field!(r.action, ev.f[F_ACTION].clone());
-        check_field!(r.url, ev.f[F_URL].clone());
-        check_field!(r.location, ev.f[F_LOCATION].clone());
+        check_field!(r.program_name, ev.program_name.as_deref());
+        check_field!(r.id, ev.f[F_ID].as_deref());
+        check_field!(r.system_name, ev.f[F_SYSTEMNAME].as_deref());
+        check_field!(r.protocol, ev.f[F_PROTOCOL].as_deref());
+        check_field!(r.match_, Some(ev.log()));
+        check_field!(r.regex, Some(ev.log()));
+        check_field!(r.action, ev.f[F_ACTION].as_deref());
+        check_field!(r.url, ev.f[F_URL].as_deref());
+        check_field!(r.location, ev.f[F_LOCATION].as_deref());
 
         for fi in r.fields.iter().take(self.cfg.rule.decoder_order_size) {
-            let name = fi.name.clone().unwrap_or_default();
-            let Some(v) = ev.find_field(name.as_bytes()).map(|x| x.to_vec()) else {
+            let name = fi.name.as_deref().unwrap_or_default();
+            let Some(v) = ev.find_field(name.as_bytes()) else {
                 return None;
             };
-            let (m, _) = fi.regex.match_bytes(&v, Some(&mut self.rule_match));
+            let (m, _) = fi.regex.match_bytes(v, Some(&mut self.rule_match));
             if m == fi.regex.negate {
                 return None;
             }
         }
 
         if r.alert_opts & DO_PACKETINFO != 0 {
-            check_field!(r.srcip, ev.f[F_SRCIP].clone());
-            check_field!(r.dstip, ev.f[F_DSTIP].clone());
-            check_field!(r.srcport, ev.f[F_SRCPORT].clone());
-            check_field!(r.dstport, ev.f[F_DSTPORT].clone());
+            check_field!(r.srcip, ev.f[F_SRCIP].as_deref());
+            check_field!(r.dstip, ev.f[F_DSTIP].as_deref());
+            check_field!(r.srcport, ev.f[F_SRCPORT].as_deref());
+            check_field!(r.dstport, ev.f[F_DSTPORT].as_deref());
         }
 
         if r.alert_opts & DO_EXTRAINFO != 0 {
@@ -893,20 +893,20 @@ impl Engine {
                 }
             }
             if r.user.is_some() {
-                if let Some(u) = ev.f[F_DSTUSER].clone() {
-                    if !self.expr_ok(&r.user, &u) {
+                if let Some(u) = ev.f[F_DSTUSER].as_deref() {
+                    if !self.expr_ok(&r.user, u) {
                         return None;
                     }
-                } else if let Some(u) = ev.f[F_SRCUSER].clone() {
-                    if !self.expr_ok(&r.user, &u) {
+                } else if let Some(u) = ev.f[F_SRCUSER].as_deref() {
+                    if !self.expr_ok(&r.user, u) {
                         return None;
                     }
                 } else {
                     return None;
                 }
             }
-            check_field!(r.srcgeoip, ev.f[F_SRCGEOIP].clone());
-            check_field!(r.dstgeoip, ev.f[F_DSTGEOIP].clone());
+            check_field!(r.srcgeoip, ev.f[F_SRCGEOIP].as_deref());
+            check_field!(r.dstgeoip, ev.f[F_DSTGEOIP].as_deref());
             if r.maxsize != 0 && ev.size < r.maxsize {
                 return None;
             }
@@ -920,10 +920,10 @@ impl Engine {
                     return None;
                 }
             }
-            check_field!(r.data, ev.f[F_DATA].clone());
-            check_field!(r.extra_data, ev.f[F_EXTRA_DATA].clone());
-            check_field!(r.hostname, ev.hostname.clone());
-            check_field!(r.status, ev.f[F_STATUS].clone());
+            check_field!(r.data, ev.f[F_DATA].as_deref());
+            check_field!(r.extra_data, ev.f[F_EXTRA_DATA].as_deref());
+            check_field!(r.hostname, ev.hostname.as_deref());
+            check_field!(r.status, ev.f[F_STATUS].as_deref());
             if r.context_opts & FIELD_DODIFF != 0 && !self.do_diff(rid, ev) {
                 return None;
             }
@@ -1018,7 +1018,7 @@ impl Engine {
         }
 
         self.hourly_alerts += 1;
-        let ri = &mut self.rules.infos[rid];
+        let ri = std::sync::Arc::make_mut(&mut self.rules.infos[rid]);
         ri.firedtimes += 1;
         ev.r_firedtimes = ri.firedtimes;
         Some(rid)
@@ -1128,7 +1128,7 @@ impl Engine {
             if self.rules.infos[rid].level == 0 {
                 break;
             }
-            let ri = &mut self.rules.infos[rid];
+            let ri = std::sync::Arc::make_mut(&mut self.rules.infos[rid]);
             if ri.ignore_time != 0 {
                 if ri.time_ignored == 0 {
                     ri.time_ignored = ev.generate_time;

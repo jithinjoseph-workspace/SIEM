@@ -327,7 +327,13 @@ pub struct Agentd {
     pub win_debug_level: AtomicI32,
     #[cfg(windows)]
     pub hooks: std::sync::OnceLock<WinHooks>,
+    /// The `Test_*` readers of the daemons this agent runs (`Test_Syscheck`,
+    /// `Test_Rootcheck`, `Test_WModule`): a reader into a throw-away configuration for `mods`.
+    pub conf_tests: std::sync::OnceLock<ConfTests>,
 }
+
+/// See [`Agentd::conf_tests`].
+pub type ConfTests = Box<dyn Fn(u32) -> Option<Box<dyn siem_config::ConfigHandler>> + Send + Sync>;
 
 impl Agentd {
     pub fn new(log: Arc<WLog>, opts: InternalOptions) -> Agentd {
@@ -358,6 +364,7 @@ impl Agentd {
             win_debug_level: AtomicI32::new(0),
             #[cfg(windows)]
             hooks: std::sync::OnceLock::new(),
+            conf_tests: std::sync::OnceLock::new(),
         }
     }
 

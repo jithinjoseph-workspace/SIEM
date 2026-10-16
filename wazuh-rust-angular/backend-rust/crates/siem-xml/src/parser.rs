@@ -14,6 +14,38 @@ pub(crate) const R_CONFE: i32 = b'>' as i32;
 pub(crate) const R_COM: i32 = b'!' as i32;
 const LEOF: i32 = -2;
 pub(crate) const XML_MAXSIZE: usize = 20480;
+
+/// A C `char[XML_MAXSIZE + 1]` that starts zeroed. Only the written prefix is
+/// stored (the rest reads as 0), so clearing costs what was used, not 20 KB.
+#[derive(Default)]
+struct CBuf(Vec<u8>);
+
+impl CBuf {
+    fn set(&mut self, i: usize, b: u8) {
+        if i >= self.0.len() {
+            if b == 0 {
+                return;
+            }
+            self.0.resize(i + 1, 0);
+        }
+        self.0[i] = b;
+    }
+
+    fn get(&self, i: usize) -> u8 {
+        self.0.get(i).copied().unwrap_or(0)
+    }
+
+    /// The C string: up to the first NUL.
+    fn cstr(&self) -> Vec<u8> {
+        let n = self.0.iter().position(|&x| x == 0).unwrap_or(self.0.len());
+        self.0[..n].to_vec()
+    }
+
+    /// `memset(buf, '\0', XML_MAXSIZE)`
+    fn clear(&mut self) {
+        self.0.clear();
+    }
+}
 const XML_MAX_ATTR_DEPTH: u32 = 48;
 pub(crate) const XML_ERR_LENGTH: usize = 128;
 const XML_STASH_LEN: usize = 2;
@@ -143,15 +175,10 @@ impl<'a, 'x> Parser<'a, 'x> {
         let mut ignore_content = false;
         let mut prevv: i32 = 1;
         // C buffers of XML_MAXSIZE + 1 bytes, overwritten in place by `count`.
-        let mut elem = vec![0u8; XML_MAXSIZE + 1];
-        let mut cont = vec![0u8; XML_MAXSIZE + 1];
-        let mut closedelim = vec![0u8; XML_MAXSIZE + 1];
+        let mut elem = CBuf::default();
+        let mut cont = CBuf::default();
+        let mut closedelim = CBuf::default();
         let cmp = self.r.end_marker();
-
-        let cstr = |b: &[u8]| -> Vec<u8> {
-            let n = b.iter().position(|&x| x == 0).unwrap_or(b.len());
-            b[..n].to_vec()
-        };
 
         loop {
             let mut c = self.getc();
@@ -199,12 +226,12 @@ impl<'a, 'x> Parser<'a, 'x> {
             } else if location == 0 && (c == R_CONFE || c_isspace(c)) {
                 let mut ge = 0;
                 let mut ga = 0;
-                elem[count] = 0;
-                if count > 0 && elem[count - 1] == b'/' {
+                elem.set(count, 0);
+                if count > 0 && elem.get(count - 1) == b'/' {
                     ge = b'/' as i32;
-                    elem[count - 1] = 0;
+                    elem.set(count - 1, 0);
                 }
-                let name = cstr(&elem);
+                let name = elem.cstr();
                 self.x.writememory(name, XmlType::Elem, parent);
                 currently_cont = self.x.cur() - 1;
                 if c_isspace(c) {
@@ -220,9 +247,9 @@ impl<'a, 'x> Parser<'a, 'x> {
                     currently_cont = 0;
                     count = 0;
                     location = -1;
-                    elem[..XML_MAXSIZE].fill(0);
-                    closedelim[..XML_MAXSIZE].fill(0);
-                    cont[..XML_MAXSIZE].fill(0);
+                    elem.clear();
+                    closedelim.clear();
+                    cont.clear();
                     if parent > 0 {
                         return 0;
                     }
@@ -231,17 +258,17 @@ impl<'a, 'x> Parser<'a, 'x> {
                     location = 1;
                 }
             } else if location == 2 && c == R_CONFE {
-                closedelim[count] = 0;
-                if cstr(&closedelim) != cstr(&elem) {
-                    let e = String::from_utf8_lossy(&cstr(&elem)).into_owned();
+                closedelim.set(count, 0);
+                if closedelim.cstr() != elem.cstr() {
+                    let e = String::from_utf8_lossy(&elem.cstr()).into_owned();
                     self.error(format!("XMLERR: Element '{e}' not closed."));
                     return retval;
                 }
-                self.x.ct[currently_cont] = Some(cstr(&cont));
+                self.x.ct[currently_cont] = Some(cont.cstr());
                 self.x.ck[currently_cont] = true;
-                elem[..XML_MAXSIZE].fill(0);
-                closedelim[..XML_MAXSIZE].fill(0);
-                cont[..XML_MAXSIZE].fill(0);
+                elem.clear();
+                closedelim.clear();
+                cont.clear();
                 currently_cont = 0;
                 count = 0;
                 location = -1;
@@ -251,7 +278,7 @@ impl<'a, 'x> Parser<'a, 'x> {
             } else if location == 1 && c == R_CONFS && prevv == 1 {
                 c = self.getc();
                 if c == b'/' as i32 {
-                    cont[count] = 0;
+                    cont.set(count, 0);
                     count = 0;
                     location = 2;
                     ignore_content = false;
@@ -268,13 +295,13 @@ impl<'a, 'x> Parser<'a, 'x> {
                 // except as (char)-1 on the string path, which we never produce.
                 let byte = c as u8;
                 if location == 0 {
-                    elem[count] = byte;
+                    elem.set(count, byte);
                     count += 1;
                 } else if location == 1 && !ignore_content {
-                    cont[count] = byte;
+                    cont.set(count, byte);
                     count += 1;
                 } else if location == 2 {
-                    closedelim[count] = byte;
+                    closedelim.set(count, byte);
                     count += 1;
                 }
                 if c == R_CONFS {

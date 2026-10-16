@@ -187,7 +187,9 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   // --- Wazuh Parity: Active Response Management ---
   activeResponses = signal<ActiveResponseRecord[]>([]);
-  arTargetIp = signal<string>('198.51.100.42');
+  arTargetIp = signal<string>('');
+  arAgentId = signal<string>('');
+  arFeedback = signal<string | null>(null);
   arDuration = signal<number>(3600);
   arReason = signal<string>('Manual operator block: brute-force / unauthorized access');
   isBlocking = signal<boolean>(false);
@@ -823,15 +825,19 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   blockIpAction() {
     const ip = this.arTargetIp().trim();
-    if (!ip) return;
+    const agent = this.arAgentId() || (this.agents().find(a => a.status === 'active') || this.agents()[0])?.id;
+    if (!ip || !agent) return;
     this.isBlocking.set(true);
-    this.siemService.blockIp(ip, this.arDuration(), this.arReason()).subscribe({
-      next: () => {
+    this.arFeedback.set(null);
+    this.siemService.blockIp(ip, this.arDuration(), this.arReason(), agent).subscribe({
+      next: (r: any) => {
         this.isBlocking.set(false);
+        this.arFeedback.set(`✓ ${r?.message || 'Block sent'}`);
         this.loadActiveResponses();
       },
-      error: () => {
+      error: (err) => {
         this.isBlocking.set(false);
+        this.arFeedback.set(`✗ ${err?.error?.message || 'request failed'}`);
         this.loadActiveResponses();
       }
     });

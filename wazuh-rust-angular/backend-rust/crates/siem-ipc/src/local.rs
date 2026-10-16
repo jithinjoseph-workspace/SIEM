@@ -62,7 +62,15 @@ impl DatagramReceiver {
         }
         #[cfg(not(unix))]
         {
-            let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await?;
+            // Senders stay connected to the port of the previous run (a UDP send to a
+            // closed port does not fail), so a restarted receiver takes that port back.
+            let sock = match read_port(&path) {
+                Ok(p) => match tokio::net::UdpSocket::bind(("127.0.0.1", p)).await {
+                    Ok(s) => s,
+                    Err(_) => tokio::net::UdpSocket::bind("127.0.0.1:0").await?,
+                },
+                Err(_) => tokio::net::UdpSocket::bind("127.0.0.1:0").await?,
+            };
             write_port(&path, sock.local_addr()?.port())?;
             Ok(Self { sock, path })
         }
@@ -246,5 +254,18 @@ mod tests {
         crate::framing::send(&mut c, b"ping").await.unwrap();
         assert_eq!(crate::framing::recv(&mut c, 65536).await.unwrap(), b"ok ping");
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sender_reaches_restarted_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let qpath = dir.path().join("queue/sockets/queue");
+        let rx = DatagramReceiver::bind(&qpath).await.unwrap();
+        let tx = DatagramSender::connect(&qpath).await.unwrap();
+        drop(rx);
+        let rx = DatagramReceiver::bind(&qpath).await.unwrap();
+        tx.send(b"after restart").await.unwrap();
+        let got = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv(65536)).await;
+        assert_eq!(got.expect("message lost after the receiver restarted").unwrap(), b"after restart");
     }
 }

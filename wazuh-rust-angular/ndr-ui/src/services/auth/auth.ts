@@ -211,8 +211,9 @@ export class AuthService implements OnDestroy {
 
     const perms = this.normalizePermissions(user.permissions);
 
-    // If 'siem' master suite permission is assigned or role is analyst, grant all SIEM pages
-    if (permission.startsWith('siem') && (perms.includes('siem') || user.role === 'analyst')) return true;
+    // Same rule as siem-api (AuthCtx::has_permission): the page itself, the 'siem' suite, or 'all'
+    if (perms.includes('all')) return true;
+    if (permission.startsWith('siem') && perms.includes('siem')) return true;
     if (permission === 'dashboard' && (perms.includes('dashboard') || user.role === 'analyst')) return true;
 
     return perms.includes(permission);

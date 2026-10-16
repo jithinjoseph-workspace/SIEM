@@ -1,0 +1,33 @@
+[package]
+name = "siem-active-response"
+version = "0.1.0"
+edition = "2021"
+description = "Port of Wazuh 4.14.7 active-response programs (src/active-response): netsh, restart-wazuh, firewall-drop"
+
+[dependencies]
+siem-cjson = { path = "../siem-cjson" }
+siem-log = { path = "../siem-log" }
+siem-ipc = { path = "../siem-ipc" }
+chrono = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_WinTrust", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+
+[[bin]]
+name = "netsh"
+path = "src/bin/netsh.rs"
+
+[[bin]]
+name = "restart-wazuh"
+path = "src/bin/restart_wazuh.rs"
+
+[[bin]]
+name = "firewall-drop"
+path = "src/bin/firewall_drop.rs"
+
+[[bin]]
+name = "route-null"
+path = "src/bin/route_null.rs"

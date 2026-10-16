@@ -37,6 +37,12 @@ impl Wfd {
         }
     }
 
+    /// `wfd->pinfo.hProcess` (for `wm_append_handle`)
+    #[cfg(windows)]
+    pub fn process_handle(&self) -> isize {
+        self.process as isize
+    }
+
     /// `fgets(buf, size, file_out)`: up to `size - 1` bytes through a
     /// newline; `None` at EOF with nothing read.
     pub fn fgets(&mut self, size: usize) -> Option<Vec<u8>> {

@@ -190,7 +190,8 @@ unsafe fn get_sacl(path: &[u8]) -> Result<(*mut ACL, PSECURITY_DESCRIPTOR), u32>
 
 unsafe fn set_sacl(path: &[u8], sacl: *const ACL) -> u32 {
     let Some(w) = super::win::auto_to_wide(path) else { return 87 };
-    SetNamedSecurityInfoW(w.as_ptr(), SE_FILE_OBJECT, SACL_SECURITY_INFORMATION, std::ptr::null_mut(), std::ptr::null_mut(), sacl, std::ptr::null())
+    // (name, type, info, owner, group, dacl, sacl)
+    SetNamedSecurityInfoW(w.as_ptr(), SE_FILE_OBJECT, SACL_SECURITY_INFORMATION, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null(), sacl)
 }
 
 /// A new SACL: the old ACEs plus an "Everyone" audit ACE (flags, mask), the new ACE first or last.

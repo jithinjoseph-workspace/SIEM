@@ -7,6 +7,8 @@ description = "High-performance Axum REST & WebSocket SIEM Manager Server in Rus
 [dependencies]
 siem-core = { path = "../siem-core" }
 siem-engine = { path = "../siem-engine" }
+siem-config = { path = "../siem-config" }
+siem-xml = { path = "../siem-xml" }
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1.40", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }

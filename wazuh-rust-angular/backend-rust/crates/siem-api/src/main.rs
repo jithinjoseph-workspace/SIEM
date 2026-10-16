@@ -36,6 +36,7 @@ pub mod persist;
 pub mod corroboration;
 pub mod tenancy;
 pub mod wazuh_manager;
+pub mod groups;
 use db::ClickHouseDb;
 use tenancy::AuthCtx;
 
@@ -448,6 +449,7 @@ async fn main() {
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
+        .route("/api/v1/agents/:id/rootcheck", get(get_agent_rootcheck_handler))
         .route("/api/v1/rootcheck/signatures", get(get_rootcheck_signatures_handler))
         .route("/downloads/siem-agent.exe", get(download_agent))
         .route("/downloads/wazuh-agent.exe", get(|| download_windows_binary("wazuh-agent.exe".to_string())))
@@ -474,6 +476,10 @@ async fn main() {
         .route("/api/v1/syslog-forwarder/format", post(post_format_syslog_handler))
         .route("/api/v1/reports/summary", get(get_reports_summary_handler))
         .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler).get(get_agent_upgrade_handler))
+        .route("/api/v1/groups", get(groups::list_groups).post(groups::create_group))
+        .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
+        .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))
+        .route("/api/v1/agents/:id/groups", put(groups::put_agent_groups))
         .layer(axum::middleware::from_fn_with_state(state.clone(), tenancy::auth_middleware))
         .layer(cors)
         .with_state(state);
@@ -574,9 +580,9 @@ fn seed_sample_data(state: &AppState) {
         drop(agents_read);
 
         if let Some(alert) = state.engine.process_event(&ev, &agent.name, &agent.ip) {
-            state.alerts.write().unwrap().push(alert);
+            keep_alerts(&state, [alert]);
         }
-        state.events.write().unwrap().push(ev);
+        keep_events(&state, [ev]);
     }
 
     // Seed initial vulnerability detections via VulnerabilityScanner
@@ -647,7 +653,7 @@ fn seed_sample_data(state: &AppState) {
             location: "vulnerability-detector".to_string(),
             data: HashMap::new(),
         };
-        state.alerts.write().unwrap().push(alert);
+        keep_alerts(&state, [alert]);
     }
 
     // Seed Wazuh DB agent state (OS, Hardware, Network, Packages, Ports, FIM, SCA)
@@ -756,6 +762,32 @@ fn seed_sample_data(state: &AppState) {
     }
 }
 
+/// How many recent alerts / events siem-api keeps in memory (ClickHouse keeps everything).
+pub const MEM_ALERTS: usize = 50_000;
+pub const MEM_EVENTS: usize = 50_000;
+
+/// Keeps the newest `cap` items (trimmed in steps of 10% so the copy is rare).
+fn trim<T>(l: &mut Vec<T>, cap: usize) {
+    if l.len() > cap + cap / 10 {
+        let n = l.len() - cap;
+        l.drain(..n);
+    }
+}
+
+/// Adds alerts to the in-memory window.
+pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
+    let mut l = state.alerts.write().unwrap();
+    l.extend(alerts);
+    trim(&mut l, MEM_ALERTS);
+}
+
+/// Adds events to the in-memory window.
+pub fn keep_events(state: &AppState, events: impl IntoIterator<Item = RawEvent>) {
+    let mut l = state.events.write().unwrap();
+    l.extend(events);
+    trim(&mut l, MEM_EVENTS);
+}
+
 /// Alerts visible in the caller's tenant scope (oldest first).
 fn scoped_alerts(state: &AppState, ctx: &AuthCtx) -> Vec<Alert> {
     let scope = ctx.scope();
@@ -804,6 +836,9 @@ async fn get_stats(State(state): State<AppState>, Extension(ctx): Extension<Auth
         .filter(|a| a.status == AgentStatus::Active && (now - a.last_keepalive).num_seconds() <= 60)
         .count();
 
+    // ClickHouse has every row; memory only the recent window
+    let (events_count, total_alerts, critical_alerts, high_alerts, medium_alerts, low_alerts) =
+        state.db.tenant_totals(&ctx.scope()).await.unwrap_or((events_count, total_alerts, critical_alerts, high_alerts, medium_alerts, low_alerts));
     Json(SiemStats {
         total_events: events_count,
         total_alerts,
@@ -1399,7 +1434,7 @@ async fn ingest_event(
         }
 
         state.db.insert_event(&event).await;
-        state.events.write().unwrap().push(event);
+        keep_events(&state, [event]);
     }
 
     Ok(Json(last_alert))
@@ -1523,11 +1558,11 @@ async fn simulate_attack(
 
         if let Some(alert) = state.engine.process_event(&ev, &name, &ip) {
             let alert = tenancy::tag_alert(alert, &tenant);
-            state.alerts.write().unwrap().push(alert.clone());
+            keep_alerts(&state, [alert.clone()]);
             let _ = state.broadcast_tx.send(alert.clone());
             triggered_alerts.push(alert);
         }
-        state.events.write().unwrap().push(ev);
+        keep_events(&state, [ev]);
     }
 
     Json(SimulateResponse {
@@ -1720,6 +1755,9 @@ async fn queue_agent_command(
             .into_response();
     }
 
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        return wazuh_agent_action(&state, &ctx, &agent_id, &payload).await;
+    }
     if payload.get("command_id").is_none() || payload.get("command_id").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
         if let Some(obj) = payload.as_object_mut() {
             obj.insert("command_id".into(), serde_json::Value::String(uuid::Uuid::new_v4().to_string()));
@@ -1734,6 +1772,69 @@ async fn queue_agent_command(
     state.pending_commands.write().unwrap().entry(agent_id.clone()).or_default().push(payload.clone());
     persist::save_commands(&state, &agent_id, &[payload], false).await;
     Json(serde_json::json!({ "status": "queued" })).into_response()
+}
+
+/// Whether the agent runs Windows (its OS as the manager reported it).
+fn agent_is_windows(state: &AppState, agent_id: &str) -> bool {
+    state.agents.read().unwrap().get(agent_id).is_some_and(|a| a.os_type == "windows" || a.os.to_lowercase().contains("windows"))
+}
+
+/// The console actions on a Wazuh agent, sent the way the Wazuh API sends
+/// them (remoted's active-response queue).
+async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, payload: &serde_json::Value) -> axum::response::Response {
+    let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    let target = payload.get("target").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let bad = |m: &str| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
+    let r = match action {
+        "restart_agent" => wazuh_manager::restart_agent(agent_id).await.map(|_| "Restart sent to the agent".to_string()),
+        "fim_scan" | "rootcheck_scan" => wazuh_manager::syscheck_restart(agent_id).await.map(|_| "FIM and rootcheck scan started on the agent".to_string()),
+        "block_ip" => {
+            if target.parse::<std::net::IpAddr>().is_err() {
+                return bad("A valid IP address is required");
+            }
+            let duration = payload.get("duration_seconds").and_then(|v| v.as_u64()).unwrap_or(3600);
+            return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block").await;
+        }
+        "unblock_ip" => {
+            return bad("Wazuh agents remove a block when its time runs out (10 min, 1 h or 24 h); the agent has no command to remove it earlier.")
+        }
+        "sca_scan" | "syscollector_scan" => {
+            return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
+        }
+        _ => return bad("Unknown action"),
+    };
+    match r {
+        Ok(m) => {
+            info!("Wazuh agent {agent_id}: {action} by {}", ctx.username);
+            Json(serde_json::json!({ "status": "sent", "message": m })).into_response()
+        }
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+/// Block an IP on a Wazuh agent and record it.
+async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &str, duration: u64, reason: &str) -> axum::response::Response {
+    match wazuh_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration).await {
+        Ok(command) => {
+            let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(duration);
+            let rec = ActiveResponseRecord {
+                id: format!("ar-{}", &uuid::Uuid::new_v4().to_string()[..8]),
+                command,
+                target_ip: ip.to_string(),
+                agent_id: agent_id.to_string(),
+                reason: reason.to_string(),
+                triggered_at: Utc::now(),
+                duration_seconds: timeout,
+                status: "Active".to_string(),
+            };
+            state.active_responses.write().unwrap().insert(0, rec.clone());
+            persist::save_active_response(state, &rec).await;
+            info!("Wazuh agent {agent_id}: block {ip} for {timeout}s by {}", ctx.username);
+            let m = format!("{ip} blocked on the agent for {timeout} s");
+            (StatusCode::CREATED, Json(serde_json::json!({ "status": "success", "message": m, "record": rec }))).into_response()
+        }
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
 }
 
 async fn get_agent_commands_by_path(
@@ -3321,26 +3422,29 @@ async fn post_agent_packages(
 #[derive(Debug, Deserialize)]
 pub struct ScanRequest {
     pub agent_id: Option<String>,
-    pub packages: Option<Vec<PackageInfo>>,
 }
 
+/// `POST /api/v1/vulnerabilities`: checks the packages each agent of the
+/// caller's tenant (or the given agent) reported against the CVE feed again.
 async fn post_scan_now(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(req): Json<ScanRequest>,
-) -> Json<AgentPackagesScanResult> {
-    let agent_id = req.agent_id.unwrap_or_else(|| "001".to_string());
-    let packages = req.packages.unwrap_or_else(|| vec![
-        PackageInfo::new("xz-utils", "5.6.0"),
-        PackageInfo::new("openssh-server", "8.9p1"),
-        PackageInfo::new("curl", "7.74.0"),
-    ]);
-
-    post_agent_packages(
-        State(state),
-        Path(agent_id),
-        Json(AgentPackagesPayload { packages }),
-    )
-    .await
+) -> axum::response::Response {
+    let ids: Vec<String> = match req.agent_id {
+        Some(a) if agent_in_scope(&state, &ctx, &a) => vec![a],
+        Some(_) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response(),
+        None => scoped_agents(&state, &ctx).into_iter().map(|a| a.id).collect(),
+    };
+    let mut results = Vec::new();
+    let mut skipped = Vec::new();
+    for id in ids {
+        match wazuh_manager::agent_packages(&id).await.filter(|p| !p.is_empty()) {
+            Some(packages) => results.push(post_agent_packages(State(state.clone()), Path(id), Json(AgentPackagesPayload { packages })).await.0),
+            None => skipped.push(id),
+        }
+    }
+    Json(serde_json::json!({ "scanned_agents": results.len(), "agents_without_inventory": skipped, "results": results })).into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -3350,8 +3454,13 @@ pub struct SyncFeedRequest {
 
 async fn post_sync_feed(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(req): Json<SyncFeedRequest>,
 ) -> impl IntoResponse {
+    // the feed is shared by every tenant
+    if !ctx.is_super() {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "Only platform admins can replace the vulnerability feed" })));
+    }
     let json_content = if let Some(content) = req.feed_json {
         content
     } else {
@@ -3491,8 +3600,16 @@ async fn get_agent_netiface_handler(
 
 async fn get_agent_fim_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        let r = wazuh_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
+        return Json(r).into_response();
+    }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let entries = db.fim.list();
@@ -3501,13 +3618,24 @@ async fn get_agent_fim_handler(
             "total": entries.len(),
             "entries": entries
         }))
+        .into_response()
     } else {
         Json(serde_json::json!({
             "agent_id": agent_id,
             "total": 0,
             "entries": []
         }))
+        .into_response()
     }
+}
+
+/// `GET /api/v1/agents/:id/rootcheck`: the agent's rootcheck findings.
+async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(agent_id): Path<String>) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    let r = wazuh_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
+    Json(r).into_response()
 }
 
 async fn post_agent_fim_handler(
@@ -3726,9 +3854,19 @@ struct RootcheckScanRequest {
 
 async fn post_agent_rootcheck_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
     Json(req): Json<RootcheckScanRequest>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        return match wazuh_manager::syscheck_restart(&agent_id).await {
+            Ok(()) => Json(serde_json::json!({ "status": "sent", "message": "Rootcheck and FIM scan started on the agent" })).into_response(),
+            Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+        };
+    }
     let agent_name = {
         let agents = state.agents.read().unwrap();
         agents.get(&agent_id).map(|a| a.name.clone()).unwrap_or_else(|| format!("agent-{}", agent_id))
@@ -3810,6 +3948,7 @@ async fn post_agent_rootcheck_handler(
         "detections_count": detections.len(),
         "detections": detections
     }))
+    .into_response()
 }
 
 async fn get_rootcheck_signatures_handler() -> impl IntoResponse {
@@ -4442,6 +4581,13 @@ async fn post_active_response_block(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" })))
             .into_response();
     };
+    if req.ip.parse::<std::net::IpAddr>().is_err() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "A valid IP address is required" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        let reason = req.reason.clone().unwrap_or_else(|| "Manual SOC operator block".to_string());
+        return block_on_agent(&state, &ctx, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600), &reason).await;
+    }
     let rec = ActiveResponseRecord {
         id: format!("ar-{}", uuid::Uuid::new_v4().to_string()[..8].to_string()),
         command: req.command.unwrap_or_else(|| "firewall-drop".to_string()),
@@ -4726,8 +4872,9 @@ fn next_free_agent_id(state: &AppState) -> String {
     state.auth_keystore.read().unwrap().keys.iter().for_each(|k| consider(&k.id));
     // Ids are never reused, even after an agent is deleted (like Wazuh's
     // client.keys counter): old data stays attached to the old agent only.
-    let next = max + 1;
-    state.max_agent_id.fetch_max(next, std::sync::atomic::Ordering::SeqCst);
+    // fetch_add hands each concurrent enrollment its own id.
+    state.max_agent_id.fetch_max(max, std::sync::atomic::Ordering::SeqCst);
+    let next = state.max_agent_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     format!("{:03}", next)
 }
 
@@ -4764,8 +4911,19 @@ async fn post_agent_enroll_handler(
     if !valid_agent_name(&name) {
         return err(StatusCode::BAD_REQUEST, "Invalid agent name (2-128 chars: letters, digits, '.', '_', '-')");
     }
-    let groups = payload.groups.clone().unwrap_or_default();
-    let ip = payload.ip.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "any".to_string());
+    // authd refuses groups that do not exist ("Invalid group"); the manager names carry the tenant
+    let asked: Vec<String> = payload.groups.as_deref().unwrap_or("").split(',').map(str::to_string).collect();
+    let manager_groups = if wazuh_manager::enabled() {
+        match groups::resolve(&tenant, &asked) {
+            Ok(g) => g,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        }
+    } else {
+        vec!["default".to_string()]
+    };
+    let groups: Vec<String> = manager_groups.iter().filter_map(|m| groups::display_name(&tenant, m)).collect();
+    let groups = groups.join(",");
+    let ip =payload.ip.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "any".to_string());
 
     let os_type = payload.os_type.clone().unwrap_or_default();
     let (agent_id, reused, entry) = {
@@ -4804,7 +4962,7 @@ async fn post_agent_enroll_handler(
     };
     // remoted reads the keys from etc/client.keys, the agent row from global.db
     wazuh_manager::save_keys(&state);
-    wazuh_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &groups).await;
+    wazuh_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &manager_groups.join(",")).await;
 
     state.agent_tenants.write().unwrap().insert(agent_id.clone(), tenant.clone());
     {
@@ -5192,7 +5350,7 @@ async fn rotate_tenant_agent_key_handler(State(state): State<AppState>, Extensio
 /// database and broadcasts it.
 async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     let alert = tenancy::tag_alert(alert, tenant);
-    state.alerts.write().unwrap().push(alert.clone());
+    keep_alerts(&state, [alert.clone()]);
     state.db.insert_alert(&alert).await;
     let _ = state.broadcast_tx.send(alert.clone());
     alert
@@ -5387,5 +5545,15 @@ mod agent_key_tests {
         assert!(!super::ct_eq(b"abc", b"abd"));
         assert!(!super::ct_eq(b"abc", b"abcd"));
         assert!(!super::ct_eq(b"", b"x"));
+    }
+
+    #[test]
+    fn trim_keeps_newest() {
+        let mut l: Vec<u32> = (0..110).collect();
+        super::trim(&mut l, 100);
+        assert_eq!(l.len(), 110); // within the 10% slack
+        l.push(110);
+        super::trim(&mut l, 100);
+        assert_eq!(l, (11..111).collect::<Vec<_>>());
     }
 }

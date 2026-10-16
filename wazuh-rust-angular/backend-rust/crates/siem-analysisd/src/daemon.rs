@@ -748,7 +748,7 @@ impl Analysis {
         // RootcheckInit, ... (OS_ReadMSG)
         engine.internal = crate::internal::InternalDecoders::init(&mut engine.decoders, order);
         let stats_rule = if cfg.global.stats != 0 {
-            engine.rules.infos.push(stats_rule(cfg.global.stats as i32, cfg.global.mailbylevel as i32, cfg.global.logbylevel as i32));
+            engine.rules.infos.push(std::sync::Arc::new(stats_rule(cfg.global.stats as i32, cfg.global.mailbylevel as i32, cfg.global.logbylevel as i32)));
             Some(engine.rules.infos.len() - 1)
         } else {
             None

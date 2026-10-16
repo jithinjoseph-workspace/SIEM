@@ -2,6 +2,8 @@ import { Component, OnInit, ChangeDetectorRef, ViewEncapsulation } from '@angula
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../../services/api/api';
+import { SiemService } from '../../../services/siem/siem.service';
+import { AgentDeployService } from '../../../services/siem/agent-deploy';
 import {
     LucideAngularModule,
     TriangleAlert,
@@ -48,10 +50,32 @@ export class TenantSettings implements OnInit {
     WorkflowIcon = Workflow;
     LoadingIcon  = LoaderCircle;
 
-    constructor(private api: Api, private cdr: ChangeDetectorRef) {}
+    /** The key new agents of this tenant enroll with (X-Tenant-Key). */
+    agentKey = '';
+    agentKeyShown = false;
+    agentKeyMessage = '';
+
+    constructor(private api: Api, private cdr: ChangeDetectorRef, private siem: SiemService, private deploy: AgentDeployService) {}
 
     ngOnInit() {
         this.loadSettings();
+        this.deploy.tenantKey().subscribe({
+            next: (r: any) => { this.agentKey = r?.key || ''; this.cdr.detectChanges(); },
+            error: () => {},
+        });
+    }
+
+    rotateAgentKey() {
+        if (!confirm('Create a new agent key for this tenant?\n\nAgents already enrolled keep working. Install commands and scripts made with the old key stop enrolling new agents.')) return;
+        this.siem.rotateTenantAgentKey().subscribe({
+            next: (r: any) => {
+                this.agentKey = r?.agent_key || this.agentKey;
+                this.agentKeyShown = true;
+                this.agentKeyMessage = 'New key created. Use it in new install commands.';
+                this.cdr.detectChanges();
+            },
+            error: (e: any) => { this.agentKeyMessage = e?.status === 403 ? 'Only the tenant admin can rotate the key.' : 'Could not rotate the key.'; this.cdr.detectChanges(); },
+        });
     }
 
     loadSettings() {

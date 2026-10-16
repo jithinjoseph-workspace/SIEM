@@ -307,7 +307,8 @@ impl Default for RuleConfig {
 /// the per-EventList `_max_freq`.
 #[derive(Debug, Clone, Default)]
 pub struct Rules {
-    pub infos: Vec<RuleInfo>,
+    /// Shared so the matcher reads a rule without copying it; writes go through `Arc::make_mut`.
+    pub infos: Vec<std::sync::Arc<RuleInfo>>,
     pub tree: Vec<RNode>,
     pub lists: Vec<EvList>,
     /// `last_event_list->_max_freq`
@@ -1479,7 +1480,7 @@ impl Rules {
     /// The tail of the rule loop: tree insertion and context marks.
     /// Returns false when the rule was dropped.
     fn add_loaded_rule(&mut self, r: RuleInfo, log: &mut LogList) -> bool {
-        self.infos.push(r);
+        self.infos.push(std::sync::Arc::new(r));
         let id = self.infos.len() - 1;
         let sigid = self.infos[id].sigid;
 
@@ -1493,22 +1494,22 @@ impl Rules {
             return false;
         }
 
-        self.infos[id].if_group = None;
+        std::sync::Arc::make_mut(&mut self.infos[id]).if_group = None;
 
         let info = &self.infos[id];
         if info.if_matched_sid != 0 && info.alert_opts & DO_OVERWRITE == 0 {
-            self.infos[id].event_search = Some(EventSearch::LastSids);
+            std::sync::Arc::make_mut(&mut self.infos[id]).event_search = Some(EventSearch::LastSids);
             self.mark_id(id);
         } else if info.if_matched_group.is_some() && info.alert_opts & DO_OVERWRITE == 0 {
             let l = self.new_list();
-            self.infos[id].group_search = Some(l);
+            std::sync::Arc::make_mut(&mut self.infos[id]).group_search = Some(l);
             self.mark_group(id);
-            self.infos[id].event_search = Some(EventSearch::LastGroups);
+            std::sync::Arc::make_mut(&mut self.infos[id]).event_search = Some(EventSearch::LastGroups);
         } else if info.context != 0 {
             if info.context == 1 && info.context_opts & FIELD_DODIFF != 0 {
-                self.infos[id].context = 0;
+                std::sync::Arc::make_mut(&mut self.infos[id]).context = 0;
             } else {
-                self.infos[id].event_search = Some(EventSearch::LastEvents);
+                std::sync::Arc::make_mut(&mut self.infos[id]).event_search = Some(EventSearch::LastEvents);
             }
         }
         true
@@ -1526,7 +1527,7 @@ impl Rules {
             let nrule = node_list(&self.tree, path)[i].rule;
             if sid != 0 {
                 if self.infos[nrule].sigid == sid {
-                    self.infos[read].category = self.infos[nrule].category;
+                    std::sync::Arc::make_mut(&mut self.infos[read]).category = self.infos[nrule].category;
                     path.push(i);
                     insert_sorted(&self.infos, node_list_mut(&mut self.tree, path), read);
                     path.pop();
@@ -1551,7 +1552,7 @@ impl Rules {
                 i += 1;
                 continue;
             } else {
-                self.infos[read].category = self.infos[nrule].category;
+                std::sync::Arc::make_mut(&mut self.infos[read]).category = self.infos[nrule].category;
                 path.push(i);
                 insert_sorted(&self.infos, node_list_mut(&mut self.tree, path), read);
                 path.pop();
@@ -1667,7 +1668,7 @@ impl Rules {
             return 0;
         }
         let n = self.infos[newrule].clone();
-        let o = &mut self.infos[target];
+        let o = std::sync::Arc::make_mut(&mut self.infos[target]);
         o.level = n.level;
         o.maxsize = n.maxsize;
         o.frequency = n.frequency;
@@ -1749,8 +1750,8 @@ impl Rules {
         o.mitre_tactic_id = n.mitre_tactic_id.clone();
         o.mitre_technique_id = n.mitre_technique_id.clone();
         // newrule's if_sid / if_level are freed by OS_AddRuleInfo
-        self.infos[newrule].if_sid = None;
-        self.infos[newrule].if_level = None;
+        std::sync::Arc::make_mut(&mut self.infos[newrule]).if_sid = None;
+        std::sync::Arc::make_mut(&mut self.infos[newrule]).if_level = None;
         1
     }
 
@@ -1765,9 +1766,9 @@ impl Rules {
             if self.infos[r].sigid == want {
                 if self.infos[r].sid_prev_matched.is_none() {
                     let l = self.new_list();
-                    self.infos[r].sid_prev_matched = Some(l);
+                    std::sync::Arc::make_mut(&mut self.infos[r]).sid_prev_matched = Some(l);
                 }
-                self.infos[orig].sid_search = self.infos[r].sid_prev_matched;
+                std::sync::Arc::make_mut(&mut self.infos[orig]).sid_search = self.infos[r].sid_prev_matched;
             }
         }
     }
@@ -1781,7 +1782,7 @@ impl Rules {
         for r in targets {
             let g = self.infos[r].group.clone().unwrap_or_default();
             if m.is_match(&g) {
-                self.infos[r].group_prev_matched.get_or_insert_with(Vec::new).push(gs);
+                std::sync::Arc::make_mut(&mut self.infos[r]).group_prev_matched.get_or_insert_with(Vec::new).push(gs);
             }
         }
     }
@@ -1791,7 +1792,7 @@ impl Rules {
         let mut ids = Vec::new();
         collect_dfs(&self.tree, &mut |n| ids.push(n.rule));
         for r in ids {
-            let l = &mut self.infos[r].level;
+            let l = &mut std::sync::Arc::make_mut(&mut self.infos[r]).level;
             if *l == 9900 {
                 *l = 0;
             }
@@ -1834,7 +1835,7 @@ fn node_list_mut<'a>(tree: &'a mut Vec<RNode>, path: &[usize]) -> &'a mut Vec<RN
 }
 
 /// `_OS_AddRule`: insert before the first node with a lower level.
-fn insert_sorted(infos: &[RuleInfo], list: &mut Vec<RNode>, read: RuleId) {
+fn insert_sorted(infos: &[std::sync::Arc<RuleInfo>], list: &mut Vec<RNode>, read: RuleId) {
     let lvl = infos[read].level;
     let pos = list.iter().position(|n| lvl > infos[n.rule].level).unwrap_or(list.len());
     list.insert(pos, RNode { rule: read, children: Vec::new() });

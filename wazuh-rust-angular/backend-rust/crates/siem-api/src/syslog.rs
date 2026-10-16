@@ -204,13 +204,13 @@ async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: 
 
     if let Some(alert) = maybe_alert {
         let alert = tenancy::tag_alert(alert, &tenant);
-        state.alerts.write().unwrap().push(alert.clone());
+        crate::keep_alerts(&state, [alert.clone()]);
         state.db.insert_alert(&alert).await;
         let _ = state.broadcast_tx.send(alert);
     }
 
     state.db.insert_event(&raw_event).await;
-    state.events.write().unwrap().push(raw_event);
+    crate::keep_events(&state, [raw_event]);
 }
 
 #[cfg(test)]

@@ -169,6 +169,32 @@
         </div>
       </section>
 
+      <!-- Agent enrollment key -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="CriticalIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Agent Enrollment Key</h3>
+            <p>New agents of this tenant enroll with this key. Rotate it if it leaked; enrolled agents keep working.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card">
+            <div class="threshold-label">
+              <span class="label-text">Key</span>
+              <span class="label-value" style="cursor:pointer" (click)="agentKeyShown = !agentKeyShown">{{ agentKeyShown ? 'Hide' : 'Show' }}</span>
+            </div>
+            <code style="word-break:break-all">{{ agentKeyShown ? (agentKey || '—') : '••••••••••••••••' }}</code>
+            <div class="save-action-row">
+              <button class="save-action" (click)="rotateAgentKey()">Rotate key</button>
+            </div>
+            <div *ngIf="agentKeyMessage" class="feedback success"><span>{{ agentKeyMessage }}</span></div>
+          </article>
+        </div>
+      </section>
+
       <aside class="panel save-panel">
         <div class="panel-heading compact">
           <div class="panel-icon secondary">

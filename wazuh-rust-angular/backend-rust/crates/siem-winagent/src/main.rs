@@ -3,10 +3,8 @@
 //! (the main thread, `receiver_messages`), logcollector, and the other
 //! components, as threads started by `local_start`.
 //!
-//! The components not ported yet (execd, syscheck/rootcheck and the modules)
-//! are reached through [`siem_agentd::WinHooks`]; until they are, local
-//! start-up treats them as their C code does when they are disabled or
-//! fail to start.
+//! execd, syscheck/rootcheck, the modules and agent-upgrade run in this
+//! process and are reached through [`siem_agentd::WinHooks`] (see `components.rs`).
 
 #[cfg(not(windows))]
 fn main() {
@@ -77,6 +75,7 @@ mod win {
         siem_ipc::os_net::set_logger(Arc::clone(&log));
         siem_fileop::set_logger(Arc::clone(&log));
         service::set_logger(Arc::clone(&log));
+        service::set_on_stop(Box::new(crate::components::on_service_stop));
         if let Err(e) = std::env::set_current_dir(&mypath) {
             let n = e.raw_os_error().unwrap_or(0);
             log.plain(
@@ -220,7 +219,7 @@ mod win {
             log.info(format!("Using force reconnect interval, Wazuh Agent will reconnect every {v} {u}"));
         }
 
-        // Start execd thread (WinExecdStart: not ported yet, as disabled)
+        // Start execd thread (WinExecdStart)
         if !crate::components::win_execd_start(&ag) {
             ag.execdq.store(-1, Ordering::SeqCst);
         }
@@ -260,6 +259,17 @@ mod win {
         hooks.dispatch.push(("logcollector", Box::new(move |b: &[u8]| siem_logcollector::lccom::lccom_dispatch(&lcd, b))));
         crate::components::register_hooks(&ag, &mut hooks);
         let _ = ag.hooks.set(hooks);
+        // verifyRemoteConf: the Test_* readers of the components this agent runs
+        let tlog = Arc::clone(&ag.log);
+        let _ = ag.conf_tests.set(Box::new(move |mods: u32| -> Option<Box<dyn siem_config::ConfigHandler>> {
+            use siem_config::modules::{CROOTCHECK, CSYSCHECK, CWMODULE};
+            match mods {
+                CSYSCHECK => Some(Box::new(siem_syscheckd::port::syscheck::SyscheckTest::default())),
+                CROOTCHECK => Some(Box::new(siem_syscheckd::port::rootcheck::RootcheckTest::default())),
+                CWMODULE => Some(Box::new(crate::wmodules::WModuleTest::new(Arc::clone(&tlog)))),
+                _ => None,
+            }
+        }));
 
         // Start logcollector thread
         let lct = Arc::clone(&lc);
@@ -321,4 +331,6 @@ mod dll_verify;
 #[cfg(windows)]
 mod upgrade;
 #[cfg(windows)]
+mod wm_command;
+mod wm_osquery;
 mod wmodules;

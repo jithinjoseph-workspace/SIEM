@@ -71,6 +71,8 @@ pub struct Remoted {
     pub keys: RwLock<KeyStore>,
     pub counters: Mutex<CounterStore>,
     pub sender_counter: Mutex<SenderCounter>,
+    /// The open sender counter file (None: written with `CounterStore::store_sender`).
+    pub sender_file: Mutex<Option<siem_crypto::msgs::SenderCounterFile>>,
     pub conns: server::ConnTable,
     pub next_sock: AtomicI64,
     pub udp: OnceLock<Arc<tokio::net::UdpSocket>>,
@@ -133,7 +135,13 @@ impl Remoted {
             let mut st = e.state.lock().unwrap();
             counters.start_agent(&mut st.key);
         }
-        let sender = counters.load_sender();
+        // OS_StartCounter keeps the sender counter file open ("r+", else "w"); StoreSenderCounter
+        // rewrites it in place, so a send costs one write, not an open/close
+        let _ = std::fs::create_dir_all(counters.dir());
+        let (sender_file, sender) = match siem_crypto::msgs::SenderCounterFile::open(counters.dir().join(siem_crypto::msgs::SENDER_COUNTER)) {
+            Ok((f, c)) => (Some(f), c),
+            Err(_) => (None, counters.load_sender()),
+        };
         let (ktx, krx) = tokio::sync::mpsc::channel(1024);
         let sd = shared_download::SharedDownload::new(&settings.paths.shared_dir(), &settings.paths.download_dir(), deps.downloader);
         let r = Arc::new(Self {
@@ -143,6 +151,7 @@ impl Remoted {
             keys: RwLock::new(keys),
             counters: Mutex::new(counters),
             sender_counter: Mutex::new(sender),
+            sender_file: Mutex::new(sender_file),
             conns: Mutex::new(HashMap::new()),
             next_sock: server::new_sock_counter(),
             udp: OnceLock::new(),

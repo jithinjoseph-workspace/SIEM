@@ -271,10 +271,48 @@ fn totals_file(home: &Path, year: i32, mon: &str, day: i32) -> std::io::Result<F
 
 /* ------------------------------------------------------------ labels */
 
+/// Agent id -> (labels, time read).
+type LabelMap = Arc<std::sync::Mutex<HashMap<String, (Vec<Label>, i64)>>>;
+
+/// `labels_find`'s cache. An expired entry is still served while a background
+/// task re-reads it from wazuh-db (its own connection), so events of known agents
+/// never wait on wazuh-db; only an agent seen for the first time is read inline.
+/// (C reads inline too, but from one of several decoder threads.)
 struct LabelCache {
     config: Vec<Label>,
-    cache: HashMap<String, (Vec<Label>, i64)>,
+    cache: LabelMap,
     maxage: i64,
+    /// Agents whose refresh is queued or running.
+    pending: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    refresh: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+}
+
+impl LabelCache {
+    fn new(config: Vec<Label>, maxage: i64, ctx: Option<&Ctx>) -> Self {
+        let cache: LabelMap = Arc::default();
+        let pending: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
+        let refresh = ctx.map(|ctx| {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let (c, p) = (cache.clone(), pending.clone());
+            let wdb = WdbcSocket::new(ctx.home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK));
+            ctx.rt.spawn(async move {
+                while let Some(id) = rx.recv().await {
+                    let q = format!("global get-labels {}", crate::rules::atoi(&id));
+                    if let Ok(r) = wdb.query(&q).await {
+                        if let (WdbcResult::Ok, payload) = parse_result(&r) {
+                            if let Some(j) = siem_cjson::parse(payload.as_bytes()) {
+                                let labels = to_labels(&siem_config::labels::labels_parse(&j));
+                                c.lock().unwrap().insert(id.clone(), (labels, TimeSpec::now().sec));
+                            }
+                        }
+                    }
+                    p.lock().unwrap().remove(&id);
+                }
+            });
+            tx
+        });
+        LabelCache { config, cache, maxage, pending, refresh }
+    }
 }
 
 fn to_labels(v: &[siem_config::labels::Label]) -> Vec<Label> {
@@ -488,16 +526,25 @@ impl LabelCache {
         }
         let id = String::from_utf8_lossy(agent_id).into_owned();
         let now = TimeSpec::now().sec;
-        if let Some((l, mtime)) = self.cache.get(&id) {
-            if now <= mtime + self.maxage {
-                return l.clone();
+        let cached = self.cache.lock().unwrap().get(&id).cloned();
+        if let Some((l, mtime)) = cached {
+            if now > mtime + self.maxage {
+                if let Some(tx) = &self.refresh {
+                    // served stale until the background read lands
+                    if self.pending.lock().unwrap().insert(id.clone()) {
+                        let _ = tx.send(id);
+                    }
+                    return l;
+                }
+            } else {
+                return l;
             }
         }
         let q = format!("global get-labels {}", crate::rules::atoi(&id));
         match ctx.wdb_json(&q) {
             Some(j) => {
                 let labels = to_labels(&siem_config::labels::labels_parse(&j));
-                self.cache.insert(id, (labels.clone(), now));
+                self.cache.lock().unwrap().insert(id, (labels.clone(), now));
                 labels
             }
             None => Vec::new(),
@@ -808,11 +855,7 @@ impl Analysis {
 
     /// The daemon's environment (labels from wazuh-db, AR queues).
     pub fn live_env(&self, ctx: Ctx) -> LiveEnv {
-        let labels = LabelCache {
-            config: to_labels(&self.cfg.labels),
-            cache: HashMap::new(),
-            maxage: self.cfg.internal.label_cache_maxage as i64,
-        };
+        let labels = LabelCache::new(to_labels(&self.cfg.labels), self.cfg.internal.label_cache_maxage as i64, Some(&ctx));
         LiveEnv { ctx, labels, exec: None, ar: None, node_name: self.node_name.clone() }
     }
 

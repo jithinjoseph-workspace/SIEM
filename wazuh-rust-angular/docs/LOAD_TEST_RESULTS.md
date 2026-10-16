@@ -1,10 +1,52 @@
 # Manager load test: simulated Windows agents (2026-10-16)
 
-**Short answer:** one manager holds **10,000 connected agents** without trouble.
-But today it processes only about **2,000 Windows events per second in total**, and
-above that it **loses events**. 10,000 real Windows agents average roughly
-0.5–5 events/s each (5,000–50,000 EPS), so before a cloud rollout at that size the
-event pipeline must get faster (see "What to fix", item 1).
+## Update: after the speed fix (same day)
+
+**Short answer now:** one manager on this PC takes **10,000 connected agents at ~4,000
+events/s** and **5,000 agents at 5,000 events/s** with **no event lost** (every event sent
+reached ClickHouse). The original runs below lost 59–77% of events at those loads.
+
+| Run | Before the fix | After the fix |
+|---|---|---|
+| 5,000 agents × 1 EPS (5,000 EPS, 3 min) | 59% discarded by remoted | 749,692 sent → 749,424 in ClickHouse; 0 discarded, 0 dropped |
+| 10,000 agents × 0.5 EPS (+1,000 keepalives/s) | 77% discarded (even at 2,000 EPS) | 777,877 sent → 777,877 in ClickHouse; 0 discarded, 0 dropped |
+
+The 10,000-agent run reached ~4,000 EPS because the load generator (on the same PC)
+could not push more; the manager queues stayed empty.
+
+What was actually wrong (measured, the first diagnosis below was partly wrong):
+1. **remoted rewrote the `sender_counter` file with open/write/close for every message it
+   sent** (every keepalive ACK), while holding locks the workers share. On Windows that is
+   ~4 ms per keepalive, so the workers queued behind it and remoted's input queue overflowed.
+   C keeps that file open and rewrites it in place. Fixed the same way
+   (`siem-remoted`: `SenderCounterFile`); keepalive handling went from ~4.3 ms to µs.
+2. **analysisd waited on wazuh-db for agent labels** whenever its cache entry was older than
+   `label_cache_maxage` (10 s), i.e. on almost every event with thousands of agents
+   (~125 µs each). Now an expired entry is served while a background task (own wazuh-db
+   connection) refreshes it; only an agent seen for the first time is read inline.
+   Labels can therefore be a few milliseconds staler than in C.
+3. **Engine hot spots** (found with a sampling profiler, `siem-analysisd/examples/bench_events.rs`):
+   the XML parser zero-filled three 20 KB buffers per element (fixed: buffers keep only what
+   was written), and rule matching deep-copied each rule (with compiled regexes) and the log
+   line per rule tried (fixed: rules shared via `Arc`, values borrowed). Engine alone:
+   Windows events 9,974 → 22,428/s, syslog 8,667 → 11,218/s on one core (Linux build).
+4. The earlier "2,100 events/s ceiling" of analysisd was an artifact of a backlog left by the
+   previous run; fed directly, the live analysisd takes 5,000/s with no drops.
+
+Still identical to C after the changes: 20,305 XML documents (os_xml oracle), 1,770/1,770
+ruleset cases, 64,091 logtest events, and all 13 analysisd daemon outputs byte for byte.
+
+Remaining limits: analysisd is still one thread (~100% of a core at 5,000 Windows EPS with
+5,000 agents on this PC); C uses decoder/rule thread pools. Next steps if more is needed:
+parallel decoding (decode is ~45% of the cost per Windows event), then a run on Linux.
+
+---
+
+## Original results (before the fix)
+
+**Short answer (then):** one manager holds **10,000 connected agents** without trouble.
+But it processed only about **2,000 Windows events per second in total**, and
+above that it **lost events**.
 
 ## How it was tested
 

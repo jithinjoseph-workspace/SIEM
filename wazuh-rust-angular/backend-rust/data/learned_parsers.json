@@ -47,11 +47,11 @@
     ],
     "normalization": {
       "ceData_children": "data.cedata_children",
-      "commandElements": "data.commandelements",
       "text": "data.text",
+      "redirections": "data.redirections",
+      "commandElements": "data.commandelements",
       "type": "data.type",
-      "a": "data.a",
-      "redirections": "data.redirections"
+      "a": "data.a"
     },
     "confidence": 0.94,
     "version": 1,

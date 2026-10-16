@@ -275,7 +275,12 @@ impl Remoted {
             }
             let mut ctr = self.sender_counter.lock().unwrap();
             let r = create_sec_msg(&st.key, &mut ctr, msg, CreateOptions { dynamic_prefix: false, random: None });
-            let _ = self.counters.lock().unwrap().store_sender(&ctr);
+            match self.sender_file.lock().unwrap().as_mut() {
+                Some(f) => f.store(&ctr),
+                None => {
+                    let _ = self.counters.lock().unwrap().store_sender(&ctr);
+                }
+            }
             match r {
                 Ok(c) => (c, st.net_protocol, st.sock, st.peer),
                 Err(_) => {

@@ -552,9 +552,13 @@
               <option [ngValue]="3600">1 hour</option>
               <option [ngValue]="86400">24 hours</option>
             </select>
+            <select *ngIf="selectedAgent()?.os_type === 'windows'" aria-label="Block method" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockMethod()" (ngModelChange)="blockMethod.set($event)">
+              <option value="netsh">Firewall rule</option>
+              <option value="route-null">Null route</option>
+            </select>
             <button (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Block IP</button>
           </div>
-          <p class="text-[11px] text-slate-500">The agent's firewall (firewall-drop on Linux, netsh on Windows) drops the IP and removes the rule when the time runs out.</p>
+          <p class="text-[11px] text-slate-500">The agent drops the IP (firewall-drop on Linux; on Windows a netsh firewall rule or a null route) and removes the block when the time runs out.</p>
         </div>
       </div>
     </div>

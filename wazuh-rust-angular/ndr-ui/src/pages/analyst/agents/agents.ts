@@ -131,6 +131,8 @@ export class Agents implements OnInit {
   /** IP and duration for the block action. */
   actionIp = signal<string>('');
   blockSeconds = signal<number>(3600);
+  /** Windows agents: firewall rule (netsh) or null route. */
+  blockMethod = signal<string>('netsh');
 
   /** FIM entries and rootcheck findings of the selected agent (wazuh-db). */
   fimEntries = signal<any[]>([]);
@@ -408,11 +410,11 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
   }
 
   /** Sends an action to the selected agent (siem-api /api/v1/agent/commands). */
-  triggerAgentAction(action: string, target: string = 'all', durationSeconds?: number) {
+  triggerAgentAction(action: string, target: string = 'all', durationSeconds?: number, method?: string) {
     const ag = this.selectedAgent();
     if (!ag) return;
     this.agentActionFeedback.set(`Dispatching '${action}' to ${ag.name}…`);
-    this.siem.sendAgentCommand(ag.id, action, target, durationSeconds).subscribe({
+    this.siem.sendAgentCommand(ag.id, action, target, durationSeconds, method).subscribe({
       next: (r) => {
         this.agentActionFeedback.set(`✓ ${r?.message || `'${action}' queued for ${ag.name}; the agent runs it on its next poll.`}`);
         setTimeout(() => this.agentActionFeedback.set(null), 5000);
@@ -480,7 +482,8 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
 
   blockIpOnAgent() {
     const ip = this.actionIp().trim();
-    if (this.validIp(ip)) this.triggerAgentAction('block_ip', ip, this.blockSeconds());
+    const windows = this.selectedAgent()?.os_type === 'windows';
+    if (this.validIp(ip)) this.triggerAgentAction('block_ip', ip, this.blockSeconds(), windows ? this.blockMethod() : undefined);
   }
 
   openDeployModal() {

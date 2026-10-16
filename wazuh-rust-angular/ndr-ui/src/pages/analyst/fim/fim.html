@@ -51,6 +51,7 @@
             <th class="p-3.5">TARGET FILE PATH</th>
             <th class="p-3.5">AGENT ID</th>
             <th class="p-3.5">HOST NAME</th>
+            <th class="p-3.5">CHANGED BY</th>
             <th class="p-3.5">SHA256 CHECKSUM</th>
           </tr>
         </thead>
@@ -77,7 +78,17 @@
             <td class="p-3.5 font-mono text-cyan-300 font-semibold">{{ r.path }}</td>
             <td class="p-3.5 font-mono text-slate-400">{{ r.agent_id }}</td>
             <td class="p-3.5 font-medium text-white">{{ r.agent_name }}</td>
+            <td class="p-3.5">
+              <ng-container *ngIf="r.user || r.process; else noWho">
+                <div class="text-white">{{ r.user || 'unknown user' }}</div>
+                <div class="font-mono text-[11px] text-slate-400 max-w-xs truncate" [title]="r.process">{{ r.process || '' }}</div>
+              </ng-container>
+              <ng-template #noWho><span class="text-slate-500" [title]="'Enable whodata on this directory to see who changed it'">{{ r.mode || '—' }}</span></ng-template>
+            </td>
             <td class="p-3.5 font-mono text-slate-500 max-w-xs truncate" [title]="r.sha256">{{ r.sha256 || 'N/A' }}</td>
+          </tr>
+          <tr *ngIf="records().length === 0">
+            <td colspan="7" class="p-6 text-center text-slate-500">No file or registry changes reported yet.</td>
           </tr>
         </tbody>
       </table>

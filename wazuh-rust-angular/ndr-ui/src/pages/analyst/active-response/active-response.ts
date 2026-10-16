@@ -39,6 +39,11 @@ export class ActiveResponse implements OnInit {
   feedback = signal<string | null>(null);
   targetIp = signal<string>('');
   durationSeconds = signal<number>(3600);
+  /** Windows agents: firewall rule (netsh) or null route. */
+  method = signal<string>('netsh');
+  isWindowsAgent(): boolean {
+    return this.agents().find(a => a.id === this.agentId())?.os_type === 'windows';
+  }
   reason = signal<string>('SOC Analyst manual containment: Suspicious SSH activity');
 
   ngOnInit() {
@@ -51,7 +56,7 @@ export class ActiveResponse implements OnInit {
 
   /** Blocks sent to Wazuh agents expire on the agent; they cannot be removed earlier. */
   autoExpires(r: ActiveResponseRecord): boolean {
-    return /^(firewall-drop|netsh)\d+$/.test((r as any).command || '');
+    return /^(firewall-drop|netsh|route-null)\d+$/.test((r as any).command || '');
   }
 
   loadRecords() {
@@ -71,7 +76,7 @@ export class ActiveResponse implements OnInit {
     if (!ip || !this.agentId()) return;
     this.isBlocking.set(true);
     this.feedback.set(null);
-    this.siem.blockIp(ip, +this.durationSeconds(), this.reason(), this.agentId()).subscribe({
+    this.siem.blockIp(ip, +this.durationSeconds(), this.reason(), this.agentId(), this.isWindowsAgent() ? this.method() : undefined).subscribe({
       next: (r: any) => {
         this.isBlocking.set(false);
         this.feedback.set(`✓ ${r?.message || 'Block sent'}`);

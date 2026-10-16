@@ -63,7 +63,9 @@ fn win_main() -> i32 {
             write_debug_file(&argv0, b"Couldn't get default gateway");
             return -1;
         }
-        let gw = String::from_utf8_lossy(&gateway).into_owned();
+        // Deliberate difference from C 4.14.7: C passes the gateway with its trailing newline
+        // ("192.168.1.1\n"), which route.exe does not accept, so the route is never added.
+        let gw = String::from_utf8_lossy(&gateway).trim().to_string();
         if !run(&route, &["-p", "ADD", &srcip, "MASK", "255.255.255.255", &gw]) {
             write_debug_file(&argv0, format!("Unable to run {route}, action: 'ADD'").as_bytes());
         }

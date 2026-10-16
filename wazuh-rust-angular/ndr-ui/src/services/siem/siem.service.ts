@@ -117,13 +117,14 @@ export class SiemService {
     );
   }
 
-  sendAgentCommand(agentId: string, action: string, target: string = 'all', durationSeconds?: number): Observable<any> {
+  sendAgentCommand(agentId: string, action: string, target: string = 'all', durationSeconds?: number, method?: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, {
       command_id: 'cmd-' + Date.now(),
       agent_id: agentId,
       action,
       target,
       ...(durationSeconds ? { duration_seconds: durationSeconds } : {}),
+      ...(method ? { method } : {}),
     });
   }
 
@@ -261,12 +262,14 @@ export class SiemService {
     return this.http.get<ActiveResponseListResponse>(`${this.apiUrl}/api/v1/active-response/actions`);
   }
 
-  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action', agentId?: string): Observable<any> {
+  /** method (Windows agents): 'netsh' (firewall rule, default) or 'route-null'. */
+  blockIp(ip: string, durationSeconds: number = 3600, reason: string = 'Manual SOC action', agentId?: string, method?: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/active-response/actions`, {
       ip,
       agent_id: agentId,
       duration_seconds: durationSeconds,
-      reason
+      reason,
+      ...(method ? { command: method } : {}),
     });
   }
 

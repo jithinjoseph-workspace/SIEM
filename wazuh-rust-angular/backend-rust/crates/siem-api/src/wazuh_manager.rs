@@ -346,6 +346,34 @@ fn kill_stale(home: &Path) {
 
 static CHILDREN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
 
+/// `key='value'` lines of a daemon state file (`var/run/<daemon>.state`); numbers as numbers.
+fn read_state_file(path: &Path) -> serde_json::Value {
+    let mut m = serde_json::Map::new();
+    for line in std::fs::read_to_string(path).unwrap_or_default().lines() {
+        let Some((k, v)) = line.split_once('=') else { continue };
+        if line.starts_with('#') {
+            continue;
+        }
+        let v = v.trim().trim_matches('\'');
+        let val = v.parse::<f64>().map(serde_json::Value::from).unwrap_or_else(|_| serde_json::Value::String(v.to_string()));
+        m.insert(k.trim().to_string(), val);
+    }
+    serde_json::Value::Object(m)
+}
+
+/// What the manager is doing: running daemons and the remoted / analysisd counters
+/// (queues, events received, discarded and dropped).
+pub fn status() -> serde_json::Value {
+    let run = home().join("var/run");
+    let daemons: Vec<serde_json::Value> = CHILDREN.lock().unwrap().iter().map(|(n, p)| serde_json::json!({ "name": n, "pid": p })).collect();
+    serde_json::json!({
+        "enabled": enabled(),
+        "daemons": daemons,
+        "remoted": read_state_file(&run.join("wazuh-remoted.state")),
+        "analysisd": read_state_file(&run.join("wazuh-analysisd.state")),
+    })
+}
+
 fn record_children(home: &Path) {
     let pids: Vec<String> = CHILDREN.lock().unwrap().iter().map(|(_, p)| p.to_string()).collect();
     let _ = std::fs::write(home.join("var/run/siem-api-children.pids"), pids.join(" "));
@@ -545,10 +573,16 @@ pub const AR_TIMEOUTS: [u64; 3] = [600, 3600, 86400];
 /// `PUT /active-response`: block `ip` on the agent's firewall (firewall-drop
 /// on Unix, netsh on Windows) for `timeout` seconds; the agent's execd removes
 /// the rule when it expires.
-pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64) -> Result<String, String> {
+pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64, method: Option<&str>) -> Result<String, String> {
     let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
     let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
-    let command = format!("{}{timeout}", if windows { "netsh" } else { "firewall-drop" });
+    // Windows: a firewall rule (netsh) or a null route; Linux: firewall-drop
+    let name = match (windows, method) {
+        (true, Some("route-null")) => "route-null",
+        (true, _) => "netsh",
+        (false, _) => "firewall-drop",
+    };
+    let command = format!("{name}{timeout}");
     let m = serde_json::json!({
         "version": 1,
         "origin": { "name": serde_json::Value::Null, "module": "api" },
@@ -559,30 +593,34 @@ pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64) -> 
     Ok(command)
 }
 
-/// The `<command>` and `<active-response>` blocks of the manager's
-/// ossec.conf: the commands the console uses, at level 20 so no rule triggers them.
-fn ar_conf_section() -> String {
-    let mut s = String::from(
-        "  <command>\n    <name>firewall-drop</name>\n    <executable>firewall-drop</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n  \
-         <command>\n    <name>netsh</name>\n    <executable>netsh.exe</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n",
-    );
-    for c in ["firewall-drop", "netsh"] {
-        for t in AR_TIMEOUTS {
-            s.push_str(&format!("  <active-response>\n    <command>{c}</command>\n    <location>local</location>\n    <level>20</level>\n    <timeout>{t}</timeout>\n  </active-response>\n"));
-        }
+/// The active responses the console can send: (command name, agent executable).
+/// `route-null` is Windows only (the Linux port has firewall-drop).
+const AR_COMMANDS: [(&str, &str); 3] = [("firewall-drop", "firewall-drop"), ("netsh", "netsh.exe"), ("route-null", "route-null.exe")];
+
+/// The `<command>` and `<active-response>` blocks of one console command in the
+/// manager's ossec.conf, at level 20 so no rule triggers them.
+fn ar_conf_section(name: &str, exe: &str) -> String {
+    let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n");
+    for t in AR_TIMEOUTS {
+        s.push_str(&format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n    <timeout>{t}</timeout>\n  </active-response>\n"));
     }
     s
 }
 
-/// Adds the console's active-response commands to an existing ossec.conf.
+/// Adds the console's active-response commands an existing ossec.conf lacks.
 fn ensure_ar_commands(conf: &Path) {
     let Ok(t) = std::fs::read_to_string(conf) else { return };
-    if t.contains("<name>firewall-drop</name>") {
+    let missing: String = AR_COMMANDS
+        .iter()
+        .filter(|(name, _)| !t.contains(&format!("<name>{name}</name>")))
+        .map(|(name, exe)| ar_conf_section(name, exe))
+        .collect();
+    if missing.is_empty() {
         return;
     }
     if let Some(p) = t.rfind("</ossec_config>") {
         let mut n = t.clone();
-        n.insert_str(p, &ar_conf_section());
+        n.insert_str(p, &missing);
         let _ = std::fs::write(conf, n);
     }
 }
@@ -895,6 +933,10 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     alert_data.insert("wazuh_alert_id".into(), serde_json::Value::String(s(v, &["id"])));
     if let Some(r) = v.get("rule") {
         alert_data.insert("wazuh_rule".into(), r.clone());
+    }
+    // FIM details (path, hashes, diff, mode, whodata user/process) for the FIM views
+    if let Some(sc) = v.get("syscheck") {
+        alert_data.insert("syscheck".into(), sc.clone());
     }
     Alert {
         id: uuid::Uuid::new_v4(),

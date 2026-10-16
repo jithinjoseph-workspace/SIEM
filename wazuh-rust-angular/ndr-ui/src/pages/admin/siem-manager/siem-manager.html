@@ -1,0 +1,65 @@
+<div class="p-6 space-y-6 text-slate-200">
+  <div>
+    <h1 class="text-2xl font-bold text-white">SIEM Manager</h1>
+    <p class="text-sm text-slate-400">Agents, throughput and queues of the Wazuh manager (refreshed every 5 seconds). A queue that stays full, or discarded / dropped events that keep growing, mean the manager needs more capacity (see docs/MANAGER_SCALING_PLAN.md).</p>
+  </div>
+
+  <div *ngIf="error()" class="p-4 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+
+  <ng-container *ngIf="status() as s">
+    <div *ngIf="!s.enabled" class="p-4 rounded-xl border border-amber-800 bg-amber-950/40 text-amber-300 text-sm">The Wazuh manager is disabled (WAZUH_MANAGER=0).</div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+        <div class="text-xs uppercase text-slate-400">Agents connected</div>
+        <div class="text-2xl font-bold text-white">{{ s.agents.active }} <span class="text-sm text-slate-400">/ {{ s.agents.total }}</span></div>
+      </div>
+      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+        <div class="text-xs uppercase text-slate-400">Events per second</div>
+        <div class="text-2xl font-bold text-white">{{ eps() ?? '…' }}</div>
+        <div class="text-[11px] text-slate-500">{{ num('analysisd', 'events_received') | number }} received in total</div>
+      </div>
+      <div class="p-4 rounded-xl border bg-slate-900/60" [class.border-slate-800]="num('remoted', 'discarded_count') === 0" [class.border-rose-700]="num('remoted', 'discarded_count') > 0">
+        <div class="text-xs uppercase text-slate-400">Discarded by remoted</div>
+        <div class="text-2xl font-bold" [class.text-white]="num('remoted', 'discarded_count') === 0" [class.text-rose-400]="num('remoted', 'discarded_count') > 0">{{ num('remoted', 'discarded_count') | number }}</div>
+        <div class="text-[11px] text-slate-500">input queue full</div>
+      </div>
+      <div class="p-4 rounded-xl border bg-slate-900/60" [class.border-slate-800]="num('analysisd', 'events_dropped') === 0" [class.border-rose-700]="num('analysisd', 'events_dropped') > 0">
+        <div class="text-xs uppercase text-slate-400">Dropped by analysisd</div>
+        <div class="text-2xl font-bold" [class.text-white]="num('analysisd', 'events_dropped') === 0" [class.text-rose-400]="num('analysisd', 'events_dropped') > 0">{{ num('analysisd', 'events_dropped') | number }}</div>
+        <div class="text-[11px] text-slate-500">decoder queues full</div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
+        <h2 class="text-sm font-bold uppercase text-slate-300">remoted (agent connections)</h2>
+        <div class="text-xs text-slate-400">TCP sessions: <span class="text-white">{{ num('remoted', 'tcp_sessions') | number }}</span> · events: <span class="text-white">{{ num('remoted', 'evt_count') | number }}</span> · keepalives and other control messages: <span class="text-white">{{ num('remoted', 'ctrl_msg_count') | number }}</span></div>
+        <div>
+          <div class="flex justify-between text-xs text-slate-400"><span>Input queue</span><span>{{ remotedQueue() }}%</span></div>
+          <div class="h-2 rounded bg-slate-800 overflow-hidden" role="progressbar" [attr.aria-valuenow]="remotedQueue()" aria-valuemin="0" aria-valuemax="100" aria-label="remoted input queue">
+            <div class="h-2" [style.width.%]="remotedQueue()" [class.bg-emerald-500]="remotedQueue() < 50" [class.bg-amber-500]="remotedQueue() >= 50 && remotedQueue() < 90" [class.bg-rose-500]="remotedQueue() >= 90"></div>
+          </div>
+        </div>
+      </div>
+      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2">
+        <h2 class="text-sm font-bold uppercase text-slate-300">analysisd (decoding and rules)</h2>
+        <div class="text-xs text-slate-400">Alerts written: <span class="text-white">{{ num('analysisd', 'alerts_written') | number }}</span></div>
+        <div *ngFor="let q of analysisdQueues()">
+          <div class="flex justify-between text-xs text-slate-400"><span class="capitalize">{{ q.name }}</span><span>{{ q.pct }}%</span></div>
+          <div class="h-1.5 rounded bg-slate-800 overflow-hidden" role="progressbar" [attr.aria-valuenow]="q.pct" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="q.name + ' queue'">
+            <div class="h-1.5" [style.width.%]="q.pct" [class.bg-emerald-500]="q.pct < 50" [class.bg-amber-500]="q.pct >= 50 && q.pct < 90" [class.bg-rose-500]="q.pct >= 90"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+      <h2 class="text-sm font-bold uppercase text-slate-300 mb-2">Daemons</h2>
+      <div *ngIf="s.daemons.length === 0" class="text-xs text-slate-500">No daemon running.</div>
+      <div class="flex flex-wrap gap-2">
+        <span *ngFor="let d of s.daemons" class="px-3 py-1 rounded-lg border border-emerald-800 bg-emerald-950/40 text-xs text-emerald-300 font-mono">{{ d.name }} · pid {{ d.pid }}</span>
+      </div>
+    </div>
+  </ng-container>
+</div>

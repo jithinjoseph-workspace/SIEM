@@ -128,6 +128,7 @@ export const routes: Routes = [
       { path: 'smtp-config',     loadComponent: () => import('../pages/admin/smtp-config/smtp-config').then(m => m.SmtpConfig) },
       { path: 'support',         loadComponent: () => import('../pages/admin/support/support').then(m => m.Support) },
       { path: 'siem-sources',    loadComponent: () => import('../pages/siem/sources/siem-sources').then(m => m.SiemSources) },
+      { path: 'siem-manager',    loadComponent: () => import('../pages/admin/siem-manager/siem-manager').then(m => m.SiemManager) },
     ]
   },
 

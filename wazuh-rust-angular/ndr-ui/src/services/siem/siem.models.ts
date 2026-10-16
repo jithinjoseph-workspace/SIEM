@@ -234,6 +234,11 @@ export interface FimSummaryRecord {
   md5?: string;
   sha256?: string;
   diff?: string;
+  /** scheduled, realtime or whodata */
+  mode?: string;
+  /** whodata: who made the change and with which program */
+  user?: string;
+  process?: string;
 }
 
 export interface FimSummaryResponse {

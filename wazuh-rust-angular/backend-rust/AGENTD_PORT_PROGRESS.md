@@ -309,3 +309,16 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
   `live` mode with the daemon's own wazuh-db environment.
 - Oracles after the change: siem-xml 20,305 docs, ruleset 1,770/1,770, logtest 64,091 events 0 diffs,
   analysisd daemon 13 outputs byte-identical. Load: see docs/LOAD_TEST_RESULTS.md (no loss at 5k/10k agents).
+
+## UI/API fixes — 2026-10-16
+- FIM page (`/api/v1/fim/summary`): built only from real FIM alerts (Wazuh `syscheck` block, now kept in the alert data):
+  removed the demo records, fake hashes/diffs/sizes/timestamps and the wrong rule mapping; new "changed by"
+  column (whodata user + program, else the mode). Limit: the alert data block is not stored in ClickHouse, so after a
+  siem-api restart the page lists changes since the restart.
+- New platform-admin page "SIEM Manager" (`/admin/siem-manager`, API `GET /api/v1/manager/status`): agents connected,
+  events/s, remoted queue + discarded, analysisd queues + dropped, alerts written, running daemons.
+- Block IP on Windows agents: method "Firewall rule (netsh)" or "Null route (route-null)"; `route-null` added to the
+  manager's AR commands (`AR_COMMANDS`, existing ossec.conf files get the missing ones).
+- route-null.exe: gateway trimmed. C 4.14.7 passes it with a trailing newline, and route.exe refuses it ("The parameter
+  is incorrect", checked elevated), so C's route-null never adds the route on Windows. Verified live: API -> manager ->
+  agent 024 -> route 203.0.113.254 via the default gateway added (removed by the agent after the timeout).

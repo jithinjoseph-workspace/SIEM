@@ -476,6 +476,7 @@ async fn main() {
         .route("/api/v1/syslog-forwarder/format", post(post_format_syslog_handler))
         .route("/api/v1/reports/summary", get(get_reports_summary_handler))
         .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler).get(get_agent_upgrade_handler))
+        .route("/api/v1/manager/status", get(get_manager_status_handler))
         .route("/api/v1/groups", get(groups::list_groups).post(groups::create_group))
         .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
         .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))
@@ -1793,7 +1794,8 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
                 return bad("A valid IP address is required");
             }
             let duration = payload.get("duration_seconds").and_then(|v| v.as_u64()).unwrap_or(3600);
-            return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block").await;
+            let method = payload.get("method").and_then(|v| v.as_str());
+            return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block", method).await;
         }
         "unblock_ip" => {
             return bad("Wazuh agents remove a block when its time runs out (10 min, 1 h or 24 h); the agent has no command to remove it earlier.")
@@ -1813,8 +1815,8 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
 }
 
 /// Block an IP on a Wazuh agent and record it.
-async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &str, duration: u64, reason: &str) -> axum::response::Response {
-    match wazuh_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration).await {
+async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &str, duration: u64, reason: &str, method: Option<&str>) -> axum::response::Response {
+    match wazuh_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration, method).await {
         Ok(command) => {
             let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(duration);
             let rec = ActiveResponseRecord {
@@ -4401,7 +4403,7 @@ async fn get_mitre_matrix_handler(
     }))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct FimSummaryRecord {
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub agent_id: String,
@@ -4411,129 +4413,89 @@ pub struct FimSummaryRecord {
     pub size_bytes: Option<u64>,
     pub md5: Option<String>,
     pub sha256: Option<String>,
+    /// `report_changes` diff, when the agent sent one
     pub diff: Option<String>,
+    /// How the change was seen: scheduled, realtime or whodata
+    pub mode: Option<String>,
+    /// whodata: the user and the program that made the change
+    pub user: Option<String>,
+    pub process: Option<String>,
 }
 
+/// `GET /api/v1/manager/status` (platform admin): daemons, queues and counters of the
+/// Wazuh manager, plus the connected agents of every tenant.
+async fn get_manager_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    if !ctx.is_super() {
+        return tenancy::forbidden();
+    }
+    let (total, active) = {
+        let agents = state.agents.read().unwrap();
+        (agents.len(), agents.values().filter(|a| matches!(a.status, AgentStatus::Active)).count())
+    };
+    let mut v = wazuh_manager::status();
+    v["agents"] = serde_json::json!({ "total": total, "active": active });
+    Json(v).into_response()
+}
+
+/// `GET /api/v1/fim/summary`: the latest file and registry changes, from the
+/// agents' FIM alerts (Wazuh's `syscheck` block), newest first.
 async fn get_fim_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
+    const MAX_ROWS: usize = 500;
+    let (mut added, mut modified, mut deleted) = (0u64, 0u64, 0u64);
     let mut recent_changes = Vec::new();
-    let mut added = 0;
-    let mut modified = 0;
-    let mut deleted = 0;
-    let mut total_files = 0;
 
-    let agents = scoped_agent_map(&state, &ctx);
-    for (ag_id, ag) in agents.iter() {
+    // entries monitored by the older siem-agent agents (their own FIM store)
+    let mut total_files = 0usize;
+    for ag_id in scoped_agent_map(&state, &ctx).keys() {
         if let Some(agent_db) = state.wdb.get(ag_id) {
-            let db = agent_db.read().unwrap();
-            let entries = db.fim.list();
-            total_files += entries.len();
-            for e in entries {
-                let action_str = if e.changes > 1 {
-                    modified += 1;
-                    "Modified"
-                } else {
-                    added += 1;
-                    "Added"
-                };
-                recent_changes.push(FimSummaryRecord {
-                    timestamp: Utc::now() - chrono::Duration::minutes(15),
-                    agent_id: ag_id.clone(),
-                    agent_name: ag.name.clone(),
-                    path: e.full_path.clone(),
-                    action: action_str.to_string(),
-                    size_bytes: e.size,
-                    md5: e.md5.clone(),
-                    sha256: e.sha256.clone(),
-                    diff: if action_str == "Modified" {
-                        Some(format!("--- {}\n+++ {}\n@@ -1,4 +1,5 @@\n PermittedRootLogin yes\n-PasswordAuthentication yes\n+PasswordAuthentication no\n+# Added by SecOps policy\n+X11Forwarding no", e.full_path, e.full_path))
-                    } else {
-                        None
-                    },
-                });
-            }
+            total_files += agent_db.read().unwrap().fim.list().len();
         }
     }
 
-    let alerts = scoped_alerts(&state, &ctx);
-    for a in alerts.iter() {
-        if a.rule.groups.iter().any(|g| g == "fim" || g == "syscheck") {
-            if let Some(ref path) = a.decoded.file_path {
-                let action_str = if a.rule.id == 550 { added += 1; "Added" }
-                    else if a.rule.id == 553 { deleted += 1; "Deleted" }
-                    else { modified += 1; "Modified" };
-
-                recent_changes.push(FimSummaryRecord {
-                    timestamp: a.timestamp,
-                    agent_id: a.agent.id.clone(),
-                    agent_name: a.agent.name.clone(),
-                    path: path.clone(),
-                    action: action_str.to_string(),
-                    size_bytes: Some(4096),
-                    md5: Some("e3b0c44298fc1c149afbf4c8996fb924".to_string()),
-                    sha256: Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()),
-                    diff: if action_str == "Modified" {
-                        Some(format!("--- {}\n+++ {}\n@@ -12,4 +12,6 @@\n root:x:0:0:root:/root:/bin/bash\n-secops:x:1001:1001::/home/secops:/bin/bash\n+secops:x:1001:1001::/home/secops:/bin/sh\n+backdoor_user:x:0:0:Backdoor:/root:/bin/bash", path, path))
-                    } else {
-                        None
-                    },
-                });
+    for a in scoped_alerts(&state, &ctx).iter().rev() {
+        let Some(sc) = a.data.get("syscheck") else { continue };
+        let text = |p: &str| sc.pointer(p).and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(String::from);
+        let action = match text("/event").as_deref() {
+            Some("added") => {
+                added += 1;
+                "Added"
             }
+            Some("modified") => {
+                modified += 1;
+                "Modified"
+            }
+            Some("deleted") => {
+                deleted += 1;
+                "Deleted"
+            }
+            _ => continue,
+        };
+        if recent_changes.len() >= MAX_ROWS {
+            continue;
         }
-    }
-
-    if recent_changes.is_empty() {
-        total_files = 1420;
-        added = 3;
-        modified = 5;
-        deleted = 1;
-        recent_changes = vec![
-            FimSummaryRecord {
-                timestamp: Utc::now() - chrono::Duration::minutes(2),
-                agent_id: "001".to_string(),
-                agent_name: "srv-prod-ubuntu-01".to_string(),
-                path: "/etc/ssh/sshd_config".to_string(),
-                action: "Modified".to_string(),
-                size_bytes: Some(3280),
-                md5: Some("4a8b75f81258dc78e854972c722184d0".to_string()),
-                sha256: Some("c5d2b1f891bca782914101e4649b934ca495991b7852b8551122334455667788".to_string()),
-                diff: Some("--- /etc/ssh/sshd_config\n+++ /etc/ssh/sshd_config\n@@ -32,3 +32,4 @@\n-PermitRootLogin yes\n+PermitRootLogin no\n+MaxAuthTries 3".to_string()),
-            },
-            FimSummaryRecord {
-                timestamp: Utc::now() - chrono::Duration::minutes(14),
-                agent_id: "001".to_string(),
-                agent_name: "srv-prod-ubuntu-01".to_string(),
-                path: "/etc/shadow".to_string(),
-                action: "Modified".to_string(),
-                size_bytes: Some(1140),
-                md5: Some("9a823b18402f1a2380d94f8e12457891".to_string()),
-                sha256: Some("8f12b1a823901bca782914101e4649b934ca495991b7852b855aa1122334455".to_string()),
-                diff: Some("--- /etc/shadow\n+++ /etc/shadow\n@@ -1,3 +1,4 @@\n root:$6$xyz...:19642:0:99999:7:::\n+sec_auditor:$6$abc...:19642:0:99999:7:::".to_string()),
-            },
-            FimSummaryRecord {
-                timestamp: Utc::now() - chrono::Duration::minutes(35),
-                agent_id: "002".to_string(),
-                agent_name: "win-ad-dc01".to_string(),
-                path: "C:\\Windows\\System32\\drivers\\etc\\hosts".to_string(),
-                action: "Added".to_string(),
-                size_bytes: Some(824),
-                md5: Some("1234567890abcdef1234567890abcdef".to_string()),
-                sha256: Some("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321".to_string()),
-                diff: None,
-            },
-            FimSummaryRecord {
-                timestamp: Utc::now() - chrono::Duration::hours(2),
-                agent_id: "001".to_string(),
-                agent_name: "srv-prod-ubuntu-01".to_string(),
-                path: "/tmp/.hidden_agent".to_string(),
-                action: "Deleted".to_string(),
-                size_bytes: Some(0),
-                md5: Some("".to_string()),
-                sha256: Some("".to_string()),
-                diff: None,
-            },
-        ];
+        // registry values: "path" is the key, "value_name" the value
+        let path = match (text("/path"), text("/value_name")) {
+            (Some(p), Some(v)) => format!("{p}\\{v}"),
+            (Some(p), None) => p,
+            (None, _) => continue,
+        };
+        let size = sc.get("size_after").and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())));
+        recent_changes.push(FimSummaryRecord {
+            timestamp: a.timestamp,
+            agent_id: a.agent.id.clone(),
+            agent_name: a.agent.name.clone(),
+            path,
+            action: action.to_string(),
+            size_bytes: size,
+            md5: text("/md5_after"),
+            sha256: text("/sha256_after"),
+            diff: text("/diff"),
+            mode: text("/mode"),
+            user: text("/audit/user/name"),
+            process: text("/audit/process/name"),
+        });
     }
 
     Json(serde_json::json!({
@@ -4586,7 +4548,7 @@ async fn post_active_response_block(
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
         let reason = req.reason.clone().unwrap_or_else(|| "Manual SOC operator block".to_string());
-        return block_on_agent(&state, &ctx, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600), &reason).await;
+        return block_on_agent(&state, &ctx, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600), &reason, req.command.as_deref()).await;
     }
     let rec = ActiveResponseRecord {
         id: format!("ar-{}", uuid::Uuid::new_v4().to_string()[..8].to_string()),

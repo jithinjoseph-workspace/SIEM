@@ -36,6 +36,7 @@ export class AdminLayout implements OnInit {
   RulesIcon         = Gavel;
   SupportIcon       = HelpCircle;
   RadioIcon         = Radio;
+  ActivityIcon      = Activity;
 
   groups: Record<string, boolean> = {
     access:         false,

@@ -3,12 +3,15 @@ setlocal EnableExtensions
 set "SCRIPT_DIR=%~dp0"
 set "BACKEND_DIR=%SCRIPT_DIR%wazuh-rust-angular\backend-rust"
 set "FRONTEND_DIR=%SCRIPT_DIR%wazuh-rust-angular\ndr-ui"
+rem Credentials and JWT_SECRET come from wazuh-rust-angular\.env (see .env.example).
 call "%BACKEND_DIR%\service-env.bat"
-set "CLICKHOUSE_URL=http://127.0.0.1:8123"
-set "CLICKHOUSE_USER=default"
-set "CLICKHOUSE_PASSWORD="
-set "CLICKHOUSE_DB=ndr"
-set "VALKEY_URL=redis://127.0.0.1:6379"
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+rem Each service window also writes its output to logs\<service>.log (previous run: .log.1).
+set "LOG_DIR=%BACKEND_DIR%\logs"
+set RUN_LOGGED=powershell -NoProfile -NoExit -ExecutionPolicy Bypass -File "%BACKEND_DIR%\run-logged.ps1"
 
 set "COMPOSE_FILE=%SCRIPT_DIR%wazuh-rust-angular\docker-compose.yml"
 
@@ -94,9 +97,9 @@ call :port_open 3001
 if errorlevel 1 (
   echo [*] Starting Auth Service on :3001...
   if exist "%BACKEND_DIR%\target\release\auth-service.exe" (
-    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" cmd /k "set CLICKHOUSE_URL=%CLICKHOUSE_URL%&& set CLICKHOUSE_USER=%CLICKHOUSE_USER%&& set CLICKHOUSE_PASSWORD=%CLICKHOUSE_PASSWORD%&& set CLICKHOUSE_DB=%CLICKHOUSE_DB%&& set VALKEY_URL=%VALKEY_URL%&& set JWT_SECRET=%JWT_SECRET%&& set LISTEN_ADDR=0.0.0.0:3001&& target\release\auth-service.exe"
+    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "target\release\auth-service.exe"
   ) else (
-    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" cmd /k "cargo run --release -p auth-service"
+    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "cargo run --release -p auth-service"
   )
 )
 call :wait_port 3001 "Auth service" 60
@@ -106,9 +109,9 @@ call :port_open 8088
 if errorlevel 1 (
   echo [*] Starting Rust SIEM API on :8088...
   if exist "%BACKEND_DIR%\target\release\siem-api.exe" (
-    start "Provigil SIEM API (:8088)" /D "%BACKEND_DIR%" cmd /k "set CLICKHOUSE_URL=%CLICKHOUSE_URL%&& set CLICKHOUSE_USER=%CLICKHOUSE_USER%&& set CLICKHOUSE_PASSWORD=%CLICKHOUSE_PASSWORD%&& set CLICKHOUSE_DB=%CLICKHOUSE_DB%&& set VALKEY_URL=%VALKEY_URL%&& set JWT_SECRET=%JWT_SECRET%&& target\release\siem-api.exe"
+    start "Provigil SIEM API (:8088)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\siem-api.log" -Cmd "target\release\siem-api.exe"
   ) else (
-    start "Provigil SIEM API (:8088)" /D "%BACKEND_DIR%" cmd /k "cargo run --bin siem-api"
+    start "Provigil SIEM API (:8088)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\siem-api.log" -Cmd "cargo run --bin siem-api"
   )
 )
 call :wait_port 8088 "SIEM API" 60
@@ -117,13 +120,14 @@ if errorlevel 1 goto :startup_error
 call :port_open 4200
 if errorlevel 1 (
   echo [*] Starting Angular UI on :4200...
-  start "Provigil Angular UI (:4200)" /D "%FRONTEND_DIR%" cmd /k "npm start"
+  start "Provigil Angular UI (:4200)" /D "%FRONTEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\angular-ui.log" -Cmd "npm start"
 )
 call :wait_port 4200 "Angular UI" 60
 if errorlevel 1 goto :startup_error
 
 echo.
 echo [OK] SIEM is ready: http://localhost:4200
+echo      Logs: %LOG_DIR%
 start http://localhost:4200
 exit /b 0
 
@@ -143,7 +147,7 @@ for /L %%i in (1,1,%WAIT_SECONDS%) do (
   )
   timeout /t 1 /nobreak >nul
 )
-echo [FAIL] %WAIT_NAME% did not start on :%WAIT_PORT%. Check its terminal window for the error.
+echo [FAIL] %WAIT_NAME% did not start on :%WAIT_PORT%. Check its window or %LOG_DIR%.
 exit /b 1
 
 :dependency_error

@@ -34,7 +34,7 @@ services:
       CLICKHOUSE_DB: ndr
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-      CLICKHOUSE_PASSWORD: change-me-clickhouse-password
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-}"
     ports:
       - "127.0.0.1:8123:8123" # HTTP API port
       - "127.0.0.1:9000:9000" # Native TCP client port
@@ -77,7 +77,7 @@ services:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=ndr
-      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
       - VALKEY_URL=redis://valkey:6379
       - REDIS_URL=redis://valkey:6379
       - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # generate with openssl rand -hex 32
@@ -112,7 +112,7 @@ services:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=ndr
-      - CLICKHOUSE_PASSWORD=change-me-clickhouse-password
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
       - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # the same value as auth-service
     depends_on:
       clickhouse:

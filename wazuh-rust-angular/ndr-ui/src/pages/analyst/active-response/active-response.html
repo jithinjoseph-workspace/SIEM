@@ -63,6 +63,14 @@
           />
         </div>
 
+        <div *ngIf="isWindowsAgent()">
+          <label for="ar-method" class="text-xs text-slate-400">Method (Windows agent)</label>
+          <select id="ar-method" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white" [ngModel]="method()" (ngModelChange)="method.set($event)">
+            <option value="netsh">Firewall rule (netsh)</option>
+            <option value="route-null">Null route (route-null)</option>
+          </select>
+        </div>
+
         <button 
           (click)="blockIp()" 
           [disabled]="isBlocking() || !agentId() || !targetIp().trim()"
@@ -72,7 +80,7 @@
           {{ isBlocking() ? 'Executing Firewall Drop...' : 'Dispatch Firewall Drop' }}
         </button>
         <div *ngIf="feedback()" class="text-xs text-slate-200">{{ feedback() }}</div>
-        <p class="text-[11px] text-slate-500">The agent's firewall (firewall-drop on Linux, netsh on Windows) drops the IP and removes the rule when the time runs out.</p>
+        <p class="text-[11px] text-slate-500">The agent drops the IP (firewall-drop on Linux; on Windows a netsh firewall rule or a null route) and removes the block when the time runs out.</p>
       </div>
     </div>
 

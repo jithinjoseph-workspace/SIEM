@@ -64,7 +64,7 @@ if not exist "%FRONTEND_DIR%\node_modules" (
   popd
 )
 
-rem ── Build the backend from the current sources (a running exe cannot be replaced) ──
+rem ?? Build the backend from the current sources (a running exe cannot be replaced) ??
 echo [*] Stopping running backend processes before the build...
 taskkill /F /IM siem-api.exe >nul 2>&1
 taskkill /F /IM auth-service.exe >nul 2>&1
@@ -145,7 +145,7 @@ for /L %%i in (1,1,%WAIT_SECONDS%) do (
     echo [OK] %WAIT_NAME% is listening on :%WAIT_PORT%
     exit /b 0
   )
-  timeout /t 1 /nobreak >nul
+  ping -n 2 127.0.0.1 >nul
 )
 echo [FAIL] %WAIT_NAME% did not start on :%WAIT_PORT%. Check its window or %LOG_DIR%.
 exit /b 1

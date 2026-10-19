@@ -12,6 +12,9 @@ pub struct AgentConfig {
     /// Empty until the agent is enrolled (client.keys / SIEM_AGENT_ID / enrollment).
     pub agent_id: String,
     pub agent_name: String,
+    /// Raw agent key used for authentication (`X-Agent-Key`)
+    #[serde(default)]
+    pub agent_key: String,
     /// Agent group sent at enrollment (`SIEM_AGENT_GROUP` / `WAZUH_AGENT_GROUP`).
     pub agent_group: String,
     /// Tenant agent key (`X-Tenant-Key`), see enroll.rs.
@@ -26,6 +29,7 @@ impl Default for AgentConfig {
             manager_url: "http://127.0.0.1:8088".to_string(),
             agent_id: String::new(),
             agent_name: "wazuh-linux-node".to_string(),
+            agent_key: String::new(),
             agent_group: "default".to_string(),
             tenant_key: None,
             buffer_capacity: 5000,
@@ -57,6 +61,7 @@ impl ClientAgent {
                 crate::enroll::export_agent_key(&key);
                 cfg.agent_id = id;
                 cfg.agent_name = name;
+                cfg.agent_key = key;
                 name_from_keys = true;
                 info!("ClientAgent: Loaded credentials from client.keys [ID: {}, Name: {}]", cfg.agent_id, cfg.agent_name);
                 break;
@@ -192,18 +197,51 @@ impl ClientAgent {
         format!("Linux ({} {})", std::env::consts::OS, std::env::consts::ARCH)
     }
 
-    /// Read primary local IP address of endpoint (mirroring notify.c get_agent_ip)
-    pub fn detect_agent_ip() -> String {
-        if let Ok(file) = std::fs::File::open("/proc/net/fib_trie") {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(file);
-            for line in reader.lines().flatten() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("/32 host LOCAL") {
-                    // Previous line or current pattern
+    /// Dynamically discover the actual primary IP address of this host that communicates
+    /// with the SIEM manager using kernel routing lookup (zero packets transmitted).
+    pub fn detect_agent_ip(manager_url: &str) -> String {
+        // 1. Try UDP routing socket to manager host (pure kernel routing lookup, no packets sent)
+        if let Ok(url) = reqwest::Url::parse(manager_url) {
+            if let Some(host) = url.host_str() {
+                let port = url.port().unwrap_or(8088);
+                let target = format!("{}:{}", host, port);
+                if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
+                    if sock.connect(&target).is_ok() {
+                        if let Ok(local_addr) = sock.local_addr() {
+                            let ip = local_addr.ip();
+                            if !ip.is_loopback() && !ip.is_unspecified() {
+                                return ip.to_string();
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        // 2. Fallback to route probe socket
+        if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
+            if sock.connect("8.8.8.8:80").is_ok() {
+                if let Ok(local_addr) = sock.local_addr() {
+                    let ip = local_addr.ip();
+                    if !ip.is_loopback() && !ip.is_unspecified() {
+                        return ip.to_string();
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback: Parse hostname -I
+        if let Ok(out) = std::process::Command::new("hostname").arg("-I").output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for ip_cand in text.split_whitespace() {
+                if let Ok(parsed) = ip_cand.parse::<std::net::IpAddr>() {
+                    if !parsed.is_loopback() {
+                        return parsed.to_string();
+                    }
+                }
+            }
+        }
+
         "127.0.0.1".to_string()
     }
 
@@ -238,7 +276,7 @@ impl ClientAgent {
     /// Send initial registration event to SIEM Manager
     pub async fn register(&self, buffer: &AgentBuffer) {
         let distro = Self::detect_linux_distro();
-        let agent_ip = Self::detect_agent_ip();
+        let agent_ip = Self::detect_agent_ip(&self.config.manager_url);
         let reg_msg = format!(
             "wazuh-agentd[{}]: Linux Agent registered on host '{}' ({} - IP: {}). Communication active with manager at {}",
             self.config.agent_id, self.config.agent_name, distro, agent_ip, self.config.manager_url
@@ -269,12 +307,19 @@ impl ClientAgent {
         agent_name: String,
         manager_url: String,
         buffer: Arc<AgentBuffer>,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
         interval: Duration,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(interval).await;
-                let agent_ip = Self::detect_agent_ip();
+                if lifecycle.is_terminated() {
+                    break;
+                }
+                if !lifecycle.is_active() {
+                    continue;
+                }
+                let agent_ip = Self::detect_agent_ip(&manager_url);
                 let mut keepalive_event = RawEvent::new(
                     &agent_id,
                     EventSource::Syslog,

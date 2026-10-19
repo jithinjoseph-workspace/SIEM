@@ -4,6 +4,7 @@ mod client_agent;
 mod control;
 mod enroll;
 mod execd;
+mod lifecycle;
 mod logcollector;
 mod rootcheck;
 mod sca;
@@ -12,6 +13,7 @@ mod syscollector;
 
 use buffer::AgentBuffer;
 use client_agent::ClientAgent;
+use lifecycle::LifecycleCoordinator;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,9 +91,15 @@ async fn run_linux_agent() {
         enroll::export_agent_key(&e.raw_key);
         config.agent_id = e.agent_id;
         config.agent_name = e.agent_name;
+        config.agent_key = e.raw_key;
     }
-    // Deactivated on the manager: stay dormant until reactivated.
-    enroll::wait_until_active(&config.manager_url, &config.agent_id).await;
+
+    // Initialize cooperative Lifecycle Coordinator (Active <-> Dormant <-> Decommissioned)
+    let lifecycle = Arc::new(LifecycleCoordinator::new(config.agent_id.clone(), config.manager_url.clone()));
+    if let Some(state) = lifecycle.fetch_state().await {
+        lifecycle.set_state(state);
+    }
+    let _lifecycle_poller = Arc::clone(&lifecycle).spawn_poll_worker(Duration::from_secs(15));
     let client = ClientAgent { config: config.clone() };
 
     info!("===============================================================");
@@ -108,6 +116,7 @@ async fn run_linux_agent() {
         config.manager_url.clone(),
         config.buffer_capacity,
         config.events_per_second,
+        Arc::clone(&lifecycle),
     );
     let buffer = Arc::new(buffer);
 
@@ -120,6 +129,7 @@ async fn run_linux_agent() {
         config.agent_name.clone(),
         config.manager_url.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(10),
     );
 
@@ -159,6 +169,7 @@ async fn run_linux_agent() {
     let _logcollector_handle = logcollector::spawn_logcollector_worker(
         config.agent_id.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(4),
     );
 
@@ -168,6 +179,7 @@ async fn run_linux_agent() {
         config.agent_id.clone(),
         fim_paths,
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(15),
     );
 
@@ -176,6 +188,7 @@ async fn run_linux_agent() {
     let _syscollector_handle = syscollector::spawn_syscollector_worker(
         config.agent_id.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(30),
     );
 
@@ -184,15 +197,18 @@ async fn run_linux_agent() {
     let _sca_handle = sca::spawn_sca_worker(
         config.agent_id.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(60),
     );
 
     // Module 5: wazuh-execd (Active Response / Remediation Dispatcher)
-    info!(" [✓] wazuh-execd (active response: iptables/ufw drop, process termination, quarantine)");
+    info!(" [✓] wazuh-execd (active response: nftables/iptables/ufw drop, process termination, quarantine)");
     let _execd_handle = execd::spawn_active_response_worker(
         config.agent_id.clone(),
+        config.agent_key.clone(),
         config.manager_url.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(5),
     );
 
@@ -201,6 +217,7 @@ async fn run_linux_agent() {
     let _rootcheck_handle = rootcheck::spawn_rootcheck_worker(
         config.agent_id.clone(),
         Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
         Duration::from_secs(120),
     );
 
@@ -208,13 +225,17 @@ async fn run_linux_agent() {
     info!("Wazuh Linux Agent is RUNNING. Press Ctrl+C to stop.");
     info!("===============================================================");
 
-    // Wait for termination signal
-    match tokio::signal::ctrl_c().await {
-        Ok(()) => {
+    // Wait for termination signal or lifecycle decommission
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
             info!("Termination signal received. Shutting down Wazuh Linux Agent cleanly...");
         }
-        Err(err) => {
-            tracing::error!("Error listening for termination signal: {}", err);
+        _ = async {
+            while !lifecycle.is_terminated() {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        } => {
+            info!("Lifecycle coordinator triggered agent termination. Process exiting cleanly.");
         }
     }
 }

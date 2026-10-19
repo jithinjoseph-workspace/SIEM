@@ -76,6 +76,7 @@ impl LogTracker {
 pub fn spawn_logcollector_worker(
     agent_id: String,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     poll_interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -118,6 +119,12 @@ pub fn spawn_logcollector_worker(
 
         loop {
             tokio::time::sleep(poll_interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
+            if !lifecycle.is_active() {
+                continue;
+            }
 
             // Dynamically attach if new logs are created or test files created
             for (path_str, src) in &candidate_logs {

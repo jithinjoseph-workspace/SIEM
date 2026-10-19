@@ -1,5 +1,2243 @@
 [
   {
+    "id": "2b9b3fc8-fe47-427c-bab8-b23429224823",
+    "fingerprint": 5499807604303860155,
+    "fingerprint_signature": "<TIMESTAMP> status triggers-pending libreoffice-common:all <NUM>:<NUM>.<NUM>.<NUM>-0ubuntu0.<NUM>.<NUM>.<NUM>",
+    "name": "token_auto_parser_4c533de07b8611bb",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+triggers\\-pending\\s+libreoffice\\-common:all\\s+1:7\\.3\\.7\\-0ubuntu0\\.22\\.04\\.12$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:28:20",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:28:20 status triggers-pending libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:32:37 status triggers-pending libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:04 status triggers-pending libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:10 status triggers-pending libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:34:41 status triggers-pending libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.13"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:04:54.929437900Z",
+    "last_used": null
+  },
+  {
+    "id": "d9da55f4-cc38-46cb-97c9-4c406dc90964",
+    "fingerprint": 17501613830981563686,
+    "fingerprint_signature": "<TIMESTAMP> status installed libc-bin:amd64 <NUM>.<NUM>-0ubuntu3.<NUM>",
+    "name": "token_auto_parser_f2e2390d3fb83526",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+installed\\s+libc\\-bin:amd64\\s+2\\.35\\-0ubuntu3\\.15$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:31:46",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:31:46 status installed libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:05 status installed libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:10 status installed libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:53 status installed libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:59 status installed libc-bin:amd64 2.35-0ubuntu3.15"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:04:01.961248500Z",
+    "last_used": null
+  },
+  {
+    "id": "fbaa37d7-7ea0-4a95-96e5-34a4baab957b",
+    "fingerprint": 10179963247883294430,
+    "fingerprint_signature": "<TIMESTAMP> status half-configured libc-bin:amd64 <NUM>.<NUM>-0ubuntu3.<NUM>",
+    "name": "token_auto_parser_8d467ea3609d96de",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+half\\-configured\\s+libc\\-bin:amd64\\s+2\\.35\\-0ubuntu3\\.15$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:31:46",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:31:46 status half-configured libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:05 status half-configured libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:10 status half-configured libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:53 status half-configured libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:59 status half-configured libc-bin:amd64 2.35-0ubuntu3.15"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:04:01.909269900Z",
+    "last_used": null
+  },
+  {
+    "id": "40d06a23-5399-4a66-9586-5af027b1cb67",
+    "fingerprint": 751659665276312419,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> libc-bin[<NUM>]: amd64 <NUM>.<NUM>-0ubuntu3.<NUM> <none>",
+    "name": "token_auto_parser_a6e6e7bacc89b63",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+trigproc\\s+libc\\-bin:amd64\\s+2\\.35\\-0ubuntu3\\.15\\s+<none>$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:31:46",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:31:46 trigproc libc-bin:amd64 2.35-0ubuntu3.15 <none>",
+      "2026-10-19 12:33:05 trigproc libc-bin:amd64 2.35-0ubuntu3.15 <none>",
+      "2026-10-19 12:33:10 trigproc libc-bin:amd64 2.35-0ubuntu3.15 <none>",
+      "2026-10-19 12:33:53 trigproc libc-bin:amd64 2.35-0ubuntu3.15 <none>",
+      "2026-10-19 12:33:59 trigproc libc-bin:amd64 2.35-0ubuntu3.15 <none>"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:04:01.849086800Z",
+    "last_used": null
+  },
+  {
+    "id": "ff1f2129-8520-464f-bb54-4ae151598e13",
+    "fingerprint": 1963407744030643516,
+    "fingerprint_signature": "<TIMESTAMP> status triggers-pending libc-bin:amd64 <NUM>.<NUM>-0ubuntu3.<NUM>",
+    "name": "token_auto_parser_1b3f6cf0cc32953c",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+triggers\\-pending\\s+libc\\-bin:amd64\\s+2\\.35\\-0ubuntu3\\.15$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:31:46",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:31:46 status triggers-pending libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:04 status triggers-pending libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:10 status triggers-pending libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:53 status triggers-pending libc-bin:amd64 2.35-0ubuntu3.15",
+      "2026-10-19 12:33:59 status triggers-pending libc-bin:amd64 2.35-0ubuntu3.15"
+    ],
+    "hit_count": 1,
+    "success_count": 1,
+    "created_at": "2026-10-19T07:04:01.090028800Z",
+    "last_used": "2026-10-19T07:04:54.711552200Z"
+  },
+  {
+    "id": "fcb49bd0-b8ce-4ff1-bf90-58fd597d6f3c",
+    "fingerprint": 11969602295575122612,
+    "fingerprint_signature": "<TIMESTAMP> status installed man-db:amd64 <NUM>.<NUM>.<NUM>-<NUM>",
+    "name": "token_auto_parser_a61c91dec27492b4",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+installed\\s+man\\-db:amd64\\s+2\\.10\\.2\\-1$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:32:43",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:32:43 status installed man-db:amd64 2.10.2-1",
+      "2026-10-19 12:32:59 status installed man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:19 status installed man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:25 status installed man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:43 status installed man-db:amd64 2.10.2-1"
+    ],
+    "hit_count": 2,
+    "success_count": 2,
+    "created_at": "2026-10-19T07:03:48.708632300Z",
+    "last_used": "2026-10-19T07:04:30.244714600Z"
+  },
+  {
+    "id": "3488d022-6526-4b82-9c23-32bad0f95b1c",
+    "fingerprint": 679153451536357610,
+    "fingerprint_signature": "<TIMESTAMP> status half-configured man-db:amd64 <NUM>.<NUM>.<NUM>-<NUM>",
+    "name": "token_auto_parser_96cd67742ce18ea",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+half\\-configured\\s+man\\-db:amd64\\s+2\\.10\\.2\\-1$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:32:43",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:32:43 status half-configured man-db:amd64 2.10.2-1",
+      "2026-10-19 12:32:58 status half-configured man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:19 status half-configured man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:25 status half-configured man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:42 status half-configured man-db:amd64 2.10.2-1"
+    ],
+    "hit_count": 2,
+    "success_count": 2,
+    "created_at": "2026-10-19T07:03:48.655116700Z",
+    "last_used": "2026-10-19T07:04:30.188381900Z"
+  },
+  {
+    "id": "3de957de-4e7c-4f04-9394-c1be7ffa1f98",
+    "fingerprint": 10346243364620794755,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> man-db[<NUM>]: amd64 <NUM>.<NUM>.<NUM>-<NUM> <none>",
+    "name": "token_auto_parser_8f953d85fbf6fb83",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+trigproc\\s+man\\-db:amd64\\s+2\\.10\\.2\\-1\\s+<none>$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:32:43",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:32:43 trigproc man-db:amd64 2.10.2-1 <none>",
+      "2026-10-19 12:32:58 trigproc man-db:amd64 2.10.2-1 <none>",
+      "2026-10-19 12:33:19 trigproc man-db:amd64 2.10.2-1 <none>",
+      "2026-10-19 12:33:25 trigproc man-db:amd64 2.10.2-1 <none>",
+      "2026-10-19 12:33:42 trigproc man-db:amd64 2.10.2-1 <none>"
+    ],
+    "hit_count": 2,
+    "success_count": 2,
+    "created_at": "2026-10-19T07:03:48.604330100Z",
+    "last_used": "2026-10-19T07:04:30.134926400Z"
+  },
+  {
+    "id": "f880753a-11f5-4795-9a88-1a7cbeb43aaa",
+    "fingerprint": 580772592350772023,
+    "fingerprint_signature": "<TIMESTAMP> status half-configured libreoffice-common:all <NUM>:<NUM>.<NUM>.<NUM>-0ubuntu0.<NUM>.<NUM>.<NUM>",
+    "name": "token_auto_parser_80f51987e59bb37",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+half\\-configured\\s+libreoffice\\-common:all\\s+1:7\\.3\\.7\\-0ubuntu0\\.22\\.04\\.12$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:32:37",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:32:37 status half-configured libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:05 status half-configured libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:10 status half-configured libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:30 status half-configured libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.12",
+      "2026-10-19 12:33:34 status half-configured libreoffice-common:all 1:7.3.7-0ubuntu0.22.04.13"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:03:47.412220800Z",
+    "last_used": null
+  },
+  {
+    "id": "7258d65a-5690-4356-a7b1-b0b3dbf60a68",
+    "fingerprint": 2180289467940327709,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> dbus-daemon[<NUM>]: [system] Reloaded configuration",
+    "name": "syslog_auto_parser_1e41f1b82c1bd11d",
+    "description": "Auto-generated Syslog parser for 'dbus-daemon'",
+    "parser_type": "Regex",
+    "pattern": "^(?P<timestamp>(?:[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}))\\s+(?P<hostname>\\S+)\\s+(?P<program>[\\w\\.\\-]+)(?:\\[(?P<pid>\\d+)\\])?:\\s+(?P<message>.*)$",
+    "fields": [
+      {
+        "name": "timestamp",
+        "field_type": "datetime",
+        "example": "Oct 19 12:31:53",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "ndrsystem",
+        "ecs_target": "host.hostname"
+      },
+      {
+        "name": "program",
+        "field_type": "string",
+        "example": "dbus-daemon",
+        "ecs_target": "process.name"
+      },
+      {
+        "name": "message",
+        "field_type": "string",
+        "example": "[system] Reloaded configuration",
+        "ecs_target": "message"
+      }
+    ],
+    "normalization": {
+      "hostname": "hostname",
+      "program": "program_name"
+    },
+    "confidence": 0.9,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Oct 19 12:31:53 ndrsystem dbus-daemon[763]: [system] Reloaded configuration",
+      "Oct 19 12:31:54 ndrsystem dbus-daemon[763]: [system] Reloaded configuration",
+      "Oct 19 12:33:16 ndrsystem dbus-daemon[763]: [system] Reloaded configuration",
+      "Oct 19 12:33:17 ndrsystem dbus-daemon[763]: [system] Reloaded configuration",
+      "Oct 19 12:33:19 ndrsystem dbus-daemon[763]: [system] Reloaded configuration"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:03:40.214241200Z",
+    "last_used": null
+  },
+  {
+    "id": "bd1f14c8-9e05-4848-b482-7e0bc226bff3",
+    "fingerprint": 9434660089162390169,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> dbus-daemon[<NUM>]: Unknown group <STR> in message bus configuration file",
+    "name": "syslog_auto_parser_82eea55d37145a99",
+    "description": "Auto-generated Syslog parser for 'dbus-daemon'",
+    "parser_type": "Regex",
+    "pattern": "^(?P<timestamp>(?:[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}))\\s+(?P<hostname>\\S+)\\s+(?P<program>[\\w\\.\\-]+)(?:\\[(?P<pid>\\d+)\\])?:\\s+(?P<message>.*)$",
+    "fields": [
+      {
+        "name": "timestamp",
+        "field_type": "datetime",
+        "example": "Oct 19 12:31:53",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "ndrsystem",
+        "ecs_target": "host.hostname"
+      },
+      {
+        "name": "program",
+        "field_type": "string",
+        "example": "dbus-daemon",
+        "ecs_target": "process.name"
+      },
+      {
+        "name": "message",
+        "field_type": "string",
+        "example": "Unknown group \"power\" in message bus configuration file",
+        "ecs_target": "message"
+      }
+    ],
+    "normalization": {
+      "hostname": "hostname",
+      "program": "program_name"
+    },
+    "confidence": 0.9,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Oct 19 12:31:53 ndrsystem dbus-daemon[763]: Unknown group \"power\" in message bus configuration file",
+      "Oct 19 12:31:54 ndrsystem dbus-daemon[763]: Unknown group \"power\" in message bus configuration file",
+      "Oct 19 12:33:16 ndrsystem dbus-daemon[763]: Unknown group \"power\" in message bus configuration file",
+      "Oct 19 12:33:17 ndrsystem dbus-daemon[763]: Unknown group \"power\" in message bus configuration file",
+      "Oct 19 12:33:19 ndrsystem dbus-daemon[763]: Unknown group \"power\" in message bus configuration file"
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:03:40.161723800Z",
+    "last_used": null
+  },
+  {
+    "id": "075d10c8-385c-41e5-aef5-932507bda03b",
+    "fingerprint": 9348017845379368772,
+    "fingerprint_signature": "<TIMESTAMP> status triggers-pending man-db:amd64 <NUM>.<NUM>.<NUM>-<NUM>",
+    "name": "token_auto_parser_81bad4b3d3d98744",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+status\\s+triggers\\-pending\\s+man\\-db:amd64\\s+2\\.10\\.2\\-1$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:28:20",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:28:20 status triggers-pending man-db:amd64 2.10.2-1",
+      "2026-10-19 12:31:53 status triggers-pending man-db:amd64 2.10.2-1",
+      "2026-10-19 12:32:42 status triggers-pending man-db:amd64 2.10.2-1",
+      "2026-10-19 12:32:53 status triggers-pending man-db:amd64 2.10.2-1",
+      "2026-10-19 12:33:16 status triggers-pending man-db:amd64 2.10.2-1"
+    ],
+    "hit_count": 4,
+    "success_count": 4,
+    "created_at": "2026-10-19T07:03:18.466403900Z",
+    "last_used": "2026-10-19T07:04:29.752498800Z"
+  },
+  {
+    "id": "8b640dd7-d356-4cab-93b1-a654d4ef81c8",
+    "fingerprint": 9558529388298265468,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> systemd[<NUM>]: /lib/systemd/system/snapd.service:<NUM>: Unknown key name <STR> in section <STR>, ignoring.",
+    "name": "syslog_auto_parser_84a6b7d5dca6637c",
+    "description": "Auto-generated Syslog parser for 'systemd'",
+    "parser_type": "Regex",
+    "pattern": "^(?P<timestamp>(?:[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}))\\s+(?P<hostname>\\S+)\\s+(?P<program>[\\w\\.\\-]+)(?:\\[(?P<pid>\\d+)\\])?:\\s+(?P<message>.*)$",
+    "fields": [
+      {
+        "name": "timestamp",
+        "field_type": "datetime",
+        "example": "Oct 19 12:31:57",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "ndrsystem",
+        "ecs_target": "host.hostname"
+      },
+      {
+        "name": "program",
+        "field_type": "string",
+        "example": "systemd",
+        "ecs_target": "process.name"
+      },
+      {
+        "name": "message",
+        "field_type": "string",
+        "example": "/lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.",
+        "ecs_target": "message"
+      }
+    ],
+    "normalization": {
+      "hostname": "hostname",
+      "program": "program_name"
+    },
+    "confidence": 0.9,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Oct 19 12:31:57 ndrsystem systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.",
+      "Oct 19 12:32:02 ndrsystem systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.",
+      "Oct 19 12:32:07 ndrsystem systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.",
+      "Oct 19 12:32:55 ndrsystem systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.",
+      "Oct 19 12:32:56 ndrsystem systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring."
+    ],
+    "hit_count": 1,
+    "success_count": 1,
+    "created_at": "2026-10-19T07:02:57.656194300Z",
+    "last_used": "2026-10-19T07:03:40.046432900Z"
+  },
+  {
+    "id": "9cb1eaf5-4193-4f6a-9972-d641d36234f9",
+    "fingerprint": 1131875227159061167,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> systemd[<NUM>]: Reloading.",
+    "name": "syslog_auto_parser_fb53a85ace162af",
+    "description": "Auto-generated Syslog parser for 'systemd'",
+    "parser_type": "Regex",
+    "pattern": "^(?P<timestamp>(?:[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}))\\s+(?P<hostname>\\S+)\\s+(?P<program>[\\w\\.\\-]+)(?:\\[(?P<pid>\\d+)\\])?:\\s+(?P<message>.*)$",
+    "fields": [
+      {
+        "name": "timestamp",
+        "field_type": "datetime",
+        "example": "Oct 19 12:31:55",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "ndrsystem",
+        "ecs_target": "host.hostname"
+      },
+      {
+        "name": "program",
+        "field_type": "string",
+        "example": "systemd",
+        "ecs_target": "process.name"
+      },
+      {
+        "name": "message",
+        "field_type": "string",
+        "example": "Reloading.",
+        "ecs_target": "message"
+      }
+    ],
+    "normalization": {
+      "program": "program_name",
+      "hostname": "hostname"
+    },
+    "confidence": 0.9,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Oct 19 12:31:55 ndrsystem systemd[1]: Reloading.",
+      "Oct 19 12:32:01 ndrsystem systemd[1]: Reloading.",
+      "Oct 19 12:32:06 ndrsystem systemd[1]: Reloading.",
+      "Oct 19 12:32:54 ndrsystem systemd[1]: Reloading.",
+      "Oct 19 12:32:55 ndrsystem systemd[1]: Reloading."
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T07:02:57.550473200Z",
+    "last_used": null
+  },
+  {
+    "id": "23771e92-9de7-40d6-8ccc-589bbdc2abe5",
+    "fingerprint": 16818261996028096590,
+    "fingerprint_signature": "End-Date: <NUM>-<NUM>-<NUM> <IP>",
+    "name": "token_auto_parser_e966782dacb4f04e",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^End\\-Date:\\s+(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:31:46",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "End-Date: 2026-10-19  12:31:46",
+      "End-Date: 2026-10-19  12:32:26",
+      "End-Date: 2026-10-19  12:32:31",
+      "End-Date: 2026-10-19  12:32:37",
+      "End-Date: 2026-10-19  12:32:43"
+    ],
+    "hit_count": 15,
+    "success_count": 15,
+    "created_at": "2026-10-19T07:02:46.417247Z",
+    "last_used": "2026-10-19T07:04:39.662246500Z"
+  },
+  {
+    "id": "96a0b346-fa49-4e02-b94d-d7294168a037",
+    "fingerprint": 10858855148856429383,
+    "fingerprint_signature": "Start-Date: <NUM>-<NUM>-<NUM> <IP>",
+    "name": "token_auto_parser_96b26739a7024b47",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^Start\\-Date:\\s+(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:28:18",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Start-Date: 2026-10-19  12:28:18",
+      "Start-Date: 2026-10-19  12:31:46",
+      "Start-Date: 2026-10-19  12:31:51",
+      "Start-Date: 2026-10-19  12:32:25",
+      "Start-Date: 2026-10-19  12:32:31"
+    ],
+    "hit_count": 17,
+    "success_count": 17,
+    "created_at": "2026-10-19T07:02:33.593359300Z",
+    "last_used": "2026-10-19T07:04:39.400894700Z"
+  },
+  {
+    "id": "c4a5814d-9fbf-4032-994c-d059b4550599",
+    "fingerprint": 3855109087657780949,
+    "fingerprint_signature": "<TIMESTAMP> startup packages configure",
+    "name": "token_auto_parser_3580194a3c38e6d5",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+startup\\s+packages\\s+configure$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:28:29",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:28:29 startup packages configure",
+      "2026-10-19 12:31:46 startup packages configure",
+      "2026-10-19 12:31:54 startup packages configure",
+      "2026-10-19 12:32:26 startup packages configure",
+      "2026-10-19 12:32:31 startup packages configure"
+    ],
+    "hit_count": 17,
+    "success_count": 17,
+    "created_at": "2026-10-19T07:02:33.328413700Z",
+    "last_used": "2026-10-19T07:04:39.115110600Z"
+  },
+  {
+    "id": "c67bbf2d-e216-4538-ab89-695114e1c8ac",
+    "fingerprint": 8780056521802387018,
+    "fingerprint_signature": "<TIMESTAMP> startup archives unpack",
+    "name": "token_auto_parser_79d906e349e20e4a",
+    "description": "Auto-generated positional token parser",
+    "parser_type": "Regex",
+    "pattern": "^(?P<date>\\d{4}-\\d{2}-\\d{2})\\s+(?P<time>\\d{2}:\\d{2}:\\d{2})\\s+startup\\s+archives\\s+unpack$",
+    "fields": [
+      {
+        "name": "date",
+        "field_type": "datetime",
+        "example": "2026-10-19",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "time",
+        "field_type": "datetime",
+        "example": "12:28:18",
+        "ecs_target": null
+      }
+    ],
+    "normalization": {},
+    "confidence": 0.85,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "2026-10-19 12:28:18 startup archives unpack",
+      "2026-10-19 12:31:46 startup archives unpack",
+      "2026-10-19 12:31:52 startup archives unpack",
+      "2026-10-19 12:32:25 startup archives unpack",
+      "2026-10-19 12:32:31 startup archives unpack"
+    ],
+    "hit_count": 18,
+    "success_count": 18,
+    "created_at": "2026-10-19T07:02:33.014053800Z",
+    "last_used": "2026-10-19T07:04:54.606513400Z"
+  },
+  {
+    "id": "c806f333-58aa-4fec-9714-97e870a478cb",
+    "fingerprint": 10773751223710991646,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> apparmor=<VAL> operation=<VAL> info=<VAL> as current profile, skipping\" profile=<VAL> name=<VAL> pid=<VAL> comm=<VAL>",
+    "name": "kv_auto_parser_95840da7fbb9451e",
+    "description": "Auto-generated Key-Value parser with 9 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") apparmor=(?P<apparmor>[^\\s,]+|\"[^\"]*\") operation=(?P<operation>[^\\s,]+|\"[^\"]*\") info=(?P<info>[^\\s,]+|\"[^\"]*\") as current profile, skipping\" profile=(?P<profile>[^\\s,]+|\"[^\"]*\") name=(?P<name>[^\\s,]+|\"[^\"]*\") pid=(?P<pid>[^\\s,]+|\"[^\"]*\") comm=(?P<comm>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "AVC",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393328.091:13301):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "apparmor",
+        "field_type": "string",
+        "example": "\"STATUS\"",
+        "ecs_target": "data.apparmor"
+      },
+      {
+        "name": "operation",
+        "field_type": "string",
+        "example": "\"profile_replace\"",
+        "ecs_target": "data.operation"
+      },
+      {
+        "name": "info",
+        "field_type": "string",
+        "example": "\"same",
+        "ecs_target": "data.info"
+      },
+      {
+        "name": "profile",
+        "field_type": "string",
+        "example": "\"unconfined\"",
+        "ecs_target": "data.profile"
+      },
+      {
+        "name": "name",
+        "field_type": "string",
+        "example": "\"snap-update-ns.mesa-2404\"",
+        "ecs_target": "data.name"
+      },
+      {
+        "name": "pid",
+        "field_type": "integer",
+        "example": "16328",
+        "ecs_target": "data.pid"
+      },
+      {
+        "name": "comm",
+        "field_type": "string",
+        "example": "\"apparmor_parser\"",
+        "ecs_target": "data.comm"
+      }
+    ],
+    "normalization": {
+      "name": "data.name",
+      "comm": "data.comm",
+      "operation": "data.operation",
+      "info": "data.info",
+      "profile": "data.profile",
+      "type": "data.type",
+      "pid": "data.pid",
+      "apparmor": "data.apparmor",
+      "msg": "data.msg"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=AVC msg=audit(1792393328.091:13301): apparmor=\"STATUS\" operation=\"profile_replace\" info=\"same as current profile, skipping\" profile=\"unconfined\" name=\"snap-update-ns.mesa-2404\" pid=16328 comm=\"apparmor_parser\"",
+      "type=AVC msg=audit(1792393328.095:13302): apparmor=\"STATUS\" operation=\"profile_replace\" info=\"same as current profile, skipping\" profile=\"unconfined\" name=\"/snap/snapd/28254/usr/lib/snapd/snap-confine\" pid=16326 comm=\"apparmor_parser\"",
+      "type=AVC msg=audit(1792393328.096:13303): apparmor=\"STATUS\" operation=\"profile_replace\" info=\"same as current profile, skipping\" profile=\"unconfined\" name=\"snap-update-ns.firefox\" pid=16327 comm=\"apparmor_parser\"",
+      "type=AVC msg=audit(1792393328.101:13304): apparmor=\"STATUS\" operation=\"profile_replace\" info=\"same as current profile, skipping\" profile=\"unconfined\" name=\"/snap/snapd/27738/usr/lib/snapd/snap-confine\" pid=16325 comm=\"apparmor_parser\"",
+      "type=AVC msg=audit(1792393328.102:13305): apparmor=\"STATUS\" operation=\"profile_replace\" info=\"same as current profile, skipping\" profile=\"unconfined\" name=\"snap-update-ns.snap-store\" pid=16329 comm=\"apparmor_parser\""
+    ],
+    "hit_count": 21,
+    "success_count": 21,
+    "created_at": "2026-10-19T07:02:23.442698900Z",
+    "last_used": "2026-10-19T07:03:47.865833Z"
+  },
+  {
+    "id": "e8de827e-cf33-4d42-b89d-6a3e4898b4d9",
+    "fingerprint": 9551971178470672000,
+    "fingerprint_signature": "<TIMESTAMP> <HOST> systemd[<NUM>]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+    "name": "syslog_auto_parser_848f6b2da5838680",
+    "description": "Auto-generated Syslog parser for 'systemd'",
+    "parser_type": "Regex",
+    "pattern": "^(?P<timestamp>(?:[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}))\\s+(?P<hostname>\\S+)\\s+(?P<program>[\\w\\.\\-]+)(?:\\[(?P<pid>\\d+)\\])?:\\s+(?P<message>.*)$",
+    "fields": [
+      {
+        "name": "timestamp",
+        "field_type": "datetime",
+        "example": "Oct 19 12:27:25",
+        "ecs_target": "@timestamp"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "ndrsystem",
+        "ecs_target": "host.hostname"
+      },
+      {
+        "name": "program",
+        "field_type": "string",
+        "example": "systemd",
+        "ecs_target": "process.name"
+      },
+      {
+        "name": "message",
+        "field_type": "string",
+        "example": "Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+        "ecs_target": "message"
+      }
+    ],
+    "normalization": {
+      "hostname": "hostname",
+      "program": "program_name"
+    },
+    "confidence": 0.9,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "Oct 19 12:27:25 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+      "Oct 19 12:28:03 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+      "Oct 19 12:31:42 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+      "Oct 19 12:31:57 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
+      "Oct 19 12:32:02 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway."
+    ],
+    "hit_count": 9,
+    "success_count": 9,
+    "created_at": "2026-10-19T07:02:06.432271100Z",
+    "last_used": "2026-10-19T07:04:38.731997200Z"
+  },
+  {
+    "id": "602260b1-bdce-4dc5-8636-52f405c72e59",
+    "fingerprint": 4392308917253313242,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL>,<STR>\\\\<STR>,g\"",
+    "name": "kv_auto_parser_3cf49db054aa12da",
+    "description": "Auto-generated Key-Value parser with 6 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\"),','\\\\\\\\'',g\"$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393109.306:7599):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "3",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"sed\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-e\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"s",
+        "ecs_target": "data.a2"
+      }
+    ],
+    "normalization": {
+      "argc": "data.argc",
+      "type": "data.type",
+      "a2": "data.a2",
+      "msg": "data.msg",
+      "a0": "data.a0",
+      "a1": "data.a1"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393109.306:7599): argc=3 a0=\"sed\" a1=\"-e\" a2=\"s,','\\\\'',g\"",
+      "type=EXECVE msg=audit(1792393109.313:7600): argc=3 a0=\"sed\" a1=\"-e\" a2=\"s,','\\\\'',g\"",
+      "type=EXECVE msg=audit(1792393109.321:7601): argc=3 a0=\"sed\" a1=\"-e\" a2=\"s,','\\\\'',g\"",
+      "type=EXECVE msg=audit(1792393109.531:7625): argc=3 a0=\"sed\" a1=\"-e\" a2=\"s,','\\\\'',g\"",
+      "type=EXECVE msg=audit(1792393109.539:7626): argc=3 a0=\"sed\" a1=\"-e\" a2=\"s,','\\\\'',g\""
+    ],
+    "hit_count": 1,
+    "success_count": 1,
+    "created_at": "2026-10-19T07:01:29.190140500Z",
+    "last_used": "2026-10-19T07:01:29.502527800Z"
+  },
+  {
+    "id": "00a8aa9f-c40c-43e7-9175-db064d918c9b",
+    "fingerprint": 7591172386706384795,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL> a4=<VAL> a5=<VAL> a6=<VAL> a7=<VAL> a8=<VAL> a9=<VAL>",
+    "name": "kv_auto_parser_69594310e263679b",
+    "description": "Auto-generated Key-Value parser with 13 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\") a4=(?P<a4>[^\\s,]+|\"[^\"]*\") a5=(?P<a5>[^\\s,]+|\"[^\"]*\") a6=(?P<a6>[^\\s,]+|\"[^\"]*\") a7=(?P<a7>[^\\s,]+|\"[^\"]*\") a8=(?P<a8>[^\\s,]+|\"[^\"]*\") a9=(?P<a9>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393100.160:7287):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "10",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"/bin/sh\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"/usr/bin/dpkg-maintscript-helper\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"symlink_to_dir\"",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "string",
+        "example": "\"/usr/share/doc/libreoffice-calc\"",
+        "ecs_target": "data.a3"
+      },
+      {
+        "name": "a4",
+        "field_type": "string",
+        "example": "\"/usr/share/doc/libreoffice-core\"",
+        "ecs_target": "data.a4"
+      },
+      {
+        "name": "a5",
+        "field_type": "string",
+        "example": "\"1:6.4.0~alpha1~git20191013\"",
+        "ecs_target": "data.a5"
+      },
+      {
+        "name": "a6",
+        "field_type": "string",
+        "example": "\"--\"",
+        "ecs_target": "data.a6"
+      },
+      {
+        "name": "a7",
+        "field_type": "string",
+        "example": "\"upgrade\"",
+        "ecs_target": "data.a7"
+      },
+      {
+        "name": "a8",
+        "field_type": "string",
+        "example": "\"1:7.3.7-0ubuntu0.22.04.12\"",
+        "ecs_target": "data.a8"
+      },
+      {
+        "name": "a9",
+        "field_type": "string",
+        "example": "\"1:7.3.7-0ubuntu0.22.04.13\"",
+        "ecs_target": "data.a9"
+      }
+    ],
+    "normalization": {
+      "a5": "data.a5",
+      "a3": "data.a3",
+      "a2": "data.a2",
+      "a1": "data.a1",
+      "argc": "data.argc",
+      "a4": "data.a4",
+      "msg": "data.msg",
+      "a7": "data.a7",
+      "a6": "data.a6",
+      "a8": "data.a8",
+      "a0": "data.a0",
+      "type": "data.type",
+      "a9": "data.a9"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393100.160:7287): argc=10 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-calc\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.12\" a9=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393101.806:7325): argc=10 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-draw\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.12\" a9=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393102.637:7356): argc=10 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-gnome\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.12\" a9=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393102.954:7385): argc=10 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-gtk3\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.12\" a9=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393103.231:7414): argc=10 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-writer\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.12\" a9=\"1:7.3.7-0ubuntu0.22.04.13\""
+    ],
+    "hit_count": 4,
+    "success_count": 4,
+    "created_at": "2026-10-19T06:59:59.508206300Z",
+    "last_used": "2026-10-19T07:01:11.477148500Z"
+  },
+  {
+    "id": "0227edc2-bdfb-462b-935b-9e1d84d44ea0",
+    "fingerprint": 4383961636580877511,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL> a4=<VAL> a5=<VAL> a6=<VAL> a7=<VAL> a8=<VAL>",
+    "name": "kv_auto_parser_3cd6f5e19957e4c7",
+    "description": "Auto-generated Key-Value parser with 12 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\") a4=(?P<a4>[^\\s,]+|\"[^\"]*\") a5=(?P<a5>[^\\s,]+|\"[^\"]*\") a6=(?P<a6>[^\\s,]+|\"[^\"]*\") a7=(?P<a7>[^\\s,]+|\"[^\"]*\") a8=(?P<a8>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393100.092:7282):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "9",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"/bin/sh\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"/usr/bin/dpkg-maintscript-helper\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"symlink_to_dir\"",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "string",
+        "example": "\"/usr/share/doc/libreoffice-calc\"",
+        "ecs_target": "data.a3"
+      },
+      {
+        "name": "a4",
+        "field_type": "string",
+        "example": "\"/usr/share/doc/libreoffice-core\"",
+        "ecs_target": "data.a4"
+      },
+      {
+        "name": "a5",
+        "field_type": "string",
+        "example": "\"1:6.4.0~alpha1~git20191013\"",
+        "ecs_target": "data.a5"
+      },
+      {
+        "name": "a6",
+        "field_type": "string",
+        "example": "\"--\"",
+        "ecs_target": "data.a6"
+      },
+      {
+        "name": "a7",
+        "field_type": "string",
+        "example": "\"upgrade\"",
+        "ecs_target": "data.a7"
+      },
+      {
+        "name": "a8",
+        "field_type": "string",
+        "example": "\"1:7.3.7-0ubuntu0.22.04.13\"",
+        "ecs_target": "data.a8"
+      }
+    ],
+    "normalization": {
+      "a3": "data.a3",
+      "msg": "data.msg",
+      "type": "data.type",
+      "a2": "data.a2",
+      "a8": "data.a8",
+      "a6": "data.a6",
+      "a4": "data.a4",
+      "a1": "data.a1",
+      "a7": "data.a7",
+      "a5": "data.a5",
+      "argc": "data.argc",
+      "a0": "data.a0"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393100.092:7282): argc=9 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-calc\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393101.486:7303): argc=9 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-calc\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393101.742:7320): argc=9 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-draw\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393102.499:7334): argc=9 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-draw\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.13\"",
+      "type=EXECVE msg=audit(1792393102.637:7351): argc=9 a0=\"/bin/sh\" a1=\"/usr/bin/dpkg-maintscript-helper\" a2=\"symlink_to_dir\" a3=\"/usr/share/doc/libreoffice-gnome\" a4=\"/usr/share/doc/libreoffice-core\" a5=\"1:6.4.0~alpha1~git20191013\" a6=\"--\" a7=\"upgrade\" a8=\"1:7.3.7-0ubuntu0.22.04.13\""
+    ],
+    "hit_count": 14,
+    "success_count": 14,
+    "created_at": "2026-10-19T06:59:29.740980100Z",
+    "last_used": "2026-10-19T07:01:18.231123300Z"
+  },
+  {
+    "id": "e5a188fb-57d9-4844-b545-30be34208a88",
+    "fingerprint": 6090242374713074467,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL> a4=<VAL>",
+    "name": "kv_auto_parser_5484e32c1ccde323",
+    "description": "Auto-generated Key-Value parser with 8 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\") a4=(?P<a4>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393046.231:7097):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "5",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"/usr/bin/python3\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-Es\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"/usr/bin/lsb_release\"",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "string",
+        "example": "\"-c\"",
+        "ecs_target": "data.a3"
+      },
+      {
+        "name": "a4",
+        "field_type": "string",
+        "example": "\"-s\"",
+        "ecs_target": "data.a4"
+      }
+    ],
+    "normalization": {
+      "type": "data.type",
+      "msg": "data.msg",
+      "a0": "data.a0",
+      "a3": "data.a3",
+      "argc": "data.argc",
+      "a1": "data.a1",
+      "a4": "data.a4",
+      "a2": "data.a2"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393046.231:7097): argc=5 a0=\"/usr/bin/python3\" a1=\"-Es\" a2=\"/usr/bin/lsb_release\" a3=\"-c\" a4=\"-s\"",
+      "type=EXECVE msg=audit(1792393046.265:7103): argc=5 a0=\"/usr/bin/python3\" a1=\"-Es\" a2=\"/usr/bin/lsb_release\" a3=\"-d\" a4=\"-s\"",
+      "type=EXECVE msg=audit(1792393046.297:7109): argc=5 a0=\"/usr/bin/python3\" a1=\"-Es\" a2=\"/usr/bin/lsb_release\" a3=\"-i\" a4=\"-s\"",
+      "type=EXECVE msg=audit(1792393098.103:7276): argc=5 a0=\"tar\" a1=\"-x\" a2=\"-f\" a3=\"-\" a4=\"--warning=no-timestamp\"",
+      "type=EXECVE msg=audit(1792393100.155:7286): argc=5 a0=\"/bin/sh\" a1=\"/var/lib/dpkg/tmp.ci/preinst\" a2=\"upgrade\" a3=\"1:7.3.7-0ubuntu0.22.04.12\" a4=\"1:7.3.7-0ubuntu0.22.04.13\""
+    ],
+    "hit_count": 20,
+    "success_count": 20,
+    "created_at": "2026-10-19T06:58:46.993962400Z",
+    "last_used": "2026-10-19T07:01:28.022928100Z"
+  },
+  {
+    "id": "170a6b77-33f9-4891-9bdc-d118dfb34aab",
+    "fingerprint": 3069297539802765994,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> saddr=<VAL> saddr_fam=<VAL> laddr=<VAL> lport=<VAL> }",
+    "name": "kv_auto_parser_2a9855d9c1ec9aaa",
+    "description": "Auto-generated Key-Value parser with 6 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") saddr=(?P<saddr>[^\\s,]+|\"[^\"]*\") saddr_fam=(?P<saddr_fam>[^\\s,]+|\"[^\"]*\") laddr=(?P<laddr>[^\\s,]+|\"[^\"]*\") lport=(?P<lport>[^\\s,]+|\"[^\"]*\") \\}$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "SOCKADDR",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.284:7019):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "saddr",
+        "field_type": "string",
+        "example": "02001F98C0A838010000000000000000\u001dSADDR={",
+        "ecs_target": "data.saddr"
+      },
+      {
+        "name": "saddr_fam",
+        "field_type": "string",
+        "example": "inet",
+        "ecs_target": "data.saddr_fam"
+      },
+      {
+        "name": "laddr",
+        "field_type": "ip",
+        "example": "192.168.56.1",
+        "ecs_target": "data.laddr"
+      },
+      {
+        "name": "lport",
+        "field_type": "integer",
+        "example": "8088",
+        "ecs_target": "srcport"
+      }
+    ],
+    "normalization": {
+      "saddr_fam": "data.saddr_fam",
+      "laddr": "data.laddr",
+      "lport": "srcport",
+      "msg": "data.msg",
+      "saddr": "data.saddr",
+      "type": "data.type"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=SOCKADDR msg=audit(1792393045.284:7019): saddr=02001F98C0A838010000000000000000\u001dSADDR={ saddr_fam=inet laddr=192.168.56.1 lport=8088 }",
+      "type=SOCKADDR msg=audit(1792393050.383:7130): saddr=02001F98C0A838010000000000000000\u001dSADDR={ saddr_fam=inet laddr=192.168.56.1 lport=8088 }",
+      "type=SOCKADDR msg=audit(1792393088.488:7157): saddr=0A000050000000002620002D40020001000000000000019600000000\u001dSADDR={ saddr_fam=inet6 laddr=2620:2d:4002:1::196 lport=80 }",
+      "type=SOCKADDR msg=audit(1792393088.498:7158): saddr=0A000050000000002620002D40020001000000000000106400000000\u001dSADDR={ saddr_fam=inet6 laddr=2620:2d:4002:1::1064 lport=80 }",
+      "type=SOCKADDR msg=audit(1792393088.509:7159): saddr=0A000050000000002620002D40000001000000000000109900000000\u001dSADDR={ saddr_fam=inet6 laddr=2620:2d:4000:1::1099 lport=80 }"
+    ],
+    "hit_count": 9,
+    "success_count": 9,
+    "created_at": "2026-10-19T06:58:17.912640100Z",
+    "last_used": "2026-10-19T06:58:19.339982100Z"
+  },
+  {
+    "id": "859d3641-5106-476f-871d-919ecd294cc0",
+    "fingerprint": 3393691651559427251,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL>",
+    "name": "kv_auto_parser_2f18d09398688cb3",
+    "description": "Auto-generated Key-Value parser with 6 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.345:7040):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "3",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"dpkg-query\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-W\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "2D663D247B62696E6172793A5061636B6167657D20247B56657273696F6E7D0A",
+        "ecs_target": "data.a2"
+      }
+    ],
+    "normalization": {
+      "type": "data.type",
+      "a2": "data.a2",
+      "argc": "data.argc",
+      "a1": "data.a1",
+      "a0": "data.a0",
+      "msg": "data.msg"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393045.345:7040): argc=3 a0=\"dpkg-query\" a1=\"-W\" a2=2D663D247B62696E6172793A5061636B6167657D20247B56657273696F6E7D0A",
+      "type=EXECVE msg=audit(1792393045.356:7042): argc=3 a0=\"/bin/sh\" a1=\"/usr/lib/apt/apt.systemd.daily\" a2=\"install\"",
+      "type=EXECVE msg=audit(1792393045.430:7060): argc=3 a0=\"apt-get\" a1=\"check\" a2=\"-qq\"",
+      "type=EXECVE msg=audit(1792393046.098:7088): argc=3 a0=\"date\" a1=\"--date=2026-10-15\" a2=\"+%s\"",
+      "type=EXECVE msg=audit(1792393046.106:7090): argc=3 a0=\"date\" a1=\"--date=2026-10-19\" a2=\"+%s\""
+    ],
+    "hit_count": 28,
+    "success_count": 28,
+    "created_at": "2026-10-19T06:57:49.713029500Z",
+    "last_used": "2026-10-19T07:01:32.039987Z"
+  },
+  {
+    "id": "0d91e943-377c-4af6-a5df-e7f59cdc6cc8",
+    "fingerprint": 9077581980598255024,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL>",
+    "name": "kv_auto_parser_7dfa0cb75d0bbdb0",
+    "description": "Auto-generated Key-Value parser with 5 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.312:7031):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "2",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"ss\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-tulpn\"",
+        "ecs_target": "data.a1"
+      }
+    ],
+    "normalization": {
+      "type": "data.type",
+      "a1": "data.a1",
+      "argc": "data.argc",
+      "msg": "data.msg",
+      "a0": "data.a0"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393045.312:7031): argc=2 a0=\"ss\" a1=\"-tulpn\"",
+      "type=EXECVE msg=audit(1792393045.368:7044): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\"",
+      "type=EXECVE msg=audit(1792393045.406:7055): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\"",
+      "type=EXECVE msg=audit(1792393045.421:7058): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\"",
+      "type=EXECVE msg=audit(1792393045.440:7061): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\""
+    ],
+    "hit_count": 75,
+    "success_count": 75,
+    "created_at": "2026-10-19T06:57:41.677506300Z",
+    "last_used": "2026-10-19T07:01:31.726031500Z"
+  },
+  {
+    "id": "7febe80d-49d3-4698-85b9-16b8ac2b2126",
+    "fingerprint": 8063796797772481343,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL>",
+    "name": "kv_auto_parser_6fe85c76b829433f",
+    "description": "Auto-generated Key-Value parser with 7 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.292:7024):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "4",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"nm-online\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-q\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"--timeout\"",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "integer",
+        "example": "\"30\"",
+        "ecs_target": "data.a3"
+      }
+    ],
+    "normalization": {
+      "msg": "data.msg",
+      "argc": "data.argc",
+      "a0": "data.a0",
+      "a3": "data.a3",
+      "a1": "data.a1",
+      "a2": "data.a2",
+      "type": "data.type"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792393045.292:7024): argc=4 a0=\"nm-online\" a1=\"-q\" a2=\"--timeout\" a3=\"30\"",
+      "type=EXECVE msg=audit(1792393045.328:7035): argc=4 a0=\"systemctl\" a1=\"is-active\" a2=\"-q\" a3=\"connman.service\"",
+      "type=EXECVE msg=audit(1792393045.361:7043): argc=4 a0=\"apt-config\" a1=\"shell\" a2=\"StateDir\" a3=\"Dir::State/d\"",
+      "type=EXECVE msg=audit(1792393045.382:7051): argc=4 a0=\"flock\" a1=\"-w\" a2=\"3600\" a3=\"3\"",
+      "type=EXECVE msg=audit(1792393045.385:7052): argc=4 a0=\"/bin/sh\" a1=\"/usr/lib/apt/apt.systemd.daily\" a2=\"lock_is_held\" a3=\"install\""
+    ],
+    "hit_count": 101,
+    "success_count": 101,
+    "created_at": "2026-10-19T06:57:39.251066300Z",
+    "last_used": "2026-10-19T07:01:30.778064800Z"
+  },
+  {
+    "id": "0edb9966-e7e0-45a2-943a-164a4771c7bb",
+    "fingerprint": 10241013737199427743,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> saddr=<VAL> saddr_fam=<VAL> path=<VAL> }",
+    "name": "kv_auto_parser_8e1f63bc19aae09f",
+    "description": "Auto-generated Key-Value parser with 5 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") saddr=(?P<saddr>[^\\s,]+|\"[^\"]*\") saddr_fam=(?P<saddr_fam>[^\\s,]+|\"[^\"]*\") path=(?P<path>[^\\s,]+|\"[^\"]*\") \\}$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "SOCKADDR",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.287:7020):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "saddr",
+        "field_type": "string",
+        "example": "01002F72756E2F73797374656D642F7072697661746500\u001dSADDR={",
+        "ecs_target": "data.saddr"
+      },
+      {
+        "name": "saddr_fam",
+        "field_type": "string",
+        "example": "local",
+        "ecs_target": "data.saddr_fam"
+      },
+      {
+        "name": "path",
+        "field_type": "string",
+        "example": "/run/systemd/private",
+        "ecs_target": "data.path"
+      }
+    ],
+    "normalization": {
+      "msg": "data.msg",
+      "path": "data.path",
+      "saddr": "data.saddr",
+      "saddr_fam": "data.saddr_fam",
+      "type": "data.type"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=SOCKADDR msg=audit(1792393045.287:7020): saddr=01002F72756E2F73797374656D642F7072697661746500\u001dSADDR={ saddr_fam=local path=/run/systemd/private }",
+      "type=SOCKADDR msg=audit(1792393045.296:7025): saddr=01002F7661722F72756E2F6E7363642F736F636B657400001B0000000000000000000000000000005000000000000000070000000000000013544A450A7A000040C9070F050000003A000000000000000000000000000000662986810D7E29BE1300000000000000700000000000\u001dSADDR={ saddr_fam=local path=/var/run/nscd/socket }",
+      "type=SOCKADDR msg=audit(1792393045.296:7026): saddr=01002F7661722F72756E2F6E7363642F736F636B6574000040CB070FFF7F00000180ADFB00000000D0CC070FFF7F0000D0CC070FFF7F0000D0CC070FFF7F0000D0CC070FFF7F000000B063A30ACDC8470FCD070FFF7F0000C08B62450A7A00000000000000000000CAC25D450A7A\u001dSADDR={ saddr_fam=local path=/var/run/nscd/socket }",
+      "type=SOCKADDR msg=audit(1792393045.304:7027): saddr=01002F7661722F72756E2F646275732F73797374656D5F6275735F736F636B65740000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\u001dSADDR={ saddr_fam=local path=/var/run/dbus/system_bus_socket }",
+      "type=SOCKADDR msg=audit(1792393045.330:7036): saddr=01002F72756E2F73797374656D642F7072697661746500\u001dSADDR={ saddr_fam=local path=/run/systemd/private }"
+    ],
+    "hit_count": 105,
+    "success_count": 105,
+    "created_at": "2026-10-19T06:57:35.145849600Z",
+    "last_used": "2026-10-19T07:01:27.757585200Z"
+  },
+  {
+    "id": "ea337d27-17b3-42ee-a929-11a3a98bd8f3",
+    "fingerprint": 1118651476292324935,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> item=<VAL> name=<VAL> inode=<VAL> dev=<VAL> mode=<VAL> ouid=<VAL> ogid=<VAL> rdev=<VAL> nametype=<VAL> cap_fp=<VAL> cap_fi=<VAL> cap_fe=<VAL> cap_fver=<VAL> cap_frootid=<VAL> OGID=<VAL>",
+    "name": "kv_auto_parser_f863f973fdece47",
+    "description": "Auto-generated Key-Value parser with 17 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") item=(?P<item>[^\\s,]+|\"[^\"]*\") name=(?P<name>[^\\s,]+|\"[^\"]*\") inode=(?P<inode>[^\\s,]+|\"[^\"]*\") dev=(?P<dev>[^\\s,]+|\"[^\"]*\") mode=(?P<mode>[^\\s,]+|\"[^\"]*\") ouid=(?P<ouid>[^\\s,]+|\"[^\"]*\") ogid=(?P<ogid>[^\\s,]+|\"[^\"]*\") rdev=(?P<rdev>[^\\s,]+|\"[^\"]*\") nametype=(?P<nametype>[^\\s,]+|\"[^\"]*\") cap_fp=(?P<cap_fp>[^\\s,]+|\"[^\"]*\") cap_fi=(?P<cap_fi>[^\\s,]+|\"[^\"]*\") cap_fe=(?P<cap_fe>[^\\s,]+|\"[^\"]*\") cap_fver=(?P<cap_fver>[^\\s,]+|\"[^\"]*\") cap_frootid=(?P<cap_frootid>[^\\s,]+|\"[^\"]*\") OGID=(?P<OGID>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "PATH",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.285:7018):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "item",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.item"
+      },
+      {
+        "name": "name",
+        "field_type": "string",
+        "example": "\"/usr/bin/ps\"",
+        "ecs_target": "data.name"
+      },
+      {
+        "name": "inode",
+        "field_type": "integer",
+        "example": "4588462",
+        "ecs_target": "data.inode"
+      },
+      {
+        "name": "dev",
+        "field_type": "string",
+        "example": "08:03",
+        "ecs_target": "data.dev"
+      },
+      {
+        "name": "mode",
+        "field_type": "integer",
+        "example": "0100755",
+        "ecs_target": "data.mode"
+      },
+      {
+        "name": "ouid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.ouid"
+      },
+      {
+        "name": "ogid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.ogid"
+      },
+      {
+        "name": "rdev",
+        "field_type": "string",
+        "example": "00:00",
+        "ecs_target": "data.rdev"
+      },
+      {
+        "name": "nametype",
+        "field_type": "string",
+        "example": "NORMAL",
+        "ecs_target": "data.nametype"
+      },
+      {
+        "name": "cap_fp",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fp"
+      },
+      {
+        "name": "cap_fi",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fi"
+      },
+      {
+        "name": "cap_fe",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fe"
+      },
+      {
+        "name": "cap_fver",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fver"
+      },
+      {
+        "name": "cap_frootid",
+        "field_type": "string",
+        "example": "0\u001dOUID=\"root\"",
+        "ecs_target": "data.cap_frootid"
+      },
+      {
+        "name": "OGID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.ogid"
+      }
+    ],
+    "normalization": {
+      "nametype": "data.nametype",
+      "cap_fe": "data.cap_fe",
+      "OGID": "data.ogid",
+      "msg": "data.msg",
+      "name": "data.name",
+      "mode": "data.mode",
+      "ouid": "data.ouid",
+      "type": "data.type",
+      "ogid": "data.ogid",
+      "rdev": "data.rdev",
+      "item": "data.item",
+      "cap_fi": "data.cap_fi",
+      "inode": "data.inode",
+      "dev": "data.dev",
+      "cap_fver": "data.cap_fver",
+      "cap_frootid": "data.cap_frootid",
+      "cap_fp": "data.cap_fp"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=PATH msg=audit(1792393045.285:7018): item=0 name=\"/usr/bin/ps\" inode=4588462 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\"",
+      "type=PATH msg=audit(1792393045.285:7018): item=1 name=\"/lib64/ld-linux-x86-64.so.2\" inode=4587923 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\"",
+      "type=PATH msg=audit(1792393045.287:7020): item=0 name=\"/run/systemd/private\" inode=371 dev=00:18 mode=0140777 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\"",
+      "type=PATH msg=audit(1792393045.292:7024): item=0 name=\"/usr/bin/nm-online\" inode=4611767 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\"",
+      "type=PATH msg=audit(1792393045.292:7024): item=1 name=\"/lib64/ld-linux-x86-64.so.2\" inode=4587923 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\""
+    ],
+    "hit_count": 662,
+    "success_count": 662,
+    "created_at": "2026-10-19T06:57:31.675231300Z",
+    "last_used": "2026-10-19T07:01:31.882473600Z"
+  },
+  {
+    "id": "3fab94ae-ceea-4d3f-a9c0-2c826937fa49",
+    "fingerprint": 13932936485570773593,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> item=<VAL> name=<VAL> nametype=<VAL> cap_fp=<VAL> cap_fi=<VAL> cap_fe=<VAL> cap_fver=<VAL> cap_frootid=<VAL>",
+    "name": "kv_auto_parser_c15bbbe9ec868259",
+    "description": "Auto-generated Key-Value parser with 10 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") item=(?P<item>[^\\s,]+|\"[^\"]*\") name=(?P<name>[^\\s,]+|\"[^\"]*\") nametype=(?P<nametype>[^\\s,]+|\"[^\"]*\") cap_fp=(?P<cap_fp>[^\\s,]+|\"[^\"]*\") cap_fi=(?P<cap_fi>[^\\s,]+|\"[^\"]*\") cap_fe=(?P<cap_fe>[^\\s,]+|\"[^\"]*\") cap_fver=(?P<cap_fver>[^\\s,]+|\"[^\"]*\") cap_frootid=(?P<cap_frootid>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "PATH",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.285:7015):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "item",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.item"
+      },
+      {
+        "name": "name",
+        "field_type": "string",
+        "example": "\"/usr/local/sbin/ps\"",
+        "ecs_target": "data.name"
+      },
+      {
+        "name": "nametype",
+        "field_type": "string",
+        "example": "UNKNOWN",
+        "ecs_target": "data.nametype"
+      },
+      {
+        "name": "cap_fp",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fp"
+      },
+      {
+        "name": "cap_fi",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fi"
+      },
+      {
+        "name": "cap_fe",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fe"
+      },
+      {
+        "name": "cap_fver",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_fver"
+      },
+      {
+        "name": "cap_frootid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.cap_frootid"
+      }
+    ],
+    "normalization": {
+      "msg": "data.msg",
+      "item": "data.item",
+      "nametype": "data.nametype",
+      "cap_fe": "data.cap_fe",
+      "cap_fp": "data.cap_fp",
+      "cap_fver": "data.cap_fver",
+      "name": "data.name",
+      "type": "data.type",
+      "cap_fi": "data.cap_fi",
+      "cap_frootid": "data.cap_frootid"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=PATH msg=audit(1792393045.285:7015): item=0 name=\"/usr/local/sbin/ps\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0",
+      "type=PATH msg=audit(1792393045.285:7016): item=0 name=\"/usr/local/bin/ps\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0",
+      "type=PATH msg=audit(1792393045.285:7017): item=0 name=\"/usr/sbin/ps\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0",
+      "type=PATH msg=audit(1792393045.292:7021): item=0 name=\"/usr/local/sbin/nm-online\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0",
+      "type=PATH msg=audit(1792393045.292:7022): item=0 name=\"/usr/local/bin/nm-online\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0"
+    ],
+    "hit_count": 221,
+    "success_count": 221,
+    "created_at": "2026-10-19T06:57:31.116604400Z",
+    "last_used": "2026-10-19T07:01:27.860566100Z"
+  },
+  {
+    "id": "959d4b1d-2ca9-43af-9cf1-3189fb7d692f",
+    "fingerprint": 15462311118118217375,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> cwd=<VAL>",
+    "name": "kv_auto_parser_d6952a0a0202669f",
+    "description": "Auto-generated Key-Value parser with 3 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") cwd=(?P<cwd>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "CWD",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.285:7015):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "cwd",
+        "field_type": "string",
+        "example": "\"/var/ossec\"",
+        "ecs_target": "data.cwd"
+      }
+    ],
+    "normalization": {
+      "msg": "data.msg",
+      "cwd": "data.cwd",
+      "type": "data.type"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=CWD msg=audit(1792393045.285:7015): cwd=\"/var/ossec\"",
+      "type=CWD msg=audit(1792393045.285:7016): cwd=\"/var/ossec\"",
+      "type=CWD msg=audit(1792393045.285:7017): cwd=\"/var/ossec\"",
+      "type=CWD msg=audit(1792393045.285:7018): cwd=\"/var/ossec\"",
+      "type=CWD msg=audit(1792393045.287:7020): cwd=\"/\""
+    ],
+    "hit_count": 523,
+    "success_count": 523,
+    "created_at": "2026-10-19T06:57:30.647429700Z",
+    "last_used": "2026-10-19T07:01:32.091638800Z"
+  },
+  {
+    "id": "2e86efe9-9185-4b9e-89ca-54989d13ba12",
+    "fingerprint": 475428985943987044,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> proctitle=<VAL>",
+    "name": "kv_auto_parser_6991024cf1d9364",
+    "description": "Auto-generated Key-Value parser with 3 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") proctitle=(?P<proctitle>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "PROCTITLE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.285:7015):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "proctitle",
+        "field_type": "string",
+        "example": "2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
+        "ecs_target": "data.proctitle"
+      }
+    ],
+    "normalization": {
+      "proctitle": "data.proctitle",
+      "type": "data.type",
+      "msg": "data.msg"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=PROCTITLE msg=audit(1792393045.285:7015): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
+      "type=PROCTITLE msg=audit(1792393045.285:7016): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
+      "type=PROCTITLE msg=audit(1792393045.285:7017): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
+      "type=PROCTITLE msg=audit(1792393045.285:7018): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
+      "type=PROCTITLE msg=audit(1792393045.284:7019): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E"
+    ],
+    "hit_count": 613,
+    "success_count": 613,
+    "created_at": "2026-10-19T06:57:30.487489100Z",
+    "last_used": "2026-10-19T07:01:31.934290600Z"
+  },
+  {
+    "id": "f21ac032-f126-4633-8116-829d72d54308",
+    "fingerprint": 5288056142929203388,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> arch=<VAL> syscall=<VAL> success=<VAL> exit=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL> items=<VAL> ppid=<VAL> pid=<VAL> auid=<VAL> uid=<VAL> gid=<VAL> euid=<VAL> suid=<VAL> fsuid=<VAL> egid=<VAL> sgid=<VAL> fsgid=<VAL> tty=<VAL> ses=<VAL> comm=<VAL> exe=<VAL> subj=<VAL> key=<VAL> SYSCALL=<VAL> AUID=<VAL> UID=<VAL> GID=<VAL> EUID=<VAL> SUID=<VAL> FSUID=<VAL> EGID=<VAL> SGID=<VAL> FSGID=<VAL>",
+    "name": "kv_auto_parser_4962f30b6f9e10bc",
+    "description": "Auto-generated Key-Value parser with 38 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") arch=(?P<arch>[^\\s,]+|\"[^\"]*\") syscall=(?P<syscall>[^\\s,]+|\"[^\"]*\") success=(?P<success>[^\\s,]+|\"[^\"]*\") exit=(?P<exit>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\") items=(?P<items>[^\\s,]+|\"[^\"]*\") ppid=(?P<ppid>[^\\s,]+|\"[^\"]*\") pid=(?P<pid>[^\\s,]+|\"[^\"]*\") auid=(?P<auid>[^\\s,]+|\"[^\"]*\") uid=(?P<uid>[^\\s,]+|\"[^\"]*\") gid=(?P<gid>[^\\s,]+|\"[^\"]*\") euid=(?P<euid>[^\\s,]+|\"[^\"]*\") suid=(?P<suid>[^\\s,]+|\"[^\"]*\") fsuid=(?P<fsuid>[^\\s,]+|\"[^\"]*\") egid=(?P<egid>[^\\s,]+|\"[^\"]*\") sgid=(?P<sgid>[^\\s,]+|\"[^\"]*\") fsgid=(?P<fsgid>[^\\s,]+|\"[^\"]*\") tty=(?P<tty>[^\\s,]+|\"[^\"]*\") ses=(?P<ses>[^\\s,]+|\"[^\"]*\") comm=(?P<comm>[^\\s,]+|\"[^\"]*\") exe=(?P<exe>[^\\s,]+|\"[^\"]*\") subj=(?P<subj>[^\\s,]+|\"[^\"]*\") key=(?P<key>[^\\s,]+|\"[^\"]*\") SYSCALL=(?P<SYSCALL>[^\\s,]+|\"[^\"]*\") AUID=(?P<AUID>[^\\s,]+|\"[^\"]*\") UID=(?P<UID>[^\\s,]+|\"[^\"]*\") GID=(?P<GID>[^\\s,]+|\"[^\"]*\") EUID=(?P<EUID>[^\\s,]+|\"[^\"]*\") SUID=(?P<SUID>[^\\s,]+|\"[^\"]*\") FSUID=(?P<FSUID>[^\\s,]+|\"[^\"]*\") EGID=(?P<EGID>[^\\s,]+|\"[^\"]*\") SGID=(?P<SGID>[^\\s,]+|\"[^\"]*\") FSGID=(?P<FSGID>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "SYSCALL",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792393045.285:7015):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "arch",
+        "field_type": "string",
+        "example": "c000003e",
+        "ecs_target": "data.arch"
+      },
+      {
+        "name": "syscall",
+        "field_type": "integer",
+        "example": "59",
+        "ecs_target": "data.syscall"
+      },
+      {
+        "name": "success",
+        "field_type": "string",
+        "example": "no",
+        "ecs_target": "data.success"
+      },
+      {
+        "name": "exit",
+        "field_type": "integer",
+        "example": "-2",
+        "ecs_target": "data.exit"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "78405fb03db0",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "78404c000f20",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "5b1b99271760",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "integer",
+        "example": "8",
+        "ecs_target": "data.a3"
+      },
+      {
+        "name": "items",
+        "field_type": "integer",
+        "example": "1",
+        "ecs_target": "data.items"
+      },
+      {
+        "name": "ppid",
+        "field_type": "integer",
+        "example": "4620",
+        "ecs_target": "data.ppid"
+      },
+      {
+        "name": "pid",
+        "field_type": "integer",
+        "example": "4629",
+        "ecs_target": "data.pid"
+      },
+      {
+        "name": "auid",
+        "field_type": "integer",
+        "example": "4294967295",
+        "ecs_target": "data.auid"
+      },
+      {
+        "name": "uid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.uid"
+      },
+      {
+        "name": "gid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.gid"
+      },
+      {
+        "name": "euid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.euid"
+      },
+      {
+        "name": "suid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.suid"
+      },
+      {
+        "name": "fsuid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.fsuid"
+      },
+      {
+        "name": "egid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.egid"
+      },
+      {
+        "name": "sgid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.sgid"
+      },
+      {
+        "name": "fsgid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.fsgid"
+      },
+      {
+        "name": "tty",
+        "field_type": "string",
+        "example": "(none)",
+        "ecs_target": "data.tty"
+      },
+      {
+        "name": "ses",
+        "field_type": "integer",
+        "example": "4294967295",
+        "ecs_target": "data.ses"
+      },
+      {
+        "name": "comm",
+        "field_type": "string",
+        "example": "\"tokio-rt-worker\"",
+        "ecs_target": "data.comm"
+      },
+      {
+        "name": "exe",
+        "field_type": "string",
+        "example": "\"/var/ossec/bin/siem-agent-linux\"",
+        "ecs_target": "data.exe"
+      },
+      {
+        "name": "subj",
+        "field_type": "string",
+        "example": "unconfined",
+        "ecs_target": "data.subj"
+      },
+      {
+        "name": "key",
+        "field_type": "string",
+        "example": "\"process_execution\"\u001dARCH=x86_64",
+        "ecs_target": "data.key"
+      },
+      {
+        "name": "SYSCALL",
+        "field_type": "string",
+        "example": "execve",
+        "ecs_target": "data.syscall"
+      },
+      {
+        "name": "AUID",
+        "field_type": "string",
+        "example": "\"unset\"",
+        "ecs_target": "data.auid"
+      },
+      {
+        "name": "UID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.uid"
+      },
+      {
+        "name": "GID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.gid"
+      },
+      {
+        "name": "EUID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.euid"
+      },
+      {
+        "name": "SUID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.suid"
+      },
+      {
+        "name": "FSUID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.fsuid"
+      },
+      {
+        "name": "EGID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.egid"
+      },
+      {
+        "name": "SGID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.sgid"
+      },
+      {
+        "name": "FSGID",
+        "field_type": "string",
+        "example": "\"root\"",
+        "ecs_target": "data.fsgid"
+      }
+    ],
+    "normalization": {
+      "SUID": "data.suid",
+      "items": "data.items",
+      "auid": "data.auid",
+      "tty": "data.tty",
+      "uid": "data.uid",
+      "ppid": "data.ppid",
+      "key": "data.key",
+      "exit": "data.exit",
+      "EGID": "data.egid",
+      "UID": "data.uid",
+      "egid": "data.egid",
+      "a1": "data.a1",
+      "fsgid": "data.fsgid",
+      "msg": "data.msg",
+      "EUID": "data.euid",
+      "ses": "data.ses",
+      "type": "data.type",
+      "FSUID": "data.fsuid",
+      "SGID": "data.sgid",
+      "sgid": "data.sgid",
+      "suid": "data.suid",
+      "SYSCALL": "data.syscall",
+      "a3": "data.a3",
+      "gid": "data.gid",
+      "comm": "data.comm",
+      "success": "data.success",
+      "arch": "data.arch",
+      "euid": "data.euid",
+      "pid": "data.pid",
+      "exe": "data.exe",
+      "syscall": "data.syscall",
+      "a0": "data.a0",
+      "a2": "data.a2",
+      "fsuid": "data.fsuid",
+      "subj": "data.subj",
+      "AUID": "data.auid",
+      "FSGID": "data.fsgid",
+      "GID": "data.gid"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=SYSCALL msg=audit(1792393045.285:7015): arch=c000003e syscall=59 success=no exit=-2 a0=78405fb03db0 a1=78404c000f20 a2=5b1b99271760 a3=8 items=1 ppid=4620 pid=4629 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"tokio-rt-worker\" exe=\"/var/ossec/bin/siem-agent-linux\" subj=unconfined key=\"process_execution\"\u001dARCH=x86_64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"",
+      "type=SYSCALL msg=audit(1792393045.285:7016): arch=c000003e syscall=59 success=no exit=-2 a0=78405fb03db0 a1=78404c000f20 a2=5b1b99271760 a3=8 items=1 ppid=4620 pid=4629 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"tokio-rt-worker\" exe=\"/var/ossec/bin/siem-agent-linux\" subj=unconfined key=\"process_execution\"\u001dARCH=x86_64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"",
+      "type=SYSCALL msg=audit(1792393045.285:7017): arch=c000003e syscall=59 success=no exit=-2 a0=78405fb03db0 a1=78404c000f20 a2=5b1b99271760 a3=8 items=1 ppid=4620 pid=4629 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"tokio-rt-worker\" exe=\"/var/ossec/bin/siem-agent-linux\" subj=unconfined key=\"process_execution\"\u001dARCH=x86_64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"",
+      "type=SYSCALL msg=audit(1792393045.285:7018): arch=c000003e syscall=59 success=yes exit=0 a0=78405fb03db0 a1=78404c000f20 a2=5b1b99271760 a3=8 items=2 ppid=4620 pid=4629 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"ps\" exe=\"/usr/bin/ps\" subj=unconfined key=\"process_execution\"\u001dARCH=x86_64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"",
+      "type=SYSCALL msg=audit(1792393045.284:7019): arch=c000003e syscall=42 success=no exit=-115 a0=a a1=78405f7f8950 a2=10 a3=78405f7f874c items=0 ppid=1 pid=4620 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"tokio-rt-worker\" exe=\"/var/ossec/bin/siem-agent-linux\" subj=unconfined key=\"network_connect\"\u001dARCH=x86_64 SYSCALL=connect AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\""
+    ],
+    "hit_count": 614,
+    "success_count": 614,
+    "created_at": "2026-10-19T06:57:30.396408700Z",
+    "last_used": "2026-10-19T07:01:31.986183300Z"
+  },
+  {
     "id": "1b9505ee-2994-4ecf-86e6-046fb32fb198",
     "fingerprint": 11439552179545339040,
     "fingerprint_signature": "Windows-Event [Microsoft-Windows-PowerShell/Operational] EventID:<NUM> - Event[<NUM>] Log Name: Microsoft-Windows-PowerShell/Operational Source: Microsoft-Windows-PowerShell Date: <TIMESTAMP> <HOST> ID[<NUM>]: <NUM> Task: Execute a Remote Command\u0000 Level: Warning\u0000 Opcode: On create calls\u0000\u0000 Keyword: N/A User: S-<NUM>-<NUM>-<NUM>-<NUM>-<NUM>-<NUM>-<NUM> User Name: EVOFOX\\EVOFOX Computer: EVOFOX Description: Creating Scriptblock text (<NUM> of <NUM>): $EncodedCommand = <STR> if (-not $EncodedCommand) { Write-Output <STR> exit <NUM> } $Command = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($EncodedCommand)) $tokens = $null $parseErrors = $null $ast = [System.Management.Automation.Language.Parser]::ParseInput( $Command, [ref]$tokens, [ref]$parseErrors ) $allVariables = [System.Collections.ArrayList]::new() function Get-RawCommandElements { param([System.Management.Automation.Language.CommandAst]$CmdAst) $elems = [System.Collections.ArrayList]::new() foreach ($ce in $CmdAst.CommandElements) { $ceData = @{ type = $ce.GetType().Name; text = $ce.Extent.Text } if ($ce.PSObject.Properties[<STR>] -and $null -ne $ce.Value -and $ce.Value -is [string]) { $ceData.value = $ce.Value } if ($ce -is [System.Management.Automation.Language.CommandExpressionAst]) { $ceData.expressionType = $ce.Expression.GetType().Name } $a=<VAL> [void]$elems.Add($ceData) } return $elems } function Get-RawRedirections { param($Redirections) $result = [System.Collections.ArrayList]::new() foreach ($redir in $Redirections) { $redirData = @{ type = $redir.GetType().Name } if ($redir -is [System.Management.Automation.Language.FileRedirectionAst]) { $redirData.append = [bool]$redir.Append $redirData.fromStream = $redir.FromStream.ToString() $redirData.locationText = $redir.Location.Extent.Text } [void]$result.Add($redirData) } return $result } function Get-SecurityPatterns($A) { $p = @{} foreach ($n in $A.FindAll({ param($x) $x -is [System.Management.Automation.Language.MemberExpressionAst] -or $x -is [System.Management.Automation.Language.SubExpressionAst] -or $x -is [System.Management.Automation.Language.ArrayExpressionAst] -or $x -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $x -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -or $x -is [System.Management.Automation.Language.ParenExpressionAst] }, $true)) { switch ($n.GetType().Name) { <STR> { $p.hasMemberInvocations = $true } <STR> { $p.hasMemberInvocations = $true } <STR> { $p.hasSubExpressions = $true } <STR> { $p.hasSubExpressions = $true } <STR> { $p.hasSubExpressions = $true } <STR> { $p.hasExpandableStrings = $true } <STR> { $p.hasScriptBlocks = $true } }} if ($p.Count -gt <NUM>) { return $p } return $null } $varExprs = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) foreach ($v in $varExprs) { [void]$allVariables.Add(@{ path = $v.VariablePath.ToString() isSplatted = [bool]$v.Splatted }) } $typeLiterals = [System.Collections.ArrayList]::new() foreach ($t in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TypeExpressionAst] -or $n -is [System.Management.Automation.Language.TypeConstraintAst] }, $true)) { [void]$typeLiterals.Add($t.TypeName.FullName) } $hasStopParsing = $false foreach ($tok in $tokens) { $norm = $tok.Text -replace <STR>,<STR> -replace <STR><STR>,<STR> if ($norm -eq <STR>) { $hasStopParsing = $true; break } } $statements = [System.Collections.ArrayList]::new() $script:hasBg = $false foreach ($p in $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.PipelineBaseAst]}, $true)) { if ($p.PSObject.Properties[<STR>] -and $p.Background) { $script:hasBg = $true; break } } function Process-BlockStatements { param($Block) if (-not $Block) { return } foreach ($stmt in $Block.Statements) { $statement = @{ type = $stmt.GetType().Name text = $stmt.Extent.Text } if ($stmt -is [System.Management.Automation.Language.PipelineAst]) { $elements = [System.Collections.ArrayList]::new() foreach ($element in $stmt.PipelineElements) { $elemData = @{ type = $element.GetType().Name text = $element.Extent.Text } if ($element -is [System.Management.Automation.Language.CommandAst]) { $elemData.commandElements = @(Get-RawCommandElements -CmdAst $element) $elemData.redirections = @(Get-RawRedirections -Redirections $element.Redirections) } elseif ($element -is [System.Management.Automation.Language.CommandExpressionAst]) { $elemData.expressionType = $element.Expression.GetType().Name $elemData.redirections = @(Get-RawRedirections -Redirections $element.Redirections) } [void]$elements.Add($elemData) } $statement.elements = @($elements) $allNestedCmds = $stmt.FindAll( { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true ) $nestedCmds = [System.Collections.ArrayList]::new() foreach ($cmd in $allNestedCmds) { if ($cmd.Parent -eq $stmt) { continue } $nested = @{ type = $cmd.GetType().Name text = $cmd.Extent.Text commandElements = @(Get-RawCommandElements -CmdAst $cmd) redirections = @(Get-RawRedirections -Redirections $cmd.Redirections) } [void]$nestedCmds.Add($nested) } if ($nestedCmds.Count -gt <NUM>) { $statement.nestedCommands = @($nestedCmds) } $r = $stmt.FindAll({param($n) $n -is [System.Management.Automation.Language.FileRedirectionAst]}, $true) if ($r.Count -gt <NUM>) { $rr = @(Get-RawRedirections -Redirections $r) $statement.redirections = if ($statement.redirections) { @($statement.redirections) + $rr } else { $rr } } } else { $nestedCmdAsts = $stmt.FindAll( { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true ) $nested = [System.Collections.ArrayList]::new() foreach ($cmd in $nestedCmdAsts) { [void]$nested.Add(@{ type = <STR> text = $cmd.Extent.Text commandElements = @(Get-RawCommandElements -CmdAst $cmd) redirections = @(Get-RawRedirections -Redirections $cmd.Redirections) }) } if ($nested.Count -gt <NUM>) { $statement.nestedCommands = @($nested) } $r = $stmt.FindAll({param($n) $n -is [System.Management.Automation.Language.FileRedirectionAst]}, $true) if ($r.Count -gt <NUM>) { $statement.redirections = @(Get-RawRedirections -Redirections $r) } } $sp = Get-SecurityPatterns $stmt if ($sp) { $statement.securityPatterns = $sp } [void]$statements.Add($statement) } if ($Block.Traps) { foreach ($trap in $Block.Traps) { $statement = @{ type = <STR> text = $trap.Extent.Text } $nestedCmdAsts = $trap.FindAll( { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true ) $nestedCmds = [System.Collections.ArrayList]::new() foreach ($cmd in $nestedCmdAsts) { $nested = @{ type = $cmd.GetType().Name text = $cmd.Extent.Text commandElements = @(Get-RawCommandElements -CmdAst $cmd) redirections = @(Get-RawRedirections -Redirections $cmd.Redirections) } [void]$nestedCmds.Add($nested) } if ($nestedCmds.Count -gt <NUM>) { $statement.nestedCommands = @($nestedCmds) } $r = $trap.FindAll({param($n) $n -is [System.Management.Automation.Language.FileRedirectionAst]}, $true) if ($r.Count -gt <NUM>) { $statement.redirections = @(Get-RawRedirections -Redirections $r) } $sp = Get-SecurityPatterns $trap if ($sp) { $statement.securityPatterns = $sp } [void]$statements.Add($statement) } } } Process-BlockStatements -Block $ast.BeginBlock Process-BlockStatements -Block $ast.ProcessBlock Process-BlockStatements -Block $ast.EndBlock Process-BlockStatements -Block $ast.CleanBlock Process-BlockStatements -Block $ast.DynamicParamBlock if ($ast.ParamBlock) { $pb = $ast.ParamBlock $pn = [System.Collections.ArrayList]::new() foreach ($c in $pb.FindAll({param($n) $n -is [System.Management.Automation.Language.CommandAst]}, $true)) { [void]$pn.Add(@{type=<VAL> -CmdAst $c);redirections=<VAL> -Redirections $c.Redirections)}) } $pr = $pb.FindAll({param($n) $n -is [System.Management.Automation.Language.FileRedirectionAst]}, $true) $ps = Get-SecurityPatterns $pb $st = @{type=<VAL> if ($pn.Count -gt <NUM>) { $st.nestedCommands = @($pn) } if ($pr.Count -gt <NUM>) { $st.redirections = @(Get-RawRedirections -Redirections $pr) } if ($ps) { $st.securityPatterns = $ps } [void]$statements.Add($st) } $hasUsingStatements = $ast.UsingStatements -and $ast.UsingStatements.Count -gt <NUM> $hasScriptRequirements = $ast.ScriptRequirements -ne $null $output = @{ valid = ($parseErrors.Count -eq <NUM>) errors = @($parseErrors | ForEach-Object { @{ message = $_.Message errorId = $_.ErrorId } }) statements = @($statements) variables = @($allVariables) hasStopParsing = $hasStopParsing originalCommand = $Command typeLiterals = @($typeLiterals) hasUsingStatements = [bool]$hasUsingStatements hasScriptRequirements = [bool]$hasScriptRequirements hasBackgroundJob = [bool]$script:hasBg } $output | ConvertTo-Json -Depth <NUM> -Compress ScriptBlock ID: <UUID> Path: \u0000",

@@ -1,0 +1,15 @@
+config etc/ossec.conf
+json
+json
+json
+json
+json
+json
+json
+json
+json
+sendmail
+sms
+json
+sendmail
+custom report.txt

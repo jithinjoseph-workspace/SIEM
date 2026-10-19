@@ -1,0 +1,3 @@
+config etc/ossec.conf
+json
+sendmail

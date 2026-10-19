@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/siem-core",
     "crates/siem-engine",
+    "crates/siem-vulnerability-scanner",
     "crates/siem-agent",
     "crates/siem-agent-linux",
     "crates/siem-api",

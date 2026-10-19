@@ -1,70 +1,39 @@
-//! Log Compression Engine (`src/monitord/compress_log.c`)
-//!
-//! Gzip compresses rotated logs (`.gz`) and deletes uncompressed source files.
+//! `monitord/compress_log.c`: gzip a log file and remove the original.
 
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use std::fs::{self, File};
-use std::io::{self, BufReader, Read};
-use std::path::{Path, PathBuf};
+use std::io::{Read, Write};
 
-/// Compresses a log file with gzip and deletes the original file upon success matching `OS_CompressLog`.
-pub fn compress_log<P: AsRef<Path>>(logfile_path: P) -> io::Result<PathBuf> {
-    let p = logfile_path.as_ref();
-    if !p.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("Log file {} not found", p.display()),
-        ));
-    }
+use crate::strerror;
+use siem_log::WLog;
 
-    let gz_path = PathBuf::from(format!("{}.gz", p.display()));
+/// `OS_MAXSTR`
+const OS_MAXSTR: usize = 65536;
 
-    let input_file = File::open(p)?;
-    let mut reader = BufReader::new(input_file);
-
-    let output_file = File::create(&gz_path)?;
-    let mut encoder = GzEncoder::new(output_file, Compression::default());
-
-    let mut buf = [0u8; 16384];
-    loop {
-        let n = reader.read(&mut buf)?;
-        if n == 0 {
-            break;
+/// `OS_CompressLog`
+pub fn os_compress_log(log: &WLog, logfile: &str) {
+    let gz = format!("{logfile}.gz");
+    // Do not warn in here, since the alert file may not exist
+    let Ok(mut src) = std::fs::File::open(logfile) else { return };
+    let out = match std::fs::File::create(&gz) {
+        Ok(f) => f,
+        Err(e) => {
+            log.error(format!("(1103): Could not open file '{gz}' due to [({})-({})].", e.raw_os_error().unwrap_or(0), strerror(&e)));
+            return;
         }
-        io::Write::write_all(&mut encoder, &buf[..n])?;
+    };
+    let mut z = flate2::write::GzEncoder::new(out, flate2::Compression::default());
+    let mut buf = vec![0u8; OS_MAXSTR];
+    loop {
+        let n = match src.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        if let Err(e) = z.write_all(&buf[..n]) {
+            log.error(format!("Compression error: {e}"));
+        }
     }
-
-    encoder.finish()?;
-
-    // Remove original file upon successful compression
-    fs::remove_file(p)?;
-
-    Ok(gz_path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use flate2::read::GzDecoder;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_compress_log_lifecycle() {
-        let dir = tempdir().unwrap();
-        let log_file = dir.path().join("ossec-01.log");
-        let sample_data = "2026-09-28 12:00:00 ossec: message test payload\n";
-        fs::write(&log_file, sample_data).unwrap();
-
-        let gz_path = compress_log(&log_file).unwrap();
-        assert!(gz_path.exists());
-        assert!(!log_file.exists()); // Original removed
-
-        // Decompress to verify content
-        let gz_f = File::open(&gz_path).unwrap();
-        let mut decoder = GzDecoder::new(gz_f);
-        let mut decompressed = String::new();
-        decoder.read_to_string(&mut decompressed).unwrap();
-        assert_eq!(decompressed, sample_data);
+    drop(src);
+    let _ = z.finish();
+    if let Err(e) = std::fs::remove_file(logfile) {
+        log.error(format!("Unable to delete '{logfile}' due to '{}'", strerror(&e)));
     }
 }

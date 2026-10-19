@@ -68,10 +68,10 @@ rem ── Build the backend from the current sources (a running exe cannot be r
 echo [*] Stopping running backend processes before the build...
 taskkill /F /IM siem-api.exe >nul 2>&1
 taskkill /F /IM auth-service.exe >nul 2>&1
-for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd) do taskkill /F /IM %%p.exe >nul 2>&1
+for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd wazuh-monitord wazuh-maild wazuh-integratord wazuh-csyslogd) do taskkill /F /IM %%p.exe >nul 2>&1
 echo [*] Building backend (auth-service, siem-api, wazuh manager daemons)...
 pushd "%BACKEND_DIR%"
-cargo build --release -p auth-service -p siem-api -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd
+cargo build --release -p auth-service -p siem-api -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd
 if errorlevel 1 (
   popd
   echo [FAIL] Backend build failed. Fix the errors above, the old binaries were not started.

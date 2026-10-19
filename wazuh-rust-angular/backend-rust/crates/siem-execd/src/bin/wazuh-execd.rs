@@ -183,7 +183,11 @@ mod unix {
             ex.exit_critical("(1212): Unable to create PID file.");
         }
 
-        // Start com request thread
+        // Start com request thread (CreateThreadJoinable logs the stack size; a missing option is fatal)
+        match siem_config::internal_options::InternalOptions::from_home("").get_int("wazuh", "thread_stack_size", 2048, 65536) {
+            Ok(kib) => log.debug2(format!("Thread stack size set to: {kib} KiB")),
+            Err(err) => ex.exit_critical(&err.0),
+        }
         let e = Arc::clone(&ex);
         let wcom = std::thread::spawn(move || wcom::wcom_main(&e));
 

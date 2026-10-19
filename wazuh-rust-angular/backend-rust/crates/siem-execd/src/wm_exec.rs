@@ -2,7 +2,9 @@
 //! stderr on one pipe and a timeout. Shared by wcom, SCA and the other
 //! modules, as in the C agent.
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::AtomicI32;
+#[cfg(windows)]
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use siem_log::WLog;
@@ -12,6 +14,7 @@ pub const WM_ERROR_TIMEOUT: i32 = 1;
 /// `EXECVE_ERROR`
 pub const EXECVE_ERROR: i32 = 0x7F;
 /// `WM_STRING_MAX`
+#[cfg(windows)]
 const WM_STRING_MAX: usize = 67108864;
 
 /// `wm_task_nice` (set by `wm_config` from `wazuh_modules.task_nice`).

@@ -2367,3 +2367,160 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&p.error), "1: 8: error: enum values need to be qualified by an enum type");
     }
 }
+
+// ---------------------------------------------------------------- reader
+
+fn rd<const N: usize>(b: &[u8], at: usize) -> Option<[u8; N]> {
+    b.get(at..at.checked_add(N)?)?.try_into().ok()
+}
+
+fn json_str(s: &[u8], out: &mut String) {
+    out.push('"');
+    for c in String::from_utf8_lossy(s).chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+impl Parser {
+    /// A finished buffer of the root type as JSON text (what `GenText` prints
+    /// for the fields present; union types by name). None when the buffer is
+    /// malformed (the `Verify*Buffer` check of the readers).
+    pub fn buffer_to_json(&self, buf: &[u8]) -> Option<String> {
+        let root = self.root?;
+        let t = u32::from_le_bytes(rd(buf, 0)?) as usize;
+        let mut out = String::new();
+        self.table_to_json(root, buf, t, &mut out, 0)?;
+        Some(out)
+    }
+
+    fn scalar_to_json(&self, ty: Type, buf: &[u8], p: usize, out: &mut String) -> Option<()> {
+        let n: String = match ty.base {
+            B::Bool => (rd::<1>(buf, p)?[0] != 0).to_string(),
+            B::Char => (rd::<1>(buf, p)?[0] as i8).to_string(),
+            B::UChar | B::UType => {
+                let v = rd::<1>(buf, p)?[0];
+                if let Some(e) = ty.enum_def {
+                    if let Some(ev) = self.enums[e].reverse_lookup(v as i64, false) {
+                        json_str(&ev.name, out);
+                        return Some(());
+                    }
+                }
+                v.to_string()
+            }
+            B::Short => i16::from_le_bytes(rd(buf, p)?).to_string(),
+            B::UShort => u16::from_le_bytes(rd(buf, p)?).to_string(),
+            B::Int => i32::from_le_bytes(rd(buf, p)?).to_string(),
+            B::UInt => u32::from_le_bytes(rd(buf, p)?).to_string(),
+            B::Long => i64::from_le_bytes(rd(buf, p)?).to_string(),
+            B::ULong => u64::from_le_bytes(rd(buf, p)?).to_string(),
+            B::Float => format!("{:?}", f32::from_le_bytes(rd(buf, p)?)),
+            B::Double => format!("{:?}", f64::from_le_bytes(rd(buf, p)?)),
+            _ => return None,
+        };
+        out.push_str(&n);
+        Some(())
+    }
+
+    /// The value at `p` (a scalar in place, or an offset to a string / table / vector).
+    fn value_to_json(&self, ty: Type, union_type: Option<u8>, buf: &[u8], p: usize, out: &mut String, depth: usize) -> Option<()> {
+        if ty.base.is_scalar() {
+            return self.scalar_to_json(ty, buf, p, out);
+        }
+        let target = p.checked_add(u32::from_le_bytes(rd(buf, p)?) as usize)?;
+        match ty.base {
+            B::String => {
+                let len = u32::from_le_bytes(rd(buf, target)?) as usize;
+                json_str(buf.get(target + 4..target + 4 + len)?, out);
+            }
+            B::Struct => self.table_to_json(ty.struct_def?, buf, target, out, depth + 1)?,
+            B::Union => {
+                let ev = self.enums[ty.enum_def?].reverse_lookup(union_type? as i64, true)?;
+                self.table_to_json(ev.union_type.struct_def?, buf, target, out, depth + 1)?;
+            }
+            B::Vector => {
+                let len = u32::from_le_bytes(rd(buf, target)?) as usize;
+                let et = ty.vector_type();
+                out.push('[');
+                for i in 0..len {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    self.value_to_json(et, None, buf, target + 4 + i * et.base.size_of(), out, depth + 1)?;
+                }
+                out.push(']');
+            }
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn table_to_json(&self, sd: usize, buf: &[u8], t: usize, out: &mut String, depth: usize) -> Option<()> {
+        if depth > 64 {
+            return None;
+        }
+        let vt = (t as i64).checked_sub(i32::from_le_bytes(rd(buf, t)?) as i64)? as usize;
+        let vt_size = u16::from_le_bytes(rd(buf, vt)?) as usize;
+        let field_pos = |f: &FieldDef| -> Option<usize> {
+            let voff = f.value.offset as usize;
+            if voff == 0xFFFF || voff + 2 > vt_size {
+                return None;
+            }
+            let fo = u16::from_le_bytes(rd(buf, vt + voff)?) as usize;
+            (fo != 0).then_some(t + fo)
+        };
+        let fields = &self.structs[sd].fields;
+        out.push('{');
+        let mut first = true;
+        for f in fields {
+            if f.deprecated {
+                continue;
+            }
+            let Some(p) = field_pos(f) else { continue };
+            let union_type = if f.value.ty.base == B::Union {
+                let mut name = f.name.clone();
+                name.extend_from_slice(b"_type");
+                let tf = fields.iter().find(|x| x.name == name)?;
+                Some(rd::<1>(buf, field_pos(tf)?)?[0])
+            } else {
+                None
+            };
+            if !first {
+                out.push(',');
+            }
+            first = false;
+            json_str(&f.name, out);
+            out.push(':');
+            self.value_to_json(f.value.ty, union_type, buf, p, out, depth)?;
+        }
+        out.push('}');
+        Some(())
+    }
+}
+
+#[cfg(test)]
+mod reader_tests {
+    use super::*;
+
+    #[test]
+    fn round_trip() {
+        let mut p = Parser::new();
+        assert!(p.parse(crate::schemas::SYSCOLLECTOR_DELTAS_SCHEMA.as_bytes()));
+        let input = br#"{"agent_info":{"agent_id":"001","agent_name":"a\"b"},"data_type":"dbsync_packages","data":{"name":"curl","size":42,"version":"7.0"},"operation":"INSERTED"}"#;
+        assert!(p.parse(input), "{}", String::from_utf8_lossy(&p.error));
+        let buf = p.builder.data().to_vec();
+        let mut r = Parser::new();
+        assert!(r.parse(crate::schemas::SYSCOLLECTOR_DELTAS_SCHEMA.as_bytes()));
+        let j = r.buffer_to_json(&buf).unwrap();
+        assert_eq!(j, r#"{"agent_info":{"agent_id":"001","agent_name":"a\"b"},"data_type":"dbsync_packages","data":{"name":"curl","version":"7.0","size":42},"operation":"INSERTED"}"#);
+        assert!(r.buffer_to_json(&buf[..buf.len() / 2]).is_none());
+    }
+}

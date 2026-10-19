@@ -31,13 +31,10 @@ siem-rootcheck = { path = "../siem-rootcheck" }
 siem-task-manager = { path = "../siem-task-manager" }
 siem-parser-gen = { path = "../siem-parser-gen" }
 siem-authd = { path = "../siem-authd" }
-siem-integratord = { path = "../siem-integratord" }
-siem-csyslogd = { path = "../siem-csyslogd" }
-siem-maild = { path = "../siem-maild" }
 siem-reportd = { path = "../siem-reportd" }
-siem-monitord = { path = "../siem-monitord" }
 siem-crypto = { path = "../siem-crypto" }
 siem-ipc = { path = "../siem-ipc" }
+siem-maild = { path = "../siem-maild" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }

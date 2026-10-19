@@ -255,11 +255,38 @@
 
       </div>
 
+      <!-- Wazuh alert e-mails (wazuh-maild) -->
+      <div class="smtp-form-grid">
+        <div class="smtp-field">
+          <label for="alertEnabled">ALERT E-MAILS FROM THE SIEM MANAGER</label>
+          <label class="field-hint" style="display:flex;gap:8px;align-items:center">
+            <input id="alertEnabled" type="checkbox" [(ngModel)]="smtpConfig.alert_enabled" name="alertEnabled" />
+            <span>Send an e-mail for alerts at or above the level below</span>
+          </label>
+        </div>
+        <div class="smtp-field">
+          <label for="alertTo">RECIPIENTS</label>
+          <input id="alertTo" type="text" [(ngModel)]="alertTo" name="alertTo" placeholder="soc@company.com, oncall@company.com" class="smtp-input font-mono" />
+          <small class="field-hint">Platform operators only: these e-mails cover every tenant's agents</small>
+        </div>
+        <div class="smtp-field">
+          <label for="alertLevel">MINIMUM RULE LEVEL</label>
+          <select id="alertLevel" [(ngModel)]="smtpConfig.alert_level" name="alertLevel" class="smtp-input font-mono">
+            <option *ngFor="let l of levels" [ngValue]="l">{{ l }}{{ l === 12 ? ' (Wazuh default)' : '' }}</option>
+          </select>
+        </div>
+        <div class="smtp-field">
+          <label for="maxPerHour">MAXIMUM E-MAILS PER HOUR</label>
+          <input id="maxPerHour" type="number" min="1" [(ngModel)]="smtpConfig.max_per_hour" name="maxPerHour" class="smtp-input font-mono" />
+          <small class="field-hint">Alerts beyond this are grouped into the next e-mail</small>
+        </div>
+      </div>
+
       <!-- Submit & Action Row -->
       <div class="smtp-form-footer">
         <div class="security-stamp">
           <lucide-icon [name]="ShieldIcon" class="w-4 h-4 text-emerald-400"></lucide-icon>
-          <span>Credentials stored securely with AES-256 host encryption.</span>
+          <span>{{ hasPassword ? 'A password is stored; it is never shown again.' : 'No password stored yet.' }}</span>
         </div>
 
         <button type="submit" class="smtp-submit-btn" [disabled]="savingSmtp || !smtpConfig.host || !smtpConfig.user">
@@ -268,6 +295,17 @@
         </button>
       </div>
     </form>
+
+    <div class="smtp-form-footer">
+      <div class="smtp-field" style="flex:1">
+        <label for="testTo">SEND A TEST E-MAIL (uses the saved settings)</label>
+        <input id="testTo" type="email" [(ngModel)]="testTo" name="testTo" placeholder="you@company.com" class="smtp-input font-mono" />
+      </div>
+      <button type="button" class="smtp-submit-btn" (click)="sendTest()" [disabled]="testing || !testTo">
+        <lucide-icon [name]="testing ? LoadingIcon : SendIcon" class="w-4 h-4" [class.spinning]="testing"></lucide-icon>
+        <span>{{ testing ? 'Sending...' : 'Send test e-mail' }}</span>
+      </button>
+    </div>
   </section>
 
   <!-- ── 4. Technical Advisory Notice ────────────────────────────── -->

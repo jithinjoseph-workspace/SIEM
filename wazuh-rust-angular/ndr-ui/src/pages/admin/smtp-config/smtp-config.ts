@@ -39,7 +39,13 @@ export class SmtpConfig implements OnInit {
   ZapIcon         = Zap;
   ShieldAlertIcon = ShieldAlert;
 
-  smtpConfig = { host: '', port: 587, user: '', password: '' };
+  smtpConfig: any = { host: '', port: 587, user: '', password: '', alert_enabled: false, alert_to: [], alert_level: 12, max_per_hour: 12 };
+  /** Recipients as typed (comma separated). */
+  alertTo = '';
+  hasPassword = false;
+  levels = Array.from({ length: 16 }, (_, i) => i + 1);
+  testTo = '';
+  testing = false;
   savingSmtp   = false;
   smtpMessage  = '';
   smtpError    = '';
@@ -68,7 +74,11 @@ export class SmtpConfig implements OnInit {
   loadSmtpConfig() {
     this.api.getGlobalSmtp().subscribe({
       next: (data: any) => {
-        if (data.status === 'ok' && data.config) this.smtpConfig = data.config;
+        if (data.status === 'ok' && data.config) {
+          this.smtpConfig = data.config;
+          this.alertTo = (data.config.alert_to || []).join(', ');
+          this.hasPassword = !!data.has_password;
+        }
         this.cdr.detectChanges();
       },
       error: (err: any) => { console.error('Failed to load SMTP config', err); },
@@ -77,6 +87,7 @@ export class SmtpConfig implements OnInit {
 
   saveSmtpConfig() {
     this.savingSmtp = true; this.smtpMessage = ''; this.smtpError = '';
+    this.smtpConfig.alert_to = this.alertTo.split(',').map((x: string) => x.trim()).filter((x: string) => x);
     this.api.updateGlobalSmtp(this.smtpConfig).subscribe({
       next: () => {
         this.savingSmtp   = false;
@@ -86,11 +97,19 @@ export class SmtpConfig implements OnInit {
         this.cdr.detectChanges();
         setTimeout(() => { this.smtpMessage = ''; this.cdr.detectChanges(); }, 3000);
       },
-      error: () => {
+      error: (err: any) => {
         this.savingSmtp  = false;
-        this.smtpError   = 'Failed to save SMTP configuration';
+        this.smtpError   = err?.error?.message || 'Failed to save SMTP configuration';
         this.cdr.detectChanges();
       },
+    });
+  }
+
+  sendTest() {
+    this.testing = true; this.smtpMessage = ''; this.smtpError = '';
+    this.api.testGlobalSmtp(this.testTo.trim()).subscribe({
+      next: (r: any) => { this.testing = false; this.smtpMessage = r?.message || 'Test e-mail sent'; this.cdr.detectChanges(); },
+      error: (err: any) => { this.testing = false; this.smtpError = err?.error?.message || 'Test e-mail failed'; this.cdr.detectChanges(); },
     });
   }
 }

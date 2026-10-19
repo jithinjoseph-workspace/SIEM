@@ -1,0 +1,17 @@
+{"wdb": [
+ ["global disconnect-agents 0 ", ["due [{\"id\":1},{\"id\":2}]"]],
+ ["global disconnect-agents 2 ", ["ok [{\"id\":3},{\"id\":4},{\"id\":9}]"]],
+ ["global get-agent-info 1", ["ok [{\"id\":1,\"name\":\"a1\",\"register_ip\":\"any\",\"last_keepalive\":{now-5000},\"connection_status\":\"active\"}]"]],
+ ["global get-agent-info 2", ["ok [{\"id\":2,\"name\":\"my-host\",\"register_ip\":\"1.2.3.4\",\"last_keepalive\":{now-5000},\"connection_status\":\"disconnected\"}]"]],
+ ["global get-agent-info 3", ["ok [{\"id\":3,\"name\":\"db3\",\"register_ip\":\"10.0.0.3\",\"last_keepalive\":{now-10},\"connection_status\":\"disconnected\"}]", "ok [{\"id\":3,\"name\":\"db3\",\"register_ip\":\"10.0.0.3\",\"last_keepalive\":{now-9000},\"connection_status\":\"disconnected\"}]"]],
+ ["global get-agent-info 4", ["err something failed"]],
+ ["global get-agent-info 9", ["ok [{\"id\":9,\"name\":\"n9\",\"last_keepalive\":{now-9000},\"connection_status\":\"disconnected\"}]"]],
+ ["global find-agent {\"name\":\"my-host\"", ["ok [{\"id\":2}]"]],
+ ["global find-agent {\"name\":\"db3\"", ["ok []"]],
+ ["global get-agents-by-connection-status 0 disconnected", ["ok [{\"id\":5},{\"id\":6},{\"id\":7},{\"id\":8}]"]],
+ ["global get-agent-info 5", ["ok [{\"id\":5,\"name\":\"old5\",\"register_ip\":\"any\",\"last_keepalive\":{now-100000},\"connection_status\":\"disconnected\"}]"]],
+ ["global get-agent-info 6", ["ok [{\"id\":6,\"name\":\"nokey\",\"register_ip\":\"any\",\"last_keepalive\":{now-100000},\"connection_status\":\"disconnected\"}]"]],
+ ["global get-agent-info 7", ["ok [{\"id\":7,\"name\":\"recent\",\"register_ip\":\"any\",\"last_keepalive\":{now-100},\"connection_status\":\"disconnected\"}]"]],
+ ["global get-agent-info 8", ["ok [{\"id\":8,\"name\":\"old8\",\"register_ip\":\"10.0.0.8\",\"last_keepalive\":{now-100000},\"connection_status\":\"disconnected\"}]"]],
+ ["wazuhdb remove", ["ok"]]
+], "auth": ["{\"error\":0,\"data\":\"ok\"}", "{\"error\":9,\"message\":\"nope\"}"]}

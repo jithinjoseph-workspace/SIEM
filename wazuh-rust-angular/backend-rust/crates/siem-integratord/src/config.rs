@@ -1,257 +1,201 @@
-//! Wazuh External Integration Configuration (src/os_integrator/config.c, integrator-config.h)
-//!
-//! Handles parsing, validation, and storage for `<integration>` blocks:
-//! - Supported native providers: Slack, PagerDuty, VirusTotal, Shuffle, Maltiverse.
-//! - Custom integrations with path resolution.
-//! - Mandatory validation: Hook URL for Slack/Shuffle/Maltiverse, API Key for PagerDuty/VirusTotal.
-//! - Rule ID, severity level, rule group, and location filters.
+//! `config/integrator-config.c` (`Read_Integrator`) and
+//! `os_integrator/config.c` (`OS_ReadIntegratorConf`, `getIntegratorConfig`).
 
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Alert format matching `json` vs text format in `integrator.c`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AlertFormat {
-    Json,
-    Text,
-}
+use siem_cjson::Json;
+use siem_config::messages::{xml_invelem, xml_valueerr, xml_valuenull, XML_ELEMNULL};
+use siem_config::{modules, read_config, ConfigContext, ConfigError, ConfigHandler, LogLevel, Platform, Section};
+use siem_regex::OsMatch;
+use siem_xml::{OsXml, XmlNode};
 
-impl Default for AlertFormat {
-    fn default() -> Self {
-        AlertFormat::Json
-    }
-}
-
-/// Configuration for a single external integration (`IntegratorConfig`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IntegratorConfig {
-    pub name: String,
-    pub hookurl: Option<String>,
-    pub apikey: Option<String>,
-    pub level: u8,
-    pub rule_ids: Vec<u32>,
-    pub group: Option<String>,
-    pub location: Option<String>,
-    pub alert_format: AlertFormat,
-    pub options: Option<String>,
+/// `IntegratorConfig`
+#[derive(Debug, Clone)]
+pub struct Integration {
+    pub level: u32,
+    pub enabled: bool,
+    /// Ends at its first 0, like the C array.
+    pub rule_id: Option<Vec<u32>>,
+    pub max_log: u32,
     pub timeout: u32,
     pub retries: u32,
-    pub max_log: usize,
+    pub name: Option<String>,
+    pub apikey: Option<String>,
+    pub hookurl: Option<String>,
     pub path: Option<String>,
-    pub enabled: bool,
+    pub alert_format: Option<String>,
+    pub group: Option<String>,
+    pub options: Option<String>,
+    pub location: Option<OsMatch>,
 }
 
-impl Default for IntegratorConfig {
+impl Default for Integration {
     fn default() -> Self {
-        Self {
-            name: String::new(),
-            hookurl: None,
-            apikey: None,
+        Integration {
             level: 0,
-            rule_ids: Vec::new(),
-            group: None,
-            location: None,
-            alert_format: AlertFormat::Json,
-            options: None,
+            enabled: false,
+            rule_id: None,
+            max_log: 165,
             timeout: 10,
             retries: 3,
-            max_log: 1024,
+            name: None,
+            apikey: None,
+            hookurl: None,
             path: None,
-            enabled: true,
+            alert_format: None,
+            group: None,
+            options: None,
+            location: None,
         }
     }
 }
 
-impl IntegratorConfig {
-    /// Validate configuration requirements according to provider matching `integrator.c` lines 74-139
-    pub fn validate(&self) -> Result<(), String> {
-        match self.name.as_str() {
-            "slack" | "shuffle" => {
-                if self.hookurl.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-                    return Err(format!("Unable to enable integration for: '{}'. Missing hook URL.", self.name));
-                }
-            }
-            "pagerduty" | "virustotal" => {
-                if self.apikey.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-                    return Err(format!("Unable to enable integration for: '{}'. Missing API Key.", self.name));
-                }
-            }
-            "maltiverse" => {
-                if self.hookurl.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-                    return Err(format!("Unable to enable integration for: '{}'. Missing hook URL.", self.name));
-                }
-                if self.apikey.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-                    return Err(format!("Unable to enable integration for: '{}'. Missing API Key.", self.name));
-                }
-            }
-            name if name.starts_with("custom-") => {
-                if name.len() <= 7 {
-                    return Err("Custom integration name must specify a suffix after 'custom-'".to_string());
-                }
-            }
-            name => {
-                return Err(format!("Invalid integration: '{}'. Not currently supported.", name));
-            }
-        }
-        Ok(())
+fn num(n: &XmlNode, c: &str) -> siem_config::Result<u32> {
+    if !siem_regex::str_is_num(c) {
+        return Err(ConfigError::new(xml_valueerr(&n.element, c)));
     }
+    Ok(siem_maild::alert::atoi(c.as_bytes()) as u32)
+}
 
-    /// Checks if this integration matches an incoming alert (lines 173-275 of `integrator.c`)
-    pub fn matches_alert(&self, alert_level: u8, rule_id: u32, groups: &[String], location: &str) -> bool {
-        if !self.enabled {
-            return false;
+/// `Read_Integrator`: appends one `<integration>`.
+pub fn read_integrator(nodes: &[XmlNode], list: &mut Vec<Integration>) -> siem_config::Result<()> {
+    list.push(Integration::default());
+    let it = list.last_mut().unwrap();
+    for n in nodes {
+        if n.element.is_empty() {
+            return Err(ConfigError::new(XML_ELEMNULL));
         }
-
-        // 1. Location match (lines 184-197)
-        if let Some(ref loc) = self.location {
-            if !loc.is_empty() && !location.contains(loc) {
-                return false;
-            }
-        }
-
-        // 2. Alert level match (lines 199-211)
-        if self.level > 0 && alert_level < self.level {
-            return false;
-        }
-
-        // 3. Rule group match (lines 213-243)
-        // Group in config can be comma-separated: group="pam,sshd"
-        if let Some(ref grp_str) = self.group {
-            let mut found = false;
-            for configured_grp in grp_str.split(',') {
-                let trimmed = configured_grp.trim();
-                if !trimmed.is_empty() && groups.iter().any(|g| g == trimmed) {
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return false;
-            }
-        }
-
-        // 4. Rule ID match (lines 245-275)
-        if !self.rule_ids.is_empty() && !self.rule_ids.contains(&rule_id) {
-            return false;
-        }
-
-        true
-    }
-
-    /// Generates JSON configuration matching `getIntegratorConfig(void)` in `src/os_integrator/config.c`
-    pub fn to_json_config(&self) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-        map.insert("name".to_string(), serde_json::Value::String(self.name.clone()));
-        if let Some(ref hook) = self.hookurl {
-            map.insert("hook_url".to_string(), serde_json::Value::String(hook.clone()));
-        }
-        if let Some(ref key) = self.apikey {
-            map.insert("api_key".to_string(), serde_json::Value::String(key.clone()));
-        }
-        map.insert("level".to_string(), serde_json::json!(self.level));
-        map.insert("max_log".to_string(), serde_json::json!(self.max_log));
-        if !self.rule_ids.is_empty() {
-            map.insert("rule_id".to_string(), serde_json::json!(self.rule_ids));
-        }
-        if let Some(ref g) = self.group {
-            map.insert("group".to_string(), serde_json::Value::String(g.clone()));
-        }
-        let fmt_str = match self.alert_format {
-            AlertFormat::Json => "json",
-            AlertFormat::Text => "text",
-        };
-        map.insert("alert_format".to_string(), serde_json::Value::String(fmt_str.to_string()));
-        if let Some(ref loc) = self.location {
-            map.insert("location".to_string(), serde_json::json!([loc]));
-        }
-        map.insert("timeout".to_string(), serde_json::json!(self.timeout));
-        map.insert("retries".to_string(), serde_json::json!(self.retries));
-        serde_json::Value::Object(map)
-    }
-
-    /// Parse list of `<integration>` blocks from XML configuration
-    pub fn parse_xml(xml: &str) -> Result<Vec<Self>, String> {
-        let os_xml = siem_shared::xml::OsXml::parse_str(xml)?;
-        let mut integrations = Vec::new();
-
-        let nodes = os_xml.get_elements_by_path(&["ossec_config", "integration"]);
-        for elem in nodes {
-            let mut config = IntegratorConfig::default();
-
-            if let Some(n) = elem.get_child("name") {
-                config.name = n.content.clone();
-            }
-            if let Some(h) = elem.get_child("hook_url") {
-                config.hookurl = Some(h.content.clone());
-            }
-            if let Some(a) = elem.get_child("api_key") {
-                config.apikey = Some(a.content.clone());
-            }
-            if let Some(lvl) = elem.get_child("level") {
-                if let Ok(val) = lvl.content.parse::<u8>() {
-                    config.level = val;
-                }
-            }
-            if let Some(r_ids) = elem.get_child("rule_id") {
-                for id_str in r_ids.content.split(',') {
-                    if let Ok(id) = id_str.trim().parse::<u32>() {
-                        config.rule_ids.push(id);
+        let Some(c) = n.content.as_deref() else { return Err(ConfigError::new(xml_valuenull(&n.element))) };
+        match n.element.as_str() {
+            "level" => it.level = num(n, c)?,
+            "name" => it.name = Some(c.into()),
+            "api_key" => it.apikey = Some(c.into()),
+            "alert_format" => it.alert_format = Some(c.into()),
+            "hook_url" => it.hookurl = Some(c.into()),
+            "options" => it.options = Some(c.into()),
+            "rule_id" => {
+                let b = c.as_bytes();
+                let mut i = 0;
+                while i < b.len() {
+                    if b[i] == b' ' || b[i] == b',' {
+                        i += 1;
+                    } else if b[i].is_ascii_digit() {
+                        let v = it.rule_id.get_or_insert_with(Vec::new);
+                        v.truncate(v.iter().position(|&x| x == 0).unwrap_or(v.len()));
+                        v.push(siem_maild::alert::atoi(&b[i..]) as u32);
+                        match b[i..].iter().position(|&x| x == b',') {
+                            Some(p) => i += p + 1,
+                            None => break,
+                        }
+                    } else {
+                        break;
                     }
                 }
             }
-            if let Some(grp) = elem.get_child("group") {
-                config.group = Some(grp.content.clone());
+            "event_location" => {
+                it.location = Some(OsMatch::compile(c, 0).map_err(|e| ConfigError::new(format!("(1450): Syntax error on regex: '{c}': {}.", e as i32)))?);
             }
-            if let Some(loc) = elem.get_child("location") {
-                config.location = Some(loc.content.clone());
-            }
-            if let Some(fmt) = elem.get_child("alert_format") {
-                if fmt.content.eq_ignore_ascii_case("text") {
-                    config.alert_format = AlertFormat::Text;
-                } else {
-                    config.alert_format = AlertFormat::Json;
+            "group" => it.group = Some(c.into()),
+            "max_log" => {
+                let v = num(n, c)?;
+                it.max_log = v;
+                if !(165..=1024).contains(&v) {
+                    return Err(ConfigError::new(xml_valueerr(&n.element, c)));
                 }
             }
-            if let Some(opt) = elem.get_child("options") {
-                config.options = Some(opt.content.clone());
-            }
-            if let Some(tm) = elem.get_child("timeout") {
-                if let Ok(val) = tm.content.parse::<u32>() {
-                    config.timeout = val;
-                }
-            }
-            if let Some(ret) = elem.get_child("retries") {
-                if let Ok(val) = ret.content.parse::<u32>() {
-                    config.retries = val;
-                }
-            }
-            if let Some(ml) = elem.get_child("max_log") {
-                if let Ok(val) = ml.content.parse::<usize>() {
-                    config.max_log = val;
-                }
-            }
-
-            // Path defaults to /var/ossec/integrations/<name>
-            config.path = Some(format!("/var/ossec/integrations/{}", config.name));
-
-            integrations.push(config);
+            "timeout" => it.timeout = num(n, c)?,
+            "retries" => it.retries = num(n, c)?,
+            _ => return Err(ConfigError::new(xml_invelem(&n.element))),
         }
-
-        Ok(integrations)
     }
+    if it.name.is_none() {
+        return Err(ConfigError::new("(5310): Invalid integratord configuration."));
+    }
+    Ok(())
+}
 
-    /// Read integrations from file
-    pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Vec<Self>, String> {
-        let xml_str = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        Self::parse_xml(&xml_str)
+struct Handler<'a>(&'a mut Vec<Integration>);
+
+impl ConfigHandler for Handler<'_> {
+    fn section(&mut self, _ctx: &mut ConfigContext, _xml: &OsXml, s: Section, _node: &XmlNode, ch: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        match s {
+            Section::Integration => read_integrator(ch.unwrap_or(&[]), self.0),
+            _ => Ok(()),
+        }
     }
 }
 
-/// Helper function matching `getIntegratorConfig(void)` in `src/os_integrator/config.c`
-pub fn get_integrator_config_json(integrations: &[IntegratorConfig]) -> serde_json::Value {
-    let list: Vec<serde_json::Value> = integrations.iter().map(|c| c.to_json_config()).collect();
-    serde_json::json!({
-        "integration": list
-    })
+/// `OS_ReadIntegratorConf`: `None` on a configuration error.
+pub fn read_integrator_conf(home: &Path, cfg: &str, log: &mut Vec<(LogLevel, String)>) -> Option<Vec<Integration>> {
+    let mut list = Vec::new();
+    let mut ctx = ConfigContext::new(Platform::MANAGER);
+    let r = read_config(&mut ctx, modules::CINTEGRATORD, home.join(cfg), None, &mut Handler(&mut list));
+    log.append(&mut ctx.log);
+    r.ok().map(|_| list)
+}
+
+/// `getIntegratorConfig`
+pub fn integrator_config_json(list: &[Integration]) -> Json {
+    let mut arr = Json::array();
+    for it in list {
+        let mut c = Json::object();
+        for (k, v) in [("name", &it.name), ("hook_url", &it.hookurl), ("api_key", &it.apikey)] {
+            if let Some(v) = v {
+                c.add(k, Json::string(v));
+            }
+        }
+        c.add("level", Json::number(it.level as f64));
+        c.add("max_log", Json::number(it.max_log as f64));
+        if let Some(ids) = &it.rule_id {
+            let mut a = Json::array();
+            for id in ids.iter().take_while(|&&x| x != 0) {
+                a.push(Json::number(*id as f64));
+            }
+            c.add("rule_id", a);
+        }
+        for (k, v) in [("group", &it.group), ("alert_format", &it.alert_format)] {
+            if let Some(v) = v {
+                c.add(k, Json::string(v));
+            }
+        }
+        if let Some(l) = &it.location {
+            let mut a = Json::array();
+            for p in l.patterns() {
+                a.push(Json::string(p));
+            }
+            c.add("location", a);
+        }
+        c.add("timeout", Json::number(it.timeout as f64));
+        c.add("retries", Json::number(it.retries as f64));
+        arr.push(c);
+    }
+    let mut root = Json::object();
+    root.add("integration", arr);
+    root
+}
+
+/// `intgcom_dispatch`
+pub fn intgcom_dispatch(list: &[Integration], command: &[u8]) -> String {
+    let command = &command[..command.iter().position(|&c| c == 0).unwrap_or(command.len())];
+    let command = String::from_utf8_lossy(command);
+    let (cmd, args) = match command.split_once(' ') {
+        Some((c, a)) => (c, Some(a)),
+        None => (command.as_ref(), None),
+    };
+    let log = siem_maild::log();
+    if cmd != "getconfig" {
+        log.debug1(format!("INTGCOM Unrecognized command '{cmd}'."));
+        return "err Unrecognized command".into();
+    }
+    match args {
+        None => {
+            log.debug1("INTGCOM getconfig needs arguments.");
+            "err INTGCOM getconfig needs arguments".into()
+        }
+        Some("integration") => format!("ok {}", integrator_config_json(list).to_string_unformatted()),
+        Some(s) => {
+            log.debug1(format!("At INTGCOM getconfig: Could not get '{s}' section"));
+            "err Could not get requested section".into()
+        }
+    }
 }

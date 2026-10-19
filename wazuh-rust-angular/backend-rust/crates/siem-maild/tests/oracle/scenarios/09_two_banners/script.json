@@ -1,0 +1,1 @@
+{"smtp": {"helo_reply": ["220 second banner\r\n", "250 fake.local\r\n"]}}

@@ -1,0 +1,2 @@
+config etc/ossec.conf 0 -1
+moncom getconfig internal

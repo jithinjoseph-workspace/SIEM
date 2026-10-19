@@ -1,0 +1,9 @@
+config etc/ossec.conf 0 -1
+moncom getconfig internal
+moncom getconfig global
+moncom getconfig reports
+moncom getconfig
+moncom getconfig foo
+moncom hello world
+config etc/ossec.conf 1 45
+moncom getconfig internal

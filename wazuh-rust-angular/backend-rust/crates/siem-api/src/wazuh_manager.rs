@@ -25,7 +25,18 @@ use tracing::{info, warn};
 use crate::{tenancy, AppState};
 
 /// The daemons, in start order.
-const DAEMONS: [&str; 4] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd"];
+#[cfg(not(unix))]
+const DAEMONS: [&str; 8] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd"];
+/// On Linux the manager also runs execd for responses with `<location>` local/server.
+#[cfg(unix)]
+const DAEMONS: [&str; 9] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd", "wazuh-execd"];
+/// The manager's own response programs (Linux).
+#[cfg(unix)]
+const MANAGER_AR: [&str; 1] = ["firewall-drop"];
+#[cfg(not(unix))]
+const MANAGER_AR: [&str; 0] = [];
+/// The integration scripts, all served by the `integrations` program.
+const INTEGRATIONS: [&str; 5] = ["slack", "pagerduty", "virustotal", "shuffle", "maltiverse"];
 
 /// Where the manager lives (`WAZUH_MANAGER_HOME`, else `data/manager`).
 pub fn home() -> PathBuf {
@@ -124,7 +135,7 @@ fn ossec_conf() -> String {
 /// Creates the manager home (once) and refreshes the default ruleset.
 fn prepare_home(home: &Path) -> Result<(), String> {
     for d in [
-        "bin", "etc/decoders", "etc/rules", "etc/lists", "etc/shared/default", "ruleset", "logs/alerts", "logs/archives",
+        "bin", "etc/decoders", "etc/rules", "etc/lists", "etc/shared/default", "ruleset", "logs/alerts", "logs/archives", "logs/wazuh",
         "logs/firewall", "queue/sockets", "queue/db", "queue/alerts", "queue/rids", "queue/diff", "queue/fts", "queue/tasks",
         "var/run", "var/db", "var/multigroups", "var/download", "stats", "backup/db", "tmp",
     ] {
@@ -283,19 +294,29 @@ fn install_binaries(home: &Path) -> Result<(), String> {
         search.push(t.join("release"));
         search.push(t.join("debug"));
     }
-    for d in DAEMONS {
-        let n = exe_name(d);
+    let targets = DAEMONS.iter().map(|d| (exe_name(d), home.join("bin").join(exe_name(d)))).chain(
+        INTEGRATIONS.iter().map(|i| (exe_name("integrations"), home.join("integrations").join(exe_name(i)))),
+    ).chain(MANAGER_AR.iter().map(|a| (exe_name(a), home.join("active-response/bin").join(exe_name(a)))));
+    for (n, dst) in targets {
         let found = search.iter().map(|s| s.join(&n)).filter(|p| p.is_file()).max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {
-            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd)"));
+            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd -p siem-execd -p siem-active-response)"));
         };
-        let dst = home.join("bin").join(&n);
         let newer = match (src.metadata().and_then(|m| m.modified()), dst.metadata().and_then(|m| m.modified())) {
             (Ok(a), Ok(b)) => a > b,
             _ => true,
         };
         if newer {
+            if let Some(d) = dst.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
             std::fs::copy(&src, &dst).map_err(|e| format!("{n}: {e}"))?;
+            // integratord refuses scripts its user can write
+            #[cfg(unix)]
+            if dst.parent().is_some_and(|p| p.ends_with("integrations")) {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o550));
+            }
         }
     }
     Ok(())
@@ -439,6 +460,17 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     let _ = tx.send(());
                 }
                 let st = child.wait();
+                // maild / integratord / csyslogd exit 0 when not configured: start again once ossec.conf changes
+                if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd") && st.as_ref().is_ok_and(|s| s.success()) {
+                    info!("Wazuh manager: {d} idle (not configured)");
+                    let conf = home.join("etc/ossec.conf");
+                    let mtime = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();
+                    let seen = mtime(&conf);
+                    while mtime(&conf) == seen {
+                        std::thread::sleep(Duration::from_secs(2));
+                    }
+                    continue;
+                }
                 warn!("Wazuh manager: {d} exited ({st:?}); restarting in 5s (see {}/logs/ossec.log)", home.display());
             }
             Err(e) => {
@@ -449,6 +481,109 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
             }
         }
         std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+/// Stops the running daemons named; their supervisors start them again.
+fn restart_daemons(names: &[&str]) {
+    for (n, pid) in CHILDREN.lock().unwrap().iter() {
+        if !names.contains(&n.as_str()) {
+            continue;
+        }
+        #[cfg(windows)]
+        let _ = Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        #[cfg(unix)]
+        let _ = Command::new("kill").arg(pid.to_string()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    }
+}
+
+/// `ossec.conf` with the mail settings: the `<global>` e-mail fields and
+/// `<alerts><email_alert_level>` (each element on its own line, as written here).
+fn ossec_conf_with_mail(t: &str, s: &crate::mail_settings::MailSettings) -> String {
+    let mut lines: Vec<String> = t.lines().map(String::from).collect();
+    let starts = |l: &str, tags: &[&str]| tags.iter().any(|g| l.trim_start().starts_with(&format!("<{g}>")));
+    let section = |lines: &Vec<String>, name: &str| -> Option<(usize, usize)> {
+        let a = lines.iter().position(|l| l.trim() == format!("<{name}>"))?;
+        let b = lines[a..].iter().position(|l| l.trim() == format!("</{name}>"))? + a;
+        Some((a, b))
+    };
+    let mut global = vec![format!("<email_notification>{}</email_notification>", if s.alert_enabled { "yes" } else { "no" })];
+    if !s.host.is_empty() {
+        global.push(format!("<smtp_server>{}</smtp_server>", s.host));
+    }
+    if !s.user.is_empty() {
+        global.push(format!("<email_from>{}</email_from>", s.user));
+    }
+    global.extend(s.alert_to.iter().map(|t| format!("<email_to>{t}</email_to>")));
+    global.push(format!("<email_maxperhour>{}</email_maxperhour>", s.max_per_hour));
+    let gtags = ["email_notification", "smtp_server", "email_from", "email_to", "email_maxperhour"];
+    match section(&lines, "global") {
+        Some((a, b)) => {
+            let mut body: Vec<String> = lines[a + 1..b].iter().filter(|l| !starts(l, &gtags)).cloned().collect();
+            body.extend(global);
+            lines.splice(a + 1..b, body);
+        }
+        None => {
+            let end = lines.iter().rposition(|l| l.trim() == "</ossec_config>").unwrap_or(lines.len());
+            let mut blk = vec!["<global>".to_string()];
+            blk.extend(global);
+            blk.push("</global>".into());
+            lines.splice(end..end, blk);
+        }
+    }
+    let level = format!("<email_alert_level>{}</email_alert_level>", s.alert_level);
+    match section(&lines, "alerts") {
+        Some((a, b)) => {
+            let mut body: Vec<String> = lines[a + 1..b].iter().filter(|l| !starts(l, &["email_alert_level"])).cloned().collect();
+            body.push(level);
+            lines.splice(a + 1..b, body);
+        }
+        None => {
+            let end = lines.iter().rposition(|l| l.trim() == "</ossec_config>").unwrap_or(lines.len());
+            lines.splice(end..end, ["<alerts>".to_string(), level, "</alerts>".into()]);
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+/// Writes the platform SMTP settings into the manager (`ossec.conf` and the
+/// TLS/login file `etc/smtp_auth.conf`) and restarts what reads them.
+pub fn apply_mail_settings(s: &crate::mail_settings::MailSettings) {
+    if !enabled() {
+        return;
+    }
+    let home = home();
+    let mut changed = false;
+    let conf = home.join("etc/ossec.conf");
+    if let Ok(t) = std::fs::read_to_string(&conf) {
+        let n = ossec_conf_with_mail(&t, s);
+        if n != t {
+            changed |= std::fs::write(&conf, n).is_ok();
+        }
+    }
+    let auth = home.join(siem_maild::smtp_ext::SMTP_AUTH_FILE);
+    if s.host.is_empty() {
+        changed |= std::fs::remove_file(&auth).is_ok();
+    } else {
+        let text = format!("# Written by siem-api from the platform SMTP settings\nhost={}\nport={}\nsecurity={}\nuser={}\npassword={}\n", s.host, s.port, s.security(), s.user, s.password);
+        if std::fs::read_to_string(&auth).ok().as_deref() != Some(text.as_str()) {
+            let tmp = auth.with_extension("conf.tmp");
+            if std::fs::write(&tmp, &text).is_ok() {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+                }
+                changed |= std::fs::rename(&tmp, &auth).is_ok();
+            }
+        }
+    }
+    if changed {
+        info!("Wazuh manager: mail settings applied (alerts by e-mail: {})", if s.alert_enabled { "on" } else { "off" });
+        // analysisd decides which alerts are mailed; maild and monitord send them
+        restart_daemons(&["wazuh-analysisd", "wazuh-maild", "wazuh-monitord"]);
     }
 }
 
@@ -815,6 +950,13 @@ pub fn start(state: AppState) {
     tokio::spawn(async move { tail_json(p, o, move |vs| on_events(s.clone(), vs)).await });
     let s = state.clone();
     tokio::spawn(async move { agent_status_loop(s).await });
+    // the stored SMTP settings win over the files (a fresh manager home gets them too)
+    let s = state.clone();
+    tokio::spawn(async move {
+        if let Some(m) = crate::mail_settings::load(&s).await {
+            apply_mail_settings(&m);
+        }
+    });
 }
 
 /// Follows a JSON-lines file from the saved offset (from the start when
@@ -1147,5 +1289,24 @@ async fn agent_status_loop(state: AppState) {
                 last_saved.insert(id, (status, ka));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod mail_conf_tests {
+    use super::ossec_conf_with_mail;
+    use crate::mail_settings::MailSettings;
+
+    #[test]
+    fn edits_global_and_alerts() {
+        let t = "<ossec_config>\n<global>\n<jsonout_output>yes</jsonout_output>\n<email_notification>no</email_notification>\n<email_to>old@x.com</email_to>\n</global>\n<alerts>\n<log_alert_level>3</log_alert_level>\n</alerts>\n</ossec_config>\n";
+        let s = MailSettings { host: "smtp.gmail.com".into(), user: "a@gmail.com".into(), alert_enabled: true, alert_to: vec!["soc@x.com".into(), "b@x.com".into()], alert_level: 10, ..Default::default() };
+        let n = ossec_conf_with_mail(t, &s);
+        assert_eq!(
+            n,
+            "<ossec_config>\n<global>\n<jsonout_output>yes</jsonout_output>\n<email_notification>yes</email_notification>\n<smtp_server>smtp.gmail.com</smtp_server>\n<email_from>a@gmail.com</email_from>\n<email_to>soc@x.com</email_to>\n<email_to>b@x.com</email_to>\n<email_maxperhour>12</email_maxperhour>\n</global>\n<alerts>\n<log_alert_level>3</log_alert_level>\n<email_alert_level>10</email_alert_level>\n</alerts>\n</ossec_config>\n"
+        );
+        // applying again changes nothing
+        assert_eq!(ossec_conf_with_mail(&n, &s), n);
     }
 }

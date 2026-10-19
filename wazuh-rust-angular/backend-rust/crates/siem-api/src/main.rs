@@ -37,6 +37,7 @@ pub mod corroboration;
 pub mod tenancy;
 pub mod wazuh_manager;
 pub mod groups;
+pub mod mail_settings;
 use db::ClickHouseDb;
 use tenancy::AuthCtx;
 
@@ -109,7 +110,6 @@ pub struct AppState {
     pub active_responses: Arc<RwLock<Vec<ActiveResponseRecord>>>,
     pub parser_registry: Arc<siem_parser_gen::DynamicParserRegistry>,
     pub auth_keystore: Arc<RwLock<siem_crypto::keys::KeyStore>>,
-    pub integrator_engine: Arc<RwLock<siem_integratord::IntegratorEngine>>,
     pub tenants: Arc<RwLock<Vec<TenantRecord>>>,
     /// Per-tenant agent keys (`X-Tenant-Key`).
     pub agent_keys: Arc<tenancy::AgentKeys>,
@@ -270,22 +270,6 @@ async fn main() {
     ]));
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
-    let integrator_engine = Arc::new(RwLock::new(siem_integratord::IntegratorEngine::new(vec![
-        siem_integratord::IntegratorConfig {
-            name: "slack".to_string(),
-            hookurl: Some("https://hooks.slack.com/services/mock/soc-alerts".to_string()),
-            level: 10,
-            enabled: true,
-            ..Default::default()
-        },
-        siem_integratord::IntegratorConfig {
-            name: "pagerduty".to_string(),
-            apikey: Some("pd-mock-key".to_string()),
-            level: 12,
-            enabled: true,
-            ..Default::default()
-        },
-    ])));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -303,7 +287,6 @@ async fn main() {
         active_responses,
         parser_registry,
         auth_keystore,
-        integrator_engine,
         tenants: Arc::new(RwLock::new(Vec::new())),
         agent_keys: Arc::new(tenancy::AgentKeys::new()),
         agent_tenants: Arc::new(RwLock::new(HashMap::new())),
@@ -418,7 +401,8 @@ async fn main() {
         .route("/api/support/messages", get(get_support_messages_handler))
         .route("/api/support/tickets", get(get_support_messages_handler))
         .route("/api/settings", get(get_settings_handler).post(post_settings_handler))
-        .route("/api/settings/smtp", get(get_settings_smtp_handler).post(post_settings_smtp_handler))
+        .route("/api/settings/smtp", get(mail_settings::get_smtp).post(mail_settings::post_smtp))
+        .route("/api/settings/smtp/test", post(mail_settings::post_smtp_test))
         .route("/api/settings/ai", get(get_settings_ai_handler).post(post_settings_ai_handler))
         .route("/api/trusted-domains", get(get_trusted_domains_handler).post(post_trusted_domains_handler))
         .route("/api/trusted-domains/delete", post(delete_trusted_domain_handler))
@@ -472,8 +456,6 @@ async fn main() {
         .route("/api/v1/parsers/test", post(post_test_parser_handler))
         .route("/api/v1/parsers/:id", put(put_parser_handler).delete(delete_parser_handler))
         .route("/api/v1/agents/enroll", post(post_agent_enroll_handler))
-        .route("/api/v1/integrations/dispatch", post(post_integration_dispatch_handler))
-        .route("/api/v1/syslog-forwarder/format", post(post_format_syslog_handler))
         .route("/api/v1/reports/summary", get(get_reports_summary_handler))
         .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler).get(get_agent_upgrade_handler))
         .route("/api/v1/manager/status", get(get_manager_status_handler))
@@ -2957,14 +2939,6 @@ async fn post_settings_handler() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
-async fn get_settings_smtp_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "host": "smtp.provigil.io", "port": 587, "user": "alerts@provigil.io" }))
-}
-
-async fn post_settings_smtp_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok" }))
-}
-
 async fn get_settings_ai_handler() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok", "provider": "gemini", "model": "gemini-2.5-flash", "enabled": true }))
 }
@@ -4983,108 +4957,7 @@ async fn post_agent_enroll_handler(
         .into_response()
 }
 
-#[derive(Debug, Deserialize)]
-pub struct IntegrationDispatchPayload {
-    pub alert_id: uuid::Uuid,
-}
 
-async fn post_integration_dispatch_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-    Json(payload): Json<IntegrationDispatchPayload>,
-) -> impl IntoResponse {
-    let alerts_guard = scoped_alerts(&state, &ctx);
-    if let Some(alert) = alerts_guard.iter().find(|a| a.id == payload.alert_id) {
-        let alert_val = serde_json::to_value(alert).unwrap_or_default();
-        let mut engine = state.integrator_engine.write().unwrap();
-        let dispatched = engine.process_alert(&alert_val).unwrap_or(0);
-
-        (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "status": "success",
-                "alert_id": payload.alert_id,
-                "dispatched_integrations": dispatched,
-                "total_dispatched_lifetime": engine.total_dispatched
-            })),
-        )
-            .into_response()
-    } else {
-        (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "status": "error", "message": "Alert not found" })),
-        )
-            .into_response()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FormatSyslogPayload {
-    pub alert_id: uuid::Uuid,
-    pub format: Option<String>,
-}
-
-async fn post_format_syslog_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-    Json(payload): Json<FormatSyslogPayload>,
-) -> impl IntoResponse {
-    let alerts_guard = scoped_alerts(&state, &ctx);
-    if let Some(alert) = alerts_guard.iter().find(|a| a.id == payload.alert_id) {
-        let syslog_alert = siem_csyslogd::formatter::SyslogAlert {
-            level: alert.rule.level as u32,
-            rule: alert.rule.id,
-            comment: alert.rule.description.clone(),
-            location: alert.location.clone(),
-            group: alert.rule.groups.first().cloned(),
-            srcip: alert.decoded.src_ip.clone(),
-            srcport: alert.decoded.src_port,
-            dstip: alert.decoded.dst_ip.clone(),
-            dstport: alert.decoded.dst_port,
-            srcgeoip: None,
-            dstgeoip: None,
-            user: alert.decoded.user.clone(),
-            filename: alert.decoded.file_path.clone(),
-            old_md5: None,
-            new_md5: None,
-            old_sha1: None,
-            new_sha1: None,
-            old_sha256: None,
-            new_sha256: None,
-            file_size: None,
-            owner_chg: None,
-            group_chg: None,
-            perm_chg: None,
-            log: vec![alert.full_log.clone()],
-            date: Some(alert.timestamp.to_rfc3339()),
-            raw_json: serde_json::to_value(alert).ok(),
-        };
-
-        let mut cfg = siem_csyslogd::SyslogConfig::default();
-        let fmt_choice = payload.format.as_deref().unwrap_or("cef");
-        cfg.format = match fmt_choice {
-            "json" => siem_csyslogd::SyslogFormat::Json,
-            "splunk" => siem_csyslogd::SyslogFormat::Splunk,
-            "default" => siem_csyslogd::SyslogFormat::Default,
-            _ => siem_csyslogd::SyslogFormat::Cef,
-        };
-
-        let formatted = syslog_alert.format_message(&cfg, "wazuh-manager-rust", "wazuh-manager-rust.internal");
-        (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "status": "success",
-                "format": fmt_choice,
-                "output": formatted
-            })),
-        )
-            .into_response()
-    } else {
-        (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "status": "error", "message": "Alert not found" })),
-        )
-            .into_response()
-    }
-}
 
 async fn get_reports_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,

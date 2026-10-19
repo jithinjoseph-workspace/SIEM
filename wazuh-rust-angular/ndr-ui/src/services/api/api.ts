@@ -352,6 +352,10 @@ export class Api {
     return this.http.post(`${this.baseUrl}/settings/smtp`, data);
   }
 
+  testGlobalSmtp(to: string): Observable<any> {
+    return this.http.post(`${this.baseUrl}/settings/smtp/test`, { to });
+  }
+
   getAiConfig(): Observable<any> {
     return this.http.get(`${this.baseUrl}/settings/ai`);
   }

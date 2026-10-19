@@ -1,0 +1,9 @@
+queue
+set 1 0 1 31 12 1 1 900 0
+disconnect
+pending
+alert
+pending
+alert
+pending
+delete

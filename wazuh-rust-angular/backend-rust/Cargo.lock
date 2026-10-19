@@ -44,12 +44,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "async-compression"
+version = "0.4.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee19bd99b43e3691acbad4e840420a4881cea6c0b66a208125a824f8fd53f5a1"
+dependencies = [
+ "compression-codecs",
+ "compression-core",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -449,6 +470,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "compression-codecs"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98fc98460ba0ad5317075d3632b8dfc45d0be8c4a49347c2a38272019717614a"
+dependencies = [
+ "compression-core",
+ "flate2",
+ "memchr",
+]
+
+[[package]]
+name = "compression-core"
+version = "0.4.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e8ccc4ea9f6acc32d102c0f6d471d11d913ad15f20c04de743374861fa1d414"
+
+[[package]]
 name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,6 +546,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-utils"
+version = "0.8.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -541,6 +585,17 @@ name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
 
 [[package]]
 name = "digest"
@@ -2467,12 +2522,9 @@ dependencies = [
  "siem-config",
  "siem-core",
  "siem-crypto",
- "siem-csyslogd",
  "siem-engine",
- "siem-integratord",
  "siem-ipc",
  "siem-maild",
- "siem-monitord",
  "siem-parser-gen",
  "siem-remoted",
  "siem-reportd",
@@ -2586,15 +2638,15 @@ name = "siem-csyslogd"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "quick-xml",
- "serde",
- "serde_json",
- "siem-core",
- "siem-shared",
- "tempfile",
- "thiserror 1.0.69",
+ "siem-cjson",
+ "siem-config",
+ "siem-daemon",
+ "siem-ipc",
+ "siem-log",
+ "siem-maild",
+ "siem-regex",
+ "siem-xml",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2681,15 +2733,20 @@ name = "siem-integratord"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "quick-xml",
- "serde",
- "serde_json",
- "siem-core",
- "siem-shared",
+ "libc",
+ "regex",
+ "reqwest",
+ "sha2",
+ "siem-cjson",
+ "siem-config",
+ "siem-daemon",
+ "siem-ipc",
+ "siem-log",
+ "siem-maild",
+ "siem-regex",
+ "siem-xml",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2741,16 +2798,19 @@ dependencies = [
 name = "siem-maild"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
- "quick-xml",
- "serde",
- "serde_json",
- "siem-core",
- "siem-shared",
+ "rustls",
+ "siem-cjson",
+ "siem-config",
+ "siem-daemon",
+ "siem-ipc",
+ "siem-log",
+ "siem-regex",
+ "siem-xml",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -2772,6 +2832,7 @@ dependencies = [
  "siem-log",
  "siem-regex",
  "siem-remoted",
+ "siem-vulnerability-scanner",
  "siem-xml",
  "tempfile",
  "tokio",
@@ -2785,22 +2846,19 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "flate2",
- "hex",
  "md-5",
- "quick-xml",
- "regex",
- "serde",
- "serde_json",
  "sha1",
  "sha2",
- "siem-core",
- "siem-crypto",
- "siem-shared",
+ "siem-cjson",
+ "siem-config",
+ "siem-daemon",
+ "siem-ipc",
+ "siem-log",
+ "siem-maild",
+ "siem-regex",
+ "siem-xml",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3063,6 +3121,25 @@ dependencies = [
  "serde_json",
  "siem-core",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "siem-vulnerability-scanner"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "sha1",
+ "siem-config",
+ "siem-ipc",
+ "siem-log",
+ "siem-sqlite",
+ "siem-xml",
+ "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -3558,12 +3635,17 @@ version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
+ "async-compression",
  "bitflags",
  "bytes",
+ "futures-core",
  "futures-util",
  "http 1.5.0",
  "http-body 1.1.0",
+ "http-body-util",
  "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
@@ -4242,6 +4324,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "zip"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
+dependencies = [
+ "arbitrary",
+ "crc32fast",
+ "crossbeam-utils",
+ "flate2",
+ "indexmap",
+ "memchr",
+ "zopfli",
+]
+
+[[package]]
 name = "zlib-rs"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4252,3 +4349,15 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[package]]
+name = "zopfli"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaf7fc5d30c28483d93805c4a5e12b05bbb52407fa67c5f8bd552374cd01fb11"
+dependencies = [
+ "bumpalo",
+ "crc32fast",
+ "log",
+ "simd-adler32",
+]

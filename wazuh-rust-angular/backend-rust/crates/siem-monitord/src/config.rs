@@ -1,357 +1,230 @@
-//! Monitord Configuration Engine (`src/monitord/monitord.c`, `reports-config.c`, `global-config.c`)
-//!
-//! Loads XML configuration for log rotation, agent disconnection thresholds,
-//! report definitions, and produces monitoring telemetry JSON.
+//! `MonitordConfig` (monitord.c), `Read_CReports` (config/reports-config.c)
+//! and the configuration half of `shared/report_op.c`
+//! (`os_report_configfilter`, `_report_filter_value`).
 
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const DEFAULT_KEEP_LOG_DAYS: u32 = 31;
-pub const DEFAULT_DISCONNECTION_TIME: u64 = 900;
-pub const DEFAULT_SIZE_ROTATE: u64 = 512 * 1024 * 1024;
-pub const DEFAULT_DAILY_ROTATIONS: u32 = 12;
+use siem_config::global::{read_global, GlobalConfig};
+use siem_config::internal_options::InternalOptions;
+use siem_config::messages::{xml_invelem, xml_valueerr, xml_valuenull, XML_ELEMNULL};
+use siem_config::{modules, read_config, ConfigContext, ConfigError, ConfigHandler, LogLevel, Platform, Section};
+use siem_xml::{OsXml, XmlNode};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ReportFilter {
-    pub group: Option<String>,
-    pub rule: Option<String>,
-    pub level: Option<String>,
-    pub location: Option<String>,
-    pub srcip: Option<String>,
-    pub user: Option<String>,
-    pub show_alerts: bool,
+/// `MAX_DAY_WAIT`
+pub const MAX_DAY_WAIT: i16 = 600;
+
+pub use siem_maild::report::*;
+
+/// `os_report_configfilter` with its errors logged through the reader context.
+fn configfilter(ctx: &mut ConfigContext, filter_by: &str, value: &str, f: &mut ReportFilter, arg_type: i32) -> i32 {
+    let mut errs = Vec::new();
+    let r = os_report_configfilter(filter_by, value, f, arg_type, &mut |e| errs.push(e));
+    for e in errs {
+        ctx.error(e);
+    }
+    r
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// `report_config`
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ReportConfig {
-    pub title: String,
-    pub report_type: String,
-    pub email_to: Vec<String>,
-    pub filter: ReportFilter,
+    pub title: Option<String>,
+    pub type_: Option<String>,
+    pub emailto: Vec<String>,
+    pub r_filter: ReportFilter,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `monitor_config`
+#[derive(Debug, Clone, Default)]
 pub struct MonitorConfig {
-    pub day_wait: u32,
-    pub compress: bool,
-    pub sign: bool,
-    pub monitor_agents: bool,
-    pub rotate_log: bool,
-    pub keep_log_days: u32,
+    pub day_wait: i16,
+    pub compress: u32,
+    pub sign: u32,
+    pub monitor_agents: u32,
+    pub rotate_log: u32,
+    pub delete_old_agents: u32,
+    pub keep_log_days: i32,
     pub size_rotate: u64,
-    pub daily_rotations: u32,
-    pub delete_old_agents: u32, // In minutes (0 = disabled)
-    pub agents_disconnection_time: u64, // In seconds
-    pub agents_disconnection_alert_time: u64, // In seconds
-    pub smtp_server: Option<String>,
-    pub email_from: Option<String>,
-    pub email_ids_name: Option<String>,
+    pub daily_rotations: i32,
+    pub smtpserver: Option<String>,
+    pub emailfrom: Option<String>,
+    pub emailidsname: Option<String>,
     pub reports: Vec<ReportConfig>,
+    pub global: GlobalConfig,
 }
 
-impl Default for MonitorConfig {
-    fn default() -> Self {
-        Self {
-            day_wait: 0,
-            compress: true,
-            sign: true,
-            monitor_agents: true,
-            rotate_log: true,
-            keep_log_days: DEFAULT_KEEP_LOG_DAYS,
-            size_rotate: DEFAULT_SIZE_ROTATE,
-            daily_rotations: DEFAULT_DAILY_ROTATIONS,
-            delete_old_agents: 0,
-            agents_disconnection_time: DEFAULT_DISCONNECTION_TIME,
-            agents_disconnection_alert_time: 0,
-            smtp_server: None,
-            email_from: None,
-            email_ids_name: None,
-            reports: Vec::new(),
+/// A message the C code would have logged while reading the configuration.
+pub type LogLine = (LogLevel, String);
+
+/// `_filter_arg`: every byte outside `[A-Za-z0-9._-]` becomes '-'.
+fn filter_arg(s: &str) -> String {
+    let b: Vec<u8> = s.bytes().map(|c| if c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.') { c } else { b'-' }).collect();
+    String::from_utf8(b).unwrap_or_default()
+}
+
+/// `Read_CReports`: appends one report to `reports`.
+pub fn read_creports(ctx: &mut ConfigContext, nodes: &[XmlNode], reports: &mut Vec<ReportConfig>) -> siem_config::Result<()> {
+    reports.push(ReportConfig::default());
+    let r = reports.last_mut().unwrap();
+    for n in nodes {
+        if n.element.is_empty() {
+            return Err(ConfigError::new(XML_ELEMNULL));
         }
-    }
-}
-
-/// Parses time interval string (`s`, `m`, `h`, `d`).
-pub fn parse_time_interval(source: &str) -> Option<u64> {
-    let trimmed = source.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let (num_str, multiplier) = if let Some(stripped) = trimmed.strip_suffix('d') {
-        (stripped, 86400u64)
-    } else if let Some(stripped) = trimmed.strip_suffix('h') {
-        (stripped, 3600u64)
-    } else if let Some(stripped) = trimmed.strip_suffix('m') {
-        (stripped, 60u64)
-    } else if let Some(stripped) = trimmed.strip_suffix('s') {
-        (stripped, 1u64)
-    } else {
-        (trimmed, 1u64)
-    };
-
-    num_str.parse::<u64>().ok().map(|val| val * multiplier)
-}
-
-fn eval_bool(s: &str) -> Option<bool> {
-    match s.trim().to_lowercase().as_str() {
-        "yes" | "true" | "1" => Some(true),
-        "no" | "false" | "0" => Some(false),
-        _ => None,
-    }
-}
-
-impl MonitorConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        Self::from_xml(&content)
-    }
-
-    pub fn from_xml(xml: &str) -> Result<Self, String> {
-        let mut config = MonitorConfig::default();
-        let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
-
-        let mut buf = Vec::new();
-        let mut in_global = false;
-        let mut in_reports = false;
-        let mut current_report: Option<ReportConfig> = None;
-        let mut current_tag = String::new();
-
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    match tag.as_str() {
-                        "global" => in_global = true,
-                        "reports" => {
-                            in_reports = true;
-                            current_report = Some(ReportConfig::default());
-                        }
-                        _ => {
-                            current_tag = tag;
-                        }
-                    }
+        let Some(content) = n.content.as_deref() else {
+            return Err(ConfigError::new(xml_valuenull(&n.element)));
+        };
+        match n.element.as_str() {
+            "title" => {
+                if r.title.is_none() {
+                    r.title = Some(content.to_string());
                 }
-                Ok(Event::Text(ref e)) => {
-                    let text = e.unescape().map_err(|err| err.to_string())?.to_string();
-                    if in_global {
-                        match current_tag.as_str() {
-                            "agents_disconnection_time" => {
-                                if let Some(t) = parse_time_interval(&text) {
-                                    config.agents_disconnection_time = t;
-                                }
-                            }
-                            "agents_disconnection_alert_time" => {
-                                if let Some(t) = parse_time_interval(&text) {
-                                    config.agents_disconnection_alert_time = t;
-                                }
-                            }
-                            "smtp_server" => config.smtp_server = Some(text),
-                            "email_from" => config.email_from = Some(text),
-                            "email_idsname" => config.email_ids_name = Some(text),
-                            "delete_old_agents" => {
-                                if let Ok(n) = text.parse::<u32>() {
-                                    config.delete_old_agents = n;
-                                }
-                            }
-                            _ => {}
-                        }
-                    } else if in_reports {
-                        if let Some(ref mut rep) = current_report {
-                            match current_tag.as_str() {
-                                "title" => rep.title = text,
-                                "type" => rep.report_type = text,
-                                "email_to" => rep.email_to.push(text),
-                                "group" => rep.filter.group = Some(text),
-                                "rule" => rep.filter.rule = Some(text),
-                                "level" => rep.filter.level = Some(text),
-                                "location" => rep.filter.location = Some(text),
-                                "srcip" => rep.filter.srcip = Some(text),
-                                "user" => rep.filter.user = Some(text),
-                                "showlogs" => {
-                                    if let Some(b) = eval_bool(&text) {
-                                        rep.filter.show_alerts = b;
-                                    }
-                                }
-                                _ => {}
-                            }
+            }
+            "type" => {
+                if content == "email" {
+                    if r.type_.is_none() {
+                        r.type_ = Some(content.to_string());
+                    }
+                } else {
+                    ctx.error(xml_valueerr(&n.element, content));
+                }
+            }
+            "frequency" => {}
+            "showlogs" => {
+                if content.eq_ignore_ascii_case("yes") {
+                    r.r_filter.show_alerts = 1;
+                }
+            }
+            "category" => {
+                let v = filter_arg(content);
+                if configfilter(ctx, "group", &v, &mut r.r_filter, REPORT_FILTER) != 0 {
+                    ctx.error(siem_config::messages::config_error("user argument"));
+                }
+            }
+            "group" | "rule" | "level" | "location" | "srcip" | "user" => {
+                let mut reportf = REPORT_FILTER;
+                let v = filter_arg(content);
+                if let (Some(a), Some(val)) = (n.attributes.first(), n.values.first()) {
+                    if a == "type" {
+                        if val == "relation" {
+                            reportf = REPORT_RELATED;
+                        } else {
+                            ctx.warn(format!("Invalid value for 'relation' attribute: '{val}'. (ignored)."));
+                            continue;
                         }
                     } else {
-                        // Monitord internal overrides
-                        match current_tag.as_str() {
-                            "compress" => {
-                                if let Some(b) = eval_bool(&text) {
-                                    config.compress = b;
-                                }
-                            }
-                            "sign" => {
-                                if let Some(b) = eval_bool(&text) {
-                                    config.sign = b;
-                                }
-                            }
-                            "rotate_log" => {
-                                if let Some(b) = eval_bool(&text) {
-                                    config.rotate_log = b;
-                                }
-                            }
-                            "keep_log_days" => {
-                                if let Ok(n) = text.parse::<u32>() {
-                                    config.keep_log_days = n;
-                                }
-                            }
-                            "daily_rotations" => {
-                                if let Ok(n) = text.parse::<u32>() {
-                                    config.daily_rotations = n;
-                                }
-                            }
-                            "size_rotate" => {
-                                if let Ok(n) = text.parse::<u64>() {
-                                    config.size_rotate = n * 1024 * 1024;
-                                }
-                            }
-                            _ => {}
-                        }
+                        ctx.warn(format!("Invalid attribute: {a} (ignored). "));
+                        continue;
                     }
                 }
-                Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    match tag.as_str() {
-                        "global" => in_global = false,
-                        "reports" => {
-                            in_reports = false;
-                            if let Some(rep) = current_report.take() {
-                                if !rep.title.is_empty() {
-                                    config.reports.push(rep);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                    current_tag.clear();
+                if configfilter(ctx, &n.element, &v, &mut r.r_filter, reportf) != 0 {
+                    ctx.error(format!("Invalid filter: {}:{} (ignored).", n.element, v));
                 }
-                Ok(Event::Eof) => break,
-                Err(e) => return Err(format!("XML parse error: {}", e)),
-                _ => {}
             }
-            buf.clear();
+            "email_to" => r.emailto.push(content.to_string()),
+            _ => return Err(ConfigError::new(xml_invelem(&n.element))),
         }
-
-        Ok(config)
     }
-
-    /// Produces JSON matching `getMonitorInternalOptions` in `monitord.c`.
-    pub fn get_monitor_internal_options(&self) -> serde_json::Value {
-        serde_json::json!({
-            "monitord": {
-                "day_wait": self.day_wait,
-                "compress": if self.compress { 1 } else { 0 },
-                "sign": if self.sign { 1 } else { 0 },
-                "monitor_agents": if self.monitor_agents { 1 } else { 0 },
-                "keep_log_days": self.keep_log_days,
-                "rotate_log": if self.rotate_log { 1 } else { 0 },
-                "size_rotate": self.size_rotate,
-                "daily_rotations": self.daily_rotations,
-                "delete_old_agents": self.delete_old_agents
-            }
-        })
-    }
-
-    /// Produces JSON matching `getMonitorGlobalOptions` in `monitord.c`.
-    pub fn get_monitor_global_options(&self) -> serde_json::Value {
-        serde_json::json!({
-            "monitord": {
-                "agents_disconnection_time": self.agents_disconnection_time,
-                "agents_disconnection_alert_time": self.agents_disconnection_alert_time
-            }
-        })
-    }
-
-    /// Produces JSON matching `getReportsOptions` in `monitord.c`.
-    pub fn get_reports_options(&self) -> serde_json::Value {
-        let mut list = Vec::new();
-        for rep in &self.reports {
-            let mut item = serde_json::Map::new();
-            item.insert("title".to_string(), serde_json::json!(rep.title));
-            if let Some(ref g) = rep.filter.group {
-                item.insert("group".to_string(), serde_json::json!(g));
-            }
-            if let Some(ref r) = rep.filter.rule {
-                item.insert("rule".to_string(), serde_json::json!(r));
-            }
-            if let Some(ref l) = rep.filter.level {
-                item.insert("level".to_string(), serde_json::json!(l));
-            }
-            if let Some(ref s) = rep.filter.srcip {
-                item.insert("srcip".to_string(), serde_json::json!(s));
-            }
-            if let Some(ref u) = rep.filter.user {
-                item.insert("user".to_string(), serde_json::json!(u));
-            }
-            item.insert(
-                "showlogs".to_string(),
-                serde_json::json!(if rep.filter.show_alerts { "yes" } else { "no" }),
-            );
-            if !rep.email_to.is_empty() {
-                item.insert("email_to".to_string(), serde_json::json!(rep.email_to));
-            }
-            list.push(serde_json::Value::Object(item));
+    r.r_filter.report_type = REPORT_TYPE_DAILY;
+    if r.emailto.is_empty() {
+        match &r.title {
+            Some(t) => ctx.error(format!("No \"email to\" configured for the report '{t}'. Ignoring it.")),
+            None => ctx.error("No \"email to\" and title configured for report. Ignoring it."),
         }
-
-        serde_json::json!({ "reports": list })
     }
+    if r.title.is_none() {
+        r.title = Some("OSSEC Report (unnamed)".to_string());
+    }
+    r.r_filter.report_name = r.title.clone();
+    Ok(())
+}
+
+struct Handler<'a> {
+    reports: &'a mut Vec<ReportConfig>,
+    global: &'a mut GlobalConfig,
+}
+
+impl ConfigHandler for Handler<'_> {
+    fn section(&mut self, ctx: &mut ConfigContext, xml: &OsXml, s: Section, _node: &XmlNode, ch: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        let ch = ch.unwrap_or(&[]);
+        match s {
+            Section::Reports => read_creports(ctx, ch, self.reports),
+            Section::Global => read_global(ctx, xml, ch, Some(self.global), None, false, false),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// `MonitordConfig`. The messages the readers logged are returned with the
+/// result (Err carries the critical message the daemon exits with).
+pub fn monitord_config(home: &Path, cfg: &str, no_agents: bool, day_wait: i16) -> (Result<MonitorConfig, String>, Vec<LogLine>) {
+    let mut log = Vec::new();
+    let r = load(home, cfg, no_agents, day_wait, &mut log);
+    (r, log)
+}
+
+fn load(home: &Path, cfg: &str, no_agents: bool, day_wait: i16, log: &mut Vec<LogLine>) -> Result<MonitorConfig, String> {
+    let opts = InternalOptions::from_home(home);
+    let get = |name: &str, min: i32, max: i32| opts.get_int("monitord", name, min, max).map_err(|e| e.0);
+    let mut m = MonitorConfig {
+        day_wait: if day_wait >= 0 { day_wait } else { get("day_wait", 0, MAX_DAY_WAIT as i32)? as i16 },
+        compress: get("compress", 0, 1)? as u32,
+        sign: get("sign", 0, 1)? as u32,
+        ..Default::default()
+    };
+    m.monitor_agents = if no_agents { 0 } else { get("monitor_agents", 0, 1)? as u32 };
+    m.rotate_log = get("rotate_log", 0, 1)? as u32;
+    m.keep_log_days = get("keep_log_days", 0, 500)?;
+    m.size_rotate = get("size_rotate", 0, 4096)? as u64 * 1024 * 1024;
+    m.daily_rotations = get("daily_rotations", 1, 256)?;
+    m.delete_old_agents = get("delete_old_agents", 0, 9600)? as u32;
+
+    // Default agent's global configuration
+    m.global.agents_disconnection_time = 900;
+    m.global.agents_disconnection_alert_time = 0;
+
+    let cfgfile = home.join(cfg);
+    let crit = siem_config::messages::config_error(cfg);
+    let mut global = std::mem::take(&mut m.global);
+    for pass in [modules::CREPORTS, modules::CGLOBAL] {
+        let mut ctx = ConfigContext::new(Platform::MANAGER);
+        let mut h = Handler { reports: &mut m.reports, global: &mut global };
+        let r = read_config(&mut ctx, pass, &cfgfile, None, &mut h);
+        log.append(&mut ctx.log);
+        if r.is_err() {
+            return Err(crit);
+        }
+    }
+    m.global = global;
+    Ok(m)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_intervals() {
-        assert_eq!(parse_time_interval("60s"), Some(60));
-        assert_eq!(parse_time_interval("15m"), Some(900));
-        assert_eq!(parse_time_interval("1h"), Some(3600));
-        assert_eq!(parse_time_interval("2d"), Some(172800));
+    fn nodes(xml: &str) -> Vec<XmlNode> {
+        let x = OsXml::read_string(xml, false).unwrap();
+        let root = x.get_elements_by_node(None).unwrap();
+        x.get_elements_by_node(Some(&root[0])).unwrap()
     }
 
     #[test]
-    fn test_xml_config_parse() {
-        let xml = r#"
-        <ossec_config>
-            <global>
-                <agents_disconnection_time>10m</agents_disconnection_time>
-                <agents_disconnection_alert_time>5m</agents_disconnection_alert_time>
-                <delete_old_agents>1440</delete_old_agents>
-                <smtp_server>smtp.corp.local</smtp_server>
-            </global>
-            <reports>
-                <title>Daily Web Attack Report</title>
-                <type>email</type>
-                <email_to>soc@corp.local</email_to>
-                <group>web,attack</group>
-                <showlogs>yes</showlogs>
-            </reports>
-        </ossec_config>
-        "#;
-
-        let cfg = MonitorConfig::from_xml(xml).unwrap();
-        assert_eq!(cfg.agents_disconnection_time, 600);
-        assert_eq!(cfg.agents_disconnection_alert_time, 300);
-        assert_eq!(cfg.delete_old_agents, 1440);
-        assert_eq!(cfg.smtp_server.as_deref().unwrap(), "smtp.corp.local");
-        assert_eq!(cfg.reports.len(), 1);
-        assert_eq!(cfg.reports[0].title, "Daily Web Attack Report");
-        assert!(cfg.reports[0].filter.show_alerts);
-
-        let int_opts = cfg.get_monitor_internal_options();
-        assert_eq!(int_opts["monitord"]["compress"], 1);
-
-        let glob_opts = cfg.get_monitor_global_options();
-        assert_eq!(glob_opts["monitord"]["agents_disconnection_time"], 600);
-
-        let rep_opts = cfg.get_reports_options();
-        assert_eq!(rep_opts["reports"][0]["title"], "Daily Web Attack Report");
+    fn reports_reader() {
+        let mut ctx = ConfigContext::new(Platform::MANAGER);
+        let mut v = Vec::new();
+        let n = nodes("<reports><category>sys log</category><user type=\"relation\">srcip</user><srcip>1.2.3.4</srcip><email_to>a@b</email_to><showlogs>YES</showlogs></reports>");
+        read_creports(&mut ctx, &n, &mut v).unwrap();
+        let r = &v[0];
+        assert_eq!(r.r_filter.group.as_deref(), Some("sys-log"));
+        assert_eq!(r.r_filter.related_user, REPORT_REL_SRCIP);
+        assert_eq!(r.r_filter.srcip.as_deref(), Some("1.2.3.4"));
+        assert_eq!(r.title.as_deref(), Some("OSSEC Report (unnamed)"));
+        assert_eq!((r.r_filter.show_alerts, r.r_filter.report_type), (1, REPORT_TYPE_DAILY));
+        // the relation value names the filter element, not the content
+        let n = nodes("<reports><title>t</title><level type=\"x\">5</level></reports>");
+        read_creports(&mut ctx, &n, &mut v).unwrap();
+        assert!(ctx.log.iter().any(|(_, m)| m == "Invalid value for 'relation' attribute: 'x'. (ignored)."));
+        assert!(ctx.log.iter().any(|(_, m)| m == "No \"email to\" configured for the report 't'. Ignoring it."));
+        assert!(read_creports(&mut ctx, &nodes("<reports><bad>1</bad></reports>"), &mut v).is_err());
     }
 }

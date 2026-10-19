@@ -2,7 +2,8 @@
 //!
 //! Runs the ported manager modules, in the C list order: `agent-upgrade` and
 //! `task-manager` (default modules, read again from `<agent-upgrade>` /
-//! `<task-manager>` in ossec.conf), `database` and `download` (internal
+//! `<task-manager>` in ossec.conf), `vulnerability_scanner`
+//! (`<vulnerability-detection>`), `database` and `download` (internal
 //! options).
 
 use std::path::PathBuf;
@@ -19,10 +20,23 @@ use siem_xml::{OsXml, XmlNode};
 struct Handler<'a> {
     up: &'a mut agent_upgrade::Config,
     tm: &'a mut task_manager::Config,
+    /// `<vulnerability-detection>` / `<vulnerability-detector>` (Read_Vulnerability_Detection)
+    vd: &'a mut Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl ConfigHandler for Handler<'_> {
     fn section(&mut self, ctx: &mut ConfigContext, _xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        if matches!(section, Section::VulnerabilityDetection | Section::VulnerabilityDetector) {
+            let vd = self.vd.get_or_insert_with(Default::default);
+            match children {
+                None => ctx.debug1("Empty configuration for module 'vulnerability_scanner'"),
+                Some(ch) => {
+                    let old = section == Section::VulnerabilityDetector;
+                    siem_vulnerability_scanner::config::subnode_read(ctx, _xml, ch, vd, old, std::path::Path::new("etc/ossec.conf"));
+                }
+            }
+            return Ok(());
+        }
         if !matches!(section, Section::AgentUpgrade | Section::TaskManager) {
             return Ok(());
         }
@@ -150,8 +164,9 @@ async fn main() {
     // wm_setup: wm_config. wm_initialize_default_modules: agent-upgrade, task-manager
     let mut up = agent_upgrade::Config::default();
     let mut tm = task_manager::Config::default();
+    let mut vd = None;
     let mut ctx = ConfigContext::new(Platform::MANAGER);
-    let r = read_config(&mut ctx, siem_config::modules::CWMODULE, "etc/ossec.conf", None, &mut Handler { up: &mut up, tm: &mut tm });
+    let r = read_config(&mut ctx, siem_config::modules::CWMODULE, "etc/ossec.conf", None, &mut Handler { up: &mut up, tm: &mut tm, vd: &mut vd });
     flush(&log, &mut ctx);
     if r.is_err() {
         std::process::exit(1);
@@ -191,6 +206,12 @@ async fn main() {
     let m = Arc::new(task_manager::TaskManager::new(tm, log.clone(), db.clone()));
     threads.push(tokio::spawn(m.main()));
     log.debug2(format!("Created new thread for the '{}' module.", task_manager::NAME));
+    // vulnerability_scanner: its start returns once the feed updater thread runs; it lives until exit.
+    let _vulnerability_scanner = vd.map(|vd| {
+        let lru = opts.get_int("vulnerability-detection", "translation_lru_size", 1, 100000).unwrap_or(2048) as usize;
+        log.debug2("Created new thread for the 'vulnerability_scanner' module.");
+        siem_vulnerability_scanner::scanner::VulnerabilityScanner::start(&base, log.clone(), serde_json::Value::Object(vd), lru)
+    });
     if let Some(database) = database {
         let d = Database::new(database, log.clone(), db.clone());
         threads.push(tokio::spawn(async move { d.main().await }));

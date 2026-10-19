@@ -2,22 +2,31 @@
 name = "siem-integratord"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh External Integrations Daemon (src/os_integrator)"
+description = "Port of wazuh-integratord (src/os_integrator) and the integration scripts (integrations/*.py)"
 
 [dependencies]
-siem-core = { path = "../siem-core" }
-siem-shared = { path = "../siem-shared" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+siem-daemon = { path = "../siem-daemon" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
+siem-maild = { path = "../siem-maild" }
 tokio = { version = "1.40", features = ["full"] }
-tracing = "0.1"
-quick-xml = { version = "0.36", features = ["serialize"] }
+chrono = "0.4"
+libc = "0.2"
+sha2 = "0.10"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "gzip", "deflate"] }
 
 [dev-dependencies]
 tempfile = "3"
 
 [[bin]]
 name = "wazuh-integratord"
-path = "src/bin/wazuh_integratord.rs"
+path = "src/bin/wazuh-integratord.rs"
+
+[[bin]]
+name = "integrations"
+path = "src/bin/integrations.rs"

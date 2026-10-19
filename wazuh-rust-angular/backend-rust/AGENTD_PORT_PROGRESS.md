@@ -322,3 +322,119 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 - route-null.exe: gateway trimmed. C 4.14.7 passes it with a trailing newline, and route.exe refuses it ("The parameter
   is incorrect", checked elevated), so C's route-null never adds the route on Windows. Verified live: API -> manager ->
   agent 024 -> route 203.0.113.254 via the default gateway added (removed by the agent after the timeout).
+
+## wazuh-monitord (manager) — 2026-10-16
+- New faithful port in `crates/siem-monitord` (the earlier quick_xml prototype, unused, moved to `legacy/`):
+  main loop + time control, agent disconnection (`global disconnect-agents`), rule-504 "Agent disconnected" alerts
+  after `agents_disconnection_alert_time`, `delete_old_agents` through the authd socket, `ossec.log`/`ossec.json`
+  rotation by size and by day into `logs/wazuh/<year>/<Mon>/` (gzip, `daily_rotations`, `keep_log_days`), signing
+  (`.sum` MD5/SHA1/SHA256 chained with the previous day) and compression of alerts/archives/firewall logs,
+  `getconfig` on `queue/sockets/monitor`, `<reports>` config reader.
+- Oracle: `crates/siem-monitord/tests/oracle` (real C sources + shared fake wazuh-db/queue/authd): 9 scenarios
+  identical. It caught one bug, fixed: `<x type="relation">y</x>` relates x to the *content* y.
+- Wired: `wazuh-monitord` is the 5th supervised daemon in siem-api; the manager home now has `logs/wazuh/`
+  (C monitord exits on its first rotation without it); start-all/stop-all build and stop it.
+- Live on the Windows manager: starts, "Manager started" -> rule 502 alert, `getconfig internal` answered, wazuh-db reached.
+- Not ported yet: the daily e-mail reports (`generate_reports`), which need maild + reportd (next backlog steps).
+  `delete_old_agents` (off by default) needs an authd socket; enrollment lives in siem-api, so with it enabled
+  monitord logs "could not connect to Authd" and removes nothing.
+
+## wazuh-maild + daily reports (manager) — 2026-10-16
+- New faithful port in `crates/siem-maild` (unused prototype moved to `legacy/`): `MailConf` + `<email_alerts>`
+  reader, alerts.json (`jqueue`) and alerts.log (`file-queue` + `read-alert`) sources, the e-mail text
+  (`OS_RecvMailQ[_JSON]`, `PrintTable`), granular rules (level, rule_id, group, event_location, sms,
+  do_not_delay, do_not_group), grouping and `email_maxperhour` (`OS_Run`; forked children are threads with a
+  copy of the state), SMTP dialog (`OS_Sendmail`, `OS_Sendsms`, `OS_SendCustomEmail`) or a sendmail program,
+  `getconfig` on `queue/sockets/mail`. `shared/report_op.c` is ported there too, and monitord's
+  `generate_reports` now sends the `<reports>` e-mails with it.
+- Oracle `crates/siem-maild/tests/oracle`: 12/12 scenarios byte-identical (incl. every SMTP byte); the real
+  daemons on one alert timeline send the same e-mails. Deliberate differences: C can e-mail an alert twice
+  (fork + stdio re-read, see the oracle README); the report's 5 s wait at end of file is skipped.
+- Extension (not in Wazuh, used only when `etc/smtp_auth.conf` exists): STARTTLS (587) or implicit TLS (465)
+  with AUTH PLAIN and certificate checks (webpki roots), CRLF + dot-stuffing of the message text. Checked live
+  against smtp.gmail.com on 587 and 465 (reaches AUTH; a fake password gets 535), and an expired certificate is
+  refused. `cargo run -p siem-maild --example smtp_check -- <host> <port> <starttls|tls|none> <user> <pass> <to>`.
+- Platform: the super-admin SMTP page was a placeholder (GET returned fixed values, POST discarded them). Now
+  `GET/POST /api/settings/smtp` store the settings in `ndr.settings` (`global_smtp_*`, which auth-service
+  already reads for password-reset mail, plus `global_alert_email_*`), and `POST /api/settings/smtp/test`
+  sends a test e-mail. Saving writes `etc/smtp_auth.conf` (0600, git-ignored) and the `<global>` e-mail fields
+  + `<email_alert_level>` of ossec.conf, then restarts analysisd/maild/monitord. siem-api applies the stored
+  settings at startup too. maild is the 6th supervised daemon; with notifications off it exits 0 and waits
+  for new settings. Alert e-mails cover every tenant's agents, so recipients are platform operators.
+
+## wazuh-integratord + integration scripts (manager) — 2026-10-17
+- `crates/siem-integratord` (unused prototype moved to `legacy/`, siem-api's fake `/api/v1/integrations/dispatch`
+  removed): `Read_Integrator`, `getconfig` on `queue/sockets/integrator`, `OS_IntegratorD` (alerts.json, level /
+  group / rule_id / event_location filters, json or legacy alert file with C's character rewriting and `max_log`,
+  options file, the `OS_StrBreak`-built argv incl. the literal `> /dev/null 2>&1` argument, exit status handling,
+  refusing writable scripts).
+- The five Python scripts as one Rust program `integrations` (installed as `integrations/<name>`): slack,
+  pagerduty, virustotal (results back to analysisd), shuffle, maltiverse. `pyjson.rs` reproduces Python's
+  `json.load`/`json.dumps`/`repr` so request bodies and logs are byte-identical; Python exceptions map to the same
+  exit codes. The manager no longer needs Python for integrations.
+- Oracle `crates/siem-integratord/tests/oracle`: scripts 24/24 identical vs the original .py; daemons 9/9 script
+  calls identical (debug and non-debug).
+- Wired: 7th supervised daemon; siem-api installs `integrations/*` (0550 on Unix); maild and integratord, which exit
+  0 when not configured, now start again when ossec.conf changes. start/stop-all updated.
+- Not done: a UI to configure `<integration>` blocks (today: ossec.conf), Python tracebacks are only the last line.
+
+## wazuh-csyslogd (manager) — 2026-10-17
+- `crates/siem-csyslogd` (unused prototype moved to `legacy/`, siem-api's unused `/api/v1/syslog-forwarder/format`
+  removed): `Read_CSyslog`, `getconfig` on `queue/sockets/csyslog`, `OS_CSyslogD` reading alerts.log (default,
+  CEF, Splunk) and alerts.json (json) with level / rule_id / group / location filters, the four message formats
+  with C's field helpers (including their skip test that only drops "(none)", and the log truncation that ends
+  in ".."), hostname resolution ("name/ip"), reconnects, `use_fqdn`.
+- Oracle `crates/siem-csyslogd/tests/oracle`: 14/14 datagrams identical on 6 servers.
+- Deliberate difference: C's `getconfig` walks past its single OSMatch for group/location (undefined behaviour);
+  the port lists that matcher's patterns. The legacy location filter matches the part after "->" as a C string
+  (C passes the full length and reads past it).
+- Wired: 8th supervised daemon (idle until ossec.conf changes when no `<syslog_output>`); start/stop-all.
+- Also: the socket-thread start now fails like C when `wazuh.thread_stack_size` is missing (maild, monitord,
+  integratord, csyslogd).
+
+## wazuh-execd on the manager (Linux) — 2026-10-17
+- The Unix `wazuh-execd` of `crates/siem-execd` (ported with the Windows agent, never diffed) now matches the real C
+  daemon: oracle `crates/siem-execd/tests/oracle-unix`, 6/6 script calls and the log identical (check_keys /
+  continue / abort, timeouts, repeated offenders, invalid messages, shutdown deletes). It now logs the
+  thread-stack line and fails like C when `wazuh.thread_stack_size` is missing.
+- Wired on Linux only: 9th supervised daemon, `active-response/bin/firewall-drop` installed in the manager home.
+  A Windows (dev) manager has no execd: its response programs would be Linux ones. `restart.sh` (used by C for
+  `restart-wazuh`) is not shipped.
+
+## Vulnerability scanner — part 1/3: version matchers — 2026-10-17
+- New crate `crates/siem-vulnerability-scanner` (the old `siem-vuln-detector` prototype is still what siem-api
+  uses until the port is complete). `version_matcher.rs`: CalVer, PEP 440, MajorMinor, SemVer, dpkg, rpm and the
+  strategies (Unspecified tries them in C++'s order; Windows/macOS/pkg/pacman/snap use dpkg; apk falls back to
+  Unspecified), with C++'s exceptions (stoul/stoi overflow, substr range, splitToNumbers) as errors.
+- Oracle `tests/oracle-version-matcher`: the real C++ headers vs the port on 1.2M fuzzed pairs, 0 differences.
+- Next: part 2, the CVE feed (CTI snapshot 346 MB + JSON-patch offsets, decoder chain, stores and global maps);
+  part 3, the scan orchestrator (inventory events, package/OS/hotfix scans, alerts and the vulnerability inventory).
+
+## Vulnerability scanner — part 2/3: CVE feed — 2026-10-17
+- `feed.rs` (databaseFeedManager): processMessage ("raw" snapshot JSON-lines, "offsets" change files),
+  EventDecoder (CVE / TID translation / FEED-GLOBAL / OSCPE-GLOBAL / CNA-MAPPING-GLOBAL; create, JSON-patch
+  update, delete), StoreModel and the updaters (hotfixes, remediations, descriptions, candidates + `cve_package_*`
+  reverse index, reject = remove), reloadGlobalMaps, the translation L2 cache and the readers part 3 needs.
+  C quirks kept: the CVSS v2 description branch is dead in the gcc build (uninitialized `metricCVSSVersion`:
+  v2-only CVEs get severity "" and score 0), LRUCache::forEach ignores the "stop" return (every matching
+  translation is returned), CVE "delete" fails with "CVE5 buffer is empty".
+- `fbs.rs`: flatbuffers `Parser::Parse` / `GenText` behaviour on JSON, driven by Wazuh's own `.fbs` files
+  (unknown field = error, null = absent, scalar strings, enums by name, `FloatToString(6)`), including the
+  `1: <column>: error:` positions on nlohmann's dump. `json_patch.rs`: nlohmann `patch_inplace` and its errors.
+- `kvdb.rs`: the RocksDBWrapper calls on the bundled SQLite (bytewise keys, prefix seek, last key, columns);
+  values are JSON, zlib-compressed above 64 bytes.
+  shortcut: not RocksDB (no libclang for rust-rocksdb here); the full feed is 7.1 GB, the C++ RocksDB was larger
+  on the same sample (80 MB vs 49 MB).
+- `content_updater.rs` (content_manager): ExecutionContext (`queue/vd_updater/rocksdb/updater_vulnerability_feed_manager_metadata`,
+  output folders, user agent `Wazuh VulnerabilityDetector/v4.14.7`), the chain (CtiOffset / CtiSnapshot / Offline
+  downloader, zip / gzip / raw, PubSubPublisher, UpdateCtiApiOffset / UpdateOffline, CleanUpContent), CTI retry
+  (500: 1 s then 2^n up to 30 s, 429: 90 s), snapshot fallback when offsets fail, and the Action scheduler thread.
+  Not ported: the on-demand endpoint, the xz decompressor, the `api` / `file` sources (unused by the scanner).
+- `scanner.rs` + `config.rs`: `<vulnerability-detection>` reader (cti-url from `<global>`), the updater policy
+  (interval min 1 h), module start/stop; wired into `wazuh-modulesd`.
+- Oracle `tests/oracle-feed`: Wazuh's EventDecoder/StoreModel on RocksDB vs the port, real snapshot sample +
+  a real 1000-change page + edge cases: 16 results, 26 log lines and 275,498 stored values identical.
+  The updater ran against a fake CTI (snapshot, 2 offset pages, a 500 retry, restart, offline zip + unchanged hash).
+- Real CTI run 2026-10-17: snapshot 4,173,740 + 42,005 changes to offset 4,215,745 in 43 min (first try: the
+  snapshot transfer stalled and dropped; retried at the next run). Feed DB 7.1 GB, temp files removed after.
+- Not enabled in `data/manager/etc/ossec.conf` yet (needs ~7 GB plus ~6 GB temporary during the first load).

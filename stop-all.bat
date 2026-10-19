@@ -22,7 +22,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":4200" ^| findstr "LISTENING
 echo [*] Terminating any remaining siem-api processes...
 taskkill /F /IM siem-api.exe >nul 2>&1
 taskkill /F /IM auth-service.exe >nul 2>&1
-for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd) do taskkill /F /IM %%p.exe >nul 2>&1
+for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd wazuh-monitord wazuh-maild wazuh-integratord wazuh-csyslogd) do taskkill /F /IM %%p.exe >nul 2>&1
 
 echo.
 echo [OK] All services on ports 3001, 8088 and 4200 have been stopped.

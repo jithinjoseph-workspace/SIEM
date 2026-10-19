@@ -1,368 +1,195 @@
-//! Wazuh Syslog Forwarder Configuration (`src/os_csyslogd/config.c`, `src/config/csyslogd-config.c`)
-//!
-//! Handles XML parsing of `<syslog_output>` blocks, defaults, and JSON serialization
-//! matching `getCsyslogConfig()`.
+//! `config/csyslogd-config.c` (`Read_CSyslog`), `os_csyslogd/config.c`
+//! (`getCsyslogConfig`) and `csyscom.c`.
 
-use serde::{Deserialize, Serialize};
-use siem_shared::regex::OSMatch;
+use std::net::UdpSocket;
 use std::path::Path;
-use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Failed to read configuration file: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("XML parsing error: {0}")]
-    Xml(String),
-    #[error("Invalid configuration: {0}")]
-    Validation(String),
-}
+use siem_cjson::Json;
+use siem_config::messages::{xml_invelem, xml_valueerr, xml_valuenull, XML_ELEMNULL};
+use siem_config::{modules, read_config, ConfigContext, ConfigError, ConfigHandler, LogLevel, Platform, Section};
+use siem_regex::OsMatch;
+use siem_xml::{OsXml, XmlNode};
 
-/// Syslog output format matching `DEFAULT_CSYSLOG`, `CEF_CSYSLOG`, `JSON_CSYSLOG`, `SPLUNK_CSYSLOG`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SyslogFormat {
-    Default = 0,
-    Cef = 1,
-    Json = 2,
-    Splunk = 3,
-}
+pub const DEFAULT_CSYSLOG: u32 = 0;
+pub const CEF_CSYSLOG: u32 = 1;
+pub const JSON_CSYSLOG: u32 = 2;
+pub const SPLUNK_CSYSLOG: u32 = 3;
 
-impl Default for SyslogFormat {
-    fn default() -> Self {
-        SyslogFormat::Default
-    }
-}
-
-impl SyslogFormat {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SyslogFormat::Default => "default",
-            SyslogFormat::Cef => "cef",
-            SyslogFormat::Json => "json",
-            SyslogFormat::Splunk => "splunk",
-        }
-    }
-
-    pub fn from_str_name(s: &str) -> Option<Self> {
-        match s.to_ascii_lowercase().as_str() {
-            "default" => Some(SyslogFormat::Default),
-            "cef" => Some(SyslogFormat::Cef),
-            "json" => Some(SyslogFormat::Json),
-            "splunk" => Some(SyslogFormat::Splunk),
-            _ => None,
-        }
-    }
-}
-
-/// A single `<syslog_output>` destination configuration.
-#[derive(Debug, Clone)]
-pub struct SyslogConfig {
-    pub server: String,
-    pub port: u16,
+/// `SyslogConfig`
+#[derive(Debug)]
+pub struct Syslog {
+    pub port: u32,
+    pub format: u32,
     pub level: u32,
-    pub rule_ids: Vec<u32>,
-    pub group: Option<OSMatch>,
-    pub location: Option<OSMatch>,
-    pub use_fqdn: bool,
+    /// Ends at its first 0, like the C array.
+    pub rule_id: Option<Vec<u32>>,
     pub priority: u32,
-    pub format: SyslogFormat,
+    pub use_fqdn: bool,
+    pub socket: Option<UdpSocket>,
+    pub server: String,
+    pub group: Option<OsMatch>,
+    pub location: Option<OsMatch>,
 }
 
-impl Default for SyslogConfig {
+impl Default for Syslog {
     fn default() -> Self {
-        Self {
-            server: String::new(),
-            port: 514,
-            level: 0,
-            rule_ids: Vec::new(),
-            group: None,
-            location: None,
-            use_fqdn: false,
-            // local0 facility (16) * 8 + severity 4 (warning) = 132 (matching C default)
-            priority: (16 * 8) + 4,
-            format: SyslogFormat::Default,
-        }
+        // local 0 facility (16) + severity 4 (warning)
+        Syslog { port: 514, format: DEFAULT_CSYSLOG, level: 0, rule_id: None, priority: 16 * 8 + 4, use_fqdn: false, socket: None, server: String::new(), group: None, location: None }
     }
 }
 
-impl SyslogConfig {
-    /// Produces JSON representation matching `getCsyslogConfig` in `config.c`.
-    pub fn to_cjson_value(&self) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-
-        if !self.server.is_empty() {
-            map.insert("server".to_string(), serde_json::Value::String(self.server.clone()));
-        }
-        map.insert("port".to_string(), serde_json::json!(self.port));
-        map.insert("level".to_string(), serde_json::json!(self.level));
-
-        if let Some(ref grp) = self.group {
-            let patterns: Vec<serde_json::Value> = grp
-                .raw_pattern()
-                .split('|')
-                .map(|p| serde_json::Value::String(p.trim().to_string()))
-                .collect();
-            map.insert("group".to_string(), serde_json::Value::Array(patterns));
-        }
-
-        if !self.rule_ids.is_empty() {
-            let ids: Vec<serde_json::Value> = self
-                .rule_ids
-                .iter()
-                .map(|id| serde_json::json!(*id))
-                .collect();
-            map.insert("rule_id".to_string(), serde_json::Value::Array(ids));
-        }
-
-        if let Some(ref loc) = self.location {
-            let patterns: Vec<serde_json::Value> = loc
-                .raw_pattern()
-                .split('|')
-                .map(|p| serde_json::Value::String(p.trim().to_string()))
-                .collect();
-            map.insert("location".to_string(), serde_json::Value::Array(patterns));
-        }
-
-        map.insert(
-            "use_fqdn".to_string(),
-            serde_json::Value::String(if self.use_fqdn { "yes".to_string() } else { "no".to_string() }),
-        );
-
-        map.insert(
-            "format".to_string(),
-            serde_json::Value::String(self.format.as_str().to_string()),
-        );
-
-        serde_json::Value::Object(map)
+fn num(n: &XmlNode, c: &str) -> siem_config::Result<u32> {
+    if !siem_regex::str_is_num(c) {
+        return Err(ConfigError::new(xml_valueerr(&n.element, c)));
     }
+    Ok(siem_maild::alert::atoi(c.as_bytes()) as u32)
 }
 
-/// Root container for all syslog outputs
-#[derive(Debug, Clone, Default)]
-pub struct SyslogConfigHolder {
-    pub configs: Vec<SyslogConfig>,
+fn compile(c: &str) -> siem_config::Result<OsMatch> {
+    OsMatch::compile(c, 0).map_err(|e| ConfigError::new(format!("(1450): Syntax error on regex: '{c}': {}.", e as i32)))
 }
 
-impl SyslogConfigHolder {
-    /// Produces root JSON matching `{"syslog_output": [...]}`.
-    pub fn to_json_config(&self) -> serde_json::Value {
-        let array: Vec<serde_json::Value> = self.configs.iter().map(|c| c.to_cjson_value()).collect();
-        serde_json::json!({
-            "syslog_output": array
-        })
-    }
-
-    /// Reads configuration from an XML string or file path.
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let content = std::fs::read_to_string(path)?;
-        Self::from_xml_str(&content)
-    }
-
-    /// Parses `<syslog_output>` entries from XML string.
-    pub fn from_xml_str(xml_str: &str) -> Result<Self, ConfigError> {
-        use quick_xml::events::Event;
-        use quick_xml::reader::Reader;
-
-        let mut reader = Reader::from_str(xml_str);
-        reader.config_mut().trim_text(true);
-
-        let mut configs = Vec::new();
-        let mut in_syslog_output = false;
-        let mut current_tag = String::new();
-        let mut current_cfg = SyslogConfig::default();
-
-        let mut buf = Vec::new();
-
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if name.eq_ignore_ascii_case("syslog_output") {
-                        in_syslog_output = true;
-                        current_cfg = SyslogConfig::default();
-                    } else if in_syslog_output {
-                        current_tag = name;
-                    }
-                }
-                Ok(Event::Text(ref e)) => {
-                    if in_syslog_output && !current_tag.is_empty() {
-                        let text = e.unescape().map_err(|err| ConfigError::Xml(err.to_string()))?.to_string();
-                        let tag_lower = current_tag.to_ascii_lowercase();
-
-                        match tag_lower.as_str() {
-                            "server" => {
-                                current_cfg.server = text.trim().to_string();
-                            }
-                            "port" => {
-                                current_cfg.port = text.trim().parse::<u16>().map_err(|_| {
-                                    ConfigError::Validation(format!("Invalid port value: {}", text))
-                                })?;
-                            }
-                            "level" => {
-                                current_cfg.level = text.trim().parse::<u32>().map_err(|_| {
-                                    ConfigError::Validation(format!("Invalid level value: {}", text))
-                                })?;
-                            }
-                            "rule_id" => {
-                                // Can be comma or space separated
-                                for part in text.split(&[',', ' '][..]) {
-                                    let trimmed = part.trim();
-                                    if !trimmed.is_empty() {
-                                        let id = trimmed.parse::<u32>().map_err(|_| {
-                                            ConfigError::Validation(format!("Invalid rule_id value: {}", trimmed))
-                                        })?;
-                                        current_cfg.rule_ids.push(id);
-                                    }
-                                }
-                            }
-                            "group" => {
-                                let pattern = text.trim();
-                                if !pattern.is_empty() {
-                                    let osm = OSMatch::compile(pattern, 0).map_err(|err| {
-                                        ConfigError::Validation(format!("Invalid group pattern '{}': {:?}", pattern, err))
-                                    })?;
-                                    current_cfg.group = Some(osm);
-                                }
-                            }
-                            "location" => {
-                                let pattern = text.trim();
-                                if !pattern.is_empty() {
-                                    let osm = OSMatch::compile(pattern, 0).map_err(|err| {
-                                        ConfigError::Validation(format!("Invalid location pattern '{}': {:?}", pattern, err))
-                                    })?;
-                                    current_cfg.location = Some(osm);
-                                }
-                            }
-                            "use_fqdn" => {
-                                let val = text.trim().to_ascii_lowercase();
-                                if val == "yes" {
-                                    current_cfg.use_fqdn = true;
-                                } else if val == "no" {
-                                    current_cfg.use_fqdn = false;
-                                } else {
-                                    return Err(ConfigError::Validation(format!("Invalid use_fqdn value: {}", text)));
-                                }
-                            }
-                            "format" => {
-                                current_cfg.format = SyslogFormat::from_str_name(text.trim()).ok_or_else(|| {
-                                    ConfigError::Validation(format!("Invalid format value: {}", text))
-                                })?;
-                            }
-                            _ => {}
+/// `Read_CSyslog`: appends one `<syslog_output>`.
+pub fn read_csyslog(ctx: &mut ConfigContext, nodes: &[XmlNode], list: &mut Vec<Syslog>) -> siem_config::Result<()> {
+    let mut c = Syslog::default();
+    for n in nodes {
+        if n.element.is_empty() {
+            return Err(ConfigError::new(XML_ELEMNULL));
+        }
+        let Some(v) = n.content.as_deref() else { return Err(ConfigError::new(xml_valuenull(&n.element))) };
+        match n.element.as_str() {
+            "level" => c.level = num(n, v)?,
+            "port" => c.port = num(n, v)?,
+            "server" => c.server = v.to_string(),
+            "rule_id" => {
+                let b = v.as_bytes();
+                let mut i = 0;
+                while i < b.len() {
+                    if b[i] == b' ' || b[i] == b',' {
+                        i += 1;
+                    } else if b[i].is_ascii_digit() {
+                        let r_id = siem_maild::alert::atoi(&b[i..]) as u32;
+                        ctx.debug1(format!("Adding '{}' to syslog alerting", r_id as i32));
+                        let ids = c.rule_id.get_or_insert_with(Vec::new);
+                        ids.truncate(ids.iter().position(|&x| x == 0).unwrap_or(ids.len()));
+                        ids.push(r_id);
+                        match b[i..].iter().position(|&x| x == b',') {
+                            Some(p) => i += p + 1,
+                            None => break,
                         }
+                    } else {
+                        break;
                     }
                 }
-                Ok(Event::End(ref e)) => {
-                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if name.eq_ignore_ascii_case("syslog_output") {
-                        if current_cfg.server.is_empty() {
-                            return Err(ConfigError::Validation(
-                                "syslog_output block must have a 'server' specified".to_string(),
-                            ));
-                        }
-                        configs.push(current_cfg.clone());
-                        in_syslog_output = false;
-                    } else if in_syslog_output {
-                        current_tag.clear();
-                    }
-                }
-                Ok(Event::Eof) => break,
-                Err(e) => return Err(ConfigError::Xml(format!("XML parse error at position {}: {:?}", reader.buffer_position(), e))),
-                _ => {}
             }
-            buf.clear();
+            "format" => {
+                c.format = match v {
+                    "default" => c.format,
+                    "cef" => CEF_CSYSLOG,
+                    "json" => JSON_CSYSLOG,
+                    "splunk" => SPLUNK_CSYSLOG,
+                    _ => return Err(ConfigError::new(xml_valueerr(&n.element, v))),
+                }
+            }
+            "location" => c.location = Some(compile(v)?),
+            "use_fqdn" => {
+                c.use_fqdn = match v {
+                    "yes" => true,
+                    "no" => false,
+                    _ => return Err(ConfigError::new(xml_valueerr(&n.element, v))),
+                }
+            }
+            "group" => c.group = Some(compile(v)?),
+            _ => return Err(ConfigError::new(xml_invelem(&n.element))),
         }
+    }
+    if c.server.is_empty() {
+        return Err(ConfigError::new("(5301): Invalid client-syslog configuration."));
+    }
+    list.push(c);
+    Ok(())
+}
 
-        Ok(SyslogConfigHolder { configs })
+struct Handler<'a>(&'a mut Vec<Syslog>);
+
+impl ConfigHandler for Handler<'_> {
+    fn section(&mut self, ctx: &mut ConfigContext, _xml: &OsXml, s: Section, _node: &XmlNode, ch: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        match s {
+            Section::SyslogOutput => read_csyslog(ctx, ch.unwrap_or(&[]), self.0),
+            _ => Ok(()),
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// `OS_ReadSyslogConf`: `None` on a configuration error.
+pub fn read_syslog_conf(home: &Path, cfg: &str, log: &mut Vec<(LogLevel, String)>) -> Option<Vec<Syslog>> {
+    let mut list = Vec::new();
+    let mut ctx = ConfigContext::new(Platform::MANAGER);
+    let r = read_config(&mut ctx, modules::CSYSLOGD, home.join(cfg), None, &mut Handler(&mut list));
+    log.append(&mut ctx.log);
+    r.ok().map(|_| list)
+}
 
-    #[test]
-    fn test_parse_single_syslog_output() {
-        let xml = r#"
-        <ossec_config>
-            <syslog_output>
-                <server>192.168.1.100</server>
-                <port>514</port>
-                <format>cef</format>
-                <level>7</level>
-                <rule_id>100, 200, 300</rule_id>
-                <group>syscheck|authentication</group>
-                <location>/var/log/*</location>
-                <use_fqdn>yes</use_fqdn>
-            </syslog_output>
-        </ossec_config>
-        "#;
-
-        let holder = SyslogConfigHolder::from_xml_str(xml).unwrap();
-        assert_eq!(holder.configs.len(), 1);
-
-        let cfg = &holder.configs[0];
-        assert_eq!(cfg.server, "192.168.1.100");
-        assert_eq!(cfg.port, 514);
-        assert_eq!(cfg.format, SyslogFormat::Cef);
-        assert_eq!(cfg.level, 7);
-        assert_eq!(cfg.rule_ids, vec![100, 200, 300]);
-        assert!(cfg.use_fqdn);
-        assert!(cfg.group.is_some());
-        assert!(cfg.location.is_some());
-
-        // Verify JSON representation
-        let json = holder.to_json_config();
-        let arr = json["syslog_output"].as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0]["server"], "192.168.1.100");
-        assert_eq!(arr[0]["port"], 514);
-        assert_eq!(arr[0]["format"], "cef");
-        assert_eq!(arr[0]["use_fqdn"], "yes");
+/// `getCsyslogConfig`. C walks past its single `OSMatch` for group/location
+/// (undefined behaviour); here the patterns of that one matcher are listed.
+pub fn csyslog_config_json(list: &[Syslog]) -> Json {
+    let mut arr = Json::array();
+    for c in list {
+        let mut o = Json::object();
+        o.add("server", Json::string(&c.server));
+        o.add("port", Json::number(c.port as f64));
+        o.add("level", Json::number(c.level as f64));
+        let pats = |m: &OsMatch| {
+            let mut a = Json::array();
+            for p in m.patterns() {
+                a.push(Json::string(p));
+            }
+            a
+        };
+        if let Some(g) = &c.group {
+            o.add("group", pats(g));
+        }
+        if let Some(ids) = &c.rule_id {
+            let mut a = Json::array();
+            for id in ids.iter().take_while(|&&x| x != 0) {
+                a.push(Json::number(*id as f64));
+            }
+            o.add("rule_id", a);
+        }
+        if let Some(l) = &c.location {
+            o.add("location", pats(l));
+        }
+        o.add("use_fqdn", Json::string(if c.use_fqdn { "yes" } else { "no" }));
+        o.add("format", Json::string(["default", "cef", "json", "splunk"][c.format as usize]));
+        arr.push(o);
     }
+    let mut root = Json::object();
+    root.add("syslog_output", arr);
+    root
+}
 
-    #[test]
-    fn test_parse_multiple_syslog_outputs() {
-        let xml = r#"
-        <ossec_config>
-            <syslog_output>
-                <server>syslog.corp.net</server>
-                <port>1514</port>
-                <format>json</format>
-            </syslog_output>
-            <syslog_output>
-                <server>splunk.corp.net</server>
-                <format>splunk</format>
-                <level>10</level>
-            </syslog_output>
-        </ossec_config>
-        "#;
-
-        let holder = SyslogConfigHolder::from_xml_str(xml).unwrap();
-        assert_eq!(holder.configs.len(), 2);
-
-        assert_eq!(holder.configs[0].server, "syslog.corp.net");
-        assert_eq!(holder.configs[0].port, 1514);
-        assert_eq!(holder.configs[0].format, SyslogFormat::Json);
-
-        assert_eq!(holder.configs[1].server, "splunk.corp.net");
-        assert_eq!(holder.configs[1].port, 514); // Default port
-        assert_eq!(holder.configs[1].format, SyslogFormat::Splunk);
-        assert_eq!(holder.configs[1].level, 10);
+/// `csyscom_dispatch`
+pub fn csyscom_dispatch(list: &[Syslog], command: &[u8]) -> String {
+    let command = &command[..command.iter().position(|&c| c == 0).unwrap_or(command.len())];
+    let command = String::from_utf8_lossy(command);
+    let (cmd, args) = match command.split_once(' ') {
+        Some((c, a)) => (c, Some(a)),
+        None => (command.as_ref(), None),
+    };
+    let log = siem_maild::log();
+    if cmd != "getconfig" {
+        log.debug1(format!("CSYSCOM Unrecognized command '{cmd}'."));
+        return "err Unrecognized command".into();
     }
-
-    #[test]
-    fn test_missing_server_fails() {
-        let xml = r#"
-        <ossec_config>
-            <syslog_output>
-                <port>514</port>
-            </syslog_output>
-        </ossec_config>
-        "#;
-
-        let res = SyslogConfigHolder::from_xml_str(xml);
-        assert!(res.is_err());
+    match args {
+        None => {
+            log.debug1("CSYSCOM getconfig needs arguments.");
+            "err CSYSCOM getconfig needs arguments".into()
+        }
+        Some("csyslog") => format!("ok {}", csyslog_config_json(list).to_string_unformatted()),
+        Some(s) => {
+            log.debug1(format!("At CSYSCOM getconfig: Could not get '{s}' section"));
+            "err Could not get requested section".into()
+        }
     }
 }

@@ -16,6 +16,7 @@ siem-xml = { path = "../siem-xml" }
 siem-remoted = { path = "../siem-remoted" }
 siem-cjson = { path = "../siem-cjson" }
 siem-execd = { path = "../siem-execd" }
+siem-vulnerability-scanner = { path = "../siem-vulnerability-scanner" }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1.40", features = ["full"] }

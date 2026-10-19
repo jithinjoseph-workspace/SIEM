@@ -2,22 +2,25 @@
 name = "siem-maild"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Email Notification and Alerting Daemon (src/os_maild)"
+description = "Port of wazuh-maild (src/os_maild) and the daily reports (shared/report_op.c), plus optional SMTP TLS/AUTH"
 
 [dependencies]
-siem-core = { path = "../siem-core" }
-siem-shared = { path = "../siem-shared" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+siem-daemon = { path = "../siem-daemon" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
 tokio = { version = "1.40", features = ["full"] }
-tracing = "0.1"
-quick-xml = { version = "0.36", features = ["serialize"] }
+chrono = "0.4"
+base64 = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1.0"
 
 [dev-dependencies]
 tempfile = "3"
 
 [[bin]]
 name = "wazuh-maild"
-path = "src/bin/wazuh_maild.rs"
+path = "src/bin/wazuh-maild.rs"

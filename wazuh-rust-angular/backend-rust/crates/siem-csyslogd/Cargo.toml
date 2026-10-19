@@ -2,22 +2,20 @@
 name = "siem-csyslogd"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Client Syslog Forwarder Daemon (src/os_csyslogd)"
+description = "Port of wazuh-csyslogd (src/os_csyslogd): alert forwarding to remote syslog servers"
 
 [dependencies]
-siem-core = { path = "../siem-core" }
-siem-shared = { path = "../siem-shared" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+siem-daemon = { path = "../siem-daemon" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
+siem-maild = { path = "../siem-maild" }
 tokio = { version = "1.40", features = ["full"] }
-tracing = "0.1"
-quick-xml = { version = "0.36", features = ["serialize"] }
-
-[dev-dependencies]
-tempfile = "3"
+chrono = "0.4"
 
 [[bin]]
 name = "wazuh-csyslogd"
-path = "src/bin/wazuh_csyslogd.rs"
+path = "src/bin/wazuh-csyslogd.rs"

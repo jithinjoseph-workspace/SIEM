@@ -789,11 +789,19 @@ fn scoped_events(state: &AppState, ctx: &AuthCtx) -> Vec<RawEvent> {
     state.events.read().unwrap().iter().filter(|e| tenancy::event_tenant(e, &map) == scope).cloned().collect()
 }
 
-/// Agents of the caller's tenant scope.
+/// Agents of the caller's tenant scope (active only; excludes deactivated and deleted agents).
 fn scoped_agents(state: &AppState, ctx: &AuthCtx) -> Vec<Agent> {
     let scope = ctx.scope();
     let map = state.agent_tenants.read().unwrap().clone();
-    state.agents.read().unwrap().values().filter(|a| tenancy::tenant_of(&map, &a.id) == scope).cloned().collect()
+    let deleted = state.deleted_agents.read().unwrap();
+    state
+        .agents
+        .read()
+        .unwrap()
+        .values()
+        .filter(|a| !deleted.contains(&a.id) && !is_deactivated(state, &a.id) && tenancy::tenant_of(&map, &a.id) == scope)
+        .cloned()
+        .collect()
 }
 
 async fn get_stats(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<SiemStats> {
@@ -877,7 +885,16 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         if let Some(ch_agents) = state.db.fetch_agents(&scope).await {
             // One lock at a time (never agents + agent_tenants together): the
             // scoped readers take them in the other order.
-            let active_ids: std::collections::HashSet<String> = ch_agents.iter().map(|r| r.id.clone()).collect();
+            let deleted = state.deleted_agents.read().unwrap();
+            let enrolled = state.enrolled.read().unwrap();
+            let active_ids: std::collections::HashSet<String> = ch_agents
+                .iter()
+                .map(|r| r.id.clone())
+                .filter(|id| !deleted.contains(id) && !enrolled.get(id).map(|e| e.disabled).unwrap_or(false))
+                .collect();
+            drop(deleted);
+            drop(enrolled);
+
             let tenants_snapshot = {
                 let mut tenants_map = state.agent_tenants.write().unwrap();
                 for id in &active_ids {
@@ -888,6 +905,9 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
             let mut guard = state.agents.write().unwrap();
             let now = Utc::now();
             for r in ch_agents {
+                if !active_ids.contains(&r.id) {
+                    continue;
+                }
                 let last_ka = chrono::DateTime::from_timestamp_millis(r.last_keepalive)
                     .unwrap_or_else(chrono::Utc::now);
                 let status = if (now - last_ka).num_seconds() > 60 {
@@ -922,14 +942,19 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
                     });
             }
 
-            // Sync with ClickHouse: remove in-memory agents for this tenant that are no longer in ClickHouse
+            // Sync with ClickHouse: remove in-memory agents for this tenant that are no longer in ClickHouse, or are deactivated/deleted
+            let deleted_set = state.deleted_agents.read().unwrap();
             guard.retain(|id, _| {
+                if deleted_set.contains(id) || is_deactivated(&state, id) {
+                    return false;
+                }
                 if tenancy::tenant_of(&tenants_snapshot, id) == scope {
                     active_ids.contains(id)
                 } else {
                     true
                 }
             });
+            drop(deleted_set);
             drop(guard);
             // Registered agents (deactivated ones included) keep their tenant binding.
             let registered: std::collections::HashSet<String> = state.enrolled.read().unwrap().keys().cloned().collect();
@@ -975,6 +1000,10 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         wazuh_manager::save_keys(state);
         let wid = id.to_string();
         tokio::spawn(async move { wazuh_manager::remove_agent(&wid).await });
+        let db = state.db.clone();
+        let t_clone = tenant.clone();
+        let id_clone = id.to_string();
+        tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
         persist_registry(state, id, &tenant, e.as_ref(), true);
     }
     removed
@@ -5163,6 +5192,14 @@ async fn get_agent_upgrade_handler(State(state): State<AppState>, Extension(ctx)
 /// the tenant it already has (new agents go to `default`). An agent id that
 /// belongs to another tenant is refused.
 fn resolve_agent_tenant(state: &AppState, headers: &HeaderMap, agent_id: &str) -> Result<String, StatusCode> {
+    if !agent_id.is_empty() {
+        if state.deleted_agents.read().unwrap().contains(agent_id) {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        if is_deactivated(state, agent_id) {
+            return Err(StatusCode::GONE);
+        }
+    }
     let keyed = match headers.get("x-tenant-key").and_then(|v| v.to_str().ok()).map(str::trim).filter(|s| !s.is_empty()) {
         Some(k) => Some(state.agent_keys.tenant_for(k).ok_or(StatusCode::UNAUTHORIZED)?),
         None => None,

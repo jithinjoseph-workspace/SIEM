@@ -126,9 +126,10 @@ call :wait_port 4200 "Angular UI" 60
 if errorlevel 1 goto :startup_error
 
 echo.
-echo [OK] SIEM is ready: http://localhost:4200
+echo [OK] SIEM is ready: http://192.168.220.37:4200 (LAN)
+echo                     http://localhost:4200 (Local)
 echo      Logs: %LOG_DIR%
-start http://localhost:4200
+start http://192.168.220.37:4200
 exit /b 0
 
 :port_open

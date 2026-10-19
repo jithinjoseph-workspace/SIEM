@@ -1,5 +1,531 @@
 [
   {
+    "id": "c143f375-7c6d-4081-bb4d-a94b42e3d3a7",
+    "fingerprint": 11974625424259688948,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL> a3=<VAL>,active\"",
+    "name": "kv_auto_parser_a62e6a610b5c29f4",
+    "description": "Auto-generated Key-Value parser with 7 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\") a3=(?P<a3>[^\\s,]+|\"[^\"]*\"),active\"$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792403226.318:6022):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "4",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"systemctl\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"list-unit-files\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"--type=service\"",
+        "ecs_target": "data.a2"
+      },
+      {
+        "name": "a3",
+        "field_type": "string",
+        "example": "\"--state=enabled",
+        "ecs_target": "data.a3"
+      }
+    ],
+    "normalization": {
+      "msg": "data.msg",
+      "type": "data.type",
+      "a2": "data.a2",
+      "a3": "data.a3",
+      "a1": "data.a1",
+      "argc": "data.argc",
+      "a0": "data.a0"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792403226.318:6022): argc=4 a0=\"systemctl\" a1=\"list-unit-files\" a2=\"--type=service\" a3=\"--state=enabled,active\"",
+      "type=EXECVE msg=audit(1792403258.890:6051): argc=4 a0=\"systemctl\" a1=\"list-unit-files\" a2=\"--type=service\" a3=\"--state=enabled,active\"",
+      "type=EXECVE msg=audit(1792403290.764:6089): argc=4 a0=\"systemctl\" a1=\"list-unit-files\" a2=\"--type=service\" a3=\"--state=enabled,active\"",
+      "type=EXECVE msg=audit(1792403399.790:6196): argc=4 a0=\"systemctl\" a1=\"list-unit-files\" a2=\"--type=service\" a3=\"--state=enabled,active\"",
+      "type=EXECVE msg=audit(1792403432.174:6228): argc=4 a0=\"systemctl\" a1=\"list-unit-files\" a2=\"--type=service\" a3=\"--state=enabled,active\""
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T09:50:44.704859300Z",
+    "last_used": null
+  },
+  {
+    "id": "cc7ca668-326e-4b4a-a531-da7fe6a23c37",
+    "fingerprint": 7414448649662219181,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL> a1=<VAL> a2=<VAL>,user,comm\"",
+    "name": "kv_auto_parser_66e569c3707dc3ad",
+    "description": "Auto-generated Key-Value parser with 6 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\") a1=(?P<a1>[^\\s,]+|\"[^\"]*\") a2=(?P<a2>[^\\s,]+|\"[^\"]*\"),user,comm\"$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792403226.237:6007):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "3",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"ps\"",
+        "ecs_target": "data.a0"
+      },
+      {
+        "name": "a1",
+        "field_type": "string",
+        "example": "\"-eo\"",
+        "ecs_target": "data.a1"
+      },
+      {
+        "name": "a2",
+        "field_type": "string",
+        "example": "\"pid",
+        "ecs_target": "data.a2"
+      }
+    ],
+    "normalization": {
+      "a0": "data.a0",
+      "a1": "data.a1",
+      "a2": "data.a2",
+      "argc": "data.argc",
+      "type": "data.type",
+      "msg": "data.msg"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792403226.237:6007): argc=3 a0=\"ps\" a1=\"-eo\" a2=\"pid,user,comm\"",
+      "type=EXECVE msg=audit(1792403258.837:6037): argc=3 a0=\"ps\" a1=\"-eo\" a2=\"pid,user,comm\"",
+      "type=EXECVE msg=audit(1792403290.642:6075): argc=3 a0=\"ps\" a1=\"-eo\" a2=\"pid,user,comm\"",
+      "type=EXECVE msg=audit(1792403399.726:6182): argc=3 a0=\"ps\" a1=\"-eo\" a2=\"pid,user,comm\"",
+      "type=EXECVE msg=audit(1792403432.070:6214): argc=3 a0=\"ps\" a1=\"-eo\" a2=\"pid,user,comm\""
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T09:50:41.351023500Z",
+    "last_used": null
+  },
+  {
+    "id": "008a4b45-a8fe-461e-bd22-ea3007f6dd12",
+    "fingerprint": 8447605226750932957,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> prog-id=<VAL> op=<VAL>",
+    "name": "kv_auto_parser_753bec324738f7dd",
+    "description": "Auto-generated Key-Value parser with 4 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") prog\\-id=(?P<prog_id>[^\\s,]+|\"[^\"]*\") op=(?P<op>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "BPF",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792403392.559:6169):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "prog_id",
+        "field_type": "integer",
+        "example": "80",
+        "ecs_target": "data.prog_id"
+      },
+      {
+        "name": "op",
+        "field_type": "string",
+        "example": "LOAD",
+        "ecs_target": "data.op"
+      }
+    ],
+    "normalization": {
+      "prog_id": "data.prog_id",
+      "op": "data.op",
+      "msg": "data.msg",
+      "type": "data.type"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=BPF msg=audit(1792403392.559:6169): prog-id=80 op=LOAD",
+      "type=BPF msg=audit(1792403392.561:6170): prog-id=81 op=LOAD",
+      "type=BPF msg=audit(1792403392.561:6171): prog-id=82 op=LOAD",
+      "type=BPF msg=audit(1792403423.648:6206): prog-id=82 op=UNLOAD",
+      "type=BPF msg=audit(1792403423.648:6207): prog-id=81 op=UNLOAD"
+    ],
+    "hit_count": 1,
+    "success_count": 1,
+    "created_at": "2026-10-19T09:50:40.062664400Z",
+    "last_used": "2026-10-19T09:50:40.106119600Z"
+  },
+  {
+    "id": "290e78fb-eebc-4182-a508-b83f7f9cd5de",
+    "fingerprint": 6153124638163853697,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> argc=<VAL> a0=<VAL>",
+    "name": "kv_auto_parser_55644a41fc75e181",
+    "description": "Auto-generated Key-Value parser with 4 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") argc=(?P<argc>[^\\s,]+|\"[^\"]*\") a0=(?P<a0>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "EXECVE",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792403201.538:5756):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "argc",
+        "field_type": "integer",
+        "example": "1",
+        "ecs_target": "data.argc"
+      },
+      {
+        "name": "a0",
+        "field_type": "string",
+        "example": "\"/usr/lib/update-notifier/ubuntu-advantage-notification\"",
+        "ecs_target": "data.a0"
+      }
+    ],
+    "normalization": {
+      "a0": "data.a0",
+      "msg": "data.msg",
+      "type": "data.type",
+      "argc": "data.argc"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=EXECVE msg=audit(1792403201.538:5756): argc=1 a0=\"/usr/lib/update-notifier/ubuntu-advantage-notification\"",
+      "type=EXECVE msg=audit(1792403201.542:5761): argc=1 a0=\"update-notifier\"",
+      "type=EXECVE msg=audit(1792403201.664:5770): argc=1 a0=\"/usr/lib/update-notifier/livepatch-notification\"",
+      "type=EXECVE msg=audit(1792403261.372:6059): argc=1 a0=\"/usr/libexec/deja-dup/deja-dup-monitor\"",
+      "type=EXECVE msg=audit(1792403392.580:6173): argc=1 a0=\"/lib/systemd/systemd-timedated\""
+    ],
+    "hit_count": 0,
+    "success_count": 0,
+    "created_at": "2026-10-19T09:49:59.515545300Z",
+    "last_used": null
+  },
+  {
+    "id": "a7703119-c831-4ea9-965b-6743158f1a70",
+    "fingerprint": 15404801591963543182,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> pid=<VAL> uid=<VAL> auid=<VAL> ses=<VAL> subj=<VAL> msg=<VAL> comm=<VAL> exe=<VAL> hostname=<VAL> addr=<VAL> terminal=<VAL> res=<VAL> AUID=<VAL>",
+    "name": "kv_cross_corr_parser_d5c8d96e045be68e",
+    "description": "Cross-sample correlated Key-Value parser with 16 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^.*?type=(?P<type>[^\\s,]+|\"[^\"]*\").*?msg=(?P<msg>[^\\s,]+|\"[^\"]*\").*?pid=(?P<pid>[^\\s,]+|\"[^\"]*\").*?uid=(?P<uid>[^\\s,]+|\"[^\"]*\").*?auid=(?P<auid>[^\\s,]+|\"[^\"]*\").*?ses=(?P<ses>[^\\s,]+|\"[^\"]*\").*?subj=(?P<subj>[^\\s,]+|\"[^\"]*\").*?unit=(?P<unit>[^\\s,]+|\"[^\"]*\").*?comm=(?P<comm>[^\\s,]+|\"[^\"]*\").*?exe=(?P<exe>[^\\s,]+|\"[^\"]*\").*?hostname=(?P<hostname>[^\\s,]+|\"[^\"]*\").*?addr=(?P<addr>[^\\s,]+|\"[^\"]*\").*?terminal=(?P<terminal>[^\\s,]+|\"[^\"]*\").*?res=(?P<res>[^\\s,]+|\"[^\"]*\").*?UID=(?P<UID>[^\\s,]+|\"[^\"]*\").*?AUID=(?P<AUID>.+?)(?:\\s.*)?$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "pid",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.pid"
+      },
+      {
+        "name": "uid",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.uid"
+      },
+      {
+        "name": "auid",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.auid"
+      },
+      {
+        "name": "ses",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.ses"
+      },
+      {
+        "name": "subj",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.subj"
+      },
+      {
+        "name": "unit",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.unit"
+      },
+      {
+        "name": "comm",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.comm"
+      },
+      {
+        "name": "exe",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.exe"
+      },
+      {
+        "name": "hostname",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.hostname"
+      },
+      {
+        "name": "addr",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.addr"
+      },
+      {
+        "name": "terminal",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.terminal"
+      },
+      {
+        "name": "res",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.res"
+      },
+      {
+        "name": "UID",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.uid"
+      },
+      {
+        "name": "AUID",
+        "field_type": "string",
+        "example": "",
+        "ecs_target": "data.auid"
+      }
+    ],
+    "normalization": {
+      "exe": "data.exe",
+      "hostname": "data.hostname",
+      "unit": "data.unit",
+      "terminal": "data.terminal",
+      "comm": "data.comm",
+      "type": "data.type",
+      "UID": "data.uid",
+      "pid": "data.pid",
+      "subj": "data.subj",
+      "addr": "data.addr",
+      "ses": "data.ses",
+      "AUID": "data.auid",
+      "auid": "data.auid",
+      "msg": "data.msg",
+      "res": "data.res",
+      "uid": "data.uid"
+    },
+    "confidence": 0.94,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=SERVICE_STOP msg=audit(1792403188.416:5745): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=geoclue comm=\"systemd\" exe=\"/usr/lib/systemd/systemd\" hostname=? addr=? terminal=? res=success'\u001dUID=\"root\" AUID=\"unset\"",
+      "type=SERVICE_START msg=audit(1792403267.860:6064): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=anacron comm=\"systemd\" exe=\"/usr/lib/systemd/systemd\" hostname=? addr=? terminal=? res=success'\u001dUID=\"root\" AUID=\"unset\"",
+      "type=SERVICE_STOP msg=audit(1792403267.884:6067): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=anacron comm=\"systemd\" exe=\"/usr/lib/systemd/systemd\" hostname=? addr=? terminal=? res=success'\u001dUID=\"root\" AUID=\"unset\"",
+      "type=SERVICE_START msg=audit(1792403380.229:6164): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=update-notifier-download comm=\"systemd\" exe=\"/usr/lib/systemd/systemd\" hostname=? addr=? terminal=? res=success'\u001dUID=\"root\" AUID=\"unset\"",
+      "type=SERVICE_STOP msg=audit(1792403380.229:6165): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=unconfined msg='unit=update-notifier-download comm=\"systemd\" exe=\"/usr/lib/systemd/systemd\" hostname=? addr=? terminal=? res=success'\u001dUID=\"root\" AUID=\"unset\""
+    ],
+    "hit_count": 2,
+    "success_count": 2,
+    "created_at": "2026-10-19T09:49:40.754770Z",
+    "last_used": "2026-10-19T09:50:39.958434600Z"
+  },
+  {
+    "id": "26baef74-ffa9-48d1-bd17-06a3b805fb9d",
+    "fingerprint": 10406957955775472226,
+    "fingerprint_signature": "type=<VAL> msg=<VAL> fver=<VAL> fp=<VAL> fi=<VAL> fe=<VAL> old_pp=<VAL> old_pi=<VAL> old_pe=<VAL> old_pa=<VAL> pp=<VAL> pi=<VAL> pe=<VAL> pa=<VAL> frootid=<VAL>",
+    "name": "kv_auto_parser_906cf11f526c2262",
+    "description": "Auto-generated Key-Value parser with 15 extracted fields",
+    "parser_type": "Regex",
+    "pattern": "^type=(?P<type>[^\\s,]+|\"[^\"]*\") msg=(?P<msg>[^\\s,]+|\"[^\"]*\") fver=(?P<fver>[^\\s,]+|\"[^\"]*\") fp=(?P<fp>[^\\s,]+|\"[^\"]*\") fi=(?P<fi>[^\\s,]+|\"[^\"]*\") fe=(?P<fe>[^\\s,]+|\"[^\"]*\") old_pp=(?P<old_pp>[^\\s,]+|\"[^\"]*\") old_pi=(?P<old_pi>[^\\s,]+|\"[^\"]*\") old_pe=(?P<old_pe>[^\\s,]+|\"[^\"]*\") old_pa=(?P<old_pa>[^\\s,]+|\"[^\"]*\") pp=(?P<pp>[^\\s,]+|\"[^\"]*\") pi=(?P<pi>[^\\s,]+|\"[^\"]*\") pe=(?P<pe>[^\\s,]+|\"[^\"]*\") pa=(?P<pa>[^\\s,]+|\"[^\"]*\") frootid=(?P<frootid>[^\\s,]+|\"[^\"]*\")$",
+    "fields": [
+      {
+        "name": "type",
+        "field_type": "string",
+        "example": "BPRM_FCAPS",
+        "ecs_target": "data.type"
+      },
+      {
+        "name": "msg",
+        "field_type": "string",
+        "example": "audit(1792403204.302:5781):",
+        "ecs_target": "data.msg"
+      },
+      {
+        "name": "fver",
+        "field_type": "integer",
+        "example": "2",
+        "ecs_target": "data.fver"
+      },
+      {
+        "name": "fp",
+        "field_type": "integer",
+        "example": "0000000000002000",
+        "ecs_target": "data.fp"
+      },
+      {
+        "name": "fi",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.fi"
+      },
+      {
+        "name": "fe",
+        "field_type": "integer",
+        "example": "1",
+        "ecs_target": "data.fe"
+      },
+      {
+        "name": "old_pp",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.old_pp"
+      },
+      {
+        "name": "old_pi",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.old_pi"
+      },
+      {
+        "name": "old_pe",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.old_pe"
+      },
+      {
+        "name": "old_pa",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.old_pa"
+      },
+      {
+        "name": "pp",
+        "field_type": "integer",
+        "example": "0000000000002000",
+        "ecs_target": "data.pp"
+      },
+      {
+        "name": "pi",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.pi"
+      },
+      {
+        "name": "pe",
+        "field_type": "integer",
+        "example": "0000000000002000",
+        "ecs_target": "data.pe"
+      },
+      {
+        "name": "pa",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.pa"
+      },
+      {
+        "name": "frootid",
+        "field_type": "integer",
+        "example": "0",
+        "ecs_target": "data.frootid"
+      }
+    ],
+    "normalization": {
+      "pe": "data.pe",
+      "pi": "data.pi",
+      "fe": "data.fe",
+      "fver": "data.fver",
+      "old_pp": "data.old_pp",
+      "type": "data.type",
+      "pp": "data.pp",
+      "old_pi": "data.old_pi",
+      "fi": "data.fi",
+      "old_pe": "data.old_pe",
+      "fp": "data.fp",
+      "frootid": "data.frootid",
+      "msg": "data.msg",
+      "pa": "data.pa",
+      "old_pa": "data.old_pa"
+    },
+    "confidence": 0.92,
+    "version": 1,
+    "status": "Active",
+    "sample_logs": [
+      "type=BPRM_FCAPS msg=audit(1792403204.302:5781): fver=2 fp=0000000000002000 fi=0 fe=1 old_pp=0 old_pi=0 old_pe=0 old_pa=0 pp=0000000000002000 pi=0 pe=0000000000002000 pa=0 frootid=0",
+      "type=BPRM_FCAPS msg=audit(1792403206.506:5792): fver=2 fp=0000000000002000 fi=0 fe=1 old_pp=0000000000002000 old_pi=0 old_pe=0000000000002000 old_pa=0 pp=0000000000002000 pi=0 pe=0000000000002000 pa=0 frootid=0",
+      "type=BPRM_FCAPS msg=audit(1792403206.563:5797): fver=2 fp=0000000000002000 fi=0 fe=1 old_pp=0000000000002000 old_pi=0 old_pe=0000000000002000 old_pa=0 pp=0000000000002000 pi=0 pe=0000000000002000 pa=0 frootid=0",
+      "type=BPRM_FCAPS msg=audit(1792403206.603:5802): fver=2 fp=0000000000002000 fi=0 fe=1 old_pp=0000000000002000 old_pi=0 old_pe=0000000000002000 old_pa=0 pp=0000000000002000 pi=0 pe=0000000000002000 pa=0 frootid=0",
+      "type=BPRM_FCAPS msg=audit(1792403206.642:5807): fver=2 fp=0000000000002000 fi=0 fe=1 old_pp=0000000000002000 old_pi=0 old_pe=0000000000002000 old_pa=0 pp=0000000000002000 pi=0 pe=0000000000002000 pa=0 frootid=0"
+    ],
+    "hit_count": 28,
+    "success_count": 28,
+    "created_at": "2026-10-19T09:47:07.168892300Z",
+    "last_used": "2026-10-19T09:49:59.453370Z"
+  },
+  {
     "id": "2b9b3fc8-fe47-427c-bab8-b23429224823",
     "fingerprint": 5499807604303860155,
     "fingerprint_signature": "<TIMESTAMP> status triggers-pending libreoffice-common:all <NUM>:<NUM>.<NUM>.<NUM>-0ubuntu0.<NUM>.<NUM>.<NUM>",
@@ -573,8 +1099,8 @@
       }
     ],
     "normalization": {
-      "program": "program_name",
-      "hostname": "hostname"
+      "hostname": "hostname",
+      "program": "program_name"
     },
     "confidence": 0.9,
     "version": 1,
@@ -808,15 +1334,15 @@
       }
     ],
     "normalization": {
-      "comm": "data.comm",
-      "apparmor": "data.apparmor",
       "profile": "data.profile",
-      "name": "data.name",
-      "type": "data.type",
-      "operation": "data.operation",
       "info": "data.info",
+      "type": "data.type",
+      "comm": "data.comm",
+      "name": "data.name",
+      "apparmor": "data.apparmor",
       "pid": "data.pid",
-      "msg": "data.msg"
+      "msg": "data.msg",
+      "operation": "data.operation"
     },
     "confidence": 0.92,
     "version": 1,
@@ -868,8 +1394,8 @@
       }
     ],
     "normalization": {
-      "hostname": "hostname",
-      "program": "program_name"
+      "program": "program_name",
+      "hostname": "hostname"
     },
     "confidence": 0.9,
     "version": 1,
@@ -881,10 +1407,10 @@
       "Oct 19 12:31:57 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.",
       "Oct 19 12:32:02 ndrsystem systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway."
     ],
-    "hit_count": 9,
-    "success_count": 9,
+    "hit_count": 12,
+    "success_count": 12,
     "created_at": "2026-10-19T07:02:06.432271100Z",
-    "last_used": "2026-10-19T07:04:38.731997200Z"
+    "last_used": "2026-10-19T09:50:08.800815800Z"
   },
   {
     "id": "602260b1-bdce-4dc5-8636-52f405c72e59",
@@ -933,10 +1459,10 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
       "argc": "data.argc",
       "type": "data.type",
       "a1": "data.a1",
+      "msg": "data.msg",
       "a2": "data.a2",
       "a0": "data.a0"
     },
@@ -1044,19 +1570,19 @@
       }
     ],
     "normalization": {
-      "a6": "data.a6",
       "a8": "data.a8",
-      "a1": "data.a1",
-      "msg": "data.msg",
-      "a0": "data.a0",
       "type": "data.type",
-      "a9": "data.a9",
-      "a3": "data.a3",
       "a2": "data.a2",
       "a5": "data.a5",
+      "a1": "data.a1",
+      "a6": "data.a6",
+      "a0": "data.a0",
+      "a7": "data.a7",
+      "msg": "data.msg",
       "argc": "data.argc",
+      "a9": "data.a9",
       "a4": "data.a4",
-      "a7": "data.a7"
+      "a3": "data.a3"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1156,18 +1682,18 @@
       }
     ],
     "normalization": {
-      "type": "data.type",
-      "a1": "data.a1",
-      "a2": "data.a2",
-      "a3": "data.a3",
-      "a5": "data.a5",
-      "argc": "data.argc",
-      "a6": "data.a6",
       "a0": "data.a0",
+      "a6": "data.a6",
+      "a7": "data.a7",
       "msg": "data.msg",
-      "a4": "data.a4",
+      "a2": "data.a2",
+      "a1": "data.a1",
+      "argc": "data.argc",
+      "a5": "data.a5",
+      "a3": "data.a3",
       "a8": "data.a8",
-      "a7": "data.a7"
+      "type": "data.type",
+      "a4": "data.a4"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1243,14 +1769,14 @@
       }
     ],
     "normalization": {
-      "a4": "data.a4",
-      "type": "data.type",
       "a3": "data.a3",
-      "a1": "data.a1",
+      "a4": "data.a4",
       "msg": "data.msg",
-      "argc": "data.argc",
+      "a1": "data.a1",
+      "a2": "data.a2",
       "a0": "data.a0",
-      "a2": "data.a2"
+      "argc": "data.argc",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1262,10 +1788,10 @@
       "type=EXECVE msg=audit(1792393098.103:7276): argc=5 a0=\"tar\" a1=\"-x\" a2=\"-f\" a3=\"-\" a4=\"--warning=no-timestamp\"",
       "type=EXECVE msg=audit(1792393100.155:7286): argc=5 a0=\"/bin/sh\" a1=\"/var/lib/dpkg/tmp.ci/preinst\" a2=\"upgrade\" a3=\"1:7.3.7-0ubuntu0.22.04.12\" a4=\"1:7.3.7-0ubuntu0.22.04.13\""
     ],
-    "hit_count": 20,
-    "success_count": 20,
+    "hit_count": 51,
+    "success_count": 51,
     "created_at": "2026-10-19T06:58:46.993962400Z",
-    "last_used": "2026-10-19T07:01:28.022928100Z"
+    "last_used": "2026-10-19T09:47:41.609022700Z"
   },
   {
     "id": "170a6b77-33f9-4891-9bdc-d118dfb34aab",
@@ -1314,12 +1840,12 @@
       }
     ],
     "normalization": {
+      "msg": "data.msg",
+      "laddr": "data.laddr",
       "lport": "srcport",
-      "saddr": "data.saddr",
       "saddr_fam": "data.saddr_fam",
       "type": "data.type",
-      "laddr": "data.laddr",
-      "msg": "data.msg"
+      "saddr": "data.saddr"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1331,10 +1857,10 @@
       "type=SOCKADDR msg=audit(1792393088.498:7158): saddr=0A000050000000002620002D40020001000000000000106400000000\u001dSADDR={ saddr_fam=inet6 laddr=2620:2d:4002:1::1064 lport=80 }",
       "type=SOCKADDR msg=audit(1792393088.509:7159): saddr=0A000050000000002620002D40000001000000000000109900000000\u001dSADDR={ saddr_fam=inet6 laddr=2620:2d:4000:1::1099 lport=80 }"
     ],
-    "hit_count": 9,
-    "success_count": 9,
+    "hit_count": 51,
+    "success_count": 51,
     "created_at": "2026-10-19T06:58:17.912640100Z",
-    "last_used": "2026-10-19T06:58:19.339982100Z"
+    "last_used": "2026-10-19T09:50:40.586206600Z"
   },
   {
     "id": "859d3641-5106-476f-871d-919ecd294cc0",
@@ -1383,12 +1909,12 @@
       }
     ],
     "normalization": {
+      "type": "data.type",
       "a0": "data.a0",
       "msg": "data.msg",
-      "a1": "data.a1",
-      "type": "data.type",
+      "a2": "data.a2",
       "argc": "data.argc",
-      "a2": "data.a2"
+      "a1": "data.a1"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1400,10 +1926,10 @@
       "type=EXECVE msg=audit(1792393046.098:7088): argc=3 a0=\"date\" a1=\"--date=2026-10-15\" a2=\"+%s\"",
       "type=EXECVE msg=audit(1792393046.106:7090): argc=3 a0=\"date\" a1=\"--date=2026-10-19\" a2=\"+%s\""
     ],
-    "hit_count": 28,
-    "success_count": 28,
+    "hit_count": 39,
+    "success_count": 39,
     "created_at": "2026-10-19T06:57:49.713029500Z",
-    "last_used": "2026-10-19T07:01:32.039987Z"
+    "last_used": "2026-10-19T09:50:43.690004600Z"
   },
   {
     "id": "0d91e943-377c-4af6-a5df-e7f59cdc6cc8",
@@ -1447,10 +1973,10 @@
     ],
     "normalization": {
       "a1": "data.a1",
-      "argc": "data.argc",
       "type": "data.type",
-      "msg": "data.msg",
-      "a0": "data.a0"
+      "argc": "data.argc",
+      "a0": "data.a0",
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1462,10 +1988,10 @@
       "type=EXECVE msg=audit(1792393045.421:7058): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\"",
       "type=EXECVE msg=audit(1792393045.440:7061): argc=2 a0=\"/usr/bin/dpkg\" a1=\"--print-foreign-architectures\""
     ],
-    "hit_count": 75,
-    "success_count": 75,
+    "hit_count": 98,
+    "success_count": 98,
     "created_at": "2026-10-19T06:57:41.677506300Z",
-    "last_used": "2026-10-19T07:01:31.726031500Z"
+    "last_used": "2026-10-19T09:50:42.766142900Z"
   },
   {
     "id": "7febe80d-49d3-4698-85b9-16b8ac2b2126",
@@ -1521,12 +2047,12 @@
     ],
     "normalization": {
       "msg": "data.msg",
-      "a1": "data.a1",
-      "type": "data.type",
-      "a0": "data.a0",
-      "argc": "data.argc",
+      "a2": "data.a2",
       "a3": "data.a3",
-      "a2": "data.a2"
+      "argc": "data.argc",
+      "a0": "data.a0",
+      "type": "data.type",
+      "a1": "data.a1"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1538,10 +2064,10 @@
       "type=EXECVE msg=audit(1792393045.382:7051): argc=4 a0=\"flock\" a1=\"-w\" a2=\"3600\" a3=\"3\"",
       "type=EXECVE msg=audit(1792393045.385:7052): argc=4 a0=\"/bin/sh\" a1=\"/usr/lib/apt/apt.systemd.daily\" a2=\"lock_is_held\" a3=\"install\""
     ],
-    "hit_count": 101,
-    "success_count": 101,
+    "hit_count": 103,
+    "success_count": 103,
     "created_at": "2026-10-19T06:57:39.251066300Z",
-    "last_used": "2026-10-19T07:01:30.778064800Z"
+    "last_used": "2026-10-19T09:48:39.459416800Z"
   },
   {
     "id": "0edb9966-e7e0-45a2-943a-164a4771c7bb",
@@ -1584,11 +2110,11 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
       "saddr_fam": "data.saddr_fam",
-      "path": "data.path",
+      "type": "data.type",
+      "msg": "data.msg",
       "saddr": "data.saddr",
-      "type": "data.type"
+      "path": "data.path"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1600,10 +2126,10 @@
       "type=SOCKADDR msg=audit(1792393045.304:7027): saddr=01002F7661722F72756E2F646275732F73797374656D5F6275735F736F636B65740000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\u001dSADDR={ saddr_fam=local path=/var/run/dbus/system_bus_socket }",
       "type=SOCKADDR msg=audit(1792393045.330:7036): saddr=01002F72756E2F73797374656D642F7072697661746500\u001dSADDR={ saddr_fam=local path=/run/systemd/private }"
     ],
-    "hit_count": 105,
-    "success_count": 105,
+    "hit_count": 162,
+    "success_count": 162,
     "created_at": "2026-10-19T06:57:35.145849600Z",
-    "last_used": "2026-10-19T07:01:27.757585200Z"
+    "last_used": "2026-10-19T09:50:41.918181600Z"
   },
   {
     "id": "ea337d27-17b3-42ee-a929-11a3a98bd8f3",
@@ -1718,23 +2244,23 @@
       }
     ],
     "normalization": {
-      "item": "data.item",
-      "cap_fver": "data.cap_fver",
-      "msg": "data.msg",
-      "rdev": "data.rdev",
-      "cap_frootid": "data.cap_frootid",
+      "cap_fi": "data.cap_fi",
+      "cap_fp": "data.cap_fp",
+      "name": "data.name",
       "nametype": "data.nametype",
       "ouid": "data.ouid",
-      "type": "data.type",
-      "cap_fi": "data.cap_fi",
-      "OGID": "data.ogid",
+      "rdev": "data.rdev",
       "inode": "data.inode",
-      "dev": "data.dev",
       "mode": "data.mode",
-      "name": "data.name",
+      "ogid": "data.ogid",
+      "OGID": "data.ogid",
+      "item": "data.item",
+      "msg": "data.msg",
+      "cap_frootid": "data.cap_frootid",
       "cap_fe": "data.cap_fe",
-      "cap_fp": "data.cap_fp",
-      "ogid": "data.ogid"
+      "type": "data.type",
+      "dev": "data.dev",
+      "cap_fver": "data.cap_fver"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1746,10 +2272,10 @@
       "type=PATH msg=audit(1792393045.292:7024): item=0 name=\"/usr/bin/nm-online\" inode=4611767 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\"",
       "type=PATH msg=audit(1792393045.292:7024): item=1 name=\"/lib64/ld-linux-x86-64.so.2\" inode=4587923 dev=08:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0\u001dOUID=\"root\" OGID=\"root\""
     ],
-    "hit_count": 662,
-    "success_count": 662,
+    "hit_count": 900,
+    "success_count": 900,
     "created_at": "2026-10-19T06:57:31.675231300Z",
-    "last_used": "2026-10-19T07:01:31.882473600Z"
+    "last_used": "2026-10-19T09:50:43.834055800Z"
   },
   {
     "id": "3fab94ae-ceea-4d3f-a9c0-2c826937fa49",
@@ -1822,16 +2348,16 @@
       }
     ],
     "normalization": {
+      "msg": "data.msg",
+      "cap_fe": "data.cap_fe",
+      "name": "data.name",
+      "type": "data.type",
       "cap_fp": "data.cap_fp",
       "item": "data.item",
-      "msg": "data.msg",
       "cap_fver": "data.cap_fver",
-      "nametype": "data.nametype",
-      "type": "data.type",
-      "name": "data.name",
       "cap_fi": "data.cap_fi",
-      "cap_fe": "data.cap_fe",
-      "cap_frootid": "data.cap_frootid"
+      "cap_frootid": "data.cap_frootid",
+      "nametype": "data.nametype"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1843,10 +2369,10 @@
       "type=PATH msg=audit(1792393045.292:7021): item=0 name=\"/usr/local/sbin/nm-online\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0",
       "type=PATH msg=audit(1792393045.292:7022): item=0 name=\"/usr/local/bin/nm-online\" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0"
     ],
-    "hit_count": 221,
-    "success_count": 221,
+    "hit_count": 450,
+    "success_count": 450,
     "created_at": "2026-10-19T06:57:31.116604400Z",
-    "last_used": "2026-10-19T07:01:27.860566100Z"
+    "last_used": "2026-10-19T09:50:44.546475800Z"
   },
   {
     "id": "959d4b1d-2ca9-43af-9cf1-3189fb7d692f",
@@ -1877,9 +2403,9 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
       "cwd": "data.cwd",
-      "type": "data.type"
+      "type": "data.type",
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1891,10 +2417,10 @@
       "type=CWD msg=audit(1792393045.285:7018): cwd=\"/var/ossec\"",
       "type=CWD msg=audit(1792393045.287:7020): cwd=\"/\""
     ],
-    "hit_count": 523,
-    "success_count": 523,
+    "hit_count": 873,
+    "success_count": 873,
     "created_at": "2026-10-19T06:57:30.647429700Z",
-    "last_used": "2026-10-19T07:01:32.091638800Z"
+    "last_used": "2026-10-19T09:50:44.497879200Z"
   },
   {
     "id": "2e86efe9-9185-4b9e-89ca-54989d13ba12",
@@ -1925,9 +2451,9 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
       "proctitle": "data.proctitle",
-      "type": "data.type"
+      "type": "data.type",
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1939,10 +2465,10 @@
       "type=PROCTITLE msg=audit(1792393045.285:7018): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E",
       "type=PROCTITLE msg=audit(1792393045.284:7019): proctitle=2F7661722F6F737365632F62696E2F7369656D2D6167656E742D6C696E7578002D2D6461656D6F6E"
     ],
-    "hit_count": 613,
-    "success_count": 613,
+    "hit_count": 1013,
+    "success_count": 1013,
     "created_at": "2026-10-19T06:57:30.487489100Z",
-    "last_used": "2026-10-19T07:01:31.934290600Z"
+    "last_used": "2026-10-19T09:50:44.594152Z"
   },
   {
     "id": "f21ac032-f126-4633-8116-829d72d54308",
@@ -2183,44 +2709,44 @@
       }
     ],
     "normalization": {
-      "items": "data.items",
-      "gid": "data.gid",
-      "arch": "data.arch",
-      "SUID": "data.suid",
-      "comm": "data.comm",
-      "ppid": "data.ppid",
-      "a3": "data.a3",
-      "tty": "data.tty",
-      "type": "data.type",
-      "ses": "data.ses",
-      "msg": "data.msg",
-      "SYSCALL": "data.syscall",
-      "a2": "data.a2",
-      "fsuid": "data.fsuid",
       "FSUID": "data.fsuid",
-      "SGID": "data.sgid",
-      "exit": "data.exit",
-      "AUID": "data.auid",
-      "auid": "data.auid",
-      "syscall": "data.syscall",
-      "uid": "data.uid",
-      "EUID": "data.euid",
-      "success": "data.success",
-      "exe": "data.exe",
-      "suid": "data.suid",
-      "subj": "data.subj",
-      "GID": "data.gid",
-      "EGID": "data.egid",
-      "pid": "data.pid",
-      "key": "data.key",
-      "egid": "data.egid",
-      "fsgid": "data.fsgid",
-      "sgid": "data.sgid",
+      "a3": "data.a3",
+      "ses": "data.ses",
       "euid": "data.euid",
       "FSGID": "data.fsgid",
+      "uid": "data.uid",
+      "sgid": "data.sgid",
+      "exit": "data.exit",
+      "subj": "data.subj",
+      "msg": "data.msg",
+      "tty": "data.tty",
+      "pid": "data.pid",
+      "a2": "data.a2",
+      "key": "data.key",
+      "exe": "data.exe",
+      "items": "data.items",
+      "SGID": "data.sgid",
       "UID": "data.uid",
+      "suid": "data.suid",
       "a1": "data.a1",
-      "a0": "data.a0"
+      "type": "data.type",
+      "fsgid": "data.fsgid",
+      "EUID": "data.euid",
+      "GID": "data.gid",
+      "success": "data.success",
+      "auid": "data.auid",
+      "egid": "data.egid",
+      "SYSCALL": "data.syscall",
+      "fsuid": "data.fsuid",
+      "EGID": "data.egid",
+      "a0": "data.a0",
+      "gid": "data.gid",
+      "syscall": "data.syscall",
+      "comm": "data.comm",
+      "AUID": "data.auid",
+      "arch": "data.arch",
+      "SUID": "data.suid",
+      "ppid": "data.ppid"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2232,10 +2758,10 @@
       "type=SYSCALL msg=audit(1792393045.285:7018): arch=c000003e syscall=59 success=yes exit=0 a0=78405fb03db0 a1=78404c000f20 a2=5b1b99271760 a3=8 items=2 ppid=4620 pid=4629 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"ps\" exe=\"/usr/bin/ps\" subj=unconfined key=\"process_execution\"\u001dARCH=x86_64 SYSCALL=execve AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\"",
       "type=SYSCALL msg=audit(1792393045.284:7019): arch=c000003e syscall=42 success=no exit=-115 a0=a a1=78405f7f8950 a2=10 a3=78405f7f874c items=0 ppid=1 pid=4620 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm=\"tokio-rt-worker\" exe=\"/var/ossec/bin/siem-agent-linux\" subj=unconfined key=\"network_connect\"\u001dARCH=x86_64 SYSCALL=connect AUID=\"unset\" UID=\"root\" GID=\"root\" EUID=\"root\" SUID=\"root\" FSUID=\"root\" EGID=\"root\" SGID=\"root\" FSGID=\"root\""
     ],
-    "hit_count": 614,
-    "success_count": 614,
+    "hit_count": 1016,
+    "success_count": 1016,
     "created_at": "2026-10-19T06:57:30.396408700Z",
-    "last_used": "2026-10-19T07:01:31.986183300Z"
+    "last_used": "2026-10-19T09:50:44.646193300Z"
   },
   {
     "id": "1b9505ee-2994-4ecf-86e6-046fb32fb198",
@@ -2284,12 +2810,12 @@
       }
     ],
     "normalization": {
+      "type": "data.type",
       "commandElements": "data.commandelements",
       "redirections": "data.redirections",
-      "type": "data.type",
-      "ceData_children": "data.cedata_children",
       "a": "data.a",
-      "text": "data.text"
+      "text": "data.text",
+      "ceData_children": "data.cedata_children"
     },
     "confidence": 0.94,
     "version": 1,

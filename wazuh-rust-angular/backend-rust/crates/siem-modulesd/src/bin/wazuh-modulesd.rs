@@ -207,10 +207,44 @@ async fn main() {
     threads.push(tokio::spawn(m.main()));
     log.debug2(format!("Created new thread for the '{}' module.", task_manager::NAME));
     // vulnerability_scanner: its start returns once the feed updater thread runs; it lives until exit.
-    let _vulnerability_scanner = vd.map(|vd| {
+    let _vulnerability_scanner = vd.and_then(|vd| {
         let lru = opts.get_int("vulnerability-detection", "translation_lru_size", 1, 100000).unwrap_or(2048) as usize;
+        let osdata_lru = opts.get_int("vulnerability-detection", "osdata_lru_size", 1, 100000).unwrap_or(1000) as usize;
+        let remediation_lru = opts.get_int("vulnerability-detection", "remediation_lru_size", 1, 100000).unwrap_or(2048) as usize;
+        let report_queue = opts.get_int("vulnerability-detection", "report_queue_size", 0, 2147483647).unwrap_or(262144) as usize;
+        let disable_scan = opts.get_int("vulnerability-detection", "disable_scan_manager", 0, 1).unwrap_or(1) != 0;
+
+        let cfg = siem_vulnerability_scanner::scanner::ModuleConfig {
+            vulnerability_detection: serde_json::Value::Object(vd),
+            indexer: serde_json::json!({ "enabled": "yes" }),
+            wm_max_eps: 0,
+            translation_lru_size: lru,
+            osdata_lru_size: osdata_lru,
+            remediation_lru_size: remediation_lru,
+            manager_disabled_scan: disable_scan,
+            report_queue_size: report_queue,
+            cluster_enabled: false,
+            cluster_name: "manager".into(),
+            cluster_node_name: "manager".into(),
+        };
+
+        let wdb_socket = match siem_vulnerability_scanner::scan::wdb::WdbSocket::new(siem_modulesd::wdb::WDB_LOCAL_SOCK) {
+            Ok(s) => Arc::new(s),
+            Err(e) => {
+                log.error(format!("vulnerability_scanner: failed to initialize wdb socket: {e}"));
+                return None;
+            }
+        };
+
+        let start_opts = siem_vulnerability_scanner::scanner::StartOptions {
+            wdb: wdb_socket,
+            reports: None,
+            manager_name: "manager".into(),
+            content_updater: true,
+        };
+
         log.debug2("Created new thread for the 'vulnerability_scanner' module.");
-        siem_vulnerability_scanner::scanner::VulnerabilityScanner::start(&base, log.clone(), serde_json::Value::Object(vd), lru)
+        siem_vulnerability_scanner::scanner::VulnerabilityScanner::start(&base, log.clone(), cfg, start_opts)
     });
     if let Some(database) = database {
         let d = Database::new(database, log.clone(), db.clone());

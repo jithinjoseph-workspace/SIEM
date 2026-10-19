@@ -59,7 +59,7 @@ impl LifecycleCoordinator {
         }
     }
 
-    /// Archive client.keys and disable service on decommission
+    /// Archive client.keys, write decommission marker, and exit with status 42 (preventing systemd restart)
     fn decommission_local(&self) {
         let keys_candidates = [
             std::path::PathBuf::from("/var/ossec/etc/client.keys"),
@@ -76,9 +76,16 @@ impl LifecycleCoordinator {
                     info!("wazuh-agentd: Archived identity {} -> {}", path.display(), archived.display());
                 }
             }
+            if let Some(parent) = path.parent() {
+                if parent.exists() {
+                    let marker = parent.join(".decommissioned");
+                    let _ = std::fs::write(&marker, format!("agent_id={}\ndecommissioned_at={}\n", self.agent_id, chrono::Utc::now().to_rfc3339()));
+                }
+            }
         }
+        let _ = std::fs::write(".decommissioned", format!("agent_id={}\ndecommissioned_at={}\n", self.agent_id, chrono::Utc::now().to_rfc3339()));
 
-        // Clean termination sequence
+        // Clean termination sequence with exit code 42 (matching RestartPreventExitStatus=42)
         tokio::spawn(async {
             tokio::time::sleep(Duration::from_millis(500)).await;
             #[cfg(unix)]
@@ -87,7 +94,7 @@ impl LifecycleCoordinator {
                     .args(["disable", "--now", "wazuh-rust-agent"])
                     .status();
             }
-            std::process::exit(0);
+            std::process::exit(42);
         });
     }
 
@@ -122,4 +129,17 @@ impl LifecycleCoordinator {
             }
         })
     }
+}
+
+/// Checks if this endpoint was permanently decommissioned
+pub fn is_decommissioned() -> bool {
+    let markers = [
+        "/var/ossec/etc/.decommissioned",
+        "/var/ossec/etc/client.keys.deleted",
+        "/etc/wazuh-agent/.decommissioned",
+        "/etc/wazuh-agent/client.keys.deleted",
+        ".decommissioned",
+        "client.keys.deleted",
+    ];
+    markers.iter().any(|p| std::path::Path::new(p).exists())
 }

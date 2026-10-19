@@ -21,7 +21,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use siem_vuln_detector::{
@@ -121,6 +121,8 @@ pub struct AppState {
     pub max_agent_id: Arc<std::sync::atomic::AtomicU64>,
     /// Set of agent ids deleted from the fleet to prevent resurrection on ingest.
     pub deleted_agents: Arc<RwLock<HashSet<String>>>,
+    /// Set of (tenant, lowercase agent name) deleted from the fleet to prevent auto-re-enrollment.
+    pub deleted_agent_names: Arc<RwLock<HashSet<(String, String)>>>,
 }
 
 
@@ -295,6 +297,7 @@ async fn main() {
         enrolled: Arc::new(RwLock::new(HashMap::new())),
         max_agent_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         deleted_agents: Arc::new(RwLock::new(HashSet::new())),
+        deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
     };
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
@@ -988,11 +991,16 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
     if !agent_in_scope(state, ctx, id) {
         return false;
     }
+    let name_opt = state.enrolled.read().unwrap().get(id).map(|e| e.name.clone())
+        .or_else(|| state.agents.read().unwrap().get(id).map(|a| a.name.clone()));
     let in_fleet = state.agents.write().unwrap().remove(id).is_some();
     let removed = in_fleet || state.enrolled.read().unwrap().contains_key(id);
     if removed {
         state.deleted_agents.write().unwrap().insert(id.to_string());
         let tenant = state.agent_tenants.write().unwrap().remove(id).unwrap_or_else(|| ctx.scope());
+        if let Some(ref name) = name_opt {
+            state.deleted_agent_names.write().unwrap().insert((tenant.clone(), name.to_lowercase()));
+        }
         // Like manage_agents -r: the enrollment and key go too. The registry
         // row stays, marked deleted, so the id is never issued again.
         let e = state.enrolled.write().unwrap().remove(id);
@@ -1004,7 +1012,26 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         let t_clone = tenant.clone();
         let id_clone = id.to_string();
         tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
-        persist_registry(state, id, &tenant, e.as_ref(), true);
+        let enrolled_placeholder;
+        let e_ref = match e.as_ref() {
+            Some(entry) => Some(entry),
+            None => {
+                if let Some(ref name) = name_opt {
+                    enrolled_placeholder = Some(EnrolledAgent {
+                        name: name.clone(),
+                        tenant: tenant.clone(),
+                        groups: String::new(),
+                        os_type: String::new(),
+                        enrolled_at: Utc::now(),
+                        disabled: true,
+                    });
+                    enrolled_placeholder.as_ref()
+                } else {
+                    None
+                }
+            }
+        };
+        persist_registry(state, id, &tenant, e_ref, true);
     }
     removed
 }
@@ -4773,6 +4800,8 @@ pub struct EnrollAgentPayload {
     pub groups: Option<String>,
     /// Optional OS hint ("linux" / "windows" / "macos") for the fleet view.
     pub os_type: Option<String>,
+    /// Explicit override (e.g. from install.sh / installer) to re-enroll a previously deleted agent name
+    pub force: Option<bool>,
 }
 
 /// One enrolled agent (a row of `ndr.agent_registry`): ids stay unique
@@ -4809,6 +4838,7 @@ async fn load_agent_registry(state: &AppState) {
             if r.deleted == 1 {
                 n_deleted += 1;
                 state.deleted_agents.write().unwrap().insert(r.agent_id.clone());
+                state.deleted_agent_names.write().unwrap().insert((r.tenant_id.clone(), r.name.to_lowercase()));
                 continue;
             }
             n_live += 1;
@@ -4920,6 +4950,21 @@ async fn post_agent_enroll_handler(
     let name = payload.name.trim().to_string();
     if !valid_agent_name(&name) {
         return err(StatusCode::BAD_REQUEST, "Invalid agent name (2-128 chars: letters, digits, '.', '_', '-')");
+    }
+
+    let force_enroll = payload.force.unwrap_or(false);
+    let key = (tenant.clone(), name.to_lowercase());
+    if state.deleted_agent_names.read().unwrap().contains(&key) {
+        if force_enroll {
+            info!("Force-enrolling previously deleted agent '{}' in tenant '{}'", name, tenant);
+            state.deleted_agent_names.write().unwrap().remove(&key);
+        } else {
+            warn!("Rejected auto-re-enrollment attempt for decommissioned agent '{}' in tenant '{}'", name, tenant);
+            return err(
+                StatusCode::FORBIDDEN,
+                "Agent name has been deleted from this tenant. Decommissioned agents may not auto-re-enroll.",
+            );
+        }
     }
     // authd refuses groups that do not exist ("Invalid group"); the manager names carry the tenant
     let asked: Vec<String> = payload.groups.as_deref().unwrap_or("").split(',').map(str::to_string).collect();

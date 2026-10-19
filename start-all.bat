@@ -146,7 +146,7 @@ for /L %%i in (1,1,%WAIT_SECONDS%) do (
     echo [OK] %WAIT_NAME% is listening on :%WAIT_PORT%
     exit /b 0
   )
-  timeout /t 1 /nobreak >nul
+  ping -n 2 127.0.0.1 >nul
 )
 echo [FAIL] %WAIT_NAME% did not start on :%WAIT_PORT%. Check its window or %LOG_DIR%.
 exit /b 1

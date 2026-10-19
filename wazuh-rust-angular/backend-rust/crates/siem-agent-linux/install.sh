@@ -260,8 +260,8 @@ KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
 if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
     echo "[+] Keeping existing enrollment: $(cut -d' ' -f1,2 "${KEYS_FILE}" | head -1)"
 else
-    rm -f "${KEYS_FILE}"
-    BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\"}"
+    rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
+    BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
     RESP=""
     if command -v curl > /dev/null 2>&1; then
         RESP=$(curl -fsS -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
@@ -349,6 +349,7 @@ EnvironmentFile=-${INSTALL_DIR}/etc/agent.env
 ExecStart=${INSTALL_DIR}/bin/siem-agent-linux --daemon
 Restart=always
 RestartSec=10
+RestartPreventExitStatus=42
 KillMode=process
 StandardOutput=journal
 StandardError=journal

@@ -52,13 +52,13 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
-      "type": "data.type",
-      "a2": "data.a2",
       "a3": "data.a3",
-      "a1": "data.a1",
+      "a0": "data.a0",
       "argc": "data.argc",
-      "a0": "data.a0"
+      "a1": "data.a1",
+      "type": "data.type",
+      "msg": "data.msg",
+      "a2": "data.a2"
     },
     "confidence": 0.92,
     "version": 1,
@@ -122,12 +122,12 @@
       }
     ],
     "normalization": {
-      "a0": "data.a0",
       "a1": "data.a1",
-      "a2": "data.a2",
       "argc": "data.argc",
-      "type": "data.type",
-      "msg": "data.msg"
+      "a2": "data.a2",
+      "msg": "data.msg",
+      "a0": "data.a0",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -180,9 +180,9 @@
     ],
     "normalization": {
       "prog_id": "data.prog_id",
-      "op": "data.op",
+      "type": "data.type",
       "msg": "data.msg",
-      "type": "data.type"
+      "op": "data.op"
     },
     "confidence": 0.92,
     "version": 1,
@@ -234,10 +234,10 @@
       }
     ],
     "normalization": {
-      "a0": "data.a0",
-      "msg": "data.msg",
+      "argc": "data.argc",
       "type": "data.type",
-      "argc": "data.argc"
+      "msg": "data.msg",
+      "a0": "data.a0"
     },
     "confidence": 0.92,
     "version": 1,
@@ -361,22 +361,22 @@
       }
     ],
     "normalization": {
-      "exe": "data.exe",
-      "hostname": "data.hostname",
-      "unit": "data.unit",
-      "terminal": "data.terminal",
-      "comm": "data.comm",
-      "type": "data.type",
-      "UID": "data.uid",
-      "pid": "data.pid",
-      "subj": "data.subj",
-      "addr": "data.addr",
-      "ses": "data.ses",
-      "AUID": "data.auid",
       "auid": "data.auid",
-      "msg": "data.msg",
+      "UID": "data.uid",
       "res": "data.res",
-      "uid": "data.uid"
+      "pid": "data.pid",
+      "exe": "data.exe",
+      "ses": "data.ses",
+      "msg": "data.msg",
+      "unit": "data.unit",
+      "AUID": "data.auid",
+      "terminal": "data.terminal",
+      "type": "data.type",
+      "comm": "data.comm",
+      "subj": "data.subj",
+      "hostname": "data.hostname",
+      "uid": "data.uid",
+      "addr": "data.addr"
     },
     "confidence": 0.94,
     "version": 1,
@@ -494,21 +494,21 @@
       }
     ],
     "normalization": {
-      "pe": "data.pe",
-      "pi": "data.pi",
-      "fe": "data.fe",
-      "fver": "data.fver",
-      "old_pp": "data.old_pp",
-      "type": "data.type",
-      "pp": "data.pp",
-      "old_pi": "data.old_pi",
-      "fi": "data.fi",
-      "old_pe": "data.old_pe",
       "fp": "data.fp",
       "frootid": "data.frootid",
-      "msg": "data.msg",
+      "old_pp": "data.old_pp",
+      "old_pa": "data.old_pa",
+      "fver": "data.fver",
+      "fe": "data.fe",
+      "pi": "data.pi",
+      "type": "data.type",
       "pa": "data.pa",
-      "old_pa": "data.old_pa"
+      "msg": "data.msg",
+      "pe": "data.pe",
+      "old_pi": "data.old_pi",
+      "pp": "data.pp",
+      "fi": "data.fi",
+      "old_pe": "data.old_pe"
     },
     "confidence": 0.92,
     "version": 1,
@@ -902,8 +902,8 @@
       }
     ],
     "normalization": {
-      "program": "program_name",
-      "hostname": "hostname"
+      "hostname": "hostname",
+      "program": "program_name"
     },
     "confidence": 0.9,
     "version": 1,
@@ -955,8 +955,8 @@
       }
     ],
     "normalization": {
-      "hostname": "hostname",
-      "program": "program_name"
+      "program": "program_name",
+      "hostname": "hostname"
     },
     "confidence": 0.9,
     "version": 1,
@@ -1046,8 +1046,8 @@
       }
     ],
     "normalization": {
-      "hostname": "hostname",
-      "program": "program_name"
+      "program": "program_name",
+      "hostname": "hostname"
     },
     "confidence": 0.9,
     "version": 1,
@@ -1334,15 +1334,15 @@
       }
     ],
     "normalization": {
-      "profile": "data.profile",
-      "info": "data.info",
-      "type": "data.type",
       "comm": "data.comm",
       "name": "data.name",
+      "profile": "data.profile",
       "apparmor": "data.apparmor",
-      "pid": "data.pid",
+      "info": "data.info",
+      "operation": "data.operation",
       "msg": "data.msg",
-      "operation": "data.operation"
+      "type": "data.type",
+      "pid": "data.pid"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1461,10 +1461,10 @@
     "normalization": {
       "argc": "data.argc",
       "type": "data.type",
-      "a1": "data.a1",
-      "msg": "data.msg",
       "a2": "data.a2",
-      "a0": "data.a0"
+      "msg": "data.msg",
+      "a0": "data.a0",
+      "a1": "data.a1"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1570,19 +1570,19 @@
       }
     ],
     "normalization": {
-      "a8": "data.a8",
-      "type": "data.type",
-      "a2": "data.a2",
-      "a5": "data.a5",
-      "a1": "data.a1",
-      "a6": "data.a6",
-      "a0": "data.a0",
+      "a4": "data.a4",
+      "a3": "data.a3",
       "a7": "data.a7",
+      "a6": "data.a6",
+      "a2": "data.a2",
+      "a1": "data.a1",
+      "a8": "data.a8",
       "msg": "data.msg",
       "argc": "data.argc",
       "a9": "data.a9",
-      "a4": "data.a4",
-      "a3": "data.a3"
+      "type": "data.type",
+      "a0": "data.a0",
+      "a5": "data.a5"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1682,17 +1682,17 @@
       }
     ],
     "normalization": {
-      "a0": "data.a0",
-      "a6": "data.a6",
-      "a7": "data.a7",
-      "msg": "data.msg",
-      "a2": "data.a2",
       "a1": "data.a1",
+      "a3": "data.a3",
+      "a6": "data.a6",
+      "type": "data.type",
       "argc": "data.argc",
       "a5": "data.a5",
-      "a3": "data.a3",
+      "a2": "data.a2",
+      "msg": "data.msg",
+      "a0": "data.a0",
       "a8": "data.a8",
-      "type": "data.type",
+      "a7": "data.a7",
       "a4": "data.a4"
     },
     "confidence": 0.92,
@@ -1769,14 +1769,14 @@
       }
     ],
     "normalization": {
-      "a3": "data.a3",
-      "a4": "data.a4",
-      "msg": "data.msg",
-      "a1": "data.a1",
-      "a2": "data.a2",
-      "a0": "data.a0",
       "argc": "data.argc",
-      "type": "data.type"
+      "a3": "data.a3",
+      "a0": "data.a0",
+      "type": "data.type",
+      "a2": "data.a2",
+      "a1": "data.a1",
+      "a4": "data.a4",
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1840,12 +1840,12 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
+      "type": "data.type",
+      "saddr": "data.saddr",
       "laddr": "data.laddr",
       "lport": "srcport",
       "saddr_fam": "data.saddr_fam",
-      "type": "data.type",
-      "saddr": "data.saddr"
+      "msg": "data.msg"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1909,12 +1909,12 @@
       }
     ],
     "normalization": {
-      "type": "data.type",
-      "a0": "data.a0",
       "msg": "data.msg",
+      "a1": "data.a1",
       "a2": "data.a2",
       "argc": "data.argc",
-      "a1": "data.a1"
+      "a0": "data.a0",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -1973,10 +1973,10 @@
     ],
     "normalization": {
       "a1": "data.a1",
-      "type": "data.type",
-      "argc": "data.argc",
       "a0": "data.a0",
-      "msg": "data.msg"
+      "msg": "data.msg",
+      "argc": "data.argc",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2046,13 +2046,13 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
-      "a2": "data.a2",
-      "a3": "data.a3",
-      "argc": "data.argc",
-      "a0": "data.a0",
       "type": "data.type",
-      "a1": "data.a1"
+      "a1": "data.a1",
+      "a0": "data.a0",
+      "msg": "data.msg",
+      "argc": "data.argc",
+      "a3": "data.a3",
+      "a2": "data.a2"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2110,11 +2110,11 @@
       }
     ],
     "normalization": {
-      "saddr_fam": "data.saddr_fam",
-      "type": "data.type",
       "msg": "data.msg",
       "saddr": "data.saddr",
-      "path": "data.path"
+      "saddr_fam": "data.saddr_fam",
+      "path": "data.path",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2244,22 +2244,22 @@
       }
     ],
     "normalization": {
-      "cap_fi": "data.cap_fi",
-      "cap_fp": "data.cap_fp",
-      "name": "data.name",
-      "nametype": "data.nametype",
-      "ouid": "data.ouid",
-      "rdev": "data.rdev",
-      "inode": "data.inode",
-      "mode": "data.mode",
       "ogid": "data.ogid",
+      "type": "data.type",
+      "rdev": "data.rdev",
+      "msg": "data.msg",
+      "nametype": "data.nametype",
+      "cap_fi": "data.cap_fi",
       "OGID": "data.ogid",
       "item": "data.item",
-      "msg": "data.msg",
       "cap_frootid": "data.cap_frootid",
-      "cap_fe": "data.cap_fe",
-      "type": "data.type",
+      "cap_fp": "data.cap_fp",
+      "mode": "data.mode",
+      "inode": "data.inode",
       "dev": "data.dev",
+      "ouid": "data.ouid",
+      "cap_fe": "data.cap_fe",
+      "name": "data.name",
       "cap_fver": "data.cap_fver"
     },
     "confidence": 0.92,
@@ -2348,16 +2348,16 @@
       }
     ],
     "normalization": {
-      "msg": "data.msg",
-      "cap_fe": "data.cap_fe",
-      "name": "data.name",
       "type": "data.type",
       "cap_fp": "data.cap_fp",
-      "item": "data.item",
-      "cap_fver": "data.cap_fver",
       "cap_fi": "data.cap_fi",
+      "item": "data.item",
+      "nametype": "data.nametype",
+      "cap_fver": "data.cap_fver",
+      "name": "data.name",
       "cap_frootid": "data.cap_frootid",
-      "nametype": "data.nametype"
+      "msg": "data.msg",
+      "cap_fe": "data.cap_fe"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2403,9 +2403,9 @@
       }
     ],
     "normalization": {
-      "cwd": "data.cwd",
+      "msg": "data.msg",
       "type": "data.type",
-      "msg": "data.msg"
+      "cwd": "data.cwd"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2451,8 +2451,8 @@
       }
     ],
     "normalization": {
-      "proctitle": "data.proctitle",
       "type": "data.type",
+      "proctitle": "data.proctitle",
       "msg": "data.msg"
     },
     "confidence": 0.92,
@@ -2709,44 +2709,44 @@
       }
     ],
     "normalization": {
-      "FSUID": "data.fsuid",
-      "a3": "data.a3",
-      "ses": "data.ses",
-      "euid": "data.euid",
-      "FSGID": "data.fsgid",
-      "uid": "data.uid",
-      "sgid": "data.sgid",
-      "exit": "data.exit",
-      "subj": "data.subj",
-      "msg": "data.msg",
-      "tty": "data.tty",
-      "pid": "data.pid",
-      "a2": "data.a2",
-      "key": "data.key",
-      "exe": "data.exe",
-      "items": "data.items",
-      "SGID": "data.sgid",
-      "UID": "data.uid",
       "suid": "data.suid",
-      "a1": "data.a1",
-      "type": "data.type",
+      "a3": "data.a3",
       "fsgid": "data.fsgid",
-      "EUID": "data.euid",
-      "GID": "data.gid",
-      "success": "data.success",
-      "auid": "data.auid",
+      "syscall": "data.syscall",
+      "ses": "data.ses",
+      "fsuid": "data.fsuid",
+      "key": "data.key",
+      "AUID": "data.auid",
+      "tty": "data.tty",
+      "uid": "data.uid",
+      "arch": "data.arch",
+      "a2": "data.a2",
+      "exe": "data.exe",
       "egid": "data.egid",
       "SYSCALL": "data.syscall",
-      "fsuid": "data.fsuid",
-      "EGID": "data.egid",
-      "a0": "data.a0",
-      "gid": "data.gid",
-      "syscall": "data.syscall",
-      "comm": "data.comm",
-      "AUID": "data.auid",
-      "arch": "data.arch",
+      "GID": "data.gid",
+      "EUID": "data.euid",
+      "a1": "data.a1",
+      "UID": "data.uid",
       "SUID": "data.suid",
-      "ppid": "data.ppid"
+      "success": "data.success",
+      "euid": "data.euid",
+      "a0": "data.a0",
+      "auid": "data.auid",
+      "comm": "data.comm",
+      "FSGID": "data.fsgid",
+      "ppid": "data.ppid",
+      "pid": "data.pid",
+      "msg": "data.msg",
+      "exit": "data.exit",
+      "subj": "data.subj",
+      "items": "data.items",
+      "FSUID": "data.fsuid",
+      "SGID": "data.sgid",
+      "sgid": "data.sgid",
+      "EGID": "data.egid",
+      "gid": "data.gid",
+      "type": "data.type"
     },
     "confidence": 0.92,
     "version": 1,
@@ -2811,11 +2811,11 @@
     ],
     "normalization": {
       "type": "data.type",
-      "commandElements": "data.commandelements",
+      "ceData_children": "data.cedata_children",
       "redirections": "data.redirections",
       "a": "data.a",
-      "text": "data.text",
-      "ceData_children": "data.cedata_children"
+      "commandElements": "data.commandelements",
+      "text": "data.text"
     },
     "confidence": 0.94,
     "version": 1,

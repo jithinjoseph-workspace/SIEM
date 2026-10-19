@@ -67,6 +67,11 @@ async fn main() {
 }
 
 async fn run_linux_agent() {
+    if lifecycle::is_decommissioned() {
+        tracing::warn!("wazuh-agentd: This endpoint was decommissioned/deleted by the SIEM Manager. Stopping daemon permanently (exit status 42).");
+        std::process::exit(42);
+    }
+
     let mut config = ClientAgent::load_config();
     enroll::export_tenant_key(config.tenant_key.as_deref());
 

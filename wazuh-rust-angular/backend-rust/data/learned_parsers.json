@@ -46,11 +46,11 @@
       }
     ],
     "normalization": {
-      "commandElements": "data.commandelements",
       "redirections": "data.redirections",
-      "type": "data.type",
-      "text": "data.text",
       "a": "data.a",
+      "text": "data.text",
+      "commandElements": "data.commandelements",
+      "type": "data.type",
       "ceData_children": "data.cedata_children"
     },
     "confidence": 0.94,

@@ -64,7 +64,7 @@ if not exist "%FRONTEND_DIR%\node_modules" (
   popd
 )
 
-rem ── Build the backend from the current sources (a running exe cannot be replaced) ──
+rem ?? Build the backend from the current sources (a running exe cannot be replaced) ??
 echo [*] Stopping running backend processes before the build...
 taskkill /F /IM siem-api.exe >nul 2>&1
 taskkill /F /IM auth-service.exe >nul 2>&1

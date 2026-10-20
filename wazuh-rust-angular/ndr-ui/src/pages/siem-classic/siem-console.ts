@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { SiemService } from './core/services/siem.service';
 import {
-  AgentDeployService, DeployParams, defaultManagerUrl, downloadText, generateAgentName, installCommand,
+  AgentDeployService, DeployParams, defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand,
   isValidAgentName, linuxDeployScript, startCommand, windowsBatScript, windowsInstallScript,
 } from '../../services/siem/agent-deploy';
 import {
@@ -671,6 +671,8 @@ export class SiemConsole implements OnInit, OnDestroy {
       this.switchTab(tab);
     }
     this.fetchData();
+    // Resolve the real LAN IP from the backend so deploy commands work from any client
+    fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
 
     // Subscribe to real-time WebSocket connection status
     this.subs.add(

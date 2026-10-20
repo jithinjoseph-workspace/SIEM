@@ -11,7 +11,7 @@ import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
 import {
   AgentDeployService, DeployOs, DeployParams, WinInstallMode,
-  defaultManagerUrl, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
+  defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
   linuxDeployScript, startCommand, windowsBatScript,
 } from '../../../services/siem/agent-deploy';
 import { Agent, AgentInventory, ScaCheckResult, RawEvent } from '../../../services/siem/siem.models';
@@ -178,6 +178,8 @@ export class Agents implements OnInit {
 
   ngOnInit() {
     this.loadAgents();
+    // Resolve the real LAN IP from the backend so deploy commands work from any client
+    fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
   }
 
   loadAgents() {

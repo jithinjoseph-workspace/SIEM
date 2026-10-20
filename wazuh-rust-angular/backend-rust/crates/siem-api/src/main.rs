@@ -337,6 +337,7 @@ async fn main() {
         ]);
 
     let app = Router::new()
+        .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))
         .route("/api/v1/agents", get(get_agents))
@@ -1653,10 +1654,8 @@ async fn download_agent() -> Result<impl IntoResponse, StatusCode> {
     let possible_paths = [
         "target/release/siem-agent.exe",
         "backend-rust/target/release/siem-agent.exe",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/release/siem-agent.exe",
         "target/debug/siem-agent.exe",
         "backend-rust/target/debug/siem-agent.exe",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/debug/siem-agent.exe",
     ];
 
     for path in possible_paths {
@@ -1706,11 +1705,8 @@ async fn download_linux_agent() -> Result<impl IntoResponse, StatusCode> {
         "backend-rust/data/agent-dist/linux/siem-agent-linux",
         "target/release/siem-agent-linux",
         "backend-rust/target/release/siem-agent-linux",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/release/siem-agent-linux",
         "target/debug/siem-agent-linux",
         "backend-rust/target/debug/siem-agent-linux",
-        "target/debug/siem-agent-linux.exe",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/debug/siem-agent-linux.exe",
     ];
 
     for path in possible_paths {
@@ -1732,7 +1728,6 @@ async fn download_install_script() -> Result<impl IntoResponse, StatusCode> {
     let possible_paths = [
         "crates/siem-agent-linux/install.sh",
         "backend-rust/crates/siem-agent-linux/install.sh",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/crates/siem-agent-linux/install.sh",
     ];
 
     for path in possible_paths {
@@ -1757,7 +1752,6 @@ async fn download_sca_file(Path(file): Path<String>) -> Result<impl IntoResponse
     let possible_roots = [
         "ruleset/sca",
         "backend-rust/ruleset/sca",
-        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/ruleset/sca",
     ];
     for root in possible_roots {
         let root_path = std::path::Path::new(root);
@@ -2827,6 +2821,38 @@ async fn get_client_errors_handler() -> impl IntoResponse {
 async fn post_client_errors_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
     tracing::debug!("Client UI error logged: {:?}", payload);
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+/// `GET /api/server-info` — returns the server's LAN IP address so the Angular
+/// UI can build agent-deployment commands without any hardcoded IP.
+/// No authentication required: the information is non-sensitive (it is the
+/// address the client already connected to) and is needed before login to
+/// generate install commands.
+async fn get_server_info_handler() -> impl IntoResponse {
+    // Walk OS network interfaces; pick the first non-loopback, non-link-local
+    // IPv4 address (169.254.x.x excluded).  Fall back to 127.0.0.1 when none
+    // is found so callers always get a valid URL.
+    let lan_ip: String = {
+        use std::net::{IpAddr, Ipv4Addr};
+        let mut found: Option<Ipv4Addr> = None;
+        if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
+            for (_name, addr) in ifaces {
+                if let IpAddr::V4(v4) = addr {
+                    if !v4.is_loopback() && !v4.is_link_local() && !v4.is_unspecified() {
+                        found = Some(v4);
+                        break;
+                    }
+                }
+            }
+        }
+        found.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".to_string())
+    };
+    let port = std::env::var("SIEM_PORT").unwrap_or_else(|_| "8088".to_string());
+    Json(serde_json::json!({
+        "lan_ip": lan_ip,
+        "port": port,
+        "manager_url": format!("http://{}:{}", lan_ip, port)
+    }))
 }
 
 async fn get_health_handler(State(state): State<AppState>, ctx: Option<Extension<AuthCtx>>) -> impl IntoResponse {

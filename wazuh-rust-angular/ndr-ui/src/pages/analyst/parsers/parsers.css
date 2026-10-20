@@ -1,8 +1,43 @@
 .parsers-page {
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* AI Parser Studio Cards */
+.parsers-page .grid > div {
+  background: rgba(13, 20, 36, 0.75) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.parsers-page .grid > div:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.35) !important;
+}
+
+/* Regex & Code Panels */
+.parsers-page pre, .parsers-page code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.parsers-page ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.parsers-page ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.parsers-page ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+.parsers-page ::-webkit-scrollbar-thumb:hover {
+  background: #a855f7;
 }

@@ -98,6 +98,12 @@ export class Agents implements OnInit {
   deployInstallCommand = computed(() => (this.deployNameValid() ? installCommand(this.deployParams()) : ''));
   deployStartCommand = computed(() => startCommand(this.deployParams()));
 
+  totalCount = computed(() => this.agents().length);
+  activeCount = computed(() => this.agents().filter(a => a.status === 'active').length);
+  disconnectedCount = computed(() => this.agents().filter(a => a.status !== 'active').length);
+  windowsCount = computed(() => this.agents().filter(a => a.os_type === 'windows').length);
+  linuxCount = computed(() => this.agents().filter(a => a.os_type === 'linux').length);
+
   filteredAgents = computed(() => {
     let list = this.agents();
     const q = this.searchQuery().toLowerCase().trim();

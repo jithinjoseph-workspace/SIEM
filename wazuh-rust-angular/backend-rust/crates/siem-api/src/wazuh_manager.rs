@@ -414,7 +414,7 @@ fn spawn(home: &Path, d: &str) -> std::io::Result<Child> {
     let mut c = Command::new(home.join("bin").join(exe_name(d)));
     c.current_dir(home);
     match d {
-        "wazuh-db" | "wazuh-modulesd" => c.arg("-f"),
+        "wazuh-db" | "wazuh-modulesd" | "wazuh-integratord" | "wazuh-csyslogd" => c.arg("-f"),
         _ => c.arg("-f").arg("-D").arg(home),
     };
     let log = |n: &str| std::fs::OpenOptions::new().create(true).append(true).open(home.join("logs").join(n));

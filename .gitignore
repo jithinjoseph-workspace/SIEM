@@ -47,6 +47,7 @@ Thumbs.db
 wazuh-rust-angular/backend-rust/data/jwt_secret.txt
 wazuh-rust-angular/backend-rust/data/tenant_agent_keys.json
 wazuh-rust-angular/backend-rust/data/agent_tenants.json
+wazuh-rust-angular/backend-rust/data/learned_parsers.json
 wazuh-rust-angular/backend-rust/data/manager/logs/
 wazuh-rust-angular/backend-rust/data/manager/var/
 wazuh-rust-angular/backend-rust/data/manager/queue/

@@ -14,7 +14,12 @@ pub struct AgentBuffer {
 }
 
 impl AgentBuffer {
-    pub fn new(manager_url: String, capacity: usize, events_per_second: usize) -> (Self, tokio::task::JoinHandle<()>) {
+    pub fn new(
+        manager_url: String,
+        capacity: usize,
+        events_per_second: usize,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<RawEvent>(capacity);
         let dropped_count = Arc::new(AtomicUsize::new(0));
 
@@ -35,6 +40,16 @@ impl AgentBuffer {
             let mut batch: Vec<RawEvent> = Vec::with_capacity(50);
 
             loop {
+                if lifecycle.is_terminated() {
+                    break;
+                }
+
+                // If agent is deactivated/dormant, pause sending
+                if !lifecycle.is_active() {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+
                 // Collect batch of events
                 while let Ok(event) = rx.try_recv() {
                     batch.push(event);
@@ -59,8 +74,16 @@ impl AgentBuffer {
                             debug!("AgentBuffer: Dispatched {} events to Manager", count);
                         }
                         Ok(res) if res.status() == reqwest::StatusCode::GONE => {
-                            let id = to_send.first().map(|e| e.agent_id.clone()).unwrap_or_default();
-                            crate::enroll::stop_deactivated(&id);
+                            warn!("AgentBuffer: Manager returned 410 GONE (agent deactivated or dormant). Updating state...");
+                            if let Some(state) = lifecycle.fetch_state().await {
+                                lifecycle.set_state(state);
+                            } else {
+                                lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Dormant);
+                            }
+                        }
+                        Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
+                            warn!("AgentBuffer: Manager returned 404 NOT FOUND (agent deleted from registry). Executing decommission...");
+                            lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
                         }
                         Ok(res) => {
                             warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());

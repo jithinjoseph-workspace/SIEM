@@ -120,7 +120,41 @@ mkdir -p "${INSTALL_DIR}/etc"
 mkdir -p "${INSTALL_DIR}/logs"
 mkdir -p "${INSTALL_DIR}/queue"
 mkdir -p "${INSTALL_DIR}/quarantine"
+mkdir -p "${INSTALL_DIR}/ruleset/sca"
 mkdir -p "${INSTALL_DIR}/var/run"
+
+# Fetch matching distribution CIS benchmark policy
+case "${DIST_NAME}" in
+    ubuntu)
+        case "${DIST_VER}" in
+            24.*) SCA_POLICY="cis_ubuntu24-04.yml" ;;
+            20.*) SCA_POLICY="cis_ubuntu20-04.yml" ;;
+            18.*) SCA_POLICY="cis_ubuntu18-04.yml" ;;
+            *)    SCA_POLICY="cis_ubuntu22-04.yml" ;;
+        esac
+        ;;
+    debian)
+        case "${DIST_VER}" in
+            11*) SCA_POLICY="cis_debian11.yml" ;;
+            10*) SCA_POLICY="cis_debian10.yml" ;;
+            *)   SCA_POLICY="cis_debian12.yml" ;;
+        esac
+        ;;
+    rhel|centos|rocky|almalinux)
+        case "${DIST_VER}" in
+            9*) SCA_POLICY="cis_rhel9_linux.yml" ;;
+            7*) SCA_POLICY="cis_rhel7_linux.yml" ;;
+            *)  SCA_POLICY="cis_rhel8_linux.yml" ;;
+        esac
+        ;;
+    *)
+        SCA_POLICY="cis_ubuntu22-04.yml"
+        ;;
+esac
+
+if http_get "${MANAGER_URL}/downloads/sca/${SCA_POLICY}" "${INSTALL_DIR}/ruleset/sca/${SCA_POLICY}" 2>/dev/null && [ -s "${INSTALL_DIR}/ruleset/sca/${SCA_POLICY}" ]; then
+    echo "[✓] Downloaded CIS Benchmark policy: ${SCA_POLICY}"
+fi
 
 # 5. Locate or compile the agent binary
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -226,8 +260,8 @@ KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
 if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
     echo "[+] Keeping existing enrollment: $(cut -d' ' -f1,2 "${KEYS_FILE}" | head -1)"
 else
-    rm -f "${KEYS_FILE}"
-    BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\"}"
+    rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
+    BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
     RESP=""
     if command -v curl > /dev/null 2>&1; then
         RESP=$(curl -fsS -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
@@ -260,6 +294,13 @@ cat <<EOF > "${INSTALL_DIR}/etc/agent-config.json"
 }
 EOF
 
+cat <<EOF > "${INSTALL_DIR}/etc/agent.env"
+SIEM_MANAGER_URL="${MANAGER_URL}"
+SIEM_AGENT_NAME="${AGENT_NAME}"
+SIEM_AGENT_GROUP="${AGENT_GROUP}"
+SIEM_TENANT_KEY="${TENANT_KEY}"
+EOF
+
 # 7. Apply hardened file permissions
 chown root:${GROUP} "${INSTALL_DIR}"
 chmod 750 "${INSTALL_DIR}"
@@ -273,12 +314,16 @@ if [ -f "${INSTALL_DIR}/etc/client.keys" ]; then
 fi
 chown root:${GROUP} "${INSTALL_DIR}/etc/agent-config.json"
 chmod 640 "${INSTALL_DIR}/etc/agent-config.json"
+chown root:${GROUP} "${INSTALL_DIR}/etc/agent.env"
+chmod 600 "${INSTALL_DIR}/etc/agent.env"
 chown -R ${USER}:${GROUP} "${INSTALL_DIR}/logs"
 chmod 750 "${INSTALL_DIR}/logs"
 chown -R ${USER}:${GROUP} "${INSTALL_DIR}/queue"
 chmod 750 "${INSTALL_DIR}/queue"
 chown -R root:${GROUP} "${INSTALL_DIR}/quarantine"
 chmod 700 "${INSTALL_DIR}/quarantine"
+chown -R root:${GROUP} "${INSTALL_DIR}/ruleset"
+chmod -R 750 "${INSTALL_DIR}/ruleset"
 
 # 8. Service Registration (Systemd / Init)
 SERVICE_SOURCE="${SCRIPT_DIR}/init/wazuh-rust-agent.service"
@@ -300,9 +345,11 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=-${INSTALL_DIR}/etc/agent.env
 ExecStart=${INSTALL_DIR}/bin/siem-agent-linux --daemon
 Restart=always
 RestartSec=10
+RestartPreventExitStatus=42
 KillMode=process
 StandardOutput=journal
 StandardError=journal

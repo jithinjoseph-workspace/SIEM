@@ -29,9 +29,16 @@ export const WINDOWS_SERVICE = 'WazuhSvc';
 export const LINUX_SERVICE = 'wazuh-rust-agent';
 
 /** Default manager URL: the console's own origin (the dev server and Caddy
- *  both forward /api and /downloads to siem-api). */
+ *  both forward /api and /downloads to siem-api).
+ *  When accessed via localhost / loopback, automatically uses the host LAN IP
+ *  (192.168.220.37) so deployment commands work immediately on remote VMs. */
 export function defaultManagerUrl(): string {
   if (typeof window === 'undefined') return 'http://127.0.0.1:8088';
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    const port = window.location.port ? `:${window.location.port}` : '';
+    return `${window.location.protocol}//192.168.220.37${port}`;
+  }
   return `${window.location.protocol}//${window.location.host}`;
 }
 

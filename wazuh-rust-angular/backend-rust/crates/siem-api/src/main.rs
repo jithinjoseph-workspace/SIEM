@@ -15,13 +15,13 @@ use siem_core::{
 };
 use siem_engine::AnalysisEngine;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{Arc, RwLock},
 };
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use siem_vuln_detector::{
@@ -119,6 +119,10 @@ pub struct AppState {
     pub enrolled: Arc<RwLock<HashMap<String, EnrolledAgent>>>,
     /// Highest agent id ever issued (deleted agents included): ids are never reused.
     pub max_agent_id: Arc<std::sync::atomic::AtomicU64>,
+    /// Set of agent ids deleted from the fleet to prevent resurrection on ingest.
+    pub deleted_agents: Arc<RwLock<HashSet<String>>>,
+    /// Set of (tenant, lowercase agent name) deleted from the fleet to prevent auto-re-enrollment.
+    pub deleted_agent_names: Arc<RwLock<HashSet<(String, String)>>>,
 }
 
 
@@ -292,6 +296,8 @@ async fn main() {
         agent_tenants: Arc::new(RwLock::new(HashMap::new())),
         enrolled: Arc::new(RwLock::new(HashMap::new())),
         max_agent_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        deleted_agents: Arc::new(RwLock::new(HashSet::new())),
+        deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
     };
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
@@ -440,6 +446,7 @@ async fn main() {
         .route("/downloads/windows/:file", get(download_windows_file))
         .route("/downloads/siem-agent-linux", get(download_linux_agent))
         .route("/downloads/install.sh", get(download_install_script))
+        .route("/downloads/sca/:file", get(download_sca_file))
         .route("/ws/alerts", get(ws_alerts_handler))
         .route("/ws", get(ws_alerts_handler))
         .route("/api/ws", get(ws_alerts_handler))
@@ -785,11 +792,19 @@ fn scoped_events(state: &AppState, ctx: &AuthCtx) -> Vec<RawEvent> {
     state.events.read().unwrap().iter().filter(|e| tenancy::event_tenant(e, &map) == scope).cloned().collect()
 }
 
-/// Agents of the caller's tenant scope.
+/// Agents of the caller's tenant scope (active only; excludes deactivated and deleted agents).
 fn scoped_agents(state: &AppState, ctx: &AuthCtx) -> Vec<Agent> {
     let scope = ctx.scope();
     let map = state.agent_tenants.read().unwrap().clone();
-    state.agents.read().unwrap().values().filter(|a| tenancy::tenant_of(&map, &a.id) == scope).cloned().collect()
+    let deleted = state.deleted_agents.read().unwrap();
+    state
+        .agents
+        .read()
+        .unwrap()
+        .values()
+        .filter(|a| !deleted.contains(&a.id) && !is_deactivated(state, &a.id) && tenancy::tenant_of(&map, &a.id) == scope)
+        .cloned()
+        .collect()
 }
 
 async fn get_stats(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<SiemStats> {
@@ -873,7 +888,16 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         if let Some(ch_agents) = state.db.fetch_agents(&scope).await {
             // One lock at a time (never agents + agent_tenants together): the
             // scoped readers take them in the other order.
-            let active_ids: std::collections::HashSet<String> = ch_agents.iter().map(|r| r.id.clone()).collect();
+            let deleted = state.deleted_agents.read().unwrap();
+            let enrolled = state.enrolled.read().unwrap();
+            let active_ids: std::collections::HashSet<String> = ch_agents
+                .iter()
+                .map(|r| r.id.clone())
+                .filter(|id| !deleted.contains(id) && !enrolled.get(id).map(|e| e.disabled).unwrap_or(false))
+                .collect();
+            drop(deleted);
+            drop(enrolled);
+
             let tenants_snapshot = {
                 let mut tenants_map = state.agent_tenants.write().unwrap();
                 for id in &active_ids {
@@ -884,6 +908,9 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
             let mut guard = state.agents.write().unwrap();
             let now = Utc::now();
             for r in ch_agents {
+                if !active_ids.contains(&r.id) {
+                    continue;
+                }
                 let last_ka = chrono::DateTime::from_timestamp_millis(r.last_keepalive)
                     .unwrap_or_else(chrono::Utc::now);
                 let status = if (now - last_ka).num_seconds() > 60 {
@@ -918,14 +945,19 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
                     });
             }
 
-            // Sync with ClickHouse: remove in-memory agents for this tenant that are no longer in ClickHouse
+            // Sync with ClickHouse: remove in-memory agents for this tenant that are no longer in ClickHouse, or are deactivated/deleted
+            let deleted_set = state.deleted_agents.read().unwrap();
             guard.retain(|id, _| {
+                if deleted_set.contains(id) || is_deactivated(&state, id) {
+                    return false;
+                }
                 if tenancy::tenant_of(&tenants_snapshot, id) == scope {
                     active_ids.contains(id)
                 } else {
                     true
                 }
             });
+            drop(deleted_set);
             drop(guard);
             // Registered agents (deactivated ones included) keep their tenant binding.
             let registered: std::collections::HashSet<String> = state.enrolled.read().unwrap().keys().cloned().collect();
@@ -959,10 +991,16 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
     if !agent_in_scope(state, ctx, id) {
         return false;
     }
+    let name_opt = state.enrolled.read().unwrap().get(id).map(|e| e.name.clone())
+        .or_else(|| state.agents.read().unwrap().get(id).map(|a| a.name.clone()));
     let in_fleet = state.agents.write().unwrap().remove(id).is_some();
     let removed = in_fleet || state.enrolled.read().unwrap().contains_key(id);
     if removed {
+        state.deleted_agents.write().unwrap().insert(id.to_string());
         let tenant = state.agent_tenants.write().unwrap().remove(id).unwrap_or_else(|| ctx.scope());
+        if let Some(ref name) = name_opt {
+            state.deleted_agent_names.write().unwrap().insert((tenant.clone(), name.to_lowercase()));
+        }
         // Like manage_agents -r: the enrollment and key go too. The registry
         // row stays, marked deleted, so the id is never issued again.
         let e = state.enrolled.write().unwrap().remove(id);
@@ -970,7 +1008,30 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         wazuh_manager::save_keys(state);
         let wid = id.to_string();
         tokio::spawn(async move { wazuh_manager::remove_agent(&wid).await });
-        persist_registry(state, id, &tenant, e.as_ref(), true);
+        let db = state.db.clone();
+        let t_clone = tenant.clone();
+        let id_clone = id.to_string();
+        tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
+        let enrolled_placeholder;
+        let e_ref = match e.as_ref() {
+            Some(entry) => Some(entry),
+            None => {
+                if let Some(ref name) = name_opt {
+                    enrolled_placeholder = Some(EnrolledAgent {
+                        name: name.clone(),
+                        tenant: tenant.clone(),
+                        groups: String::new(),
+                        os_type: String::new(),
+                        enrolled_at: Utc::now(),
+                        disabled: true,
+                    });
+                    enrolled_placeholder.as_ref()
+                } else {
+                    None
+                }
+            }
+        };
+        persist_registry(state, id, &tenant, e_ref, true);
     }
     removed
 }
@@ -1092,6 +1153,9 @@ async fn ingest_event(
         // The agent's tenant decides where everything below is stored; a
         // tenant_id sent by the agent itself is never trusted.
         let tenant = resolve_agent_tenant(&state, &headers, &event.agent_id)?;
+        if state.deleted_agents.read().unwrap().contains(&event.agent_id) {
+            return Err(StatusCode::NOT_FOUND);
+        }
         if is_deactivated(&state, &event.agent_id) {
             return Err(StatusCode::GONE);
         }
@@ -1638,6 +1702,8 @@ async fn download_windows_binary(file: String) -> Result<impl IntoResponse, Stat
 
 async fn download_linux_agent() -> Result<impl IntoResponse, StatusCode> {
     let possible_paths = [
+        "data/agent-dist/linux/siem-agent-linux",
+        "backend-rust/data/agent-dist/linux/siem-agent-linux",
         "target/release/siem-agent-linux",
         "backend-rust/target/release/siem-agent-linux",
         "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/target/release/siem-agent-linux",
@@ -1681,6 +1747,40 @@ async fn download_install_script() -> Result<impl IntoResponse, StatusCode> {
         }
     }
 
+    Err(StatusCode::NOT_FOUND)
+}
+
+async fn download_sca_file(Path(file): Path<String>) -> Result<impl IntoResponse, StatusCode> {
+    if file.contains("..") || file.contains('/') || file.contains('\\') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let possible_roots = [
+        "ruleset/sca",
+        "backend-rust/ruleset/sca",
+        "e:/wazhu-Siem-code/wazuh-rust-angular/backend-rust/ruleset/sca",
+    ];
+    for root in possible_roots {
+        let root_path = std::path::Path::new(root);
+        if let Ok(entries) = std::fs::read_dir(root_path) {
+            for entry in entries.flatten() {
+                let sub = entry.path();
+                if sub.is_dir() {
+                    let candidate = sub.join(&file);
+                    if candidate.is_file() {
+                        if let Ok(bytes) = tokio::fs::read(&candidate).await {
+                            return Ok((
+                                [
+                                    (header::CONTENT_TYPE, "application/x-yaml".to_string()),
+                                    (header::CONTENT_DISPOSITION, format!("inline; filename=\"{file}\"")),
+                                ],
+                                bytes,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
     Err(StatusCode::NOT_FOUND)
 }
 
@@ -4700,6 +4800,8 @@ pub struct EnrollAgentPayload {
     pub groups: Option<String>,
     /// Optional OS hint ("linux" / "windows" / "macos") for the fleet view.
     pub os_type: Option<String>,
+    /// Explicit override (e.g. from install.sh / installer) to re-enroll a previously deleted agent name
+    pub force: Option<bool>,
 }
 
 /// One enrolled agent (a row of `ndr.agent_registry`): ids stay unique
@@ -4735,6 +4837,8 @@ async fn load_agent_registry(state: &AppState) {
             }
             if r.deleted == 1 {
                 n_deleted += 1;
+                state.deleted_agents.write().unwrap().insert(r.agent_id.clone());
+                state.deleted_agent_names.write().unwrap().insert((r.tenant_id.clone(), r.name.to_lowercase()));
                 continue;
             }
             n_live += 1;
@@ -4847,6 +4951,21 @@ async fn post_agent_enroll_handler(
     if !valid_agent_name(&name) {
         return err(StatusCode::BAD_REQUEST, "Invalid agent name (2-128 chars: letters, digits, '.', '_', '-')");
     }
+
+    let force_enroll = payload.force.unwrap_or(false);
+    let key = (tenant.clone(), name.to_lowercase());
+    if state.deleted_agent_names.read().unwrap().contains(&key) {
+        if force_enroll {
+            info!("Force-enrolling previously deleted agent '{}' in tenant '{}'", name, tenant);
+            state.deleted_agent_names.write().unwrap().remove(&key);
+        } else {
+            warn!("Rejected auto-re-enrollment attempt for decommissioned agent '{}' in tenant '{}'", name, tenant);
+            return err(
+                StatusCode::FORBIDDEN,
+                "Agent name has been deleted from this tenant. Decommissioned agents may not auto-re-enroll.",
+            );
+        }
+    }
     // authd refuses groups that do not exist ("Invalid group"); the manager names carry the tenant
     let asked: Vec<String> = payload.groups.as_deref().unwrap_or("").split(',').map(str::to_string).collect();
     let manager_groups = if wazuh_manager::enabled() {
@@ -4900,6 +5019,7 @@ async fn post_agent_enroll_handler(
     wazuh_manager::save_keys(&state);
     wazuh_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &manager_groups.join(",")).await;
 
+    state.deleted_agents.write().unwrap().remove(&agent_id);
     state.agent_tenants.write().unwrap().insert(agent_id.clone(), tenant.clone());
     {
         let mut agents = state.agents.write().unwrap();
@@ -5117,6 +5237,14 @@ async fn get_agent_upgrade_handler(State(state): State<AppState>, Extension(ctx)
 /// the tenant it already has (new agents go to `default`). An agent id that
 /// belongs to another tenant is refused.
 fn resolve_agent_tenant(state: &AppState, headers: &HeaderMap, agent_id: &str) -> Result<String, StatusCode> {
+    if !agent_id.is_empty() {
+        if state.deleted_agents.read().unwrap().contains(agent_id) {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        if is_deactivated(state, agent_id) {
+            return Err(StatusCode::GONE);
+        }
+    }
     let keyed = match headers.get("x-tenant-key").and_then(|v| v.to_str().ok()).map(str::trim).filter(|s| !s.is_empty()) {
         Some(k) => Some(state.agent_keys.tenant_for(k).ok_or(StatusCode::UNAUTHORIZED)?),
         None => None,
@@ -5135,6 +5263,9 @@ fn resolve_agent_tenant(state: &AppState, headers: &HeaderMap, agent_id: &str) -
         (Some(existing), Some(k)) if existing != k => Err(StatusCode::CONFLICT),
         (Some(existing), _) => Ok(existing),
         (None, k) => {
+            if state.deleted_agents.read().unwrap().contains(agent_id) {
+                return Err(StatusCode::NOT_FOUND);
+            }
             let t = k.unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string());
             if agent_id.is_empty() {
                 return Ok(t);
@@ -5365,10 +5496,16 @@ struct AgentStateQuery {
     agent_id: String,
 }
 
-/// `GET /api/v1/agent/state?agent_id=` (agent-facing): "active" or
-/// "deactivated". A deactivated agent stays dormant and checks this every minute.
+/// `GET /api/v1/agent/state?agent_id=` (agent-facing): "active",
+/// "deactivated", or "deleted".
 async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<AgentStateQuery>) -> axum::response::Response {
-    let st = if is_deactivated(&state, &q.agent_id) { "deactivated" } else { "active" };
+    let st = if state.deleted_agents.read().unwrap().contains(&q.agent_id) {
+        "deleted"
+    } else if is_deactivated(&state, &q.agent_id) {
+        "deactivated"
+    } else {
+        "active"
+    };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()
 }
 

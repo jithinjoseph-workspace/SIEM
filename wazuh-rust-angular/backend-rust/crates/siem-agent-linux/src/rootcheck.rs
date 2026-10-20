@@ -248,14 +248,21 @@ impl RootcheckEngine {
 pub fn spawn_rootcheck_worker(
     agent_id: String,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let engine = RootcheckEngine::new(agent_id);
 
         loop {
-            engine.run_scan(&buffer).await;
             tokio::time::sleep(interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
+            if !lifecycle.is_active() {
+                continue;
+            }
+            engine.run_scan(&buffer).await;
         }
     })
 }

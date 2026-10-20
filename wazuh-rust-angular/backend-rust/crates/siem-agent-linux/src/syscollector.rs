@@ -118,7 +118,32 @@ impl LinuxSyscollector {
                 }
             }
         }
-        (120, vec!["1 root systemd".into(), "485 root systemd-journald".into(), "1024 root sshd".into(), "1280 root wazuh-agentd".into()])
+
+        // Direct /proc scan fallback (no ps binary required)
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            let mut procs = Vec::new();
+            let mut count = 0;
+            for entry in entries.flatten() {
+                if let Ok(file_name) = entry.file_name().into_string() {
+                    if file_name.chars().all(|c| c.is_ascii_digit()) {
+                        count += 1;
+                        if procs.len() < 25 {
+                            let comm_path = entry.path().join("comm");
+                            let name = std::fs::read_to_string(&comm_path)
+                                .unwrap_or_default()
+                                .trim()
+                                .to_string();
+                            procs.push(format!("{file_name} {name}"));
+                        }
+                    }
+                }
+            }
+            if count > 0 {
+                return (count, procs);
+            }
+        }
+
+        (0, Vec::new())
     }
 
     fn collect_listening_ports(&self) -> (usize, Vec<String>) {
@@ -141,7 +166,34 @@ impl LinuxSyscollector {
                 }
             }
         }
-        (12, vec!["tcp:22 (sshd)".into(), "tcp:80 (nginx)".into(), "tcp:443 (https)".into(), "udp:123 (chrony)".into()])
+
+        // Direct /proc/net/tcp and /proc/net/tcp6 scan (no ss binary required)
+        let mut ports = Vec::new();
+        let mut count = 0;
+        for net_file in ["/proc/net/tcp", "/proc/net/tcp6"] {
+            if let Ok(file) = File::open(net_file) {
+                let reader = BufReader::new(file);
+                for line in reader.lines().flatten().skip(1) {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    // "0A" indicates TCP_LISTEN in Linux kernel /proc/net/tcp
+                    if parts.len() >= 4 && parts[3] == "0A" {
+                        count += 1;
+                        if ports.len() < 20 {
+                            if let Some(port_hex) = parts[1].split(':').nth(1) {
+                                if let Ok(port) = u16::from_str_radix(port_hex, 16) {
+                                    ports.push(format!("tcp:{}", port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if count > 0 {
+            return (count, ports);
+        }
+
+        (0, Vec::new())
     }
 
     fn collect_packages(&self) -> (usize, Vec<String>) {
@@ -166,7 +218,7 @@ impl LinuxSyscollector {
             }
         }
 
-        // 2. Try rpm on RHEL/CentOS
+        // 2. Try rpm on RHEL/CentOS/Rocky/Fedora
         if let Ok(output) = Command::new("rpm").args(["-qa", "--qf", "%{NAME}-%{VERSION}\n"]).output() {
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout);
@@ -187,7 +239,49 @@ impl LinuxSyscollector {
             }
         }
 
-        (542, vec!["openssh-server (8.9p1)".into(), "auditd (3.0.7)".into(), "iptables (1.8.7)".into(), "wazuh-agent (4.14.7)".into(), "systemd (249)".into()])
+        // 3. Try apk on Alpine Linux
+        if let Ok(output) = Command::new("apk").args(["info", "-v"]).output() {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let mut pkgs = Vec::new();
+                let mut count = 0;
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        count += 1;
+                        if pkgs.len() < 25 {
+                            pkgs.push(trimmed.to_string());
+                        }
+                    }
+                }
+                if count > 0 {
+                    return (count, pkgs);
+                }
+            }
+        }
+
+        // 4. Try pacman on Arch Linux
+        if let Ok(output) = Command::new("pacman").args(["-Q"]).output() {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let mut pkgs = Vec::new();
+                let mut count = 0;
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        count += 1;
+                        if pkgs.len() < 25 {
+                            pkgs.push(trimmed.to_string());
+                        }
+                    }
+                }
+                if count > 0 {
+                    return (count, pkgs);
+                }
+            }
+        }
+
+        (0, Vec::new())
     }
 
     fn collect_services(&self) -> (usize, Vec<String>) {
@@ -210,7 +304,25 @@ impl LinuxSyscollector {
                 }
             }
         }
-        (48, vec!["ssh.service (enabled)".into(), "wazuh-agent.service (active)".into(), "cron.service (enabled)".into(), "systemd-resolved.service (enabled)".into()])
+
+        // Fallback for non-systemd init (/etc/init.d/)
+        if let Ok(entries) = std::fs::read_dir("/etc/init.d") {
+            let mut svcs = Vec::new();
+            let mut count = 0;
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    count += 1;
+                    if svcs.len() < 20 {
+                        svcs.push(name);
+                    }
+                }
+            }
+            if count > 0 {
+                return (count, svcs);
+            }
+        }
+
+        (0, Vec::new())
     }
 
     fn collect_users(&self) -> (usize, Vec<String>) {
@@ -231,7 +343,7 @@ impl LinuxSyscollector {
                 return (count, users);
             }
         }
-        (18, vec!["root".into(), "wazuh".into(), "ubuntu".into(), "sshd".into(), "systemd-network".into()])
+        (0, Vec::new())
     }
 
     fn collect_network_adapters(&self) -> Vec<String> {
@@ -250,7 +362,23 @@ impl LinuxSyscollector {
                 }
             }
         }
-        vec!["lo: 127.0.0.1/8".into(), "eth0: 192.168.1.105/24".into()]
+
+        // Direct /sys/class/net lookup
+        if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+            let mut adapters = Vec::new();
+            for entry in entries.flatten() {
+                let iface = entry.file_name().to_string_lossy().to_string();
+                let operstate = std::fs::read_to_string(entry.path().join("operstate"))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|_| "unknown".into());
+                adapters.push(format!("{iface} ({operstate})"));
+            }
+            if !adapters.is_empty() {
+                return adapters;
+            }
+        }
+
+        Vec::new()
     }
 }
 
@@ -258,12 +386,19 @@ impl LinuxSyscollector {
 pub fn spawn_syscollector_worker(
     agent_id: String,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            emit_inventory(&agent_id, &buffer).await;
             tokio::time::sleep(interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
+            if !lifecycle.is_active() {
+                continue;
+            }
+            emit_inventory(&agent_id, &buffer).await;
         }
     })
 }

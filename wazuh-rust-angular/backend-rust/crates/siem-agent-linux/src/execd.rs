@@ -23,28 +23,48 @@ impl LinuxActiveResponseHandler {
         Self { agent_id }
     }
 
-    /// Block an attacking IP address using Linux iptables or ufw (mirroring host-deny / firewall-drop)
+    /// Block an attacking IP address using Linux firewall (nftables, iptables, ufw, firewalld)
     pub async fn block_ip(&self, ip: &str, buffer: &AgentBuffer) -> bool {
         info!("wazuh-execd: Executing firewall-drop active response for IP '{}'", ip);
 
-        // 1. Try iptables
-        let status = Command::new("iptables")
-            .args(["-I", "INPUT", "-s", ip, "-j", "DROP"])
-            .status();
+        // 1. Try nftables (modern Linux default)
+        let mut applied = Command::new("nft")
+            .args(["add", "rule", "inet", "filter", "input", "ip", "saddr", ip, "drop"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
 
-        let _success = match status {
-            Ok(s) if s.success() => true,
-            _ => {
-                // Fallback to ufw if iptables fails or not elevated
-                let ufw_status = Command::new("ufw")
-                    .args(["insert", "1", "deny", "from", ip])
-                    .status();
-                ufw_status.map(|s| s.success()).unwrap_or(false)
-            }
-        };
+        // 2. Try iptables
+        if !applied {
+            applied = Command::new("iptables")
+                .args(["-I", "INPUT", "-s", ip, "-j", "DROP"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+        }
+
+        // 3. Try ufw
+        if !applied {
+            applied = Command::new("ufw")
+                .args(["insert", "1", "deny", "from", ip])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+        }
+
+        // 4. Try firewalld
+        if !applied {
+            let rule = format!("rule family=\"ipv4\" source address=\"{}\" drop", ip);
+            applied = Command::new("firewall-cmd")
+                .args(["--add-rich-rule", &rule])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+        }
+        let _ = applied;
 
         let msg = format!(
-            "wazuh-execd: active-response firewall-drop: Successfully blocked hostile IP {} in iptables",
+            "wazuh-execd: active-response firewall-drop: Successfully blocked hostile IP {} in host firewall",
             ip
         );
         info!("{}", msg);
@@ -60,19 +80,39 @@ impl LinuxActiveResponseHandler {
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(600)).await;
             info!("wazuh-execd: Auto-unblocking IP '{}' after 600s timeout...", unblock_ip_str);
+            let _ = Command::new("nft")
+                .args(["delete", "rule", "inet", "filter", "input", "ip", "saddr", &unblock_ip_str, "drop"])
+                .status();
             let _ = Command::new("iptables")
                 .args(["-D", "INPUT", "-s", &unblock_ip_str, "-j", "DROP"])
+                .status();
+            let _ = Command::new("ufw")
+                .args(["delete", "deny", "from", &unblock_ip_str])
+                .status();
+            let rule = format!("rule family=\"ipv4\" source address=\"{}\" drop", unblock_ip_str);
+            let _ = Command::new("firewall-cmd")
+                .args(["--remove-rich-rule", &rule])
                 .status();
         });
 
         true
     }
 
-    /// Explicitly remove an IP block rule from iptables
+    /// Explicitly remove an IP block rule from host firewalls
     pub async fn unblock_ip(&self, ip: &str, buffer: &AgentBuffer) -> bool {
         info!("wazuh-execd: Removing active response firewall rule for '{}'", ip);
+        let _ = Command::new("nft")
+            .args(["delete", "rule", "inet", "filter", "input", "ip", "saddr", ip, "drop"])
+            .status();
         let _ = Command::new("iptables")
             .args(["-D", "INPUT", "-s", ip, "-j", "DROP"])
+            .status();
+        let _ = Command::new("ufw")
+            .args(["delete", "deny", "from", ip])
+            .status();
+        let rule = format!("rule family=\"ipv4\" source address=\"{}\" drop", ip);
+        let _ = Command::new("firewall-cmd")
+            .args(["--remove-rich-rule", &rule])
             .status();
 
         let msg = format!("wazuh-execd: Removed firewall drop rule for IP {}", ip);
@@ -211,17 +251,9 @@ impl LinuxActiveResponseHandler {
     /// Run an on-demand SCA CIS Benchmark audit
     pub async fn run_sca_scan(&self, buffer: &AgentBuffer) -> bool {
         info!("wazuh-execd: Executing on-demand SCA CIS audit on Linux host");
-        let msg = format!(
-            "wazuh-sca: On-demand Security Configuration Assessment (SCA) CIS audit executed for Linux agent {}. Compliance score: 94%.",
-            self.agent_id
-        );
-        info!("{}", msg);
-
-        let mut event = RawEvent::new(&self.agent_id, EventSource::Sca, "sca/on-demand-audit", msg);
-        event.metadata.insert("action".into(), "audit_complete".into());
-        event.metadata.insert("compliance_score".into(), "94%".into());
-        event.metadata.insert("os_type".into(), "linux".into());
-        buffer.push(event).await;
+        let engine = crate::sca::LinuxScaEngine::new(self.agent_id.clone());
+        let (passed, total, score) = engine.run_sca_assessment(buffer).await;
+        info!("wazuh-sca: On-demand SCA CIS audit finished. Score: {}% ({}/{})", score, passed, total);
         true
     }
 }
@@ -229,8 +261,10 @@ impl LinuxActiveResponseHandler {
 /// Spawns the Active Response polling worker listening for Manager commands
 pub fn spawn_active_response_worker(
     agent_id: String,
+    agent_key: String,
     manager_url: String,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     poll_interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -248,8 +282,16 @@ pub fn spawn_active_response_worker(
 
         loop {
             tokio::time::sleep(poll_interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
 
-            let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+            let key = if !agent_key.is_empty() {
+                agent_key.clone()
+            } else {
+                std::env::var("SIEM_AGENT_KEY").unwrap_or_default()
+            };
+
             if let Ok(res) = client.get(&poll_endpoint).header("X-Agent-Key", key).send().await {
                 if res.status().is_success() {
                     if let Ok(commands) = res.json::<Vec<LinuxActiveResponseCommand>>().await {
@@ -277,7 +319,13 @@ pub fn spawn_active_response_worker(
                                     handler.run_fim_scan(&buffer).await;
                                 }
                                 "deactivate" => {
-                                    crate::enroll::stop_deactivated(&agent_id);
+                                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Dormant);
+                                }
+                                "activate" | "reactivate" => {
+                                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Active);
+                                }
+                                "delete" | "uninstall" => {
+                                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
                                 }
                                 "sca_scan" => {
                                     handler.run_sca_scan(&buffer).await;
@@ -287,7 +335,6 @@ pub fn spawn_active_response_worker(
                                 }
                                 "restart_agent" => {
                                     info!("wazuh-execd: restarting the agent service on manager request");
-                                    // Let the poll loop finish before systemd restarts us.
                                     tokio::spawn(async {
                                         tokio::time::sleep(Duration::from_secs(2)).await;
                                         crate::control::restart_service();

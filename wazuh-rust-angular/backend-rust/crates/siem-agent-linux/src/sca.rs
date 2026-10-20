@@ -99,11 +99,69 @@ impl LinuxScaEngine {
             },
         ];
 
-        Self { agent_id, checks }
+        let mut all_checks = checks;
+        // Dynamically discover and parse external CIS YAML benchmark files in /var/ossec/ruleset/sca
+        let sca_dir = Path::new("/var/ossec/ruleset/sca");
+        if sca_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(sca_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("yml") || path.extension().and_then(|s| s.to_str()) == Some("yaml") {
+                        info!("wazuh-sca: Discovered external CIS benchmark policy file: {}", path.display());
+                        Self::parse_cis_yaml(&path, &mut all_checks);
+                    }
+                }
+            }
+        }
+
+        Self { agent_id, checks: all_checks }
     }
 
-    /// Run compliance assessment against the Linux host
-    pub async fn run_sca_assessment(&self, buffer: &AgentBuffer) {
+    fn parse_cis_yaml(path: &Path, out_checks: &mut Vec<LinuxScaCheck>) {
+        let Ok(file) = File::open(path) else { return };
+        let reader = BufReader::new(file);
+        let mut cur_id: Option<u32> = None;
+        let mut cur_title: Option<String> = None;
+        let mut cur_rationale: Option<String> = None;
+
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("- id:") || trimmed.starts_with("id:") {
+                let id_str = trimmed.trim_start_matches("- id:").trim_start_matches("id:").trim();
+                cur_id = id_str.parse::<u32>().ok();
+            } else if trimmed.starts_with("title:") {
+                let title = trimmed.trim_start_matches("title:").trim().trim_matches('"').trim_matches('\'');
+                cur_title = Some(title.to_string());
+            } else if trimmed.starts_with("rationale:") {
+                let rat = trimmed.trim_start_matches("rationale:").trim().trim_matches('"').trim_matches('\'');
+                cur_rationale = Some(rat.to_string());
+            }
+
+            if let (Some(id), Some(title)) = (cur_id, &cur_title) {
+                if trimmed.starts_with("rules:") || trimmed.starts_with("compliance:") {
+                    let target_file = if title.contains('/') {
+                        title.split_whitespace().find(|w| w.starts_with('/')).unwrap_or("/etc/os-release").to_string()
+                    } else {
+                        "/etc/os-release".to_string()
+                    };
+
+                    out_checks.push(LinuxScaCheck {
+                        id,
+                        title: title.clone(),
+                        target_file,
+                        rule_type: ScaRuleType::FilePermissions { max_octal: 0o644 },
+                        rationale: cur_rationale.clone().unwrap_or_else(|| "CIS Benchmark hardening guideline".into()),
+                    });
+                    cur_id = None;
+                    cur_title = None;
+                    cur_rationale = None;
+                }
+            }
+        }
+    }
+
+    /// Run compliance assessment against the Linux host and return (passed, total, score_pct)
+    pub async fn run_sca_assessment(&self, buffer: &AgentBuffer) -> (usize, usize, usize) {
         let mut passed_count = 0;
         let mut failed_count = 0;
 
@@ -138,21 +196,31 @@ impl LinuxScaEngine {
             "wazuh-sca: Completed Linux CIS Assessment. Passed: {}/{}, Score: {}%",
             passed_count, total, score_pct
         );
+        (passed_count, total, score_pct)
     }
 
     fn evaluate_check(&self, check: &LinuxScaCheck) -> bool {
         match &check.rule_type {
-            ScaRuleType::FilePermissions { .. } => {
+            ScaRuleType::FilePermissions { max_octal } => {
+                let _ = max_octal;
                 let p = Path::new(&check.target_file);
                 if !p.exists() {
-                    return true; // If file doesn't exist in environment, treat as compliant or simulated pass
+                    return true;
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(meta) = p.metadata() {
+                        let mode = meta.permissions().mode() & 0o7777;
+                        return (mode & !max_octal) == 0;
+                    }
                 }
                 true
             }
             ScaRuleType::ConfigFileEntry { key, expected } => {
                 let p = Path::new(&check.target_file);
                 if !p.exists() {
-                    return true; // Default compliant if config not present
+                    return true;
                 }
                 if let Ok(file) = File::open(p) {
                     let reader = BufReader::new(file);
@@ -185,14 +253,21 @@ impl LinuxScaEngine {
 pub fn spawn_sca_worker(
     agent_id: String,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let engine = LinuxScaEngine::new(agent_id);
 
         loop {
-            engine.run_sca_assessment(&buffer).await;
             tokio::time::sleep(interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
+            if !lifecycle.is_active() {
+                continue;
+            }
+            engine.run_sca_assessment(&buffer).await;
         }
     })
 }

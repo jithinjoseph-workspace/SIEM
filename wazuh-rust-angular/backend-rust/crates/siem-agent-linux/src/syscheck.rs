@@ -226,6 +226,7 @@ pub fn spawn_syscheck_worker(
     agent_id: String,
     paths: Vec<PathBuf>,
     buffer: Arc<AgentBuffer>,
+    lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -234,6 +235,12 @@ pub fn spawn_syscheck_worker(
 
         loop {
             tokio::time::sleep(interval).await;
+            if lifecycle.is_terminated() {
+                break;
+            }
+            if !lifecycle.is_active() {
+                continue;
+            }
             engine.check_changes(&buffer).await;
         }
     })

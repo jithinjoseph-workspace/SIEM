@@ -137,6 +137,7 @@ pub fn write_client_keys(path: &Path, e: &Enrollment) -> std::io::Result<()> {
 
 /// The agent's state on the manager: Some(true) active, Some(false)
 /// deactivated, None when the manager cannot be reached.
+#[allow(dead_code)]
 pub async fn agent_state(manager_url: &str, agent_id: &str) -> Option<bool> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().ok()?;
     let url = format!("{}/api/v1/agent/state?agent_id={}", manager_url.trim_end_matches('/'), agent_id);
@@ -152,6 +153,7 @@ pub async fn agent_state(manager_url: &str, agent_id: &str) -> Option<bool> {
 /// checks once a minute; it continues as soon as it is reactivated. When the
 /// manager cannot be reached the agent starts normally (uploads are refused
 /// with 410 if it is in fact deactivated).
+#[allow(dead_code)]
 pub async fn wait_until_active(manager_url: &str, agent_id: &str) {
     let mut announced = false;
     while agent_state(manager_url, agent_id).await == Some(false) {
@@ -169,6 +171,7 @@ pub async fn wait_until_active(manager_url: &str, agent_id: &str) {
 /// Stops the agent after the manager deactivated it. The service manager
 /// (systemd Restart=always / Windows service recovery) starts it again, and
 /// the new process waits dormant in wait_until_active.
+#[allow(dead_code)]
 pub fn stop_deactivated(agent_id: &str) -> ! {
     tracing::warn!("Agent {agent_id} was deactivated by the manager: stopping all monitoring");
     std::process::exit(3)

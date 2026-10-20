@@ -125,11 +125,20 @@ if errorlevel 1 (
 call :wait_port 4200 "Angular UI" 60
 if errorlevel 1 goto :startup_error
 
+rem Detect host LAN IP dynamically for UI and Agent connectivity
+set "LAN_IP="
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Get-NetRoute -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty IPAddress -First 1)"') do set "LAN_IP=%%i"
+if not defined LAN_IP set "LAN_IP=localhost"
+
 echo.
-echo [OK] SIEM is ready: http://192.168.220.37:4200 (LAN)
-echo                     http://localhost:4200 (Local)
-echo      Logs: %LOG_DIR%
-start http://192.168.220.37:4200
+echo ==============================================================================
+echo [OK] SIEM is ready!
+echo      LAN URL:   http://%LAN_IP%:4200
+echo      Local URL: http://localhost:4200
+echo      API URL:   http://%LAN_IP%:8088
+echo      Logs:      %LOG_DIR%
+echo ==============================================================================
+start http://%LAN_IP%:4200
 exit /b 0
 
 :port_open

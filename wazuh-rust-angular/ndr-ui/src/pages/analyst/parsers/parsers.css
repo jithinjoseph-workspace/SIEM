@@ -7,26 +7,41 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* AI Parser Studio Cards */
-.parsers-page .grid > div {
-  background: rgba(13, 20, 36, 0.75) !important;
-  backdrop-filter: blur(12px);
+/* Glassmorphism & Cyber Shadow for KPI Cards */
+.parsers-page .kpi-card {
+  background: rgba(13, 20, 36, 0.8) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.parsers-page .grid > div:hover {
+.parsers-page .kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(168, 85, 247, 0.12);
-  border-color: rgba(168, 85, 247, 0.35) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(168, 85, 247, 0.15);
 }
 
-/* Regex & Code Panels */
+/* Panel Cards */
+.parsers-page .bg-slate-900\/80 {
+  background: rgba(13, 20, 36, 0.85) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Custom Table Row Hover */
+.parsers-page table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Code & Monospace Fonts */
 .parsers-page pre, .parsers-page code {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
+/* Custom Scrollbars */
 .parsers-page ::-webkit-scrollbar {
   width: 5px;
   height: 5px;

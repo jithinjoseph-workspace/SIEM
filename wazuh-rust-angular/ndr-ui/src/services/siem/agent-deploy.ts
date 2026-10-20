@@ -30,16 +30,28 @@ export const LINUX_SERVICE = 'wazuh-rust-agent';
 
 /** Default manager URL: the console's own origin (the dev server and Caddy
  *  both forward /api and /downloads to siem-api).
- *  When accessed via localhost / loopback, automatically uses the host LAN IP
- *  (192.168.220.37) so deployment commands work immediately on remote VMs. */
+ *  Always uses the real hostname/IP the browser connected to — no hardcoded IPs. */
 export function defaultManagerUrl(): string {
   if (typeof window === 'undefined') return 'http://127.0.0.1:8088';
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-    const port = window.location.port ? `:${window.location.port}` : '';
-    return `${window.location.protocol}//192.168.220.37${port}`;
-  }
   return `${window.location.protocol}//${window.location.host}`;
+}
+
+/** Async version: asks the backend for its LAN IP so deploy commands point to
+ *  the right address even when the UI is accessed via localhost (e.g. developer
+ *  running `ng serve` while agents need to reach the real LAN IP).
+ *  Falls back to defaultManagerUrl() on any error. */
+export async function fetchManagerUrl(): Promise<string> {
+  try {
+    const base = defaultManagerUrl();
+    const res = await fetch(`${base}/api/server-info`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.manager_url) return data.manager_url as string;
+    }
+  } catch {
+    // network error — fall back to current origin
+  }
+  return defaultManagerUrl();
 }
 
 /** True when the manager URL points at this machine (localhost, 127.x, ::1): the

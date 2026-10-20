@@ -2829,24 +2829,9 @@ async fn post_client_errors_handler(Json(payload): Json<serde_json::Value>) -> i
 /// address the client already connected to) and is needed before login to
 /// generate install commands.
 async fn get_server_info_handler() -> impl IntoResponse {
-    // Walk OS network interfaces; pick the first non-loopback, non-link-local
-    // IPv4 address (169.254.x.x excluded).  Fall back to 127.0.0.1 when none
-    // is found so callers always get a valid URL.
-    let lan_ip: String = {
-        use std::net::{IpAddr, Ipv4Addr};
-        let mut found: Option<Ipv4Addr> = None;
-        if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
-            for (_name, addr) in ifaces {
-                if let IpAddr::V4(v4) = addr {
-                    if !v4.is_loopback() && !v4.is_link_local() && !v4.is_unspecified() {
-                        found = Some(v4);
-                        break;
-                    }
-                }
-            }
-        }
-        found.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".to_string())
-    };
+    let lan_ip = std::env::var("SIEM_LAN_IP")
+        .or_else(|_| std::env::var("MANAGER_IP"))
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("SIEM_PORT").unwrap_or_else(|_| "8088".to_string());
     Json(serde_json::json!({
         "lan_ip": lan_ip,

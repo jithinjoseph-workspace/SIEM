@@ -125,11 +125,17 @@ if errorlevel 1 (
 call :wait_port 4200 "Angular UI" 60
 if errorlevel 1 goto :startup_error
 
+if not defined SIEM_LAN_IP set "SIEM_LAN_IP=localhost"
+
 echo.
-echo [OK] SIEM is ready: http://192.168.220.37:4200 (LAN)
-echo                     http://localhost:4200 (Local)
-echo      Logs: %LOG_DIR%
-start http://192.168.220.37:4200
+echo ==============================================================================
+echo [OK] SIEM is ready!
+echo      LAN URL:   http://%SIEM_LAN_IP%:4200
+echo      Local URL: http://localhost:4200
+echo      API URL:   http://%SIEM_LAN_IP%:8088
+echo      Logs:      %LOG_DIR%
+echo ==============================================================================
+start http://%SIEM_LAN_IP%:4200
 exit /b 0
 
 :port_open

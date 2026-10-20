@@ -28,6 +28,12 @@ for %%v in (CLICKHOUSE_URL CLICKHOUSE_USER CLICKHOUSE_DB VALKEY_URL JWT_SECRET) 
     exit /b 1
 )
 
+rem Auto-detect host LAN IP for siem-api and agent installers if not explicitly configured
+if not defined SIEM_LAN_IP (
+    for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Get-NetRoute -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty IPAddress -First 1)"') do set "SIEM_LAN_IP=%%i"
+)
+if not defined SIEM_LAN_IP set "SIEM_LAN_IP=127.0.0.1"
+
 rem auth-service provisions tenant databases from the NDR schema file
 rem (<INSTALL_DIR>\config\clickhouse\init.sql).
 if not defined INSTALL_DIR set "INSTALL_DIR=%SERVICE_ENV_DIR%..\..\ndr"

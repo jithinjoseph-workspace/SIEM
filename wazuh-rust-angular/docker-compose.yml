@@ -27,7 +27,7 @@ services:
 
   # 2. High-Performance Columnar Big Data Engine (Shared NDR + SIEM)
   clickhouse:
-    image: clickhouse/clickhouse-server:24.8
+    image: clickhouse/clickhouse-server:latest
     container_name: xdr-clickhouse
     restart: always
     environment:

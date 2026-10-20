@@ -160,7 +160,7 @@ export function windowsInstallScript(p: DeployParams): string {
     `if (Test-Path "$d\\client.keys") { $k = ((Get-Content "$d\\client.keys" -TotalCount 1) -split ' '); if ($k.Count -ge 4 -and $k[1]) { $n = $k[1] } }`,
     `$h = @{}`,
     c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
-    `$b = @{ name = $n; groups = ${pq(c.group)}; os_type = 'windows' } | ConvertTo-Json`,
+    `$b = @{ name = $n; groups = ${pq(c.group)}; os_type = 'windows'; force = $true } | ConvertTo-Json`,
     `$r = Invoke-RestMethod -Method Post -Uri "$u/api/v1/agents/enroll" -Headers $h -ContentType 'application/json' -Body $b`,
     `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
     // the MSI's permissions (InstallerScripts.vbs): only Administrators and SYSTEM may read the key

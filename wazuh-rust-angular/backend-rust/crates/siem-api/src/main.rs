@@ -4866,6 +4866,14 @@ async fn load_agent_registry(state: &AppState) {
                 EnrolledAgent { name: r.name, tenant: r.tenant_id, groups: r.groups, os_type: r.os_type, enrolled_at, disabled: false },
             );
         }
+        // Reconcile: active enrolled agents must not remain in deleted_agent_names,
+        // even if an older historical row for that name was marked deleted in ClickHouse.
+        let mut del_names = state.deleted_agent_names.write().unwrap();
+        for (_, agent) in enrolled.iter() {
+            if !agent.disabled {
+                del_names.remove(&(agent.tenant.clone(), agent.name.to_lowercase()));
+            }
+        }
     }
     state.max_agent_id.fetch_max(max, std::sync::atomic::Ordering::SeqCst);
     info!("Agent registry: {} agents, {} deleted ids reserved (highest id {:03})", n_live, n_deleted, max);
@@ -4990,7 +4998,7 @@ async fn post_agent_enroll_handler(
             .find(|(_, a)| a.tenant == tenant && a.name.eq_ignore_ascii_case(&name))
             .map(|(id, a)| (id.clone(), a.enrolled_at, a.disabled));
         let (id, reused, enrolled_at, disabled) = match existing {
-            Some((id, at, dis)) => (id, true, at, dis),
+            Some((id, at, dis)) => (id, true, at, if force_enroll { false } else { dis }),
             None => (next_free_agent_id(&state), false, Utc::now(), false),
         };
         let entry = EnrolledAgent { name: name.clone(), tenant: tenant.clone(), groups: groups.clone(), os_type: os_type.clone(), enrolled_at, disabled };
@@ -5036,6 +5044,9 @@ async fn post_agent_enroll_handler(
         });
         entry.name = name.clone();
         entry.os_type = os_type.clone();
+        if force_enroll {
+            entry.status = AgentStatus::Pending;
+        }
     }
 
     // Persist to ClickHouse database for this tenant

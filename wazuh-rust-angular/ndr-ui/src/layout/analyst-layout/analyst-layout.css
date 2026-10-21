@@ -1,16 +1,41 @@
 .analyst-layout {
-  display: block; /* Removed flex since sidebar is fixed */
+  display: block;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  background-color: var(--color-surface);
+  min-height: 100%;
+  background-color: var(--color-surface, #060913);
+  position: relative;
 }
 
 .analyst-content {
-  margin-left: 240px; /* Space for the absolute sidebar */
-  height: calc(100vh - 76px); /* Full height minus topbar */
+  margin-left: 240px;
+  width: calc(100% - 240px);
+  height: 100%;
+  min-height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
+  background-color: var(--color-surface, #060913);
+  scrollbar-width: thin;
+  scrollbar-color: #1e293b #060913;
+}
+
+.analyst-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.analyst-content::-webkit-scrollbar-track {
+  background: #060913;
+}
+
+.analyst-content::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+.analyst-content::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
 }
 
 /* Force app-sidebar to be fixed at the absolute top left */

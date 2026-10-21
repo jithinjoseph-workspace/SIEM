@@ -1,8 +1,52 @@
 .mitre-page {
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tactic Matrix Column Styling */
+.mitre-page .w-64 {
+  background: rgba(13, 20, 36, 0.75) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+}
+
+.mitre-page .w-64:hover {
+  border-color: rgba(244, 63, 94, 0.3) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(244, 63, 94, 0.08);
+}
+
+/* Technique Cards */
+.mitre-page .p-2\.5 {
+  background: rgba(6, 10, 20, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mitre-page .p-2\.5:hover {
+  background: rgba(19, 28, 49, 0.95) !important;
+  border-color: rgba(244, 63, 94, 0.5) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.15);
+}
+
+/* Custom Horizontal & Vertical Scrollbars */
+.mitre-page ::-webkit-scrollbar {
+  width: 5px;
+  height: 6px;
+}
+.mitre-page ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.mitre-page ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+.mitre-page ::-webkit-scrollbar-thumb:hover {
+  background: #f43f5e;
 }

@@ -186,23 +186,47 @@
 .siem-main {
   flex: 1;
   padding: 24px 28px;
+  max-width: 1720px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .tab-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 /* KPI Cards */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .kpi-card {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 124px;
+  background: rgba(13, 19, 34, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.7), 0 0 16px rgba(6, 182, 212, 0.12);
 }
 
 .kpi-header {

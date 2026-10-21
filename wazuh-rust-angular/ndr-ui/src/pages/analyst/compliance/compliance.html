@@ -1,82 +1,584 @@
-<div class="compliance-page p-6 max-w-7xl mx-auto space-y-6">
-  <!-- Header -->
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+<div class="compliance-page p-6 w-full max-w-[1720px] mx-auto space-y-6">
+
+  <!-- ================= TOP HEADER ================= -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-5">
     <div>
-      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-        <lucide-angular [img]="ShieldCheckIcon" class="w-6 h-6 text-emerald-400"></lucide-angular>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2.5 tracking-tight">
+        <span class="p-2 rounded-xl bg-emerald-950/70 border border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-950/50">
+          <lucide-angular [img]="ShieldCheckIcon" class="w-6 h-6"></lucide-angular>
+        </span>
         Regulatory Compliance & Audit Frameworks
       </h1>
-      <p class="text-sm text-slate-400 mt-1">
-        Automated control verification against PCI-DSS v4.0, SOC 2 Type II, HIPAA Security Rule, and NIST SP 800-53
+      <p class="text-sm text-slate-400 mt-1.5 flex items-center gap-2">
+        <span>Automated control verification against PCI-DSS v4.0, SOC 2 Type II, ISO 27001, HIPAA, and NIST SP 800-53</span>
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-xs text-emerald-400 font-mono">Live Auditing Active</span>
       </p>
     </div>
 
-    <button 
-      (click)="loadCompliance()" 
-      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
-    >
-      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
-      Re-evaluate
-    </button>
+    <div class="flex items-center gap-3">
+      <button 
+        (click)="loadCompliance()" 
+        class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-sm font-semibold rounded-xl border border-slate-700/80 hover:border-cyan-500/40 transition-all shadow-md group"
+      >
+        <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 group-hover:rotate-180 transition-transform duration-500" [class.animate-spin]="loading()"></lucide-angular>
+        Re-evaluate
+      </button>
+    </div>
   </div>
 
-  <!-- Frameworks Cards Selector -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <!-- Feedback Banner for Remediation & Report -->
+  <div *ngIf="remediationFeedback() || reportFeedback()" 
+       class="p-3.5 rounded-xl border border-cyan-500/40 bg-cyan-950/50 text-cyan-200 text-xs font-semibold flex items-center gap-2.5 animate-fadeIn">
+    <lucide-angular [img]="CheckIcon" class="w-4 h-4 text-cyan-400 flex-shrink-0"></lucide-angular>
+    <span>{{ remediationFeedback() || reportFeedback() }}</span>
+  </div>
+
+  <!-- ================= FRAMEWORKS ROW (TOP CARDS) ================= -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
     <div 
       *ngFor="let fw of frameworks()" 
       (click)="selectFramework(fw)"
-      class="p-4 rounded-xl border cursor-pointer transition shadow-md"
+      class="fw-card p-4 rounded-xl border cursor-pointer transition-all duration-200 relative overflow-hidden group select-none"
+      [class.active-fw]="selectedFramework()?.name === fw.name"
+      [class.border-cyan-500]="selectedFramework()?.name === fw.name"
       [class.bg-slate-900]="selectedFramework()?.name !== fw.name"
       [class.border-slate-800]="selectedFramework()?.name !== fw.name"
-      [class.bg-emerald-950]="selectedFramework()?.name === fw.name"
-      [class.border-emerald-500]="selectedFramework()?.name === fw.name"
     >
-      <div class="flex justify-between items-start">
-        <h3 class="text-base font-bold text-white">{{ fw.name }}</h3>
-        <span class="text-xs font-mono font-bold text-emerald-400">{{ fw.score_percent }}%</span>
+      <!-- Top Title & Sync -->
+      <div class="flex justify-between items-start gap-1">
+        <h3 class="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
+          {{ fw.name }}
+        </h3>
       </div>
-      <p class="text-xs text-slate-400 mt-1 truncate">{{ fw.full_name }}</p>
-
-      <div class="mt-3 w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-        <div class="bg-emerald-500 h-2 rounded-full" [style.width.%]="fw.score_percent"></div>
+      <div class="text-[11px] text-slate-500 mt-0.5">
+        Last sync: {{ fw.lastSync || 'Just now' }}
       </div>
 
-      <div class="mt-3 flex justify-between text-[11px] text-slate-400">
-        <span>{{ fw.passed_count }} / {{ fw.total_requirements }} passed</span>
-        <span class="text-rose-400">{{ fw.alert_count }} alerts</span>
+      <!-- Glowing Progress Bar with Percentage -->
+      <div class="mt-4 flex items-center justify-between gap-3">
+        <div class="flex-1 bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800/80">
+          <div 
+            class="h-full rounded-full transition-all duration-700"
+            [class.bg-cyan-400]="fw.color === 'cyan'"
+            [class.bg-amber-400]="fw.color === 'amber'"
+            [class.bg-emerald-400]="fw.color === 'emerald'"
+            [class.bg-rose-500]="fw.color === 'rose'"
+            [style.width.%]="fw.score_percent"
+          ></div>
+        </div>
+        <span 
+          class="text-xs font-bold font-mono min-w-[34px] text-right"
+          [class.text-cyan-400]="fw.color === 'cyan'"
+          [class.text-amber-400]="fw.color === 'amber'"
+          [class.text-emerald-400]="fw.color === 'emerald'"
+          [class.text-rose-400]="fw.color === 'rose'"
+        >
+          {{ fw.score_percent }}%
+        </span>
+      </div>
+
+      <!-- Footer Info -->
+      <div class="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+        <span>{{ fw.passed_count }}/{{ fw.total_requirements }} passed</span>
+        <span [class.text-rose-400]="fw.alert_count > 0" [class.text-slate-500]="fw.alert_count === 0">
+          {{ fw.alert_count }} alerts
+        </span>
       </div>
     </div>
   </div>
 
-  <!-- Selected Framework Controls List -->
-  <div *ngIf="selectedFramework()" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-    <div class="flex justify-between items-center pb-3 border-b border-slate-800">
-      <div>
-        <h2 class="text-lg font-bold text-white">{{ selectedFramework()?.full_name }}</h2>
-        <p class="text-xs text-slate-400">Specification Version: {{ selectedFramework()?.version }}</p>
+  <!-- ================= MIDDLE ROW: 3 HERO WIDGETS ================= -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- WIDGET 1: CONTROL COVERAGE (DONUT CHART) -->
+    <div class="lg:col-span-4 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden backdrop-blur-md">
+      <!-- Title -->
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          Control Coverage
+        </h2>
+        <button class="text-slate-500 hover:text-slate-300 transition" title="Overall percentage of compliance controls actively mapped & verified">
+          <lucide-angular [img]="InfoIcon" class="w-4 h-4"></lucide-angular>
+        </button>
       </div>
 
-      <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
-        {{ selectedFramework()?.score_percent }}% COMPLIANT
-      </span>
+      <!-- Donut Chart in Center -->
+      <div class="my-6 flex flex-col items-center justify-center relative">
+        <div class="relative w-44 h-44 flex items-center justify-center">
+          <svg class="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
+            <defs>
+              <linearGradient id="coverageGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#10b981" />
+              </linearGradient>
+            </defs>
+            <!-- Background circle track -->
+            <circle
+              cx="70"
+              cy="70"
+              r="54"
+              fill="transparent"
+              stroke="#1e293b"
+              stroke-width="12"
+            />
+            <!-- Progress circle ring -->
+            <circle
+              cx="70"
+              cy="70"
+              r="54"
+              fill="transparent"
+              stroke="url(#coverageGradient)"
+              stroke-width="12"
+              stroke-linecap="round"
+              [style.strokeDasharray]="circleCircumference"
+              [style.strokeDashoffset]="gaugeDashOffset()"
+              class="transition-all duration-1000 ease-out"
+            />
+          </svg>
+
+          <!-- Center Text Overlay -->
+          <div class="absolute flex flex-col items-center justify-center text-center">
+            <span class="text-3xl font-extrabold text-white tracking-tight font-mono">
+              {{ overallMappedPercent() }}%
+            </span>
+            <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mt-0.5">
+              OVERALL MAPPED
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legend Breakdown -->
+      <div class="space-y-2.5 pt-4 border-t border-slate-800/80 text-xs">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></span>
+            <span>Mapped & Passing</span>
+          </div>
+          <span class="font-mono font-bold text-white">{{ passingControlsCount() | number }}</span>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50"></span>
+            <span>Mapped & Failing</span>
+          </div>
+          <span class="font-mono font-bold text-white">{{ failingControlsCount() | number }}</span>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span>Unmapped Controls</span>
+          </div>
+          <span class="font-mono font-bold text-slate-400">{{ unmappedControlsCount() | number }}</span>
+        </div>
+      </div>
     </div>
 
-    <div class="space-y-3">
+    <!-- WIDGET 2: REMEDIATION PRIORITY QUEUE -->
+    <div class="lg:col-span-5 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between backdrop-blur-md">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          Remediation Priority Queue
+        </h2>
+        <span class="text-xs font-semibold text-cyan-400 hover:text-cyan-300 cursor-pointer">
+          View All ({{ remediations().length }})
+        </span>
+      </div>
+
+      <!-- List of Prioritized Items -->
+      <div class="my-3 space-y-2.5 flex-1 overflow-y-auto max-h-[300px] pr-1">
+        <div 
+          *ngFor="let item of remediations()" 
+          class="p-3 rounded-xl border border-slate-800/90 hover:border-slate-700 bg-slate-950/60 hover:bg-slate-950/90 transition-all flex items-center justify-between gap-3 group"
+          [class.opacity-50]="item.resolved"
+        >
+          <div class="flex items-center gap-3">
+            <!-- Icon Badge -->
+            <div 
+              class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              [class.bg-rose-950]="item.priority === 'critical'"
+              [class.text-rose-400]="item.priority === 'critical'"
+              [class.border]="true"
+              [class.border-rose-800]="item.priority === 'critical'"
+              [class.bg-amber-950]="item.priority === 'warning'"
+              [class.text-amber-400]="item.priority === 'warning'"
+              [class.border-amber-800]="item.priority === 'warning'"
+              [class.bg-slate-800]="item.priority === 'medium'"
+              [class.text-cyan-400]="item.priority === 'medium'"
+              [class.border-slate-700]="item.priority === 'medium'"
+            >
+              <lucide-angular *ngIf="item.iconType === 'key'" [img]="KeyIcon" class="w-4 h-4"></lucide-angular>
+              <lucide-angular *ngIf="item.iconType === 'policy' || item.iconType === 'audit'" [img]="AlertIcon" class="w-4 h-4"></lucide-angular>
+              <lucide-angular *ngIf="item.iconType === 'db'" [img]="DatabaseIcon" class="w-4 h-4"></lucide-angular>
+              <lucide-angular *ngIf="item.iconType === 'shield'" [img]="ShieldAlertIcon" class="w-4 h-4"></lucide-angular>
+            </div>
+
+            <!-- Content -->
+            <div>
+              <h4 class="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                {{ item.title }}
+              </h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">
+                {{ item.framework }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Quick Action -->
+          <button 
+            (click)="resolveRemediation(item)"
+            [disabled]="item.resolved"
+            class="px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all"
+            [class.bg-cyan-950]="!item.resolved"
+            [class.text-cyan-400]="!item.resolved"
+            [class.border]="!item.resolved"
+            [class.border-cyan-800]="!item.resolved"
+            [class.hover:bg-cyan-900]="!item.resolved"
+            [class.bg-slate-800]="item.resolved"
+            [class.text-emerald-400]="item.resolved"
+          >
+            {{ item.resolved ? 'Dispatched' : 'Remediate' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 flex justify-between items-center">
+        <span>Auto-sync with Wazuh active response engine</span>
+        <span class="text-cyan-400 font-mono font-medium">5 tasks pending</span>
+      </div>
+    </div>
+
+    <!-- WIDGET 3: REPORT GENERATOR -->
+    <div class="lg:col-span-3 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between backdrop-blur-md">
+      <!-- Title -->
+      <div class="flex items-center gap-2 pb-3 border-b border-slate-800/80">
+        <lucide-angular [img]="FileTextIcon" class="w-5 h-5 text-cyan-400"></lucide-angular>
+        <h2 class="text-base font-bold text-white">Report Generator</h2>
+      </div>
+
+      <!-- Form Controls -->
+      <div class="my-4 space-y-4">
+        <!-- Report Type Select -->
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+            REPORT TYPE
+          </label>
+          <div class="relative">
+            <select 
+              [ngModel]="reportType()" 
+              (ngModelChange)="reportType.set($event)"
+              class="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs font-semibold rounded-xl px-3.5 py-2.5 appearance-none focus:outline-none focus:border-cyan-500/60"
+            >
+              <option value="Executive Summary">Executive Summary</option>
+              <option value="Full Regulatory Audit">Full Regulatory Audit</option>
+              <option value="GAP Analysis">GAP Analysis</option>
+              <option value="Technical Evidence Log">Technical Evidence Log</option>
+            </select>
+            <lucide-angular [img]="ChevronRightIcon" class="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none transform rotate-90"></lucide-angular>
+          </div>
+        </div>
+
+        <!-- Format Selector (PDF / CSV) -->
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+            FORMAT
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <button 
+              type="button"
+              (click)="reportFormat.set('pdf')"
+              class="flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold border transition-all"
+              [class.bg-cyan-950]="reportFormat() === 'pdf'"
+              [class.text-cyan-400]="reportFormat() === 'pdf'"
+              [class.border-cyan-500]="reportFormat() === 'pdf'"
+              [class.bg-slate-950]="reportFormat() !== 'pdf'"
+              [class.text-slate-400]="reportFormat() !== 'pdf'"
+              [class.border-slate-800]="reportFormat() !== 'pdf'"
+            >
+              <lucide-angular [img]="FileTextIcon" class="w-3.5 h-3.5"></lucide-angular>
+              PDF
+            </button>
+
+            <button 
+              type="button"
+              (click)="reportFormat.set('csv')"
+              class="flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold border transition-all"
+              [class.bg-cyan-950]="reportFormat() === 'csv'"
+              [class.text-cyan-400]="reportFormat() === 'csv'"
+              [class.border-cyan-500]="reportFormat() === 'csv'"
+              [class.bg-slate-950]="reportFormat() !== 'csv'"
+              [class.text-slate-400]="reportFormat() !== 'csv'"
+              [class.border-slate-800]="reportFormat() !== 'csv'"
+            >
+              <lucide-angular [img]="FileSpreadsheetIcon" class="w-3.5 h-3.5"></lucide-angular>
+              CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Checkbox Options -->
+        <div class="space-y-2 pt-1 text-xs text-slate-300">
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input 
+              type="checkbox" 
+              [checked]="includeEvidence()" 
+              (change)="includeEvidence.set(!includeEvidence())"
+              class="w-4 h-4 rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0"
+            />
+            <span>Include evidence files</span>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input 
+              type="checkbox" 
+              [checked]="anonymizeActors()" 
+              (change)="anonymizeActors.set(!anonymizeActors())"
+              class="w-4 h-4 rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0"
+            />
+            <span>Anonymize actor logs</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <button 
+        (click)="generateReport()"
+        [disabled]="generatingReport()"
+        class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-900/30 flex items-center justify-center gap-2 border border-cyan-400/30"
+      >
+        <lucide-angular *ngIf="!generatingReport()" [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
+        <lucide-angular *ngIf="generatingReport()" [img]="RefreshIcon" class="w-4 h-4 animate-spin"></lucide-angular>
+        {{ generatingReport() ? 'Generating Document...' : 'Generate Report' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= BOTTOM ROW: RECENT AUDIT LOGS TABLE ================= -->
+  <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-md space-y-4">
+    <!-- Header with Pass/Fail Badges & Controls -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-800/80">
+      <div class="flex items-center gap-3">
+        <h2 class="text-base font-bold text-white">Recent Audit Logs</h2>
+        <!-- Badges matching the reference image -->
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+          {{ passAuditCount() }} PASS
+        </span>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-950 text-rose-400 border border-rose-800">
+          {{ failAuditCount() }} FAIL
+        </span>
+      </div>
+
+      <!-- Search and Filter Tools -->
+      <div class="flex items-center gap-2.5 w-full sm:w-auto">
+        <div class="relative flex-1 sm:w-64">
+          <lucide-angular [img]="SearchIcon" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5"></lucide-angular>
+          <input 
+            type="text" 
+            [ngModel]="auditSearch()"
+            (ngModelChange)="auditSearch.set($event)"
+            placeholder="Search actor, action, resource..."
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+          />
+        </div>
+
+        <button 
+          (click)="auditStatusFilter.set(auditStatusFilter() === 'all' ? 'pass' : auditStatusFilter() === 'pass' ? 'fail' : 'all')"
+          class="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white transition"
+          title="Filter Pass / Fail"
+        >
+          <lucide-angular [img]="FilterIcon" class="w-4 h-4"></lucide-angular>
+        </button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead>
+          <tr class="text-slate-500 uppercase tracking-wider text-[11px] border-b border-slate-800/80 pb-2">
+            <th class="py-2.5 px-3">TIMESTAMP</th>
+            <th class="py-2.5 px-3">ACTOR</th>
+            <th class="py-2.5 px-3">ACTION</th>
+            <th class="py-2.5 px-3">RESOURCE</th>
+            <th class="py-2.5 px-3">RISK LEVEL</th>
+            <th class="py-2.5 px-3">STATUS</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/50">
+          <tr *ngFor="let log of filteredAuditLogs()" class="hover:bg-slate-800/40 transition-colors">
+            <!-- Timestamp -->
+            <td class="py-3 px-3 font-mono text-slate-400 whitespace-nowrap">
+              {{ log.timestamp }}
+            </td>
+
+            <!-- Actor with Avatar Circle -->
+            <td class="py-3 px-3">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  {{ log.actorInitial }}
+                </span>
+                <span class="font-medium text-slate-200">{{ log.actor }}</span>
+              </div>
+            </td>
+
+            <!-- Action -->
+            <td class="py-3 px-3 text-slate-300 font-medium">
+              {{ log.action }}
+            </td>
+
+            <!-- Resource -->
+            <td class="py-3 px-3">
+              <span class="font-mono text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-900/50">
+                {{ log.resource }}
+              </span>
+            </td>
+
+            <!-- Risk Level -->
+            <td class="py-3 px-3">
+              <span 
+                class="font-semibold"
+                [class.text-slate-400]="log.risk === 'Informational'"
+                [class.text-cyan-400]="log.risk === 'Low'"
+                [class.text-amber-400]="log.risk === 'Medium'"
+                [class.text-rose-400]="log.risk === 'High'"
+              >
+                {{ log.risk }}
+              </span>
+            </td>
+
+            <!-- Status -->
+            <td class="py-3 px-3 whitespace-nowrap">
+              <span 
+                class="inline-flex items-center gap-1.5 font-semibold"
+                [class.text-emerald-400]="log.status === 'Pass'"
+                [class.text-amber-400]="log.status === 'Review Needed'"
+                [class.text-rose-400]="log.status === 'Fail'"
+              >
+                <span 
+                  class="w-1.5 h-1.5 rounded-full"
+                  [class.bg-emerald-400]="log.status === 'Pass'"
+                  [class.bg-amber-400]="log.status === 'Review Needed'"
+                  [class.bg-rose-400]="log.status === 'Fail'"
+                ></span>
+                {{ log.status }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ================= DETAILED FRAMEWORK CONTROLS EXPLORER ================= -->
+  <div *ngIf="selectedFramework()" class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4 backdrop-blur-md">
+    <!-- Framework Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-800/80">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <h2 class="text-lg font-bold text-white">{{ selectedFramework()?.full_name }}</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Specification Version: {{ selectedFramework()?.version }} • {{ selectedFramework()?.passed_count }} of {{ selectedFramework()?.total_requirements }} controls verified
+        </p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span 
+          class="px-3.5 py-1 rounded-full text-xs font-bold border"
+          [class.bg-emerald-950]="(selectedFramework()?.score_percent || 0) >= 80"
+          [class.text-emerald-400]="(selectedFramework()?.score_percent || 0) >= 80"
+          [class.border-emerald-800]="(selectedFramework()?.score_percent || 0) >= 80"
+          [class.bg-amber-950]="(selectedFramework()?.score_percent || 0) < 80 && (selectedFramework()?.score_percent || 0) >= 60"
+          [class.text-amber-400]="(selectedFramework()?.score_percent || 0) < 80 && (selectedFramework()?.score_percent || 0) >= 60"
+          [class.border-amber-800]="(selectedFramework()?.score_percent || 0) < 80 && (selectedFramework()?.score_percent || 0) >= 60"
+          [class.bg-rose-950]="(selectedFramework()?.score_percent || 0) < 60"
+          [class.text-rose-400]="(selectedFramework()?.score_percent || 0) < 60"
+          [class.border-rose-800]="(selectedFramework()?.score_percent || 0) < 60"
+        >
+          {{ selectedFramework()?.score_percent }}% COMPLIANT
+        </span>
+      </div>
+    </div>
+
+    <!-- Filters for Requirements -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center pt-1">
+      <!-- Search Input -->
+      <div class="relative w-full sm:w-80">
+        <lucide-angular [img]="SearchIcon" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5"></lucide-angular>
+        <input 
+          type="text" 
+          [ngModel]="controlSearch()"
+          (ngModelChange)="controlSearch.set($event)"
+          placeholder="Filter control ID or description..."
+          class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+        />
+      </div>
+
+      <!-- Status Filter Tabs -->
+      <div class="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-semibold">
+        <button 
+          (click)="controlStatusFilter.set('all')"
+          class="px-3 py-1 rounded-lg transition-all"
+          [class.bg-slate-800]="controlStatusFilter() === 'all'"
+          [class.text-white]="controlStatusFilter() === 'all'"
+          [class.text-slate-400]="controlStatusFilter() !== 'all'"
+        >
+          All
+        </button>
+        <button 
+          (click)="controlStatusFilter.set('passed')"
+          class="px-3 py-1 rounded-lg transition-all"
+          [class.bg-emerald-950]="controlStatusFilter() === 'passed'"
+          [class.text-emerald-400]="controlStatusFilter() === 'passed'"
+          [class.text-slate-400]="controlStatusFilter() !== 'passed'"
+        >
+          Passed
+        </button>
+        <button 
+          (click)="controlStatusFilter.set('warning')"
+          class="px-3 py-1 rounded-lg transition-all"
+          [class.bg-amber-950]="controlStatusFilter() === 'warning'"
+          [class.text-amber-400]="controlStatusFilter() === 'warning'"
+          [class.text-slate-400]="controlStatusFilter() !== 'warning'"
+        >
+          Warning
+        </button>
+        <button 
+          (click)="controlStatusFilter.set('failed')"
+          class="px-3 py-1 rounded-lg transition-all"
+          [class.bg-rose-950]="controlStatusFilter() === 'failed'"
+          [class.text-rose-400]="controlStatusFilter() === 'failed'"
+          [class.text-slate-400]="controlStatusFilter() !== 'failed'"
+        >
+          Failed
+        </button>
+      </div>
+    </div>
+
+    <!-- Requirements List -->
+    <div class="space-y-3 pt-2">
       <div 
-        *ngFor="let req of selectedFramework()?.requirements" 
-        class="p-4 bg-slate-950/70 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+        *ngFor="let req of filteredRequirements()" 
+        class="p-4 bg-slate-950/70 hover:bg-slate-950 rounded-xl border border-slate-800/80 hover:border-cyan-500/30 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 group"
       >
         <div class="space-y-1">
           <div class="flex items-center gap-2">
-            <span class="font-mono text-xs font-bold text-cyan-400">[{{ req.id }}]</span>
-            <h4 class="text-sm font-semibold text-white">{{ req.title }}</h4>
+            <span class="font-mono text-xs font-bold text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-900/50">
+              [{{ req.id }}]
+            </span>
+            <h4 class="text-sm font-semibold text-white group-hover:text-cyan-300 transition-colors">
+              {{ req.title }}
+            </h4>
           </div>
-          <p class="text-xs text-slate-400">{{ req.description }}</p>
+          <p class="text-xs text-slate-400 leading-relaxed">{{ req.description }}</p>
         </div>
 
         <div class="flex items-center gap-3 flex-shrink-0">
           <span 
-            class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase"
+            class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide border"
             [class.bg-emerald-950]="req.status === 'passed'"
             [class.text-emerald-400]="req.status === 'passed'"
             [class.border-emerald-800]="req.status === 'passed'"
@@ -86,13 +588,19 @@
             [class.bg-rose-950]="req.status === 'failed'"
             [class.text-rose-400]="req.status === 'failed'"
             [class.border-rose-800]="req.status === 'failed'"
-            [class.border]="true"
           >
             {{ req.status }}
           </span>
-          <span class="text-xs font-mono text-slate-500">{{ req.alerts_count }} events</span>
+          <span class="text-xs font-mono text-slate-500 min-w-[70px] text-right">
+            {{ req.alerts_count }} events
+          </span>
         </div>
+      </div>
+
+      <div *ngIf="filteredRequirements().length === 0" class="p-8 text-center text-slate-500 text-xs">
+        No controls match the selected criteria.
       </div>
     </div>
   </div>
+
 </div>

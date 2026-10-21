@@ -1,8 +1,217 @@
 .agents-page {
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalPopIn {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes barRise {
+  0% { transform: scaleY(0.2); }
+  50% { transform: scaleY(1); }
+  100% { transform: scaleY(0.6); }
+}
+
+@keyframes radarSweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Glassmorphism & Cyber Card Elevation */
+.kpi-card {
+  background: rgba(13, 19, 34, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.55);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 32px -4px rgba(0, 0, 0, 0.75), 0 0 20px rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.35) !important;
+}
+
+.kpi-card:hover::before {
+  opacity: 1;
+}
+
+/* Mini Sparkline Bar Chart with Live Telemetry Equalizer Animation */
+.sparkline-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 3.5px;
+  height: 28px;
+}
+
+.sparkline-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(6, 182, 212, 0.4);
+  transform-origin: bottom;
+  animation: liveWave 2.4s ease-in-out infinite;
+  will-change: transform, filter;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sparkline-bar:hover {
+  background: #06b6d4 !important;
+  box-shadow: 0 0 10px #06b6d4 !important;
+}
+
+/* Staggered wave oscillation for organic movement */
+.sparkline-bar:nth-child(1) { animation-duration: 2.1s; animation-delay: 0.0s; }
+.sparkline-bar:nth-child(2) { animation-duration: 2.7s; animation-delay: 0.35s; }
+.sparkline-bar:nth-child(3) { animation-duration: 1.9s; animation-delay: 0.6s; }
+.sparkline-bar:nth-child(4) { animation-duration: 2.5s; animation-delay: 0.18s; }
+.sparkline-bar:nth-child(5) { animation-duration: 2.9s; animation-delay: 0.48s; }
+.sparkline-bar:nth-child(6) { animation-duration: 2.2s; animation-delay: 0.28s; }
+.sparkline-bar:nth-child(7) { animation-duration: 2.6s; animation-delay: 0.58s; }
+.sparkline-bar:nth-child(8) { animation-duration: 2.0s; animation-delay: 0.42s; }
+
+.kpi-card:hover .sparkline-bar {
+  animation-duration: 1.4s;
+}
+
+@keyframes liveWave {
+  0%, 100% {
+    transform: scaleY(0.42);
+    filter: brightness(0.85);
+  }
+  28% {
+    transform: scaleY(0.98);
+    filter: brightness(1.25);
+  }
+  55% {
+    transform: scaleY(0.58);
+    filter: brightness(0.92);
+  }
+  78% {
+    transform: scaleY(1.08);
+    filter: brightness(1.35);
+  }
+}
+
+/* Executive Fleet Table */
+.fleet-table-container {
+  background: rgba(11, 17, 32, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border-radius: 0.875rem;
+  overflow: hidden;
+}
+
+.fleet-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.fleet-table th {
+  background: rgba(15, 23, 42, 0.95);
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fleet-table td {
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.825rem;
+  vertical-align: middle;
+  transition: background 0.15s ease;
+}
+
+.fleet-table tbody tr {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fleet-table tbody tr:hover {
+  background: rgba(30, 41, 59, 0.65) !important;
+}
+
+.fleet-table tbody tr:hover td:first-child {
+  border-left: 3px solid #06b6d4;
+}
+
+/* Risk Score Progress Bar */
+.risk-bar-track {
+  width: 55px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.risk-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+/* Radar Pulse for Active Agents */
+.pulse-beacon {
+  position: relative;
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+}
+
+.pulse-beacon::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  background: inherit;
+  opacity: 0.6;
+  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Modal Styling with Glow */
+.cyber-modal-card {
+  animation: modalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 50px -10px rgba(6, 182, 212, 0.35), 0 25px 60px -15px rgba(0, 0, 0, 0.9);
+}
+
+/* Custom Scrollbar */
+.agents-page ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.agents-page ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.agents-page ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+.agents-page ::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
 }

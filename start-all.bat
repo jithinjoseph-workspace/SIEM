@@ -125,6 +125,11 @@ if errorlevel 1 (
 call :wait_port 4200 "Angular UI" 60
 if errorlevel 1 goto :startup_error
 
+if not defined SIEM_LAN_IP (
+  for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|WSL' -and $_.IPAddress -notmatch '^(127\.|169\.254\.)' } | Select-Object -First 1).IPAddress"`) do (
+    if not "%%a"=="" set "SIEM_LAN_IP=%%a"
+  )
+)
 if not defined SIEM_LAN_IP set "SIEM_LAN_IP=localhost"
 
 echo.

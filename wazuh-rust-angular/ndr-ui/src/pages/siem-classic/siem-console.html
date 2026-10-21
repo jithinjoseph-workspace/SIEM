@@ -1483,14 +1483,17 @@
                       <div class="text-xs text-muted truncate max-w-xs" title="{{ p.fingerprint_signature }}">{{ p.fingerprint_signature }}</div>
                     </td>
                     <td>
-                      <div class="mono text-xs bg-slate-950 p-1.5 rounded border border-slate-800 text-emerald break-all max-w-md">
+                      <div class="mono text-xs bg-slate-950 px-2 py-1.5 rounded border border-slate-800 text-emerald truncate max-w-[280px]" [title]="p.pattern">
                         {{ p.pattern }}
                       </div>
                     </td>
                     <td>
-                      <div class="flex flex-wrap gap-1 max-w-xs">
-                        <span *ngFor="let f of p.fields" class="badge badge-subtle text-xs" title="{{ f.field_type }} - {{ f.ecs_target || f.name }}">
+                      <div class="flex flex-wrap gap-1 max-w-[200px]">
+                        <span *ngFor="let f of p.fields.slice(0, 3)" class="badge badge-subtle text-[11px]" [title]="f.field_type + ' - ' + (f.ecs_target || f.name)">
                           {{ f.name }}:<span class="text-cyan">{{ f.field_type }}</span>
+                        </span>
+                        <span *ngIf="p.fields.length > 3" class="badge badge-subtle text-[10px]" [title]="p.fields.length - 3 + ' more fields'">
+                          +{{ p.fields.length - 3 }}
                         </span>
                       </div>
                     </td>

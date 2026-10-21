@@ -1,8 +1,52 @@
 .vulns-page {
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* KPI Cards with glowing borders */
+.vulns-page .grid-cols-2 > div {
+  background: rgba(13, 20, 36, 0.75) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.vulns-page .grid-cols-2 > div:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Vulnerabilities Table */
+.vulns-page table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.vulns-page table tr {
+  transition: background 0.15s ease;
+}
+
+.vulns-page table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.vulns-page ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.vulns-page ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.vulns-page ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+.vulns-page ::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b;
 }

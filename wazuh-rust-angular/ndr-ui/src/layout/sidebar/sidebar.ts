@@ -121,11 +121,11 @@ export class Sidebar implements OnInit, OnDestroy {
     // Each SIEM page needs the tenant's 'siem' feature and its own page permission.
     const siemCandidates: NavItem[] = [
       { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
-      { label: 'Dynamic Parsers',     route: '/analyst/siem-classic/console/parsers',             icon: Cpu,         permission: 'siem-parsers' },
+      { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu,         permission: 'siem-parsers' },
       { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },
       { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug,         permission: 'siem-vulnerabilities' },
-      { label: 'Compliance Audit',    route: '/analyst/siem-classic/console/compliance',          icon: ShieldCheck, permission: 'siem-compliance' },
-      { label: 'FIM Syscheck',        route: '/analyst/siem-classic/console/fim',                 icon: FileCheck,   permission: 'siem-fim' },
+      { label: 'Compliance Audit',    route: '/analyst/compliance',      icon: ShieldCheck, permission: 'siem-compliance' },
+      { label: 'FIM Syscheck',        route: '/analyst/fim',             icon: FileCheck,   permission: 'siem-fim' },
       { label: 'Active Response',     route: '/analyst/active-response', icon: Zap,         permission: 'siem-active-response' },
       { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal,    permission: 'siem-logtest' },
     ];

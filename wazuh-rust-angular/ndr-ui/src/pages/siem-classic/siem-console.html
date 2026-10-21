@@ -1489,10 +1489,10 @@
                     </td>
                     <td>
                       <div class="flex flex-wrap gap-1 max-w-[200px]">
-                        <span *ngFor="let f of p.fields?.slice(0, 3)" class="badge badge-subtle text-[11px]" [title]="f.field_type + ' - ' + (f.ecs_target || f.name)">
+                        <span *ngFor="let f of p.fields.slice(0, 3)" class="badge badge-subtle text-[11px]" [title]="f.field_type + ' - ' + (f.ecs_target || f.name)">
                           {{ f.name }}:<span class="text-cyan">{{ f.field_type }}</span>
                         </span>
-                        <span *ngIf="p.fields && p.fields.length > 3" class="badge badge-subtle text-[10px]" [title]="p.fields.length - 3 + ' more fields'">
+                        <span *ngIf="p.fields.length > 3" class="badge badge-subtle text-[10px]" [title]="p.fields.length - 3 + ' more fields'">
                           +{{ p.fields.length - 3 }}
                         </span>
                       </div>

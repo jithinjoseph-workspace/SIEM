@@ -145,10 +145,10 @@
                 <!-- Extracted Fields -->
                 <td class="py-3 px-4">
                   <div class="flex flex-wrap gap-1 max-w-[190px]">
-                    <span *ngFor="let f of p.fields?.slice(0, 3)" class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950/50 text-slate-300 border border-cyan-900/40" [title]="f.field_type + ' - ' + (f.ecs_target || f.name)">
+                    <span *ngFor="let f of p.fields.slice(0, 3)" class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950/50 text-slate-300 border border-cyan-900/40" [title]="f.field_type + ' - ' + (f.ecs_target || f.name)">
                       {{ f.name }}:<span class="text-cyan-400 font-semibold">{{ f.field_type }}</span>
                     </span>
-                    <span *ngIf="p.fields && p.fields.length > 3" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700 cursor-help" [title]="getRemainingFields(p)">
+                    <span *ngIf="p.fields.length > 3" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700 cursor-help" [title]="getRemainingFields(p)">
                       +{{ p.fields.length - 3 }}
                     </span>
                   </div>

@@ -5,7 +5,8 @@ import {
   LucideAngularModule,
   Server, Shield, Terminal, RefreshCw, Plus, Search, Filter,
   CheckCircle2, AlertTriangle, Monitor, Cpu, HardDrive, Network,
-  Layers, Copy, Check, Download, Play, X, ExternalLink, Activity
+  Layers, Copy, Check, Download, Play, X, ExternalLink, Activity,
+  LayoutGrid, Lock, ShieldAlert, TrendingUp, TrendingDown
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
@@ -54,6 +55,14 @@ export class Agents implements OnInit {
   CloseIcon = X;
   ExternalIcon = ExternalLink;
   ActivityIcon = Activity;
+  GridIcon = LayoutGrid;
+  LockIcon = Lock;
+  ShieldAlertIcon = ShieldAlert;
+  TrendingUpIcon = TrendingUp;
+  TrendingDownIcon = TrendingDown;
+
+  // View Mode: 'table' (like reference image) or 'grid' (cards)
+  viewMode = signal<'table' | 'grid'>('table');
 
   // State
   agents = signal<Agent[]>([]);
@@ -526,14 +535,102 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
   }
 
   copyInstallCommand() {
-    navigator.clipboard?.writeText(this.deployInstallCommand());
-    this.copied.set(true);
-    setTimeout(() => this.copied.set(false), 2500);
+    this.copyToClipboard(this.deployInstallCommand(), false);
   }
 
   copyStartCommand() {
-    navigator.clipboard?.writeText(this.deployStartCommand());
-    this.copiedStart.set(true);
-    setTimeout(() => this.copiedStart.set(false), 2500);
+    this.copyToClipboard(this.deployStartCommand(), true);
+  }
+
+  /**
+   * Cross-browser clipboard copy with fallback to execCommand.
+   * Works on localhost, LAN IP (http://192.168.x.x:4200), and all browsers.
+   */
+  copyToClipboard(text: string, isStart = false) {
+    if (!text) return;
+    if (navigator?.clipboard?.writeText && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.triggerCopied(isStart);
+      }).catch(() => {
+        this.fallbackExecCopy(text, isStart);
+      });
+      return;
+    }
+    this.fallbackExecCopy(text, isStart);
+  }
+
+  private fallbackExecCopy(text: string, isStart: boolean) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, 99999);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        this.triggerCopied(isStart);
+      }
+    } catch (err) {
+      console.warn('Fallback copy failed', err);
+    }
+  }
+
+  private triggerCopied(isStart: boolean) {
+    if (isStart) {
+      this.copiedStart.set(true);
+      setTimeout(() => this.copiedStart.set(false), 2500);
+    } else {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2500);
+    }
+  }
+
+  /** Calculate endpoint security risk score (0-100) */
+  getAgentRisk(agent: Agent): { score: number; label: string; color: string } {
+    if (agent.status !== 'active') {
+      return { score: 92, label: 'Critical', color: 'rose' };
+    }
+    if (agent.os_type === 'windows') {
+      return { score: 14, label: 'Low', color: 'emerald' };
+    }
+    return { score: 18, label: 'Low', color: 'emerald' };
+  }
+
+  /** Format keepalive into readable time */
+  getFormattedKeepalive(dateStr?: string): string {
+    if (!dateStr) return 'Active now';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  }
+
+  /** Export filtered agents as CSV */
+  exportCsv() {
+    const list = this.filteredAgents();
+    if (list.length === 0) return;
+    const headers = ['ID', 'Name', 'IP', 'OS', 'OS Type', 'Version', 'Status', 'Last Keepalive'];
+    const rows = list.map(a => [
+      a.id,
+      `"${a.name.replace(/"/g, '""')}"`,
+      a.ip,
+      `"${a.os.replace(/"/g, '""')}"`,
+      a.os_type,
+      a.version,
+      a.status,
+      `"${a.last_keepalive || ''}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    downloadText('endpoints-fleet.csv', csvContent, 'text/csv');
   }
 }

@@ -19,7 +19,13 @@ import {
   UnmatchedFingerprintSummary,
   ParserTestResult,
   TenantRecord,
-  UserRecord
+  UserRecord,
+  SwarmStatusReport,
+  SwarmCampaign,
+  SwarmExecutionRecord,
+  SynthesizedRuleDraft,
+  PurpleHeatmapData,
+  SwarmExecutionMode
 } from './siem.models';
 
 @Injectable({
@@ -338,4 +344,51 @@ export class SiemService {
   createUser(user: any): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/auth/users`, user);
   }
+
+  // ── Red Swarm & Perpetual Purple-Team Engine APIs ──
+
+  getRedSwarmStatus(): Observable<SwarmStatusReport> {
+    return this.http.get<SwarmStatusReport>(`${this.apiUrl}/api/v1/redswarm/status`);
+  }
+
+  getRedSwarmCampaigns(): Observable<SwarmCampaign[]> {
+    return this.http.get<SwarmCampaign[]>(`${this.apiUrl}/api/v1/redswarm/campaigns`);
+  }
+
+  saveRedSwarmCampaign(campaign: SwarmCampaign): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/campaigns`, campaign);
+  }
+
+  toggleRedSwarmCampaign(campaignId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/campaigns/${campaignId}/toggle`, {});
+  }
+
+  runRedSwarmSingleRound(payload: { technique_id?: string; target_agent_id?: string; mode?: SwarmExecutionMode }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/run-once`, payload);
+  }
+
+  getRedSwarmHistory(): Observable<SwarmExecutionRecord[]> {
+    return this.http.get<SwarmExecutionRecord[]>(`${this.apiUrl}/api/v1/redswarm/history`);
+  }
+
+  getRedSwarmGaps(): Observable<SynthesizedRuleDraft[]> {
+    return this.http.get<SynthesizedRuleDraft[]>(`${this.apiUrl}/api/v1/redswarm/gaps`);
+  }
+
+  approveAndDeployRule(draftId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/apply-rule`, {});
+  }
+
+  rollbackRedSwarmRule(ruleId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/rules/${ruleId}/rollback`, {});
+  }
+
+  toggleRedSwarmKillSwitch(engage: boolean): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/kill-switch`, { engage });
+  }
+
+  getRedSwarmHeatmap(): Observable<PurpleHeatmapData> {
+    return this.http.get<PurpleHeatmapData>(`${this.apiUrl}/api/v1/redswarm/heatmap`);
+  }
 }
+

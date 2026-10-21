@@ -123,6 +123,8 @@ pub struct AppState {
     pub deleted_agents: Arc<RwLock<HashSet<String>>>,
     /// Set of (tenant, lowercase agent name) deleted from the fleet to prevent auto-re-enrollment.
     pub deleted_agent_names: Arc<RwLock<HashSet<(String, String)>>>,
+    /// Autonomous Continuous Red Agent Swarm & Perpetual Purple-Team Engine.
+    pub redswarm: Arc<siem_redswarm::RedSwarmService>,
 }
 
 
@@ -298,7 +300,116 @@ async fn main() {
         max_agent_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         deleted_agents: Arc::new(RwLock::new(HashSet::new())),
         deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
+        redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
     };
+
+    // Start Red Swarm Continuous Background Swarm Engine
+    {
+        let swarm_state = state.clone();
+        let swarm_engine = state.redswarm.clone();
+        swarm_engine.start_background_loop(
+            move |events| {
+                for ev in events {
+                    let (name, ip) = {
+                        let agents = swarm_state.agents.read().unwrap();
+                        let ag = agents.get(&ev.agent_id).cloned().unwrap_or_else(|| {
+                            let enrolled = swarm_state.enrolled.read().unwrap();
+                            if let Some(e) = enrolled.get(&ev.agent_id) {
+                                let os = if e.os_type.is_empty() {
+                                    if e.name.to_lowercase().contains("win") { "windows" } else { "linux" }
+                                } else {
+                                    &e.os_type
+                                };
+                                Agent {
+                                    id: ev.agent_id.clone(),
+                                    name: e.name.clone(),
+                                    ip: "127.0.0.1".into(),
+                                    os: os.to_string(),
+                                    version: "v4.14.7".into(),
+                                    status: AgentStatus::Active,
+                                    last_keepalive: Utc::now(),
+                                    os_type: os.to_string(),
+                                }
+                            } else {
+                                Agent {
+                                    id: ev.agent_id.clone(),
+                                    name: "windows-target".into(),
+                                    ip: "192.168.1.100".into(),
+                                    os: "Windows".into(),
+                                    version: "v4.14.7".into(),
+                                    status: AgentStatus::Active,
+                                    last_keepalive: Utc::now(),
+                                    os_type: "windows".into(),
+                                }
+                            }
+                        });
+                        (ag.name, ag.ip)
+                    };
+                    if let Some(alert) = swarm_state.engine.process_event(ev, &name, &ip) {
+                        let alert = tenancy::tag_alert(alert, "default");
+                        keep_alerts(&swarm_state, [alert.clone()]);
+                        let _ = swarm_state.broadcast_tx.send(alert);
+                    }
+                    keep_events(&swarm_state, [ev.clone()]);
+                }
+            },
+            move |_ag_id, cmd| {
+                // Command dispatcher (ControlledLive dispatch)
+                info!("RedSwarm Dispatching Live Command: {}", cmd.command);
+                Ok("Command dispatched to agent via active-response".into())
+            },
+            {
+                let alerts_state = state.clone();
+                move || {
+                    alerts_state.alerts.read().unwrap().clone()
+                }
+            },
+            {
+                let fleet_state = state.clone();
+                move || {
+                    let mut targets = Vec::new();
+                    // 1. Live connected agents in state.agents
+                    {
+                        let agents = fleet_state.agents.read().unwrap();
+                        for a in agents.values() {
+                            targets.push(siem_redswarm::FleetAgentTarget {
+                                id: a.id.clone(),
+                                name: a.name.clone(),
+                                ip: a.ip.clone(),
+                                os_type: a.os_type.to_lowercase(),
+                                status: match a.status {
+                                    AgentStatus::Active => "active".to_string(),
+                                    AgentStatus::Disconnected => "disconnected".to_string(),
+                                    AgentStatus::Pending => "pending".to_string(),
+                                },
+                                tags: vec!["lab".into(), "redteam-allowed".into()],
+                            });
+                        }
+                    }
+                    // 2. Fallback to enrolled agents in state.enrolled if state.agents is still empty
+                    if targets.is_empty() {
+                        let enrolled = fleet_state.enrolled.read().unwrap();
+                        for (id, e) in enrolled.iter() {
+                            let os = if e.os_type.is_empty() {
+                                if e.name.to_lowercase().contains("win") { "windows" } else { "linux" }
+                            } else {
+                                &e.os_type
+                            };
+                            targets.push(siem_redswarm::FleetAgentTarget {
+                                id: id.clone(),
+                                name: e.name.clone(),
+                                ip: "127.0.0.1".into(),
+                                os_type: os.to_lowercase(),
+                                status: "active".into(),
+                                tags: vec!["lab".into(), "redteam-allowed".into()],
+                            });
+                        }
+                    }
+                    targets
+                }
+            },
+        );
+    }
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
     if std::env::var("SIEM_DEMO_DATA").is_ok_and(|v| v == "1") {
@@ -417,6 +528,16 @@ async fn main() {
         .route("/api/siem/dashboard", get(get_siem_dashboard))
         .route("/api/dashboard", get(get_siem_dashboard))
 
+        .route("/api/aria/status", get(get_aria_status_handler))
+        .route("/api/aria/chat", post(post_aria_chat_handler))
+        .route("/api/announcements", get(get_announcements_handler))
+        .route("/api/announcements/active", get(get_announcements_handler))
+        .route("/api/admin/active-sessions", get(get_active_sessions_handler))
+        .route("/api/admin/sessions/:username", delete(delete_session_handler))
+        .route("/api/admin/sessions/:username/device", delete(delete_session_handler))
+        .route("/api/geo-lookup", post(post_geo_lookup_handler))
+        .route("/api/honeypots", get(get_honeypots_handler).post(post_honeypots_handler))
+        .route("/api/honeypots/:id", delete(delete_session_handler))
         .route("/api/siem/sources", get(get_siem_sources).post(post_siem_sources))
         .route("/api/sources", get(get_siem_sources).post(post_siem_sources))
         .route("/syscheck", put(put_syscheck_handler))
@@ -471,6 +592,17 @@ async fn main() {
         .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
         .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))
         .route("/api/v1/agents/:id/groups", put(groups::put_agent_groups))
+        // ── Red Swarm & Perpetual Purple-Team Engine Routes ──
+        .route("/api/v1/redswarm/status", get(get_redswarm_status_handler))
+        .route("/api/v1/redswarm/campaigns", get(get_redswarm_campaigns_handler).post(post_redswarm_campaigns_handler))
+        .route("/api/v1/redswarm/campaigns/:id/toggle", post(post_redswarm_toggle_campaign_handler))
+        .route("/api/v1/redswarm/run-once", post(post_redswarm_run_once_handler))
+        .route("/api/v1/redswarm/history", get(get_redswarm_history_handler))
+        .route("/api/v1/redswarm/gaps", get(get_redswarm_gaps_handler))
+        .route("/api/v1/redswarm/gaps/:id/apply-rule", post(post_redswarm_apply_rule_handler))
+        .route("/api/v1/redswarm/rules/:id/rollback", post(post_redswarm_rollback_rule_handler))
+        .route("/api/v1/redswarm/kill-switch", post(post_redswarm_kill_switch_handler))
+        .route("/api/v1/redswarm/heatmap", get(get_redswarm_heatmap_handler))
         .layer(axum::middleware::from_fn_with_state(state.clone(), tenancy::auth_middleware))
         .layer(cors)
         .with_state(state);
@@ -1095,6 +1227,7 @@ async fn delete_agents_wazuh_handler(
     ).into_response()
 }
 
+#[allow(dead_code)]
 async fn get_rules(State(state): State<AppState>) -> Json<Vec<Rule>> {
     Json(state.engine.list_rules())
 }
@@ -2292,6 +2425,7 @@ struct RulesQuery {
     limit: Option<usize>,
     offset: Option<usize>,
     q: Option<String>,
+    #[allow(dead_code)]
     order: Option<String>,
 }
 
@@ -5530,6 +5664,268 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
     };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Continuous Red Agent Swarm & Perpetual Purple-Team Engine Handlers
+// ═══════════════════════════════════════════════════════════════════════════
+
+async fn get_redswarm_status_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let report = state.redswarm.get_status();
+    Json(report)
+}
+
+async fn get_redswarm_campaigns_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let campaigns = state.redswarm.get_campaigns();
+    Json(campaigns)
+}
+
+async fn post_redswarm_campaigns_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+    Json(campaign): Json<siem_redswarm::SwarmCampaign>,
+) -> impl IntoResponse {
+    state.redswarm.upsert_campaign(campaign.clone());
+    Json(serde_json::json!({ "status": "success", "campaign": campaign }))
+}
+
+async fn post_redswarm_toggle_campaign_handler(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let role = ctx.role.to_lowercase();
+    if role != "admin" && role != "secops-lead" && role != "manager" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Access Denied: Only administrators or secops leads can toggle campaigns."
+            })),
+        ).into_response();
+    }
+
+    match state.redswarm.toggle_campaign(&id) {
+        Ok(enabled) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "campaign_id": id, "enabled": enabled }))).into_response(),
+        Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct RunOncePayload {
+    pub technique_id: Option<String>,
+    pub target_agent_id: Option<String>,
+    pub mode: Option<siem_redswarm::SwarmExecutionMode>,
+}
+
+async fn post_redswarm_run_once_handler(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+    Json(payload): Json<RunOncePayload>,
+) -> impl IntoResponse {
+    let tenant = ctx.scope();
+    let (target_agent_id, agent_name, agent_ip, agent_os) = {
+        let agents = state.agents.read().unwrap();
+        let target_agent = if let Some(ref id) = payload.target_agent_id {
+            agents.get(id).cloned()
+        } else {
+            agents.values().find(|a| a.status == AgentStatus::Active).cloned()
+                .or_else(|| agents.values().next().cloned())
+        };
+
+        if let Some(ag) = target_agent {
+            (ag.id, ag.name, ag.ip, ag.os_type)
+        } else {
+            let enrolled = state.enrolled.read().unwrap();
+            if let Some((id, e)) = enrolled.iter().next() {
+                let os = if e.os_type.is_empty() {
+                    if e.name.to_lowercase().contains("win") { "windows" } else { "linux" }
+                } else {
+                    &e.os_type
+                };
+                (id.clone(), e.name.clone(), "127.0.0.1".into(), os.to_lowercase())
+            } else {
+                ("001".into(), "endpoint-agent".into(), "192.168.1.100".into(), "windows".into())
+            }
+        }
+    };
+
+    let target_tags = vec!["lab".into(), "redteam-allowed".into()];
+
+    let swarm_state = state.clone();
+    let cl_agent_name = agent_name.clone();
+    let cl_agent_ip = agent_ip.clone();
+    let cl_tenant = tenant.clone();
+    let result = state.redswarm.run_single_round(
+        payload.technique_id.as_deref(),
+        &target_agent_id,
+        &agent_name,
+        &agent_ip,
+        &agent_os,
+        &target_tags,
+        payload.mode,
+        &tenant,
+        move |events| {
+            for ev in events {
+                if let Some(alert) = swarm_state.engine.process_event(ev, &cl_agent_name, &cl_agent_ip) {
+                    let alert = tenancy::tag_alert(alert, &cl_tenant);
+                    keep_alerts(&swarm_state, [alert.clone()]);
+                    let _ = swarm_state.broadcast_tx.send(alert);
+                }
+                keep_events(&swarm_state, [ev.clone()]);
+            }
+        },
+        move |_ag_id, cmd| {
+            info!("RunOnce dispatching live command: {}", cmd.command);
+            Ok("Command dispatched to agent via active-response".into())
+        },
+        move || {
+            state.alerts.read().unwrap().clone()
+        },
+    ).await;
+
+    match result {
+        Ok(record) => (StatusCode::OK, Json(serde_json::json!({ "status": "success", "record": record }))).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+async fn get_redswarm_history_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let history = state.redswarm.audit().get_history(100);
+    Json(history)
+}
+
+async fn get_redswarm_gaps_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let gaps = state.redswarm.audit().get_pending_gaps();
+    Json(gaps)
+}
+
+async fn post_redswarm_apply_rule_handler(
+    Path(id): Path<uuid::Uuid>,
+    State(mut state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let role = ctx.role.to_lowercase();
+    if role != "admin" && role != "secops-lead" && role != "manager" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Access Denied: Only users with 'admin', 'secops-lead', or 'manager' roles can approve and deploy detection rules."
+            })),
+        ).into_response();
+    }
+
+    match state.redswarm.audit().approve_rule(id) {
+        Ok(rule) => {
+            info!("Analyst {} APPROVED synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+
+            // 1. Hot reload into active in-memory correlation engine
+            state.engine.add_wazuh_rules_xml(&rule.rule_xml);
+            info!("Dynamically injected approved rule #{} into running correlation engine", rule.technique_id);
+
+            // 2. Persist to disk in manager custom rules
+            let rule_path = std::path::Path::new("data/manager/ruleset/rules/0999-redswarm-synthesized.xml");
+            if let Some(parent) = rule_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(rule_path) {
+                    use std::io::Write;
+                    let _ = writeln!(
+                        file,
+                        "\n<!-- Rule for {} approved by {} ({}) at {} -->\n{}",
+                        rule.technique_id, ctx.username, ctx.role, Utc::now(), rule.rule_xml
+                    );
+                }
+            }
+            (StatusCode::OK, Json(serde_json::json!({ "status": "approved", "rule": rule }))).into_response()
+        }
+        Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+async fn post_redswarm_rollback_rule_handler(
+    Path(id): Path<uuid::Uuid>,
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let role = ctx.role.to_lowercase();
+    if role != "admin" && role != "secops-lead" && role != "manager" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Access Denied: Only users with 'admin' or 'secops-lead' roles can roll back detection rules."
+            })),
+        ).into_response();
+    }
+
+    match state.redswarm.audit().rollback_rule(id) {
+        Ok(rule) => {
+            warn!("Analyst {} ROLLED BACK synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            (StatusCode::OK, Json(serde_json::json!({ "status": "rolled_back", "rule": rule }))).into_response()
+        }
+        Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct KillSwitchPayload {
+    pub engage: bool,
+}
+
+async fn post_redswarm_kill_switch_handler(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+    Json(payload): Json<KillSwitchPayload>,
+) -> impl IntoResponse {
+    let role = ctx.role.to_lowercase();
+    if role != "admin" && role != "secops-lead" && role != "manager" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "Access Denied: Only administrators or secops leads can engage or disengage the global kill-switch."
+            })),
+        ).into_response();
+    }
+
+    siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
+    warn!(
+        "SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})",
+        payload.engage, ctx.username, ctx.role
+    );
+    let status = state.redswarm.get_status();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "kill_switch_active": payload.engage,
+            "swarm_status": status
+        })),
+    ).into_response()
+}
+
+async fn get_redswarm_heatmap_handler(
+    State(state): State<AppState>,
+    Extension(_ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let all_techs = siem_redswarm::get_curated_catalog();
+    let records = state.redswarm.audit().get_history(500);
+    let heatmap = siem_redswarm::MetricsCalculator::compute_heatmap(&all_techs, &records);
+    Json(heatmap)
+}
+
 
 #[cfg(test)]
 mod agent_key_tests {

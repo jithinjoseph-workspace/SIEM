@@ -41,6 +41,7 @@ export const routes: Routes = [
       { path: 'retrospective',  canActivate: [authGuard], data: { permission: 'retrospective' }, loadComponent: () => import('../pages/analyst/retrospective/retrospective').then(m => m.Retrospective) },
       /* ── Wazuh Unified SIEM Suite ── */
       { path: 'agents',         canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
+      { path: 'redswarm',       canActivate: [authGuard], data: { permission: 'siem-mitre' }, loadComponent: () => import('../pages/analyst/redswarm/redswarm').then(m => m.RedswarmComponent) },
       { path: 'parsers',        canActivate: [authGuard], data: { permission: 'siem-parsers' }, loadComponent: () => import('../pages/analyst/parsers/parsers').then(m => m.Parsers) },
       { path: 'mitre',          canActivate: [authGuard], data: { permission: 'siem-mitre' }, loadComponent: () => import('../pages/analyst/mitre/mitre').then(m => m.MitreMatrix) },
       { path: 'vulnerabilities',canActivate: [authGuard], data: { permission: 'siem-vulnerabilities' }, loadComponent: () => import('../pages/analyst/vulnerabilities/vulnerabilities').then(m => m.Vulnerabilities) },

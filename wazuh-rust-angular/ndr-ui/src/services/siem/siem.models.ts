@@ -368,3 +368,124 @@ export interface AuthSession {
   token: string;
   user: UserRecord;
 }
+
+// ── Red Swarm & Purple Team Console Models ──
+
+export type SwarmExecutionMode = 'safe_telemetry_only' | 'controlled_live' | 'full_live';
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+export type DetectionVerdict = 'defended' | 'soft_gap' | 'hard_gap';
+export type CleanupStatus = 'not_applicable' | 'succeeded' | 'failed' | 'pending';
+export type DraftRuleStatus = 'pending_approval' | 'approved_and_deployed' | 'rejected' | 'rolled_back';
+
+export interface CommandPayload {
+  command: string;
+  timeout_seconds: number;
+  requires_elevation: boolean;
+}
+
+export interface VerificationEvidence {
+  verdict: DetectionVerdict;
+  matched_alert_id?: string;
+  matched_rule_id?: number;
+  matched_rule_description?: string;
+  matched_alert?: Alert;
+  retry_count?: number;
+  evaluated_signals?: string[];
+  reason: string;
+  latency_ms: number;
+}
+
+export interface SynthesizedRuleDraft {
+  id: string;
+  execution_id: string;
+  technique_id: string;
+  technique_name: string;
+  rule_xml: string;
+  logtest_passed: boolean;
+  logtest_output: string;
+  hardening_recommendation: string;
+  created_at: string;
+  status: DraftRuleStatus;
+}
+
+export interface SwarmExecutionRecord {
+  id: string;
+  campaign_id: string;
+  tenant_id: string;
+  timestamp: string;
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  mode: SwarmExecutionMode;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_agent_ip: string;
+  target_os: string;
+  execution_success: boolean;
+  execution_output: string;
+  cleanup_status: CleanupStatus;
+  cleanup_output?: string;
+  verification: VerificationEvidence;
+  draft_rule?: SynthesizedRuleDraft;
+}
+
+export interface RulesOfEngagement {
+  allowed_agent_tags: string[];
+  denied_agent_ids: string[];
+  max_attacks_per_hour: number;
+  allowed_tactics: string[];
+  banned_techniques: string[];
+  max_risk_level: RiskLevel;
+}
+
+export interface SwarmCampaign {
+  id: string;
+  name: string;
+  description: string;
+  mode: SwarmExecutionMode;
+  enabled: boolean;
+  interval_seconds: number;
+  roe: RulesOfEngagement;
+  last_run_at?: string;
+  total_executed: number;
+  total_defended: number;
+  total_gaps: number;
+}
+
+export interface SwarmStatusReport {
+  running: boolean;
+  kill_switch_active: boolean;
+  default_mode: SwarmExecutionMode;
+  active_campaigns_count: number;
+  attacks_last_24h: number;
+  defense_rate_percent: number;
+  open_gaps_count: number;
+  approved_rules_count: number;
+  current_risk_budget_used: number;
+  max_risk_budget_per_hour: number;
+}
+
+export interface TacticCoverage {
+  tactic: string;
+  total_techniques: number;
+  tested: number;
+  defended: number;
+  soft_gaps: number;
+  hard_gaps: number;
+  coverage_percent: number;
+}
+
+export interface HeatmapTechniqueNode {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  status: 'defended' | 'soft_gap' | 'hard_gap' | 'untested';
+  last_tested_at?: string;
+}
+
+export interface PurpleHeatmapData {
+  tactics: TacticCoverage[];
+  techniques: HeatmapTechniqueNode[];
+  overall_defense_rate: number;
+}
+

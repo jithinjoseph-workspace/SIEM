@@ -131,6 +131,8 @@ pub struct Alert {
     pub location: String,
     #[serde(default)]
     pub data: HashMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_fabric: Option<RiskFabricScore>,
 }
 
 /// Agent lifecycle status
@@ -166,4 +168,53 @@ pub struct SiemStats {
     pub low_alerts: u64,      // Level 1 - 3
     pub active_agents: usize,
     pub total_agents: usize,
+}
+
+/// Dynamic score & context produced by the Business-Process Risk Fabric Engine
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RiskFabricScore {
+    pub business_process: String,
+    pub process_criticality: String,
+    pub asset_weight: f64,
+    pub identity_weight: f64,
+    pub time_window_multiplier: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_window_name: Option<String>,
+    pub technical_severity: u8,
+    pub dynamic_risk_score: u8,
+    pub dynamic_risk_tier: String,
+    pub executive_impact: String,
+    pub evaluated_at: DateTime<Utc>,
+}
+
+/// Business Process definition mapping assets and identities
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BusinessProcessDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub criticality: String,
+    pub asset_weight: f64,
+    pub identity_weight: f64,
+    pub asset_patterns: Vec<String>,
+    pub identity_patterns: Vec<String>,
+    pub impact_template: String,
+    pub enabled: bool,
+}
+
+/// Temporal business time-window configuration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BusinessTimeWindow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub multiplier: f64,
+    pub window_type: String, // "recurring_schedule" | "date_range" | "business_hours"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_date: Option<String>,
+    pub active: bool,
+    #[serde(default)]
+    pub target_processes: Vec<String>,
 }

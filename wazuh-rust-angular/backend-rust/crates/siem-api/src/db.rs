@@ -107,6 +107,7 @@ impl ClickHouseAlertRow {
             },
             location: self.location.clone(),
             data: std::collections::HashMap::new(),
+            risk_fabric: None,
         }
     }
 }

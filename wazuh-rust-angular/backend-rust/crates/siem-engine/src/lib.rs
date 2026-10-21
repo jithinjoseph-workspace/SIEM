@@ -238,6 +238,7 @@ impl AnalysisEngine {
                         decoded: decoded.clone(),
                         location: event.location.clone(),
                         data: event_data.clone(),
+                        risk_fabric: None,
                     });
                 }
             }
@@ -275,6 +276,7 @@ impl AnalysisEngine {
                     decoded: decoded.clone(),
                     location: event.location.clone(),
                     data: event_data.clone(),
+                    risk_fabric: None,
                 };
                 return Some(alert);
             }
@@ -321,6 +323,7 @@ impl AnalysisEngine {
                         decoded: decoded.clone(),
                         location: event.location.clone(),
                         data: event_data.clone(),
+                        risk_fabric: None,
                     });
                 }
             }

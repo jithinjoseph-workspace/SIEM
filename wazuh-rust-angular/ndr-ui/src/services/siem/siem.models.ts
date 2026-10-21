@@ -41,6 +41,7 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
+  risk_fabric?: RiskFabricScore;
 }
 
 export interface Agent {
@@ -368,3 +369,71 @@ export interface AuthSession {
   token: string;
   user: UserRecord;
 }
+
+export interface RiskFabricScore {
+  business_process: string;
+  process_criticality: string;
+  asset_weight: number;
+  identity_weight: number;
+  time_window_multiplier: number;
+  active_window_name?: string;
+  technical_severity: number;
+  dynamic_risk_score: number;
+  dynamic_risk_tier: 'Catastrophic' | 'Critical' | 'High' | 'Medium' | 'Low';
+  executive_impact: string;
+  evaluated_at: string;
+}
+
+export interface BusinessProcessDefinition {
+  id: string;
+  name: string;
+  description: string;
+  criticality: string;
+  asset_weight: number;
+  identity_weight: number;
+  asset_patterns: string[];
+  identity_patterns: string[];
+  impact_template: string;
+  enabled: boolean;
+}
+
+export interface BusinessTimeWindow {
+  id: string;
+  name: string;
+  description: string;
+  multiplier: number;
+  window_type: string;
+  start_date?: string;
+  end_date?: string;
+  active: boolean;
+  target_processes: string[];
+}
+
+export interface ProcessRiskStat {
+  name: string;
+  criticality: string;
+  alerts_count: number;
+  max_risk_score: number;
+}
+
+export interface RiskFabricSummary {
+  total_processes: number;
+  active_time_windows: number;
+  average_dynamic_risk: number;
+  catastrophic_alerts_count: number;
+  critical_alerts_count: number;
+  high_alerts_count: number;
+  medium_alerts_count: number;
+  low_alerts_count: number;
+  top_critical_processes: ProcessRiskStat[];
+}
+
+export interface RiskEvaluationRequest {
+  rule_level: number;
+  rule_id?: number;
+  rule_description?: string;
+  agent_name: string;
+  agent_ip: string;
+  user?: string;
+}
+

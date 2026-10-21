@@ -19,7 +19,12 @@ import {
   UnmatchedFingerprintSummary,
   ParserTestResult,
   TenantRecord,
-  UserRecord
+  UserRecord,
+  RiskFabricSummary,
+  BusinessProcessDefinition,
+  BusinessTimeWindow,
+  RiskEvaluationRequest,
+  RiskFabricScore
 } from './siem.models';
 
 @Injectable({
@@ -337,5 +342,38 @@ export class SiemService {
 
   createUser(user: any): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/auth/users`, user);
+  }
+
+  // --- Feature 6: Business-Process Risk Fabric ---
+  getRiskFabricSummary(): Observable<RiskFabricSummary> {
+    return this.http.get<RiskFabricSummary>(`${this.apiUrl}/api/v1/risk-fabric/summary`);
+  }
+
+  getRiskFabricProcesses(): Observable<BusinessProcessDefinition[]> {
+    return this.http.get<BusinessProcessDefinition[]>(`${this.apiUrl}/api/v1/risk-fabric/processes`);
+  }
+
+  saveRiskFabricProcess(proc: BusinessProcessDefinition): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/risk-fabric/processes`, proc);
+  }
+
+  deleteRiskFabricProcess(id: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/risk-fabric/processes/${id}`);
+  }
+
+  getRiskFabricWindows(): Observable<BusinessTimeWindow[]> {
+    return this.http.get<BusinessTimeWindow[]>(`${this.apiUrl}/api/v1/risk-fabric/windows`);
+  }
+
+  saveRiskFabricWindow(win: BusinessTimeWindow): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/risk-fabric/windows`, win);
+  }
+
+  deleteRiskFabricWindow(id: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/risk-fabric/windows/${id}`);
+  }
+
+  evaluateRisk(req: RiskEvaluationRequest): Observable<RiskFabricScore> {
+    return this.http.post<RiskFabricScore>(`${this.apiUrl}/api/v1/risk-fabric/evaluate`, req);
   }
 }

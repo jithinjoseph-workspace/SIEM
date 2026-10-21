@@ -114,6 +114,7 @@ mod tests {
             },
             location: "/var/log/auth.log".to_string(),
             data: Default::default(),
+            risk_fabric: None,
         };
 
         let ar_rule = ActiveResponseRule {

@@ -28,6 +28,8 @@ pub struct DynamicParserRegistry {
     storage_path: PathBuf,
     total_executions: Arc<AtomicU64>,
     total_latency_us: Arc<AtomicU64>,
+    /// Bumped on every change (the owner persists the parsers when it moves).
+    version: Arc<AtomicU64>,
 }
 
 impl DynamicParserRegistry {
@@ -39,6 +41,7 @@ impl DynamicParserRegistry {
             storage_path: storage_path.as_ref().to_path_buf(),
             total_executions: Arc::new(AtomicU64::new(0)),
             total_latency_us: Arc::new(AtomicU64::new(0)),
+            version: Arc::new(AtomicU64::new(0)),
         };
 
         // Load existing persisted parsers
@@ -274,7 +277,25 @@ impl DynamicParserRegistry {
         }
     }
 
+    /// The change counter (see [`DynamicParserRegistry::new`]: an empty path keeps no file).
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::SeqCst)
+    }
+
+    /// Registers parsers loaded from elsewhere (the database).
+    pub fn load_parsers(&self, parsers: Vec<DynamicParser>) -> usize {
+        let n = parsers.len();
+        for p in parsers {
+            let _ = self.register_parser(p);
+        }
+        n
+    }
+
     pub fn save_to_disk(&self) -> Result<(), String> {
+        self.version.fetch_add(1, Ordering::SeqCst);
+        if self.storage_path.as_os_str().is_empty() {
+            return Ok(());
+        }
         let parsers = self.list_parsers();
         if let Some(parent) = self.storage_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -285,7 +306,7 @@ impl DynamicParserRegistry {
     }
 
     pub fn load_from_disk(&self) {
-        if !self.storage_path.exists() {
+        if self.storage_path.as_os_str().is_empty() || !self.storage_path.exists() {
             return;
         }
         if let Ok(bytes) = std::fs::read(&self.storage_path) {

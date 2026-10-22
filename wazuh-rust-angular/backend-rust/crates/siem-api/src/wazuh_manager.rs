@@ -884,6 +884,8 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
 
 /// Writes the platform keystore to `etc/client.keys` (remoted reloads it).
 pub fn save_keys(state: &AppState) {
+    // the ClickHouse copy (agent_keys_store) follows
+    crate::agent_keys_store::VERSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if !enabled() {
         return;
     }
@@ -907,7 +909,8 @@ pub fn start(state: AppState) {
         warn!("Wazuh manager not started: {e}");
         return;
     }
-    // Keys issued before this run (the file is the source of truth).
+    // Keys of the file not in ClickHouse yet (older installs) join the
+    // keystore; the file is then rewritten from it (ClickHouse is the master copy).
     if let Ok(ks) = siem_crypto::keys::KeyStore::load_file(keys_file(&home)) {
         let mut cur = state.auth_keystore.write().unwrap();
         for k in ks.keys {
@@ -916,6 +919,7 @@ pub fn start(state: AppState) {
             }
         }
     }
+    save_keys(&state);
     kill_stale(&home);
     if let Err(e) = install_binaries(&home) {
         warn!("Wazuh manager not started: {e}");

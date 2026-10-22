@@ -23,7 +23,13 @@ if not defined JWT_SECRET (
     for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b "JWT_SECRET=" "%ENV_FILE%"`) do set "JWT_SECRET=%%b"
 )
 
-for %%v in (CLICKHOUSE_URL CLICKHOUSE_USER CLICKHOUSE_DB VALKEY_URL JWT_SECRET) do if not defined %%v (
+rem No AGENT_KEYS_SECRET yet: generate one (it encrypts the agent keys siem-api keeps in ClickHouse).
+if not defined AGENT_KEYS_SECRET (
+    powershell -NoProfile -Command "$f='%ENV_FILE%'; $b=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $s=-join ($b | ForEach-Object { $_.ToString('x2') }); $l=@(Get-Content $f | Where-Object { $_ -notmatch '^AGENT_KEYS_SECRET=' }) + ('AGENT_KEYS_SECRET=' + $s); [IO.File]::WriteAllLines($f, [string[]]$l)"
+    for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b "AGENT_KEYS_SECRET=" "%ENV_FILE%"`) do set "AGENT_KEYS_SECRET=%%b"
+)
+
+for %%v in (CLICKHOUSE_URL CLICKHOUSE_USER CLICKHOUSE_DB VALKEY_URL JWT_SECRET AGENT_KEYS_SECRET) do if not defined %%v (
     echo [FAIL] %%v is not set in %ENV_FILE%
     exit /b 1
 )

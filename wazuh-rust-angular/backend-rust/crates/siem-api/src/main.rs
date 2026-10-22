@@ -24,7 +24,9 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+pub mod agent_keys_store;
 pub mod db;
+pub mod parsers_store;
 pub mod vulnerability;
 pub mod syslog;
 pub mod syslog_tenancy;
@@ -152,7 +154,9 @@ async fn main() {
     let wdb = Arc::new(siem_wdb::WazuhDbManager::new());
     let threat_intel = Arc::new(siem_cdb::ThreatIntelManager::new_with_builtin_feeds());
     let rootcheck = Arc::new(siem_rootcheck::RootcheckScanner::with_default_db());
-    let parser_registry = Arc::new(siem_parser_gen::DynamicParserRegistry::new("data/learned_parsers.json"));
+    // Learned parsers live in ClickHouse (parsers_store.rs); the file only when ClickHouse is down.
+    let parser_registry = Arc::new(siem_parser_gen::DynamicParserRegistry::new(if db.is_connected() { "" } else { parsers_store::LEGACY_FILE }));
+    let stored_parsers = parsers_store::load(&db, &parser_registry).await;
 
     // Pre-seed default learned parsers if registry is newly created
     if parser_registry.list_parsers().is_empty() {
@@ -418,11 +422,19 @@ async fn main() {
     tenancy::spawn_tenant_sync(state.clone());
     // Active responses, vulnerability detections and queued agent commands (ClickHouse).
     persist::load_all(&state).await;
+    if let Some(ids) = stored_parsers {
+        parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids);
+    }
     // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
     vulnerability::spawn_sync(state.clone());
 
+    // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
+    let stored_keys = agent_keys_store::load(&state).await;
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
     wazuh_manager::start(state.clone());
+    if let Some(ids) = stored_keys {
+        agent_keys_store::spawn_sync(state.clone(), ids);
+    }
 
 
     // Start background Syslog listeners (UDP 514 / TCP 601) for firewall & network appliance ingestion

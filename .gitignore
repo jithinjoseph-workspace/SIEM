@@ -59,3 +59,7 @@ wazuh-rust-angular/.env
 wazuh-rust-angular/backend-rust/data/syslog/
 wazuh-rust-angular/backend-rust/logs/
 wazuh-rust-angular/backend-rust/data/manager/etc/smtp_auth.conf
+
+# runtime data kept in ClickHouse (agent keys encrypted, learned parsers)
+wazuh-rust-angular/backend-rust/data/manager/etc/client.keys
+wazuh-rust-angular/backend-rust/data/learned_parsers.json*

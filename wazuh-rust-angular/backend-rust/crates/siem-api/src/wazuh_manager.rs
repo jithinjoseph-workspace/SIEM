@@ -1114,7 +1114,6 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
         },
         location: s(v, &["location"]),
         data: alert_data,
-        risk_fabric: None,
     }
 }
 

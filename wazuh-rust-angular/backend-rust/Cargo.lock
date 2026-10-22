@@ -2659,6 +2659,7 @@ dependencies = [
  "siem-parser-gen",
  "siem-remoted",
  "siem-reportd",
+ "siem-risk-fabric",
  "siem-rootcheck",
  "siem-task-manager",
  "siem-vuln-detector",
@@ -3058,6 +3059,20 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "siem-risk-fabric"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "siem-core",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

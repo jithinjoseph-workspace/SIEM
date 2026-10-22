@@ -38,9 +38,7 @@ pub mod tenancy;
 pub mod wazuh_manager;
 pub mod groups;
 pub mod mail_settings;
-pub mod risk_fabric;
 use db::ClickHouseDb;
-use risk_fabric::RiskFabricEngine;
 use tenancy::AuthCtx;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +124,7 @@ pub struct AppState {
     /// Set of (tenant, lowercase agent name) deleted from the fleet to prevent auto-re-enrollment.
     pub deleted_agent_names: Arc<RwLock<HashSet<(String, String)>>>,
     /// Business-Process Risk Fabric contextual scoring engine
-    pub risk_fabric: Arc<RiskFabricEngine>,
+    pub risk_fabric: Arc<siem_risk_fabric::RiskFabricEngine>,
 }
 
 
@@ -278,7 +276,7 @@ async fn main() {
     ]));
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
-    let risk_fabric = Arc::new(RiskFabricEngine::new("data/risk_fabric_config.json"));
+    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -342,7 +340,13 @@ async fn main() {
             header::HeaderName::from_static("x-active-count"),
         ]);
 
+    let alerts_reader = {
+        let alerts = state.alerts.clone();
+        Arc::new(move || alerts.read().unwrap().clone())
+    };
+
     let app = Router::new()
+        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader))
         .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))
@@ -361,13 +365,6 @@ async fn main() {
         .route("/api/rules/sync-community", post(sync_community_rules_handler))
         .route("/api/v1/ai/analyze", post(ai_analyze_event))
         .route("/api/v1/ai/chat", post(ai_chat_handler))
-        // Feature 6: Business-Process Risk Fabric control plane
-        .route("/api/v1/risk-fabric/summary", get(get_risk_fabric_summary_handler))
-        .route("/api/v1/risk-fabric/processes", get(get_risk_fabric_processes_handler).post(post_risk_fabric_process_handler))
-        .route("/api/v1/risk-fabric/processes/:id", delete(delete_risk_fabric_process_handler))
-        .route("/api/v1/risk-fabric/windows", get(get_risk_fabric_windows_handler).post(post_risk_fabric_window_handler))
-        .route("/api/v1/risk-fabric/windows/:id", delete(delete_risk_fabric_window_handler))
-        .route("/api/v1/risk-fabric/evaluate", post(post_risk_fabric_evaluate_handler))
         .route("/api/v1/ingest", post(ingest_event))
         .route("/api/events/ingest", post(ingest_event))
         .route("/api/v1/agent/commands", get(get_agent_commands).post(queue_agent_command))
@@ -656,7 +653,6 @@ fn seed_sample_data(state: &AppState) {
             },
             location: "vulnerability-detector".to_string(),
             data: HashMap::new(),
-            risk_fabric: None,
         };
         keep_alerts(&state, [alert]);
     }
@@ -779,12 +775,12 @@ fn trim<T>(l: &mut Vec<T>, cap: usize) {
     }
 }
 
-/// Adds alerts to the in-memory window, ensuring Business-Process Risk Fabric scoring is attached.
+/// Adds alerts to the in-memory window.
 pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
-            if a.risk_fabric.is_none() {
+            if !a.data.contains_key("risk_fabric") {
                 state.risk_fabric.evaluate_alert(&mut a);
             }
             a
@@ -1309,7 +1305,6 @@ async fn ingest_event(
                                         },
                                         location: "vulnerability-detector".to_string(),
                                         data: HashMap::new(),
-                                        risk_fabric: None,
                                     };
                                     let alert = record_alert(&state, &tenant, alert).await;
                                     last_alert = Some(alert);
@@ -1412,7 +1407,6 @@ async fn ingest_event(
                     },
                     location: policy_id,
                     data: HashMap::new(),
-                    risk_fabric: None,
                 };
                 let alert = record_alert(&state, &tenant, alert).await;
                 last_alert = Some(alert);
@@ -1501,7 +1495,6 @@ async fn ingest_event(
                 },
                 location: "syscheck".to_string(),
                 data: HashMap::new(),
-                risk_fabric: None,
             };
             let alert = record_alert(&state, &tenant, alert).await;
             last_alert = Some(alert);
@@ -3513,7 +3506,6 @@ async fn post_agent_packages(
             },
             location: "vulnerability-detector".to_string(),
             data: HashMap::new(),
-            risk_fabric: None,
         };
 
         // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
@@ -3813,7 +3805,6 @@ async fn post_agent_fim_handler(
             },
             location: "syscheck".to_string(),
             data: HashMap::new(),
-            risk_fabric: None,
         };
 
         // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
@@ -4050,7 +4041,6 @@ async fn post_agent_rootcheck_handler(
             },
             location: "rootcheck".to_string(),
             data: HashMap::new(),
-            risk_fabric: None,
         };
 
         // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
@@ -5363,11 +5353,11 @@ async fn rotate_tenant_agent_key_handler(State(state): State<AppState>, Extensio
 }
 
 
-/// Tags an alert with its tenant, evaluates Risk Fabric context, keeps it, stores it in the tenant's
+/// Tags an alert with its tenant, keeps it, stores it in the tenant's
 /// database and broadcasts it.
 async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     let mut alert = tenancy::tag_alert(alert, tenant);
-    if alert.risk_fabric.is_none() {
+    if !alert.data.contains_key("risk_fabric") {
         state.risk_fabric.evaluate_alert(&mut alert);
     }
     keep_alerts(&state, [alert.clone()]);
@@ -5561,68 +5551,6 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
         "active"
     };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()
-}
-
-// ── Business-Process Risk Fabric API Handlers ────────────────────────────────
-
-async fn get_risk_fabric_summary_handler(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-) -> Json<risk_fabric::RiskFabricSummary> {
-    let alerts = scoped_alerts(&state, &ctx);
-    Json(state.risk_fabric.get_summary(&alerts))
-}
-
-async fn get_risk_fabric_processes_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<siem_core::BusinessProcessDefinition>> {
-    Json(state.risk_fabric.get_processes())
-}
-
-async fn post_risk_fabric_process_handler(
-    State(state): State<AppState>,
-    Json(proc): Json<siem_core::BusinessProcessDefinition>,
-) -> Json<serde_json::Value> {
-    state.risk_fabric.add_or_update_process(proc);
-    Json(serde_json::json!({ "status": "success", "message": "Business process updated successfully" }))
-}
-
-async fn delete_risk_fabric_process_handler(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Json<serde_json::Value> {
-    let ok = state.risk_fabric.delete_process(&id);
-    Json(serde_json::json!({ "status": if ok { "success" } else { "not_found" } }))
-}
-
-async fn get_risk_fabric_windows_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<siem_core::BusinessTimeWindow>> {
-    Json(state.risk_fabric.get_windows())
-}
-
-async fn post_risk_fabric_window_handler(
-    State(state): State<AppState>,
-    Json(win): Json<siem_core::BusinessTimeWindow>,
-) -> Json<serde_json::Value> {
-    state.risk_fabric.add_or_update_window(win);
-    Json(serde_json::json!({ "status": "success", "message": "Business time window updated successfully" }))
-}
-
-async fn delete_risk_fabric_window_handler(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Json<serde_json::Value> {
-    let ok = state.risk_fabric.delete_window(&id);
-    Json(serde_json::json!({ "status": if ok { "success" } else { "not_found" } }))
-}
-
-async fn post_risk_fabric_evaluate_handler(
-    State(state): State<AppState>,
-    Json(req): Json<risk_fabric::RiskEvaluationRequest>,
-) -> Json<siem_core::RiskFabricScore> {
-    let score = state.risk_fabric.simulate(&req);
-    Json(score)
 }
 
 #[cfg(test)]

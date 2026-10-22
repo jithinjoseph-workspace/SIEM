@@ -1,48 +1,14 @@
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use siem_core::{Alert, BusinessProcessDefinition, BusinessTimeWindow, RiskFabricScore};
+use siem_core::Alert;
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use tracing::info;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RiskFabricConfig {
-    pub processes: Vec<BusinessProcessDefinition>,
-    pub time_windows: Vec<BusinessTimeWindow>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProcessRiskStat {
-    pub name: String,
-    pub criticality: String,
-    pub alerts_count: usize,
-    pub max_risk_score: u8,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RiskFabricSummary {
-    pub total_processes: usize,
-    pub active_time_windows: usize,
-    pub average_dynamic_risk: f64,
-    pub catastrophic_alerts_count: usize,
-    pub critical_alerts_count: usize,
-    pub high_alerts_count: usize,
-    pub medium_alerts_count: usize,
-    pub low_alerts_count: usize,
-    pub top_critical_processes: Vec<ProcessRiskStat>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RiskEvaluationRequest {
-    pub rule_level: u8,
-    pub rule_id: Option<u32>,
-    pub rule_description: Option<String>,
-    pub agent_name: String,
-    pub agent_ip: String,
-    pub user: Option<String>,
-}
+use crate::models::{
+    BusinessProcessDefinition, BusinessTimeWindow, ProcessRiskStat, RiskEvaluationRequest,
+    RiskFabricConfig, RiskFabricScore, RiskFabricSummary,
+};
+use crate::storage;
 
 #[derive(Clone)]
 pub struct RiskFabricEngine {
@@ -53,218 +19,27 @@ pub struct RiskFabricEngine {
 
 impl RiskFabricEngine {
     pub fn new(config_path: impl Into<PathBuf>) -> Self {
-        let engine = Self {
-            processes: Arc::new(RwLock::new(Vec::new())),
-            time_windows: Arc::new(RwLock::new(Vec::new())),
-            config_path: config_path.into(),
-        };
-        engine.load_or_seed();
-        engine
+        let path = config_path.into();
+        let cfg = storage::load_config(&path).unwrap_or_else(storage::default_config);
+        storage::save_config(&path, &cfg);
+
+        Self {
+            processes: Arc::new(RwLock::new(cfg.processes)),
+            time_windows: Arc::new(RwLock::new(cfg.time_windows)),
+            config_path: path,
+        }
     }
 
-    /// Load configuration from disk or seed enterprise defaults
-    pub fn load_or_seed(&self) {
-        if self.config_path.exists() {
-            if let Ok(content) = fs::read_to_string(&self.config_path) {
-                if let Ok(cfg) = serde_json::from_str::<RiskFabricConfig>(&content) {
-                    *self.processes.write().unwrap() = cfg.processes;
-                    *self.time_windows.write().unwrap() = cfg.time_windows;
-                    info!(
-                        "Loaded Business-Process Risk Fabric: {} processes, {} time windows from {:?}",
-                        self.processes.read().unwrap().len(),
-                        self.time_windows.read().unwrap().len(),
-                        self.config_path
-                    );
-                    return;
-                }
-            }
-        }
-
-        // Seed comprehensive enterprise out-of-the-box defaults
-        let default_processes = vec![
-            BusinessProcessDefinition {
-                id: "bp-pci-payment".to_string(),
-                name: "Payment Settlement & Gateway (PCI-DSS)".to_string(),
-                description: "Critical cardholder data environment, checkout APIs, and financial transaction settlement.".to_string(),
-                criticality: "Mission-Critical".to_string(),
-                asset_weight: 2.4,
-                identity_weight: 1.8,
-                asset_patterns: vec![
-                    "*pay*".into(),
-                    "*swift*".into(),
-                    "*pos*".into(),
-                    "*checkout*".into(),
-                    "192.168.10.15".into(),
-                    "srv-prod-ubuntu-01".into(),
-                ],
-                identity_patterns: vec![
-                    "*cashier*".into(),
-                    "*finance*".into(),
-                    "*settlement*".into(),
-                    "*pci*".into(),
-                    "admin*".into(),
-                ],
-                impact_template: "Direct threat to payment settlement pipeline; elevated risk of transaction manipulation, wire redirection, or PCI-DSS cardholder data compromise.".to_string(),
-                enabled: true,
-            },
-            BusinessProcessDefinition {
-                id: "bp-core-iam".to_string(),
-                name: "Core Active Directory & IAM Authority".to_string(),
-                description: "Central identity provider, Kerberos domain controllers, and privileged credential vaults.".to_string(),
-                criticality: "Mission-Critical".to_string(),
-                asset_weight: 2.5,
-                identity_weight: 2.0,
-                asset_patterns: vec![
-                    "*dc*".into(),
-                    "*ad*".into(),
-                    "*iam*".into(),
-                    "*auth*".into(),
-                    "*ldap*".into(),
-                    "*vault*".into(),
-                    "*kerberos*".into(),
-                ],
-                identity_patterns: vec![
-                    "administrator".into(),
-                    "admin*".into(),
-                    "root".into(),
-                    "svc_*".into(),
-                    "*ciso*".into(),
-                    "*cio*".into(),
-                    "*secops*".into(),
-                ],
-                impact_template: "Core identity authority or privileged account impacted; high potential for domain-wide golden ticket creation, privilege escalation, and lateral movement.".to_string(),
-                enabled: true,
-            },
-            BusinessProcessDefinition {
-                id: "bp-dmz-web".to_string(),
-                name: "Customer-Facing Ingress & Web DMZ".to_string(),
-                description: "Public reverse proxies, web application servers, and external API gateways.".to_string(),
-                criticality: "High".to_string(),
-                asset_weight: 1.6,
-                identity_weight: 1.2,
-                asset_patterns: vec![
-                    "dmz-web-nginx".into(),
-                    "*web*".into(),
-                    "*nginx*".into(),
-                    "*apache*".into(),
-                    "*ingress*".into(),
-                    "*api*".into(),
-                    "*portal*".into(),
-                ],
-                identity_patterns: vec![
-                    "www-data".into(),
-                    "nginx".into(),
-                    "apache".into(),
-                    "*app*".into(),
-                ],
-                impact_template: "Perimeter service exploit or unauthorized ingress activity; threat to customer service availability and potential perimeter foothold.".to_string(),
-                enabled: true,
-            },
-            BusinessProcessDefinition {
-                id: "bp-corp-erp".to_string(),
-                name: "Corporate ERP & Supply Chain".to_string(),
-                description: "Enterprise resource planning, relational databases, supply chain logistics, and HR databases.".to_string(),
-                criticality: "High".to_string(),
-                asset_weight: 1.5,
-                identity_weight: 1.3,
-                asset_patterns: vec![
-                    "*erp*".into(),
-                    "*sap*".into(),
-                    "*crm*".into(),
-                    "*database*".into(),
-                    "*sql*".into(),
-                    "*postgres*".into(),
-                ],
-                identity_patterns: vec![
-                    "*operator*".into(),
-                    "*dba*".into(),
-                    "*erp*".into(),
-                ],
-                impact_template: "Corporate ERP or backend database impacted; potential disruption to supply chain logistics or unauthorized business records access.".to_string(),
-                enabled: true,
-            },
-            BusinessProcessDefinition {
-                id: "bp-dev-sandbox".to_string(),
-                name: "Non-Production Dev & Lab Sandbox".to_string(),
-                description: "Software development staging nodes, QA clusters, and test environments.".to_string(),
-                criticality: "Low".to_string(),
-                asset_weight: 0.4,
-                identity_weight: 0.8,
-                asset_patterns: vec![
-                    "*dev*".into(),
-                    "*test*".into(),
-                    "*stage*".into(),
-                    "*qa*".into(),
-                    "*sandbox*".into(),
-                    "*lab*".into(),
-                ],
-                identity_patterns: vec![
-                    "*tester*".into(),
-                    "*intern*".into(),
-                    "*dev*".into(),
-                ],
-                impact_template: "Isolated development or QA asset activity; low enterprise operational risk, suppressed from high-urgency SOC response.".to_string(),
-                enabled: true,
-            },
-        ];
-
-        let default_windows = vec![
-            BusinessTimeWindow {
-                id: "tw-financial-close".to_string(),
-                name: "Month-End Financial Close Window".to_string(),
-                description: "Heightened scrutiny period for accounting, banking, and payment systems during reconciliation.".to_string(),
-                multiplier: 1.45,
-                window_type: "recurring_schedule".to_string(),
-                start_date: None,
-                end_date: None,
-                active: true,
-                target_processes: vec!["bp-pci-payment".into(), "bp-corp-erp".into()],
-            },
-            BusinessTimeWindow {
-                id: "tw-maintenance-window".to_string(),
-                name: "Scheduled Infrastructure Maintenance".to_string(),
-                description: "Authorized patching and vulnerability assessment window; technical alerts de-escalated to reduce alarm fatigue.".to_string(),
-                multiplier: 0.40,
-                window_type: "recurring_schedule".to_string(),
-                start_date: None,
-                end_date: None,
-                active: false,
-                target_processes: vec![],
-            },
-            BusinessTimeWindow {
-                id: "tw-off-hours".to_string(),
-                name: "Unattended Off-Hours Operations".to_string(),
-                description: "Night-time and weekend operations when physical offices are unoccupied and SOC staffing is lean.".to_string(),
-                multiplier: 1.25,
-                window_type: "business_hours".to_string(),
-                start_date: None,
-                end_date: None,
-                active: true,
-                target_processes: vec![],
-            },
-        ];
-
-        *self.processes.write().unwrap() = default_processes;
-        *self.time_windows.write().unwrap() = default_windows;
-        self.save_to_disk();
-        info!("Seeded default Business-Process Risk Fabric configuration");
-    }
-
-    /// Persist current configuration to disk
-    pub fn save_to_disk(&self) {
-        if let Some(parent) = self.config_path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
+    /// Persist current configuration state to disk
+    pub fn save(&self) {
         let cfg = RiskFabricConfig {
             processes: self.processes.read().unwrap().clone(),
             time_windows: self.time_windows.read().unwrap().clone(),
         };
-        if let Ok(json) = serde_json::to_string_pretty(&cfg) {
-            let _ = fs::write(&self.config_path, json);
-        }
+        storage::save_config(&self.config_path, &cfg);
     }
 
-    /// Evaluates incoming alert through the Business-Process Risk Fabric
+    /// Evaluates an alert and injects the score into `alert.data["risk_fabric"]`
     pub fn evaluate_alert(&self, alert: &mut Alert) -> RiskFabricScore {
         let agent_name = alert.agent.name.to_lowercase();
         let agent_ip = alert.agent.ip.to_lowercase();
@@ -332,7 +107,6 @@ impl RiskFabricEngine {
         }
 
         // 4. Compute Unified Dynamic Risk Score (0 - 100)
-        // Wazuh level is 0..15. Baseline technical severity is (level * 6.67) clamped to 100
         let tech_base = ((rule_level as f64) * 6.67).clamp(5.0, 100.0);
         let raw_score = tech_base * asset_weight * identity_weight * time_multiplier;
         let dynamic_risk_score = raw_score.round().clamp(1.0, 100.0) as u8;
@@ -379,13 +153,20 @@ impl RiskFabricEngine {
             evaluated_at,
         };
 
-        // Attach to Alert struct and data map
-        alert.risk_fabric = Some(score.clone());
+        // Attach dynamically to `alert.data["risk_fabric"]` without requiring core struct changes
         if let Ok(val) = serde_json::to_value(&score) {
             alert.data.insert("risk_fabric".to_string(), val);
         }
 
         score
+    }
+
+    /// Extracts the RiskFabricScore from an Alert's data map if present
+    pub fn get_score(alert: &Alert) -> Option<RiskFabricScore> {
+        alert
+            .data
+            .get("risk_fabric")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     /// Evaluates simulation payload without altering active alerts
@@ -414,7 +195,6 @@ impl RiskFabricEngine {
             },
             location: format!("/var/log/{}", req.agent_name),
             data: HashMap::new(),
-            risk_fabric: None,
         };
 
         self.evaluate_alert(&mut dummy_alert)
@@ -437,7 +217,7 @@ impl RiskFabricEngine {
         let mut proc_counts: HashMap<String, (String, usize, u8)> = HashMap::new();
 
         for a in alerts {
-            if let Some(ref rf) = a.risk_fabric {
+            if let Some(rf) = Self::get_score(a) {
                 total_score += rf.dynamic_risk_score as u64;
                 match rf.dynamic_risk_tier.as_str() {
                     "Catastrophic" => catastrophic += 1,
@@ -501,7 +281,7 @@ impl RiskFabricEngine {
             list.push(proc);
         }
         drop(list);
-        self.save_to_disk();
+        self.save();
     }
 
     pub fn delete_process(&self, id: &str) -> bool {
@@ -511,7 +291,7 @@ impl RiskFabricEngine {
         let removed = list.len() < len_before;
         drop(list);
         if removed {
-            self.save_to_disk();
+            self.save();
         }
         removed
     }
@@ -528,7 +308,7 @@ impl RiskFabricEngine {
             list.push(win);
         }
         drop(list);
-        self.save_to_disk();
+        self.save();
     }
 
     pub fn delete_window(&self, id: &str) -> bool {
@@ -538,14 +318,14 @@ impl RiskFabricEngine {
         let removed = list.len() < len_before;
         drop(list);
         if removed {
-            self.save_to_disk();
+            self.save();
         }
         removed
     }
 }
 
 /// Simple pattern matcher supporting prefix/suffix wildcards: "*foo*", "*foo", "foo*", or exact
-fn matches_pattern(pattern: &str, target: &str) -> bool {
+pub fn matches_pattern(pattern: &str, target: &str) -> bool {
     let p = pattern.trim().to_lowercase();
     let t = target.trim().to_lowercase();
 
@@ -583,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_dynamic_risk_scoring() {
-        let temp_file = std::env::temp_dir().join("test_risk_fabric.json");
+        let temp_file = std::env::temp_dir().join(format!("test_rf_{}.json", uuid::Uuid::new_v4()));
         let engine = RiskFabricEngine::new(&temp_file);
         let req = RiskEvaluationRequest {
             rule_level: 10,
@@ -594,9 +374,6 @@ mod tests {
             user: Some("administrator".into()),
         };
         let score = engine.simulate(&req);
-        // Level 10 * 6.67 = 66.7
-        // Asset weight = 2.4, Identity weight = 2.0, Time window (Month-End Close active) = 1.45
-        // Total score exceeds 85 -> Catastrophic tier
         assert!(score.dynamic_risk_score >= 85);
         assert_eq!(score.dynamic_risk_tier, "Catastrophic");
         assert!(score.executive_impact.contains("PCI-DSS"));

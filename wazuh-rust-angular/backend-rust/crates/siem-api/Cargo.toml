@@ -40,4 +40,5 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
 sha2 = "0.10"
 local-ip-address = "0.6"
+siem-risk-fabric = { path = "../siem-risk-fabric" }
 

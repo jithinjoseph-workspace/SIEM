@@ -41,7 +41,6 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
-  risk_fabric?: RiskFabricScore;
 }
 
 export interface Agent {
@@ -364,19 +363,4 @@ export interface AuthSession {
   token: string;
   user: UserRecord;
 }
-
-export interface RiskFabricScore {
-  business_process: string;
-  process_criticality: string;
-  asset_weight: number;
-  identity_weight: number;
-  time_window_multiplier: number;
-  active_window_name?: string;
-  technical_severity: number;
-  dynamic_risk_score: number;
-  dynamic_risk_tier: 'Catastrophic' | 'Critical' | 'High' | 'Medium' | 'Low';
-  executive_impact: string;
-  evaluated_at: string;
-}
-
 

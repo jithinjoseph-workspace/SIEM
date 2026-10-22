@@ -882,6 +882,11 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
     }))
 }
 
+/// Whether the manager runs and its `etc/client.keys` is gone.
+pub fn keys_file_missing() -> bool {
+    enabled() && home().join("etc").exists() && !keys_file(&home()).exists()
+}
+
 /// Writes the platform keystore to `etc/client.keys` (remoted reloads it).
 pub fn save_keys(state: &AppState) {
     // the ClickHouse copy (agent_keys_store) follows

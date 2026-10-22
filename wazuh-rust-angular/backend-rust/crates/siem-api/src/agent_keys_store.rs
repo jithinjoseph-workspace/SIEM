@@ -162,6 +162,11 @@ pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
     tokio::spawn(async move {
         let mut saved = None;
         loop {
+            // a git merge or a cleanup can delete etc/client.keys: write it back from the keystore
+            if crate::wazuh_manager::keys_file_missing() {
+                warn!("etc/client.keys is missing: rewriting it from the stored keys");
+                crate::wazuh_manager::save_keys(&state);
+            }
             let v = VERSION.load(Ordering::SeqCst);
             if saved != Some(v) && save(&state, &c, &mut stored).await {
                 saved = Some(v);

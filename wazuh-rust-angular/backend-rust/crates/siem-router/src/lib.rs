@@ -13,14 +13,19 @@
 //! * The C API (`router_provider_create`, `router_provider_send`, ...) with
 //!   the module log callback.
 //!
-//! Linux only, like the C++ (epoll).
+//! Linux like the C++ (epoll, unix sockets); on Windows the same topics run
+//! over loopback TCP (`socket_win.rs`) so a Windows manager has a router too.
 
-#![cfg(target_os = "linux")]
+#![cfg(any(target_os = "linux", windows))]
 
 pub mod adapter;
 pub mod fb;
 pub mod schemas;
 pub mod sjson;
+#[cfg(target_os = "linux")]
+pub mod socket;
+#[cfg(windows)]
+#[path = "socket_win.rs"]
 pub mod socket;
 
 use std::cell::RefCell;

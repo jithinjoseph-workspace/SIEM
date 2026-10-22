@@ -48,13 +48,13 @@ impl Router for NoRouter {
 /// The real router (`secure.c`'s HandleSecure start): `router_initialize`
 /// with the ":router" tagged log and the remote providers
 /// `deltas-syscollector` and `rsync` on wazuh-modulesd's broker.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub struct WazuhRouter {
     syscollector: siem_router::ProviderHandle,
     rsync: siem_router::ProviderHandle,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 impl WazuhRouter {
     pub fn new() -> Self {
         siem_router::router_initialize(std::sync::Arc::new(|level: &str, msg: &[u8]| {
@@ -82,14 +82,14 @@ impl WazuhRouter {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 impl Default for WazuhRouter {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 impl Router for WazuhRouter {
     fn provider_available(&self, schema: SchemaType) -> bool {
         match schema {
@@ -113,7 +113,7 @@ impl Router for WazuhRouter {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 impl Drop for WazuhRouter {
     fn drop(&mut self) {
         siem_router::router_provider_destroy(self.syscollector);

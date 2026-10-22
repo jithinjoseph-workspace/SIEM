@@ -13,6 +13,8 @@ pub mod config;
 pub mod daemon;
 #[cfg(not(target_os = "linux"))]
 pub mod daemon_portable;
+#[cfg(any(target_os = "linux", windows))]
+pub mod router;
 pub mod delta;
 pub mod fim;
 pub mod global;

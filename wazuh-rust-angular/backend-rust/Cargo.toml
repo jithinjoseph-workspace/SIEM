@@ -9,7 +9,6 @@ members = [
     "crates/siem-api",
     "crates/provigil-common",
     "crates/auth-service",
-    "crates/siem-vuln-detector",
     "crates/siem-remoted",
     "crates/siem-sqlite",
     "crates/siem-wdb",

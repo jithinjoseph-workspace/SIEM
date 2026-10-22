@@ -28,6 +28,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+siem-router = { path = "../siem-router" }
+
 [dev-dependencies]
 tempfile = "3"
 

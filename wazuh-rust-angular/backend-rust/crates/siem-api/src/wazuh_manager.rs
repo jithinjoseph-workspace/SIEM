@@ -128,6 +128,11 @@ fn ossec_conf() -> String {
     <decoder_dir>etc/decoders</decoder_dir>\n\
     <rule_dir>etc/rules</rule_dir>\n\
   </ruleset>\n\
+  <vulnerability-detection>\n\
+    <enabled>yes</enabled>\n\
+    <index-status>yes</index-status>\n\
+    <feed-update-interval>60m</feed-update-interval>\n\
+  </vulnerability-detection>\n\
 </ossec_config>\n"
     )
 }
@@ -798,18 +803,6 @@ pub async fn agent_rootcheck(agent_id: &str) -> Option<serde_json::Value> {
         })
         .collect();
     Some(serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "wazuh-db" }))
-}
-
-/// The packages syscollector reported for an agent (`sys_programs`).
-pub async fn agent_packages(agent_id: &str) -> Option<Vec<siem_vuln_detector::PackageInfo>> {
-    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
-    let rows = agent_sql(&id, "SELECT name, version, architecture, vendor FROM sys_programs WHERE name IS NOT NULL AND version IS NOT NULL;").await?;
-    let s = |r: &serde_json::Value, k: &str| r.get(k).and_then(|v| v.as_str()).map(str::to_string).filter(|x| !x.is_empty());
-    Some(
-        rows.iter()
-            .filter_map(|r| Some(siem_vuln_detector::PackageInfo { name: s(r, "name")?, version: s(r, "version")?, architecture: s(r, "architecture"), vendor: s(r, "vendor") }))
-            .collect(),
-    )
 }
 
 /// The inventory syscollector reported for an agent, from wazuh-db, in the

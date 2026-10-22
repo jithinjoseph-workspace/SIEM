@@ -24,12 +24,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use siem_vuln_detector::{
-    DetectionStatus, PackageInfo, Severity as VulnSeverity, VulnerabilityDetection,
-    VulnerabilityScanner,
-};
-
 pub mod db;
+pub mod vulnerability;
 pub mod syslog;
 pub mod syslog_tenancy;
 pub mod persist;
@@ -102,8 +98,8 @@ pub struct AppState {
     pub broadcast_tx: broadcast::Sender<Alert>,
     pub pending_commands: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     pub db: ClickHouseDb,
-    pub vuln_scanner: Arc<VulnerabilityScanner>,
-    pub vulnerabilities: Arc<RwLock<Vec<VulnerabilityDetection>>>,
+    /// The vulnerability scanner's current detections (vulnerability.rs).
+    pub vulnerabilities: Arc<RwLock<Vec<vulnerability::VulnItem>>>,
     pub wdb: Arc<siem_wdb::WazuhDbManager>,
     pub threat_intel: Arc<siem_cdb::ThreatIntelManager>,
     pub rootcheck: Arc<siem_rootcheck::RootcheckScanner>,
@@ -152,7 +148,6 @@ async fn main() {
     let (broadcast_tx, _) = broadcast::channel::<Alert>(1000);
     let db = ClickHouseDb::init().await;
 
-    let vuln_scanner = Arc::new(VulnerabilityScanner::with_default_feed());
     let vulnerabilities = Arc::new(RwLock::new(Vec::new()));
     let wdb = Arc::new(siem_wdb::WazuhDbManager::new());
     let threat_intel = Arc::new(siem_cdb::ThreatIntelManager::new_with_builtin_feeds());
@@ -285,7 +280,6 @@ async fn main() {
         broadcast_tx,
         pending_commands: Arc::new(RwLock::new(HashMap::new())),
         db,
-        vuln_scanner,
         vulnerabilities,
         wdb,
         threat_intel,
@@ -424,6 +418,8 @@ async fn main() {
     tenancy::spawn_tenant_sync(state.clone());
     // Active responses, vulnerability detections and queued agent commands (ClickHouse).
     persist::load_all(&state).await;
+    // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
+    vulnerability::spawn_sync(state.clone());
 
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
     wazuh_manager::start(state.clone());
@@ -544,9 +540,8 @@ async fn main() {
         .route("/api/v1/syscheck", put(put_syscheck_handler))
         .route("/api/v1/simulate", post(simulate_attack))
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
-        .route("/api/v1/vulnerabilities/sync-feed", post(post_sync_feed))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
-        .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler).post(post_agent_packages))
+        .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
         .route("/api/v1/agents/deactivated", get(get_deactivated_agents_handler))
         .route("/api/v1/agents/:id/deactivate", post(deactivate_agent_handler))
         .route("/api/v1/agents/:id/activate", post(activate_agent_handler))
@@ -706,77 +701,6 @@ fn seed_sample_data(state: &AppState) {
             keep_alerts(&state, [alert]);
         }
         keep_events(&state, [ev]);
-    }
-
-    // Seed initial vulnerability detections via VulnerabilityScanner
-    let pkg_inventory_001 = vec![
-        PackageInfo::new("xz-utils", "5.6.0"),
-        PackageInfo::new("openssh-server", "8.9p1"),
-        PackageInfo::new("curl", "7.74.0"),
-        PackageInfo::new("sudo", "1.8.31"),
-    ];
-    let detected_001 = state.vuln_scanner.scan_inventory(&pkg_inventory_001, "001", "srv-prod-ubuntu-01");
-
-    let pkg_inventory_004 = vec![
-        PackageInfo::new("nginx", "1.18.0"),
-    ];
-    let detected_004 = state.vuln_scanner.scan_inventory(&pkg_inventory_004, "004", "dmz-web-nginx");
-
-    let mut vuln_guard = state.vulnerabilities.write().unwrap();
-    vuln_guard.extend(detected_001.clone());
-    vuln_guard.extend(detected_004.clone());
-    drop(vuln_guard);
-
-    // Generate alerts matching Wazuh 0520-vulnerability-detector_rules.xml for detections
-    for det in detected_001.into_iter().chain(detected_004.into_iter()) {
-        let (rule_id, rule_level) = match det.severity {
-            VulnSeverity::Critical => (23506, 13),
-            VulnSeverity::High => (23505, 10),
-            VulnSeverity::Medium => (23504, 7),
-            VulnSeverity::Low => (23503, 5),
-        };
-        let alert = Alert {
-            id: uuid::Uuid::new_v4(),
-            timestamp: Utc::now(),
-            rule: siem_core::RuleAlertInfo {
-                id: rule_id,
-                level: rule_level,
-                description: format!("{} affects {}", det.cve_id, det.package_name),
-                groups: vec!["vulnerability-detector".to_string(), "cve".to_string()],
-                mitre: det.mitre_technique.as_ref().map(|tech| siem_core::MitreAttack {
-                    id: tech.clone(),
-                    tactic: "Initial Access".to_string(),
-                    technique: tech.clone(),
-                }),
-            },
-            agent: siem_core::AgentAlertInfo {
-                id: det.agent_id.clone(),
-                name: det.agent_name.clone(),
-                ip: "192.168.10.15".to_string(),
-            },
-            manager: Some(siem_core::ManagerAlertInfo {
-                name: "wazuh-manager-rust".to_string(),
-            }),
-            decoder: None,
-            full_log: format!("Vulnerability detected: {} ({}) in {} {} - Severity: {}", det.cve_id, det.title, det.package_name, det.installed_version, det.severity),
-            decoded: siem_core::DecodedFields {
-                decoder_name: "vulnerability-detector".to_string(),
-                src_ip: None,
-                dst_ip: None,
-                src_port: None,
-                dst_port: None,
-                user: None,
-                program_name: Some(det.package_name.clone()),
-                process_id: None,
-                file_path: None,
-                action: None,
-                status: Some("Active".to_string()),
-                extra: HashMap::new(),
-            },
-            location: "vulnerability-detector".to_string(),
-            data: HashMap::new(),
-        };
-        keep_alerts(&state, [alert]);
     }
 
     // Seed Wazuh DB agent state (OS, Hardware, Network, Packages, Ports, FIM, SCA)
@@ -1342,92 +1266,6 @@ async fn ingest_event(
 
         if let Some(alert) = maybe_alert {
             record_alert(&state, &tenant, alert).await;
-        }
-
-        // Automated Vulnerability Scanner: evaluate syscollector software packages in real time
-        if event.source == EventSource::Syscollector {
-            if let Some(inv_json) = event.metadata.get("inventory_json") {
-                if let Ok(inv) = serde_json::from_str::<serde_json::Value>(inv_json) {
-                    if let Some(installed_sw) = inv.get("installed_software").and_then(|v| v.as_array()) {
-                        let mut packages = Vec::new();
-                        for item in installed_sw {
-                            if let Some(s) = item.as_str() {
-                                if let Some((n, v)) = s.split_once(':') {
-                                    packages.push(PackageInfo::new(n.trim(), v.trim()));
-                                } else {
-                                    let parts: Vec<&str> = s.split_whitespace().collect();
-                                    if parts.len() >= 2 {
-                                        packages.push(PackageInfo::new(parts[0], parts[1]));
-                                    } else {
-                                        packages.push(PackageInfo::new(s, "1.0.0"));
-                                    }
-                                }
-                            }
-                        }
-                        if !packages.is_empty() {
-                            let detections = state.vuln_scanner.scan_inventory(&packages, &event.agent_id, &agent_name);
-                            if !detections.is_empty() {
-                                {
-                                    let mut vuln_guard = state.vulnerabilities.write().unwrap();
-                                    vuln_guard.retain(|v| v.agent_id != event.agent_id);
-                                    vuln_guard.extend(detections.clone());
-                                }
-                                persist::save_vulnerabilities(&state, &event.agent_id, &detections).await;
-                                for det in &detections {
-                                    let alert = Alert {
-                                        id: uuid::Uuid::new_v4(),
-                                        timestamp: Utc::now(),
-                                        agent: siem_core::AgentAlertInfo {
-                                            id: event.agent_id.clone(),
-                                            name: agent_name.clone(),
-                                            ip: agent_ip.clone(),
-                                        },
-                                        manager: Some(siem_core::ManagerAlertInfo {
-                                            name: "wazuh-manager-rust".to_string(),
-                                        }),
-                                        rule: siem_core::RuleAlertInfo {
-                                            id: 23501,
-                                            level: match det.severity {
-                                                siem_vuln_detector::Severity::Critical => 14,
-                                                siem_vuln_detector::Severity::High => 10,
-                                                siem_vuln_detector::Severity::Medium => 7,
-                                                _ => 4,
-                                            },
-                                            description: format!("{}: Vulnerability detected in package '{}' ({})", det.cve_id, det.package_name, det.title),
-                                            groups: vec!["vulnerability-detector".to_string(), "cve".to_string()],
-                                            mitre: Some(siem_core::MitreAttack {
-                                                id: "T1190".to_string(),
-                                                tactic: "Initial Access".to_string(),
-                                                technique: "Exploit Public-Facing Application".to_string(),
-                                            }),
-                                        },
-                                        decoder: None,
-                                        full_log: format!("Vulnerability Alert: {} affects package '{}' on agent '{}'", det.cve_id, det.package_name, agent_name),
-                                        decoded: siem_core::DecodedFields {
-                                            decoder_name: "vulnerability-detector".to_string(),
-                                            src_ip: None,
-                                            dst_ip: None,
-                                            src_port: None,
-                                            dst_port: None,
-                                            user: None,
-                                            program_name: Some(det.package_name.clone()),
-                                            process_id: None,
-                                            file_path: None,
-                                            action: None,
-                                            status: Some("Active".to_string()),
-                                            extra: HashMap::new(),
-                                        },
-                                        location: "vulnerability-detector".to_string(),
-                                        data: HashMap::new(),
-                                    };
-                                    let alert = record_alert(&state, &tenant, alert).await;
-                                    last_alert = Some(alert);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         // Automated SCA Evaluation: store check results in Wazuh DB and raise alert on failure
@@ -3443,7 +3281,19 @@ pub struct VulnerabilitiesResponse {
     pub high_count: usize,
     pub medium_count: usize,
     pub low_count: usize,
-    pub vulnerabilities: Vec<VulnerabilityDetection>,
+    pub vulnerabilities: Vec<vulnerability::VulnItem>,
+}
+
+fn vulnerabilities_response(list: Vec<vulnerability::VulnItem>) -> VulnerabilitiesResponse {
+    let count = |s: &str| list.iter().filter(|v| v.severity.eq_ignore_ascii_case(s)).count();
+    VulnerabilitiesResponse {
+        total: list.len(),
+        critical_count: count("critical"),
+        high_count: count("high"),
+        medium_count: count("medium"),
+        low_count: count("low"),
+        vulnerabilities: list,
+    }
 }
 
 async fn get_vulnerabilities(
@@ -3451,275 +3301,43 @@ async fn get_vulnerabilities(
     Extension(ctx): Extension<AuthCtx>,
     Query(params): Query<VulnFilterParams>,
 ) -> Json<VulnerabilitiesResponse> {
-    let vulns = state.vulnerabilities.read().unwrap();
-    let filtered: Vec<VulnerabilityDetection> = vulns
+    let list: Vec<vulnerability::VulnItem> = state
+        .vulnerabilities
+        .read()
+        .unwrap()
         .iter()
         .filter(|v| agent_in_scope(&state, &ctx, &v.agent_id))
-        .filter(|v| {
-            if let Some(ref s) = params.severity {
-                if !v.severity.to_string().eq_ignore_ascii_case(s) {
-                    return false;
-                }
-            }
-            if let Some(ref st) = params.status {
-                let status_str = match v.status {
-                    DetectionStatus::Active => "active",
-                    DetectionStatus::Resolved => "resolved",
-                };
-                if !status_str.eq_ignore_ascii_case(st) {
-                    return false;
-                }
-            }
-            if let Some(ref ag_id) = params.agent_id {
-                if &v.agent_id != ag_id {
-                    return false;
-                }
-            }
-            true
-        })
+        .filter(|v| params.severity.as_ref().is_none_or(|s| v.severity.eq_ignore_ascii_case(s)))
+        .filter(|v| params.status.as_ref().is_none_or(|s| v.status.eq_ignore_ascii_case(s)))
+        .filter(|v| params.agent_id.as_ref().is_none_or(|a| &v.agent_id == a))
         .cloned()
         .collect();
-
-    let critical_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Critical).count();
-    let high_count = filtered.iter().filter(|v| v.severity == VulnSeverity::High).count();
-    let medium_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Medium).count();
-    let low_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Low).count();
-    let total = filtered.len();
-
-    Json(VulnerabilitiesResponse {
-        total,
-        critical_count,
-        high_count,
-        medium_count,
-        low_count,
-        vulnerabilities: filtered,
-    })
+    Json(vulnerabilities_response(list))
 }
 
 async fn get_agent_vulnerabilities(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
 ) -> Json<VulnerabilitiesResponse> {
-    let vulns = state.vulnerabilities.read().unwrap();
-    let filtered: Vec<VulnerabilityDetection> = vulns
-        .iter()
-        .filter(|v| v.agent_id == agent_id)
-        .cloned()
-        .collect();
-
-    let critical_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Critical).count();
-    let high_count = filtered.iter().filter(|v| v.severity == VulnSeverity::High).count();
-    let medium_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Medium).count();
-    let low_count = filtered.iter().filter(|v| v.severity == VulnSeverity::Low).count();
-    let total = filtered.len();
-
-    Json(VulnerabilitiesResponse {
-        total,
-        critical_count,
-        high_count,
-        medium_count,
-        low_count,
-        vulnerabilities: filtered,
-    })
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AgentPackagesPayload {
-    pub packages: Vec<PackageInfo>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct AgentPackagesScanResult {
-    pub agent_id: String,
-    pub scanned_packages: usize,
-    pub new_vulnerabilities: usize,
-    pub resolved_vulnerabilities: usize,
-    pub active_vulnerabilities: usize,
-    pub detections: Vec<VulnerabilityDetection>,
-}
-
-async fn post_agent_packages(
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-    Json(payload): Json<AgentPackagesPayload>,
-) -> Json<AgentPackagesScanResult> {
-    let agent_name = {
-        let agents = state.agents.read().unwrap();
-        agents
-            .get(&agent_id)
-            .map(|a| a.name.clone())
-            .unwrap_or_else(|| format!("agent-{}", agent_id))
-    };
-
-    let new_scan = state
-        .vuln_scanner
-        .scan_inventory(&payload.packages, &agent_id, &agent_name);
-
-    // the guard ends with the block (it must not live across the awaits below)
-    let (new_detected, newly_resolved) = {
-        let mut vuln_guard = state.vulnerabilities.write().unwrap();
-        let previous_for_agent: Vec<VulnerabilityDetection> = vuln_guard
-            .iter()
-            .filter(|v| v.agent_id == agent_id)
-            .cloned()
-            .collect();
-        let diff = VulnerabilityScanner::diff_scans(&previous_for_agent, &new_scan);
-        vuln_guard.retain(|v| v.agent_id != agent_id);
-        vuln_guard.extend(new_scan.clone());
-        diff
-    };
-    persist::save_vulnerabilities(&state, &agent_id, &new_scan).await;
-
-    for det in &new_detected {
-        let (rule_id, rule_level) = match det.severity {
-            VulnSeverity::Critical => (23506, 13),
-            VulnSeverity::High => (23505, 10),
-            VulnSeverity::Medium => (23504, 7),
-            VulnSeverity::Low => (23503, 5),
-        };
-
-        let alert = Alert {
-            id: uuid::Uuid::new_v4(),
-            timestamp: Utc::now(),
-            rule: siem_core::RuleAlertInfo {
-                id: rule_id,
-                level: rule_level,
-                description: format!("{} affects {}", det.cve_id, det.package_name),
-                groups: vec!["vulnerability-detector".to_string(), "cve".to_string()],
-                mitre: det.mitre_technique.as_ref().map(|tech| siem_core::MitreAttack {
-                    id: tech.clone(),
-                    tactic: "Initial Access".to_string(),
-                    technique: tech.clone(),
-                }),
-            },
-            agent: siem_core::AgentAlertInfo {
-                id: det.agent_id.clone(),
-                name: det.agent_name.clone(),
-                ip: "127.0.0.1".to_string(),
-            },
-            manager: Some(siem_core::ManagerAlertInfo {
-                name: "wazuh-manager-rust".to_string(),
-            }),
-            decoder: None,
-            full_log: format!(
-                "Vulnerability detected: {} ({}) in {} {} - Severity: {}",
-                det.cve_id, det.title, det.package_name, det.installed_version, det.severity
-            ),
-            decoded: siem_core::DecodedFields {
-                decoder_name: "vulnerability-detector".to_string(),
-                src_ip: None,
-                dst_ip: None,
-                src_port: None,
-                dst_port: None,
-                user: None,
-                program_name: Some(det.package_name.clone()),
-                process_id: None,
-                file_path: None,
-                action: None,
-                status: Some("Active".to_string()),
-                extra: HashMap::new(),
-            },
-            location: "vulnerability-detector".to_string(),
-            data: HashMap::new(),
-        };
-
-        // tagged with the agent's tenant, stored in its ClickHouse database, broadcast
-        let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
-        record_alert(&state, &tenant, alert).await;
-    }
-
-    let active_count = new_scan.iter().filter(|v| v.status == DetectionStatus::Active).count();
-
-    Json(AgentPackagesScanResult {
-        agent_id,
-        scanned_packages: payload.packages.len(),
-        new_vulnerabilities: new_detected.len(),
-        resolved_vulnerabilities: newly_resolved.len(),
-        active_vulnerabilities: active_count,
-        detections: new_scan,
-    })
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ScanRequest {
-    pub agent_id: Option<String>,
-}
-
-/// `POST /api/v1/vulnerabilities`: checks the packages each agent of the
-/// caller's tenant (or the given agent) reported against the CVE feed again.
-async fn post_scan_now(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(req): Json<ScanRequest>,
-) -> axum::response::Response {
-    let ids: Vec<String> = match req.agent_id {
-        Some(a) if agent_in_scope(&state, &ctx, &a) => vec![a],
-        Some(_) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response(),
-        None => scoped_agents(&state, &ctx).into_iter().map(|a| a.id).collect(),
-    };
-    let mut results = Vec::new();
-    let mut skipped = Vec::new();
-    for id in ids {
-        match wazuh_manager::agent_packages(&id).await.filter(|p| !p.is_empty()) {
-            Some(packages) => results.push(post_agent_packages(State(state.clone()), Path(id), Json(AgentPackagesPayload { packages })).await.0),
-            None => skipped.push(id),
-        }
-    }
-    Json(serde_json::json!({ "scanned_agents": results.len(), "agents_without_inventory": skipped, "results": results })).into_response()
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SyncFeedRequest {
-    pub feed_json: Option<String>,
-}
-
-async fn post_sync_feed(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(req): Json<SyncFeedRequest>,
-) -> impl IntoResponse {
-    // the feed is shared by every tenant
-    if !ctx.is_super() {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "Only platform admins can replace the vulnerability feed" })));
-    }
-    let json_content = if let Some(content) = req.feed_json {
-        content
+    let list = if agent_in_scope(&state, &ctx, &agent_id) {
+        state.vulnerabilities.read().unwrap().iter().filter(|v| v.agent_id == agent_id).cloned().collect()
     } else {
-        let default_path = std::path::Path::new("ruleset/cve/cve_feed.json");
-        if default_path.exists() {
-            std::fs::read_to_string(default_path).unwrap_or_default()
-        } else {
-            String::new()
-        }
+        Vec::new()
     };
+    Json(vulnerabilities_response(list))
+}
 
-    if json_content.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "No feed_json provided and ruleset/cve/cve_feed.json not found"
-            })),
-        );
-    }
-
-    match state.vuln_scanner.import_feed_json(&json_content) {
-        Ok(count) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "status": "success",
-                "imported_cves": count,
-                "total_cves": state.vuln_scanner.total_cves(),
-            })),
-        ),
-        Err(e) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({
-                "status": "error",
-                "error": e
-            })),
-        ),
-    }
+/// `POST /api/v1/vulnerabilities`: the scanner runs on its own (on every
+/// inventory change and after every feed update); this re-reads its results.
+async fn post_scan_now(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    vulnerability::sync_once(&state).await;
+    let n = state.vulnerabilities.read().unwrap().iter().filter(|v| agent_in_scope(&state, &ctx, &v.agent_id)).count();
+    Json(serde_json::json!({
+        "status": "ok",
+        "message": format!("{n} active vulnerabilities. The manager scans each agent when its inventory changes and after every hourly CVE feed update."),
+    }))
+    .into_response()
 }
 
 async fn get_agent_os_handler(

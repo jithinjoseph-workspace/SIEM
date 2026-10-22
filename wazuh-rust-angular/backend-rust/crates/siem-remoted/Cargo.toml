@@ -23,7 +23,7 @@ rand = "0.8"
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
 siem-router = { path = "../siem-router" }
 
 [dev-dependencies]

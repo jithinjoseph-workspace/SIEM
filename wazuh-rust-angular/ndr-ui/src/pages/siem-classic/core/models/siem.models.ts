@@ -204,14 +204,20 @@ export interface ComplianceResponse {
 export interface VulnerabilityDetectionItem {
   cve: string;
   title: string;
-  severity: 'Critical' | 'High' | 'Medium' | 'Low';
+  /** '-' while the CVE is under evaluation (no score yet) */
+  severity: 'Critical' | 'High' | 'Medium' | 'Low' | '-';
+  /** -1 while under evaluation */
   cvss_score: number;
   package_name: string;
   installed_version: string;
-  fixed_version: string;
+  fixed_version: string | null;
   agent_id: string;
+  agent_name?: string;
   status: 'active' | 'resolved';
   detected_at: string;
+  description?: string;
+  reference?: string;
+  category?: string;
 }
 
 export interface VulnerabilitiesResponse {

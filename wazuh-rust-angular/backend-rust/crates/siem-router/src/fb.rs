@@ -419,12 +419,27 @@ fn c_view(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
+#[cfg(target_os = "linux")]
+fn errno_ptr() -> *mut libc::c_int {
+    // SAFETY: the thread's errno.
+    unsafe { libc::__errno_location() }
+}
+
+#[cfg(windows)]
+fn errno_ptr() -> *mut libc::c_int {
+    extern "C" {
+        fn _errno() -> *mut libc::c_int;
+    }
+    // SAFETY: the CRT's per-thread errno (strtoll / strtod set it).
+    unsafe { _errno() }
+}
+
 fn set_errno(v: i32) {
-    unsafe { *libc::__errno_location() = v }
+    unsafe { *errno_ptr() = v }
 }
 
 fn errno() -> i32 {
-    unsafe { *libc::__errno_location() }
+    unsafe { *errno_ptr() }
 }
 
 fn is_digit(c: u8) -> bool {

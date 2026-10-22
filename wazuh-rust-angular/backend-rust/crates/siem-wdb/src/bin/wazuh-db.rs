@@ -89,8 +89,24 @@ mod portable {
         }
         wlog.info(format!("Started (pid: {}).", std::process::id()));
 
+        #[cfg(windows)]
+        siem_wdb::wdb::router::router_initialize(wlog.clone());
         let env = Arc::new(PortableEnv::new(wlog.clone(), PathBuf::from(OSSECCONF)));
-        let d = Wdbd::new(conf.wdb.clone(), base.clone(), env.clone());
+        #[allow(unused_mut)]
+        let mut d = Wdbd::new(conf.wdb.clone(), base.clone(), env.clone());
+        // Router providers (the Linux daemon does the same)
+        #[cfg(windows)]
+        {
+            use siem_wdb::wdb::router::{WDB_AGENT_EVENTS_TOPIC, WDB_INVENTORY_EVENTS_TOPIC};
+            d.router_agent = env.router.create(WDB_AGENT_EVENTS_TOPIC);
+            if !d.router_agent {
+                wlog.debug2("Failed to create router handle for 'wdb-agent-events'.");
+            }
+            d.router_inventory = env.router.create(WDB_INVENTORY_EVENTS_TOPIC);
+            if !d.router_inventory {
+                wlog.debug2("Failed to create router handle for 'wdb-inventory-events'.");
+            }
+        }
         d.state.set_uptime(d.time());
         d.create_profile();
         let d = Arc::new(d);

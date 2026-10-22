@@ -438,3 +438,39 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 - Real CTI run 2026-10-17: snapshot 4,173,740 + 42,005 changes to offset 4,215,745 in 43 min (first try: the
   snapshot transfer stalled and dropped; retried at the next run). Feed DB 7.1 GB, temp files removed after.
 - Not enabled in `data/manager/etc/ossec.conf` yet (needs ~7 GB plus ~6 GB temporary during the first load).
+
+## Vulnerability scanner — part 3/3: scan orchestrator — 2026-10-22
+- `scan/` (src/scanOrchestrator): `context.rs` (ScanContext on the JSON form of the Delta / SyncMsg /
+  action messages, OsDataCache, RemediationDataCache, the CPE name), `scanners.rs` (PackageScanner with the
+  CNA selection, L1/L2 translations, platform / vendor checks, version ranges, Windows hotfix filtering;
+  OsScanner; HotfixInsert), `details.rs` (DescriptionsHelper, EventDetailsBuilder = the ECS state document,
+  the package / OS / hotfix / clear alert builders, the report senders, the result indexers),
+  `inventory.rs` (queue/vd/inventory: insert, delete, OS sync, hotfix-solved, clean-up), `orchestrator.rs`
+  (the factory chains, run, agent re-scans from wazuh-db, the event and delayed queues), `sinks.rs` (the
+  ReportDispatcher to queue/sockets/queue at wazuh_modules.max_eps, the indexer connector in local mode:
+  queue/indexer/db/wazuh-states-vulnerabilities-<host>), `wdb.rs` (SocketDBWrapper incl. "due" packets),
+  `util.rs` (string / time helpers, CPE parsing). `scanner.rs`: the facade (state_track policy changes,
+  re-scan of all agents after each feed update) and the four router subscriptions (Linux).
+- siem-router: `Parser::buffer_to_json` reads the binary flatbuffers the router carries.
+- wazuh-modulesd: the router broker module (wm_router, Linux) and the scanner with max_eps and the host name.
+- siem-api: the `siem-vuln-detector` prototype is gone (fake seeded detections, the in-process package
+  matcher, the feed-upload endpoint). `vulnerability.rs` reads the scanner's documents every minute,
+  serves them per tenant (`/api/v1/vulnerabilities`, `/agents/:id/vulnerabilities`) and writes a ClickHouse
+  snapshot (`siem_vulnerabilities` of the agent's tenant) when an agent's CVEs change. Alerts come from the
+  scanner through analysisd (rules 23502-23508). UI: the page reads the new list; no feed upload.
+- Oracle `tests/oracle-scan`: Wazuh's own vd_scanner_testtool vs the port, real feed subset, 5 agents,
+  36 events: 4,619 alert reports, 8,481 documents, inventory identical (see its README).
+- Known limits: no OpenSearch indexer (the console reads the local document database), no cluster.
+
+## Vulnerability scanner — follow-ups — 2026-10-22
+- Router on Windows: `siem-router/src/socket_win.rs` (the socket API over loopback TCP with `<path>.port`
+  files, same AppendHeaderProtocol framing; Linux keeps epoll + unix sockets). remoted publishes
+  deltas-syscollector / rsync, the portable wazuh-db publishes wdb-agent-events / wdb-inventory-events
+  (`wdb/router.rs`, shared with the Linux daemon), modulesd runs the broker: real-time scans on a Windows
+  manager too.
+- Queues on disk like the C++ RocksDB queues: `queue.rs` (DurableQueue on KvDb) behind queue/vd/event,
+  queue/vd/delayed and queue/vd/reports; an event or report leaves its queue once handled. Oracle re-run:
+  still identical.
+- `siem-vuln-detector` prototype removed from the workspace.
+- Enabled in `data/manager/etc/ossec.conf` (and in the ossec.conf siem-api writes for new installs); the
+  feed loaded during the CTI test (401,677 CVEs, offset 4,215,745) was moved to data/manager/queue/vd/feed.

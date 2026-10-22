@@ -198,10 +198,6 @@ export class SiemService {
     return this.http.put(`${this.apiUrl}/api/v1/agents/${agentId}/groups`, { groups });
   }
 
-  /** Refresh the vulnerability feed. */
-  syncVulnerabilityFeed(feedJson: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/api/v1/vulnerabilities/sync-feed`, { feed_json: feedJson });
-  }
 
   /** Deactivate: the agent is kept (not deleted), stops reporting and is told to stop. */
   deactivateAgent(agentId: string): Observable<any> {

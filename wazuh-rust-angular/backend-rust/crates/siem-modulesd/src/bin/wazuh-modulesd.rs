@@ -206,6 +206,31 @@ async fn main() {
     let m = Arc::new(task_manager::TaskManager::new(tm, log.clone(), db.clone()));
     threads.push(tokio::spawn(m.main()));
     log.debug2(format!("Created new thread for the '{}' module.", task_manager::NAME));
+    // router (wm_router_read, before the other manager modules): the broker of queue/router/
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        log.tagged("wazuh-modulesd:router", "INFO", "Loaded router module.");
+        log.tagged("wazuh-modulesd:router", "INFO", "Starting router module.");
+        let l = log.clone();
+        siem_router::router_initialize(Arc::new(move |level: &str, msg: &[u8]| {
+            let lv = match level {
+                "DEBUG_VERBOSE" => "DEBUG2",
+                "ERROR_EXIT" => "CRITICAL",
+                other => other,
+            };
+            l.tagged("wazuh-modulesd:router", lv, msg);
+        }));
+        siem_router::router_start();
+    }
+    let wm_max_eps = match opts.get_int("wazuh_modules", "max_eps", 1, 1000) {
+        Ok(v) => v as i64,
+        Err(e) => {
+            log.critical(e.0.as_bytes());
+            std::process::exit(1);
+        }
+    };
+    // gethostname: the cluster name of a standalone manager, and agent 000's name
+    let hostname = siem_ipc::os_net::gethostname(255).map(|h| String::from_utf8_lossy(&h).into_owned()).unwrap_or_else(|| "undefined".into());
     // vulnerability_scanner: its start returns once the feed updater thread runs; it lives until exit.
     let _vulnerability_scanner = vd.and_then(|vd| {
         let lru = opts.get_int("vulnerability-detection", "translation_lru_size", 1, 100000).unwrap_or(2048) as usize;
@@ -216,16 +241,18 @@ async fn main() {
 
         let cfg = siem_vulnerability_scanner::scanner::ModuleConfig {
             vulnerability_detection: serde_json::Value::Object(vd),
+            // shortcut: no <indexer> reader; the scanner's indexer is its local database (read by the console)
             indexer: serde_json::json!({ "enabled": "yes" }),
-            wm_max_eps: 0,
+            wm_max_eps,
             translation_lru_size: lru,
             osdata_lru_size: osdata_lru,
             remediation_lru_size: remediation_lru,
             manager_disabled_scan: disable_scan,
             report_queue_size: report_queue,
+            // shortcut: no cluster support (wazuh-clusterd is not ported): standalone manager values
             cluster_enabled: false,
-            cluster_name: "manager".into(),
-            cluster_node_name: "manager".into(),
+            cluster_name: hostname.clone(),
+            cluster_node_name: "undefined".into(),
         };
 
         let wdb_socket = match siem_vulnerability_scanner::scan::wdb::WdbSocket::new(siem_modulesd::wdb::WDB_LOCAL_SOCK) {
@@ -239,7 +266,7 @@ async fn main() {
         let start_opts = siem_vulnerability_scanner::scanner::StartOptions {
             wdb: wdb_socket,
             reports: None,
-            manager_name: "manager".into(),
+            manager_name: hostname.clone(),
             content_updater: true,
         };
 

@@ -7,7 +7,6 @@ import {
   Filter, Search, Bug, Database, Layers
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
-import { AuthService } from '../../../services/auth/auth';
 import { VulnerabilityDetectionItem } from '../../../services/siem/siem.models';
 
 @Component({
@@ -19,8 +18,6 @@ import { VulnerabilityDetectionItem } from '../../../services/siem/siem.models';
 })
 export class Vulnerabilities implements OnInit {
   private siem = inject(SiemService);
-  /** The CVE feed is shared by every tenant: platform admins replace it. */
-  isPlatformAdmin = inject(AuthService).isAdmin();
   scanMessage = signal<string | null>(null);
 
   // Icons
@@ -96,8 +93,7 @@ export class Vulnerabilities implements OnInit {
     this.siem.triggerVulnScan().subscribe({
       next: (r: any) => {
         this.isScanning.set(false);
-        const skipped = (r?.agents_without_inventory || []).length;
-        this.scanMessage.set(`✓ ${r?.scanned_agents ?? 0} agent(s) checked against the CVE feed` + (skipped ? `; ${skipped} without a package inventory yet` : ''));
+        this.scanMessage.set(`✓ ${r?.message ?? 'Results refreshed'}`);
         this.loadVulnerabilities();
       },
       error: (err) => {
@@ -105,26 +101,6 @@ export class Vulnerabilities implements OnInit {
         this.scanMessage.set(`✗ ${err?.error?.message || 'scan failed'}`);
         this.loadVulnerabilities();
       }
-    });
-  }
-
-  /** Replace the CVE feed with an uploaded JSON feed file. */
-  uploadFeed(ev: Event) {
-    const input = ev.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    file.text().then(text => {
-      this.scanMessage.set('Importing the CVE feed…');
-      this.siem.syncVulnerabilityFeed(text).subscribe({
-        next: (r: any) => {
-          this.scanMessage.set(`✓ ${r?.message || 'Feed imported'}`);
-          input.value = '';
-        },
-        error: (err) => {
-          this.scanMessage.set(`✗ ${err?.error?.message || 'import failed'}`);
-          input.value = '';
-        },
-      });
     });
   }
 }

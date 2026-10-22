@@ -26,11 +26,21 @@ pub struct PortableEnv {
     pub ossecconf: std::path::PathBuf,
     peers: Mutex<HashMap<i32, TcpStream>>,
     next: AtomicI32,
+    /// The router providers (Windows: loopback TCP; other hosts: none).
+    #[cfg(windows)]
+    pub router: Arc<dyn super::router::RouterSink>,
 }
 
 impl PortableEnv {
     pub fn new(log: Arc<WLog>, ossecconf: std::path::PathBuf) -> Self {
-        PortableEnv { log, ossecconf, peers: Mutex::new(HashMap::new()), next: AtomicI32::new(1) }
+        PortableEnv {
+            log,
+            ossecconf,
+            peers: Mutex::new(HashMap::new()),
+            next: AtomicI32::new(1),
+            #[cfg(windows)]
+            router: Arc::new(super::router::WazuhRouter::default()),
+        }
     }
 
     fn add_peer(&self, s: &TcpStream) -> Option<i32> {
@@ -71,7 +81,14 @@ impl WdbEnv for PortableEnv {
         Tv { sec: d.as_secs() as i64, usec: d.subsec_micros() as i64 }
     }
 
-    /// The router (Linux only, like the C) has no providers here.
+    /// handle 1 = `wdb-agent-events`, else `wdb-inventory-events` (as on Linux).
+    #[cfg(windows)]
+    fn router_send(&self, handle: i32, msg: &[u8]) {
+        let topic = if handle == 1 { super::router::WDB_AGENT_EVENTS_TOPIC } else { super::router::WDB_INVENTORY_EVENTS_TOPIC };
+        self.router.send(topic, msg);
+    }
+
+    #[cfg(not(windows))]
     fn router_send(&self, _handle: i32, _msg: &[u8]) {}
 
     fn send_peer(&self, peer: i32, msg: &[u8]) -> i32 {

@@ -2661,8 +2661,8 @@ dependencies = [
  "siem-remoted",
  "siem-reportd",
  "siem-rootcheck",
+ "siem-sqlite",
  "siem-task-manager",
- "siem-vuln-detector",
  "siem-wdb",
  "siem-xml",
  "tokio",
@@ -2964,6 +2964,7 @@ dependencies = [
  "siem-log",
  "siem-regex",
  "siem-remoted",
+ "siem-router",
  "siem-vulnerability-scanner",
  "siem-xml",
  "tempfile",
@@ -3261,18 +3262,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "siem-vuln-detector"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "regex",
- "serde",
- "serde_json",
- "siem-core",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "siem-vulnerability-scanner"
 version = "0.1.0"
 dependencies = [
@@ -3285,6 +3274,7 @@ dependencies = [
  "siem-config",
  "siem-ipc",
  "siem-log",
+ "siem-router",
  "siem-sqlite",
  "siem-xml",
  "tokio",

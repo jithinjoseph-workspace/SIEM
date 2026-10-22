@@ -6,7 +6,7 @@
 use chrono::Utc;
 use clickhouse::Client;
 use serde::{Deserialize, Serialize};
-use siem_vuln_detector::VulnerabilityDetection;
+use crate::vulnerability::VulnItem;
 use tracing::{info, warn};
 
 use crate::{tenancy, ActiveResponseRecord, AppState};
@@ -170,21 +170,20 @@ pub async fn save_active_response(state: &AppState, r: &ActiveResponseRecord) {
 }
 
 /// Saves the current detections of one agent (a new snapshot).
-pub async fn save_vulnerabilities(state: &AppState, agent_id: &str, detections: &[VulnerabilityDetection]) {
+pub async fn save_vulnerabilities(state: &AppState, agent_id: &str, detections: &[VulnItem]) {
     if !state.db.is_connected() {
         return;
     }
     let snapshot_at = now_ms();
-    let lower = |v: serde_json::Value| v.as_str().unwrap_or_default().to_string();
     let mut rows: Vec<VulnRow> = detections
         .iter()
         .map(|d| VulnRow {
             snapshot_at,
             agent_id: agent_id.to_string(),
-            cve_id: d.cve_id.clone(),
+            cve_id: d.cve.clone(),
             package_name: d.package_name.clone(),
-            severity: lower(serde_json::to_value(&d.severity).unwrap_or_default()),
-            status: lower(serde_json::to_value(&d.status).unwrap_or_default()),
+            severity: d.severity.to_ascii_lowercase(),
+            status: d.status.clone(),
             detection: serde_json::to_string(d).unwrap_or_default(),
         })
         .collect();
@@ -265,7 +264,7 @@ pub async fn load_all(state: &AppState) {
     {
         let mut list = state.vulnerabilities.write().unwrap();
         list.clear();
-        list.extend(vulns.iter().filter_map(|r| serde_json::from_str::<VulnerabilityDetection>(&r.detection).ok()));
+        list.extend(vulns.iter().filter_map(|r| serde_json::from_str::<VulnItem>(&r.detection).ok()));
     }
     {
         let mut map = state.pending_commands.write().unwrap();

@@ -291,6 +291,9 @@ fn exe_name(d: &str) -> String {
 
 /// Copies the daemons built next to siem-api into `<home>/bin` (wazuh-db
 /// finds its home from there, like an installed manager).
+/// Command-line tools of the manager (installed in `bin/`, not supervised).
+const MANAGER_TOOLS: &[&str] = &["wazuh-reportd"];
+
 fn install_binaries(home: &Path) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = me.parent().ok_or("no exe dir")?;
@@ -301,7 +304,8 @@ fn install_binaries(home: &Path) -> Result<(), String> {
     }
     let targets = DAEMONS.iter().map(|d| (exe_name(d), home.join("bin").join(exe_name(d)))).chain(
         INTEGRATIONS.iter().map(|i| (exe_name("integrations"), home.join("integrations").join(exe_name(i)))),
-    ).chain(MANAGER_AR.iter().map(|a| (exe_name(a), home.join("active-response/bin").join(exe_name(a)))));
+    ).chain(MANAGER_AR.iter().map(|a| (exe_name(a), home.join("active-response/bin").join(exe_name(a)))))
+    .chain(MANAGER_TOOLS.iter().map(|t| (exe_name(t), home.join("bin").join(exe_name(t)))));
     for (n, dst) in targets {
         let found = search.iter().map(|s| s.join(&n)).filter(|p| p.is_file()).max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {

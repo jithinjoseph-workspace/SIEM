@@ -474,3 +474,11 @@ On Windows one process (`wazuh-agent.exe`) runs agentd and logcollector, plus ex
 - `siem-vuln-detector` prototype removed from the workspace.
 - Enabled in `data/manager/etc/ossec.conf` (and in the ossec.conf siem-api writes for new installs); the
   feed loaded during the CTI test (401,677 CVEs, offset 4,215,745) was moved to data/manager/queue/vd/feed.
+
+## wazuh-reportd — 2026-10-22
+- `siem-maild/src/bin/wazuh-reportd.rs`: reportd/report.c `main` (getopt "Vdhstu:g:D:f:v:n:r:", `-f`/`-r`
+  taking two arguments, privsep + chroot, PID file, the report on stderr) on the ported `report_op`
+  (`siem_maild::report::os_reportd_start`, stdin as the alerts file). Installed in the manager `bin/` by
+  siem-api (not supervised: a command-line tool).
+- Oracle `tests/oracle-reportd`: the C reportd vs the port on the dev manager's alerts.log (1,038 alerts),
+  12 option sets: report, stdout, exit code and log identical.

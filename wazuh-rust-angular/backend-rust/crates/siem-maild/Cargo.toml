@@ -24,3 +24,7 @@ tempfile = "3"
 [[bin]]
 name = "wazuh-maild"
 path = "src/bin/wazuh-maild.rs"
+
+[[bin]]
+name = "wazuh-reportd"
+path = "src/bin/wazuh-reportd.rs"

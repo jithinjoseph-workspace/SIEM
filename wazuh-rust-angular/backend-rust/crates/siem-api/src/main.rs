@@ -121,6 +121,8 @@ pub struct AppState {
     pub deleted_agents: Arc<RwLock<HashSet<String>>>,
     /// Set of (tenant, lowercase agent name) deleted from the fleet to prevent auto-re-enrollment.
     pub deleted_agent_names: Arc<RwLock<HashSet<(String, String)>>>,
+    /// Business-Process Risk Fabric contextual scoring engine
+    pub risk_fabric: Arc<siem_risk_fabric::RiskFabricEngine>,
     /// Autonomous Continuous Red Agent Swarm & Perpetual Purple-Team Engine.
     pub redswarm: Arc<siem_redswarm::RedSwarmService>,
 }
@@ -275,6 +277,7 @@ async fn main() {
     ]));
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
+    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -298,6 +301,7 @@ async fn main() {
         max_agent_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         deleted_agents: Arc::new(RwLock::new(HashSet::new())),
         deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
+        risk_fabric,
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
     };
 
@@ -455,7 +459,13 @@ async fn main() {
             header::HeaderName::from_static("x-active-count"),
         ]);
 
+    let alerts_reader = {
+        let alerts = state.alerts.clone();
+        Arc::new(move || alerts.read().unwrap().clone())
+    };
+
     let app = Router::new()
+        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader))
         .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))
@@ -835,8 +845,17 @@ fn trim<T>(l: &mut Vec<T>, cap: usize) {
 
 /// Adds alerts to the in-memory window.
 pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
+    let evaluated: Vec<Alert> = alerts
+        .into_iter()
+        .map(|mut a| {
+            if !a.data.contains_key("risk_fabric") {
+                state.risk_fabric.evaluate_alert(&mut a);
+            }
+            a
+        })
+        .collect();
     let mut l = state.alerts.write().unwrap();
-    l.extend(alerts);
+    l.extend(evaluated);
     trim(&mut l, MEM_ALERTS);
 }
 
@@ -5101,7 +5120,10 @@ async fn rotate_tenant_agent_key_handler(State(state): State<AppState>, Extensio
 /// Tags an alert with its tenant, keeps it, stores it in the tenant's
 /// database and broadcasts it.
 async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
-    let alert = tenancy::tag_alert(alert, tenant);
+    let mut alert = tenancy::tag_alert(alert, tenant);
+    if !alert.data.contains_key("risk_fabric") {
+        state.risk_fabric.evaluate_alert(&mut alert);
+    }
     keep_alerts(&state, [alert.clone()]);
     state.db.insert_alert(&alert).await;
     let _ = state.broadcast_tx.send(alert.clone());

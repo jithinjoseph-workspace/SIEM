@@ -1,0 +1,160 @@
+{
+  "processes": [
+    {
+      "id": "bp-pci-payment",
+      "name": "Payment Settlement & Gateway (PCI-DSS)",
+      "description": "Critical cardholder data environment, checkout APIs, and financial transaction settlement.",
+      "criticality": "Mission-Critical",
+      "asset_weight": 2.4,
+      "identity_weight": 1.8,
+      "asset_patterns": [
+        "*pay*",
+        "*swift*",
+        "*pos*",
+        "*checkout*",
+        "192.168.10.15",
+        "srv-prod-ubuntu-01"
+      ],
+      "identity_patterns": [
+        "*cashier*",
+        "*finance*",
+        "*settlement*",
+        "*pci*",
+        "admin*"
+      ],
+      "impact_template": "Direct threat to payment settlement pipeline; elevated risk of transaction manipulation, wire redirection, or PCI-DSS cardholder data compromise.",
+      "enabled": true
+    },
+    {
+      "id": "bp-core-iam",
+      "name": "Core Active Directory & IAM Authority",
+      "description": "Central identity provider, Kerberos domain controllers, and privileged credential vaults.",
+      "criticality": "Mission-Critical",
+      "asset_weight": 2.5,
+      "identity_weight": 2.0,
+      "asset_patterns": [
+        "*dc*",
+        "*ad*",
+        "*iam*",
+        "*auth*",
+        "*ldap*",
+        "*vault*",
+        "*kerberos*"
+      ],
+      "identity_patterns": [
+        "administrator",
+        "admin*",
+        "root",
+        "svc_*",
+        "*ciso*",
+        "*cio*",
+        "*secops*"
+      ],
+      "impact_template": "Core identity authority or privileged account impacted; high potential for domain-wide golden ticket creation, privilege escalation, and lateral movement.",
+      "enabled": true
+    },
+    {
+      "id": "bp-dmz-web",
+      "name": "Customer-Facing Ingress & Web DMZ",
+      "description": "Public reverse proxies, web application servers, and external API gateways.",
+      "criticality": "High",
+      "asset_weight": 1.6,
+      "identity_weight": 1.2,
+      "asset_patterns": [
+        "dmz-web-nginx",
+        "*web*",
+        "*nginx*",
+        "*apache*",
+        "*ingress*",
+        "*api*",
+        "*portal*"
+      ],
+      "identity_patterns": [
+        "www-data",
+        "nginx",
+        "apache",
+        "*app*"
+      ],
+      "impact_template": "Perimeter service exploit or unauthorized ingress activity; threat to customer service availability and potential perimeter foothold.",
+      "enabled": true
+    },
+    {
+      "id": "bp-corp-erp",
+      "name": "Corporate ERP & Supply Chain",
+      "description": "Enterprise resource planning, relational databases, supply chain logistics, and HR databases.",
+      "criticality": "High",
+      "asset_weight": 1.5,
+      "identity_weight": 1.3,
+      "asset_patterns": [
+        "*erp*",
+        "*sap*",
+        "*crm*",
+        "*database*",
+        "*sql*",
+        "*postgres*"
+      ],
+      "identity_patterns": [
+        "*operator*",
+        "*dba*",
+        "*erp*"
+      ],
+      "impact_template": "Corporate ERP or backend database impacted; potential disruption to supply chain logistics or unauthorized business records access.",
+      "enabled": true
+    },
+    {
+      "id": "bp-dev-sandbox",
+      "name": "Non-Production Dev & Lab Sandbox",
+      "description": "Software development staging nodes, QA clusters, and test environments.",
+      "criticality": "Low",
+      "asset_weight": 0.4,
+      "identity_weight": 0.8,
+      "asset_patterns": [
+        "*dev*",
+        "*test*",
+        "*stage*",
+        "*qa*",
+        "*sandbox*",
+        "*lab*"
+      ],
+      "identity_patterns": [
+        "*tester*",
+        "*intern*",
+        "*dev*"
+      ],
+      "impact_template": "Isolated development or QA asset activity; low enterprise operational risk, suppressed from high-urgency SOC response.",
+      "enabled": true
+    }
+  ],
+  "time_windows": [
+    {
+      "id": "tw-financial-close",
+      "name": "Month-End Financial Close Window",
+      "description": "Heightened scrutiny period for accounting, banking, and payment systems during reconciliation.",
+      "multiplier": 1.45,
+      "window_type": "recurring_schedule",
+      "active": true,
+      "target_processes": [
+        "bp-pci-payment",
+        "bp-corp-erp"
+      ]
+    },
+    {
+      "id": "tw-maintenance-window",
+      "name": "Scheduled Infrastructure Maintenance",
+      "description": "Authorized patching and vulnerability assessment window; technical alerts de-escalated to reduce alarm fatigue.",
+      "multiplier": 0.4,
+      "window_type": "recurring_schedule",
+      "active": false,
+      "target_processes": []
+    },
+    {
+      "id": "tw-off-hours",
+      "name": "Unattended Off-Hours Operations",
+      "description": "Night-time and weekend operations when physical offices are unoccupied and SOC staffing is lean.",
+      "multiplier": 1.25,
+      "window_type": "business_hours",
+      "active": true,
+      "target_processes": []
+    }
+  ]
+}

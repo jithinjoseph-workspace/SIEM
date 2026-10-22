@@ -122,6 +122,7 @@ export class Sidebar implements OnInit, OnDestroy {
     const siemCandidates: NavItem[] = [
       { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
       { label: 'Risk Fabric',         route: '/analyst/risk-fabric',     icon: Network,     permission: 'siem-agents' },
+      { label: 'Red Swarm & Purple Team', route: '/analyst/redswarm',    icon: Zap,         permission: 'siem-mitre' },
       { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu,         permission: 'siem-parsers' },
       { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },
       { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug,         permission: 'siem-vulnerabilities' },

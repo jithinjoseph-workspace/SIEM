@@ -52,5 +52,6 @@ members = [
     "crates/siem-sysinfo",
     "crates/siem-sca",
     "crates/siem-risk-fabric",
+    "crates/siem-redswarm",
 ]
 

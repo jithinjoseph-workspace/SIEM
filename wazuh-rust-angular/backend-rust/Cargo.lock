@@ -2657,6 +2657,7 @@ dependencies = [
  "siem-ipc",
  "siem-maild",
  "siem-parser-gen",
+ "siem-redswarm",
  "siem-remoted",
  "siem-reportd",
  "siem-risk-fabric",
@@ -3007,6 +3008,23 @@ dependencies = [
  "serde",
  "serde_json",
  "siem-core",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "siem-redswarm"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "siem-core",
+ "siem-engine",
+ "siem-parser-gen",
  "tokio",
  "tracing",
  "uuid",

@@ -1,0 +1,354 @@
+<div class="redswarm-page p-6 w-full max-w-[1780px] mx-auto space-y-6">
+
+  <!-- Header with Swarm Status & Emergency Controls -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800/80 pb-5">
+    <div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500/20 to-orange-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-lg shadow-rose-500/10">
+          <lucide-angular [img]="ZapIcon" class="w-5 h-5"></lucide-angular>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white flex items-center gap-2.5 tracking-tight">
+            Continuous Red Agent Swarm &amp; Purple Team Engine
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800">
+              ALWAYS-ON MITRE ATT&amp;CK
+            </span>
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-400 mt-1">
+            Autonomous adversarial simulation, continuous gap discovery, and human-in-the-loop Wazuh rule synthesis
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions & Circuit Breaker -->
+    <div class="flex flex-wrap items-center gap-3">
+      <button 
+        (click)="refreshAll()" 
+        class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition"
+      >
+        <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="loading()"></lucide-angular>
+        Refresh State
+      </button>
+
+      <!-- Global Kill Switch -->
+      <button 
+        (click)="toggleKillSwitch()" 
+        [class.bg-red-700]="!status()?.kill_switch_active"
+        [class.hover:bg-red-600]="!status()?.kill_switch_active"
+        [class.bg-emerald-700]="status()?.kill_switch_active"
+        [class.hover:bg-emerald-600]="status()?.kill_switch_active"
+        class="inline-flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-lg transition"
+      >
+        <lucide-angular [img]="OctagonIcon" class="w-4 h-4"></lucide-angular>
+        {{ status()?.kill_switch_active ? 'Disengage Kill Switch' : 'EMERGENCY KILL SWITCH' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Kill Switch Active Warning Banner -->
+  <div *ngIf="status()?.kill_switch_active" class="p-4 rounded-xl border border-red-600/80 bg-red-950/60 flex items-center justify-between text-red-200 text-xs font-semibold shadow-lg shadow-red-950/50">
+    <div class="flex items-center gap-2.5">
+      <lucide-angular [img]="AlertTriangleIcon" class="w-5 h-5 text-red-400 animate-pulse"></lucide-angular>
+      <span>GLOBAL KILL-SWITCH ENGAGED: All autonomous swarm campaigns, live executions, and simulated probes are halted.</span>
+    </div>
+    <button (click)="toggleKillSwitch()" class="px-3 py-1 bg-red-800 hover:bg-red-700 text-white rounded text-xs">Resume Swarm</button>
+  </div>
+
+  <!-- HUD KPI Metric Overview Cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Swarm State -->
+    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Swarm Engine</span>
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase"
+              [class.bg-emerald-950]="status()?.running && !status()?.kill_switch_active"
+              [class.text-emerald-400]="status()?.running && !status()?.kill_switch_active"
+              [class.border]="true"
+              [class.border-emerald-800]="status()?.running && !status()?.kill_switch_active"
+              [class.bg-rose-950]="!status()?.running || status()?.kill_switch_active"
+              [class.text-rose-400]="!status()?.running || status()?.kill_switch_active">
+          <span class="w-1.5 h-1.5 rounded-full" [class.bg-emerald-400]="status()?.running" [class.bg-rose-400]="!status()?.running"></span>
+          {{ status()?.kill_switch_active ? 'HALTED' : (status()?.running ? 'ACTIVE RUNNING' : 'PAUSED') }}
+        </span>
+      </div>
+      <div class="text-2xl font-extrabold font-mono text-white mt-2">{{ status()?.active_campaigns_count || 0 }} Active Campaigns</div>
+      <div class="text-[11px] text-slate-400 mt-1">Default: <span class="font-mono text-cyan-400">SafeTelemetryOnly</span></div>
+    </div>
+
+    <!-- Fleet Defense Rate -->
+    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fleet Defense Rate</span>
+        <span class="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+          Purple Team
+        </span>
+      </div>
+      <div class="text-3xl font-extrabold font-mono text-emerald-400 mt-2">{{ status()?.defense_rate_percent || 100 }}%</div>
+      <div class="text-[11px] text-slate-400 mt-1">Attacks caught by SIEM detection rules</div>
+    </div>
+
+    <!-- 24h Attack Probes -->
+    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Attacks Executed (24h)</span>
+        <span class="text-xs text-cyan-400 font-mono">{{ status()?.attacks_last_24h || 0 }} rounds</span>
+      </div>
+      <div class="text-3xl font-extrabold font-mono text-white mt-2">{{ status()?.attacks_last_24h || 0 }}</div>
+      <div class="text-[11px] text-slate-400 mt-1">100% audited with zero false alarms</div>
+    </div>
+
+    <!-- Open Detection Gaps -->
+    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Open Detection Gaps</span>
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-950 text-amber-300 border border-amber-800">
+          Action Required
+        </span>
+      </div>
+      <div class="text-3xl font-extrabold font-mono text-amber-400 mt-2">{{ status()?.open_gaps_count || 0 }}</div>
+      <div class="text-[11px] text-slate-400 mt-1">Draft Wazuh XML rules ready for review</div>
+    </div>
+  </div>
+
+  <!-- Manual Attack Injection / Simulation Bar -->
+  <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+        <lucide-angular [img]="FlameIcon" class="w-4 h-4 text-orange-400"></lucide-angular>
+        Manual Round:
+      </span>
+      <select [(ngModel)]="manualTechniqueId" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
+        <option value="T1110.001">T1110.001 - SSH Password Guessing</option>
+        <option value="T1059.001">T1059.001 - PowerShell Encoded Command</option>
+        <option value="T1547.001">T1547.001 - Registry Run Keys Tamper</option>
+        <option value="T1082">T1082 - System Information Discovery</option>
+        <option value="T1003.008">T1003.008 - OS Credential Dumping (/etc/shadow)</option>
+        <option value="T1543.003">T1543.003 - Windows Service Creation</option>
+        <option value="T1053.003">T1053.003 - Cron Persistence Probe</option>
+        <option value="T1036.005">T1036.005 - Masquerading as svchost</option>
+      </select>
+
+      <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
+        <option value="safe_telemetry_only">SafeTelemetryOnly (Zero Endpoint Risk)</option>
+        <option value="controlled_live">ControlledLive (Lab Agents + Auto Cleanup)</option>
+      </select>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <span *ngIf="manualResult()" class="text-xs text-slate-300 font-mono">{{ manualResult() }}</span>
+      <button 
+        (click)="runSingleAttack()" 
+        [disabled]="isExecutingManual() || status()?.kill_switch_active" 
+        class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-600 to-rose-600 hover:from-orange-500 hover:to-rose-500 text-white text-xs font-bold rounded-lg shadow-md transition disabled:opacity-40"
+      >
+        <lucide-angular [img]="PlayIcon" class="w-3.5 h-3.5"></lucide-angular>
+        {{ isExecutingManual() ? 'Simulating & Verifying…' : 'Fire Attack Probe' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="flex items-center gap-2 border-b border-slate-800">
+    <button 
+      (click)="activeTab.set('feed')" 
+      [class.text-rose-400]="activeTab() === 'feed'"
+      [class.border-b-2]="activeTab() === 'feed'"
+      [class.border-rose-400]="activeTab() === 'feed'"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+    >
+      Live Execution Feed ({{ history().length }})
+    </button>
+    <button 
+      (click)="activeTab.set('gaps')" 
+      [class.text-amber-400]="activeTab() === 'gaps'"
+      [class.border-b-2]="activeTab() === 'gaps'"
+      [class.border-amber-400]="activeTab() === 'gaps'"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white flex items-center gap-1.5"
+    >
+      Detection Gaps &amp; Synthesized Rules
+      <span *ngIf="gaps().length > 0" class="px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 text-[10px] border border-amber-800">{{ gaps().length }}</span>
+    </button>
+    <button 
+      (click)="activeTab.set('heatmap')" 
+      [class.text-cyan-400]="activeTab() === 'heatmap'"
+      [class.border-b-2]="activeTab() === 'heatmap'"
+      [class.border-cyan-400]="activeTab() === 'heatmap'"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+    >
+      MITRE ATT&amp;CK Coverage Heatmap
+    </button>
+    <button 
+      (click)="activeTab.set('campaigns')" 
+      [class.text-indigo-400]="activeTab() === 'campaigns'"
+      [class.border-b-2]="activeTab() === 'campaigns'"
+      [class.border-indigo-400]="activeTab() === 'campaigns'"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+    >
+      Autonomous Campaigns &amp; ROE
+    </button>
+  </div>
+
+  <!-- TAB 1: Live Execution Feed -->
+  <div *ngIf="activeTab() === 'feed'" class="space-y-3">
+    <div *ngIf="history().length === 0" class="p-8 text-center text-slate-500 font-mono text-sm bg-slate-900/40 rounded-xl border border-slate-800">
+      No swarm execution rounds recorded yet. The autonomous loop ticks every 60s, or you can trigger a manual round above.
+    </div>
+
+    <div *ngFor="let rec of history()" class="p-4 bg-slate-900/70 border border-slate-800/90 rounded-xl hover:border-slate-700 transition space-y-2.5">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div class="flex items-center gap-3">
+          <span 
+            [class.bg-emerald-950]="rec.verification.verdict === 'defended'"
+            [class.text-emerald-400]="rec.verification.verdict === 'defended'"
+            [class.border-emerald-800]="rec.verification.verdict === 'defended'"
+            [class.bg-amber-950]="rec.verification.verdict === 'soft_gap'"
+            [class.text-amber-400]="rec.verification.verdict === 'soft_gap'"
+            [class.border-amber-800]="rec.verification.verdict === 'soft_gap'"
+            [class.bg-rose-950]="rec.verification.verdict === 'hard_gap'"
+            [class.text-rose-400]="rec.verification.verdict === 'hard_gap'"
+            [class.border-rose-800]="rec.verification.verdict === 'hard_gap'"
+            class="px-2.5 py-1 rounded text-xs font-mono font-bold uppercase border"
+          >
+            {{ rec.verification.verdict === 'defended' ? '✓ DEFENDED' : (rec.verification.verdict === 'soft_gap' ? '⚠ SOFT GAP' : '✗ HARD GAP') }}
+          </span>
+
+          <span class="font-mono text-xs text-white font-bold">{{ rec.technique_id }} - {{ rec.technique_name }}</span>
+          <span class="text-xs text-slate-400 font-mono">({{ rec.tactic }})</span>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs font-mono text-slate-400">
+          <span>Target: <strong class="text-slate-200">{{ rec.target_agent_name }}</strong> ({{ rec.target_agent_ip }})</span>
+          <span>•</span>
+          <span>Mode: <strong class="text-cyan-400">{{ rec.mode }}</strong></span>
+          <span>•</span>
+          <span>{{ rec.timestamp | date:'shortTime' }}</span>
+        </div>
+      </div>
+
+      <div class="text-xs text-slate-300 font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800/60">
+        {{ rec.verification.reason }}
+      </div>
+
+      <!-- Action buttons if gap discovered -->
+      <div *ngIf="rec.draft_rule" class="flex items-center justify-between pt-1">
+        <span class="text-[11px] text-amber-400 font-mono">Draft Wazuh XML rule staged to close this detection gap.</span>
+        <button (click)="openRuleModal(rec.draft_rule!)" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-800 text-amber-300 text-xs font-bold rounded">
+          <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular>
+          Review Synthesized Rule
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Detection Gaps & Synthesized Rules -->
+  <div *ngIf="activeTab() === 'gaps'" class="space-y-4">
+    <div *ngIf="gaps().length === 0" class="p-8 text-center text-slate-500 font-mono text-sm bg-slate-900/40 rounded-xl border border-slate-800">
+      Zero open detection gaps! All tested adversarial techniques were caught by your active detection ruleset.
+    </div>
+
+    <div *ngFor="let g of gaps()" class="p-5 bg-slate-900/80 border border-amber-800/40 rounded-xl space-y-3">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div>
+          <span class="text-xs font-mono text-amber-400 font-bold px-2 py-0.5 rounded bg-amber-950 border border-amber-800">DETECTION GAP</span>
+          <h3 class="text-base font-bold text-white mt-1.5">{{ g.technique_name }} ({{ g.technique_id }})</h3>
+        </div>
+        <button 
+          (click)="approveAndDeployRule(g.id)" 
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg shadow-md transition"
+        >
+          <lucide-angular [img]="CheckIcon" class="w-3.5 h-3.5"></lucide-angular>
+          Approve &amp; Deploy Rule to Manager
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-300">{{ g.hardening_recommendation }}</p>
+
+      <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+        <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Synthesized Wazuh XML Rule:</span>
+        <pre class="text-xs font-mono text-emerald-400 overflow-x-auto whitespace-pre">{{ g.rule_xml }}</pre>
+      </div>
+
+      <div class="text-[11px] font-mono text-slate-400 bg-slate-950/60 p-2 rounded border border-slate-800/40">
+        {{ g.logtest_output }}
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: MITRE Coverage Heatmap -->
+  <div *ngIf="activeTab() === 'heatmap'" class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div *ngFor="let t of heatmap()?.tactics" class="p-4 bg-slate-900/70 border border-slate-800 rounded-xl space-y-2">
+        <div class="flex justify-between items-center">
+          <h4 class="text-xs font-bold text-white uppercase">{{ t.tactic }}</h4>
+          <span class="text-xs font-mono font-bold text-cyan-400">{{ t.coverage_percent }}% Protected</span>
+        </div>
+        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+          <div class="bg-emerald-500 h-full rounded-full transition-all" [style.width.%]="t.coverage_percent"></div>
+        </div>
+        <div class="flex justify-between text-[11px] font-mono text-slate-400">
+          <span>Tested: {{ t.tested }} / {{ t.total_techniques }}</span>
+          <span class="text-emerald-400">Defended: {{ t.defended }}</span>
+          <span class="text-rose-400">Gaps: {{ t.hard_gaps + t.soft_gaps }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: Autonomous Campaigns & ROE -->
+  <div *ngIf="activeTab() === 'campaigns'" class="space-y-4">
+    <div *ngFor="let c of campaigns()" class="p-5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+      <div class="flex justify-between items-center">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            {{ c.name }}
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">{{ c.mode }}</span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-1">{{ c.description }}</p>
+        </div>
+        <button 
+          (click)="toggleCampaign(c.id)" 
+          [class.bg-emerald-700]="c.enabled"
+          [class.bg-slate-700]="!c.enabled"
+          class="px-4 py-1.5 text-white text-xs font-bold rounded-lg transition"
+        >
+          {{ c.enabled ? 'ACTIVE (Tick every ' + c.interval_seconds + 's)' : 'PAUSED' }}
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs font-mono text-slate-400 border-t border-slate-800/80">
+        <div>Total Executed: <strong class="text-white">{{ c.total_executed }}</strong></div>
+        <div>Defended: <strong class="text-emerald-400">{{ c.total_defended }}</strong></div>
+        <div>Gaps Discovered: <strong class="text-amber-400">{{ c.total_gaps }}</strong></div>
+        <div>Allowed Tags: <strong class="text-cyan-400">{{ c.roe.allowed_agent_tags.join(', ') }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rule Approval Modal -->
+  <div *ngIf="selectedRuleDraft()" class="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" (click)="closeRuleModal()">
+    <div class="bg-slate-900 border border-cyan-500/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden" (click)="$event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+        <h3 class="text-base font-bold text-white">Review Synthesized Wazuh Rule</h3>
+        <button (click)="closeRuleModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-4 text-xs font-mono">
+        <div *ngIf="ruleDeployMessage()" class="p-3 bg-emerald-950/80 border border-emerald-700 text-emerald-300 rounded-lg">
+          {{ ruleDeployMessage() }}
+        </div>
+        <p class="text-slate-300">{{ selectedRuleDraft()?.hardening_recommendation }}</p>
+        <pre class="p-4 bg-slate-950 border border-slate-800 rounded-lg text-emerald-400 whitespace-pre overflow-x-auto">{{ selectedRuleDraft()?.rule_xml }}</pre>
+        <div class="p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-300">
+          {{ selectedRuleDraft()?.logtest_output }}
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-800 bg-slate-950 flex justify-end gap-3">
+        <button (click)="closeRuleModal()" class="px-4 py-2 border border-slate-700 text-slate-300 rounded text-xs">Close</button>
+        <button (click)="approveAndDeployRule(selectedRuleDraft()!.id)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold">
+          Approve &amp; Deploy Rule
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>

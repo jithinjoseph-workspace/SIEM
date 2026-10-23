@@ -1,0 +1,125 @@
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { LucideAngularModule, ListFilter, RefreshCw, EyeOff, X, Bot, Gavel } from 'lucide-angular';
+import { SiemService } from '../../../services/siem/siem.service';
+
+/** One group of identical Wazuh alerts (same rule, agent and source) and its verdict. */
+interface Rec {
+  id: string;
+  rule_id: number;
+  rule_description: string;
+  agent_id: string;
+  agent_name: string;
+  src_ip: string;
+  verdict: 'benign' | 'suspicious' | 'unknown';
+  source: 'rule' | 'ai';
+  confidence: number;
+  reason: string;
+  alert_count: number;
+  max_level: number;
+  first_seen: number;
+  last_seen: number;
+}
+
+/**
+ * SIEM Alert Triage: groups of the tenant's Wazuh alerts that are likely harmless,
+ * decided by rules first and the AI for the rest. Nothing is hidden until a person
+ * applies a recommendation (siem-api /api/v1/siem/triage, crate siem-triage).
+ */
+@Component({
+  selector: 'app-siem-triage',
+  standalone: true,
+  imports: [CommonModule, FormsModule, LucideAngularModule],
+  templateUrl: './siem-triage.html',
+})
+export class SiemTriage implements OnInit {
+  private siem = inject(SiemService);
+
+  FilterIcon = ListFilter;
+  RefreshIcon = RefreshCw;
+  HideIcon = EyeOff;
+  XIcon = X;
+  BotIcon = Bot;
+  RuleIcon = Gavel;
+
+  data = signal<any>(null);
+  loading = signal(false);
+  busyId = signal<string | null>(null);
+  message = signal<string | null>(null);
+  error = signal<string | null>(null);
+  filter = signal<'all' | 'benign' | 'unknown' | 'suspicious'>('all');
+  hours: Record<string, number> = {};
+  hourChoices = [1, 8, 24, 72, 168];
+
+  recs = computed<Rec[]>(() => (this.data()?.recommendations ?? []) as Rec[]);
+  shown = computed(() => this.filter() === 'all' ? this.recs() : this.recs().filter(r => r.verdict === this.filter()));
+
+  ngOnInit() {
+    this.load();
+  }
+
+  private take(r: any, ok?: string) {
+    this.busyId.set(null);
+    this.loading.set(false);
+    if (r?.status === 'error') {
+      this.error.set(r.message);
+      return;
+    }
+    this.error.set(null);
+    this.data.set(r);
+    if (ok) {
+      this.message.set(ok);
+      setTimeout(() => this.message.set(null), 4000);
+    }
+  }
+
+  private fail(e: any) {
+    this.busyId.set(null);
+    this.loading.set(false);
+    this.error.set(e?.status === 403 ? 'You do not have access to SIEM alerts.' : 'Triage is not available.');
+  }
+
+  load() {
+    this.loading.set(true);
+    this.siem.getSiemTriage().subscribe({ next: r => this.take(r), error: e => this.fail(e) });
+  }
+
+  runNow() {
+    this.loading.set(true);
+    this.siem.runSiemTriage().subscribe({
+      next: r => this.take(r, r?.info?.throttled ? 'Triage ran less than a minute ago; showing the last run.' : 'Triage updated (rules and earlier AI answers).'),
+      error: e => this.fail(e),
+    });
+  }
+
+  apply(r: Rec) {
+    const h = this.hours[r.id] ?? 24;
+    this.busyId.set(r.id);
+    this.siem.applySiemTriage(r.id, h).subscribe({ next: x => this.take(x, `Rule ${r.rule_id} on ${r.agent_name || r.agent_id} hidden for ${h} h.`), error: e => this.fail(e) });
+  }
+
+  dismiss(r: Rec) {
+    this.busyId.set(r.id);
+    this.siem.dismissSiemTriage(r.id).subscribe({ next: x => this.take(x, 'Kept visible; it will not be recommended again.'), error: e => this.fail(e) });
+  }
+
+  verdictClass(v: string): string {
+    return v === 'benign' ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800'
+      : v === 'suspicious' ? 'bg-rose-950/50 text-rose-300 border-rose-800'
+      : 'bg-amber-950/40 text-amber-300 border-amber-800';
+  }
+
+  verdictLabel(v: string): string {
+    return v === 'benign' ? 'Likely benign' : v === 'suspicious' ? 'Suspicious' : 'Needs review';
+  }
+
+  ago(ts: number): string {
+    if (!ts) return '—';
+    const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+  }
+}

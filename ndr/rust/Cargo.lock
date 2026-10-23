@@ -104,7 +104,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auth-service"
-version = "1.0.24"
+version = "1.0.27"
 dependencies = [
  "anyhow",
  "axum",
@@ -1641,7 +1641,7 @@ dependencies = [
 
 [[package]]
 name = "ndr-engine"
-version = "1.0.24"
+version = "1.0.27"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1943,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "provigil-common"
-version = "1.0.24"
+version = "1.0.27"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -45,6 +45,7 @@ pub fn build_soar_context(
         dst_port,
         community_id: hit.community_id.clone(),
         tenant_id:    tenant_id.to_string(),
+        alert:        None,
     }
 }
 

@@ -424,5 +424,67 @@ export class SiemService {
   getRedSwarmHeatmap(): Observable<PurpleHeatmapData> {
     return this.http.get<PurpleHeatmapData>(`${this.apiUrl}/api/v1/redswarm/heatmap`);
   }
+
+  // ── SIEM analyst AI (siem-api /api/v1/siem/*: triage, suppressions, predictions, retrospective) ──
+
+  getSiemTriage(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/triage`);
+  }
+
+  runSiemTriage(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/triage/run`, {});
+  }
+
+  applySiemTriage(id: string, hours: number): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/apply`, { hours });
+  }
+
+  dismissSiemTriage(id: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/dismiss`, {});
+  }
+
+  getSiemAiActivity(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/ai-activity`);
+  }
+
+  createSiemSuppression(body: { rule_id?: number; agent_id?: string; src_ip?: string; duration_hours: number; reason?: string }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/suppressions`, body);
+  }
+
+  deactivateSiemSuppression(id: string): Observable<any> {
+    return this.http.patch(`${this.apiUrl}/api/v1/siem/suppressions/${encodeURIComponent(id)}/deactivate`, {});
+  }
+
+  deleteSiemSuppression(id: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/siem/suppressions/${encodeURIComponent(id)}`);
+  }
+
+  getSiemPredictions(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/predictions`);
+  }
+
+  getSiemPredictionHistory(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/predictions/history`);
+  }
+
+  runSiemPredictions(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/predictions/run`, {});
+  }
+
+  getSiemFiredRules(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/retrospective/fired-rules`);
+  }
+
+  startSiemRetroScan(body: { rule_id: string; rule_name: string; rule_content: string; hours_back: number }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/retrospective/scan`, body);
+  }
+
+  listSiemRetroScans(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/retrospective/scans`);
+  }
+
+  getSiemRetroScan(id: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/retrospective/scans/${encodeURIComponent(id)}`);
+  }
 }
 

@@ -431,6 +431,14 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-parsers")
     } else if starts("/api/siem/sources") || starts("/api/sources") {
         Some("siem-sources")
+    } else if starts("/api/soar") {
+        Some("soar")
+    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") {
+        Some("siem-alerts")
+    } else if starts("/api/v1/siem/predictions") {
+        Some("siem-mitre")
+    } else if starts("/api/v1/siem/retrospective") {
+        Some("siem-rules")
     } else if starts("/api/v1/xdr") || starts("/api/threat-map") {
         Some("alerts")
     } else if starts("/api/v1/agents") || starts("/api/agents") || p == "/agents" || (method == Method::POST && p == "/api/v1/agent/commands") {

@@ -1,0 +1,87 @@
+<div class="p-6 w-full max-w-[1720px] mx-auto space-y-6 text-slate-200">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="TargetIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+        SIEM Threat Predictions
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Hosts whose Wazuh alerts went through several MITRE ATT&amp;CK stages in order (last 24 h), and the stage likely to come next.
+        Updated every 15 minutes; the AI only writes the briefing.
+      </p>
+    </div>
+    <button (click)="runNow()" [disabled]="loading()"
+      class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+      Update now
+    </button>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <div *ngIf="!loading() && predictions().length === 0 && !error()" class="p-8 rounded-xl border border-slate-800 bg-slate-900/60 text-center text-slate-400">
+    No attack progression found: no host's alerts went through two or more MITRE stages in order in the last 24 hours.
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div *ngFor="let p of predictions()" class="bg-slate-900/70 rounded-xl border border-slate-800 p-5 space-y-3">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase text-slate-400">Likely next stage</div>
+          <div class="text-xl font-bold text-white">{{ p.attack_type }}</div>
+        </div>
+        <span class="px-2 py-0.5 rounded border text-xs font-bold uppercase" [ngClass]="levelClass(p.alert_level)">{{ p.alert_level }}</span>
+      </div>
+
+      <div>
+        <div class="flex justify-between text-xs text-slate-400 mb-1">
+          <span>Probability</span><span class="font-semibold text-slate-200">{{ pct(p.probability) }}%</span>
+        </div>
+        <div class="h-2 rounded bg-slate-800 overflow-hidden" role="progressbar" [attr.aria-valuenow]="pct(p.probability)" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="p.attack_type + ' probability'">
+          <div class="h-2" [style.width.%]="pct(p.probability)" [ngClass]="barClass(p.probability)"></div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 text-xs text-slate-400">
+        <span class="flex items-center gap-1">
+          <lucide-angular [img]="p.trend === 'rising' ? UpIcon : p.trend === 'falling' ? DownIcon : FlatIcon" class="w-3.5 h-3.5"
+            [class.text-rose-400]="p.trend === 'rising'" [class.text-emerald-400]="p.trend === 'falling'"></lucide-angular>
+          {{ p.trend }}<span *ngIf="p.trend_delta"> ({{ p.trend_delta > 0 ? '+' : '' }}{{ pct(p.trend_delta) }} pts)</span>
+        </span>
+        <span>confidence {{ pct(p.confidence) }}%</span>
+        <span>{{ p.internal_hit_count }} alerts</span>
+        <span>{{ p.exposure_score | number:'1.0-0' }}% of hosts</span>
+      </div>
+
+      <p class="text-sm text-slate-300">{{ p.explanation }}</p>
+
+      <div *ngIf="p.aria_briefing" class="rounded-lg bg-slate-800/60 border border-slate-700 p-3 text-sm text-slate-200">
+        <div class="text-[11px] text-slate-400 flex items-center gap-1 mb-1"><lucide-angular [img]="BotIcon" class="w-3 h-3"></lucide-angular> AI briefing<span *ngIf="p.ai_model"> · {{ p.ai_model }}</span></div>
+        {{ p.aria_briefing }}
+      </div>
+
+      <div>
+        <div class="text-xs uppercase text-slate-400 mb-1">What to do now</div>
+        <ul class="list-disc list-inside text-sm text-slate-300 space-y-0.5">
+          <li *ngFor="let r of p.recommendations">{{ r }}</li>
+        </ul>
+      </div>
+
+      <button (click)="open.set(open() === p.attack_type ? null : p.attack_type)" [attr.aria-expanded]="open() === p.attack_type"
+        class="text-xs text-cyan-300 hover:underline">{{ open() === p.attack_type ? 'Hide history' : 'Show history' }}</button>
+      <table *ngIf="open() === p.attack_type" class="w-full text-xs">
+        <thead class="text-slate-500"><tr><th class="text-left py-1">When</th><th class="text-right py-1">Probability</th><th class="text-left py-1 pl-4">Level</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let h of historyOf(p.attack_type)" class="border-t border-slate-800/60">
+            <td class="py-1 text-slate-400">{{ when(h.predicted_at) }}</td>
+            <td class="py-1 text-right">{{ pct(h.probability) }}%</td>
+            <td class="py-1 pl-4">{{ h.alert_level }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="text-[11px] text-slate-500">Updated {{ when(p.predicted_at) }}</div>
+    </div>
+  </div>
+</div>

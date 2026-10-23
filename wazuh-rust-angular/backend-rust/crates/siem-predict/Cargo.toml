@@ -1,0 +1,10 @@
+[package]
+name = "siem-predict"
+version = "0.1.0"
+edition = "2021"
+description = "Threat predictions for the SIEM: the next likely attack stage from the MITRE ATT&CK progression of each agent's Wazuh alerts"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4"] }

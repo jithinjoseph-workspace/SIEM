@@ -1,0 +1,112 @@
+<div class="p-6 w-full max-w-[1720px] mx-auto space-y-6 text-slate-200">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="HideIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+        SIEM Suppressions &amp; AI Activity
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Noisy Wazuh rules hidden for a while: from Alert Triage or added here. Suppressed alerts are still stored;
+        they are not shown live or acted on by SOAR. Critical alerts (level 12+) are never hidden, and every suppression expires.
+      </p>
+    </div>
+    <button (click)="load()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular>
+      Refresh
+    </button>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <form (ngSubmit)="add()" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+    <div>
+      <label for="sup-rule" class="text-xs text-slate-400 block mb-1">Rule id</label>
+      <input id="sup-rule" name="rule" [(ngModel)]="form.rule_id" inputmode="numeric" placeholder="5710" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+    </div>
+    <div>
+      <label for="sup-agent" class="text-xs text-slate-400 block mb-1">Agent id (optional)</label>
+      <input id="sup-agent" name="agent" [(ngModel)]="form.agent_id" placeholder="001" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+    </div>
+    <div>
+      <label for="sup-src" class="text-xs text-slate-400 block mb-1">Source IP (optional)</label>
+      <input id="sup-src" name="src" [(ngModel)]="form.src_ip" placeholder="203.0.113.9" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+    </div>
+    <div>
+      <label for="sup-hours" class="text-xs text-slate-400 block mb-1">For</label>
+      <select id="sup-hours" name="hours" [(ngModel)]="form.hours" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+        <option *ngFor="let h of hourChoices" [ngValue]="h">{{ h }} hours</option>
+      </select>
+    </div>
+    <div>
+      <label for="sup-reason" class="text-xs text-slate-400 block mb-1">Reason</label>
+      <input id="sup-reason" name="reason" [(ngModel)]="form.reason" placeholder="Known scanner" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+    </div>
+    <button type="submit" [disabled]="saving()" class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+      <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular> Add suppression
+    </button>
+  </form>
+
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800 overflow-x-auto">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+      <h2 class="text-sm font-bold uppercase text-slate-300">Suppressions</h2>
+      <label class="text-xs text-slate-400 flex items-center gap-2">
+        <input type="checkbox" [checked]="showInactive()" (change)="showInactive.set(!showInactive())"> Show stopped and expired
+      </label>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-xs uppercase text-slate-400 border-b border-slate-800">
+        <tr>
+          <th class="text-left px-4 py-2">Rule</th>
+          <th class="text-left px-4 py-2">Applies to</th>
+          <th class="text-left px-4 py-2">Reason</th>
+          <th class="text-left px-4 py-2">From</th>
+          <th class="text-left px-4 py-2">Expires</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-right px-4 py-2">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngIf="shown().length === 0"><td colspan="7" class="px-4 py-8 text-center text-slate-500">No suppressions.</td></tr>
+        <tr *ngFor="let s of shown()" class="border-b border-slate-800/60 align-top">
+          <td class="px-4 py-3"><span class="font-mono text-cyan-300">{{ s.signature_id }}</span><div class="text-slate-300 max-w-[260px]">{{ s.signature_name }}</div></td>
+          <td class="px-4 py-3 text-slate-300">{{ scope(s) }}</td>
+          <td class="px-4 py-3 text-slate-300 max-w-[360px]">{{ s.ai_reason }}</td>
+          <td class="px-4 py-3 whitespace-nowrap">{{ s.source === 'triage' ? 'Triage' : 'Manual' }}<div class="text-[11px] text-slate-500">{{ s.created_by }}</div></td>
+          <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ when(s.expires_at) }}</td>
+          <td class="px-4 py-3"><span class="text-xs font-semibold" [class.text-emerald-300]="s.active" [class.text-slate-500]="!s.active">{{ s.active ? 'Active' : 'Stopped / expired' }}</span></td>
+          <td class="px-4 py-3">
+            <div class="flex justify-end gap-2">
+              <button *ngIf="s.active" (click)="deactivate(s)" [attr.aria-label]="'Stop suppression of rule ' + s.signature_id"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-xs">
+                <lucide-angular [img]="PauseIcon" class="w-3.5 h-3.5"></lucide-angular> Stop
+              </button>
+              <button (click)="remove(s)" [attr.aria-label]="'Delete suppression of rule ' + s.signature_id"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-rose-900 hover:bg-rose-950/50 text-rose-300 text-xs">
+                <lucide-angular [img]="TrashIcon" class="w-3.5 h-3.5"></lucide-angular> Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800">
+    <h2 class="text-sm font-bold uppercase text-slate-300 px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+      <lucide-angular [img]="BotIcon" class="w-4 h-4"></lucide-angular> AI triage decisions
+    </h2>
+    <div *ngIf="analyses().length === 0" class="px-4 py-6 text-sm text-slate-500">The AI has not decided any alert group yet (or AI is off for this tenant).</div>
+    <ul class="divide-y divide-slate-800/60">
+      <li *ngFor="let a of analyses()" class="px-4 py-3 text-sm">
+        <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <span class="font-semibold text-slate-300">{{ a.severity }}</span>
+          <span>host {{ a.dst_ip || '—' }}</span>
+          <span *ngIf="a.src_ip">source {{ a.src_ip }}</span>
+          <span>{{ when(a.created_at) }}</span>
+        </div>
+        <div class="text-slate-200 mt-1">{{ a.analysis }}</div>
+      </li>
+    </ul>
+  </div>
+</div>

@@ -2614,6 +2614,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-ai"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "siem-analysisd"
 version = "0.1.0"
 dependencies = [
@@ -2635,6 +2645,8 @@ dependencies = [
 name = "siem-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "clickhouse 0.13.3",
@@ -2649,24 +2661,33 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "siem-ai",
  "siem-authd",
  "siem-cdb",
+ "siem-cjson",
  "siem-config",
  "siem-core",
  "siem-crypto",
+ "siem-csyslogd",
  "siem-engine",
  "siem-ipc",
  "siem-maild",
  "siem-parser-gen",
+ "siem-predict",
  "siem-redswarm",
+ "siem-regex",
  "siem-remoted",
  "siem-reportd",
+ "siem-retro",
  "siem-risk-fabric",
  "siem-rootcheck",
  "siem-sqlite",
+ "siem-suppression",
  "siem-task-manager",
+ "siem-triage",
  "siem-wdb",
  "siem-xml",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tower-http 0.5.2",
@@ -3016,6 +3037,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-predict"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "siem-redswarm"
 version = "0.1.0"
 dependencies = [
@@ -3079,6 +3109,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "siem-retro"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3180,6 +3219,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-suppression"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "siem-syscheckd"
 version = "0.1.0"
 dependencies = [
@@ -3257,6 +3304,16 @@ dependencies = [
  "siem-core",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "siem-triage"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "siem-ai",
+ "uuid",
 ]
 
 [[package]]

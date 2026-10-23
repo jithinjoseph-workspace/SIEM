@@ -239,6 +239,11 @@ export class Soar implements OnInit {
         { type: 'aws_sg',    name: 'AWS SG',     abbr: 'AWS', group: 'cloud',    fields: [{ key: 'sg_id', label: 'Security Group ID', placeholder: 'sg-0123456789abcdef', type: 'text' }, { key: 'region', label: 'Region', placeholder: 'us-east-1', type: 'text' }, { key: 'aws_access_key_id', label: 'Access Key ID', placeholder: 'AKIA...', type: 'text' }, { key: 'aws_secret_access_key', label: 'Secret Access Key', placeholder: '...', type: 'password' }] },
         { type: 'azure_nsg', name: 'Azure NSG',  abbr: 'AZR', group: 'cloud',    fields: [{ key: 'resource_group', label: 'Resource Group', placeholder: 'my-rg', type: 'text' }, { key: 'nsg_name', label: 'NSG Name', placeholder: 'my-nsg', type: 'text' }, { key: 'subscription_id', label: 'Subscription ID (optional)', placeholder: '...', type: 'text' }] },
         { type: 'gcp_vpc',   name: 'GCP VPC',    abbr: 'GCP', group: 'cloud',    fields: [{ key: 'project', label: 'Project ID', placeholder: 'my-project', type: 'text' }, { key: 'network', label: 'Network', placeholder: 'default', type: 'text' }] },
+        // SIEM alerts go out through the Wazuh integrations and syslog formats
+        { type: 'syslog',     name: 'Syslog / SIEM', abbr: 'SYS', group: 'forward', fields: [{ key: 'host', label: 'Syslog Server', placeholder: 'siem.company.com', type: 'text' }, { key: 'port', label: 'UDP Port', placeholder: '514', type: 'text' }, { key: 'format', label: 'Format', placeholder: '', type: 'select', options: ['default', 'cef', 'json', 'splunk'] }] },
+        { type: 'virustotal', name: 'VirusTotal',    abbr: 'VTL', group: 'forward', fields: [{ key: 'api_key', label: 'API Key', placeholder: 'VirusTotal API key', type: 'password' }] },
+        { type: 'shuffle',    name: 'Shuffle',       abbr: 'SHF', group: 'forward', fields: [{ key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://shuffler.io/api/v1/hooks/webhook_...', type: 'text' }] },
+        { type: 'maltiverse', name: 'Maltiverse',    abbr: 'MLT', group: 'forward', fields: [{ key: 'api_key', label: 'API Key', placeholder: 'Maltiverse API key', type: 'password' }, { key: 'hook_url', label: 'API URL', placeholder: 'https://api.maltiverse.com', type: 'text' }] },
     ];
 
     readonly WORKFLOW_STATES = ['New', 'Assigned', 'In Progress', 'Pending', 'Under Review', 'Resolved', 'Closed'];
@@ -1820,10 +1825,17 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
     // ── Condition helpers ─────────────────────────────────────────────────────
     get condOps(): { value: string; label: string }[] {
         switch (this.pbCondField) {
-            case 'score':        return [{ value: '>',  label: '>' }, { value: '>=', label: '>=' }, { value: '<',  label: '<' }, { value: '<=', label: '<=' }, { value: '==', label: '==' }];
+            case 'score':
+            case 'rule_level':   return [{ value: '>=', label: '>=' }, { value: '>',  label: '>' }, { value: '<',  label: '<' }, { value: '<=', label: '<=' }, { value: '==', label: '==' }];
+            case 'rule_id':      return [{ value: 'in', label: 'is one of' }, { value: '==', label: '==' }];
             case 'severity':
             case 'src_country':
+            case 'rule_group':
             case 'sigma_tag':    return [{ value: '==', label: '==' }, { value: 'contains', label: 'contains' }];
+            case 'agent_name':
+            case 'location':
+            case 'src_ip':
+            case 'dst_ip':       return [{ value: '==', label: '==' }, { value: 'contains', label: 'contains' }, { value: 'startswith', label: 'starts with' }];
             case 'threat_intel':
             default:             return [{ value: '==', label: '==' }];
         }
@@ -1835,11 +1847,19 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
         return 'text';
     }
 
+    /** Example values for the text conditions. */
+    get condPlaceholder(): string {
+        const p: Record<string, string> = { score: '75', rule_level: '10', rule_id: '5710, 5712', rule_group: 'authentication_failed', agent_name: 'web-01', location: '/var/log/auth.log', src_ip: '203.0.113.', dst_ip: '10.0.0.', sigma_tag: 'T1110', src_country: 'CN' };
+        return p[this.pbCondField] ?? '';
+    }
+
     onCondFieldChange() {
         this.pbCondOp = this.condOps[0].value;
         if (this.pbCondField === 'threat_intel') this.pbCondValue = 'true';
         else if (this.pbCondField === 'severity') this.pbCondValue = 'HIGH';
-        else this.pbCondValue = '75';
+        else if (this.pbCondField === 'score') this.pbCondValue = '75';
+        else if (this.pbCondField === 'rule_level') this.pbCondValue = '10';
+        else this.pbCondValue = '';
     }
 
     // ── Integrations ──────────────────────────────────────────────────────────
@@ -1853,6 +1873,15 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
 
     getIntIcon(type: string): string { return this.getIntAbbr(type); }
 
+    getIntName(type: string): string {
+        return (this.integrationTypes as any[]).find((t: any) => t.type === type)?.name || type;
+    }
+
+    /** An enabled integration of this type exists (the forwarding actions use it). */
+    hasIntegration(type: string): boolean {
+        return this.integrations().some((i: any) => i.type === type && i.enabled);
+    }
+
     get selectedIntType() {
         return this.integrationTypes.find(t => t.type === this.intType);
     }
@@ -1860,7 +1889,8 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
     testIntegration() {
         this.testingInt.set(true);
         this.testResult.set('');
-        this.api.testIntegration({ type: this.intType, config: this.intConfig }).subscribe({
+        // the id lets the server use the saved secrets the form shows empty
+        this.api.testIntegration({ id: this.editingIntId || '', type: this.intType, config: this.intConfig }).subscribe({
             next: (data: any) => { this.testingInt.set(false); this.testResult.set(data.message); },
             error: () => { this.testingInt.set(false); this.testResult.set('❌ Connection failed'); },
         });

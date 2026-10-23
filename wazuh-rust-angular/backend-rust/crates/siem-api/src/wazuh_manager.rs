@@ -302,7 +302,7 @@ pub fn windows_agent_conf(manager: &str) -> Option<String> {
     Some(t)
 }
 
-fn exe_name(d: &str) -> String {
+pub(crate) fn exe_name(d: &str) -> String {
     if cfg!(windows) {
         format!("{d}.exe")
     } else {
@@ -414,6 +414,11 @@ fn read_state_file(path: &Path) -> serde_json::Value {
 
 /// What the manager is doing: running daemons and the remoted / analysisd counters
 /// (queues, events received, discarded and dropped).
+/// The daemons running now.
+pub fn running() -> Vec<String> {
+    CHILDREN.lock().unwrap().iter().map(|(n, _)| n.clone()).collect()
+}
+
 pub fn status() -> serde_json::Value {
     let run = home().join("var/run");
     let daemons: Vec<serde_json::Value> = CHILDREN.lock().unwrap().iter().map(|(n, p)| serde_json::json!({ "name": n, "pid": p })).collect();
@@ -490,6 +495,9 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     let _ = tx.send(());
                 }
                 let st = child.wait();
+                // its pid may be reused: restart_daemons must not kill it any more
+                CHILDREN.lock().unwrap().retain(|(n, _)| n != d);
+                record_children(&home);
                 // maild / integratord / csyslogd / agentlessd exit 0 when not configured: start again once ossec.conf changes
                 if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd" | "wazuh-agentlessd") && st.as_ref().is_ok_and(|s| s.success()) {
                     info!("Wazuh manager: {d} idle (not configured)");
@@ -515,7 +523,7 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
 }
 
 /// Stops the running daemons named; their supervisors start them again.
-fn restart_daemons(names: &[&str]) {
+pub(crate) fn restart_daemons(names: &[&str]) {
     for (n, pid) in CHILDREN.lock().unwrap().iter() {
         if !names.contains(&n.as_str()) {
             continue;
@@ -1169,10 +1177,21 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
     }
-    for a in &alerts {
+    // stored above either way; a suppressed alert is not shown live, kept, or acted on
+    let tenants: Vec<String> = alerts.iter().map(|a| a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT).to_string()).collect();
+    let mut shown = Vec::with_capacity(alerts.len());
+    let mut soar = Vec::with_capacity(alerts.len());
+    for ((a, v), t) in alerts.into_iter().zip(vs).zip(tenants) {
+        if crate::suppressions::is_suppressed(&state, &t, &a).await {
+            continue;
+        }
         let _ = state.broadcast_tx.send(a.clone());
+        shown.push(a);
+        soar.push((v, t));
     }
-    crate::keep_alerts(&state, alerts);
+    // each tenant's SOAR playbooks, on the original Wazuh alert
+    crate::soar::on_alerts(&state, soar);
+    crate::keep_alerts(&state, shown);
 }
 
 /// Backoff of the ClickHouse retries (the alerts/archives files hold the data meanwhile).

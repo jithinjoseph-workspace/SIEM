@@ -50,6 +50,11 @@ export const routes: Routes = [
       { path: 'fim',            canActivate: [authGuard], data: { permission: 'siem-fim' }, loadComponent: () => import('../pages/analyst/fim/fim').then(m => m.Fim) },
       { path: 'active-response',canActivate: [authGuard], data: { permission: 'siem-active-response' }, loadComponent: () => import('../pages/analyst/active-response/active-response').then(m => m.ActiveResponse) },
       { path: 'logtest',        canActivate: [authGuard], data: { permission: 'siem-logtest' }, loadComponent: () => import('../pages/analyst/logtest/logtest').then(m => m.Logtest) },
+      /* SIEM analyst AI pages (siem-api /api/v1/siem/*), separate from the NDR's triage / AI activity / retrospective */
+      { path: 'siem-triage',        canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/triage/siem-triage').then(m => m.SiemTriage) },
+      { path: 'siem-suppressions',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/suppressions/siem-suppressions').then(m => m.SiemSuppressions) },
+      { path: 'siem-predictions',   canActivate: [authGuard], data: { permission: 'siem-mitre' },  loadComponent: () => import('../pages/siem-ai/predictions/siem-predictions').then(m => m.SiemPredictions) },
+      { path: 'siem-retrospective', canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/retrospective/siem-retrospective').then(m => m.SiemRetrospective) },
 
       /* SIEM pages copied from frontend-angular (pages/siem-classic) */
       {

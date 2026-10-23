@@ -139,6 +139,45 @@ impl ClickHouseEventRow {
     }
 }
 
+/// The SOAR tables of the NDR schema (ndr/config/clickhouse/init.sql), created
+/// in `ndr` and in each tenant database when missing (a SIEM-only install, or a
+/// tenant provisioned here: the replicated `ndr.soar_*` cannot be cloned with `AS`).
+pub const SOAR_DDL: [&str; 5] = [
+    "CREATE TABLE IF NOT EXISTS soar_integrations (id String, name String, type String, config String, enabled UInt8 DEFAULT 1, tenant_id String DEFAULT 'default', created_at DateTime DEFAULT now()) ENGINE = ReplacingMergeTree(created_at) ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS soar_native_playbooks (id String DEFAULT toString(generateUUIDv4()), name String, description String DEFAULT '', enabled UInt8 DEFAULT 1, cond_field String, cond_op String, cond_value String, action_type String, action_config String, run_count UInt64 DEFAULT 0, last_run Nullable(DateTime), created_at DateTime DEFAULT now(), updated_at DateTime DEFAULT now(), tenant_id String DEFAULT 'default') ENGINE = ReplacingMergeTree(updated_at) ORDER BY (tenant_id, id)",
+    "CREATE TABLE IF NOT EXISTS soar_playbook_runs (id String DEFAULT toString(generateUUIDv4()), playbook_id String, playbook_name String, hit_id String, status String, detail String, created_at DateTime DEFAULT now(), tenant_id String DEFAULT 'default') ENGINE = MergeTree ORDER BY (tenant_id, created_at) TTL created_at + INTERVAL 90 DAY",
+    "CREATE TABLE IF NOT EXISTS soar_cases (id String DEFAULT toString(generateUUIDv4()), case_number String DEFAULT '', priority String DEFAULT 'P2', title String, description String DEFAULT '', severity String DEFAULT 'MEDIUM', status String DEFAULT 'New', assigned_to String DEFAULT '', src_ip String DEFAULT '', dst_ip String DEFAULT '', community_id String DEFAULT '', hit_ids Array(String) DEFAULT [], tags Array(String) DEFAULT [], created_at DateTime DEFAULT now(), updated_at DateTime DEFAULT now(), closed_at Nullable(DateTime), tenant_id String DEFAULT 'default') ENGINE = ReplacingMergeTree(updated_at) ORDER BY (tenant_id, created_at)",
+    "CREATE TABLE IF NOT EXISTS soar_case_comments (id String DEFAULT toString(generateUUIDv4()), case_id String, author String, comment String, created_at DateTime DEFAULT now(), tenant_id String DEFAULT 'default') ENGINE = MergeTree ORDER BY (tenant_id, case_id, created_at) TTL created_at + INTERVAL 730 DAY",
+];
+
+/// The SIEM analyst features' tables (one JSON document per row; a new
+/// `version` replaces a row): suppressions, triage state, retrospective scans,
+/// and the threat prediction history.
+pub const ANALYST_DDL: [&str; 4] = [
+    "CREATE TABLE IF NOT EXISTS siem_suppressions (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS siem_analyst_state (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS siem_retro_scans (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
+    "CREATE TABLE IF NOT EXISTS siem_threat_predictions (id String, attack_type String, doc String, predicted_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY predicted_at TTL predicted_at + INTERVAL 90 DAY",
+];
+
+/// The tables the per-tenant documents live in (never user input).
+#[derive(Clone, Copy)]
+pub enum DocTable {
+    Suppressions,
+    AnalystState,
+    RetroScans,
+}
+
+impl DocTable {
+    fn name(self) -> &'static str {
+        match self {
+            DocTable::Suppressions => "siem_suppressions",
+            DocTable::AnalystState => "siem_analyst_state",
+            DocTable::RetroScans => "siem_retro_scans",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ClickHouseDb {
     client: Client,
@@ -427,7 +466,13 @@ impl ClickHouseDb {
             .execute()
             .await;
 
-        info!("SIEM tables ready in '{}' (siem_events, siem_alerts, siem_agents, xdr_incidents, siem_threat_intel, agent_registry, tenant_agent_keys)", database);
+        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()) {
+            if let Err(e) = client.query(sql).execute().await {
+                warn!("SOAR table not created: {e}");
+            }
+        }
+
+        info!("SIEM tables ready in '{}' (siem_events, siem_alerts, siem_agents, xdr_incidents, siem_threat_intel, agent_registry, tenant_agent_keys, soar_*)", database);
         is_available.store(true, Ordering::SeqCst);
 
         Self {
@@ -440,6 +485,48 @@ impl ClickHouseDb {
     /// Client bound to a tenant's database (`ndr` for the default tenant).
     pub fn tenant_client(&self, tenant_id: &str) -> Client {
         self.root.clone().with_database(crate::tenancy::tenant_db_name(tenant_id))
+    }
+
+    /// Stores a document (a new version replaces the row with the same id).
+    pub async fn put_doc(&self, tenant_id: &str, t: DocTable, id: &str, doc: &str) -> Result<(), String> {
+        let version = chrono::Utc::now().timestamp_micros().max(0) as u64;
+        self.tenant_client(tenant_id)
+            .query(&format!("INSERT INTO {} (id, doc, version) VALUES (?, ?, ?)", t.name()))
+            .bind(id)
+            .bind(doc)
+            .bind(version)
+            .execute()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// The latest version of every document, newest first.
+    pub async fn docs(&self, tenant_id: &str, t: DocTable, limit: u32) -> Result<Vec<String>, String> {
+        self.tenant_client(tenant_id)
+            .query(&format!("SELECT doc FROM {} FINAL ORDER BY version DESC LIMIT {limit}", t.name()))
+            .fetch_all::<String>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn doc(&self, tenant_id: &str, t: DocTable, id: &str) -> Result<Option<String>, String> {
+        let rows = self
+            .tenant_client(tenant_id)
+            .query(&format!("SELECT doc FROM {} FINAL WHERE id = ? LIMIT 1", t.name()))
+            .bind(id)
+            .fetch_all::<String>()
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(rows.into_iter().next())
+    }
+
+    pub async fn delete_doc(&self, tenant_id: &str, t: DocTable, id: &str) -> Result<(), String> {
+        self.tenant_client(tenant_id)
+            .query(&format!("ALTER TABLE {} DELETE WHERE id = ? SETTINGS mutations_sync = 1", t.name()))
+            .bind(id)
+            .execute()
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Creates the tenant's database and its data tables (cloned from
@@ -473,6 +560,12 @@ impl ClickHouseDb {
                     return Err(format!("CREATE TABLE {db}.{t}: {e}"));
                 }
                 warn!("Skipping {}.{}: {}", db, t, e);
+            }
+        }
+        let tc = self.tenant_client(tenant_id);
+        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()) {
+            if let Err(e) = tc.query(sql).execute().await {
+                warn!("SOAR table not created in {db}: {e}");
             }
         }
         tracing::debug!("Provisioned tenant database '{}' ({} tables)", db, crate::tenancy::TENANT_TABLES.len());

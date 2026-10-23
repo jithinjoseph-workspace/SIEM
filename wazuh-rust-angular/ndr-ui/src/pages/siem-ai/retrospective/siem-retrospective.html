@@ -1,0 +1,88 @@
+<div class="p-6 w-full max-w-[1720px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="RetroIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      SIEM Retrospective
+    </h1>
+    <p class="text-sm text-slate-400 mt-1">
+      Would a Wazuh rule have caught something in the past? Stored events are sent again through the running analysisd, so the
+      current ruleset decides (including rules you added or changed after the events arrived). Or search the events for a keyword.
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <form (ngSubmit)="start()" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-3">
+    <div class="flex gap-4 text-sm" role="radiogroup" aria-label="Scan type">
+      <label class="flex items-center gap-2"><input type="radio" name="mode" value="rule" [(ngModel)]="mode"> Wazuh rule</label>
+      <label class="flex items-center gap-2"><input type="radio" name="mode" value="keyword" [(ngModel)]="mode"> Keyword</label>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+      <div class="md:col-span-2" *ngIf="mode === 'rule'">
+        <label for="retro-rule" class="text-xs text-slate-400 block mb-1">Rule id (pick one that fired, or type any rule id)</label>
+        <input id="retro-rule" name="rule" [(ngModel)]="ruleId" list="retro-rules" inputmode="numeric" placeholder="5716"
+          class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+        <datalist id="retro-rules">
+          <option *ngFor="let r of rules()" [value]="r.id">{{ r.name }} ({{ r.hit_count }} in 7 days)</option>
+        </datalist>
+      </div>
+      <div class="md:col-span-2" *ngIf="mode === 'keyword'">
+        <label for="retro-kw" class="text-xs text-slate-400 block mb-1">Keyword (case-insensitive)</label>
+        <input id="retro-kw" name="kw" [(ngModel)]="keyword" placeholder="mimikatz" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+      </div>
+      <div>
+        <label for="retro-hours" class="text-xs text-slate-400 block mb-1">Look back</label>
+        <select id="retro-hours" name="hours" [(ngModel)]="hours" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+          <option *ngFor="let h of hourChoices" [ngValue]="h">{{ h }} hours</option>
+        </select>
+      </div>
+      <button type="submit" [disabled]="starting() || running()"
+        class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+        <lucide-angular [img]="PlayIcon" class="w-4 h-4"></lucide-angular> {{ running() ? 'A scan is running…' : 'Start scan' }}
+      </button>
+    </div>
+    <p class="text-[11px] text-slate-500">Up to 20,000 of the newest events are checked; one scan at a time per tenant.</p>
+  </form>
+
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+      <h2 class="text-sm font-bold uppercase text-slate-300">Scans</h2>
+      <button (click)="loadScans()" aria-label="Refresh scans" class="text-slate-400 hover:text-white">
+        <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="running()"></lucide-angular>
+      </button>
+    </div>
+    <div *ngIf="scans().length === 0" class="px-4 py-6 text-sm text-slate-500">No scans yet.</div>
+    <div *ngFor="let s of scans()" class="border-b border-slate-800/60">
+      <button (click)="open(s)" [attr.aria-expanded]="selected()?.id === s.id" class="w-full text-left px-4 py-3 hover:bg-slate-800/30 flex flex-wrap items-center gap-x-6 gap-y-1">
+        <span class="font-semibold text-slate-200">{{ title(s) }}</span>
+        <span class="text-xs" [class.text-amber-300]="s.status === 'running'" [class.text-emerald-300]="s.status === 'done'" [class.text-rose-300]="s.status === 'failed'">{{ s.status }}</span>
+        <span class="text-xs text-slate-400">{{ s.match_count }} match(es) in {{ s.events_scanned | number }} events · last {{ s.hours_back }} h</span>
+        <span class="text-xs text-slate-500">{{ when(s.started_at) }}</span>
+      </button>
+      <div *ngIf="selected()?.id === s.id" class="px-4 pb-4">
+        <div *ngIf="selected()!.status === 'failed'" class="text-sm text-rose-300">{{ selected()!.error }}</div>
+        <div *ngIf="selected()!.status === 'running'" class="text-sm text-amber-300">Scanning… {{ selected()!.events_scanned | number }} events so far.</div>
+        <div *ngIf="selected()!.status === 'done' && !(selected()!.matches?.length)" class="text-sm text-slate-400">No event matched.</div>
+        <div class="overflow-x-auto" *ngIf="selected()!.matches?.length">
+          <table class="w-full text-xs">
+            <thead class="text-slate-400 uppercase"><tr>
+              <th class="text-left py-2 pr-4">Time</th><th class="text-left py-2 pr-4">Host</th><th class="text-left py-2 pr-4">Source</th>
+              <th class="text-left py-2 pr-4">Match</th><th class="text-left py-2 pr-4">Severity</th><th class="text-left py-2">Log</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let m of selected()!.matches" class="border-t border-slate-800/60 align-top">
+                <td class="py-2 pr-4 whitespace-nowrap text-slate-400">{{ when(m.ts) }}</td>
+                <td class="py-2 pr-4 whitespace-nowrap">{{ m.dst_ip }}</td>
+                <td class="py-2 pr-4 font-mono">{{ m.src_ip || '—' }}</td>
+                <td class="py-2 pr-4 max-w-[260px]">{{ m.alert_signature }}</td>
+                <td class="py-2 pr-4" [ngClass]="sevClass(m.severity)">{{ m.severity }}</td>
+                <td class="py-2 font-mono text-slate-400 break-all max-w-[520px]">{{ m.log }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

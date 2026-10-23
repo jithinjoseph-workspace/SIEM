@@ -21,7 +21,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", features = ["json"] }
 clickhouse = { version = "0.13", features = ["time", "uuid"] }
-provigil-common = { path = "../provigil-common" }
+provigil-common = { path = "../provigil-common", features = ["soar"] }
 redis = { version = "0.23", features = ["tokio-comp", "connection-manager"] }
 siem-sqlite = { path = "../siem-sqlite" }
 siem-remoted = { path = "../siem-remoted" }
@@ -35,6 +35,17 @@ siem-reportd = { path = "../siem-reportd" }
 siem-crypto = { path = "../siem-crypto" }
 siem-ipc = { path = "../siem-ipc" }
 siem-maild = { path = "../siem-maild" }
+siem-csyslogd = { path = "../siem-csyslogd" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ai = { path = "../siem-ai" }
+siem-triage = { path = "../siem-triage" }
+siem-suppression = { path = "../siem-suppression" }
+siem-retro = { path = "../siem-retro" }
+siem-predict = { path = "../siem-predict" }
+siem-regex = { path = "../siem-regex" }
+async-trait = "0.1"
+anyhow = "1"
+tempfile = "3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
@@ -43,4 +54,3 @@ ring = "0.17"
 local-ip-address = "0.6"
 siem-risk-fabric = { path = "../siem-risk-fabric" }
 siem-redswarm = { path = "../siem-redswarm" }
-

@@ -37,6 +37,16 @@ pub mod tenancy;
 pub mod wazuh_manager;
 pub mod groups;
 pub mod mail_settings;
+pub mod soar;
+// the SIEM analyst AI features, each on its own crate (siem-ai, siem-triage,
+// siem-suppression, siem-retro, siem-predict)
+pub mod ai_assist;
+pub mod triage;
+pub mod suppressions;
+pub mod retro;
+pub mod predictions;
+#[cfg(test)]
+mod analyst_tests;
 use db::ClickHouseDb;
 use tenancy::AuthCtx;
 
@@ -149,6 +159,10 @@ async fn main() {
         tracing::error!("Cannot reach the auth-service session store: {} — aborting", e);
         std::process::exit(1);
     }
+
+    // tenants' SOAR webhooks / syslog servers cannot reach the platform's own network
+    let allow_private = matches!(std::env::var("SIEM_SOAR_ALLOW_PRIVATE_TARGETS").as_deref(), Ok("1") | Ok("true") | Ok("yes"));
+    provigil_common::soar::set_block_private_targets(!allow_private);
 
     let (broadcast_tx, _) = broadcast::channel::<Alert>(1000);
     let db = ClickHouseDb::init().await;
@@ -436,6 +450,9 @@ async fn main() {
     }
     // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
     vulnerability::spawn_sync(state.clone());
+    // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
+    triage::spawn(state.clone());
+    predictions::spawn(state.clone());
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
@@ -487,8 +504,8 @@ async fn main() {
         .route("/api/rules/:id/toggle", post(toggle_rules_handler))
         .route("/api/rules/reload", post(reload_rules_handler))
         .route("/api/rules/sync-community", post(sync_community_rules_handler))
-        .route("/api/v1/ai/analyze", post(ai_analyze_event))
-        .route("/api/v1/ai/chat", post(ai_chat_handler))
+        .route("/api/v1/ai/analyze", post(ai_assist::analyze))
+        .route("/api/v1/ai/chat", post(ai_assist::chat))
         .route("/api/v1/ingest", post(ingest_event))
         .route("/api/events/ingest", post(ingest_event))
         .route("/api/v1/agent/commands", get(get_agent_commands).post(queue_agent_command))
@@ -610,6 +627,36 @@ async fn main() {
         .route("/api/v1/reports/summary", get(get_reports_summary_handler))
         .route("/api/v1/agents/:id/upgrade", post(post_agent_upgrade_handler).get(get_agent_upgrade_handler))
         .route("/api/v1/manager/status", get(get_manager_status_handler))
+        // per-tenant SOAR (the analyst SOAR page; the same API as ndr-engine's)
+        // SIEM analyst AI: the SIEM's own pages (ndr-ui pages/siem-ai), apart from the NDR's /api/triage etc.
+        .route("/api/v1/siem/triage", get(triage::get))
+        .route("/api/v1/siem/triage/run", post(triage::run_now))
+        .route("/api/v1/siem/triage/:id/apply", post(triage::apply))
+        .route("/api/v1/siem/triage/:id/dismiss", post(triage::dismiss))
+        .route("/api/v1/siem/ai-activity", get(suppressions::activity))
+        .route("/api/v1/siem/suppressions", get(suppressions::list).post(suppressions::create_manual))
+        .route("/api/v1/siem/suppressions/:id/deactivate", axum::routing::patch(suppressions::deactivate))
+        .route("/api/v1/siem/suppressions/:id", delete(suppressions::delete))
+        .route("/api/v1/siem/predictions", get(predictions::latest))
+        .route("/api/v1/siem/predictions/history", get(predictions::history))
+        .route("/api/v1/siem/predictions/run", post(predictions::run_now))
+        .route("/api/v1/siem/retrospective/fired-rules", get(retro::fired_rules))
+        .route("/api/v1/siem/retrospective/scan", post(retro::start))
+        .route("/api/v1/siem/retrospective/scans", get(retro::list))
+        .route("/api/v1/siem/retrospective/scans/:id", get(retro::get))
+        .route("/api/soar/status", get(soar::get_status))
+        .route("/api/soar/integrations", get(soar::get_integrations).post(soar::save_integration))
+        .route("/api/soar/integrations/test", post(soar::test_integration))
+        .route("/api/soar/integrations/toggle", post(soar::toggle_integration))
+        .route("/api/soar/integrations/delete", post(soar::delete_integration))
+        .route("/api/soar/integrations/:id", put(soar::update_integration).delete(soar::delete_integration))
+        .route("/api/soar/native/playbooks", get(soar::get_playbooks).post(soar::create_playbook))
+        .route("/api/soar/native/playbooks/:id", put(soar::update_playbook).delete(soar::delete_playbook))
+        .route("/api/soar/runs", get(soar::get_runs))
+        .route("/api/soar/cases", get(soar::get_cases).post(soar::create_case))
+        .route("/api/soar/cases/:id", put(soar::update_case))
+        .route("/api/soar/cases/:id/status", put(soar::update_case_status))
+        .route("/api/soar/cases/:id/comments", get(soar::get_case_comments).post(soar::add_case_comment))
         .route("/api/v1/groups", get(groups::list_groups).post(groups::create_group))
         .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
         .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))
@@ -2032,248 +2079,6 @@ pub struct AiChatHistoryItem {
 pub struct AiChatResponse {
     pub response: String,
     pub model_used: String,
-}
-
-/// The Groq API key comes from the environment only (`GROQ_API_KEY`).
-fn get_groq_api_key() -> String {
-    std::env::var("GROQ_API_KEY").unwrap_or_default()
-}
-
-fn extract_json_object(input: &str) -> &str {
-    let s = input.trim();
-    if let (Some(start), Some(end)) = (s.find('{'), s.rfind('}')) {
-        if start <= end {
-            return &s[start..=end];
-        }
-    }
-    s
-}
-
-
-async fn ai_analyze_event(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(req): Json<AiAnalysisRequest>,
-) -> Result<Json<AiAnalysisResponse>, (StatusCode, String)> {
-    let api_key = get_groq_api_key();
-    let model = req.model.unwrap_or_else(|| "openai/gpt-oss-120b".to_string());
-
-    // Resolve event details either from payload or from stored events/alerts
-    let mut event_text = String::new();
-    let mut agent_id = req.agent_id.unwrap_or_default();
-    let mut source_str = req.source.unwrap_or_default();
-    let mut location_str = req.location.unwrap_or_default();
-
-    if let Some(ref eid) = req.event_id {
-        let events = scoped_events(&state, &ctx);
-        if let Some(ev) = events.iter().find(|e| &e.id.to_string() == eid) {
-            agent_id = ev.agent_id.clone();
-            source_str = format!("{:?}", ev.source);
-            location_str = ev.location.clone();
-            event_text = format!("Log Location: {}\nRaw Message: {}\nMetadata: {:?}", ev.location, ev.message, ev.metadata);
-        }
-    } else if let Some(ref aid) = req.alert_id {
-        let alerts = scoped_alerts(&state, &ctx);
-        if let Some(a) = alerts.iter().find(|al| &al.id.to_string() == aid) {
-            agent_id = a.agent.name.clone();
-            source_str = "AlertEngine".into();
-            location_str = format!("Rule #{}", a.rule.id);
-            event_text = format!("Rule ID: {}\nLevel: {}\nDescription: {}\nFull Log: {}\nMITRE: {:?}\nDecoded: {:?}",
-                a.rule.id, a.rule.level, a.rule.description, a.full_log, a.rule.mitre, a.decoded);
-        }
-    }
-
-    if event_text.is_empty() {
-        event_text = format!("Source: {}\nLocation: {}\nAgent: {}\nPayload: {}\nMetadata: {:?}",
-            source_str, location_str, agent_id, req.message.unwrap_or_default(), req.metadata);
-    }
-
-    let user_prompt = format!(
-        "Log Source: {}\nAgent / Host: {}\nLocation / Channel: {}\n\nEvent Data:\n{}\n\n{}",
-        source_str,
-        agent_id,
-        location_str,
-        event_text,
-        req.custom_prompt.unwrap_or_default()
-    );
-
-    let system_prompt = r#"You are an elite Tier-3 Principal SOC & Threat Detection Engineer analyzing logs in Wazuh SIEM.
-Analyze the provided event log or alert. You must output ONLY a valid JSON object without markdown fences, with these exact keys:
-{
-  "classification": "Benign Administrative Activity | Suspicious Activity | High-Severity Threat",
-  "confidence_score": 95,
-  "severity": "low | medium | high | critical | info",
-  "summary": "Concise 1-2 sentence executive summary of this event and what occurred.",
-  "mitre_attack": {
-    "tactic": "e.g. Persistence | Defense Evasion | Initial Access | Discovery | Execution",
-    "technique_id": "e.g. T1059.001",
-    "technique_name": "e.g. PowerShell"
-  },
-  "indicators": ["indicator or key observation 1", "key observation 2"],
-  "impact": "Potential security impact to this host or the enterprise network.",
-  "remediation_commands": [
-    "Defensive PowerShell or CMD command to investigate, audit, or isolate (e.g. Get-Process, Stop-Process, Set-NetFirewallProfile, etc.). Do not include offensive exploits or hacktool names."
-  ],
-  "explanation": "Detailed technical explanation of the event mechanics, registry keys, Windows event IDs, or security implications."
-}"#;
-
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_prompt }
-        ],
-        "temperature": 0.2,
-        "max_completion_tokens": 2048
-    });
-
-    let resp = client.post("https://api.groq.com/openai/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Groq request failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let err_text = resp.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("Groq error ({}): {}", status, err_text)));
-    }
-
-    let res_json: serde_json::Value = resp.json().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse Groq response: {}", e)))?;
-
-    let content = res_json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-
-    let clean = extract_json_object(&content);
-
-    // Resilient parsing: parse via serde_json::Value first so any schema variations or string escapes work smoothly
-    let mut analysis = if let Ok(val) = serde_json::from_str::<serde_json::Value>(clean) {
-        let classification = val["classification"].as_str().unwrap_or("Security Assessment").to_string();
-        let confidence_score = val["confidence_score"].as_u64().unwrap_or(90) as u8;
-        let severity = val["severity"].as_str().unwrap_or("medium").to_string();
-        let summary = val["summary"].as_str().unwrap_or("Automated event triage completed").to_string();
-        let mitre_attack = if let Some(m) = val.get("mitre_attack") {
-            Some(MitreMapping {
-                tactic: m["tactic"].as_str().unwrap_or("Triage").to_string(),
-                technique_id: m["technique_id"].as_str().unwrap_or("T1000").to_string(),
-                technique_name: m["technique_name"].as_str().unwrap_or("Detection").to_string(),
-            })
-        } else {
-            None
-        };
-        let indicators = val["indicators"].as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_else(|| vec!["Event analyzed via AI".into()]);
-        let impact = val["impact"].as_str().unwrap_or("System telemetry recorded.").to_string();
-        let remediation_commands = val["remediation_commands"].as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_else(|| vec!["Get-Process".into()]);
-        let explanation = val["explanation"].as_str().unwrap_or(&content).to_string();
-
-        AiAnalysisResponse {
-            classification,
-            confidence_score,
-            severity,
-            summary,
-            mitre_attack,
-            indicators,
-            impact,
-            remediation_commands,
-            explanation,
-            model_used: model.clone(),
-        }
-    } else {
-        AiAnalysisResponse {
-            classification: "Automated Analysis Completed".into(),
-            confidence_score: 85,
-            severity: "medium".into(),
-            summary: content.lines().find(|l| !l.trim().is_empty()).unwrap_or("Security event analyzed").chars().take(200).collect(),
-            mitre_attack: Some(MitreMapping {
-                tactic: "Security Analysis".into(),
-                technique_id: "T1000".into(),
-                technique_name: "Automated SOC Assessment".into(),
-            }),
-            indicators: vec!["Log analyzed via Groq AI".into()],
-            impact: "Review the technical explanation for details.".into(),
-            remediation_commands: vec!["Get-WinEvent -ListLog * | Where-Object {$_.RecordCount -gt 0}".into()],
-            explanation: content,
-            model_used: model.clone(),
-        }
-    };
-
-    analysis.model_used = model;
-    Ok(Json(analysis))
-
-}
-
-async fn ai_chat_handler(
-    State(_state): State<AppState>,
-    Json(req): Json<AiChatRequest>,
-) -> Result<Json<AiChatResponse>, (StatusCode, String)> {
-    let api_key = get_groq_api_key();
-    let model = req.model.unwrap_or_else(|| "openai/gpt-oss-120b".to_string());
-
-    let mut messages = vec![
-        serde_json::json!({
-            "role": "system",
-            "content": "You are the Wazuh AI SOC Assistant & Threat Hunter. You assist security analysts in triaging alerts, analyzing Windows event logs, writing detection rules, and generating PowerShell remediation scripts for endpoints like laptop 'EVOFOX'. Be concise, highly technical, and format commands in code blocks."
-        })
-    ];
-
-    if let Some(hist) = req.history {
-        for h in hist {
-            messages.push(serde_json::json!({
-                "role": h.role,
-                "content": h.content
-            }));
-        }
-    }
-
-    messages.push(serde_json::json!({
-        "role": "user",
-        "content": req.message
-    }));
-
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "model": model,
-        "messages": messages,
-        "temperature": 0.5,
-        "max_completion_tokens": 2048
-    });
-
-    let resp = client.post("https://api.groq.com/openai/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Groq request failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let err_text = resp.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("Groq error ({}): {}", status, err_text)));
-    }
-
-    let res_json: serde_json::Value = resp.json().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse Groq response: {}", e)))?;
-
-    let content = res_json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("No response generated.")
-        .to_string();
-
-    Ok(Json(AiChatResponse {
-        response: content,
-        model_used: model,
-    }))
 }
 
 async fn get_xdr_incidents(

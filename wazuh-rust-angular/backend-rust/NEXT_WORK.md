@@ -81,16 +81,59 @@ sources, the SCA command runner, a modules host, upgrades, packaging; fix
 `siem-syscheckd` on Linux. The console's Linux download still ships the old
 `siem-agent-linux` prototype. Details: `wazuh-rust-angular/docs/LINUX_AGENT_COMPLETION_PLAN.md`.
 
-## 1. UI for integrations and syslog forwarding (small)
+## 1. Integrations and syslog forwarding — DONE 2026-10-23, per tenant
 
-- **Have:** `wazuh-integratord` and the five integration scripts (Slack,
-  PagerDuty, VirusTotal, Shuffle, Maltiverse) and `wazuh-csyslogd`, ported and
-  supervised by siem-api. They start when `ossec.conf` has `<integration>` /
-  `<syslog_output>` blocks.
-- **Missing:** console screens to add, edit and test those blocks (as the SMTP
-  settings page does for `<global>` e-mail); siem-api endpoints that write
-  `ossec.conf` and restart the daemon.
-- **Check:** a test message reaches a Slack webhook / a local syslog listener.
+The shared manager's `<integration>` / `<syslog_output>` would send every
+tenant's alerts to one place, so in the cloud forwarding is per tenant through
+the shared SOAR instead (crates/siem-api/src/soar.rs):
+- The analyst SOAR page (ndr-ui `analyst/soar`) works for SIEM tenants: siem-api
+  serves `/api/soar/*` (integrations, playbooks, runs, cases) on each tenant's own
+  `soar_*` tables, the same API and tables as ndr-engine.
+- Each tenant's playbooks run on its Wazuh alerts (`wazuh_manager::on_alerts`).
+  SIEM conditions: rule level / id / group, agent name, location.
+- Actions on a SIEM alert use the ported Wazuh code: the integration scripts
+  (Slack, PagerDuty, VirusTotal, Shuffle, Maltiverse, run as integratord runs
+  them), csyslogd's default/CEF/JSON/Splunk syslog, the raw alert for webhooks,
+  active response for `block_ip`. Teams, Discord, e-mail, cases: provigil-common.
+- provigil-common SOAR (both copies, kept identical with ndr/rust): the alert in
+  `SoarContext`, `SoarStore::soar_product_action`, the SIEM conditions, generic
+  syslog / PagerDuty / Shuffle for NDR, and the private-target guard (siem-api
+  turns it on; `SIEM_SOAR_ALLOW_PRIVATE_TARGETS=1` allows internal targets).
+- 30 runs per playbook per minute; secrets are never returned to the browser.
+- **Checked:** unit tests, the real Slack script against a local hook, all four
+  syslog formats over UDP, and `soar::tests::live_clickhouse` (run with
+  `--ignored`) on a scratch tenant database.
+- **Open:** a run through the console with auth-service up; the Teams/Discord/
+  e-mail texts and the case title are NDR-worded; ndr-engine still updates
+  `run_count` with one ClickHouse mutation per run.
+
+The Wazuh daemons stay ported and verified for single-customer installs.
+
+## 1b. Analyst AI on the SIEM side — DONE 2026-10-23
+
+The triage, AI activity and retrospective pages and the threat predictions
+were NDR only (ndr-engine, network data, shown only to NDR tenants). The SIEM
+has its own: one crate per feature (logic only, unit-tested), a thin siem-api
+module each on the tenant's Wazuh alerts, its own API (`/api/v1/siem/*`) and its
+own pages (ndr-ui `pages/siem-ai`, sidebar "SIEM AI & RESPONSE"):
+
+| Crate | siem-api module | API | Page (permission) |
+|---|---|---|---|
+| siem-ai (providers from Settings > AI, `GROQ_API_KEY` fallback, budget, untrusted-data fencing) | ai_assist.rs | `/api/v1/ai/chat`, `/api/v1/ai/analyze` | SIEM AI Copilot |
+| siem-triage (group by rule+agent+source, rules first, AI for the rest) | triage.rs (every 30 min) | `/api/v1/siem/triage*` | /analyst/siem-triage (siem-alerts) |
+| siem-suppression (expiring; never hides level >= 12) | suppressions.rs (checked in `on_alerts`) | `/api/v1/siem/suppressions*`, `/ai-activity` | /analyst/siem-suppressions (siem-alerts) |
+| siem-retro (past events through the live analysisd logtest, or keyword) | retro.rs | `/api/v1/siem/retrospective/*` | /analyst/siem-retrospective (siem-rules) |
+| siem-predict (next MITRE stage per agent, explainable; AI briefing only) | predictions.rs (every 15 min) | `/api/v1/siem/predictions*` | /analyst/siem-predictions (siem-mitre) |
+
+SIEM-only tenants also get the shared SOAR page in that menu.
+
+AI is recommend-only, off when the tenant's AI is off, and within hourly budgets
+(`SIEM_TRIAGE_AI_PER_HOUR`, `SIEM_PREDICT_AI_PER_HOUR`). Tables per tenant:
+`siem_suppressions`, `siem_analyst_state`, `siem_retro_scans`, `siem_threat_predictions`.
+- **Checked:** crate unit tests, and `analyst_tests` (`--ignored`) on ClickHouse and
+  the running analysisd in a scratch tenant.
+- **Open:** a real AI provider was not called in the tests (tenant AI off); the
+  pages were built and type-checked but not clicked through with auth-service up.
 
 ## 2. Per-tenant alert e-mails
 
@@ -100,6 +143,8 @@ sources, the SCA command runner, a modules host, upgrades, packaging; fix
   agents only. maild knows nothing about tenants, so this belongs in siem-api
   (it maps agents to tenants), sending through the same SMTP settings.
 - **Check:** an alert of tenant A's agent reaches A's recipients and not B's.
+- **Partly covered since 2026-10-23:** a tenant can add an Email integration
+  (its own SMTP) and an `email` playbook in SOAR; not yet through the platform SMTP.
 
 ## 3. PDF reports with charts
 

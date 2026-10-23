@@ -8,6 +8,7 @@ import {
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
   Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
+  ListFilter, EyeOff, Crosshair,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -132,6 +133,18 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal,    permission: 'siem-logtest' },
     ];
     const siemItems: NavItem[] = hasSiem ? siemCandidates.filter(i => has(i.permission!)) : [];
+
+    // SIEM analyst AI and response (siem-api /api/v1/siem/*), apart from the NDR's pages
+    const siemAiCandidates: NavItem[] = [
+      { label: 'SIEM Alert Triage',     route: '/analyst/siem-triage',        icon: ListFilter, permission: 'siem-alerts' },
+      { label: 'SIEM Suppressions',     route: '/analyst/siem-suppressions',  icon: EyeOff,    permission: 'siem-alerts' },
+      { label: 'SIEM Threat Predictions', route: '/analyst/siem-predictions', icon: Crosshair, permission: 'siem-mitre' },
+      { label: 'SIEM Retrospective',    route: '/analyst/siem-retrospective', icon: RotateCcw, permission: 'siem-rules' },
+    ];
+    const siemAiItems: NavItem[] = hasSiem ? siemAiCandidates.filter(i => has(i.permission!)) : [];
+    // the per-tenant SOAR (one page for NDR and SIEM): reachable from the SIEM menu too
+    if (hasSiem && !hasNdr && has('soar') && this.auth.hasFeature('soar'))
+      siemAiItems.push({ label: 'SOAR Playbooks', route: '/analyst/soar', icon: Zap, permission: 'soar' });
     // Data source management is a tenant-admin page; analysts never get it in their sidebar.
 
     // Pages copied from frontend-angular (/analyst/siem-classic/*), same permission model.
@@ -169,6 +182,7 @@ export class Sidebar implements OnInit, OnDestroy {
       ...(overviewItems.length  ? [{ section: 'OVERVIEW',  collapsed: false, items: overviewItems  }] : []),
       ...(threatItems.length    ? [{ section: 'THREATS',   collapsed: false, items: threatItems    }] : []),
       ...(siemItems.length      ? [{ section: 'SIEM & HOSTS', collapsed: false, items: siemItems   }] : []),
+      ...(siemAiItems.length    ? [{ section: 'SIEM AI & RESPONSE', collapsed: false, items: siemAiItems }] : []),
       ...(consoleItems.length   ? [{ section: 'SIEM CONSOLE', collapsed: false, items: consoleItems }] : []),
       ...(classicItems.length   ? [{ section: 'SIEM CLASSIC PAGES', collapsed: true, items: classicItems }] : []),
       ...(networkItems.length   ? [{ section: 'NETWORK',   collapsed: false, items: networkItems   }] : []),

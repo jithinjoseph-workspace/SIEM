@@ -1716,9 +1716,21 @@
               <label class="block text-[10px] text-on-surface-variant/70 mb-1">Field</label>
               <select [(ngModel)]="pbCondField" (ngModelChange)="onCondFieldChange()"
                 class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs outline-none focus:border-primary/50 transition-colors">
-                <option value="score">Risk Score</option>
-                <option value="severity">Severity</option>
-                <option value="threat_intel">Threat Intel</option>
+                <optgroup label="Any alert">
+                  <option value="score">Risk Score</option>
+                  <option value="severity">Severity</option>
+                  <option value="threat_intel">Threat Intel</option>
+                  <option value="sigma_tag">Tag / MITRE ID</option>
+                  <option value="src_ip">Source IP</option>
+                  <option value="dst_ip">Destination IP</option>
+                </optgroup>
+                <optgroup label="SIEM alert">
+                  <option value="rule_level">Rule Level (0-15)</option>
+                  <option value="rule_id">Rule ID</option>
+                  <option value="rule_group">Rule Group</option>
+                  <option value="agent_name">Agent Name</option>
+                  <option value="location">Log Location</option>
+                </optgroup>
               </select>
             </div>
             <div>
@@ -1743,7 +1755,7 @@
                 <option value="false">false</option>
               </select>
               <input *ngIf="condValueType === 'text'" [(ngModel)]="pbCondValue"
-                [placeholder]="pbCondField === 'score' ? '75' : 'CN'"
+                [placeholder]="condPlaceholder"
                 class="w-full bg-surface-container border border-outline/15 rounded-lg px-2.5 py-2 text-white text-xs font-mono outline-none focus:border-primary/50 transition-colors"/>
             </div>
           </div>
@@ -1762,8 +1774,18 @@
               <option value="discord">Send Discord Notification</option>
               <option value="email">Send Email Alert</option>
               <option value="webhook">Call Custom Webhook</option>
-              <option value="block_ip">Block Source IP (RST + Firewall)</option>
+              <option value="block_ip">Block Source IP (RST + Firewall; SIEM: active response on the agent)</option>
+              <option value="syslog">Forward to Syslog / SIEM</option>
+              <option value="pagerduty">Trigger PagerDuty Incident</option>
+              <option value="shuffle">Send to Shuffle</option>
+              <option value="virustotal">VirusTotal File Lookup (SIEM FIM alerts)</option>
+              <option value="maltiverse">Maltiverse IOC Lookup (SIEM alerts)</option>
             </select>
+          </div>
+          <div *ngIf="['syslog','pagerduty','shuffle','virustotal','maltiverse'].includes(pbActionType)"
+            class="text-xs text-on-surface-variant bg-surface-container border border-outline/8 px-3 py-2 rounded-lg">
+            Uses your enabled {{ pbActionType === 'syslog' ? 'Syslog / SIEM' : (getIntName(pbActionType)) }} integration (Integrations tab).
+            <span *ngIf="!hasIntegration(pbActionType)" class="text-amber-400"> None is set up yet.</span>
           </div>
           <div *ngIf="['slack','teams','discord','webhook'].includes(pbActionType)">
             <label class="block text-[10px] text-on-surface-variant/70 mb-1">Webhook URL</label>
@@ -1845,7 +1867,8 @@
             {key:'notify', label:'Notification'},
             {key:'firewall', label:'Firewall / Block'},
             {key:'switch', label:'Switch Isolation'},
-            {key:'cloud', label:'Cloud Firewall'}
+            {key:'cloud', label:'Cloud Firewall'},
+            {key:'forward', label:'SIEM Forwarding & Threat Intel'}
           ]">
             <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant/60 mb-1.5">{{ group.label }}</label>
             <div class="flex flex-wrap gap-1.5">
@@ -1872,7 +1895,13 @@
         <!-- Dynamic fields -->
         <div *ngFor="let field of selectedIntType?.fields">
           <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">{{ field.label }}</label>
-          <input [(ngModel)]="intConfig[field.key]" [placeholder]="field.placeholder" [type]="field.type || 'text'"
+          <select *ngIf="field.type === 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 transition-colors">
+            <option *ngFor="let o of field.options" [value]="o">{{ o }}</option>
+          </select>
+          <!-- a saved secret is not sent back: leaving it empty keeps it -->
+          <input *ngIf="field.type !== 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
+            [placeholder]="intConfig[field.key + '_set'] ? '•••••••• saved (leave empty to keep)' : field.placeholder" [type]="field.type || 'text'"
             class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
         </div>
 

@@ -34,7 +34,83 @@ pub async fn execute_action(
     let mut status = "failed".to_string();
     let mut detail = String::new();
 
+    'action: {
+    // the product (e.g. the SIEM with its Wazuh integrations) runs it its own way
+    if let Some((ok, d)) = store.soar_product_action(pb, &config, ctx).await {
+        status = if ok { "success" } else { "failed" }.to_string();
+        detail = d;
+        break 'action;
+    }
+    if matches!(pb.action_type.as_str(), "slack" | "discord" | "teams" | "webhook") {
+        if let Some(url) = config["webhook_url"].as_str() {
+            if let Err(e) = super::check_url(url).await {
+                detail = e;
+                break 'action;
+            }
+        }
+    }
+
     match pb.action_type.as_str() {
+        "syslog" => {
+            match find_integration(store, &pb.tenant_id, "syslog", &config).await {
+                Some(ic) => match send_syslog(&ic, ctx).await {
+                    Ok(d) => { status = "success".to_string(); detail = d; }
+                    Err(e) => detail = e,
+                },
+                None => detail = "No enabled syslog integration".to_string(),
+            }
+        }
+
+        "pagerduty" => {
+            let ic = find_integration(store, &pb.tenant_id, "pagerduty", &config).await;
+            let key = ic.as_ref().and_then(|c| c["routing_key"].as_str().or(c["api_key"].as_str())).unwrap_or("");
+            if key.is_empty() {
+                detail = "No enabled PagerDuty integration (routing key)".to_string();
+            } else {
+                let sev = match ctx.severity.as_str() { "CRITICAL" => "critical", "HIGH" => "error", "MEDIUM" => "warning", _ => "info" };
+                let event = json!({
+                    "routing_key": key,
+                    "event_action": "trigger",
+                    "payload": {
+                        "summary": format!("{} alert: {} -> {} (score {})", ctx.severity, src, dst, ctx.score as u32),
+                        "source": if src.is_empty() { "provigil" } else { src },
+                        "severity": sev,
+                        "custom_details": { "tags": ctx.tags, "src_ip": src, "dst_ip": dst, "score": ctx.score, "threat_intel": ctx.is_malicious, "id": ctx.community_id },
+                    },
+                });
+                match Client::new().post("https://events.pagerduty.com/v2/enqueue").json(&event).timeout(Duration::from_secs(10)).send().await {
+                    Ok(r) if r.status().is_success() => { status = "success".to_string(); detail = "PagerDuty event sent".to_string(); }
+                    Ok(r) => detail = format!("HTTP error: {}", r.status()),
+                    Err(e) => detail = format!("Request failed: {}", e),
+                }
+            }
+        }
+
+        "shuffle" => {
+            let ic = find_integration(store, &pb.tenant_id, "shuffle", &config).await;
+            match ic.as_ref().and_then(|c| c["webhook_url"].as_str()) {
+                Some(url) => {
+                    if let Err(e) = super::check_url(url).await {
+                        detail = e;
+                        break 'action;
+                    }
+                    let body = json!({ "severity": ctx.severity, "score": ctx.score, "src_ip": src, "dst_ip": dst, "tags": ctx.tags, "threat_intel": ctx.is_malicious, "id": ctx.community_id, "tenant_id": ctx.tenant_id });
+                    match Client::new().post(url).json(&body).timeout(Duration::from_secs(10)).send().await {
+                        Ok(r) if r.status().is_success() => { status = "success".to_string(); detail = "Shuffle webhook sent".to_string(); }
+                        Ok(r) => detail = format!("HTTP error: {}", r.status()),
+                        Err(e) => detail = format!("Request failed: {}", e),
+                    }
+                }
+                None => detail = "No enabled Shuffle integration (webhook URL)".to_string(),
+            }
+        }
+
+        "virustotal" | "maltiverse" => {
+            // they look up file hashes / IOCs of a SIEM alert: nothing to send for a network hit
+            status = "skipped".to_string();
+            detail = format!("{} needs a SIEM alert", pb.action_type);
+        }
+
         "slack" | "discord" => {
             if let Some(url) = config["webhook_url"].as_str() {
                 let msg = json!({
@@ -464,6 +540,7 @@ pub async fn execute_action(
             detail = format!("Unknown action_type: {}", pb.action_type);
         }
     }
+    }
 
     info!("SOAR Action [{}] for Playbook {}: {} - {}", pb.action_type, pb.name, status, detail);
 
@@ -478,4 +555,43 @@ pub async fn execute_action(
         tenant_id: pb.tenant_id.clone(),
     };
     let _ = store.soar_insert_run(&run).await;
+}
+
+/// The tenant's enabled integration of `kind`: the one `config.integration_id`
+/// names, else the first one. Its `config` object.
+pub async fn find_integration(store: &dyn SoarStore, tenant_id: &str, kind: &str, config: &Value) -> Option<Value> {
+    let want = config["integration_id"].as_str().filter(|s| !s.is_empty());
+    store
+        .soar_get_integrations(tenant_id)
+        .await
+        .into_iter()
+        .filter(|i| i["type"].as_str() == Some(kind) && i["enabled"] == json!(true))
+        .find(|i| want.map_or(true, |w| i["id"].as_str() == Some(w)))
+        .map(|i| i["config"].clone())
+}
+
+/// A generic syslog line (RFC 3164, local0) for a hit: CEF, or JSON when the
+/// integration's `format` is "json".
+async fn send_syslog(ic: &Value, ctx: &SoarContext) -> Result<String, String> {
+    let host = ic["host"].as_str().unwrap_or("").trim();
+    let port = ic["port"].as_u64().or_else(|| ic["port"].as_str().and_then(|p| p.trim().parse().ok())).unwrap_or(514) as u16;
+    if host.is_empty() {
+        return Err("Syslog integration has no host".into());
+    }
+    super::check_target(host, port).await?;
+    let now = Utc::now().format("%b %d %H:%M:%S");
+    let body = if ic["format"].as_str() == Some("json") {
+        json!({ "severity": ctx.severity, "score": ctx.score, "src_ip": ctx.src_ip, "dst_ip": ctx.dst_ip, "src_port": ctx.src_port, "dst_port": ctx.dst_port, "tags": ctx.tags, "threat_intel": ctx.is_malicious, "id": ctx.community_id, "tenant": ctx.tenant_id }).to_string()
+    } else {
+        let sev = match ctx.severity.as_str() { "CRITICAL" => 10, "HIGH" => 7, "MEDIUM" => 5, "LOW" => 3, _ => 1 };
+        let esc = |s: &str| s.replace('\\', "\\\\").replace('=', "\\=").replace('\n', " ");
+        format!(
+            "CEF:0|Provigil|XDR|1.0|soar-alert|{}|{sev}|src={} dst={} spt={} dpt={} flexNumber1={:.0} flexNumber1Label=riskScore flexString1={} flexString1Label=tenant msg={}",
+            esc(&ctx.severity).replace('|', "\\|"), ctx.src_ip, ctx.dst_ip, ctx.src_port, ctx.dst_port, ctx.score, esc(&ctx.tenant_id), esc(&ctx.tags.join(","))
+        )
+    };
+    let line = format!("<{}>{now} provigil {body}", 16 * 8 + 4);
+    let sock = tokio::net::UdpSocket::bind(if host.contains(':') { "[::]:0" } else { "0.0.0.0:0" }).await.map_err(|e| e.to_string())?;
+    sock.send_to(line.as_bytes(), (host, port)).await.map_err(|e| format!("send to {host}:{port}: {e}"))?;
+    Ok(format!("Syslog sent to {host}:{port}"))
 }

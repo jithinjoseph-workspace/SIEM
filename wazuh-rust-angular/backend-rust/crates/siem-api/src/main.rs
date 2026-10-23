@@ -27,6 +27,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub mod agent_keys_store;
 pub mod db;
 pub mod parsers_store;
+pub mod redswarm_store;
 pub mod vulnerability;
 pub mod syslog;
 pub mod syslog_tenancy;
@@ -305,6 +306,9 @@ async fn main() {
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
     };
 
+    // Red Swarm audit trail (history, gaps, draft rules): ClickHouse is the master copy.
+    redswarm_store::load(&state).await;
+
     // Start Red Swarm Continuous Background Swarm Engine
     {
         let swarm_state = state.clone();
@@ -412,6 +416,7 @@ async fn main() {
             },
         );
     }
+    redswarm_store::spawn_sync(state.clone());
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
     if std::env::var("SIEM_DEMO_DATA").is_ok_and(|v| v == "1") {
@@ -5482,6 +5487,7 @@ async fn post_redswarm_apply_rule_handler(
     match state.redswarm.audit().approve_rule(id) {
         Ok(rule) => {
             info!("Analyst {} APPROVED synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            redswarm_store::upsert_draft(&state, &rule).await;
 
             // 1. Hot reload into active in-memory correlation engine
             state.engine.add_wazuh_rules_xml(&rule.rule_xml);
@@ -5525,6 +5531,7 @@ async fn post_redswarm_rollback_rule_handler(
     match state.redswarm.audit().rollback_rule(id) {
         Ok(rule) => {
             warn!("Analyst {} ROLLED BACK synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            redswarm_store::upsert_draft(&state, &rule).await;
             (StatusCode::OK, Json(serde_json::json!({ "status": "rolled_back", "rule": rule }))).into_response()
         }
         Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),

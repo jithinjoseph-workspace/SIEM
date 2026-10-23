@@ -27,9 +27,10 @@ use crate::{tenancy, AppState};
 /// The daemons, in start order.
 #[cfg(not(unix))]
 const DAEMONS: [&str; 8] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd"];
-/// On Linux the manager also runs execd for responses with `<location>` local/server.
+/// On Linux the manager also runs execd for responses with `<location>` local/server,
+/// and agentlessd (its expect scripts need a Unix shell).
 #[cfg(unix)]
-const DAEMONS: [&str; 9] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd", "wazuh-execd"];
+const DAEMONS: [&str; 10] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd", "wazuh-execd", "wazuh-agentlessd"];
 /// The manager's own response programs (Linux).
 #[cfg(unix)]
 const MANAGER_AR: [&str; 1] = ["firewall-drop"];
@@ -141,7 +142,7 @@ fn ossec_conf() -> String {
 fn prepare_home(home: &Path) -> Result<(), String> {
     for d in [
         "bin", "etc/decoders", "etc/rules", "etc/lists", "etc/shared/default", "ruleset", "logs/alerts", "logs/archives", "logs/wazuh",
-        "logs/firewall", "queue/sockets", "queue/db", "queue/alerts", "queue/rids", "queue/diff", "queue/fts", "queue/tasks",
+        "logs/firewall", "queue/sockets", "queue/db", "queue/alerts", "queue/rids", "queue/diff", "queue/agentless", "queue/fts", "queue/tasks",
         "var/run", "var/db", "var/multigroups", "var/download", "stats", "backup/db", "tmp",
     ] {
         std::fs::create_dir_all(home.join(d)).map_err(|e| format!("{d}: {e}"))?;
@@ -169,6 +170,7 @@ fn prepare_home(home: &Path) -> Result<(), String> {
         once(src.join("ruleset").join("lists").join(l), &format!("etc/lists/{l}"))?;
     }
     once(src.join("etc").join("internal_options.conf"), "etc/internal_options.conf")?;
+    install_agentless_scripts(&src, home)?;
     once(src.join("etc").join("local_decoder.xml"), "etc/decoders/local_decoder.xml")?;
     once(src.join("etc").join("local_rules.xml"), "etc/rules/local_rules.xml")?;
     let lio = home.join("etc").join("local_internal_options.conf");
@@ -186,6 +188,25 @@ fn prepare_home(home: &Path) -> Result<(), String> {
     ensure_ar_commands(&conf);
     if !keys_file(home).exists() {
         std::fs::write(keys_file(home), "").map_err(|e| format!("client.keys: {e}"))?;
+    }
+    Ok(())
+}
+
+/// The `agentless/` expect scripts, refreshed on every start (extra files such as
+/// `.passlist` are kept). agentlessd refuses a script its user can write.
+fn install_agentless_scripts(src: &Path, home: &Path) -> Result<(), String> {
+    let from = src.join("src").join("agentlessd").join("scripts");
+    let to = home.join("agentless");
+    std::fs::create_dir_all(&to).map_err(|e| format!("agentless: {e}"))?;
+    for f in std::fs::read_dir(&from).map_err(|e| format!("{}: {e}", from.display()))?.flatten() {
+        let dst = to.join(f.file_name());
+        let _ = std::fs::remove_file(&dst); // the previous copy is read-only
+        std::fs::copy(f.path(), &dst).map_err(|e| format!("agentless/{}: {e}", f.file_name().to_string_lossy()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o550));
+        }
     }
     Ok(())
 }
@@ -309,7 +330,7 @@ fn install_binaries(home: &Path) -> Result<(), String> {
     for (n, dst) in targets {
         let found = search.iter().map(|s| s.join(&n)).filter(|p| p.is_file()).max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {
-            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd -p siem-execd -p siem-active-response)"));
+            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
         };
         let newer = match (src.metadata().and_then(|m| m.modified()), dst.metadata().and_then(|m| m.modified())) {
             (Ok(a), Ok(b)) => a > b,
@@ -469,8 +490,8 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     let _ = tx.send(());
                 }
                 let st = child.wait();
-                // maild / integratord / csyslogd exit 0 when not configured: start again once ossec.conf changes
-                if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd") && st.as_ref().is_ok_and(|s| s.success()) {
+                // maild / integratord / csyslogd / agentlessd exit 0 when not configured: start again once ossec.conf changes
+                if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd" | "wazuh-agentlessd") && st.as_ref().is_ok_and(|s| s.success()) {
                     info!("Wazuh manager: {d} idle (not configured)");
                     let conf = home.join("etc/ossec.conf");
                     let mtime = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();

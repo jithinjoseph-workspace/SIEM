@@ -1,0 +1,12 @@
+#!/bin/sh
+echo "$*" >> out/argv.log
+[ "$1" = test ] && exit 0
+echo "INFO: connected"
+echo "FWD: 1234:33188:0:0:abcdef0123456789abcdef0123456789:0123456789abcdef0123456789abcdef01234567 /etc/passwd"
+printf 'LOG: crlf line\r\n'
+echo "LOG: from stderr" >&2
+echo "unprefixed output"
+printf 'LOG: %02100d\n' 7
+echo "STORE: ignored without periodic_diff"
+echo "after store"
+exit 0

@@ -63,7 +63,7 @@ Angular console (not ported on purpose).
 | Manager | `wazuh-reportd` CLI | DONE 2026-10-22 |
 | Manager | cloud modules: AWS, Azure, GCP, Office 365, GitHub, MS Graph, Docker | medium each |
 | Manager | fluent forwarder (`wm_fluent`) | small |
-| Manager | `wazuh-agentlessd` | medium |
+| Manager | `wazuh-agentlessd` | DONE 2026-10-23 |
 | Manager | `wazuh-clusterd` | large |
 | Windows agent | github / office365 / ms-graph / cis-cat modules (rarely used on agents) | small-medium |
 | Windows agent | MSI installer, code signing, "update all agents" (packaging) | medium |
@@ -128,6 +128,10 @@ listener. In Wazuh these are wodles (mostly Python) run by modulesd.
 Monitoring devices without an agent (routers, firewalls, old servers) over
 SSH: integrity of files and command output, with Wazuh's expect scripts.
 - **Check:** against the C daemon with a local SSH server.
+- **DONE 2026-10-23** (crates/siem-agentlessd, tests/oracle: config, queue messages, argv,
+  getconfig, diff tree and log identical to the C daemon on fake scripts; supervised on Linux,
+  scripts installed to `agentless/`). Still open: a run of the real expect scripts
+  against an SSH server (needs `expect` in WSL), a UI for `<agentless>`.
 
 ## 7. wazuh-clusterd (biggest)
 

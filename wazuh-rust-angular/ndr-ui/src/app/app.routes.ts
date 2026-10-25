@@ -56,6 +56,7 @@ export const routes: Routes = [
       { path: 'siem-predictions',   canActivate: [authGuard], data: { permission: 'siem-mitre' },  loadComponent: () => import('../pages/siem-ai/predictions/siem-predictions').then(m => m.SiemPredictions) },
       { path: 'siem-retrospective', canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/retrospective/siem-retrospective').then(m => m.SiemRetrospective) },
       { path: 'siem-my-insights',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/insights/siem-my-insights').then(m => m.SiemMyInsights) },
+      { path: 'siem-memory',        canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/memory/siem-memory').then(m => m.SiemMemory) },
 
       /* SIEM pages copied from frontend-angular (pages/siem-classic) */
       {

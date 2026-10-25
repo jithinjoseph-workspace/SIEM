@@ -8,7 +8,7 @@ import {
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
   Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
-  ListFilter, EyeOff, Crosshair, Gauge,
+  ListFilter, EyeOff, Crosshair, Gauge, Brain,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -141,6 +141,7 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'SIEM Threat Predictions', route: '/analyst/siem-predictions', icon: Crosshair, permission: 'siem-mitre' },
       { label: 'SIEM Retrospective',    route: '/analyst/siem-retrospective', icon: RotateCcw, permission: 'siem-rules' },
       { label: 'My Workload & AI Use',  route: '/analyst/siem-my-insights',   icon: Gauge,     permission: 'siem-alerts' },
+      { label: 'Security Memory',       route: '/analyst/siem-memory',        icon: Brain,     permission: 'siem-alerts' },
     ];
     const siemAiItems: NavItem[] = hasSiem ? siemAiCandidates.filter(i => has(i.permission!)) : [];
     // the per-tenant SOAR (one page for NDR and SIEM): reachable from the SIEM menu too

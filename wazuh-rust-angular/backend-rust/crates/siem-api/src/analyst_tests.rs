@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::Json;
 use serde_json::json;
 
@@ -349,6 +349,81 @@ async fn history_and_inventory_from_clickhouse() {
     });
     let res = futures_util::FutureExt::catch_unwind(r).await;
     for d in [da, db_b] {
+        st.db.root().query(&format!("DROP DATABASE IF EXISTS `{d}`")).execute().await.unwrap();
+    }
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+/// Organizational memory: a decided triage group and a closed case are found
+/// again for similar new activity, with the reasons; search; the one-time import.
+#[tokio::test]
+#[ignore]
+async fn org_memory_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let (tenant, t2) = (format!("memtest{}", std::process::id()), format!("memimp{}", std::process::id()));
+    let (dbname, db2) = (st.db.provision_tenant_db(&tenant).await.unwrap(), st.db.provision_tenant_db(&t2).await.unwrap());
+    st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": tenant, "name": tenant, "ai_enabled": false })).unwrap());
+    let c = AuthCtx { role: "analyst".into(), username: "priya".into(), ..ctx(&tenant) };
+    let r = std::panic::AssertUnwindSafe(async {
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        let mk = |agent: &str, ts: u64| {
+            let mut a = alert(5710, 5, "sshd: Attempt to login using a non-existent user", agent, "203.0.113.9", ts);
+            a.rule.groups = vec!["syslog".into(), "sshd".into(), "authentication_failed".into()];
+            a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
+            crate::tenancy::tag_alert(a, &tenant)
+        };
+        assert!(st.db.insert_alerts(&[mk("001", now - 120_000)]).await.is_empty());
+
+        // 1. an analyst keeps a triage group for review: a lesson with the alert's groups and technique
+        let s = crate::triage::run_for_tenant(&st, &tenant, false).await.unwrap();
+        let first = s.recs.iter().find(|r| r.agent_id == "001").unwrap().clone();
+        let _ = crate::triage::dismiss(State(st.clone()), Extension(c.clone()), Path(first.id.clone())).await;
+        let all = crate::org_memory::search(State(st.clone()), Extension(c.clone()), Query(crate::org_memory::SearchQuery::default())).await.0;
+        assert_eq!(all["total"], 1, "{all}");
+        let l = &all["lessons"][0];
+        assert_eq!((l["outcome"].as_str(), l["decided_by"].as_str(), l["techniques"][0].as_str()), (Some("kept_for_review"), Some("priya"), Some("T1110")), "{l}");
+
+        // 2. the same source hits another host: the earlier decision is a precedent
+        assert!(st.db.insert_alerts(&[mk("002", now - 60_000)]).await.is_empty());
+        let s = crate::triage::run_for_tenant(&st, &tenant, false).await.unwrap();
+        let second = s.recs.iter().find(|r| r.agent_id == "002").unwrap().clone();
+        let p = crate::org_memory::triage_precedents(State(st.clone()), Extension(c.clone()), Path(second.id)).await.0;
+        let top = &p["precedents"][0];
+        assert_eq!(top["lesson"]["id"], format!("triage:{}", first.key), "{p}");
+        let why: Vec<&str> = top["reasons"].as_array().unwrap().iter().filter_map(|x| x.as_str()).collect();
+        assert!(why.contains(&"same rule 5710") && why.contains(&"same source IP 203.0.113.9") && why.contains(&"same MITRE technique T1110"), "{why:?}");
+        // its own lesson is never its precedent
+        let own = crate::org_memory::triage_precedents(State(st.clone()), Extension(c.clone()), Path(first.id)).await.0;
+        assert!(own["precedents"].as_array().unwrap().iter().all(|x| x["lesson"]["id"] != format!("triage:{}", first.key)));
+
+        // 3. a case closed as a confirmed incident keeps the analyst's reasoning
+        let cr = crate::soar::create_case(State(st.clone()), Extension(c.clone()), Json(json!({ "title": "Rule 5710 brute force against web servers", "src_ip": "198.51.100.77", "tags": ["sshd", "T1110"], "severity": "HIGH" }))).await.0;
+        let cid = cr["id"].as_str().unwrap().to_string();
+        let _ = crate::soar::add_case_comment(State(st.clone()), Extension(c.clone()), Path(cid.clone()), Json(json!({ "comment": "Confirmed attack from a known botnet, blocked at the perimeter firewall" }))).await;
+        let _ = crate::soar::update_case_status(State(st.clone()), Extension(c.clone()), Path(cid.clone()), Json(json!({ "status": "Resolved" }))).await;
+        let sim = crate::org_memory::similar(State(st.clone()), Extension(c.clone()), Json(serde_json::from_value(json!({ "techniques": ["T1110"], "src_ips": ["198.51.100.77"] })).unwrap())).await.0;
+        let case = sim["precedents"].as_array().unwrap().iter().find(|x| x["lesson"]["id"] == format!("case:{cid}")).unwrap_or_else(|| panic!("{sim}"));
+        assert_eq!(case["lesson"]["outcome"], "true_positive");
+        assert_eq!(case["outcome_label"], "Confirmed incident");
+        assert_eq!(case["lesson"]["rule_ids"][0], 5710, "rule id read from the title");
+        assert!(case["lesson"]["rationale"].as_str().unwrap().contains("perimeter firewall"));
+        let found = crate::org_memory::search(State(st.clone()), Extension(c.clone()), Query(crate::org_memory::SearchQuery { q: "botnet".into(), ..Default::default() })).await.0;
+        assert_eq!(found["lessons"].as_array().unwrap().len(), 1, "{found}");
+
+        // 4. another tenant's history: only its own, and the one-time import of a case closed earlier
+        let c2 = AuthCtx { role: "analyst".into(), ..ctx(&t2) };
+        let cr2 = crate::soar::create_case(State(st.clone()), Extension(c2.clone()), Json(json!({ "title": "Old phishing case", "src_ip": "192.0.2.5" }))).await.0;
+        st.db.tenant_client(&t2).query("INSERT INTO soar_cases (id, case_number, title, status, src_ip, tenant_id) SELECT id, case_number, title, 'False Positive', src_ip, tenant_id FROM soar_cases FINAL WHERE id = ?").bind(cr2["id"].as_str().unwrap()).execute().await.unwrap();
+        assert_eq!(crate::org_memory::backfill(&st, &t2).await, 1);
+        assert_eq!(crate::org_memory::backfill(&st, &t2).await, 0, "only once");
+        let other = crate::org_memory::search(State(st.clone()), Extension(c2.clone()), Query(crate::org_memory::SearchQuery::default())).await.0;
+        assert_eq!((other["total"].as_u64(), other["lessons"][0]["outcome"].as_str()), (Some(1), Some("false_positive")), "{other}");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    for d in [dbname, db2] {
         st.db.root().query(&format!("DROP DATABASE IF EXISTS `{d}`")).execute().await.unwrap();
     }
     if let Err(p) = res {

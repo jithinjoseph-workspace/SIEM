@@ -162,6 +162,20 @@ Memory now only feeds the live view and background jobs; the manager's files
 - **Open:** counts are done in Rust over at most 50,000 rows per window (move to
   SQL GROUP BY for very busy tenants); no ClickHouse TTL / file retention yet.
 
+## 1d. Organizational security memory — built 2026-10-25
+
+Crate siem-org-memory + siem-api org_memory.rs: a lesson per decided triage group
+and per closed SOAR case (rules, MITRE techniques, rule groups, hosts, source IPs,
+users, outcome, the reason and the case comments, the playbooks that worked, who
+and when), in `siem_org_memory` per tenant, kept 7 years. Similar new activity is
+matched like SOC platforms' "similar incidents" (same rule 40, technique 20,
+source IP 25, host 15, user 15, groups, wording; shown from 30) and shown as
+"Seen before" when a triage group's alerts are opened; the Security Memory page
+searches it. Existing closed cases and triage decisions are imported once at start.
+Context only: nothing is hidden or closed by a precedent.
+- **Check:** `org_memory_end_to_end` (`--ignored`) needs ClickHouse up (it was down
+  when this was written).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

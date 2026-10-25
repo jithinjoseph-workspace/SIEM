@@ -92,6 +92,17 @@ export class SiemTriage implements OnInit {
       },
       error: e => this.fail(e),
     });
+    // what was decided before about similar activity (organizational memory)
+    this.siem.getTriagePrecedents(r.id).subscribe({
+      next: x => this.precedents.set({ ...this.precedents(), [r.id]: x?.precedents ?? [] }),
+      error: () => this.precedents.set({ ...this.precedents(), [r.id]: [] }),
+    });
+  }
+
+  precedents = signal<Record<string, any[]>>({});
+
+  outcomeClass(o: string): string {
+    return o === 'true_positive' ? 'text-rose-300' : o === 'false_positive' || o === 'benign' ? 'text-emerald-300' : 'text-slate-300';
   }
 
   when(ts: number): string {

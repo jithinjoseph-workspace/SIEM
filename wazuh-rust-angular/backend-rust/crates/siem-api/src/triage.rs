@@ -269,6 +269,7 @@ pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<Auth
     }
     let _ = save(&state, &t, &st).await;
     crate::insights::log(&state, &t, &ctx.username, "apply", Some(&rec)).await;
+    crate::org_memory::record(&state, &t, &crate::org_memory::from_triage(&state, &t, &rec, "applied", &ctx.username).await).await;
     page(&state, &t, &ctx.username, &st, json!({ "applied_hours": hours.clamp(siem_suppression::MIN_HOURS, siem_suppression::MAX_HOURS), "also_covered_groups": 0 })).await
 }
 
@@ -287,5 +288,6 @@ pub async fn dismiss(State(state): State<AppState>, Extension(ctx): Extension<Au
     };
     let _ = save(&state, &t, &st).await;
     crate::insights::log(&state, &t, &ctx.username, "dismiss", Some(&rec)).await;
+    crate::org_memory::record(&state, &t, &crate::org_memory::from_triage(&state, &t, &rec, "dismissed", &ctx.username).await).await;
     page(&state, &t, &ctx.username, &st, Value::Null).await
 }

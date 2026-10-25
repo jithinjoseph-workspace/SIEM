@@ -35,6 +35,7 @@ members = [
     "crates/siem-retro",
     "crates/siem-predict",
     "crates/siem-analyst-insight",
+    "crates/siem-org-memory",
     "crates/siem-reportd",
     "crates/siem-logcollector",
     "crates/siem-parser-gen",

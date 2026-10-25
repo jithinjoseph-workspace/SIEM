@@ -941,7 +941,15 @@ pub async fn update_case_status(State(state): State<AppState>, Extension(ctx): E
     }
     let closed = matches!(status, "Resolved" | "Closed" | "False Positive");
     match store(&state).rewrite_case(&ctx.scope(), &id, &[("status", status)], closed).await {
-        Ok(()) => Json(json!({ "status": "success", "message": "Status updated" })),
+        Ok(()) => {
+            // a closed case becomes part of the tenant's security memory
+            if closed {
+                if let Some(l) = crate::org_memory::from_case(&state, &ctx.scope(), &id, &ctx.username).await {
+                    crate::org_memory::record(&state, &ctx.scope(), &l).await;
+                }
+            }
+            Json(json!({ "status": "success", "message": "Status updated" }))
+        }
         Err(e) => err(e),
     }
 }

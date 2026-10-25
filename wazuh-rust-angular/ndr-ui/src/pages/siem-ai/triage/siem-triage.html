@@ -146,6 +146,21 @@
                 <span class="text-slate-500 whitespace-nowrap">{{ a.location }}</span>
                 <span class="font-mono text-slate-300 break-all">{{ a.full_log }}</span>
               </div>
+
+              <div class="text-xs uppercase text-slate-400 mt-4 mb-2">Seen before (security memory)</div>
+              <div *ngIf="!precedents()[r.id]" class="text-sm text-slate-500">Looking…</div>
+              <div *ngIf="precedents()[r.id]?.length === 0" class="text-sm text-slate-500">Nothing similar was decided before.</div>
+              <div *ngFor="let p of precedents()[r.id]" class="text-xs border-t border-slate-800/60 py-2">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span class="font-semibold" [ngClass]="outcomeClass(p.lesson.outcome)">{{ p.outcome_label }}</span>
+                  <span class="text-slate-200">{{ p.lesson.title }}</span>
+                  <span class="text-slate-500">{{ when(p.lesson.decided_at) }} · {{ p.lesson.decided_by }}</span>
+                  <span class="text-slate-500">{{ p.score }}% similar: {{ p.reasons.join(', ') }}</span>
+                </div>
+                <div class="text-slate-300 mt-1 whitespace-pre-line">{{ p.lesson.rationale }}</div>
+                <div *ngIf="p.lesson.actions?.length" class="text-slate-400 mt-1">Response: {{ p.lesson.actions.join(', ') }}</div>
+              </div>
+              <div *ngIf="precedents()[r.id]?.length" class="text-[11px] text-slate-500 mt-1">Past decisions are context, not a verdict: the same rule can be noise once and an attack the next time.</div>
             </td>
           </tr>
           </ng-container>

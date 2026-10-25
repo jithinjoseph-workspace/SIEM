@@ -2680,6 +2680,7 @@ dependencies = [
  "siem-engine",
  "siem-ipc",
  "siem-maild",
+ "siem-org-memory",
  "siem-parser-gen",
  "siem-predict",
  "siem-redswarm",
@@ -3028,6 +3029,13 @@ dependencies = [
 [[package]]
 name = "siem-njson"
 version = "0.1.0"
+
+[[package]]
+name = "siem-org-memory"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "siem-parser-gen"

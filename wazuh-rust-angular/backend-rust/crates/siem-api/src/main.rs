@@ -48,6 +48,7 @@ pub mod predictions;
 pub mod insights;
 pub mod history;
 pub mod inventory_store;
+pub mod org_memory;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -458,6 +459,8 @@ async fn main() {
     predictions::spawn(state.clone());
     // agents' inventory (wazuh-db / siem-agents) copied to ClickHouse every 10 min
     inventory_store::spawn(state.clone());
+    // security memory: import the cases and triage decisions made before it existed
+    org_memory::spawn(state.clone());
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
@@ -639,6 +642,10 @@ async fn main() {
         .route("/api/v1/siem/triage/:id/apply", post(triage::apply))
         .route("/api/v1/siem/triage/:id/dismiss", post(triage::dismiss))
         .route("/api/v1/siem/triage/:id/inspect", post(triage::inspect))
+        // organizational security memory: past decisions, found again ("seen before")
+        .route("/api/v1/siem/triage/:id/precedents", get(org_memory::triage_precedents))
+        .route("/api/v1/siem/memory", get(org_memory::search))
+        .route("/api/v1/siem/memory/similar", post(org_memory::similar))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))

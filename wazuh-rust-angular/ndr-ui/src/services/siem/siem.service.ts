@@ -448,6 +448,16 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/inspect`, {});
   }
 
+  /** Past decisions about similar activity (organizational security memory). */
+  getTriagePrecedents(id: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/precedents`);
+  }
+
+  searchSecurityMemory(q: string, outcome: string, limit = 100): Observable<any> {
+    const p = new URLSearchParams({ q, outcome, limit: String(limit) });
+    return this.http.get(`${this.apiUrl}/api/v1/siem/memory?${p.toString()}`);
+  }
+
   /** The caller's own workload and AI-trust calibration. */
   getMyInsights(): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/insights/me`);

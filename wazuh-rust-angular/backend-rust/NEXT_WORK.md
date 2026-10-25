@@ -127,6 +127,17 @@ own pages (ndr-ui `pages/siem-ai`, sidebar "SIEM AI & RESPONSE"):
 
 SIEM-only tenants also get the shared SOAR page in that menu.
 
+**Analyst workload & AI-trust calibration** (crate siem-analyst-insight, insights.rs):
+triage and suppression actions are logged per tenant (`siem_analyst_actions`, 30 days);
+per analyst it estimates workload (decisions/h, hours without a break, queue) and use of
+AI suggestions (acceptance, accepting within 10 s without looking, hidden hosts that later
+went critical). Over-reliance makes triage require "View alerts" before hiding and show the
+AI verdict after looking; explanations are detailed for new analysts, brief for experienced
+ones under load; the largest groups come first under load. It only adds checks.
+Visibility: the analyst (My Workload & AI Use, `/api/v1/siem/insights/me`), the tenant admin
+(tenant-admin "Analyst Insights", `/team`, on/off `/settings`); never the super admin.
+Checked by `analyst_insights_end_to_end` (`--ignored`).
+
 AI is recommend-only, off when the tenant's AI is off, and within hourly budgets
 (`SIEM_TRIAGE_AI_PER_HOUR`, `SIEM_PREDICT_AI_PER_HOUR`). Tables per tenant:
 `siem_suppressions`, `siem_analyst_state`, `siem_retro_scans`, `siem_threat_predictions`.
@@ -134,6 +145,22 @@ AI is recommend-only, off when the tenant's AI is off, and within hourly budgets
   the running analysisd in a scratch tenant.
 - **Open:** a real AI provider was not called in the tests (tenant AI off); the
   pages were built and type-checked but not clicked through with auth-service up.
+
+## 1c. ClickHouse is where the pages read history — DONE 2026-10-23
+
+The dashboard, MITRE, compliance, FIM summary, reports, rule hit counts, health,
+ARIA and the AI chat read the tenant's last 7 days from ClickHouse (history.rs),
+not siem-api's in-memory window (latest 50,000 of all tenants, empty after a
+restart). `siem_alerts.alert_json` keeps the whole alert (groups, decoded fields,
+FIM data); rows from before it have the old columns only. Agent inventory (OS,
+hardware, packages, ports, interfaces, processes) is copied to
+`siem_agent_inventory` every 10 min from wazuh-db / siem-agents and the inventory
+endpoints read it (inventory_store.rs; wazuh-db is paged, a reply is at most 64 KB).
+Memory now only feeds the live view and background jobs; the manager's files
+(alerts.json, archives.json, wazuh-db) stay as the backup copy.
+- **Checked:** `history_and_inventory_from_clickhouse` (`--ignored`).
+- **Open:** counts are done in Rust over at most 50,000 rows per window (move to
+  SQL GROUP BY for very busy tenants); no ClickHouse TTL / file retention yet.
 
 ## 2. Per-tenant alert e-mails
 

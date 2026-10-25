@@ -443,6 +443,25 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/dismiss`, {});
   }
 
+  /** The group's latest alerts (also records that the analyst looked at them). */
+  inspectSiemTriage(id: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/triage/${encodeURIComponent(id)}/inspect`, {});
+  }
+
+  /** The caller's own workload and AI-trust calibration. */
+  getMyInsights(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/insights/me`);
+  }
+
+  /** Every analyst of the tenant (tenant admin only). */
+  getTeamInsights(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/insights/team`);
+  }
+
+  putInsightSettings(enabled: boolean): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/siem/insights/settings`, { enabled });
+  }
+
   getSiemAiActivity(): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/ai-activity`);
   }

@@ -188,3 +188,170 @@ async fn analyst_ai_end_to_end() {
         std::panic::resume_unwind(p);
     }
 }
+
+/// An analyst who hides AI suggestions within seconds without looking: triage
+/// makes them open the alerts first. Who sees the numbers: the analyst, the
+/// tenant admin; not the super admin; nobody once the tenant admin turns it off.
+#[tokio::test]
+#[ignore]
+async fn analyst_insights_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let tenant = format!("instest{}", std::process::id());
+    let dbname = st.db.provision_tenant_db(&tenant).await.unwrap();
+    st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": tenant, "name": tenant, "ai_enabled": false })).unwrap());
+    let analyst = AuthCtx { role: "analyst".into(), ..ctx(&tenant) };
+    let admin = ctx(&tenant); // tenant_admin
+    let sup = AuthCtx { role: "super_admin".into(), requested_tenant: Some(tenant.clone()), ..ctx(&tenant) };
+    let body = |r: axum::response::Response| async move {
+        let s = r.status();
+        let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        (s, serde_json::from_slice::<serde_json::Value>(&b).unwrap_or_default())
+    };
+
+    let r = std::panic::AssertUnwindSafe(async {
+        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+        let tc = st.db.tenant_client(&tenant);
+        for (rule, agent) in [(503u32, "001"), (503, "001"), (591, "002")] {
+            tc.query("INSERT INTO siem_alerts (id, timestamp, agent_id, agent_name, agent_ip, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, mitre_technique, full_log, src_ip, dst_ip, user, location) VALUES (?, ?, ?, ?, '', ?, 3, 'routine', '', '', '', 'log line', '', '', '', 'ossec')")
+                .bind(uuid::Uuid::new_v4().to_string()).bind(now_ms - 60_000).bind(agent).bind(format!("host-{agent}")).bind(rule).execute().await.unwrap();
+        }
+        let s = crate::triage::run_for_tenant(&st, &tenant, false).await.unwrap();
+        let rec = s.recs.iter().find(|r| r.rule_id == 503).unwrap().clone();
+
+        // 12 AI "benign" suggestions hidden 3 s after opening the page, never looked at
+        let t0 = chrono::Utc::now().timestamp() as u64 - 1800;
+        for i in 0..12u64 {
+            for (dt, action) in [(0, "view"), (3, "apply")] {
+                tc.query("INSERT INTO siem_analyst_actions (ts, user, action, rec_id, verdict, source, confidence) VALUES (?, 'tester', ?, ?, 'benign', 'ai', 90)")
+                    .bind(t0 + i * 60 + dt).bind(action).bind(format!("old-{i}")).execute().await.unwrap();
+            }
+        }
+        let (code, me) = body(crate::insights::me(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(code, 200);
+        let c = &me["calibration"];
+        assert_eq!((c["trust"].as_str(), c["require_inspect"].as_bool(), c["depth"].as_str()), (Some("over_reliance"), Some(true), Some("detailed")), "{me}");
+        assert!(c["notes"].as_array().unwrap().iter().any(|n| n.as_str().unwrap().contains("without opening")));
+
+        // triage shows the calibration and makes them look first
+        let page = crate::triage::get(State(st.clone()), Extension(analyst.clone())).await.0;
+        assert_eq!(page["calibration"]["hide_ai_verdict_until_inspect"], true);
+        let r1 = crate::triage::apply(State(st.clone()), Extension(analyst.clone()), Path(rec.id.clone()), None).await.0;
+        assert!(r1["message"].as_str().unwrap_or("").contains("View alerts"), "{r1}");
+        let ins = crate::triage::inspect(State(st.clone()), Extension(analyst.clone()), Path(rec.id.clone())).await.0;
+        assert_eq!(ins["alerts"].as_array().unwrap().len(), 2, "{ins}");
+        let r2 = crate::triage::apply(State(st.clone()), Extension(analyst.clone()), Path(rec.id.clone()), None).await.0;
+        assert_eq!(r2["summary"]["applied"], 1, "{r2}");
+
+        // who sees what
+        let (code, team) = body(crate::insights::team(State(st.clone()), Extension(admin.clone())).await).await;
+        assert_eq!(code, 200);
+        let tester = team["analysts"].as_array().unwrap().iter().find(|a| a["metrics"]["user"] == "tester").unwrap_or_else(|| panic!("{team}"));
+        assert!(tester["metrics"]["decisions_7d"].as_u64().unwrap() >= 13);
+        assert_eq!(body(crate::insights::team(State(st.clone()), Extension(analyst.clone())).await).await.0, 403, "an analyst does not see the team");
+        assert_eq!(body(crate::insights::team(State(st.clone()), Extension(sup.clone())).await).await.0, 403, "the super admin does not see a tenant's analysts");
+        assert_eq!(body(crate::insights::me(State(st.clone()), Extension(sup.clone())).await).await.0, 403);
+        assert_eq!(body(crate::insights::put_settings(State(st.clone()), Extension(analyst.clone()), Json(crate::insights::Settings { enabled: false })).await).await.0, 403);
+
+        // the tenant admin turns it off: no calibration, no logging, no extra checks
+        let (code, _) = body(crate::insights::put_settings(State(st.clone()), Extension(admin.clone()), Json(crate::insights::Settings { enabled: false })).await).await;
+        assert_eq!(code, 200);
+        let (_, me) = body(crate::insights::me(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(me["enabled"], false);
+        assert!(crate::triage::get(State(st.clone()), Extension(analyst.clone())).await.0["calibration"].is_null());
+        let rec2 = crate::triage::load(&st, &tenant).await.recs.iter().find(|r| r.rule_id == 591).unwrap().clone();
+        let r3 = crate::triage::apply(State(st.clone()), Extension(analyst.clone()), Path(rec2.id), None).await.0;
+        assert_eq!(r3["summary"]["applied"], 2, "no inspect needed when off: {r3}");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    st.db.root().query(&format!("DROP DATABASE IF EXISTS `{dbname}`")).execute().await.unwrap();
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+/// History pages and agent inventory read ClickHouse: full alerts round-trip,
+/// a restarted siem-api (empty memory) still sees them, tenants stay apart,
+/// and inventory syncs from a siem-agent and from the running wazuh-db.
+#[tokio::test]
+#[ignore]
+async fn history_and_inventory_from_clickhouse() {
+    let home = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/manager");
+    std::env::set_var("WAZUH_MANAGER_HOME", std::path::absolute(&home).unwrap());
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let (ta, tb) = (format!("histA{}", std::process::id()), format!("histB{}", std::process::id()));
+    let (da, db_b) = (st.db.provision_tenant_db(&ta).await.unwrap(), st.db.provision_tenant_db(&tb).await.unwrap());
+    let r = std::panic::AssertUnwindSafe(async {
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        let mut a = alert(5710, 5, "sshd: attempt to login using a non-existent user", "901", "203.0.113.9", now - 60_000);
+        a.rule.groups = vec!["syslog".into(), "sshd".into(), "authentication_failed".into()];
+        a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
+        a.decoded.file_path = Some("/etc/passwd".into());
+        a.data.insert("syscheck".into(), json!({ "path": "/etc/passwd", "event": "modified" }));
+        let a = crate::tenancy::tag_alert(a, &ta);
+        let mut other = crate::tenancy::tag_alert(alert(100200, 3, "tenant B only", "902", "", now - 30_000), &tb);
+        other.rule.groups = vec!["b".into()];
+        assert!(st.db.insert_alerts(&[a.clone(), other]).await.is_empty(), "insert failed");
+
+        // memory is empty (a fresh siem-api): the history comes from ClickHouse, complete
+        assert!(st.alerts.read().unwrap().is_empty());
+        let ca = AuthCtx { role: "analyst".into(), ..ctx(&ta) };
+        let h = crate::history::alerts(&st, &ca, 24).await;
+        assert_eq!(h.len(), 1, "tenant A sees only its alert");
+        let back = &h[0];
+        assert_eq!((back.id, back.rule.groups.clone(), back.decoded.file_path.clone()), (a.id, a.rule.groups.clone(), Some("/etc/passwd".to_string())));
+        assert_eq!(back.data["syscheck"]["event"], "modified");
+        assert_eq!(crate::history::alert(&st, &ca, &a.id.to_string()).await.map(|x| x.rule.id), Some(5710));
+
+        // pages: compliance (PCI 10.2 counts rule 5710) and MITRE (T1110)
+        let body = |r: axum::response::Response| async move { String::from_utf8_lossy(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).to_string() };
+        use axum::response::IntoResponse;
+        let comp = body(crate::get_compliance_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
+        assert!(comp.contains("\"alerts_count\":1"), "compliance from ClickHouse: {}", &comp[..comp.len().min(400)]);
+        let mitre = body(crate::get_mitre_matrix_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
+        assert!(mitre.contains("T1110"), "MITRE from ClickHouse: {}", &mitre[..mitre.len().min(400)]);
+
+        // inventory of a siem-agent: stored in ClickHouse, read back by the endpoint
+        st.agent_tenants.write().unwrap().insert("901".into(), ta.clone());
+        {
+            let db = st.wdb.get_or_create("901", "host-901");
+            db.write().unwrap().syscollector.set_os_info(siem_wdb::SysOsInfo { hostname: "host-901".into(), architecture: "x86_64".into(), os_name: "Ubuntu".into(), os_version: "24.04".into(), os_codename: None, os_major: None, os_minor: None, os_build: None, platform: "ubuntu".into(), release: "6.8".into() });
+        }
+        assert!(crate::inventory_store::sync_agent(&st, "901").await);
+        assert!(!crate::inventory_store::sync_agent(&st, "901").await, "unchanged: not written again");
+        let os = crate::get_agent_os_handler(State(st.clone()), Path("901".into())).await.into_response();
+        let os = body(os).await;
+        assert!(os.contains("Ubuntu") && os.contains("siem-agent"), "{os}");
+        let stored = st.db.doc(&ta, crate::db::DocTable::Inventory, "901").await.unwrap().unwrap();
+        assert!(stored.contains("24.04"));
+
+        // inventory of a real Wazuh agent from the running wazuh-db (if one has reported)
+        let mut found = None;
+        for n in 1..200u32 {
+            let id = format!("{n:03}");
+            if crate::wazuh_manager::agent_inventory(&id).await.is_some() {
+                found = Some(id);
+                break;
+            }
+        }
+        match found {
+            Some(id) => {
+                st.agent_tenants.write().unwrap().insert(id.clone(), ta.clone());
+                let inv = crate::inventory_store::get(&st, &id).await.expect("synced on first read");
+                assert_eq!(inv["source"], "wazuh-db");
+                let pk = body(crate::get_agent_packages_handler(State(st.clone()), Path(id.clone())).await.into_response()).await;
+                eprintln!("wazuh agent {id}: {} packages, {} ports, {} processes from ClickHouse", inv["packages"].as_array().map_or(0, |a| a.len()), inv["ports"].as_array().map_or(0, |a| a.len()), inv["processes"].as_array().map_or(0, |a| a.len()));
+                assert!(pk.contains("\"source\":\"wazuh-db\""));
+            }
+            None => eprintln!("no Wazuh agent with inventory in the running wazuh-db: skipped that part"),
+        }
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    for d in [da, db_b] {
+        st.db.root().query(&format!("DROP DATABASE IF EXISTS `{d}`")).execute().await.unwrap();
+    }
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}

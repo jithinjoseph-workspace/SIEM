@@ -42,6 +42,7 @@ siem-triage = { path = "../siem-triage" }
 siem-suppression = { path = "../siem-suppression" }
 siem-retro = { path = "../siem-retro" }
 siem-predict = { path = "../siem-predict" }
+siem-analyst-insight = { path = "../siem-analyst-insight" }
 siem-regex = { path = "../siem-regex" }
 async-trait = "0.1"
 anyhow = "1"

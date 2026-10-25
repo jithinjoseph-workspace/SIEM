@@ -7,7 +7,7 @@ import { RouterModule } from '@angular/router';
 import {
   LucideAngularModule,
   Users, Globe, Activity, User, Settings, HelpCircle,
-  Building2, ArrowUpCircle, RefreshCw, Loader, ShieldCheck, X, Radio,
+  Building2, ArrowUpCircle, RefreshCw, Loader, ShieldCheck, X, Radio, Gauge,
   ChevronDown, Cpu, Sliders,
 } from 'lucide-angular';
 import { Api } from '../../services/api/api';
@@ -53,6 +53,8 @@ export class TenantAdminLayout implements OnInit {
   }
 
   hasSiem = false;
+  hasSiemInsights = false;
+  GaugeIcon = Gauge;
   ArrowUpCircleIcon = ArrowUpCircle;
   RefreshCwIcon     = RefreshCw;
   LoaderIcon        = Loader;
@@ -98,6 +100,8 @@ export class TenantAdminLayout implements OnInit {
     // SIEM nav section temporarily hidden — not needed right now.
     // Restore `this.auth.hasFeature('siem')` here to bring it back.
     this.hasSiem = false;
+    // the tenant's own analysts (SIEM triage workload & AI use): shown with the SIEM feature
+    this.hasSiemInsights = this.auth.hasFeature('siem');
     // Idempotent — no-ops if the navbar (or a prior mount of this layout)
     // already started it. Shared for the whole session, not torn down in
     // ngOnDestroy below, since the navbar depends on it too.

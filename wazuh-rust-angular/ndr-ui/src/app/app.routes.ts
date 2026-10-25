@@ -55,6 +55,7 @@ export const routes: Routes = [
       { path: 'siem-suppressions',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/suppressions/siem-suppressions').then(m => m.SiemSuppressions) },
       { path: 'siem-predictions',   canActivate: [authGuard], data: { permission: 'siem-mitre' },  loadComponent: () => import('../pages/siem-ai/predictions/siem-predictions').then(m => m.SiemPredictions) },
       { path: 'siem-retrospective', canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/retrospective/siem-retrospective').then(m => m.SiemRetrospective) },
+      { path: 'siem-my-insights',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/insights/siem-my-insights').then(m => m.SiemMyInsights) },
 
       /* SIEM pages copied from frontend-angular (pages/siem-classic) */
       {
@@ -155,6 +156,7 @@ export const routes: Routes = [
       { path: 'setup',          loadComponent: () => import('../pages/tenant-admin/setup/setup').then(m => m.Setup) },
       { path: 'siem-sources',   loadComponent: () => import('../pages/siem/sources/siem-sources').then(m => m.SiemSources) },
       { path: 'syslog-devices', loadComponent: () => import('../pages/tenant-admin/syslog-devices/syslog-devices').then(m => m.SyslogDevices) },
+      { path: 'analyst-insights', loadComponent: () => import('../pages/tenant-admin/analyst-insights/analyst-insights').then(m => m.AnalystInsights) },
       { path: 'settings',       loadComponent: () => import('../pages/tenant-admin/settings/settings').then(m => m.TenantSettings) },
       { path: 'support',        loadComponent: () => import('../pages/tenant-admin/support/support').then(m => m.TenantSupport) },
     ]

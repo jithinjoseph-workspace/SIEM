@@ -1,0 +1,8 @@
+[package]
+name = "siem-analyst-insight"
+version = "0.1.0"
+edition = "2021"
+description = "Analyst workload and AI-trust calibration for the SIEM: detects overload, over-reliance on and under-use of AI suggestions, and adapts the triage page"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

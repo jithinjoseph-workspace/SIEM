@@ -24,6 +24,14 @@
   <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
 
   <ng-container *ngIf="data() as d">
+    <div *ngIf="cal()?.notes?.length" role="status" class="p-3 rounded-lg border border-sky-800 bg-sky-950/40 text-sky-200 text-sm flex gap-2">
+      <lucide-angular [img]="GaugeIcon" class="w-4 h-4 mt-0.5 shrink-0"></lucide-angular>
+      <div>
+        <div *ngFor="let n of cal().notes">{{ n }}</div>
+        <div class="text-[11px] text-sky-300/70 mt-1">From how you use this page (see "My Workload &amp; AI Use"). It only ever adds checks; the AI never acts on its own.</div>
+      </div>
+    </div>
+
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
       <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
         <span class="text-xs text-slate-400 block font-medium">Groups to review</span>
@@ -74,9 +82,11 @@
         </thead>
         <tbody>
           <tr *ngIf="shown().length === 0"><td colspan="8" class="px-4 py-8 text-center text-slate-500">Nothing to review here.</td></tr>
-          <tr *ngFor="let r of shown()" class="border-b border-slate-800/60 align-top hover:bg-slate-800/30">
+          <ng-container *ngFor="let r of shown()">
+          <tr class="border-b border-slate-800/60 align-top hover:bg-slate-800/30">
             <td class="px-4 py-3">
-              <span class="inline-block px-2 py-0.5 rounded border text-xs font-semibold whitespace-nowrap" [ngClass]="verdictClass(r.verdict)">{{ verdictLabel(r.verdict) }}</span>
+              <span *ngIf="!verdictHidden(r)" class="inline-block px-2 py-0.5 rounded border text-xs font-semibold whitespace-nowrap" [ngClass]="verdictClass(r.verdict)">{{ verdictLabel(r.verdict) }}</span>
+              <span *ngIf="verdictHidden(r)" class="inline-block px-2 py-0.5 rounded border border-slate-700 text-xs text-slate-400 whitespace-nowrap">AI verdict after you look</span>
             </td>
             <td class="px-4 py-3">
               <div class="font-mono text-cyan-300">{{ r.rule_id }}</div>
@@ -87,26 +97,38 @@
             <td class="px-4 py-3 font-mono whitespace-nowrap">{{ r.src_ip || '—' }}</td>
             <td class="px-4 py-3 text-right font-semibold">{{ r.alert_count | number }}</td>
             <td class="px-4 py-3 max-w-[340px]">
-              <div class="flex items-center gap-1 text-[11px] text-slate-400">
-                <lucide-angular [img]="r.source === 'ai' ? BotIcon : RuleIcon" class="w-3 h-3"></lucide-angular>
-                {{ r.source === 'ai' ? 'AI' : 'Rule' }}<span *ngIf="r.confidence"> · {{ r.confidence }}%</span>
-              </div>
-              <div class="text-slate-300">{{ r.reason }}</div>
+              <ng-container *ngIf="!verdictHidden(r)">
+                <div class="flex items-center gap-1 text-[11px] text-slate-400">
+                  <lucide-angular [img]="r.source === 'ai' ? BotIcon : RuleIcon" class="w-3 h-3"></lucide-angular>
+                  {{ r.source === 'ai' ? 'AI' : 'Rule' }}<span *ngIf="r.confidence"> · {{ r.confidence }}%</span>
+                </div>
+                <div class="text-slate-300" [class.line-clamp-1]="depth() === 'brief'">{{ r.reason }}</div>
+                <div *ngIf="depth() === 'detailed'" class="text-[11px] text-slate-400 mt-1 space-y-0.5">
+                  <div>{{ r.alert_count }} alerts from {{ ago(r.first_seen) }} to {{ ago(r.last_seen) }}, highest level {{ r.max_level }}.</div>
+                  <div *ngIf="r.source === 'ai'">AI suggestions are a second opinion: {{ r.confidence }}% is the model's own confidence, not a guarantee. Open the alerts to check.</div>
+                  <div *ngIf="r.source === 'rule'">Decided by a fixed rule, not the AI.</div>
+                </div>
+              </ng-container>
+              <div *ngIf="verdictHidden(r)" class="text-[11px] text-slate-500">Open the alerts to see the AI's reason.</div>
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ ago(r.last_seen) }}</td>
             <td class="px-4 py-3">
               <div class="flex items-center justify-end gap-2">
-                <ng-container *ngIf="r.verdict !== 'suspicious'">
+                <button (click)="view(r)" [attr.aria-expanded]="openId() === r.id" [attr.aria-label]="'View alerts of rule ' + r.rule_id"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs whitespace-nowrap">
+                  <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular> View alerts
+                </button>
+                <ng-container *ngIf="r.verdict !== 'suspicious' && !verdictHidden(r)">
                   <select [(ngModel)]="hours[r.id]" [attr.aria-label]="'Hide duration for rule ' + r.rule_id"
                     class="bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs">
                     <option *ngFor="let h of hourChoices" [ngValue]="h">{{ h }} h</option>
                   </select>
-                  <button (click)="apply(r)" [disabled]="busyId() === r.id"
+                  <button (click)="apply(r)" [disabled]="busyId() === r.id || mustLook(r)" [title]="mustLook(r) ? 'View the alerts first' : ''"
                     class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-semibold">
                     <lucide-angular [img]="HideIcon" class="w-3.5 h-3.5"></lucide-angular> Hide
                   </button>
                 </ng-container>
-                <span *ngIf="r.verdict === 'suspicious'" class="text-[11px] text-rose-300">Review the alerts</span>
+                <span *ngIf="r.verdict === 'suspicious' && !verdictHidden(r)" class="text-[11px] text-rose-300">Review the alerts</span>
                 <button (click)="dismiss(r)" [disabled]="busyId() === r.id" [attr.aria-label]="'Dismiss recommendation for rule ' + r.rule_id"
                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-slate-300 text-xs">
                   <lucide-angular [img]="XIcon" class="w-3.5 h-3.5"></lucide-angular> Dismiss
@@ -114,6 +136,19 @@
               </div>
             </td>
           </tr>
+          <tr *ngIf="openId() === r.id" class="bg-slate-950/50 border-b border-slate-800/60">
+            <td colspan="8" class="px-4 py-3">
+              <div class="text-xs uppercase text-slate-400 mb-2">Latest alerts of this group</div>
+              <div *ngIf="!(samples()[r.id]?.length)" class="text-sm text-slate-500">No alerts in the last {{ data()?.lookback_hours ?? 24 }} h.</div>
+              <div *ngFor="let a of samples()[r.id]" class="text-xs border-t border-slate-800/60 py-1.5 flex gap-3">
+                <span class="text-slate-500 whitespace-nowrap">{{ when(a.timestamp) }}</span>
+                <span class="text-slate-400 whitespace-nowrap">lvl {{ a.rule_level }}</span>
+                <span class="text-slate-500 whitespace-nowrap">{{ a.location }}</span>
+                <span class="font-mono text-slate-300 break-all">{{ a.full_log }}</span>
+              </div>
+            </td>
+          </tr>
+          </ng-container>
         </tbody>
       </table>
     </div>

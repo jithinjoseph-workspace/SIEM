@@ -1,0 +1,62 @@
+<div class="p-6 w-full max-w-[1200px] mx-auto space-y-6 text-slate-200">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        <lucide-angular [img]="GaugeIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+        My Workload &amp; AI Use
+      </h1>
+      <p class="text-sm text-slate-400 mt-1">
+        From what you did on SIEM Alert Triage in the last 7 days. It helps you work with the AI suggestions well; only you and
+        your tenant admin see it. It is an estimate from activity, not a judgement of you.
+      </p>
+    </div>
+    <button (click)="load()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
+      <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular> Refresh
+    </button>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="data() && !data().enabled" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 text-sm">Your tenant admin has turned this off.</div>
+
+  <ng-container *ngIf="data()?.calibration as c">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+        <span class="text-xs text-slate-400 block">Workload</span>
+        <span class="text-xl font-bold mt-1 block" [ngClass]="t.workloadClass(c.workload)">{{ t.workload(c.workload) }}</span>
+        <span class="text-[11px] text-slate-500">{{ c.metrics.decisions_last_hour }} decisions in the last hour · {{ c.metrics.active_hours }} h without a long break</span>
+      </div>
+      <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+        <span class="text-xs text-slate-400 block">How you use AI suggestions</span>
+        <span class="text-xl font-bold mt-1 block" [ngClass]="t.trustClass(c.trust)">{{ t.trust(c.trust) }}</span>
+        <span class="text-[11px] text-slate-500">accepted {{ t.pct(c.metrics.ai_benign_accepted, c.metrics.ai_benign_suggestions) }} of {{ c.metrics.ai_benign_suggestions }} AI "likely benign"</span>
+      </div>
+      <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+        <span class="text-xs text-slate-400 block">Explanations shown</span>
+        <span class="text-xl font-bold text-white mt-1 block">{{ t.depth(c.depth) }}</span>
+        <span class="text-[11px] text-slate-500">{{ c.metrics.decisions_7d }} decisions in 7 days</span>
+      </div>
+    </div>
+
+    <div *ngIf="c.notes.length" class="p-4 rounded-xl border border-sky-800 bg-sky-950/30 text-sky-200 text-sm space-y-1">
+      <div *ngFor="let n of c.notes">{{ n }}</div>
+    </div>
+
+    <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+      <h2 class="text-sm font-bold uppercase text-slate-300 mb-3">What triage does for you now</h2>
+      <ul class="text-sm text-slate-300 space-y-1 list-disc list-inside">
+        <li *ngIf="c.require_inspect">"Hide" works after you open a group's alerts.</li>
+        <li *ngIf="c.hide_ai_verdict_until_inspect">The AI's verdict shows after you open the alerts, so you form your own view first.</li>
+        <li *ngIf="c.summaries_first">The largest groups are listed first.</li>
+        <li>Explanations: {{ t.depth(c.depth).toLowerCase() }}.</li>
+        <li *ngIf="!c.require_inspect && !c.summaries_first">Nothing else is changed.</li>
+      </ul>
+    </div>
+
+    <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+      <div><div class="text-xs text-slate-400">Groups hidden</div><div class="text-lg font-semibold">{{ c.metrics.applies }}</div></div>
+      <div><div class="text-xs text-slate-400">…after opening the alerts</div><div class="text-lg font-semibold">{{ t.pct(c.metrics.applies_inspected, c.metrics.applies) }}</div></div>
+      <div><div class="text-xs text-slate-400">…within 10 s, without looking</div><div class="text-lg font-semibold">{{ t.pct(c.metrics.fast_accepts, c.metrics.applies) }}</div></div>
+      <div><div class="text-xs text-slate-400">Hidden hosts that later went critical</div><div class="text-lg font-semibold" [class.text-rose-300]="c.metrics.hidden_later_critical > 0">{{ c.metrics.hidden_later_critical }}</div></div>
+    </div>
+  </ng-container>
+</div>

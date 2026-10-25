@@ -107,7 +107,10 @@ pub async fn create_manual(State(state): State<AppState>, Extension(ctx): Extens
         reason: b.reason,
     };
     match create(&state, &ctx.scope(), r, "manual", 100, &ctx.username).await {
-        Ok(s) => Json(json!({ "ok": true, "id": s.id, "expires_at": s.expires_at })),
+        Ok(s) => {
+            crate::insights::log(&state, &ctx.scope(), &ctx.username, "suppress", None).await;
+            Json(json!({ "ok": true, "id": s.id, "expires_at": s.expires_at }))
+        }
         Err(e) => Json(json!({ "error": e })),
     }
 }
@@ -124,7 +127,10 @@ async fn set_active(state: &AppState, tenant: &str, id: &str, on: bool) -> Resul
 /// `PATCH /api/v1/siem/suppressions/:id/deactivate`
 pub async fn deactivate(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Json<Value> {
     match set_active(&state, &ctx.scope(), &id, false).await {
-        Ok(()) => Json(json!({ "ok": true })),
+        Ok(()) => {
+            crate::insights::log(&state, &ctx.scope(), &ctx.username, "unsuppress", None).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => Json(json!({ "error": e })),
     }
 }
@@ -133,6 +139,9 @@ pub async fn deactivate(State(state): State<AppState>, Extension(ctx): Extension
 pub async fn delete(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Json<Value> {
     let tenant = ctx.scope();
     let r = state.db.delete_doc(&tenant, DocTable::Suppressions, &id).await;
+    if r.is_ok() {
+        crate::insights::log(&state, &tenant, &ctx.username, "unsuppress", None).await;
+    }
     invalidate(&tenant);
     match r {
         Ok(()) => Json(json!({ "ok": true })),

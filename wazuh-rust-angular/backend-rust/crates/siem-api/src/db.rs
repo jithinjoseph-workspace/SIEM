@@ -34,7 +34,14 @@ pub struct ClickHouseAlertRow {
     pub dst_ip: String,
     pub user: String,
     pub location: String,
+    /// The whole alert (groups, decoded fields, FIM data...), so the pages that
+    /// read history from ClickHouse see what the live alert had. Empty in older rows.
+    #[serde(default)]
+    pub alert_json: String,
 }
+
+/// Columns added to an existing table (every tenant database, at start and provisioning).
+pub const ALERT_COLUMNS: [&str; 1] = ["ALTER TABLE siem_alerts ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''"];
 
 #[derive(Debug, Clone, clickhouse::Row, Serialize, Deserialize)]
 pub struct ClickHouseUserRow {
@@ -63,6 +70,11 @@ pub struct ClickHouseTenantRow {
 
 impl ClickHouseAlertRow {
     pub fn to_alert(&self) -> Alert {
+        if !self.alert_json.is_empty() {
+            if let Ok(a) = serde_json::from_str::<Alert>(&self.alert_json) {
+                return a;
+            }
+        }
         Alert {
             id: uuid::Uuid::parse_str(&self.id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
             timestamp: chrono::DateTime::from_timestamp_millis(self.timestamp as i64).unwrap_or_else(chrono::Utc::now),
@@ -153,7 +165,11 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 4] = [
+pub const ANALYST_DDL: [&str; 6] = [
+    // each agent's latest system inventory (os, hardware, packages, ports, processes...)
+    "CREATE TABLE IF NOT EXISTS siem_agent_inventory (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
+    // what analysts do on the triage / suppression pages (siem-analyst-insight), 30 days
+    "CREATE TABLE IF NOT EXISTS siem_analyst_actions (ts UInt64, user String, action LowCardinality(String), rec_id String, verdict LowCardinality(String), source LowCardinality(String), confidence UInt8) ENGINE = MergeTree ORDER BY (user, ts) TTL toDateTime(ts) + INTERVAL 30 DAY",
     "CREATE TABLE IF NOT EXISTS siem_suppressions (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     "CREATE TABLE IF NOT EXISTS siem_analyst_state (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     "CREATE TABLE IF NOT EXISTS siem_retro_scans (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
@@ -166,6 +182,8 @@ pub enum DocTable {
     Suppressions,
     AnalystState,
     RetroScans,
+    /// id = agent id
+    Inventory,
 }
 
 impl DocTable {
@@ -174,6 +192,7 @@ impl DocTable {
             DocTable::Suppressions => "siem_suppressions",
             DocTable::AnalystState => "siem_analyst_state",
             DocTable::RetroScans => "siem_retro_scans",
+            DocTable::Inventory => "siem_agent_inventory",
         }
     }
 }
@@ -466,7 +485,7 @@ impl ClickHouseDb {
             .execute()
             .await;
 
-        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()) {
+        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()).chain(ALERT_COLUMNS.iter()) {
             if let Err(e) = client.query(sql).execute().await {
                 warn!("SOAR table not created: {e}");
             }
@@ -563,7 +582,7 @@ impl ClickHouseDb {
             }
         }
         let tc = self.tenant_client(tenant_id);
-        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()) {
+        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()).chain(ALERT_COLUMNS.iter()) {
             if let Err(e) = tc.query(sql).execute().await {
                 warn!("SOAR table not created in {db}: {e}");
             }
@@ -704,7 +723,51 @@ impl ClickHouseDb {
             dst_ip: alert.decoded.dst_ip.clone().unwrap_or_default(),
             user: alert.decoded.user.clone().unwrap_or_default(),
             location: alert.location.clone(),
+            alert_json: serde_json::to_string(alert).unwrap_or_default(),
         }
+    }
+
+    /// A tenant's alerts since `since_ms` (newest first, at most `limit`): the
+    /// history the dashboard, MITRE, compliance, FIM and report pages read.
+    pub async fn alerts_since(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<Alert>> {
+        if !self.is_connected() {
+            return None;
+        }
+        match self
+            .tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_alerts WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?")
+            .bind(since_ms)
+            .bind(limit as u64)
+            .fetch_all::<ClickHouseAlertRow>()
+            .await
+        {
+            Ok(rows) => Some(rows.iter().map(|r| r.to_alert()).collect()),
+            Err(e) => {
+                warn!("Failed to query alerts from ClickHouse: {}", e);
+                None
+            }
+        }
+    }
+
+    /// One alert of the tenant by id.
+    pub async fn alert_by_id(&self, tenant_id: &str, id: &str) -> Option<Alert> {
+        self.tenant_client(tenant_id).query("SELECT ?fields FROM siem_alerts WHERE id = ? LIMIT 1").bind(id).fetch_all::<ClickHouseAlertRow>().await.ok()?.first().map(|r| r.to_alert())
+    }
+
+    /// A tenant's events since `since_ms` (newest first, at most `limit`).
+    pub async fn events_since(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<siem_core::RawEvent>> {
+        if !self.is_connected() {
+            return None;
+        }
+        self.tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_events WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?")
+            .bind(since_ms)
+            .bind(limit as u64)
+            .fetch_all::<ClickHouseEventRow>()
+            .await
+            .map_err(|e| warn!("Failed to query events from ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.iter().map(|r| r.to_raw_event()).collect())
     }
 
     /// Totals of a tenant: (events, alerts, critical 12-15, high 8-11, medium 4-7, low 0-3).
@@ -740,7 +803,7 @@ impl ClickHouseDb {
         }
 
         let query = format!(
-            "SELECT * FROM siem_alerts WHERE rule_level >= {} ORDER BY timestamp DESC LIMIT {}",
+            "SELECT ?fields FROM siem_alerts WHERE rule_level >= {} ORDER BY timestamp DESC LIMIT {}",
             min_level, limit
         );
 

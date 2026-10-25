@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, ListFilter, RefreshCw, EyeOff, X, Bot, Gavel } from 'lucide-angular';
+import { LucideAngularModule, ListFilter, RefreshCw, EyeOff, Eye, X, Bot, Gavel, Gauge } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 
 /** One group of identical Wazuh alerts (same rule, agent and source) and its verdict. */
@@ -42,6 +42,8 @@ export class SiemTriage implements OnInit {
   XIcon = X;
   BotIcon = Bot;
   RuleIcon = Gavel;
+  EyeIcon = Eye;
+  GaugeIcon = Gauge;
 
   data = signal<any>(null);
   loading = signal(false);
@@ -52,8 +54,49 @@ export class SiemTriage implements OnInit {
   hours: Record<string, number> = {};
   hourChoices = [1, 8, 24, 72, 168];
 
+  /** How the page adapts for this analyst (workload & AI-trust calibration); null when off. */
+  cal = computed<any>(() => this.data()?.calibration ?? null);
+  depth = computed<'brief' | 'standard' | 'detailed'>(() => this.cal()?.depth ?? 'standard');
+  /** Groups whose alerts this analyst opened (this visit). */
+  looked = signal<Set<string>>(new Set());
+  openId = signal<string | null>(null);
+  samples = signal<Record<string, any[]>>({});
+
   recs = computed<Rec[]>(() => (this.data()?.recommendations ?? []) as Rec[]);
-  shown = computed(() => this.filter() === 'all' ? this.recs() : this.recs().filter(r => r.verdict === this.filter()));
+  shown = computed(() => {
+    const list = this.filter() === 'all' ? this.recs() : this.recs().filter(r => r.verdict === this.filter());
+    // under high workload: the biggest groups first
+    return this.cal()?.summaries_first ? [...list].sort((a, b) => b.alert_count - a.alert_count) : list;
+  });
+
+  /** The AI's verdict waits until the analyst has looked (no anchoring). */
+  verdictHidden(r: Rec): boolean {
+    return !!this.cal()?.hide_ai_verdict_until_inspect && r.source === 'ai' && !this.looked().has(r.id);
+  }
+
+  mustLook(r: Rec): boolean {
+    return !!this.cal()?.require_inspect && !this.looked().has(r.id);
+  }
+
+  view(r: Rec) {
+    if (this.openId() === r.id) {
+      this.openId.set(null);
+      return;
+    }
+    this.siem.inspectSiemTriage(r.id).subscribe({
+      next: x => {
+        if (x?.status === 'error') { this.error.set(x.message); return; }
+        this.samples.set({ ...this.samples(), [r.id]: x.alerts ?? [] });
+        this.looked.set(new Set([...this.looked(), r.id]));
+        this.openId.set(r.id);
+      },
+      error: e => this.fail(e),
+    });
+  }
+
+  when(ts: number): string {
+    return new Date(ts > 1e11 ? ts : ts * 1000).toLocaleString();
+  }
 
   ngOnInit() {
     this.load();

@@ -45,6 +45,9 @@ pub mod triage;
 pub mod suppressions;
 pub mod retro;
 pub mod predictions;
+pub mod insights;
+pub mod history;
+pub mod inventory_store;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -453,6 +456,8 @@ async fn main() {
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
     predictions::spawn(state.clone());
+    // agents' inventory (wazuh-db / siem-agents) copied to ClickHouse every 10 min
+    inventory_store::spawn(state.clone());
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
@@ -633,6 +638,11 @@ async fn main() {
         .route("/api/v1/siem/triage/run", post(triage::run_now))
         .route("/api/v1/siem/triage/:id/apply", post(triage::apply))
         .route("/api/v1/siem/triage/:id/dismiss", post(triage::dismiss))
+        .route("/api/v1/siem/triage/:id/inspect", post(triage::inspect))
+        // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
+        .route("/api/v1/siem/insights/me", get(insights::me))
+        .route("/api/v1/siem/insights/team", get(insights::team))
+        .route("/api/v1/siem/insights/settings", put(insights::put_settings))
         .route("/api/v1/siem/ai-activity", get(suppressions::activity))
         .route("/api/v1/siem/suppressions", get(suppressions::list).post(suppressions::create_manual))
         .route("/api/v1/siem/suppressions/:id/deactivate", axum::routing::patch(suppressions::deactivate))
@@ -948,24 +958,17 @@ fn scoped_agents(state: &AppState, ctx: &AuthCtx) -> Vec<Agent> {
 }
 
 async fn get_stats(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<SiemStats> {
-    let events_count = scoped_events(&state, &ctx).len() as u64;
-    let alerts = scoped_alerts(&state, &ctx);
     let agents = scoped_agents(&state, &ctx);
-
-    let total_alerts = alerts.len() as u64;
-    let mut critical_alerts = 0;
-    let mut high_alerts = 0;
-    let mut medium_alerts = 0;
-    let mut low_alerts = 0;
-
-    for a in alerts.iter() {
-        match a.rule.level {
-            12..=15 => critical_alerts += 1,
-            8..=11 => high_alerts += 1,
-            4..=7 => medium_alerts += 1,
-            _ => low_alerts += 1,
+    // ClickHouse counts every row; memory (the recent window) only when it is down
+    let totals = match state.db.tenant_totals(&ctx.scope()).await {
+        Some(t) => t,
+        None => {
+            let alerts = scoped_alerts(&state, &ctx);
+            let n = |r: std::ops::RangeInclusive<u8>| alerts.iter().filter(|a| r.contains(&a.rule.level)).count() as u64;
+            (scoped_events(&state, &ctx).len() as u64, alerts.len() as u64, n(12..=255), n(8..=11), n(4..=7), n(0..=3))
         }
-    }
+    };
+    let (events_count, total_alerts, critical_alerts, high_alerts, medium_alerts, low_alerts) = totals;
 
     let now = Utc::now();
     let total_agents = agents.len();
@@ -974,9 +977,6 @@ async fn get_stats(State(state): State<AppState>, Extension(ctx): Extension<Auth
         .filter(|a| a.status == AgentStatus::Active && (now - a.last_keepalive).num_seconds() <= 60)
         .count();
 
-    // ClickHouse has every row; memory only the recent window
-    let (events_count, total_alerts, critical_alerts, high_alerts, medium_alerts, low_alerts) =
-        state.db.tenant_totals(&ctx.scope()).await.unwrap_or((events_count, total_alerts, critical_alerts, high_alerts, medium_alerts, low_alerts));
     Json(SiemStats {
         total_events: events_count,
         total_alerts,
@@ -2164,7 +2164,7 @@ async fn get_rules_api_handler(
 }
 
 async fn get_rules_hit_counts_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = scoped_alerts(&state, &ctx);
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut counts: HashMap<String, usize> = HashMap::new();
     for alert in alerts.iter() {
         *counts.entry(alert.rule.description.clone()).or_insert(0) += 1;
@@ -2193,8 +2193,8 @@ async fn sync_community_rules_handler() -> impl IntoResponse {
 }
 
 async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events_guard = admin_events(&state, &ctx);
-    let alerts_guard = admin_alerts(&state, &ctx);
+    let events_guard = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
+    let alerts_guard = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
 
     let now = chrono::Utc::now();
     let one_hour_ago = now - chrono::Duration::hours(1);
@@ -2222,7 +2222,7 @@ async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(
 }
 
 async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = admin_alerts(&state, &ctx);
+    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut critical = 0u64;
     let mut high = 0u64;
     let mut medium = 0u64;
@@ -2251,7 +2251,7 @@ async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extensi
 }
 
 async fn get_top_ips_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = admin_alerts(&state, &ctx);
+    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut src_map: HashMap<String, u64> = HashMap::new();
     let mut dst_map: HashMap<String, u64> = HashMap::new();
 
@@ -2283,7 +2283,7 @@ async fn get_top_ips_all_tenants_handler(State(state): State<AppState>, Extensio
 }
 
 async fn get_protocols_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events = admin_events(&state, &ctx);
+    let events = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut proto_map: HashMap<String, u64> = HashMap::new();
 
     for ev in events.iter() {
@@ -2319,7 +2319,7 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     let unique_hashes = state.threat_intel.get_list("malicious_hashes").map(|l| l.total_entries()).unwrap_or(0);
     let unique_domains = state.threat_intel.get_list("malicious_domains").map(|l| l.total_entries()).unwrap_or(0);
 
-    let alerts = admin_alerts(&state, &ctx);
+    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let detected_in_network = alerts.iter().filter(|a| {
         a.decoded.src_ip.as_ref().map(|ip| state.threat_intel.check_ip(ip).is_some()).unwrap_or(false)
     }).count();
@@ -2335,7 +2335,7 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
 }
 
 async fn get_threat_map_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = admin_alerts(&state, &ctx);
+    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let items: Vec<serde_json::Value> = alerts.iter()
         .filter(|a| a.decoded.src_ip.is_some())
         .take(50)
@@ -2584,7 +2584,7 @@ async fn get_telemetry_handler() -> impl IntoResponse {
 }
 
 async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = scoped_alerts(&state, &ctx);
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let critical_count = alerts.iter().filter(|a| a.rule.level >= 12).count();
     let high_count = alerts.iter().filter(|a| a.rule.level >= 8 && a.rule.level < 12).count();
 
@@ -2612,8 +2612,8 @@ async fn post_aria_chat_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let msg = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    let alerts_count = scoped_alerts(&state, &ctx).len();
-    let events_count = scoped_events(&state, &ctx).len();
+    let alerts_count = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.len();
+    let events_count = history::events(&state, &ctx, history::DEFAULT_HOURS).await.len();
 
     let reply = format!(
         "ARIA AI Security Copilot: Telemetry monitoring is active with {} ingested events and {} alerts. In response to: \"{}\", all active correlation pipelines are operational.",
@@ -2655,7 +2655,7 @@ async fn get_server_info_handler() -> impl IntoResponse {
 
 async fn get_health_handler(State(state): State<AppState>, ctx: Option<Extension<AuthCtx>>) -> impl IntoResponse {
     let (events, alerts) = match ctx {
-        Some(Extension(ref c)) => (scoped_events(&state, c), scoped_alerts(&state, c)),
+        Some(Extension(ref c)) => (history::events(&state, c, history::DEFAULT_HOURS).await, history::alerts(&state, c, history::DEFAULT_HOURS).await),
         None => (Vec::new(), Vec::new()),
     };
     let events_total = events.len() as u64;
@@ -2818,7 +2818,7 @@ async fn get_stats_timeline_handler() -> impl IntoResponse {
 }
 
 async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = scoped_alerts(&state, &ctx);
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     Json(alerts.clone())
 }
 
@@ -2957,8 +2957,8 @@ struct SiemDashboardResponse {
 async fn get_siem_dashboard(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemDashboardResponse> {
-    let events = scoped_events(&state, &ctx);
-    let alerts = scoped_alerts(&state, &ctx);
+    let events = history::events(&state, &ctx, history::DEFAULT_HOURS).await;
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let agents = scoped_agent_map(&state, &ctx);
 
     let total_events = events.len();
@@ -3185,6 +3185,8 @@ async fn get_agent_os_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
+    // the copy in ClickHouse (inventory_store), else siem-api's store
+    if let Some(d) = inventory_store::get(&state, &agent_id).await { return Json(serde_json::json!({ "agent_id": agent_id, "os": d["os"], "source": d["source"] })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3203,6 +3205,8 @@ async fn get_agent_hw_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
+    // the copy in ClickHouse (inventory_store), else siem-api's store
+    if let Some(d) = inventory_store::get(&state, &agent_id).await { return Json(serde_json::json!({ "agent_id": agent_id, "hardware": d["hardware"], "source": d["source"] })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3221,6 +3225,8 @@ async fn get_agent_packages_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
+    // the copy in ClickHouse (inventory_store), else siem-api's store
+    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["packages"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "packages": p, "source": d["source"] })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let pkgs: Vec<_> = db.syscollector.programs.values().cloned().collect();
@@ -3242,6 +3248,8 @@ async fn get_agent_ports_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
+    // the copy in ClickHouse (inventory_store), else siem-api's store
+    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["ports"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "ports": p, "source": d["source"] })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3262,6 +3270,8 @@ async fn get_agent_netiface_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
+    // the copy in ClickHouse (inventory_store), else siem-api's store
+    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["netiface"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "interfaces": p, "source": d["source"] })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3687,7 +3697,7 @@ pub struct ComplianceFramework {
 async fn get_compliance_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts = scoped_alerts(&state, &ctx);
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
 
     let count_alerts_for_rules = |rule_ids: &[u32]| -> usize {
         alerts.iter().filter(|a| rule_ids.contains(&a.rule.id)).count()
@@ -3968,7 +3978,7 @@ pub struct MitreTacticColumn {
 async fn get_mitre_matrix_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts = scoped_alerts(&state, &ctx);
+    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
 
     let count_technique_alerts = |tech_id: &str| -> (usize, u8) {
         let matching: Vec<&Alert> = alerts.iter().filter(|a| {
@@ -4132,7 +4142,7 @@ async fn get_fim_summary_handler(
         }
     }
 
-    for a in scoped_alerts(&state, &ctx).iter().rev() {
+    for a in history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.iter().rev() {
         let Some(sc) = a.data.get("syscheck") else { continue };
         let text = |p: &str| sc.pointer(p).and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(String::from);
         let action = match text("/event").as_deref() {
@@ -4697,7 +4707,7 @@ async fn post_agent_enroll_handler(
 async fn get_reports_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts_guard = scoped_alerts(&state, &ctx);
+    let alerts_guard = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut engine = siem_reportd::ReportEngine::new();
 
     for alert in alerts_guard.iter() {
@@ -4946,24 +4956,6 @@ fn scoped_agent_map(state: &AppState, ctx: &AuthCtx) -> HashMap<String, Agent> {
     scoped_agents(state, ctx).into_iter().map(|a| (a.id.clone(), a)).collect()
 }
 
-/// For the cross-tenant admin views: every tenant for a super_admin (unless
-/// they picked one), the caller's own tenant for everyone else.
-fn admin_alerts(state: &AppState, ctx: &AuthCtx) -> Vec<Alert> {
-    if ctx.is_super() && ctx.requested_tenant.is_none() {
-        state.alerts.read().unwrap().clone()
-    } else {
-        scoped_alerts(state, ctx)
-    }
-}
-
-fn admin_events(state: &AppState, ctx: &AuthCtx) -> Vec<RawEvent> {
-    if ctx.is_super() && ctx.requested_tenant.is_none() {
-        state.events.read().unwrap().clone()
-    } else {
-        scoped_events(state, ctx)
-    }
-}
-
 
 /// `GET /api/v1/agents/:id/inventory`: the latest system inventory the agent
 /// reported (syscollector event, `inventory_json`). The auth middleware has
@@ -4973,6 +4965,10 @@ async fn get_agent_inventory_handler(
     Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
 ) -> axum::response::Response {
+    // ClickHouse first (inventory_store syncs wazuh-db and siem-agents)
+    if let Some(s) = inventory_store::get(&state, &agent_id).await.and_then(|d| d.get("summary").filter(|s| !s.is_null()).cloned()) {
+        return Json(s).into_response();
+    }
     // Wazuh agents: what their syscollector synced to wazuh-db
     if let Some(inv) = wazuh_manager::agent_inventory(&agent_id).await {
         return Json(inv).into_response();

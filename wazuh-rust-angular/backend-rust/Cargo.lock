@@ -2642,6 +2642,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-analyst-insight"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "siem-api"
 version = "0.1.0"
 dependencies = [
@@ -2662,6 +2669,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "siem-ai",
+ "siem-analyst-insight",
  "siem-authd",
  "siem-cdb",
  "siem-cjson",

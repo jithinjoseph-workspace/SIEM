@@ -78,10 +78,9 @@ understand Windows and Linux logs, write Wazuh decoders and rules, and plan defe
 Be concise and technical; put commands and rules in code blocks. Only suggest defensive actions. \
 When you use the tenant summary below, say so; do not invent alerts, hosts or numbers that are not in it.";
 
-/// A read-only summary of the caller's tenant (last 24 h), for the chat.
-fn tenant_summary(state: &AppState, ctx: &AuthCtx) -> String {
-    let since = chrono::Utc::now() - chrono::Duration::hours(24);
-    let alerts: Vec<_> = crate::scoped_alerts(state, ctx).into_iter().filter(|a| a.timestamp >= since).collect();
+/// A read-only summary of the caller's tenant (last 24 h, ClickHouse), for the chat.
+async fn tenant_summary(state: &AppState, ctx: &AuthCtx) -> String {
+    let alerts = crate::history::alerts(state, ctx, 24).await;
     let agents = crate::scoped_agent_map(state, ctx);
     let (mut crit, mut high, mut med, mut low) = (0, 0, 0, 0);
     let mut rules: HashMap<(u32, String), u32> = HashMap::new();
@@ -110,7 +109,7 @@ pub async fn chat(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     if !tenant_ai_enabled(&state, &ctx.scope()) {
         return Err(ai_off());
     }
-    let system = format!("{CHAT_SYSTEM}\n{}\n\n{}", siem_ai::UNTRUSTED_RULE, tenant_summary(&state, &ctx));
+    let system = format!("{CHAT_SYSTEM}\n{}\n\n{}", siem_ai::UNTRUSTED_RULE, tenant_summary(&state, &ctx).await);
     let mut messages: Vec<Message> = req.history.unwrap_or_default().into_iter().rev().take(20).rev().map(|h| Message { role: h.role, content: h.content.chars().take(8000).collect() }).collect();
     messages.push(Message { role: "user".into(), content: req.message.chars().take(8000).collect() });
     let ps = providers(&state, "chat").await;
@@ -144,14 +143,14 @@ pub async fn analyze(State(state): State<AppState>, Extension(ctx): Extension<Au
     let mut location = req.location.clone().unwrap_or_default();
     let mut text = String::new();
     if let Some(eid) = &req.event_id {
-        if let Some(ev) = crate::scoped_events(&state, &ctx).into_iter().find(|e| &e.id.to_string() == eid) {
+        if let Some(ev) = crate::history::events(&state, &ctx, crate::history::DEFAULT_HOURS).await.into_iter().find(|e| &e.id.to_string() == eid) {
             host = ev.agent_id.clone();
             source = format!("{:?}", ev.source);
             location = ev.location.clone();
             text = format!("Log location: {}\nRaw message: {}\nMetadata: {:?}", ev.location, ev.message, ev.metadata);
         }
     } else if let Some(aid) = &req.alert_id {
-        if let Some(a) = crate::scoped_alerts(&state, &ctx).into_iter().find(|a| &a.id.to_string() == aid) {
+        if let Some(a) = crate::history::alert(&state, &ctx, aid).await {
             host = a.agent.name.clone();
             source = "Wazuh alert".into();
             location = format!("Rule #{}", a.rule.id);

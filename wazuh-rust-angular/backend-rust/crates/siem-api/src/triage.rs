@@ -169,11 +169,50 @@ fn err(m: impl Into<String>) -> Json<Value> {
     Json(json!({ "status": "error", "message": m.into() }))
 }
 
+/// The page data, with how triage adapts for this analyst (siem-analyst-insight).
+async fn page(state: &AppState, tenant: &str, user: &str, st: &TriageState, extra: Value) -> Json<Value> {
+    let mut v = view(state, tenant, st, extra);
+    v.0["calibration"] = crate::insights::calibration(state, tenant, user).await.map(|c| json!(c)).unwrap_or(Value::Null);
+    v
+}
+
 /// `GET /api/v1/siem/triage`
 pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Value> {
     let t = ctx.scope();
     let st = load(&state, &t).await;
-    view(&state, &t, &st, Value::Null)
+    crate::insights::log(&state, &t, &ctx.username, "view", None).await;
+    page(&state, &t, &ctx.username, &st, Value::Null).await
+}
+
+#[derive(clickhouse::Row, Deserialize, serde::Serialize)]
+struct SampleAlert {
+    id: String,
+    timestamp: u64,
+    rule_level: u8,
+    location: String,
+    full_log: String,
+}
+
+/// `POST /api/v1/siem/triage/:id/inspect`: the group's latest alerts (and the
+/// analyst looked at them).
+pub async fn inspect(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Json<Value> {
+    let t = ctx.scope();
+    let st = load(&state, &t).await;
+    let Some(rec) = st.recs.iter().find(|r| r.id == id) else { return err("Recommendation not found") };
+    let since_ms = now().saturating_sub(siem_triage::LOOKBACK_HOURS as u64 * 3600) * 1000;
+    let alerts = state
+        .db
+        .tenant_client(&t)
+        .query("SELECT id, timestamp, rule_level, location, substring(full_log, 1, 2000) AS full_log FROM siem_alerts WHERE rule_id = ? AND agent_id = ? AND src_ip = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT 20")
+        .bind(rec.rule_id)
+        .bind(&rec.agent_id)
+        .bind(&rec.src_ip)
+        .bind(since_ms)
+        .fetch_all::<SampleAlert>()
+        .await
+        .unwrap_or_default();
+    crate::insights::log(&state, &t, &ctx.username, "inspect", Some(rec)).await;
+    Json(json!({ "status": "ok", "id": id, "alerts": alerts, "recommendation": rec }))
 }
 
 /// `POST /api/v1/siem/triage/run`: rules and cached answers only, no AI call.
@@ -181,10 +220,10 @@ pub async fn run_now(State(state): State<AppState>, Extension(ctx): Extension<Au
     let t = ctx.scope();
     let st = load(&state, &t).await;
     if now().saturating_sub(st.last_run) < MIN_MANUAL_GAP_SECS {
-        return view(&state, &t, &st, json!({ "throttled": true }));
+        return page(&state, &t, &ctx.username, &st, json!({ "throttled": true })).await;
     }
     match run_for_tenant(&state, &t, false).await {
-        Ok(st) => view(&state, &t, &st, Value::Null),
+        Ok(st) => page(&state, &t, &ctx.username, &st, Value::Null).await,
         Err(e) => err(e),
     }
 }
@@ -206,6 +245,10 @@ pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<Auth
     if rec.verdict == Verdict::Suspicious {
         return err("Suspicious groups can't be suppressed from triage - review the alerts instead.");
     }
+    // trust calibration: an analyst relying on the AI too much looks at the alerts first
+    if crate::insights::calibration(&state, &t, &ctx.username).await.is_some_and(|c| c.require_inspect) && !crate::insights::inspected(&state, &t, &ctx.username, &rec.id).await {
+        return err("Open this group's alerts (View alerts) before hiding it.");
+    }
     let hours = body.and_then(|b| b.0.hours).unwrap_or(24);
     let req = siem_suppression::Request {
         rule_id: Some(rec.rule_id),
@@ -225,7 +268,8 @@ pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<Auth
         r.updated_at = n;
     }
     let _ = save(&state, &t, &st).await;
-    view(&state, &t, &st, json!({ "applied_hours": hours.clamp(siem_suppression::MIN_HOURS, siem_suppression::MAX_HOURS), "also_covered_groups": 0 }))
+    crate::insights::log(&state, &t, &ctx.username, "apply", Some(&rec)).await;
+    page(&state, &t, &ctx.username, &st, json!({ "applied_hours": hours.clamp(siem_suppression::MIN_HOURS, siem_suppression::MAX_HOURS), "also_covered_groups": 0 })).await
 }
 
 /// `POST /api/v1/siem/triage/:id/dismiss`: keep showing these, stop recommending.
@@ -233,13 +277,15 @@ pub async fn dismiss(State(state): State<AppState>, Extension(ctx): Extension<Au
     let t = ctx.scope();
     let mut st = load(&state, &t).await;
     let n = now();
-    match st.recs.iter_mut().find(|r| r.id == id && r.status == "pending") {
+    let rec = match st.recs.iter_mut().find(|r| r.id == id && r.status == "pending") {
         Some(r) => {
             r.status = "dismissed".into();
             r.updated_at = n;
+            r.clone()
         }
         None => return err("Recommendation not found"),
-    }
+    };
     let _ = save(&state, &t, &st).await;
-    view(&state, &t, &st, Value::Null)
+    crate::insights::log(&state, &t, &ctx.username, "dismiss", Some(&rec)).await;
+    page(&state, &t, &ctx.username, &st, Value::Null).await
 }

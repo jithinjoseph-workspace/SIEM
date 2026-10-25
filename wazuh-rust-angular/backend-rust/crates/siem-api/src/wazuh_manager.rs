@@ -707,7 +707,7 @@ pub async fn remove_agent(id: &str) {
 }
 
 /// `agent <id> sql <query>`: the rows, or None (no agent DB, not running).
-async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
+pub(crate) async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
     let r = wdb().query(&format!("agent {id} sql {sql}")).await.ok()?;
     let json = r.strip_prefix("ok ")?;
     serde_json::from_str::<serde_json::Value>(json).ok()?.as_array().cloned()

@@ -165,7 +165,8 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 7] = [
+pub const ANALYST_DDL: [&str; 8] = [
+    "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
     // each agent's latest system inventory (os, hardware, packages, ports, processes...)
     "CREATE TABLE IF NOT EXISTS siem_agent_inventory (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
@@ -185,6 +186,8 @@ pub enum DocTable {
     RetroScans,
     /// id = agent id
     Inventory,
+    /// Alerts that other organisations reported too (swarm.rs)
+    SwarmMatches,
 }
 
 impl DocTable {
@@ -194,6 +197,7 @@ impl DocTable {
             DocTable::AnalystState => "siem_analyst_state",
             DocTable::RetroScans => "siem_retro_scans",
             DocTable::Inventory => "siem_agent_inventory",
+            DocTable::SwarmMatches => "siem_swarm_matches",
         }
     }
 }

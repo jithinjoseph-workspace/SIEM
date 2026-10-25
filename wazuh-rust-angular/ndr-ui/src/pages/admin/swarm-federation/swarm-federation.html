@@ -1,0 +1,79 @@
+<div class="p-6 space-y-6 text-slate-200 max-w-[1200px]">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Threat Swarm Federation</h1>
+    <p class="text-sm text-slate-400 max-w-3xl">
+      Deployments share anonymous attack fingerprints through a hub, never logs. Join a hub (its URL, your member token
+      and the community key all members share), or leave the URL empty to use this deployment as the hub. Each tenant's
+      admin still decides whether that tenant takes part (off by default).
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <div *ngIf="cfg() as c" class="text-xs text-slate-400">Last round: {{ when(c.last_sync) }}<span *ngIf="c.last_error" class="text-rose-300"> · {{ c.last_error }}</span></div>
+
+  <form (ngSubmit)="save()" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-4">
+    <h2 class="text-sm font-bold uppercase text-slate-300">This deployment as a member</h2>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" [(ngModel)]="form.enabled"> Take part in the swarm</label>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label for="sw-url" class="text-xs text-slate-400 block mb-1">Hub URL (empty = this deployment)</label>
+        <input id="sw-url" name="url" [(ngModel)]="form.hub_url" placeholder="https://swarm-hub.example.com" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+      </div>
+      <div>
+        <label for="sw-tok" class="text-xs text-slate-400 block mb-1">Member token from the hub</label>
+        <input id="sw-tok" name="tok" type="password" [(ngModel)]="form.member_token" [placeholder]="cfg()?.member_token_set ? '•••• saved (leave empty to keep)' : 'swm_…'" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+      </div>
+      <div>
+        <label for="sw-key" class="text-xs text-slate-400 block mb-1">Community key (the same for every member)</label>
+        <div class="flex gap-2">
+          <input id="sw-key" name="key" type="password" [(ngModel)]="form.community_key" [placeholder]="cfg()?.community_key_set ? '•••• saved (leave empty to keep)' : 'at least 16 characters'" class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+          <button type="button" (click)="generateKey()" class="px-2 py-1 text-xs border border-slate-700 rounded hover:bg-slate-800">Generate</button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-1">Give it to the other members out of band. The hub itself does not need it.</p>
+      </div>
+      <div>
+        <label for="sw-eps" class="text-xs text-slate-400 block mb-1">Privacy (ε, lower = more noise on counts)</label>
+        <input id="sw-eps" name="eps" type="number" min="0.1" max="10" step="0.1" [(ngModel)]="form.epsilon" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+      </div>
+    </div>
+
+    <h2 class="text-sm font-bold uppercase text-slate-300 pt-2">This deployment as a hub</h2>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="hub" [(ngModel)]="form.hub_enabled"> Serve as a hub for other deployments</label>
+    <div class="grid md:grid-cols-2 gap-3" *ngIf="form.hub_enabled">
+      <div>
+        <label for="sw-k" class="text-xs text-slate-400 block mb-1">Organisations before a fingerprint is published (k)</label>
+        <input id="sw-k" name="k" type="number" min="1" max="20" [(ngModel)]="form.k" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+      </div>
+      <label class="flex items-center gap-2 text-sm mt-5"><input type="checkbox" name="fast" [(ngModel)]="form.fast_track_critical"> Publish critical fingerprints from one organisation (marked)</label>
+    </div>
+
+    <div class="flex gap-2">
+      <button type="submit" [disabled]="saving()" class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">Save</button>
+      <button type="button" (click)="syncNow()" class="px-4 py-2 border border-slate-700 hover:bg-slate-800 text-sm rounded-lg">Run a round now</button>
+    </div>
+  </form>
+
+  <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3" *ngIf="cfg()?.hub_enabled">
+    <h2 class="text-sm font-bold uppercase text-slate-300">Hub members</h2>
+    <div *ngIf="newToken()" role="status" class="p-3 rounded-lg border border-amber-700 bg-amber-950/40 text-amber-200 text-sm">
+      Give this token to the member now; it is not shown again:<div class="font-mono break-all mt-1">{{ newToken() }}</div>
+    </div>
+    <form (ngSubmit)="addMember()" class="flex gap-2">
+      <label for="sw-mem" class="sr-only">Member name</label>
+      <input id="sw-mem" name="mem" [(ngModel)]="memberName" placeholder="Partner SOC" class="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
+      <button type="submit" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-sm">Add member</button>
+    </form>
+    <table class="w-full text-sm">
+      <thead class="text-xs uppercase text-slate-400"><tr><th class="text-left py-1">Member</th><th class="text-left py-1">Added</th><th class="text-left py-1">Last seen</th><th></th></tr></thead>
+      <tbody>
+        <tr *ngIf="members().length === 0"><td colspan="4" class="py-3 text-slate-500">No members yet.</td></tr>
+        <tr *ngFor="let m of members()" class="border-t border-slate-800/60">
+          <td class="py-2">{{ m.name }}</td><td class="py-2 text-slate-400">{{ when(m.created_at) }}</td><td class="py-2 text-slate-400">{{ when(m.last_seen) }}</td>
+          <td class="py-2 text-right"><button (click)="removeMember(m)" class="text-xs text-rose-300 hover:underline">Remove</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

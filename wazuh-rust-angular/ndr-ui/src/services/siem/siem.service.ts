@@ -458,6 +458,17 @@ export class SiemService {
     return this.http.get(`${this.apiUrl}/api/v1/siem/memory?${p.toString()}`);
   }
 
+  // ── Federated threat swarm (/api/v1/swarm/*) ──
+  getSwarmStatus(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/swarm/status`); }
+  setSwarmLevel(level: 'off' | 'receive' | 'share'): Observable<any> { return this.http.put(`${this.apiUrl}/api/v1/swarm/tenant`, { level }); }
+  getSwarmPreview(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/swarm/preview`); }
+  getSwarmMatches(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/swarm/matches`); }
+  getSwarmConfig(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/swarm/config`); }
+  putSwarmConfig(body: any): Observable<any> { return this.http.put(`${this.apiUrl}/api/v1/swarm/config`, body); }
+  addSwarmMember(name: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/swarm/members`, { name }); }
+  removeSwarmMember(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/swarm/members/${encodeURIComponent(id)}`); }
+  syncSwarm(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/swarm/sync`, {}); }
+
   /** The caller's own workload and AI-trust calibration. */
   getMyInsights(): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/insights/me`);

@@ -562,7 +562,8 @@ pub fn context(alert: &Value, tenant: &str) -> SoarContext {
             _ => "LOW",
         }
         .into(),
-        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1")),
+        // threat intel: the alert's own groups, or other organisations saw it too (swarm)
+        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1")) || crate::swarm::known(tenant, alert),
         src_country: String::new(),
         tags,
         src_ip: s(&data["srcip"]),

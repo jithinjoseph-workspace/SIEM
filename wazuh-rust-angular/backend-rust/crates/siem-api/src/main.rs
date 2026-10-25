@@ -49,6 +49,7 @@ pub mod insights;
 pub mod history;
 pub mod inventory_store;
 pub mod org_memory;
+pub mod swarm;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -461,6 +462,8 @@ async fn main() {
     inventory_store::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
+    // federated threat swarm (off until the platform admin and a tenant admin opt in)
+    swarm::spawn(state.clone());
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
@@ -646,6 +649,17 @@ async fn main() {
         .route("/api/v1/siem/triage/:id/precedents", get(org_memory::triage_precedents))
         .route("/api/v1/siem/memory", get(org_memory::search))
         .route("/api/v1/siem/memory/similar", post(org_memory::similar))
+        // federated threat swarm: the hub (member token) and this deployment's participation
+        .route("/api/v1/swarm/hub/submit", post(swarm::hub_submit))
+        .route("/api/v1/swarm/hub/feed", get(swarm::hub_feed_handler))
+        .route("/api/v1/swarm/status", get(swarm::status))
+        .route("/api/v1/swarm/tenant", put(swarm::put_tenant))
+        .route("/api/v1/swarm/preview", get(swarm::preview))
+        .route("/api/v1/swarm/matches", get(swarm::matches))
+        .route("/api/v1/swarm/config", get(swarm::get_config).put(swarm::put_config))
+        .route("/api/v1/swarm/members", post(swarm::add_member))
+        .route("/api/v1/swarm/members/:id", delete(swarm::remove_member))
+        .route("/api/v1/swarm/sync", post(swarm::sync_now))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))

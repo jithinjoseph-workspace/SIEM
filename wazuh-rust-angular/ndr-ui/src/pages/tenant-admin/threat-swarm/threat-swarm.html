@@ -1,0 +1,66 @@
+<div class="p-6 w-full max-w-[1200px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="ShareIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      Threat Swarm
+    </h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      Organisations protect each other: when one of them is attacked, the others learn the attacker's fingerprint and
+      their own alerts from it are flagged. Only anonymous fingerprints are exchanged; your logs and data stay here.
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+  <div *ngIf="status() && !status().platform.enabled" class="p-3 rounded-lg border border-amber-800 bg-amber-950/40 text-amber-200 text-sm">
+    The platform has not joined a swarm yet; your choice applies once it does.
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4" role="radiogroup" aria-label="Participation">
+    <button *ngFor="let l of levels" role="radio" [attr.aria-checked]="status()?.tenant?.level === l.value" (click)="set(l.value)" [disabled]="saving()"
+      class="text-left p-4 rounded-xl border transition disabled:opacity-50"
+      [class.border-cyan-500]="status()?.tenant?.level === l.value" [class.bg-cyan-950/30]="status()?.tenant?.level === l.value"
+      [class.border-slate-800]="status()?.tenant?.level !== l.value" [class.bg-slate-900/60]="status()?.tenant?.level !== l.value">
+      <div class="font-semibold text-white">{{ l.label }}</div>
+      <div class="text-sm text-slate-400 mt-1">{{ l.text }}</div>
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+    <div class="bg-slate-900/60 rounded-xl border border-emerald-900/50 p-4">
+      <h3 class="text-base font-semibold text-emerald-300 mb-2">Shared (when "Share and receive")</h3>
+      <ul class="list-disc list-inside text-slate-300 space-y-1">
+        <li>Attackers' <b>public</b> IP addresses, as keyed hashes</li>
+        <li>Malicious file hashes (VirusTotal-confirmed or critical alerts), as keyed hashes</li>
+        <li>The order of MITRE ATT&amp;CK techniques of an attack (e.g. T1566 → T1059 → T1003)</li>
+        <li>Wazuh rule numbers, a severity level, the day, and a count with random noise added</li>
+        <li>An anonymous organisation code (not your name)</li>
+      </ul>
+    </div>
+    <div class="bg-slate-900/60 rounded-xl border border-rose-900/50 p-4">
+      <h3 class="text-base font-semibold text-rose-300 mb-2">Never shared</h3>
+      <ul class="list-disc list-inside text-slate-300 space-y-1">
+        <li>Log lines and alert details</li>
+        <li>Host names, users, agents</li>
+        <li>Your internal (private) IP addresses</li>
+        <li>Your organisation's name</li>
+        <li>Exact counts</li>
+      </ul>
+      <p class="text-[11px] text-slate-500 mt-2">A fingerprint is published only when at least {{ status()?.platform?.k ?? 2 }} organisations report it (critical ones sooner, marked as such).</p>
+    </div>
+  </div>
+
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-semibold text-white">What would be shared right now</h3>
+      <button (click)="showPreview()" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
+        <lucide-angular [img]="EyeIcon" class="w-4 h-4"></lucide-angular> Show
+      </button>
+    </div>
+    <div *ngIf="preview() as p" class="mt-3">
+      <div class="text-sm text-slate-400 mb-2">{{ p.count }} fingerprint(s) from the last 24 hours{{ p.count > 50 ? ' (first 50 shown)' : '' }}:</div>
+      <div *ngIf="p.count === 0" class="text-sm text-slate-500">Nothing: no qualifying attack in the last 24 hours.</div>
+      <pre *ngIf="p.count > 0" class="text-[11px] text-slate-300 bg-slate-950 rounded-lg p-3 overflow-x-auto max-h-96">{{ p.fingerprints | json }}</pre>
+    </div>
+  </div>
+</div>

@@ -241,7 +241,7 @@
             <span class="sa-group-core-ring"></span>
           </div>
           <span class="sa-group-label">Configuration</span>
-          <span class="sa-group-hud-tag">4 NODES</span>
+          <span class="sa-group-hud-tag">5 NODES</span>
           <lucide-icon [name]="ChevronIcon" class="sa-chevron" [class.open]="groups['config']"></lucide-icon>
         </button>
         <div class="sa-group-body" [class.open]="groups['config']">
@@ -295,6 +295,18 @@
                   <span class="sa-node-chip">04</span>
                   <lucide-icon [name]="SmtpIcon" class="w-4 h-4 sa-link-icon"></lucide-icon>
                   <span class="sa-link-text">SMTP Config</span>
+                  <span class="sa-node-status-dot"></span>
+                </a>
+              </div>
+              <div class="sa-node-branch" style="--node-idx: 4;">
+                <div class="sa-node-connector">
+                  <span class="sa-node-joint"></span>
+                  <span class="sa-node-wire"></span>
+                </div>
+                <a routerLink="/admin/swarm" routerLinkActive="active" class="sa-nav-link sa-nav-child">
+                  <span class="sa-node-chip">05</span>
+                  <lucide-icon [name]="ShareIcon" class="w-4 h-4 sa-link-icon"></lucide-icon>
+                  <span class="sa-link-text">Threat Swarm</span>
                   <span class="sa-node-status-dot"></span>
                 </a>
               </div>

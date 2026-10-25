@@ -5,7 +5,7 @@ import {
   LucideAngularModule,
   LayoutDashboard, Building2, Users, Server, KeyRound,
   Megaphone, Activity, Zap, Cloud, Globe, Mail, ShieldCheck,
-  ChevronDown, Gavel, HelpCircle, Radio,
+  ChevronDown, Gavel, HelpCircle, Radio, Share2,
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
 import { ConfigService } from '../../services/config/config.service';
@@ -37,6 +37,7 @@ export class AdminLayout implements OnInit {
   SupportIcon       = HelpCircle;
   RadioIcon         = Radio;
   ActivityIcon      = Activity;
+  ShareIcon         = Share2;
 
   groups: Record<string, boolean> = {
     access:         false,

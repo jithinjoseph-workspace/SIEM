@@ -2660,6 +2660,7 @@ dependencies = [
  "futures-util",
  "local-ip-address",
  "provigil-common",
+ "rand 0.8.8",
  "rcgen",
  "redis",
  "reqwest",
@@ -2692,6 +2693,7 @@ dependencies = [
  "siem-rootcheck",
  "siem-sqlite",
  "siem-suppression",
+ "siem-swarm",
  "siem-task-manager",
  "siem-triage",
  "siem-wdb",
@@ -3240,6 +3242,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "siem-swarm"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

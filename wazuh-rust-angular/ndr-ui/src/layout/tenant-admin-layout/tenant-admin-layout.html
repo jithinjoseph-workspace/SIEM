@@ -68,6 +68,10 @@
             <lucide-icon [name]="GaugeIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
             <span class="crm-link-text">Analyst Insights</span>
           </a>
+          <a *ngIf="hasSiemInsights" routerLink="/tenant-admin/threat-swarm" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="ShareIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Threat Swarm</span>
+          </a>
         </div>
       </div>
 

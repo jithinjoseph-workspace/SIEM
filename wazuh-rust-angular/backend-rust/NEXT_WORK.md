@@ -176,6 +176,28 @@ Context only: nothing is hidden or closed by a precedent.
 - **Check:** `org_memory_end_to_end` (`--ignored`) needs ClickHouse up (it was down
   when this was written).
 
+## 1e. Federated threat swarm — built 2026-10-25
+
+Crate siem-swarm + siem-api swarm.rs: tenants opted in (tenant admin: off by
+default / receive / share) send keyed-hash fingerprints only (public attacker IPs,
+malicious file hashes, MITRE technique chains, rule ids, a severity level, the day,
+a Laplace-noised count with ε=1, and an anonymous org code) to a hub (another deployment's
+`/api/v1/swarm/hub/*` with a member token, or this one when hub_url is empty). The hub
+publishes a fingerprint once k=2 orgs report it (critical ones sooner, marked
+`fast_tracked`); members match their alerts against the feed every 15 min →
+`siem_swarm_matches`, the Threat Swarm page, and SOAR `is_malicious`. A tenant never
+matches its own lone report. Pages: analyst `/analyst/siem-swarm`, tenant admin
+`/tenant-admin/threat-swarm` (with "what would be shared" preview), super admin
+`/admin/swarm` (config, hub members, run a round). Test: `swarm_end_to_end` (`--ignored`).
+Towards k, each of this deployment's tenants counts, but a remote member only once
+(it could invent org codes), and the same org via local + HTTP once. Fast-tracked
+(one-report) fingerprints are shown to analysts but never set SOAR `is_malicious`.
+Live-tested 2026-10-25 (71 API checks across 4 roles on tenants default + acm, and the
+3 pages in headless Chrome).
+- **Not done:** federated model updates (no locally trained detection model to
+  share, since detection is the ruleset plus the LLM); hub-to-hub federation; revoking
+  fingerprints already published.
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

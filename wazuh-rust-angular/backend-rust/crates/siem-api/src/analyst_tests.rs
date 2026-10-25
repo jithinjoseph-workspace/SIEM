@@ -430,3 +430,113 @@ async fn org_memory_end_to_end() {
         std::panic::resume_unwind(p);
     }
 }
+
+/// The federated swarm: two sharing organisations see the same attacker, the hub
+/// publishes it (k = 2), a receive-only organisation's alert matches; an "off"
+/// tenant shares nothing; nothing raw leaves; member tokens; a round over HTTP.
+#[tokio::test]
+#[ignore]
+async fn swarm_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let pid = std::process::id();
+    let names: Vec<String> = ["swplat", "swacme", "swglobex", "swinitech", "swumbrella"].iter().map(|n| format!("{n}{pid}")).collect();
+    let mut dbs = Vec::new();
+    for n in &names {
+        dbs.push(st.db.provision_tenant_db(n).await.unwrap());
+        st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": n, "name": n, "ai_enabled": false })).unwrap());
+    }
+    let (plat, acme, globex, initech, umbrella) = (&names[0], &names[1], &names[2], &names[3], &names[4]);
+    crate::swarm::set_platform_for_tests(plat);
+    let sup = AuthCtx { role: "super_admin".into(), ..ctx(plat) };
+    let admin = |t: &str| ctx(t);
+    let body = |r: axum::response::Response| async move {
+        let s = r.status();
+        (s, serde_json::from_slice::<serde_json::Value>(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).unwrap_or_default())
+    };
+    let r = std::panic::AssertUnwindSafe(async {
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        let mk = |t: &str, ip: &str, level: u8, agent: &str| {
+            let mut a = alert(5712, level, "sshd: brute force", agent, ip, now - 60_000);
+            a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
+            crate::tenancy::tag_alert(a, t)
+        };
+        for (t, ip, lvl) in [(acme, "203.0.113.50", 10), (globex, "203.0.113.50", 9), (acme, "198.51.100.20", 10), (acme, "198.51.100.66", 13), (umbrella, "192.0.2.99", 13), (initech, "203.0.113.50", 7)] {
+            assert!(st.db.insert_alerts(&[mk(t, ip, lvl, "agent-secret-host")]).await.is_empty());
+        }
+        // participation: tenant admins choose; an analyst cannot
+        assert_eq!(body(crate::swarm::put_tenant(State(st.clone()), Extension(AuthCtx { role: "analyst".into(), ..ctx(acme) }), Json(crate::swarm::TenantSetting { level: "share".into() })).await).await.0, 403);
+        for (t, l) in [(acme, "share"), (globex, "share"), (initech, "receive"), (umbrella, "off")] {
+            assert_eq!(body(crate::swarm::put_tenant(State(st.clone()), Extension(admin(t)), Json(crate::swarm::TenantSetting { level: l.into() })).await).await.0, 200);
+        }
+        // the platform: this deployment is its own hub
+        let cfg = |hub_url: &str, token: &str| crate::swarm::ConfigBody { enabled: true, hub_url: hub_url.into(), member_token: token.into(), community_key: "test-community-key-0123456789".into(), epsilon: Some(1.0), hub_enabled: true, k: Some(2), fast_track_critical: Some(true) };
+        let (code, c) = body(crate::swarm::put_config(State(st.clone()), Extension(sup.clone()), Json(cfg("", ""))).await).await;
+        assert_eq!(code, 200, "{c}");
+        assert!(c["config"].get("community_key").is_none() && c["config"]["community_key_set"] == true, "secrets are not returned");
+
+        // what acme would share: anonymous only
+        let (_, pv) = body(crate::swarm::preview(State(st.clone()), Extension(admin(acme))).await).await;
+        let s = pv.to_string();
+        for secret in ["203.0.113.50", "198.51.100.20", "agent-secret-host", "host-agent", acme.as_str(), "brute force log"] {
+            assert!(!s.contains(secret), "{secret} would leave: {s}");
+        }
+        assert!(pv["count"].as_u64().unwrap() >= 3);
+
+        // a round: send, pull, match
+        let (sent, feed, matched) = crate::swarm::sync(&st).await.unwrap();
+        assert!(sent == 4 && feed >= 2 && matched == 3, "sent {sent} feed {feed} matched {matched}");
+        let key = b"test-community-key-0123456789";
+        let tok = |ip: &str| siem_swarm::token(key, siem_swarm::Kind::ExternalIp, ip);
+        let c = crate::swarm::config(&st).await;
+        let published: std::collections::BTreeMap<String, siem_swarm::FeedEntry> = crate::swarm::hub_feed(&st, &c).await.into_iter().map(|e| (e.token.clone(), e)).collect();
+        assert_eq!(published[&tok("203.0.113.50")].orgs, 2, "two organisations");
+        assert!(published[&tok("198.51.100.66")].fast_tracked, "critical, one organisation");
+        assert!(!published.contains_key(&tok("198.51.100.20")), "one organisation, not critical: not published");
+        assert!(!published.contains_key(&tok("192.0.2.99")), "the tenant that is off shared nothing");
+
+        // the receive-only tenant: its alert matched; the matched IP stays in its own database
+        let m = crate::swarm::matches(State(st.clone()), Extension(admin(initech))).await.0;
+        let hit = m["matches"].as_array().unwrap().iter().find(|x| x["value"] == "203.0.113.50").unwrap_or_else(|| panic!("{m}"));
+        assert_eq!(hit["feed"]["orgs"], 2);
+        let v = serde_json::to_value(mk(initech, "203.0.113.50", 7, "x")).unwrap();
+        assert!(crate::swarm::known(initech, &v), "SOAR's threat-intel signal");
+        assert!(!crate::swarm::known(umbrella, &v), "an 'off' tenant does not receive");
+        assert!(crate::soar::context(&v, initech).is_malicious);
+        // a sharing tenant: the attacker another organisation saw too matches; its own lone report does not
+        let am = crate::swarm::matches(State(st.clone()), Extension(admin(acme))).await.0;
+        let vals: Vec<&str> = am["matches"].as_array().unwrap().iter().filter_map(|x| x["value"].as_str()).collect();
+        assert_eq!(vals, vec!["203.0.113.50"], "{am}");
+        assert!(!crate::swarm::known(acme, &serde_json::to_value(mk(acme, "198.51.100.66", 13, "x")).unwrap()));
+
+        // member tokens for other deployments
+        let (_, mem) = body(crate::swarm::add_member(State(st.clone()), Extension(sup.clone()), Json(crate::swarm::MemberBody { name: "Partner SOC".into() })).await).await;
+        let token = mem["token"].as_str().unwrap().to_string();
+        let mut h = axum::http::HeaderMap::new();
+        h.insert("authorization", "Bearer swm_wrong_wrong_wrong_wrong_wrong_wrong".parse().unwrap());
+        assert_eq!(crate::swarm::hub_feed_handler(State(st.clone()), h).await.status(), 401);
+        let (_, cfgv) = body(crate::swarm::get_config(State(st.clone()), Extension(sup.clone())).await).await;
+        assert!(!cfgv.to_string().contains(&token), "the token is shown once only");
+
+        // the same round over HTTP, as a remote member
+        let app = axum::Router::new()
+            .route("/api/v1/swarm/hub/submit", axum::routing::post(crate::swarm::hub_submit))
+            .route("/api/v1/swarm/hub/feed", axum::routing::get(crate::swarm::hub_feed_handler))
+            .with_state(st.clone());
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        let _ = body(crate::swarm::put_config(State(st.clone()), Extension(sup.clone()), Json(cfg(&url, &token))).await).await;
+        let (sent2, feed2, _) = crate::swarm::sync(&st).await.unwrap();
+        assert!(sent2 == 4 && feed2 >= 2, "over HTTP: sent {sent2} feed {feed2}");
+        let (_, cfgv) = body(crate::swarm::get_config(State(st.clone()), Extension(sup.clone())).await).await;
+        assert!(cfgv["members"][0]["last_seen"].as_u64().unwrap() > 0, "the member was seen");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    for d in dbs {
+        st.db.root().query(&format!("DROP DATABASE IF EXISTS `{d}`")).execute().await.unwrap();
+    }
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}

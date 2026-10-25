@@ -269,6 +269,8 @@ fn is_public(method: &Method, path: &str) -> bool {
     ) || (method == Method::GET && p == "/api/v1/agent/commands")
         || (method == Method::GET && p.starts_with("/api/agents/") && p.ends_with("/commands"))
         || p.starts_with("/downloads/")
+        // other deployments: authenticated by their member token in the handler
+        || p.starts_with("/api/v1/swarm/hub/")
         || (method == Method::POST && (p == "/api/client-errors" || p == "/api/admin/client-errors"))
         || method == Method::OPTIONS
 }
@@ -433,7 +435,7 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-sources")
     } else if starts("/api/soar") {
         Some("soar")
-    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") {
+    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") {
         Some("siem-alerts")
     } else if starts("/api/v1/siem/predictions") {
         Some("siem-mitre")

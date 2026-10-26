@@ -198,6 +198,33 @@ Live-tested 2026-10-25 (71 API checks across 4 roles on tenants default + acm, a
   share, since detection is the ruleset plus the LLM); hub-to-hub federation; revoking
   fingerprints already published.
 
+## 1f. Neurosymbolic decision engine — built 2026-10-25
+
+Crate siem-decision + siem-api decisions.rs. Before a high-impact action the AI's
+evidence (triage verdict/confidence; origin "neural" only when an AI model produced it)
+and the alert's context become facts, and the tenant's policy decides: deny > needs
+approval > allow; a rule with a missing fact holds the action (fail-safe). Gated now:
+SOAR `block_ip` (soar.rs run_playbooks) and hiding alerts from triage (triage.rs apply).
+Hard guardrails (G1 no internal IPs, G2 protected list, G3 blocks/hour, G4 no level 12+
+hidden, G5 no AI-suspicious hidden, R1 four eyes, R2 24 h expiry) can't be removed;
+P1-P5 thresholds are the tenant admin's (AI Guardrails page). Every decision, review
+and policy change is a record (facts, rules, every comparison, outcome) in the tenant's
+hash-chained `siem_decisions`; `/verify` re-derives each record, `/export` gives
+auditors the chain with how to check it. Repeated requests for the same target while
+one is waiting make one request. Tests: `decisions_end_to_end` (`--ignored`); live-tested
+through analysisd -> SOAR (43 checks) and in the browser.
+Manual operator blocks are recorded too (`manual_block`; G2 applies, G1 does not: an
+operator may contain an internal host). G3 and the request merge are read from
+`siem_decisions` under one lock (no in-memory state; concurrent alerts and two admins
+reviewing at once are serialized). The head is anchored in `data/decision_anchors.json`
+(env `SIEM_DECISION_ANCHORS`), so `/verify` also finds records removed from the end.
+SOAR notifications (Slack, e-mail…) are not gated: low impact.
+- **Keeper metadata loss (fixed 2026-10-25):** Keeper started over on 2026-10-20, so the
+  43 Replicated* tables created before (all of `ndr_acm`, `ndr.ndr_events`, `ndr.ndr_hits`)
+  were read-only. siem-api now runs `SYSTEM RESTORE REPLICA` on such tables at startup
+  (`db::restore_lost_replicas`, test `lost_replica_metadata_is_restored`). Backup taken
+  first: database `replica_backup_20261025` (47 rows; drop it once you are satisfied).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

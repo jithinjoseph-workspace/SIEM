@@ -480,6 +480,17 @@ export class SiemService {
   removeSwarmMember(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/swarm/members/${encodeURIComponent(id)}`); }
   syncSwarm(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/swarm/sync`, {}); }
 
+  // ── Neurosymbolic decisions: reasoning records, guardrails, approvals ──
+  getDecisions(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions`); }
+  getDecision(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}`); }
+  verifyDecisions(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/verify`); }
+  exportDecisions(): Observable<Blob> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/export`, { responseType: 'blob' }); }
+  getDecisionPolicy(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/policy`); }
+  putDecisionPolicy(settings: any): Observable<any> { return this.http.put(`${this.apiUrl}/api/v1/siem/decisions/policy`, settings); }
+  reviewDecision(id: string, approve: boolean): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {});
+  }
+
   /** The caller's own workload and AI-trust calibration. */
   getMyInsights(): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/insights/me`);

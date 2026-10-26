@@ -165,7 +165,8 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 8] = [
+pub const ANALYST_DDL: [&str; 9] = [
+    crate::decisions::DDL,
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
     // each agent's latest system inventory (os, hardware, packages, ports, processes...)
@@ -178,6 +179,30 @@ pub const ANALYST_DDL: [&str; 8] = [
     "CREATE TABLE IF NOT EXISTS siem_threat_predictions (id String, attack_type String, doc String, predicted_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY predicted_at TTL predicted_at + INTERVAL 90 DAY",
 ];
 
+/// A Replicated* table whose Keeper metadata is gone (Keeper started over, as on
+/// 2026-10-20) stays read-only for good: every insert fails. Its data is still on
+/// disk, and `SYSTEM RESTORE REPLICA` rebuilds the metadata from it. Only tried
+/// while Keeper is connected; on a table whose metadata exists it just fails.
+pub async fn restore_lost_replicas(root: &Client) -> Vec<String> {
+    let connected = root.query("SELECT count() FROM system.zookeeper_connection").fetch_one::<u64>().await.unwrap_or(0) > 0;
+    if !connected {
+        return Vec::new();
+    }
+    let readonly = root.query("SELECT database, table FROM system.replicas WHERE is_readonly").fetch_all::<(String, String)>().await.unwrap_or_default();
+    let mut restored = Vec::new();
+    for (db, table) in readonly {
+        let name = format!("`{}`.`{}`", db.replace('`', ""), table.replace('`', ""));
+        match root.query(&format!("SYSTEM RESTORE REPLICA {name}")).execute().await {
+            Ok(()) => {
+                warn!("{name} had lost its Keeper metadata (read-only); restored from the data on disk");
+                restored.push(format!("{db}.{table}"));
+            }
+            Err(e) => warn!("{name} is read-only and could not be restored: {e}"),
+        }
+    }
+    restored
+}
+
 /// The tables the per-tenant documents live in (never user input).
 #[derive(Clone, Copy)]
 pub enum DocTable {
@@ -188,6 +213,8 @@ pub enum DocTable {
     Inventory,
     /// Alerts that other organisations reported too (swarm.rs)
     SwarmMatches,
+    /// The hash-chained decision records (decisions.rs)
+    Decisions,
 }
 
 impl DocTable {
@@ -198,6 +225,7 @@ impl DocTable {
             DocTable::RetroScans => "siem_retro_scans",
             DocTable::Inventory => "siem_agent_inventory",
             DocTable::SwarmMatches => "siem_swarm_matches",
+            DocTable::Decisions => "siem_decisions",
         }
     }
 }
@@ -497,6 +525,7 @@ impl ClickHouseDb {
         }
 
         info!("SIEM tables ready in '{}' (siem_events, siem_alerts, siem_agents, xdr_incidents, siem_threat_intel, agent_registry, tenant_agent_keys, soar_*)", database);
+        restore_lost_replicas(&root_client).await;
         is_available.store(true, Ordering::SeqCst);
 
         Self {

@@ -15,6 +15,8 @@ use crate::tenancy::AuthCtx;
 use crate::AppState;
 
 async fn state() -> AppState {
+    // decision anchors go to a temp file, never into the source tree (one file: writes are serialized by the chain lock)
+    std::env::set_var("SIEM_DECISION_ANCHORS", std::env::temp_dir().join(format!("siem-test-anchors-{}.json", std::process::id())));
     let (broadcast_tx, _) = tokio::sync::broadcast::channel(16);
     AppState {
         engine: siem_engine::AnalysisEngine::new(),
@@ -536,6 +538,200 @@ async fn swarm_end_to_end() {
     for d in dbs {
         st.db.root().query(&format!("DROP DATABASE IF EXISTS `{d}`")).execute().await.unwrap();
     }
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn decisions_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let tenant = format!("dectest{}", std::process::id());
+    let dbname = st.db.provision_tenant_db(&tenant).await.unwrap();
+    st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": tenant, "name": tenant, "ai_enabled": false })).unwrap());
+    let analyst = AuthCtx { username: "ana".into(), role: "analyst".into(), permissions: vec!["siem-alerts".into()], ..ctx(&tenant) };
+    let admin2 = AuthCtx { username: "admin2".into(), ..ctx(&tenant) };
+    let body = |r: axum::response::Response| async move {
+        let s = r.status();
+        (s, serde_json::from_slice::<serde_json::Value>(&axum::body::to_bytes(r.into_body(), 1 << 24).await.unwrap()).unwrap_or_default())
+    };
+    let r = std::panic::AssertUnwindSafe(async {
+        // ── hiding alerts on a triage verdict ──
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        let mut alerts = Vec::new();
+        for agent in ["001", "004"] {
+            for i in 0..3 {
+                alerts.push(alert(503, 3, "Wazuh agent started.", agent, "", now - 600_000 - i));
+            }
+        }
+        alerts.push(alert(593, 9, "Microsoft Event log cleared.", "002", "", now - 500_000));
+        let alerts: Vec<_> = alerts.into_iter().map(|a| crate::tenancy::tag_alert(a, &tenant)).collect();
+        assert!(st.db.insert_alerts(&alerts).await.is_empty());
+        let s = crate::triage::run_for_tenant(&st, &tenant, false).await.unwrap();
+        let rec = |rule: u32, agent: &str| s.recs.iter().find(|r| r.rule_id == rule && r.agent_id == agent).unwrap_or_else(|| panic!("no group {rule}/{agent}")).id.clone();
+        let apply = |id: String, hours: u32, who: AuthCtx| crate::triage::apply(State(st.clone()), Extension(who), Path(id), Some(Json(crate::triage::ApplyBody { hours: Some(hours) })));
+
+        let r = apply(rec(503, "001"), 2, ctx(&tenant)).await.0;
+        assert_eq!(r["summary"]["applied"], 1, "benign, short: allowed {r}");
+        let r = apply(rec(593, "002"), 2, ctx(&tenant)).await.0;
+        assert!(r["message"].as_str().unwrap().contains("Denied by G5"), "suspicious: refused by the guardrail {r}");
+        let r = apply(rec(503, "004"), 100, ctx(&tenant)).await.0;
+        assert!(r["message"].as_str().unwrap().contains("Waiting for your tenant admin") && r["message"].as_str().unwrap().contains("P4"), "long: held {r}");
+        assert_eq!(crate::suppressions::all(&st, &tenant).await.len(), 1, "the held one is not applied yet");
+
+        let (_, l) = body(crate::decisions::list(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(l["pending"].as_array().unwrap().len(), 1);
+        let held = l["pending"][0]["id"].as_str().unwrap().to_string();
+        // four eyes, and only tenant admins review
+        assert_eq!(body(crate::decisions::approve(State(st.clone()), Extension(analyst.clone()), Path(held.clone())).await).await.0, 403);
+        assert_eq!(body(crate::decisions::approve(State(st.clone()), Extension(ctx(&tenant)), Path(held.clone())).await).await.0, 403, "the requester cannot approve");
+        let (s2, a) = body(crate::decisions::approve(State(st.clone()), Extension(admin2.clone()), Path(held.clone())).await).await;
+        assert_eq!((s2.as_u16(), a["outcome"].as_str(), a["result"]["ok"].as_bool()), (200, Some("allowed"), Some(true)), "{a}");
+        let sup = crate::suppressions::all(&st, &tenant).await;
+        assert!(sup.len() == 2 && sup.iter().any(|x| x.agent_id.as_deref() == Some("004") && x.reason.contains(&held)), "approved and traceable");
+        assert_eq!(body(crate::decisions::approve(State(st.clone()), Extension(admin2.clone()), Path(held.clone())).await).await.0, 409, "once only");
+
+        // ── SOAR block_ip ──
+        let policy = |p: serde_json::Value| Json(serde_json::from_value::<crate::decisions::Settings>(p).unwrap());
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(analyst.clone()), policy(json!({ "protected": ["198.51.100.0/24"] }))).await).await.0, 403);
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["not-an-ip"] }))).await).await.0, 400);
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["198.51.100.0/24"], "max_blocks_per_hour": 1 }))).await).await.0, 200);
+
+        let pb: provigil_common::soar::SoarNativePlaybook = serde_json::from_value(json!({
+            "id": "pb1", "name": "Block attackers", "description": "", "enabled": 1, "cond_field": "score", "cond_op": ">", "cond_value": "0",
+            "action_type": "block_ip", "action_config": "{\"duration_hours\": 12}", "run_count": 0, "last_run": null, "created_at": "", "updated_at": "", "tenant_id": tenant,
+        }))
+        .unwrap();
+        let gate = |ip: &str, level: u8| {
+            let mut a = serde_json::to_value(alert(5712, level, "sshd: brute force", "001", ip, now)).unwrap();
+            a["data"]["srcip"] = json!(ip);
+            let c = crate::soar::context(&a, &tenant);
+            let (st, pb) = (st.clone(), pb.clone());
+            async move { crate::decisions::gate_block(&st, &pb, &c).await }
+        };
+        assert!(gate("10.1.2.3", 12).await.unwrap_err().1.contains("G1"), "internal address");
+        assert!(gate("10.1.2.3", 12).await.unwrap_err().1.starts_with("Refused again"), "a repeated refusal is one record");
+        // a policy that cannot be read: the protected check is missing evidence, so blocks wait and a person's block is refused
+        st.db.put_doc(&tenant, crate::db::DocTable::AnalystState, "decision_policy", "{not json").await.unwrap();
+        let unread = gate("203.0.113.99", 12).await.unwrap_err();
+        assert!(unread.0 == "awaiting_approval" && unread.1.contains("missing evidence for G2"), "{unread:?}");
+        assert!(crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "10.6.6.6", 600).await.is_err());
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["198.51.100.0/24"], "max_blocks_per_hour": 1 }))).await).await.0, 200);
+        assert!(gate("198.51.100.7", 15).await.unwrap_err().1.contains("G2"), "protected range");
+        assert_eq!(gate("203.0.113.77", 6).await.unwrap_err().0, "awaiting_approval", "weak evidence");
+        assert!(gate("203.0.113.77", 5).await.unwrap_err().1.starts_with("Already waiting"), "one request per target, not one per alert");
+        assert!(gate("192.0.2.10", 12).await.is_ok(), "strong evidence, public, not protected");
+        // G3 counts from the decision table (survives restarts): the 2nd strong block this hour waits
+        let g3 = gate("192.0.2.11", 12).await.unwrap_err();
+        assert!(g3.0 == "awaiting_approval" && g3.1.contains("G3"), "{g3:?}");
+        // the same request from 5 alerts at once: one approval request, not five
+        let burst = futures_util::future::join_all((0..5).map(|_| gate("203.0.113.88", 6))).await;
+        let new = burst.iter().filter(|r| r.as_ref().unwrap_err().1.starts_with("Needs a person's approval")).count();
+        let merged = burst.iter().filter(|r| r.as_ref().unwrap_err().1.starts_with("Already waiting")).count();
+        assert_eq!((new, merged), (1, 4), "{burst:?}");
+
+        // a person's block: recorded; a protected asset is refused, an internal host is not
+        let m = crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "198.51.100.9", 3600).await;
+        assert!(m.as_ref().unwrap_err().contains("G2"), "{m:?}");
+        assert!(crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "10.5.5.5", 3600).await.is_ok());
+
+        // the real SOAR path: a block_ip playbook on an internal-address alert records a denied run
+        let req: crate::soar::PlaybookReq = serde_json::from_value(json!({ "name": "Block attackers", "cond_field": "score", "cond_op": ">", "cond_value": "0", "action_type": "block_ip", "action_config": "{}" })).unwrap();
+        let store = crate::soar::Store { db: st.db.clone(), state: Some(st.clone()) };
+        store.insert_playbook(&tenant, "pb-real", &req).await.unwrap();
+        let mut a = serde_json::to_value(alert(5712, 12, "sshd: brute force", "001", "172.16.9.9", now)).unwrap();
+        a["data"]["srcip"] = json!("172.16.9.9");
+        crate::soar::run_playbooks(&store, vec![(a, tenant.clone())]).await;
+        let runs = store.runs(&tenant).await.unwrap();
+        assert!(runs.iter().any(|r| r["status"] == "denied" && r["detail"].as_str().unwrap().contains("G1")), "{runs:?}");
+
+        // reject the held block
+        let (_, l) = body(crate::decisions::list(State(st.clone()), Extension(analyst.clone())).await).await;
+        let held_block = l["pending"].as_array().unwrap().iter().find(|p| p["target"] == "203.0.113.77").unwrap()["id"].as_str().unwrap().to_string();
+        let (_, rj) = body(crate::decisions::reject(State(st.clone()), Extension(admin2.clone()), Path(held_block)).await).await;
+        assert_eq!(rj["outcome"], "denied", "{rj}");
+        // two admins at the same moment: one review, one "already reviewed" (reject: nothing is run)
+        let (_, l) = body(crate::decisions::list(State(st.clone()), Extension(analyst.clone())).await).await;
+        let race = l["pending"].as_array().unwrap().iter().find(|p| p["target"] == "203.0.113.88").unwrap()["id"].as_str().unwrap().to_string();
+        let admin3 = AuthCtx { username: "admin3".into(), ..ctx(&tenant) };
+        let (a, b) = tokio::join!(
+            crate::decisions::reject(State(st.clone()), Extension(admin2.clone()), Path(race.clone())),
+            crate::decisions::reject(State(st.clone()), Extension(admin3.clone()), Path(race.clone()))
+        );
+        let mut codes = [a.status().as_u16(), b.status().as_u16()];
+        codes.sort();
+        assert_eq!(codes, [200, 409]);
+
+        // ── the chain: valid, exportable, and tampering is found ──
+        let (_, v) = body(crate::decisions::verify(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(v["valid"], true, "{v}");
+        let n = v["checked"].as_u64().unwrap();
+        assert!(n >= 11, "every decision, review and policy change is recorded: {n}");
+        let (_, one) = body(crate::decisions::get_one(State(st.clone()), Extension(analyst.clone()), Path(held.clone())).await).await;
+        assert!(one["verified"].is_null() && one["record"]["facts"]["neural.verdict"]["origin"] == "symbolic", "{one}");
+        let (_, ex) = body(crate::decisions::export(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(ex["records"].as_array().unwrap().len() as u64, n);
+
+        // the newest record removed from the database: found through the anchor
+        let last: siem_decision::Record = serde_json::from_value(ex["records"].as_array().unwrap().last().unwrap().clone()).unwrap();
+        st.db.delete_doc(&tenant, crate::db::DocTable::Decisions, &last.id).await.unwrap();
+        let (_, v) = body(crate::decisions::verify(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert!(v["valid"] == false && v["reason"].as_str().unwrap().contains("chain ends at"), "{v}");
+        st.db.put_doc(&tenant, crate::db::DocTable::Decisions, &last.id, &serde_json::to_string(&last).unwrap()).await.unwrap();
+        let (_, v) = body(crate::decisions::verify(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!(v["valid"], true, "restored: {v}");
+
+        // a self-consistent "waiting" record put into the database on its own is never acted on
+        let mut f = siem_decision::Facts::new();
+        f.insert("x".into(), siem_decision::fact(siem_decision::Val::Bool(true), siem_decision::Origin::Context, ""));
+        let rules = vec![siem_decision::Rule { id: "Z".into(), title: "z".into(), when: siem_decision::cmp("x", siem_decision::Op::Eq, siem_decision::Val::Bool(true)), effect: siem_decision::Effect::RequireApproval, hard: true, reference: "".into() }];
+        let fake = siem_decision::decide("dec-fake", Some((n + 40, "00")), last.ts, "block_ip", "8.8.8.8", "soar:x", f, rules, json!({ "agent_id": "001", "ip": "8.8.8.8", "hours": 1 }), "");
+        assert!(siem_decision::verify(&fake).is_ok());
+        st.db.put_doc(&tenant, crate::db::DocTable::Decisions, &fake.id, &serde_json::to_string(&fake).unwrap()).await.unwrap();
+        assert_eq!(body(crate::decisions::approve(State(st.clone()), Extension(admin2.clone()), Path(fake.id.clone())).await).await.0, 409);
+        st.db.delete_doc(&tenant, crate::db::DocTable::Decisions, &fake.id).await.unwrap();
+
+        let mut forged: siem_decision::Record = serde_json::from_value(one["record"].clone()).unwrap();
+        forged.outcome = siem_decision::Outcome::Allowed;
+        st.db.put_doc(&tenant, crate::db::DocTable::Decisions, &forged.id, &serde_json::to_string(&forged).unwrap()).await.unwrap();
+        let (_, v) = body(crate::decisions::verify(State(st.clone()), Extension(analyst.clone())).await).await;
+        assert_eq!((v["valid"].as_bool(), v["bad_seq"].as_u64()), (Some(false), Some(forged.seq)), "{v}");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    st.db.root().query(&format!("DROP DATABASE IF EXISTS `{dbname}`")).execute().await.unwrap();
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn lost_replica_metadata_is_restored() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let db = format!("reptest{}", std::process::id());
+    let root = st.db.root();
+    let zk = format!("/clickhouse/tables/test/{db}/t");
+    let q = |sql: String| async move { root.query(&sql).execute().await };
+    q(format!("CREATE DATABASE {db}")).await.unwrap();
+    let r = std::panic::AssertUnwindSafe(async {
+        q(format!("CREATE TABLE {db}.t (x UInt8) ENGINE = ReplicatedMergeTree('{zk}', 'r1') ORDER BY x")).await.unwrap();
+        q(format!("INSERT INTO {db}.t VALUES (7)")).await.unwrap();
+        // what a Keeper that started over looks like: the table's metadata is gone
+        q(format!("DETACH TABLE {db}.t")).await.unwrap();
+        q(format!("SYSTEM DROP REPLICA 'r1' FROM ZKPATH '{zk}'")).await.unwrap();
+        q(format!("ATTACH TABLE {db}.t")).await.unwrap();
+        assert!(q(format!("INSERT INTO {db}.t VALUES (8)")).await.is_err(), "read-only without its metadata");
+        let restored = crate::db::restore_lost_replicas(root).await;
+        assert!(restored.contains(&format!("{db}.t")), "{restored:?}");
+        q(format!("INSERT INTO {db}.t VALUES (8)")).await.unwrap();
+        let sum = root.query(&format!("SELECT toUInt64(sum(x)) FROM {db}.t")).fetch_one::<u64>().await.unwrap();
+        assert_eq!(sum, 15, "the old row is kept and new ones are written");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    let _ = root.query(&format!("DROP DATABASE IF EXISTS {db} SYNC")).execute().await;
     if let Err(p) = res {
         std::panic::resume_unwind(p);
     }

@@ -45,6 +45,7 @@ siem-predict = { path = "../siem-predict" }
 siem-analyst-insight = { path = "../siem-analyst-insight" }
 siem-org-memory = { path = "../siem-org-memory" }
 siem-swarm = { path = "../siem-swarm" }
+siem-decision = { path = "../siem-decision" }
 rand = "0.8"
 siem-regex = { path = "../siem-regex" }
 async-trait = "0.1"

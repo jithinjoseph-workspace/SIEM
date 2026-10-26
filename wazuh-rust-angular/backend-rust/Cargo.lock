@@ -2678,6 +2678,7 @@ dependencies = [
  "siem-core",
  "siem-crypto",
  "siem-csyslogd",
+ "siem-decision",
  "siem-engine",
  "siem-intent-engine",
  "siem-ipc",
@@ -2835,6 +2836,15 @@ dependencies = [
  "siem-cjson",
  "siem-njson",
  "siem-sqlite",
+]
+
+[[package]]
+name = "siem-decision"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

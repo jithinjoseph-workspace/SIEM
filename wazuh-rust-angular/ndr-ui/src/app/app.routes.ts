@@ -59,6 +59,7 @@ export const routes: Routes = [
       { path: 'siem-my-insights',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/insights/siem-my-insights').then(m => m.SiemMyInsights) },
       { path: 'siem-memory',        canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/memory/siem-memory').then(m => m.SiemMemory) },
       { path: 'siem-swarm',         canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/swarm/siem-swarm').then(m => m.SiemSwarm) },
+      { path: 'siem-decisions',     canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/decisions/siem-decisions').then(m => m.SiemDecisions) },
 
       /* SIEM pages copied from frontend-angular (pages/siem-classic) */
       {
@@ -162,6 +163,7 @@ export const routes: Routes = [
       { path: 'syslog-devices', loadComponent: () => import('../pages/tenant-admin/syslog-devices/syslog-devices').then(m => m.SyslogDevices) },
       { path: 'analyst-insights', loadComponent: () => import('../pages/tenant-admin/analyst-insights/analyst-insights').then(m => m.AnalystInsights) },
       { path: 'threat-swarm',     loadComponent: () => import('../pages/tenant-admin/threat-swarm/threat-swarm').then(m => m.ThreatSwarm) },
+      { path: 'ai-guardrails',    loadComponent: () => import('../pages/tenant-admin/ai-guardrails/ai-guardrails').then(m => m.AiGuardrails) },
       { path: 'settings',       loadComponent: () => import('../pages/tenant-admin/settings/settings').then(m => m.TenantSettings) },
       { path: 'support',        loadComponent: () => import('../pages/tenant-admin/support/support').then(m => m.TenantSupport) },
     ]

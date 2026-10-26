@@ -48,7 +48,7 @@ pub struct AlertKey<'a> {
 }
 
 /// What a person asks for.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Request {
     pub rule_id: Option<u32>,
     #[serde(default)]

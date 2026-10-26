@@ -8,7 +8,7 @@ import {
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
   Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
-  ListFilter, EyeOff, Crosshair, Gauge, Brain, Share2,
+  ListFilter, EyeOff, Crosshair, Gauge, Brain, Share2, Target,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -123,6 +123,7 @@ export class Sidebar implements OnInit, OnDestroy {
     const siemCandidates: NavItem[] = [
       { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
       { label: 'Risk Fabric',         route: '/analyst/risk-fabric',     icon: Network,     permission: 'siem-agents' },
+      { label: 'Attacker Intent Radar', route: '/analyst/intent-prediction', icon: Target,  permission: 'siem-agents' },
       { label: 'Red Swarm & Purple Team', route: '/analyst/redswarm',    icon: Zap,         permission: 'siem-mitre' },
       { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu,         permission: 'siem-parsers' },
       { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },

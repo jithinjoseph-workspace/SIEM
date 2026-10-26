@@ -141,6 +141,8 @@ pub struct AppState {
     pub risk_fabric: Arc<siem_risk_fabric::RiskFabricEngine>,
     /// Autonomous Continuous Red Agent Swarm & Perpetual Purple-Team Engine.
     pub redswarm: Arc<siem_redswarm::RedSwarmService>,
+    /// Feature 5: Intent Prediction Engine
+    pub intent_engine: Arc<siem_intent_engine::IntentEngine>,
 }
 
 
@@ -298,6 +300,7 @@ async fn main() {
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
     let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
+    let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new("data/intent_engine_config.json"));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -323,6 +326,7 @@ async fn main() {
         deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
         risk_fabric,
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
+        intent_engine,
     };
 
     // Red Swarm audit trail (history, gaps, draft rules): ClickHouse is the master copy.
@@ -498,7 +502,8 @@ async fn main() {
     };
 
     let app = Router::new()
-        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader))
+        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader.clone()))
+        .nest_service("/api/v1/intent", siem_intent_engine::api::router(state.intent_engine.clone(), Some(alerts_reader)))
         .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))

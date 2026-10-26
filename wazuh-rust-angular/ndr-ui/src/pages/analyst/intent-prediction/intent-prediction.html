@@ -1,0 +1,657 @@
+<div class="intent-page">
+  <!-- Top Notification Toast -->
+  @if (successToast()) {
+    <div class="toast-notification">
+      <lucide-icon [img]="CheckIcon" class="toast-icon"></lucide-icon>
+      <span>{{ successToast() }}</span>
+    </div>
+  }
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-left">
+      <div class="header-icon-badge">
+        <lucide-icon [img]="TargetIcon" class="icon-lg text-cyan"></lucide-icon>
+      </div>
+      <div>
+        <div class="header-breadcrumbs">
+          <span>SIEM & XDR</span>
+          <span class="sep">/</span>
+          <span>Next-Gen Analytics</span>
+          <span class="sep">/</span>
+          <span class="current">Attacker Intent Prediction Engine</span>
+        </div>
+        <h1 class="page-title">Attacker Intent & Kill-Chain Prediction Radar</h1>
+        <p class="page-subtitle">
+          Multi-hypothesis Bayesian inference forecasting high-consequence attacker end-objectives and orchestrating preemptive micro-containment before data destruction or exfiltration.
+        </p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="openSimulationModal()">
+        <lucide-icon [img]="PlayIcon" class="icon-sm"></lucide-icon>
+        <span>Simulate Threat Intent</span>
+      </button>
+      <button class="btn btn-primary" (click)="refreshAll()" [disabled]="loading()">
+        <lucide-icon [img]="RefreshIcon" class="icon-sm" [class.spin]="loading()"></lucide-icon>
+        <span>Refresh Radar</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Global Metrics KPI Bar -->
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Monitored Host Dossiers</span>
+        <lucide-icon [img]="LayersIcon" class="kpi-icon text-cyan"></lucide-icon>
+      </div>
+      <div class="kpi-value">{{ summary()?.total_dossiers_monitored || dossiers().length }}</div>
+      <div class="kpi-sub">Active entity threat tracking dossiers</div>
+    </div>
+
+    <div class="kpi-card danger-glow">
+      <div class="kpi-header">
+        <span class="kpi-label">Critical Intent Hypotheses</span>
+        <lucide-icon [img]="ShieldAlertIcon" class="kpi-icon text-crimson"></lucide-icon>
+      </div>
+      <div class="kpi-value text-crimson">{{ summary()?.critical_intent_count || 0 }}</div>
+      <div class="kpi-sub">Hosts progressing toward destructive impact</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Ransomware Staging Risk</span>
+        <lucide-icon [img]="LockIcon" class="kpi-icon text-orange"></lucide-icon>
+      </div>
+      <div class="kpi-value text-orange">{{ summary()?.ransomware_risk_count || 0 }}</div>
+      <div class="kpi-sub">Active encryption / shadow-copy TTP indicators</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Exfiltration & Espionage</span>
+        <lucide-icon [img]="RadioIcon" class="kpi-icon text-purple"></lucide-icon>
+      </div>
+      <div class="kpi-value text-purple">
+        {{ (summary()?.exfiltration_risk_count || 0) + (summary()?.espionage_risk_count || 0) }}
+      </div>
+      <div class="kpi-sub">Data staging & stealth C2 persistence</div>
+    </div>
+
+    <div class="kpi-card highlight-glow">
+      <div class="kpi-header">
+        <span class="kpi-label">Avg Lead Warning Time</span>
+        <lucide-icon [img]="ClockIcon" class="kpi-icon text-emerald"></lucide-icon>
+      </div>
+      <div class="kpi-value text-emerald">{{ summary()?.average_advance_warning_hours || 4.2 }} hrs</div>
+      <div class="kpi-sub">Preemptive intervention advance window</div>
+    </div>
+  </section>
+
+  <!-- Error Banner -->
+  @if (errorMessage()) {
+    <div class="alert-banner">
+      <lucide-icon [img]="AlertTriangleIcon" class="icon-md text-amber"></lucide-icon>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- View Mode Tabs -->
+  <div class="tab-strip">
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'dossier'"
+      (click)="activeTab.set('dossier')"
+    >
+      <lucide-icon [img]="CrosshairIcon" class="icon-sm"></lucide-icon>
+      <span>Entity Intent Dossier</span>
+      @if (dossiers().length > 0) {
+        <span class="tab-pill">{{ dossiers().length }}</span>
+      }
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'actions'"
+      (click)="activeTab.set('actions')"
+    >
+      <lucide-icon [img]="ZapIcon" class="icon-sm"></lucide-icon>
+      <span>Preemptive Containment Actions</span>
+      <span class="tab-pill">{{ allPreemptiveActions().length }}</span>
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'radar'"
+      (click)="activeTab.set('radar')"
+    >
+      <lucide-icon [img]="ActivityIcon" class="icon-sm"></lucide-icon>
+      <span>Fleet Hypothesis Radar</span>
+    </button>
+  </div>
+
+  <!-- TAB 1: ENTITY DOSSIER DEEP DIVE -->
+  @if (activeTab() === 'dossier') {
+    <div class="dossier-layout">
+      <!-- Left: Host Selector & Filters -->
+      <aside class="dossier-sidebar">
+        <div class="sidebar-search">
+          <lucide-icon [img]="SearchIcon" class="search-icon"></lucide-icon>
+          <input
+            type="text"
+            placeholder="Filter hosts, IPs, or intents..."
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            class="input-search"
+          />
+        </div>
+
+        <div class="filter-pills">
+          <button
+            class="pill-btn"
+            [class.active]="filterIntent() === 'ALL'"
+            (click)="filterIntent.set('ALL')"
+          >All</button>
+          <button
+            class="pill-btn"
+            [class.active]="filterIntent() === 'RANSOMWARE'"
+            (click)="filterIntent.set('RANSOMWARE')"
+          >Ransomware</button>
+          <button
+            class="pill-btn"
+            [class.active]="filterIntent() === 'DATA_EXFILTRATION'"
+            (click)="filterIntent.set('DATA_EXFILTRATION')"
+          >Exfil</button>
+          <button
+            class="pill-btn"
+            [class.active]="filterIntent() === 'APT_ESPIONAGE'"
+            (click)="filterIntent.set('APT_ESPIONAGE')"
+          >Espionage</button>
+        </div>
+
+        <div class="host-list">
+          @for (d of filteredDossiers(); track d.id) {
+            <div
+              class="host-card"
+              [class.selected]="selectedDossier()?.id === d.id"
+              (click)="selectDossier(d)"
+            >
+              <div class="host-card-top">
+                <span class="host-name">{{ d.entity_name }}</span>
+                <span class="badge-intent" [ngClass]="getIntentClass(d.primary_intent)">
+                  {{ d.primary_intent.replace('_', ' ') }}
+                </span>
+              </div>
+              <div class="host-card-mid">
+                <span class="host-ip">{{ d.entity_ip }}</span>
+                <span class="badge-velocity" [ngClass]="getVelocityClass(d.kill_chain_velocity)">
+                  {{ d.kill_chain_velocity }}
+                </span>
+              </div>
+              <div class="host-progression">
+                <div class="progression-bar-bg">
+                  <div
+                    class="progression-bar-fill"
+                    [style.width.%]="d.progression_percent"
+                    [ngClass]="getIntentClass(d.primary_intent)"
+                  ></div>
+                </div>
+                <div class="progression-meta">
+                  <span>Kill-Chain: {{ d.progression_percent }}%</span>
+                  <span>Probability: {{ (d.primary_probability * 100).toFixed(0) }}%</span>
+                </div>
+              </div>
+            </div>
+          } @empty {
+            <div class="empty-state">
+              <lucide-icon [img]="InfoIcon" class="icon-lg text-slate"></lucide-icon>
+              <p>No dossiers match filter criteria</p>
+            </div>
+          }
+        </div>
+      </aside>
+
+      <!-- Right: Detailed Dossier Panel -->
+      @if (selectedDossier(); as dossier) {
+        <main class="dossier-main">
+          <!-- Main Host Banner -->
+          <div class="selected-host-header">
+            <div class="host-hero-info">
+              <div class="host-title-row">
+                <h2>{{ dossier.entity_name }}</h2>
+                <span class="hero-ip">{{ dossier.entity_ip }}</span>
+                <span class="hero-id">ID: {{ dossier.entity_id }}</span>
+              </div>
+              <div class="hero-tags">
+                <span class="badge-intent-lg" [ngClass]="getIntentClass(dossier.primary_intent)">
+                  Predicted Goal: {{ getIntentLabel(dossier.primary_intent) }}
+                </span>
+                <span class="hero-tag">
+                  Confidence: <strong>{{ (dossier.confidence_score * 100).toFixed(0) }}%</strong>
+                </span>
+                <span class="hero-tag">
+                  Velocity: <strong [ngClass]="getVelocityClass(dossier.kill_chain_velocity)">{{ dossier.kill_chain_velocity }}</strong>
+                </span>
+                <span class="hero-tag">
+                  Alerts Analyzed: <strong>{{ dossier.alerts_analyzed }}</strong>
+                </span>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <button class="btn btn-danger-action" (click)="activeTab.set('actions')">
+                <lucide-icon [img]="ZapIcon" class="icon-sm"></lucide-icon>
+                <span>{{ dossier.recommended_actions.length }} Preemptive Actions</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section: Kill-Chain Milestone Progression Timeline -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <lucide-icon [img]="ActivityIcon" class="panel-icon text-cyan"></lucide-icon>
+                <span class="panel-title">Kill-Chain Progression & Predicted Next Pivot</span>
+              </div>
+              <span class="panel-badge">{{ dossier.progression_percent }}% to Final Objective</span>
+            </div>
+
+            <!-- Horizontal Stage Tracker -->
+            <div class="killchain-tracker">
+              @for (m of dossier.milestones; track m.stage_index) {
+                <div class="stage-step" [ngClass]="getMilestoneClass(m.status)">
+                  <div class="stage-connector"></div>
+                  <div class="stage-bubble">
+                    <span class="stage-num">{{ m.stage_index }}</span>
+                  </div>
+                  <div class="stage-info">
+                    <div class="stage-name">{{ m.stage_name }}</div>
+                    <div class="stage-status-label">
+                      @switch (m.status) {
+                        @case ('observed') {
+                          <span class="text-emerald">Observed</span>
+                        }
+                        @case ('current') {
+                          <span class="text-amber">Active Staging</span>
+                        }
+                        @case ('predicted_next') {
+                          <span class="text-purple font-bold">Predicted Next Pivot</span>
+                        }
+                        @default {
+                          <span class="text-slate">Unreached</span>
+                        }
+                      }
+                    </div>
+                  </div>
+                  @if (m.observed_techniques && m.observed_techniques.length > 0) {
+                    <div class="stage-techniques">
+                      @for (t of m.observed_techniques; track t) {
+                        <span class="tech-chip">{{ t }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <!-- Next Move Intelligence Alert -->
+            @for (m of dossier.milestones; track m.stage_index) {
+              @if (m.status === 'predicted_next') {
+                <div class="predicted-pivot-alert">
+                  <div class="pivot-badge-pulsing">
+                    <lucide-icon [img]="CrosshairIcon" class="icon-sm"></lucide-icon>
+                    <span>PREDICTED NEXT ATTACKER PIVOT</span>
+                  </div>
+                  <div class="pivot-details">
+                    <h4>Stage {{ m.stage_index }}: {{ m.stage_name }}</h4>
+                    <p>{{ m.prediction_reason }}</p>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+
+          <!-- Section: Multi-Hypothesis Intent Scoring Breakdown -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <lucide-icon [img]="TargetIcon" class="panel-icon text-purple"></lucide-icon>
+                <span class="panel-title">Multi-Hypothesis Intent Probability Distribution</span>
+              </div>
+              <span class="text-sm text-slate">Normalized Probability Across 5 Threat Archetypes</span>
+            </div>
+
+            <div class="hypotheses-grid">
+              @for (h of dossier.hypotheses; track h.intent_type) {
+                <div class="hypothesis-card" [class.primary-card]="h.intent_type === dossier.primary_intent">
+                  <div class="hypo-header">
+                    <div>
+                      <div class="hypo-title">{{ h.display_name }}</div>
+                      <span class="badge-severity" [ngClass]="'sev-' + h.impact_severity.toLowerCase()">
+                        {{ h.impact_severity }} Impact
+                      </span>
+                    </div>
+                    <div class="hypo-pct-box">
+                      <span class="hypo-pct">{{ (h.probability * 100).toFixed(0) }}%</span>
+                      <span class="hypo-sub">Prob.</span>
+                    </div>
+                  </div>
+
+                  <!-- Probability Bar -->
+                  <div class="hypo-bar-bg">
+                    <div
+                      class="hypo-bar-fill"
+                      [style.width.%]="h.probability * 100"
+                      [ngClass]="getIntentClass(h.intent_type)"
+                    ></div>
+                  </div>
+
+                  <div class="hypo-meta">
+                    <span class="hypo-confidence">
+                      Confidence: <strong>{{ (h.confidence * 100).toFixed(0) }}%</strong>
+                    </span>
+                  </div>
+
+                  <!-- Indicators list -->
+                  <div class="hypo-indicators">
+                    <span class="ind-label">Evidence Indicators:</span>
+                    <div class="ind-chips">
+                      @for (ind of h.key_indicators; track ind) {
+                        <span class="ind-chip">{{ ind }}</span>
+                      }
+                    </div>
+                  </div>
+
+                  <!-- Projected Impact summary -->
+                  <div class="hypo-impact">
+                    <span class="ind-label">Projected Outcome:</span>
+                    <p>{{ h.projected_impact }}</p>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Section: Preemptive Micro-Containment Recommended Actions -->
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <lucide-icon [img]="ShieldCheckIcon" class="panel-icon text-emerald"></lucide-icon>
+                <span class="panel-title">Preemptive Micro-Containment & Defensive Action Triggers</span>
+              </div>
+              <span class="panel-badge-emerald">Automated Countermeasures</span>
+            </div>
+
+            <div class="actions-grid">
+              @for (act of dossier.recommended_actions; track act.id) {
+                <div class="action-card" [class.executed]="act.status === 'executed'">
+                  <div class="action-top">
+                    <div>
+                      <span class="badge-urgency" [ngClass]="getUrgencyBadge(act.urgency)">
+                        {{ act.urgency }}
+                      </span>
+                      <h4 class="action-title">{{ act.title }}</h4>
+                    </div>
+                    <div class="reduction-badge">
+                      -{{ act.risk_reduction_percent }}% Risk
+                    </div>
+                  </div>
+
+                  <p class="action-desc">{{ act.description }}</p>
+
+                  @if (act.execution_command) {
+                    <div class="action-command-box">
+                      <code>{{ act.execution_command }}</code>
+                    </div>
+                  }
+
+                  <div class="action-footer">
+                    <span class="action-status">
+                      @if (act.status === 'executed') {
+                        <span class="status-executed">
+                          <lucide-icon [img]="CheckIcon" class="icon-xs"></lucide-icon>
+                          Executed & Active
+                        </span>
+                      } @else {
+                        <span class="status-pending">Pending Analyst Trigger</span>
+                      }
+                    </span>
+
+                    <button
+                      class="btn btn-sm btn-execute"
+                      [disabled]="act.status === 'executed' || executingActionId() === act.id"
+                      (click)="executeAction(act)"
+                    >
+                      @if (executingActionId() === act.id) {
+                        <lucide-icon [img]="RefreshIcon" class="icon-xs spin"></lucide-icon>
+                        <span>Executing...</span>
+                      } @else if (act.status === 'executed') {
+                        <lucide-icon [img]="CheckIcon" class="icon-xs"></lucide-icon>
+                        <span>Triggered</span>
+                      } @else {
+                        <lucide-icon [img]="ZapIcon" class="icon-xs"></lucide-icon>
+                        <span>Execute Countermeasure</span>
+                      }
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        </main>
+      }
+    </div>
+  }
+
+  <!-- TAB 2: PREEMPTIVE ACTION CENTER -->
+  @if (activeTab() === 'actions') {
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <lucide-icon [img]="ZapIcon" class="panel-icon text-amber"></lucide-icon>
+          <span class="panel-title">Fleet Preemptive Micro-Containment Action Center</span>
+        </div>
+        <div class="filter-pills">
+          <button class="pill-btn" [class.active]="actionFilter() === 'ALL'" (click)="actionFilter.set('ALL')">All</button>
+          <button class="pill-btn" [class.active]="actionFilter() === 'pending'" (click)="actionFilter.set('pending')">Pending Approval</button>
+          <button class="pill-btn" [class.active]="actionFilter() === 'executed'" (click)="actionFilter.set('executed')">Executed</button>
+        </div>
+      </div>
+
+      <div class="actions-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Target Entity</th>
+              <th>Countermeasure Title</th>
+              <th>Urgency</th>
+              <th>Risk Reduction</th>
+              <th>Execution Command</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (act of allPreemptiveActions(); track act.id) {
+              <tr>
+                <td>
+                  <strong>{{ act.target_agent_name }}</strong>
+                  <div class="text-xs text-slate">{{ act.target_entity }}</div>
+                </td>
+                <td>
+                  <span class="font-medium">{{ act.title }}</span>
+                  <div class="text-xs text-slate">{{ act.description }}</div>
+                </td>
+                <td>
+                  <span class="badge-urgency" [ngClass]="getUrgencyBadge(act.urgency)">
+                    {{ act.urgency }}
+                  </span>
+                </td>
+                <td>
+                  <span class="reduction-pill">-{{ act.risk_reduction_percent }}%</span>
+                </td>
+                <td>
+                  <code class="cmd-snippet">{{ act.execution_command || 'Automated policy sync' }}</code>
+                </td>
+                <td>
+                  @if (act.status === 'executed') {
+                    <span class="status-executed">
+                      <lucide-icon [img]="CheckIcon" class="icon-xs"></lucide-icon>
+                      Executed
+                    </span>
+                  } @else {
+                    <span class="status-pending">Pending</span>
+                  }
+                </td>
+                <td>
+                  <button
+                    class="btn btn-xs btn-execute"
+                    [disabled]="act.status === 'executed' || executingActionId() === act.id"
+                    (click)="executeAction(act)"
+                  >
+                    @if (act.status === 'executed') {
+                      <span>Applied</span>
+                    } @else {
+                      <span>Execute</span>
+                    }
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center py-6 text-slate">
+                  No actions found for the selected filter.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+
+  <!-- TAB 3: FLEET HYPOTHESIS RADAR -->
+  @if (activeTab() === 'radar') {
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <lucide-icon [img]="ActivityIcon" class="panel-icon text-cyan"></lucide-icon>
+          <span class="panel-title">Fleet Threat Intent Progression Matrix</span>
+        </div>
+        <span class="panel-badge">Comparative Multi-Entity Forecast</span>
+      </div>
+
+      <div class="radar-fleet-grid">
+        @for (d of dossiers(); track d.id) {
+          <div class="fleet-matrix-card" (click)="selectDossier(d)">
+            <div class="fleet-card-header">
+              <div>
+                <h4>{{ d.entity_name }}</h4>
+                <span class="text-xs text-slate">{{ d.entity_ip }}</span>
+              </div>
+              <span class="badge-intent" [ngClass]="getIntentClass(d.primary_intent)">
+                {{ d.primary_intent.replace('_', ' ') }}
+              </span>
+            </div>
+
+            <div class="radar-bars">
+              @for (h of d.hypotheses; track h.intent_type) {
+                <div class="radar-row">
+                  <span class="radar-label">{{ h.display_name }}</span>
+                  <div class="radar-track">
+                    <div
+                      class="radar-bar"
+                      [style.width.%]="h.probability * 100"
+                      [ngClass]="getIntentClass(h.intent_type)"
+                    ></div>
+                  </div>
+                  <span class="radar-val">{{ (h.probability * 100).toFixed(0) }}%</span>
+                </div>
+              }
+            </div>
+
+            <div class="fleet-card-footer">
+              <span>Velocity: <strong>{{ d.kill_chain_velocity }}</strong></span>
+              <span>Next Pivot: <strong>Stage {{ d.progression_percent }}%</strong></span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Threat Intent Simulation Sandbox Modal -->
+  @if (showSimModal()) {
+    <div class="modal-backdrop" (click)="closeSimulationModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <lucide-icon [img]="PlayIcon" class="icon-md text-cyan"></lucide-icon>
+            <h3>Threat Intent Projection Sandbox</h3>
+          </div>
+          <button class="modal-close-btn" (click)="closeSimulationModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="modal-desc">
+            Inject hypothetical MITRE ATT&CK techniques observed on a target host to evaluate how Bayesian intent probabilities shift and what preemptive micro-containment actions will be triggered.
+          </p>
+
+          <div class="form-group">
+            <label>Target Host Name</label>
+            <input type="text" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event)" class="form-input" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Host ID</label>
+              <input type="text" [ngModel]="simAgentId()" (ngModelChange)="simAgentId.set($event)" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label>Host IP</label>
+              <input type="text" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event)" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Observed MITRE Techniques (Comma-separated)</label>
+            <input
+              type="text"
+              [ngModel]="simTechniquesInput()"
+              (ngModelChange)="simTechniquesInput.set($event)"
+              class="form-input code-font"
+              placeholder="e.g. T1190, T1059, T1078, T1003, T1486"
+            />
+            <span class="field-hint">Examples: T1486 (Ransomware), T1048 (Exfiltration), T1071 (C2), T1485 (Wiper)</span>
+          </div>
+
+          <div class="form-group">
+            <label>Compromised Context / Observed Account</label>
+            <input type="text" [ngModel]="simUser()" (ngModelChange)="simUser.set($event)" class="form-input" />
+          </div>
+
+          <div class="form-group">
+            <label>Analyst Observation Notes</label>
+            <textarea
+              rows="3"
+              [ngModel]="simContext()"
+              (ngModelChange)="simContext.set($event)"
+              class="form-input"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeSimulationModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="submitSimulation()" [disabled]="simEvaluating()">
+            @if (simEvaluating()) {
+              <lucide-icon [img]="RefreshIcon" class="icon-sm spin"></lucide-icon>
+              <span>Calculating Hypotheses...</span>
+            } @else {
+              <lucide-icon [img]="CrosshairIcon" class="icon-sm"></lucide-icon>
+              <span>Run Intent Simulation</span>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

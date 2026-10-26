@@ -42,6 +42,7 @@ export const routes: Routes = [
       /* ── Wazuh Unified SIEM Suite ── */
       { path: 'agents',         canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
       { path: 'risk-fabric',    canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/risk-fabric/risk-fabric').then(m => m.RiskFabric) },
+      { path: 'intent-prediction', canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/intent-prediction/intent-prediction').then(m => m.IntentPrediction) },
       { path: 'redswarm',       canActivate: [authGuard], data: { permission: 'siem-mitre' }, loadComponent: () => import('../pages/analyst/redswarm/redswarm').then(m => m.RedswarmComponent) },
       { path: 'parsers',        canActivate: [authGuard], data: { permission: 'siem-parsers' }, loadComponent: () => import('../pages/analyst/parsers/parsers').then(m => m.Parsers) },
       { path: 'mitre',          canActivate: [authGuard], data: { permission: 'siem-mitre' }, loadComponent: () => import('../pages/analyst/mitre/mitre').then(m => m.MitreMatrix) },

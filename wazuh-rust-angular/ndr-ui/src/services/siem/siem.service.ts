@@ -30,7 +30,12 @@ import {
   SwarmExecutionRecord,
   SynthesizedRuleDraft,
   PurpleHeatmapData,
-  SwarmExecutionMode
+  SwarmExecutionMode,
+  IntentSummaryReport,
+  EntityIntentDossier,
+  SimulationIntentRequest,
+  PreemptiveAction,
+  ExecuteActionRequest
 } from './siem.models';
 
 @Injectable({
@@ -525,6 +530,31 @@ export class SiemService {
 
   getSiemRetroScan(id: string): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/retrospective/scans/${encodeURIComponent(id)}`);
+  }
+
+  // Feature 5: Intent Prediction Engine API
+  getIntentSummary(): Observable<IntentSummaryReport> {
+    return this.http.get<IntentSummaryReport>(`${this.apiUrl}/api/v1/intent/summary`);
+  }
+
+  getIntentHypotheses(): Observable<EntityIntentDossier[]> {
+    return this.http.get<EntityIntentDossier[]>(`${this.apiUrl}/api/v1/intent/hypotheses`);
+  }
+
+  getIntentHypothesis(id: string): Observable<EntityIntentDossier> {
+    return this.http.get<EntityIntentDossier>(`${this.apiUrl}/api/v1/intent/hypotheses/${encodeURIComponent(id)}`);
+  }
+
+  evaluateIntentSimulation(req: SimulationIntentRequest): Observable<EntityIntentDossier> {
+    return this.http.post<EntityIntentDossier>(`${this.apiUrl}/api/v1/intent/evaluate`, req);
+  }
+
+  executePreemptiveAction(req: ExecuteActionRequest): Observable<PreemptiveAction> {
+    return this.http.post<PreemptiveAction>(`${this.apiUrl}/api/v1/intent/actions/execute`, req);
+  }
+
+  getIntentCatalog(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/intent/catalog`);
   }
 }
 

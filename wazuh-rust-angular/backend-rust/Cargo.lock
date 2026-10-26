@@ -2679,6 +2679,7 @@ dependencies = [
  "siem-crypto",
  "siem-csyslogd",
  "siem-engine",
+ "siem-intent-engine",
  "siem-ipc",
  "siem-maild",
  "siem-org-memory",
@@ -2913,6 +2914,20 @@ dependencies = [
  "siem-xml",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "siem-intent-engine"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "siem-core",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

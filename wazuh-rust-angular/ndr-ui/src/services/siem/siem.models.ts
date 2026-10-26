@@ -563,3 +563,82 @@ export interface PurpleHeatmapData {
   overall_defense_rate: number;
 }
 
+// ── Feature 5: Intent Prediction Engine Models ──
+
+export interface IntentHypothesisScore {
+  intent_type: string;
+  display_name: string;
+  probability: number;
+  confidence: number;
+  impact_severity: string;
+  key_indicators: string[];
+  projected_impact: string;
+}
+
+export interface KillChainMilestone {
+  stage_index: number;
+  stage_name: string;
+  status: 'observed' | 'current' | 'predicted_next' | 'unreached';
+  observed_techniques: string[];
+  first_observed_at?: string;
+  prediction_reason?: string;
+}
+
+export interface PreemptiveAction {
+  id: string;
+  title: string;
+  action_type: 'host_isolation' | 'process_termination' | 'identity_stepup' | 'canary_tripwire' | 'firewall_block' | string;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_entity: string;
+  urgency: 'Immediate' | 'Elevated' | 'Advisory' | string;
+  risk_reduction_percent: number;
+  description: string;
+  execution_command?: string;
+  status: 'pending_approval' | 'executed' | 'dismissed' | 'simulated' | string;
+  created_at: string;
+}
+
+export interface EntityIntentDossier {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  entity_ip: string;
+  primary_intent: string;
+  primary_probability: number;
+  confidence_score: number;
+  kill_chain_velocity: string;
+  progression_percent: number;
+  hypotheses: IntentHypothesisScore[];
+  milestones: KillChainMilestone[];
+  recommended_actions: PreemptiveAction[];
+  alerts_analyzed: number;
+  last_updated_at: string;
+}
+
+export interface IntentSummaryReport {
+  total_dossiers_monitored: number;
+  critical_intent_count: number;
+  ransomware_risk_count: number;
+  exfiltration_risk_count: number;
+  espionage_risk_count: number;
+  wiper_risk_count: number;
+  top_dossiers: EntityIntentDossier[];
+  pending_preemptive_actions: PreemptiveAction[];
+  average_advance_warning_hours: number;
+}
+
+export interface SimulationIntentRequest {
+  agent_id: string;
+  agent_name: string;
+  agent_ip: string;
+  observed_techniques: string[];
+  user?: string;
+  custom_context?: string;
+}
+
+export interface ExecuteActionRequest {
+  action_id: string;
+  dry_run?: boolean;
+}
+

@@ -512,15 +512,20 @@ pub fn alert_data(a: &Value) -> siem_maild::alert::AlertData {
 /// `block_ip` on a SIEM alert: Wazuh active response (firewall-drop / netsh)
 /// on the agent that raised it, for the alert's source IP.
 async fn block_on_agent(state: &AppState, pb: &SoarNativePlaybook, config: &Value, ctx: &SoarContext) -> Result<String, String> {
-    let agent_id = ctx.alert.as_ref().and_then(|a| a["agent"]["id"].as_str()).unwrap_or("").to_string();
-    let ip = ctx.src_ip.clone();
+    let agent_id = ctx.alert.as_ref().and_then(|a| a["agent"]["id"].as_str()).unwrap_or("");
+    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
+    block_now(state, agent_id, &ctx.src_ip, hours, &format!("Playbook: {}", pb.name)).await
+}
+
+/// Blocks `ip` on the agent for `hours` (also run when a held block is approved).
+pub async fn block_now(state: &AppState, agent_id: &str, ip: &str, hours: u64, reason: &str) -> Result<String, String> {
+    let (agent_id, ip) = (agent_id.to_string(), ip.to_string());
     if ip.parse::<std::net::IpAddr>().map_or(true, |a| !ps::is_public(a)) {
         return Err(format!("block_ip skipped: source '{ip}' is not a public address"));
     }
     if agent_id.is_empty() || agent_id == "000" || !crate::wazuh_manager::is_wazuh_agent(&agent_id).await {
         return Err(format!("block_ip skipped: agent '{agent_id}' cannot run active responses"));
     }
-    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
     let command = crate::wazuh_manager::block_ip(&agent_id, crate::agent_is_windows(state, &agent_id), &ip, hours * 3600, None).await?;
     let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(hours * 3600);
     let rec = crate::ActiveResponseRecord {
@@ -528,7 +533,7 @@ async fn block_on_agent(state: &AppState, pb: &SoarNativePlaybook, config: &Valu
         command: command.clone(),
         target_ip: ip.clone(),
         agent_id: agent_id.clone(),
-        reason: format!("Playbook: {}", pb.name),
+        reason: reason.to_string(),
         triggered_at: chrono::Utc::now(),
         duration_seconds: timeout,
         status: "Active".into(),
@@ -628,9 +633,27 @@ pub async fn run_playbooks(store: &Store, alerts: Vec<(Value, String)>) {
         }
         let ctx = context(&alert, &tenant);
         for pb in pbs.iter().filter(|pb| ps::conditions::evaluate_condition(pb, &ctx)) {
-            if allow_run(pb) {
-                ps::actions::execute_action(store, pb, &ctx).await;
+            if !allow_run(pb) {
+                continue;
             }
+            // a block is a high-impact action: the policy decides first (decisions.rs)
+            if let (true, Some(state)) = (pb.action_type == "block_ip", &store.state) {
+                if let Err((status, detail)) = crate::decisions::gate_block(state, pb, &ctx).await {
+                    let run = SoarPlaybookRun {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        playbook_id: pb.id.clone(),
+                        playbook_name: pb.name.clone(),
+                        hit_id: ctx.community_id.clone(),
+                        status,
+                        detail,
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        tenant_id: tenant.clone(),
+                    };
+                    let _ = store.soar_insert_run(&run).await;
+                    continue;
+                }
+            }
+            ps::actions::execute_action(store, pb, &ctx).await;
         }
     }
 }

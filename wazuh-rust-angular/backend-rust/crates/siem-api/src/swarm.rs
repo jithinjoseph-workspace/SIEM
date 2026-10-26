@@ -174,25 +174,43 @@ fn valid(f: &Fingerprint) -> bool {
 pub async fn hub_store(state: &AppState, member: &str, fps: &[Fingerprint]) -> Result<usize, String> {
     ensure_tables(state).await;
     let good: Vec<&Fingerprint> = fps.iter().filter(|f| valid(f)).take(MAX_SUBMIT).collect();
-    let tc = state.db.tenant_client(&platform());
-    let version = chrono::Utc::now().timestamp_micros().max(0) as u64;
-    for f in &good {
-        tc.query("INSERT INTO swarm_hub_reports (member, org, token, kind, techniques, rule_ids, severity, day, sightings, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-            .bind(member)
-            .bind(format!("{member}/{}", f.org))
-            .bind(&f.token)
-            .bind(serde_json::to_value(f.kind).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default())
-            .bind(&f.techniques)
-            .bind(&f.rule_ids)
-            .bind(f.severity)
-            .bind(f.day)
-            .bind(f.sightings)
-            .bind(version)
-            .execute()
-            .await
-            .map_err(|e| e.to_string())?;
+    if good.is_empty() {
+        return Ok(0);
     }
+    let version = chrono::Utc::now().timestamp_micros().max(0) as u64;
+    // one INSERT for the whole submission (one ClickHouse part, not one per fingerprint)
+    let mut ins = state.db.tenant_client(&platform()).insert("swarm_hub_reports").map_err(|e| e.to_string())?;
+    for f in &good {
+        let row = ReportIn {
+            member: member.to_string(),
+            org: format!("{member}/{}", f.org),
+            token: f.token.clone(),
+            kind: serde_json::to_value(f.kind).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default(),
+            techniques: f.techniques.clone(),
+            rule_ids: f.rule_ids.clone(),
+            severity: f.severity,
+            day: f.day,
+            sightings: f.sightings,
+            version,
+        };
+        ins.write(&row).await.map_err(|e| e.to_string())?;
+    }
+    ins.end().await.map_err(|e| e.to_string())?;
     Ok(good.len())
+}
+
+#[derive(clickhouse::Row, Serialize)]
+struct ReportIn {
+    member: String,
+    org: String,
+    token: String,
+    kind: String,
+    techniques: Vec<String>,
+    rule_ids: Vec<u32>,
+    severity: u8,
+    day: u32,
+    sightings: u32,
+    version: u64,
 }
 
 #[derive(clickhouse::Row, Deserialize)]
@@ -335,7 +353,18 @@ async fn pull(state: &AppState, c: &Config) -> Result<Vec<FeedEntry>, String> {
 }
 
 /// One round: send the sharing tenants' fingerprints, pull the feed, match.
+/// One round; a failure is kept as the config's `last_error` (shown on the federation page).
 pub async fn sync(state: &AppState) -> Result<(usize, usize, usize), String> {
+    let r = sync_round(state).await;
+    if let Err(e) = &r {
+        let mut c = config(state).await;
+        c.last_error = e.clone();
+        let _ = save(state, &platform(), CONFIG_DOC, &c).await;
+    }
+    r
+}
+
+async fn sync_round(state: &AppState) -> Result<(usize, usize, usize), String> {
     let mut c = config(state).await;
     if !c.enabled {
         return Ok((0, 0, 0));
@@ -424,12 +453,7 @@ pub fn spawn(state: AppState) {
                 match sync(&state).await {
                     Ok((s, f, m)) if s + m > 0 => tracing::info!("threat swarm: {s} fingerprint(s) sent, feed {f}, {m} match(es)"),
                     Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!("threat swarm: {e}");
-                        let mut c = config(&state).await;
-                        c.last_error = e;
-                        let _ = save(&state, &platform(), CONFIG_DOC, &c).await;
-                    }
+                    Err(e) => tracing::warn!("threat swarm: {e}"),
                 }
             }
             tokio::time::sleep(Duration::from_secs(SYNC_SECS)).await;

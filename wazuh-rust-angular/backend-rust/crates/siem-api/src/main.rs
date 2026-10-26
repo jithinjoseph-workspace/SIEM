@@ -50,6 +50,7 @@ pub mod history;
 pub mod inventory_store;
 pub mod org_memory;
 pub mod swarm;
+pub mod decisions;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -464,6 +465,16 @@ async fn main() {
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
     swarm::spawn(state.clone());
+    // ClickHouse can restart (and its Keeper start over) while siem-api keeps running
+    {
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                db::restore_lost_replicas(db.root()).await;
+            }
+        });
+    }
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
@@ -660,6 +671,14 @@ async fn main() {
         .route("/api/v1/swarm/members", post(swarm::add_member))
         .route("/api/v1/swarm/members/:id", delete(swarm::remove_member))
         .route("/api/v1/swarm/sync", post(swarm::sync_now))
+        // neurosymbolic decisions: the reasoning record of every high-impact action, guardrails, approvals
+        .route("/api/v1/siem/decisions", get(decisions::list))
+        .route("/api/v1/siem/decisions/verify", get(decisions::verify))
+        .route("/api/v1/siem/decisions/export", get(decisions::export))
+        .route("/api/v1/siem/decisions/policy", get(decisions::get_policy).put(decisions::put_policy))
+        .route("/api/v1/siem/decisions/:id", get(decisions::get_one))
+        .route("/api/v1/siem/decisions/:id/approve", post(decisions::approve))
+        .route("/api/v1/siem/decisions/:id/reject", post(decisions::reject))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))
@@ -1946,6 +1965,10 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             }
             let duration = payload.get("duration_seconds").and_then(|v| v.as_u64()).unwrap_or(3600);
             let method = payload.get("method").and_then(|v| v.as_str());
+            let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
+            if let Err(m) = decisions::gate_manual_block(state, ctx, &tenant, agent_id, &target, duration).await {
+                return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
+            }
             return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block", method).await;
         }
         "unblock_ip" => {
@@ -4254,6 +4277,10 @@ async fn post_active_response_block(
     };
     if req.ip.parse::<std::net::IpAddr>().is_err() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "A valid IP address is required" }))).into_response();
+    }
+    let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
+    if let Err(m) = decisions::gate_manual_block(&state, &ctx, &tenant, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600)).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
         let reason = req.reason.clone().unwrap_or_else(|| "Manual SOC operator block".to_string());

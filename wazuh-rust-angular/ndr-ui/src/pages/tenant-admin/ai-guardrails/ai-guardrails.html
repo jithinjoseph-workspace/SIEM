@@ -1,0 +1,84 @@
+<div class="p-6 w-full max-w-[1200px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="ScaleIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      AI Guardrails
+    </h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      Automatic actions with real impact (blocking an IP, hiding alerts on an AI verdict) are checked against these rules first.
+      The AI supplies evidence; the rules decide whether the action runs, waits for your approval, or is refused. Every
+      decision is recorded with its reasoning on the AI Decision Audit page.
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <div class="bg-slate-900/60 rounded-xl border border-amber-900/50 p-4 space-y-3">
+    <h3 class="text-base font-semibold text-amber-300">Waiting for your approval ({{ pending().length }})</h3>
+    <p *ngIf="pending().length === 0" class="text-sm text-slate-500">Nothing is waiting.</p>
+    <div *ngFor="let p of pending()" class="border-t border-slate-800/60 pt-3">
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="font-semibold text-white">{{ actionLabel[p.action] ?? p.action }}</span>
+        <span class="font-mono text-cyan-300 break-all">{{ p.target }}</span>
+        <span class="text-slate-500">· {{ when(p.ts) }} · by {{ p.requested_by }}</span>
+        <div class="ml-auto flex gap-2">
+          <button (click)="show(p)" class="px-3 py-1 text-xs border border-slate-700 rounded hover:bg-slate-800">{{ open()?.id === p.id ? 'Hide' : 'Show' }} reasoning</button>
+          <button (click)="review(p, true)" class="px-3 py-1 text-xs bg-emerald-800 hover:bg-emerald-700 text-white rounded">Approve</button>
+          <button (click)="review(p, false)" class="px-3 py-1 text-xs bg-rose-900 hover:bg-rose-800 text-white rounded">Reject</button>
+        </div>
+      </div>
+      <p class="text-sm text-slate-300 mt-1">{{ p.summary }}</p>
+      <div *ngIf="open()?.id === p.id" class="mt-3 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+        <app-decision-detail [record]="open()"></app-decision-detail>
+      </div>
+    </div>
+    <p class="text-[11px] text-slate-500">You cannot approve an action you asked for yourself; requests expire after 24 hours.</p>
+  </div>
+
+  <form (ngSubmit)="save()" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-4">
+    <h3 class="text-base font-semibold text-white">Your thresholds</h3>
+    <div class="grid md:grid-cols-3 gap-3 text-sm">
+      <div>
+        <label for="g-rate" class="text-xs text-slate-400 block mb-1">Automatic blocks per hour before a person must approve</label>
+        <input id="g-rate" name="rate" type="number" min="1" max="100" [(ngModel)]="form.max_blocks_per_hour" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+      <div>
+        <label for="g-level" class="text-xs text-slate-400 block mb-1">Alert level for a block without threat intel</label>
+        <input id="g-level" name="level" type="number" min="1" max="16" [(ngModel)]="form.min_level_auto_block" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+      <div>
+        <label for="g-bh" class="text-xs text-slate-400 block mb-1">Longest automatic block (hours)</label>
+        <input id="g-bh" name="bh" type="number" min="1" max="720" [(ngModel)]="form.max_auto_block_hours" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+      <div>
+        <label for="g-sh" class="text-xs text-slate-400 block mb-1">Longest hiding of alerts without approval (hours)</label>
+        <input id="g-sh" name="sh" type="number" min="1" max="168" [(ngModel)]="form.max_suppress_hours" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+      <div>
+        <label for="g-conf" class="text-xs text-slate-400 block mb-1">AI confidence needed to hide alerts without approval (%)</label>
+        <input id="g-conf" name="conf" type="number" min="0" max="100" [(ngModel)]="form.min_ai_confidence" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+    </div>
+    <div>
+      <label for="g-prot" class="text-xs text-slate-400 block mb-1">Protected assets, never blocked automatically (IP or CIDR, one per line)</label>
+      <textarea id="g-prot" name="prot" rows="4" [(ngModel)]="protectedText" placeholder="203.0.113.10&#10;198.51.100.0/24" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 font-mono text-sm"></textarea>
+    </div>
+    <button type="submit" [disabled]="saving()" class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">Save</button>
+  </form>
+
+  <div *ngIf="rules() as r" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-4">
+    <h3 class="text-base font-semibold text-white">The rules</h3>
+    <p class="text-xs text-slate-400 flex items-center gap-1"><lucide-angular [img]="LockIcon" class="w-3 h-3"></lucide-angular> = always on; it cannot be turned off. A refusal wins over an approval, and an approval over an allow. A rule that cannot be checked (missing evidence) holds the action for approval.</p>
+    <div *ngFor="let g of groups">
+      <div class="text-xs font-bold uppercase text-slate-400 mb-1">{{ g.label }}</div>
+      <div *ngFor="let x of r[g.key]" class="flex flex-wrap items-center gap-2 text-sm border-t border-slate-800/60 py-1.5">
+        <span class="font-mono text-slate-400 w-7">{{ x.id }}</span>
+        <lucide-angular *ngIf="x.hard" [img]="LockIcon" class="w-3 h-3 text-slate-400" aria-label="always on"></lucide-angular>
+        <span class="text-slate-200">{{ x.title }}</span>
+        <span class="text-xs" [class.text-rose-300]="x.effect === 'deny'" [class.text-amber-300]="x.effect === 'require_approval'">→ {{ effect(x.effect) }}</span>
+        <span class="ml-auto text-[11px] text-slate-500">{{ x.reference }}</span>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,10 @@
+[package]
+name = "siem-decision"
+version = "0.1.0"
+edition = "2021"
+description = "Neurosymbolic decision engine: AI evidence (neural) checked against formal policy rules (symbolic) before a high-impact action, with a machine-checkable, hash-chained reasoning record"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"

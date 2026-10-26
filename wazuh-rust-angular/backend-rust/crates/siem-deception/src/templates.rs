@@ -1,0 +1,73 @@
+use crate::models::{DeceptionAssetType, DeceptionBlueprint};
+
+/// Built-in Deception-as-Code Blueprint Catalog
+pub fn get_default_blueprints() -> Vec<DeceptionBlueprint> {
+    vec![
+        DeceptionBlueprint {
+            template_id: "bp-aws-honeytoken".into(),
+            title: "AWS Root / IAM Honeytoken Credentials".into(),
+            description: "Seeds deceptive AWS API credentials in standard CLI profile locations. Any AWS STS GetCallerIdentity API call triggers immediate zero-FP C2 alert.".into(),
+            asset_type: DeceptionAssetType::HoneytokenCredential,
+            category: "Cloud Credential Theft".into(),
+            recommended_target: "Developer Workstations & Bastion Hosts".into(),
+            default_path: "~/.aws/credentials".into(),
+            default_payload: "[default]\naws_access_key_id = AKIA_TRIPWIRE_PROVIGIL_DEC\naws_secret_access_key = a8f93bc7102e88a09f921...".into(),
+            threat_mitigation: "Detects Initial Access & Credential Harvesting (T1552, T1078)".into(),
+        },
+        DeceptionBlueprint {
+            template_id: "bp-keepass-vault".into(),
+            title: "KeePass / Password Manager Canary Vault".into(),
+            description: "Deploys a decoy encrypted password database. Any file read or write attempt triggers a Wazuh FIM critical tripwire before real credentials are discovered.".into(),
+            asset_type: DeceptionAssetType::CanaryFile,
+            category: "Credential Access".into(),
+            recommended_target: "Endpoints & IT Administrator Desktops".into(),
+            default_path: "/var/data/shared/master_passwords_2026.kdbx".into(),
+            default_payload: "KDBX4_CANARY_BINARY_SIGNATURE_PROVIGIL".into(),
+            threat_mitigation: "Halts Credential Access & Password Vault Dumping (T1555)".into(),
+        },
+        DeceptionBlueprint {
+            template_id: "bp-ghost-smb".into(),
+            title: "Ghost SMB Network Share & Canary Financial Sheet".into(),
+            description: "Advertises a decoy high-value network share containing financial planning documents. Early lateral movement scans trigger instant quarantine.".into(),
+            asset_type: DeceptionAssetType::CanaryFile,
+            category: "Lateral Movement & Ransomware Staging".into(),
+            recommended_target: "File Servers & Cluster Nodes".into(),
+            default_path: "/mnt/shared/payroll_confidential/q4_bonus_matrix.xlsx".into(),
+            default_payload: "CANARY_XLSX_EMBEDDED_BEACON_METRICS".into(),
+            threat_mitigation: "Intercepts Lateral Movement & Pre-Ransomware Collection (T1021, T1114)".into(),
+        },
+        DeceptionBlueprint {
+            template_id: "bp-decoy-spn".into(),
+            title: "Decoy Active Directory Service Principal Name (SPN)".into(),
+            description: "Injects an unprivileged fake SPN with weak RC4 encryption. When attackers perform Kerberoasting (GetUserSPNs), the request is intercepted.".into(),
+            asset_type: DeceptionAssetType::ActiveDirectoryDecoy,
+            category: "Active Directory Exploitation".into(),
+            recommended_target: "Domain Controllers & Identity Servers".into(),
+            default_path: "MSSQLSvc/sql-cluster-01.corp.internal:1433".into(),
+            default_payload: "SPN: svc_backup_sqladmin@CORP.INTERNAL".into(),
+            threat_mitigation: "Catches Kerberoasting & Golden Ticket Attacks (T1558.003)".into(),
+        },
+        DeceptionBlueprint {
+            template_id: "bp-decoy-redis".into(),
+            title: "Decoy Database & Redis Management Port".into(),
+            description: "Spins up a high-interaction decoy Redis listener on port 6379. Attacker automated discovery probes capture the attacker IP and payload on first packet.".into(),
+            asset_type: DeceptionAssetType::DecoyNetworkService,
+            category: "Internal Discovery & Recon".into(),
+            recommended_target: "DMZ & Internal Web Servers".into(),
+            default_path: "tcp/6379".into(),
+            default_payload: "GHOST_REDIS_V7_RESP_DECOY".into(),
+            threat_mitigation: "Defeats Internal Network Port Scanning & Exploitation (T1046)".into(),
+        },
+        DeceptionBlueprint {
+            template_id: "bp-decoy-ssh-key".into(),
+            title: "Breadcrumb SSH Private Key with Canary Passphrase".into(),
+            description: "Plants a decoy SSH key in ~/.ssh/id_rsa_backup. When an adversary attempts to use this key against any host, authentication is logged with source IP.".into(),
+            asset_type: DeceptionAssetType::HoneytokenCredential,
+            category: "Lateral Movement".into(),
+            recommended_target: "Linux Servers & Development Nodes".into(),
+            default_path: "~/.ssh/id_rsa_corp_backup".into(),
+            default_payload: "-----BEGIN OPENSSH PRIVATE KEY-----\nCANARY_KEY_ID_8832_PROVIGIL\n...".into(),
+            threat_mitigation: "Traps Lateral Movement through SSH Key Hijacking (T1021.004)".into(),
+        },
+    ]
+}

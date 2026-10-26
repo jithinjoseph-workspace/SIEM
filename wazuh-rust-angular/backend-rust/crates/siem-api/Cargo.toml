@@ -59,3 +59,4 @@ local-ip-address = "0.6"
 siem-risk-fabric = { path = "../siem-risk-fabric" }
 siem-redswarm = { path = "../siem-redswarm" }
 siem-intent-engine = { path = "../siem-intent-engine" }
+siem-deception = { path = "../siem-deception" }

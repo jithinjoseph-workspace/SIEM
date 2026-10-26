@@ -61,5 +61,6 @@ members = [
     "crates/siem-risk-fabric",
     "crates/siem-redswarm",
     "crates/siem-intent-engine",
+    "crates/siem-deception",
 ]
 

@@ -642,3 +642,87 @@ export interface ExecuteActionRequest {
   dry_run?: boolean;
 }
 
+// Feature 9: Deception-as-Code & Adaptive Honeynet
+export type DeceptionAssetType =
+  | 'canary_file'
+  | 'honeytoken_credential'
+  | 'decoy_network_service'
+  | 'canary_registry_key'
+  | 'active_directory_decoy';
+
+export type AssetDeploymentStatus = 'armed' | 'triggered' | 'decommissioned' | 'pending_deploy';
+
+export interface DeceptionAsset {
+  id: string;
+  name: string;
+  asset_type: DeceptionAssetType;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_path_or_port: string;
+  decoy_payload_preview: string;
+  status: AssetDeploymentStatus;
+  tripped_count: number;
+  last_tripped_at?: string;
+  created_at: string;
+  tags: string[];
+  risk_reduction_score: number;
+}
+
+export interface TripwireEvent {
+  id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_type: DeceptionAssetType;
+  agent_id: string;
+  agent_name: string;
+  attacker_ip: string;
+  attacker_user: string;
+  process_name: string;
+  mitre_technique: string;
+  raw_evidence: string;
+  severity: string;
+  timestamp: string;
+}
+
+export interface DeceptionBlueprint {
+  template_id: string;
+  title: string;
+  description: string;
+  asset_type: DeceptionAssetType;
+  category: string;
+  recommended_target: string;
+  default_path: string;
+  default_payload: string;
+  threat_mitigation: string;
+}
+
+export interface DeceptionSummary {
+  total_assets: number;
+  armed_assets: number;
+  triggered_assets: number;
+  decommissioned_assets: number;
+  total_trips: number;
+  high_fidelity_alerts: number;
+  recent_triggers: TripwireEvent[];
+  fleet_coverage_percentage: number;
+}
+
+export interface CreateAssetRequest {
+  name: string;
+  asset_type: DeceptionAssetType;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_path_or_port: string;
+  decoy_payload_preview?: string;
+  tags?: string[];
+}
+
+export interface SimulateTripwireRequest {
+  asset_id: string;
+  attacker_ip?: string;
+  attacker_user?: string;
+  process_name?: string;
+  mitre_technique?: string;
+  notes?: string;
+}
+

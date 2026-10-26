@@ -42,6 +42,8 @@ async fn state() -> AppState {
         deleted_agent_names: Arc::new(RwLock::new(HashSet::new())),
         risk_fabric: Arc::new(siem_risk_fabric::RiskFabricEngine::new("")),
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
+        // it writes its config file on start: a temp one, not the source tree
+        intent_engine: Arc::new(siem_intent_engine::IntentEngine::new(std::env::temp_dir().join(format!("siem-test-intent-{}.json", std::process::id())))),
     }
 }
 

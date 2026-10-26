@@ -481,6 +481,14 @@ export class SiemService {
   exportDecisions(): Observable<Blob> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/export`, { responseType: 'blob' }); }
   getDecisionPolicy(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/policy`); }
   putDecisionPolicy(settings: any): Observable<any> { return this.http.put(`${this.apiUrl}/api/v1/siem/decisions/policy`, settings); }
+  // ── Threat intel (provigil-common feeds) and investigation ──
+  getIntelStatus(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/status`); }
+  lookupIntel(q: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/lookup`, { params: { q } }); }
+  getIntelMatches(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/matches`); }
+  getSigma(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/sigma`); }
+  syncSigma(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/sigma/sync`, {}); }
+  investigate(q: string, days: number): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params: { q, days } }); }
+
   reviewDecision(id: string, approve: boolean): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {});
   }

@@ -57,6 +57,8 @@ wazuh-rust-angular/backend-rust/data/manager/stats/
 wazuh-rust-angular/.env
 # Secrets written at runtime by siem-api / the manager
 wazuh-rust-angular/backend-rust/data/syslog/
+wazuh-rust-angular/backend-rust/data/sigma/
+wazuh-rust-angular/backend-rust/data/decision_anchors.json
 wazuh-rust-angular/backend-rust/logs/
 wazuh-rust-angular/backend-rust/data/manager/etc/smtp_auth.conf
 

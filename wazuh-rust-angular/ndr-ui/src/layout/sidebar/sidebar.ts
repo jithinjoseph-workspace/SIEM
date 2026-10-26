@@ -8,7 +8,7 @@ import {
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
   Radio, BarChart2, ScrollText, ListChecks,
   Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
-  ListFilter, EyeOff, Crosshair, Gauge, Brain, Share2, Target, Scale,
+  ListFilter, EyeOff, Crosshair, Gauge, Brain, Share2, Target, Scale, ScanSearch, FileSearch,
   LucideAngularModule
 } from 'lucide-angular';
 import { AuthService } from '../../services/auth/auth';
@@ -137,12 +137,15 @@ export class Sidebar implements OnInit, OnDestroy {
 
     // SIEM analyst AI and response (siem-api /api/v1/siem/*), apart from the NDR's pages
     const siemAiCandidates: NavItem[] = [
+      { label: 'Investigation',         route: '/analyst/siem-investigate',   icon: ScanSearch, permission: 'siem-alerts' },
       { label: 'SIEM Alert Triage',     route: '/analyst/siem-triage',        icon: ListFilter, permission: 'siem-alerts' },
       { label: 'SIEM Suppressions',     route: '/analyst/siem-suppressions',  icon: EyeOff,    permission: 'siem-alerts' },
       { label: 'SIEM Threat Predictions', route: '/analyst/siem-predictions', icon: Crosshair, permission: 'siem-mitre' },
       { label: 'SIEM Retrospective',    route: '/analyst/siem-retrospective', icon: RotateCcw, permission: 'siem-rules' },
       { label: 'My Workload & AI Use',  route: '/analyst/siem-my-insights',   icon: Gauge,     permission: 'siem-alerts' },
       { label: 'Security Memory',       route: '/analyst/siem-memory',        icon: Brain,     permission: 'siem-alerts' },
+      { label: 'Threat Intel',          route: '/analyst/siem-threat-intel',  icon: Globe,     permission: 'siem-alerts' },
+      { label: 'Sigma Detection',       route: '/analyst/siem-sigma',         icon: FileSearch, permission: 'siem-rules' },
       { label: 'Threat Swarm',          route: '/analyst/siem-swarm',         icon: Share2,    permission: 'siem-alerts' },
       { label: 'AI Decision Audit',     route: '/analyst/siem-decisions',     icon: Scale,     permission: 'siem-alerts' },
     ];

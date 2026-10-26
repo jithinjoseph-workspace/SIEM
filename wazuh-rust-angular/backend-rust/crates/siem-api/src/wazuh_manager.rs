@@ -414,6 +414,11 @@ fn read_state_file(path: &Path) -> serde_json::Value {
 
 /// What the manager is doing: running daemons and the remoted / analysisd counters
 /// (queues, events received, discarded and dropped).
+/// The daemons siem-api starts and keeps running.
+pub fn daemons() -> &'static [&'static str] {
+    &DAEMONS
+}
+
 /// The daemons running now.
 pub fn running() -> Vec<String> {
     CHILDREN.lock().unwrap().iter().map(|(n, _)| n.clone()).collect()
@@ -1161,6 +1166,12 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
             tenancy::tag_alert(alert, &tenant)
         })
         .collect();
+    deliver(&state, alerts, vs).await;
+}
+
+/// Stores tenant-tagged alerts, then shows them and runs SOAR on them unless suppressed;
+/// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original Wazuh alert).
+pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
     let mut pending: Vec<&Alert> = alerts.iter().collect();
     let mut wait = RETRY_MIN;
@@ -1181,8 +1192,8 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
     let tenants: Vec<String> = alerts.iter().map(|a| a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT).to_string()).collect();
     let mut shown = Vec::with_capacity(alerts.len());
     let mut soar = Vec::with_capacity(alerts.len());
-    for ((a, v), t) in alerts.into_iter().zip(vs).zip(tenants) {
-        if crate::suppressions::is_suppressed(&state, &t, &a).await {
+    for ((a, v), t) in alerts.into_iter().zip(soar_json).zip(tenants) {
+        if crate::suppressions::is_suppressed(state, &t, &a).await {
             continue;
         }
         let _ = state.broadcast_tx.send(a.clone());
@@ -1190,8 +1201,8 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
         soar.push((v, t));
     }
     // each tenant's SOAR playbooks, on the original Wazuh alert
-    crate::soar::on_alerts(&state, soar);
-    crate::keep_alerts(&state, shown);
+    crate::soar::on_alerts(state, soar);
+    crate::keep_alerts(state, shown);
 }
 
 /// Backoff of the ClickHouse retries (the alerts/archives files hold the data meanwhile).
@@ -1228,6 +1239,20 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         });
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
+    }
+    // Sigma rules (sigma.rs) on every archived event, besides the Wazuh ruleset
+    let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
+    let matched = tokio::task::spawn_blocking(move || crate::sigma::check(&tagged)).await.unwrap_or_default();
+    if !matched.is_empty() {
+        let (alerts, json): (Vec<Alert>, Vec<serde_json::Value>) = matched
+            .into_iter()
+            .map(|(a, t)| {
+                let a = tenancy::tag_alert(a, &t);
+                let j = serde_json::to_value(&a).unwrap_or_default();
+                (a, j)
+            })
+            .unzip();
+        deliver(&state, alerts, json).await;
     }
     // the in-memory copy is a recent window; ClickHouse keeps everything
     crate::keep_events(&state, events);

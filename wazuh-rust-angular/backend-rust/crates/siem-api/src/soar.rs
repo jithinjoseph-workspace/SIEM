@@ -366,9 +366,23 @@ impl SoarStore for Store {
                 Some(c) => send_syslog(&c, alert).await,
                 None => Err("No enabled syslog integration".into()),
             },
+            // the agent (Wazuh active response) and the perimeter firewall / cloud (response.rs)
             "block_ip" => match &self.state {
-                Some(s) => block_on_agent(s, pb, config, ctx).await,
+                Some(s) => {
+                    let agent = alert["agent"]["id"].as_str();
+                    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
+                    crate::response::block(s, tenant, &ctx.src_ip, hours, config["enforcement"].as_str().unwrap_or("both"), agent, &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name)).await.map(|(_, d)| d)
+                }
                 None => Err("active response unavailable".into()),
+            },
+            // the alert's host into a quarantine VLAN on its switch, or denied in the cloud
+            "isolate_host" => match &self.state {
+                Some(s) => {
+                    let ip = alert["agent"]["ip"].as_str().unwrap_or("");
+                    let vlan = config["quarantine_vlan"].as_u64().or_else(|| config["quarantine_vlan"].as_str().and_then(|v| v.parse().ok())).map(|v| v as u16);
+                    crate::response::isolate(s, tenant, ip, config["enforcement"].as_str().filter(|e| !e.is_empty()), vlan, "", &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name)).await.map(|(_, d)| d)
+                }
+                None => Err("isolation unavailable".into()),
             },
             // teams, discord, email, create_case, collect_evidence: the shared actions
             _ => return None,
@@ -509,14 +523,6 @@ pub fn alert_data(a: &Value) -> siem_maild::alert::AlertData {
     }
 }
 
-/// `block_ip` on a SIEM alert: Wazuh active response (firewall-drop / netsh)
-/// on the agent that raised it, for the alert's source IP.
-async fn block_on_agent(state: &AppState, pb: &SoarNativePlaybook, config: &Value, ctx: &SoarContext) -> Result<String, String> {
-    let agent_id = ctx.alert.as_ref().and_then(|a| a["agent"]["id"].as_str()).unwrap_or("");
-    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
-    block_now(state, agent_id, &ctx.src_ip, hours, &format!("Playbook: {}", pb.name)).await
-}
-
 /// Blocks `ip` on the agent for `hours` (also run when a held block is approved).
 pub async fn block_now(state: &AppState, agent_id: &str, ip: &str, hours: u64, reason: &str) -> Result<String, String> {
     let (agent_id, ip) = (agent_id.to_string(), ip.to_string());
@@ -567,9 +573,12 @@ pub fn context(alert: &Value, tenant: &str) -> SoarContext {
             _ => "LOW",
         }
         .into(),
-        // threat intel: the alert's own groups, or other organisations saw it too (swarm)
-        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1")) || crate::swarm::known(tenant, alert),
-        src_country: String::new(),
+        // threat intel: the alert's own groups, the feeds (intel.rs), or other organisations saw it too (swarm)
+        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1"))
+            || !crate::intel::alert_hits(alert).is_empty()
+            || crate::swarm::known(tenant, alert),
+        // GeoLite2 (geomap.rs): the playbook condition "src_country"
+        src_country: crate::geomap::country_code(&s(&data["srcip"])),
         tags,
         src_ip: s(&data["srcip"]),
         dst_ip: s(&data["dstip"]),
@@ -636,9 +645,9 @@ pub async fn run_playbooks(store: &Store, alerts: Vec<(Value, String)>) {
             if !allow_run(pb) {
                 continue;
             }
-            // a block is a high-impact action: the policy decides first (decisions.rs)
-            if let (true, Some(state)) = (pb.action_type == "block_ip", &store.state) {
-                if let Err((status, detail)) = crate::decisions::gate_block(state, pb, &ctx).await {
+            // blocks and isolations are high-impact actions: the policy decides first (decisions.rs)
+            if let (true, Some(state)) = (matches!(pb.action_type.as_str(), "block_ip" | "isolate_host"), &store.state) {
+                if let Err((status, detail)) = crate::decisions::gate_network(state, pb, &ctx).await {
                     let run = SoarPlaybookRun {
                         id: uuid::Uuid::new_v4().to_string(),
                         playbook_id: pb.id.clone(),

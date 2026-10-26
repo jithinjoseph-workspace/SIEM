@@ -225,6 +225,49 @@ SOAR notifications (Slack, e-mail…) are not gated: low impact.
   (`db::restore_lost_replicas`, test `lost_replica_metadata_is_restored`). Backup taken
   first: database `replica_backup_20261025` (47 rows; drop it once you are satisfied).
 
+## 1g. Agent deployment, threat intel, investigation — built 2026-10-26 (branch ui-changes)
+
+- **Agent deployment:** the enrollment wizard is one component (`components/agent-deploy`),
+  on the analyst Agents page and the tenant admin's new Agent Deployment page. The
+  enrolment key (`/api/v1/tenant/agent-key`) needs the tenant admin or the new
+  `siem-agent-deploy` permission ("Deploy Agents" on Users); the SIEM suite does not
+  grant it and new analysts do not get it by default.
+- **Threat intel** (intel.rs): provigil-common's collector (CISA KEV, Emerging Threats,
+  Feodo, URLhaus, ThreatFox, Spamhaus) into `siem_threat_intel` in one INSERT per feed,
+  every 6 h, plus its blocklist engine hourly. Feed hits set SOAR `is_malicious`, so the
+  `threat_intel` playbook condition and the decision engine's `intel.malicious` see them.
+  URLhaus/ThreatFox APIs now need a free abuse.ch key: `ABUSECH_AUTH_KEY` (AbuseIPDB /
+  OTX: `ABUSEIPDB_API_KEY` / `OTX_API_KEY`). Page: analyst Threat Intel.
+- **Investigation** (investigate.rs, analyst page): one IP / host / user / hash / domain
+  across alerts, events, intel, swarm, SOAR cases + runs, AI decisions, triage,
+  suppressions, host inventory + vulnerabilities (CISA KEV marked), security memory.
+- **Maps** (geomap.rs): `/api/threat-map` (tenant's alert sources, 7 days), `/api/admin/threat-map-all-tenants`
+  (super admin) and `/api/threat-intel-map` (the feeds' IPs and ranges) are real data, placed with
+  provigil-common's GeoLite2 lookup (`GEOIP_CITY_DB`, else data/, else the NDR engine's copy); nothing
+  is sent to an outside geo service. They replaced built-in sample countries and a map that put every
+  attacker in the US (and answered in a format the page could not read).
+- **Network response** (response.rs): SOAR `block_ip` blocks on the agent and/or pushes to the
+  tenant's firewall (pfSense, FortiGate, PAN-OS, OPNsense, REST) and cloud (AWS SG, Azure NSG,
+  GCP VPC) integrations via provigil-common, public IPs only, expiring (swept every minute);
+  new `isolate_host` moves the agent's host to a quarantine VLAN on a switch integration
+  (UniFi, Cisco, Aruba, SNMP), else cloud deny; ARP isolation needs an NDR sensor and is refused.
+  Both pass the decision engine (`gate_network`; manual ones `gate_manual`): new guardrails deny
+  protected or public targets, cap isolations per hour (`max_isolations_per_hour`, 2) and hold
+  weak evidence (`min_level_auto_isolate`, 12). Pages: `/api/blocks`, `/api/isolations`.
+- **Sigma** (sigma.rs): SigmaHQ rules (1440: Windows, Linux, network) synced weekly into
+  `ndr.sigma_rules` and run on every archived event; a match is a SIEM alert (rule 950000-999999,
+  "Sigma: <title>"). Fixes in provigil-common's engine (both copies): numeric value lists were
+  dropped and an empty selection matched everything; modifier chains (`contains|all`, `windash`),
+  wildcards, `null`, `exists`, keyword lists; unknown modifiers never match. A Windows rule
+  only reads its log and event ids (category -> Sysmon id, Security 4688); unknown service /
+  category: no match. siem-api undoes the agent's doubled backslashes and maps 4688 fields.
+  Verified: 0 matches over 142k real events, true positives fire live. Page: analyst Sigma Detection.
+- **No more sample data** (platform.rs): health, engines, scale, leader, interfaces, agent status,
+  sensor keys, Kafka (honestly "not used"), telemetry (sysinfo; platform admins only) are real.
+- SOAR conditions: `src_country` (GeoLite2) and ASN / org in the investigation and intel lookups.
+- Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false
+  hits on this data); a Sysmon-equipped Windows host would give the Windows rules most to see.
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

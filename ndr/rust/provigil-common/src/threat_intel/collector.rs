@@ -148,12 +148,35 @@ async fn run_feed_feodo(
     info!("Feodo Tracker: {} botnet C2 IPs collected", n);
 }
 
+/// abuse.ch APIs (URLhaus, ThreatFox) need a free Auth-Key (abuse.ch account): `ABUSECH_AUTH_KEY`.
+fn abusech_auth(req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    match std::env::var("ABUSECH_AUTH_KEY") {
+        Ok(k) if !k.trim().is_empty() => req.header("Auth-Key", k.trim()),
+        _ => req,
+    }
+}
+
+fn abusech_ok(resp: &reqwest::Response, feed: &str) -> bool {
+    match resp.status().as_u16() {
+        200..=299 => true,
+        401 | 403 => {
+            warn!("{feed}: refused (HTTP {}); it needs a free abuse.ch Auth-Key in ABUSECH_AUTH_KEY", resp.status().as_u16());
+            false
+        }
+        code => {
+            warn!("{feed}: HTTP {code}");
+            false
+        }
+    }
+}
+
 async fn run_feed_urlhaus(
     http: &reqwest::Client,
     store: &dyn ThreatCollectorStore,
     existing: &HashSet<(String, String)>,
 ) {
-    let Ok(resp) = http.get(FEED_URLHAUS).send().await else { return };
+    let Ok(resp) = abusech_auth(http.get(FEED_URLHAUS)).send().await else { return };
+    if !abusech_ok(&resp, "URLhaus") { return; }
     let Ok(data) = resp.json::<serde_json::Value>().await else { return };
     let entries = parse_urlhaus(&data);
     let n = store.insert_ioc_entries(existing, entries).await;
@@ -166,9 +189,10 @@ async fn run_feed_threatfox(
     existing: &HashSet<(String, String)>,
 ) {
     let body = serde_json::json!({ "query": "get_iocs", "days": 3 });
-    let Ok(resp) = http.post(FEED_THREATFOX)
+    let Ok(resp) = abusech_auth(http.post(FEED_THREATFOX))
         .json(&body)
         .send().await else { return };
+    if !abusech_ok(&resp, "ThreatFox") { return; }
     let Ok(data) = resp.json::<serde_json::Value>().await else { return };
     let entries = parse_threatfox(&data);
     let n = store.insert_ioc_entries(existing, entries).await;

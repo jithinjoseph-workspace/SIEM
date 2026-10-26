@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { LucideAngularModule, Lock } from 'lucide-angular';
 
 export const ACTION_LABEL: Partial<Record<string, string>> = {
-  block_ip: 'Block IP', manual_block: 'Manual block', suppress: 'Hide alerts', review: 'Review', policy_change: 'Policy change',
+  block_ip: 'Block IP', isolate_host: 'Isolate host', manual_block: 'Manual block', manual_isolate: 'Manual isolation', suppress: 'Hide alerts', review: 'Review', policy_change: 'Policy change',
 };
 
 export const OUTCOME: Record<string, { label: string; cls: string }> = {

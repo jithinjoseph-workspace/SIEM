@@ -29,11 +29,12 @@ export class AiGuardrails implements OnInit {
   error = signal<string | null>(null);
   message = signal<string | null>(null);
   saving = signal(false);
-  form: any = { max_blocks_per_hour: 10, min_level_auto_block: 10, max_auto_block_hours: 24, max_suppress_hours: 72, min_ai_confidence: 70 };
+  form: any = { max_blocks_per_hour: 10, min_level_auto_block: 10, max_auto_block_hours: 24, max_suppress_hours: 72, min_ai_confidence: 70, max_isolations_per_hour: 2, min_level_auto_isolate: 12 };
   protectedText = '';
   groups = [
     { key: 'block_ip', label: 'Automatic IP blocks (SOAR)' },
-    { key: 'manual_block', label: 'IP blocks by an operator' },
+    { key: 'isolate_host', label: 'Automatic host isolation (SOAR)' },
+    { key: 'manual_block', label: 'Blocks and isolations by an operator' },
     { key: 'suppress', label: 'Hiding alerts on an AI triage verdict' },
     { key: 'review', label: 'Approvals' },
   ];

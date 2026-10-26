@@ -611,7 +611,7 @@ async fn decisions_end_to_end() {
             a["data"]["srcip"] = json!(ip);
             let c = crate::soar::context(&a, &tenant);
             let (st, pb) = (st.clone(), pb.clone());
-            async move { crate::decisions::gate_block(&st, &pb, &c).await }
+            async move { crate::decisions::gate_network(&st, &pb, &c).await }
         };
         assert!(gate("10.1.2.3", 12).await.unwrap_err().1.contains("G1"), "internal address");
         assert!(gate("10.1.2.3", 12).await.unwrap_err().1.starts_with("Refused again"), "a repeated refusal is one record");
@@ -619,7 +619,7 @@ async fn decisions_end_to_end() {
         st.db.put_doc(&tenant, crate::db::DocTable::AnalystState, "decision_policy", "{not json").await.unwrap();
         let unread = gate("203.0.113.99", 12).await.unwrap_err();
         assert!(unread.0 == "awaiting_approval" && unread.1.contains("missing evidence for G2"), "{unread:?}");
-        assert!(crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "10.6.6.6", 600).await.is_err());
+        assert!(crate::decisions::gate_manual(&st, &ctx(&tenant), &tenant, "manual_block", "10.6.6.6", json!({})).await.is_err());
         assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["198.51.100.0/24"], "max_blocks_per_hour": 1 }))).await).await.0, 200);
         assert!(gate("198.51.100.7", 15).await.unwrap_err().1.contains("G2"), "protected range");
         assert_eq!(gate("203.0.113.77", 6).await.unwrap_err().0, "awaiting_approval", "weak evidence");
@@ -635,9 +635,9 @@ async fn decisions_end_to_end() {
         assert_eq!((new, merged), (1, 4), "{burst:?}");
 
         // a person's block: recorded; a protected asset is refused, an internal host is not
-        let m = crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "198.51.100.9", 3600).await;
+        let m = crate::decisions::gate_manual(&st, &ctx(&tenant), &tenant, "manual_block", "198.51.100.9", json!({})).await;
         assert!(m.as_ref().unwrap_err().contains("G2"), "{m:?}");
-        assert!(crate::decisions::gate_manual_block(&st, &ctx(&tenant), &tenant, "001", "10.5.5.5", 3600).await.is_ok());
+        assert!(crate::decisions::gate_manual(&st, &ctx(&tenant), &tenant, "manual_block", "10.5.5.5", json!({})).await.is_ok());
 
         // the real SOAR path: a block_ip playbook on an internal-address alert records a denied run
         let req: crate::soar::PlaybookReq = serde_json::from_value(json!({ "name": "Block attackers", "cond_field": "score", "cond_op": ">", "cond_value": "0", "action_type": "block_ip", "action_config": "{}" })).unwrap();
@@ -726,14 +726,205 @@ async fn lost_replica_metadata_is_restored() {
         q(format!("SYSTEM DROP REPLICA 'r1' FROM ZKPATH '{zk}'")).await.unwrap();
         q(format!("ATTACH TABLE {db}.t")).await.unwrap();
         assert!(q(format!("INSERT INTO {db}.t VALUES (8)")).await.is_err(), "read-only without its metadata");
+        // tests running in parallel restore too (every ClickHouseDb::init does), so the check is
+        // that the table is writable again, whichever call restored it
         let restored = crate::db::restore_lost_replicas(root).await;
-        assert!(restored.contains(&format!("{db}.t")), "{restored:?}");
-        q(format!("INSERT INTO {db}.t VALUES (8)")).await.unwrap();
+        if let Err(e) = q(format!("INSERT INTO {db}.t VALUES (8)")).await {
+            panic!("still read-only after the restore ({restored:?}): {e}");
+        }
         let sum = root.query(&format!("SELECT toUInt64(sum(x)) FROM {db}.t")).fetch_one::<u64>().await.unwrap();
         assert_eq!(sum, 15, "the old row is kept and new ones are written");
     });
     let res = futures_util::FutureExt::catch_unwind(r).await;
     let _ = root.query(&format!("DROP DATABASE IF EXISTS {db} SYNC")).execute().await;
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn intel_and_investigation_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let tenant = format!("invtest{}", std::process::id());
+    let dbname = st.db.provision_tenant_db(&tenant).await.unwrap();
+    st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": tenant, "name": tenant, "ai_enabled": false })).unwrap());
+    let analyst = AuthCtx { username: "ana".into(), role: "analyst".into(), permissions: vec!["siem-alerts".into()], ..ctx(&tenant) };
+    let r = std::panic::AssertUnwindSafe(async {
+        // the feeds list one attacker IP and one exploited CVE
+        let row = |source: &str, kind: &str, value: &str| (source.to_string(), "botnet_c2".to_string(), "HIGH".to_string(), kind.to_string(), value.to_string(), format!("{source} lists {value}"));
+        crate::intel::set_index_for_tests(vec![row("feodo", "ip:port", "198.51.100.66:443"), row("cisa_kev", "cve", "CVE-2024-3400")]);
+
+        // the host and its tenant
+        let agent = siem_core::Agent { id: "077".into(), name: "web-77".into(), ip: "10.0.0.77".into(), os: "Ubuntu".into(), version: "4.14".into(), status: siem_core::AgentStatus::Active, last_keepalive: chrono::Utc::now(), os_type: "linux".into() };
+        st.agents.write().unwrap().insert("077".into(), agent);
+        st.agent_tenants.write().unwrap().insert("077".into(), tenant.clone());
+        st.vulnerabilities.write().unwrap().push(serde_json::from_value(json!({ "cve": "CVE-2024-3400", "title": "PAN-OS", "severity": "Critical", "cvss_score": 10.0, "package_name": "panos", "installed_version": "10.2", "fixed_version": null, "agent_id": "077", "agent_name": "web-77", "status": "Active", "detected_at": "", "description": "", "reference": "", "category": "" })).unwrap());
+
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        let mut a1 = alert(5760, 5, "sshd: authentication failed", "077", "198.51.100.66", now - 60_000);
+        a1.agent.name = "web-77".into();
+        a1.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
+        let mut a2 = alert(5715, 3, "sshd: authentication success", "077", "10.0.0.9", now - 30_000);
+        a2.agent.name = "web-77".into();
+        assert!(st.db.insert_alerts(&[crate::tenancy::tag_alert(a1, &tenant), crate::tenancy::tag_alert(a2, &tenant)]).await.is_empty());
+
+        // SOAR sees the feed hit, so a block on a level-5 alert is not "weak evidence"
+        let mut a = serde_json::to_value(alert(5760, 5, "sshd: authentication failed", "077", "198.51.100.66", now)).unwrap();
+        a["data"]["srcip"] = json!("198.51.100.66");
+        let c = crate::soar::context(&a, &tenant);
+        assert!(c.is_malicious, "the feeds list the source");
+        let pb: provigil_common::soar::SoarNativePlaybook = serde_json::from_value(json!({
+            "id": "pb1", "name": "Block C2", "description": "", "enabled": 1, "cond_field": "threat_intel", "cond_op": "==", "cond_value": "true",
+            "action_type": "block_ip", "action_config": "{}", "run_count": 0, "last_run": null, "created_at": "", "updated_at": "", "tenant_id": tenant,
+        }))
+        .unwrap();
+        assert!(provigil_common::soar::conditions::evaluate_condition(&pb, &c), "the threat-intel playbook condition matches");
+        assert!(crate::decisions::gate_network(&st, &pb, &c).await.is_ok(), "threat intel is enough evidence for the policy");
+
+        // the investigation of the IP
+        let inv = |q: &str| crate::investigate::investigate(State(st.clone()), Extension(analyst.clone()), Query(crate::investigate::InvestigateQuery { q: q.into(), days: Some(1) }));
+        let v = inv("198.51.100.66").await.0;
+        assert_eq!(v["kind"], "ip", "{v}");
+        assert_eq!(v["summary"]["alerts"], 1);
+        assert_eq!(v["summary"]["verdict"], "malicious");
+        assert_eq!(v["intel"][0]["hits"][0]["source"], "feodo");
+        assert!(v["timeline"].as_array().unwrap().iter().any(|e| e["type"] == "decision"), "the block decision is on the timeline");
+        assert!(v["summary"]["techniques"]["T1110"] == 1);
+
+        // the investigation of the host
+        let h = inv("WEB-77").await.0;
+        assert_eq!(h["kind"], "host", "{h}");
+        assert_eq!(h["summary"]["alerts"], 2);
+        assert_eq!(h["intel"][0]["value"], "198.51.100.66", "a remote IP the host dealt with is listed");
+        assert_eq!(h["host"]["vulnerabilities"][0]["known_exploited"], true, "CISA KEV");
+        assert_eq!(h["summary"]["verdict"], "suspicious");
+
+        // another tenant's analyst sees nothing of it
+        let other = AuthCtx { tenant_id: "default".into(), ..analyst.clone() };
+        let o = crate::investigate::investigate(State(st.clone()), Extension(other), Query(crate::investigate::InvestigateQuery { q: "web-77".into(), days: Some(1) })).await.0;
+        assert_ne!(o["kind"], "host", "web-77 is not an agent of the other tenant");
+        assert_eq!(crate::investigate::investigate(State(st.clone()), Extension(analyst.clone()), Query(crate::investigate::InvestigateQuery { q: "x".into(), days: None })).await.0["status"], "error");
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    crate::intel::set_index_for_tests(Vec::new());
+    st.db.root().query(&format!("DROP DATABASE IF EXISTS `{dbname}`")).execute().await.unwrap();
+    if let Err(p) = res {
+        std::panic::resume_unwind(p);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn network_response_end_to_end() {
+    let st = state().await;
+    assert!(st.db.is_connected(), "ClickHouse is not reachable");
+    let tenant = format!("resptest{}", std::process::id());
+    let dbname = st.db.provision_tenant_db(&tenant).await.unwrap();
+    st.tenants.write().unwrap().push(serde_json::from_value(json!({ "id": tenant, "name": tenant, "ai_enabled": false })).unwrap());
+    let body = |r: axum::response::Response| async move {
+        let s = r.status();
+        (s, serde_json::from_slice::<serde_json::Value>(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).unwrap_or_default())
+    };
+    // a firewall (generic REST) and a UniFi controller that record what they are asked
+    let calls: Arc<std::sync::Mutex<Vec<serde_json::Value>>> = Arc::default();
+    let rec = |path: &'static str| {
+        let calls = calls.clone();
+        move |Json(b): Json<serde_json::Value>| {
+            let calls = calls.clone();
+            async move {
+                calls.lock().unwrap().push(json!({ "path": path, "body": b }));
+                ([("set-cookie", "unifises=x")], Json(json!({ "rule_id": "fw-rule-7" })))
+            }
+        }
+    };
+    let app = axum::Router::new()
+        .route("/fw", axum::routing::post(rec("fw")))
+        .route("/unifi/api/login", axum::routing::post(rec("login")))
+        .route("/unifi/api/s/default/cmd/stamgr", axum::routing::post(rec("stamgr")));
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", l.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let seen = |path: &str, field: &str, value: &str| calls.lock().unwrap().iter().any(|c| c["path"] == path && c["body"][field] == value);
+
+    let r = std::panic::AssertUnwindSafe(async {
+        let store = crate::soar::Store { db: st.db.clone(), state: Some(st.clone()) };
+        store.put_integration(&tenant, "i-fw", "Edge firewall", "rest", &json!({ "host": format!("{base}/fw"), "api_key": "k" }), true).await.unwrap();
+        store.put_integration(&tenant, "i-sw", "Office switch", "unifi", &json!({ "host": format!("{base}/unifi"), "username": "admin", "password": "p", "site": "default" }), true).await.unwrap();
+
+        // ── blocks at the perimeter ──
+        assert!(crate::response::block(&st, &tenant, "10.1.1.1", 1, "both", None, "t", "r").await.is_err(), "private addresses are not blocked");
+        let (b, d) = crate::response::block(&st, &tenant, "203.0.113.50", 2, "both", Some("000"), "soar:test", "test").await.unwrap();
+        assert!(seen("fw", "action", "block") && seen("fw", "ip", "203.0.113.50"), "the firewall got the block");
+        assert_eq!((b.firewall_type.as_str(), b.firewall_rule_id.as_str(), b.status.as_str()), ("rest", "fw-rule-7", "active"));
+        assert!(b.agent_result.contains("cannot run active responses") && d.contains("rest:"), "the agent part is reported, the firewall part done: {d}");
+        let analyst = AuthCtx { role: "analyst".into(), permissions: vec!["soar".into()], ..ctx(&tenant) };
+        let list = crate::response::list_blocks(State(st.clone()), Extension(analyst.clone())).await.0;
+        assert_eq!(list["data"][0]["src_ip"], "203.0.113.50");
+        let (s, rv) = body(crate::response::revoke_block(State(st.clone()), Extension(analyst.clone()), Json(crate::response::ById { id: b.id.clone() })).await).await;
+        assert!(s == 200 && seen("fw", "action", "unblock"), "revoked at the firewall: {rv}");
+        assert_eq!(crate::response::list_blocks(State(st.clone()), Extension(analyst.clone())).await.0["data"].as_array().unwrap().len(), 0);
+
+        // an expired block is lifted by the sweeper
+        let (mut b2, _) = crate::response::block(&st, &tenant, "203.0.113.51", 1, "firewall", None, "t", "r").await.unwrap();
+        b2.expires_ts = 1;
+        st.db.put_doc(&tenant, crate::db::DocTable::Blocks, &b2.id, &serde_json::to_string(&b2).unwrap()).await.unwrap();
+        assert!(crate::response::sweep(&st).await >= 1);
+        let after: crate::response::Block = serde_json::from_str(&st.db.doc(&tenant, crate::db::DocTable::Blocks, &b2.id).await.unwrap().unwrap()).unwrap();
+        assert_eq!(after.status, "expired");
+
+        // a person's block: protected list, and no host-level "rst" from here
+        let policy = |p: serde_json::Value| Json(serde_json::from_value::<crate::decisions::Settings>(p).unwrap());
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["198.51.100.0/24"], "max_isolations_per_hour": 1 }))).await).await.0, 200);
+        let mb = |ip: &str, e: &str| crate::response::manual_block(State(st.clone()), Extension(analyst.clone()), Json(crate::response::ManualBlock { src_ip: ip.into(), duration_hours: Some(1), enforcement: Some(e.into()), reason: None }));
+        assert_eq!(mb("198.51.100.9", "firewall").await.status(), 403, "protected");
+        assert_eq!(mb("203.0.113.60", "rst").await.status(), 400);
+        assert_eq!(mb("203.0.113.60", "firewall").await.status(), 200);
+
+        // ── isolation on the switch ──
+        assert!(crate::response::isolate(&st, &tenant, "10.0.0.77", Some("aws_sg"), None, "", "t", "r").await.unwrap_err().contains("No enabled aws_sg"));
+        let (i, _) = crate::response::isolate(&st, &tenant, "10.0.0.77", None, Some(999), "", "t", "r").await.unwrap();
+        assert!(seen("stamgr", "cmd", "block-sta") && seen("stamgr", "ip", "10.0.0.77"), "the controller got block-sta");
+        assert_eq!((i.method.as_str(), i.enforcement.as_str()), ("switch_vlan", "unifi"));
+        let isos = crate::response::list_isolations(State(st.clone()), Extension(analyst.clone())).await.0;
+        assert_eq!(isos["data"][0]["target_ip"], "10.0.0.77");
+        let (s, _) = body(crate::response::unisolate_handler(State(st.clone()), Extension(analyst.clone()), Json(crate::response::ById { id: i.id.clone() })).await).await;
+        assert!(s == 200 && seen("stamgr", "cmd", "unblock-sta"), "restored on the controller");
+
+        // ── SOAR isolate_host, through the guardrails ──
+        let pb: provigil_common::soar::SoarNativePlaybook = serde_json::from_value(json!({
+            "id": "pb-iso", "name": "Quarantine host", "description": "", "enabled": 1, "cond_field": "score", "cond_op": ">", "cond_value": "0",
+            "action_type": "isolate_host", "action_config": "{\"quarantine_vlan\": 999}", "run_count": 0, "last_run": null, "created_at": "", "updated_at": "", "tenant_id": tenant,
+        }))
+        .unwrap();
+        let alert_on = |host_ip: &str, level: u8| {
+            let mut a = serde_json::to_value(alert(100300, level, "Ransomware note written", "000", "", chrono::Utc::now().timestamp_millis() as u64)).unwrap();
+            a["agent"]["ip"] = json!(host_ip);
+            a
+        };
+        let gate = |a: serde_json::Value| {
+            let c = crate::soar::context(&a, &tenant);
+            let (st, pb) = (st.clone(), pb.clone());
+            async move { crate::decisions::gate_network(&st, &pb, &c).await }
+        };
+        assert!(gate(alert_on("198.51.100.20", 13)).await.unwrap_err().1.contains("G6"), "protected host");
+        assert!(gate(alert_on("8.8.4.4", 13)).await.unwrap_err().1.contains("G7"), "a public address is not one of the tenant's hosts");
+        assert_eq!(gate(alert_on("10.0.0.80", 8)).await.unwrap_err().0, "awaiting_approval", "weak evidence (P6)");
+        assert!(gate(alert_on("10.0.0.81", 13)).await.is_ok(), "critical, internal, not protected");
+        let g8 = gate(alert_on("10.0.0.82", 13)).await.unwrap_err();
+        assert!(g8.0 == "awaiting_approval" && g8.1.contains("G8"), "1 isolation per hour: {g8:?}");
+        // the real SOAR path runs the isolation for an allowed alert
+        let req: crate::soar::PlaybookReq = serde_json::from_value(json!({ "name": "Quarantine host", "cond_field": "rule_level", "cond_op": ">=", "cond_value": "13", "action_type": "isolate_host", "action_config": "{}" })).unwrap();
+        store.insert_playbook(&tenant, "pb-real-iso", &req).await.unwrap();
+        assert_eq!(body(crate::decisions::put_policy(State(st.clone()), Extension(ctx(&tenant)), policy(json!({ "protected": ["198.51.100.0/24"], "max_isolations_per_hour": 10 }))).await).await.0, 200);
+        crate::soar::run_playbooks(&store, vec![(alert_on("10.0.0.90", 14), tenant.clone())]).await;
+        let runs = store.runs(&tenant).await.unwrap();
+        assert!(runs.iter().any(|r| r["status"] == "success" && r["detail"].as_str().unwrap().contains("10.0.0.90 isolated with unifi")), "{runs:?}");
+        assert!(seen("stamgr", "ip", "10.0.0.90"));
+    });
+    let res = futures_util::FutureExt::catch_unwind(r).await;
+    st.db.root().query(&format!("DROP DATABASE IF EXISTS `{dbname}`")).execute().await.unwrap();
     if let Err(p) = res {
         std::panic::resume_unwind(p);
     }

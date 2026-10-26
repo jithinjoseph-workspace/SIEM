@@ -8,7 +8,7 @@ import {
   LucideAngularModule,
   Users, Globe, Activity, User, Settings, HelpCircle,
   Building2, ArrowUpCircle, RefreshCw, Loader, ShieldCheck, X, Radio, Gauge,
-  ChevronDown, Cpu, Sliders, Share2, Scale,
+  ChevronDown, Cpu, Sliders, Share2, Scale, Server,
 } from 'lucide-angular';
 import { Api } from '../../services/api/api';
 import { AuthService } from '../../services/auth/auth';
@@ -57,6 +57,7 @@ export class TenantAdminLayout implements OnInit {
   GaugeIcon = Gauge;
   ShareIcon = Share2;
   ScaleIcon = Scale;
+  ServerIcon = Server;
   ArrowUpCircleIcon = ArrowUpCircle;
   RefreshCwIcon     = RefreshCw;
   LoaderIcon        = Loader;

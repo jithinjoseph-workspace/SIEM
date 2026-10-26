@@ -1774,7 +1774,8 @@
               <option value="discord">Send Discord Notification</option>
               <option value="email">Send Email Alert</option>
               <option value="webhook">Call Custom Webhook</option>
-              <option value="block_ip">Block Source IP (RST + Firewall; SIEM: active response on the agent)</option>
+              <option value="block_ip">Block Source IP (RST + Firewall; SIEM: the agent + firewall / cloud)</option>
+              <option value="isolate_host">Isolate the Alert's Host (switch quarantine VLAN or cloud deny; SIEM)</option>
               <option value="syslog">Forward to Syslog / SIEM</option>
               <option value="pagerduty">Trigger PagerDuty Incident</option>
               <option value="shuffle">Send to Shuffle</option>
@@ -1817,6 +1818,28 @@
                 class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-primary/50 transition-colors"/>
             </div>
             <p class="text-[10px] text-on-surface-variant/50">Blocks will appear in the Active Blocks tab and can be revoked at any time.</p>
+          </div>
+          <div *ngIf="pbActionType === 'isolate_host'" class="space-y-2">
+            <div>
+              <label for="pb-iso-method" class="block text-[10px] text-on-surface-variant/70 mb-1">Isolate with</label>
+              <select id="pb-iso-method" [(ngModel)]="pbActionConfig['enforcement']"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors">
+                <option value="">The first enabled switch, else cloud integration</option>
+                <option value="unifi">UniFi</option>
+                <option value="cisco">Cisco SNMP</option>
+                <option value="aruba">Aruba CX</option>
+                <option value="snmp">Generic SNMP</option>
+                <option value="aws_sg">AWS Security Group</option>
+                <option value="azure_nsg">Azure NSG</option>
+                <option value="gcp_vpc">GCP VPC</option>
+              </select>
+            </div>
+            <div>
+              <label for="pb-iso-vlan" class="block text-[10px] text-on-surface-variant/70 mb-1">Quarantine VLAN (switches)</label>
+              <input id="pb-iso-vlan" type="number" [(ngModel)]="pbActionConfig['quarantine_vlan']" placeholder="999" min="1" max="4094"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-primary/50 transition-colors"/>
+            </div>
+            <p class="text-[10px] text-on-surface-variant/50">The host that raised the alert is isolated. It passes the AI guardrails first (protected assets, isolations per hour, evidence) and shows in the Device Isolation tab.</p>
           </div>
         </div>
 

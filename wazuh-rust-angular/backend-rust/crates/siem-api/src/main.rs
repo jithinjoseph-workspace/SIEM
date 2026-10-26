@@ -51,6 +51,12 @@ pub mod inventory_store;
 pub mod org_memory;
 pub mod swarm;
 pub mod decisions;
+pub mod intel;
+pub mod investigate;
+pub mod geomap;
+pub mod platform;
+pub mod response;
+pub mod sigma;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -469,6 +475,12 @@ async fn main() {
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
     swarm::spawn(state.clone());
+    // threat intel feeds from provigil-common (collector + blocklist engine)
+    intel::spawn(state.clone());
+    // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
+    platform::mark_start();
+    sigma::spawn(state.clone());
+    response::spawn(state.clone());
     // ClickHouse can restart (and its Keeper start over) while siem-api keeps running
     {
         let db = state.db.clone();
@@ -552,31 +564,43 @@ async fn main() {
         .route("/api/admin/top-ips-all-tenants", get(get_top_ips_all_tenants_handler))
         .route("/api/admin/protocols-all-tenants", get(get_protocols_all_tenants_handler))
         .route("/api/admin/threat-intel-all-tenants", get(get_threat_intel_all_tenants_handler))
-        .route("/api/admin/threat-map-all-tenants", get(get_threat_map_all_tenants_handler))
-        .route("/api/threat-map", get(get_threat_map_all_tenants_handler))
-        .route("/api/threat-intel-map", get(get_threat_intel_map_handler))
+        // world maps from real data (GeoLite2): alert sources and the threat-intel feeds
+        .route("/api/admin/threat-map-all-tenants", get(geomap::threat_map_all_tenants))
+        .route("/api/threat-map", get(geomap::threat_map))
+        .route("/api/threat-intel-map", get(geomap::threat_intel_map))
         .route("/api/threat-intel", get(get_threat_intel_handler))
         .route("/api/threat-intel/watchlist", get(get_threat_intel_watchlist_handler))
-        .route("/api/admin/engines", get(get_engines_handler))
-        .route("/api/admin/engines/scale", post(post_engines_scale_handler))
-        .route("/api/admin/leader-status", get(get_leader_status_handler))
-        .route("/api/leader/status", get(get_leader_status_handler))
-        .route("/api/monitor/kafka", get(get_kafka_status_handler))
-        .route("/api/kafka/status", get(get_kafka_status_handler))
-        .route("/api/admin/telemetry", get(get_telemetry_handler))
+        // the platform as it really is (platform.rs); NDR sensors are the NDR engine's
+        .route("/api/admin/engines", get(platform::engines))
+        .route("/api/admin/engines/scale", post(platform::scale))
+        .route("/api/admin/leader-status", get(platform::leader))
+        .route("/api/leader/status", get(platform::leader))
+        .route("/api/monitor/kafka", get(platform::kafka))
+        .route("/api/kafka/status", get(platform::kafka))
+        .route("/api/admin/telemetry", get(platform::telemetry))
         .route("/api/admin/client-errors", get(get_client_errors_handler).post(post_client_errors_handler))
         .route("/api/client-errors", get(get_client_errors_handler).post(post_client_errors_handler))
-        .route("/api/health", get(get_health_handler))
-        .route("/health", get(get_health_handler))
-        .route("/api/sensor-keys", get(get_sensor_keys_handler).post(post_sensor_keys_handler))
-        .route("/api/sensor-keys/:id", delete(delete_sensor_key_handler))
-        .route("/api/sensor-keys/:id/reactivate", post(reactivate_sensor_key_handler))
-        .route("/api/sensor-keys/event-counts", get(get_sensor_event_counts_handler))
-        .route("/api/sensor-keys/recent-ips", get(get_sensor_recent_ips_handler))
-        .route("/api/sensor/control", post(post_sensor_control_handler))
-        .route("/api/interfaces", get(get_interfaces_handler))
-        .route("/api/agent-status", get(get_agent_status_handler))
-        .route("/api/scale-status", get(get_scale_status_handler))
+        .route("/api/health", get(platform::health))
+        .route("/health", get(platform::health))
+        .route("/api/sensor-keys", get(platform::sensor_keys).post(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/:id", delete(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/:id/reactivate", post(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/event-counts", get(platform::sensor_event_counts))
+        .route("/api/sensor-keys/recent-ips", get(platform::sensor_recent_ips))
+        .route("/api/sensor/control", post(platform::sensors_managed_by_ndr))
+        .route("/api/interfaces", get(platform::interfaces))
+        .route("/api/agent-status", get(platform::agent_status))
+        // blocks at the agent / firewall / cloud and host isolation (response.rs), as on the NDR engine
+        .route("/api/blocks", get(response::list_blocks))
+        .route("/api/blocks/manual", post(response::manual_block))
+        .route("/api/blocks/revoke", post(response::revoke_block))
+        .route("/api/isolations", get(response::list_isolations))
+        .route("/api/isolate", post(response::isolate_handler))
+        .route("/api/unisolate", post(response::unisolate_handler))
+        // Sigma rules on every archived event (sigma.rs)
+        .route("/api/v1/siem/sigma", get(sigma::status))
+        .route("/api/v1/siem/sigma/sync", post(sigma::sync))
+        .route("/api/scale-status", get(platform::scale_status))
         .route("/api/stats", get(get_stats))
         .route("/api/stats/unified", get(get_unified_stats_handler))
         .route("/api/stats/timeline", get(get_stats_timeline_handler))
@@ -684,6 +708,11 @@ async fn main() {
         .route("/api/v1/siem/decisions/:id", get(decisions::get_one))
         .route("/api/v1/siem/decisions/:id/approve", post(decisions::approve))
         .route("/api/v1/siem/decisions/:id/reject", post(decisions::reject))
+        // threat intel (provigil-common feeds) and the investigation of one IP / host / user / hash / domain
+        .route("/api/v1/siem/intel/status", get(intel::status))
+        .route("/api/v1/siem/intel/lookup", get(intel::lookup_handler))
+        .route("/api/v1/siem/intel/matches", get(intel::matches))
+        .route("/api/v1/siem/investigate", get(investigate::investigate))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))
@@ -1971,7 +2000,7 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             let duration = payload.get("duration_seconds").and_then(|v| v.as_u64()).unwrap_or(3600);
             let method = payload.get("method").and_then(|v| v.as_str());
             let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
-            if let Err(m) = decisions::gate_manual_block(state, ctx, &tenant, agent_id, &target, duration).await {
+            if let Err(m) = decisions::gate_manual(state, ctx, &tenant, "manual_block", &target, serde_json::json!({ "agent_id": agent_id, "ip": target, "seconds": duration })).await {
                 return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
             }
             return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block", method).await;
@@ -2383,28 +2412,6 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     }))
 }
 
-async fn get_threat_map_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let items: Vec<serde_json::Value> = alerts.iter()
-        .filter(|a| a.decoded.src_ip.is_some())
-        .take(50)
-        .map(|a| {
-            let src = a.decoded.src_ip.clone().unwrap_or_default();
-            let dst = a.decoded.dst_ip.clone().unwrap_or_else(|| a.agent.ip.clone());
-            let sev = if a.rule.level >= 12 { "CRITICAL" } else if a.rule.level >= 8 { "HIGH" } else { "MEDIUM" };
-            serde_json::json!({
-                "src_ip": src,
-                "country": "US",
-                "dst_ip": dst,
-                "type": a.rule.description,
-                "severity": sev,
-                "timestamp": a.timestamp.to_rfc3339()
-            })
-        })
-        .collect();
-
-    Json(items)
-}
 
 fn spawn_threat_intel_feed_scheduler(state: AppState) {
     tokio::spawn(async move {
@@ -2426,11 +2433,9 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
                         for e in entries {
                             let ip = e.ioc_value.split(':').next().unwrap_or(&e.ioc_value);
                             state.threat_intel.insert_entry("malicious_ips", ip, &e.description);
-                            if state.db.is_connected() {
-                                state.db.insert_threat_intel_entry(&e).await;
-                            }
                         }
-                        info!("Feodo Tracker feed synced: {} botnet C2 IPs stored in threat table and ClickHouse", count);
+                        // ClickHouse gets them from the batched collector (intel.rs)
+                        info!("Feodo Tracker feed synced: {} botnet C2 IPs in the threat table", count);
                     }
                 }
                 Err(err) => {
@@ -2448,11 +2453,8 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
                             if e.ioc_type == "domain" {
                                 state.threat_intel.insert_entry("malicious_domains", &e.ioc_value, &e.description);
                             }
-                            if state.db.is_connected() {
-                                state.db.insert_threat_intel_entry(&e).await;
-                            }
                         }
-                        info!("URLhaus feed synced: {} malicious indicators stored in threat table and ClickHouse", count);
+                        info!("URLhaus feed synced: {} malicious indicators in the threat table", count);
                     }
                 }
                 Err(err) => {
@@ -2465,105 +2467,6 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
     });
 }
 
-async fn get_threat_intel_map_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let mut countries = vec![
-        serde_json::json!({
-            "country": "United States", "country_name": "United States", "code": "US", "country_code": "US",
-            "lat": 37.0902, "lon": -95.7129, "lng": -95.7129, "count": 142, "hit_count": 142, "threat_count": 142,
-            "ip_count": 5, "ips": ["45.33.32.156", "198.51.100.42", "192.241.220.11", "104.244.42.1", "64.225.100.8"],
-            "attacks": ["Port Scan", "Credential Stuffing", "SSH Brute Force"]
-        }),
-        serde_json::json!({
-            "country": "Russia", "country_name": "Russia", "code": "RU", "country_code": "RU",
-            "lat": 61.524, "lon": 105.3188, "lng": 105.3188, "count": 189, "hit_count": 189, "threat_count": 189,
-            "ip_count": 5, "ips": ["185.220.101.5", "194.26.29.112", "91.240.118.234", "185.156.73.55", "45.154.255.89"],
-            "attacks": ["Ransomware C2", "Brute Force", "SQL Injection"]
-        }),
-        serde_json::json!({
-            "country": "China", "country_name": "China", "code": "CN", "country_code": "CN",
-            "lat": 35.8617, "lon": 104.1954, "lng": 104.1954, "count": 164, "hit_count": 164, "threat_count": 164,
-            "ip_count": 5, "ips": ["218.92.0.187", "117.50.81.99", "124.223.70.15", "221.181.185.150", "42.193.18.22"],
-            "attacks": ["APT Scanning", "Web Exploit", "Zero-day Probe"]
-        }),
-        serde_json::json!({
-            "country": "Germany", "country_name": "Germany", "code": "DE", "country_code": "DE",
-            "lat": 51.1657, "lon": 10.4515, "lng": 10.4515, "count": 58, "hit_count": 58, "threat_count": 58,
-            "ip_count": 4, "ips": ["144.76.136.153", "88.198.53.12", "159.69.194.33", "116.203.45.67"],
-            "attacks": ["Tor Exit Node", "Cryptomining Relay"]
-        }),
-        serde_json::json!({
-            "country": "Netherlands", "country_name": "Netherlands", "code": "NL", "country_code": "NL",
-            "lat": 52.1326, "lon": 5.2913, "lng": 5.2913, "count": 72, "hit_count": 72, "threat_count": 72,
-            "ip_count": 4, "ips": ["185.107.56.231", "194.36.191.10", "45.133.1.80", "193.142.146.35"],
-            "attacks": ["Bulletproof Hosting", "Malware Drop Site"]
-        }),
-        serde_json::json!({
-            "country": "United Kingdom", "country_name": "United Kingdom", "code": "GB", "country_code": "GB",
-            "lat": 55.3781, "lon": -3.436, "lng": -3.436, "count": 41, "hit_count": 41, "threat_count": 41,
-            "ip_count": 3, "ips": ["51.89.150.11", "185.246.128.9", "178.62.80.201"],
-            "attacks": ["Phishing Gateway", "Command & Control"]
-        }),
-        serde_json::json!({
-            "country": "India", "country_name": "India", "code": "IN", "country_code": "IN",
-            "lat": 20.5937, "lon": 78.9629, "lng": 78.9629, "count": 95, "hit_count": 95, "threat_count": 95,
-            "ip_count": 4, "ips": ["103.251.167.20", "115.240.90.14", "103.78.243.60", "49.207.180.32"],
-            "attacks": ["DDoS Reflection", "Reconnaissance Scan"]
-        }),
-        serde_json::json!({
-            "country": "Japan", "country_name": "Japan", "code": "JP", "country_code": "JP",
-            "lat": 36.2048, "lon": 138.2529, "lng": 138.2529, "count": 34, "hit_count": 34, "threat_count": 34,
-            "ip_count": 3, "ips": ["133.242.180.12", "160.16.200.45", "150.95.140.23"],
-            "attacks": ["Botnet Telemetry", "Proxy Abuse"]
-        }),
-        serde_json::json!({
-            "country": "Brazil", "country_name": "Brazil", "code": "BR", "country_code": "BR",
-            "lat": -14.235, "lon": -51.9253, "lng": -51.9253, "count": 63, "hit_count": 63, "threat_count": 63,
-            "ip_count": 4, "ips": ["177.105.40.12", "179.180.21.90", "186.250.70.15", "191.232.190.88"],
-            "attacks": ["Banking Trojan", "Credential Dumping"]
-        }),
-        serde_json::json!({
-            "country": "Iran", "country_name": "Iran", "code": "IR", "country_code": "IR",
-            "lat": 32.4279, "lon": 53.688, "lng": 53.688, "count": 81, "hit_count": 81, "threat_count": 81,
-            "ip_count": 4, "ips": ["185.143.233.10", "5.160.200.12", "91.99.100.45", "178.131.20.90"],
-            "attacks": ["Wiper Activity", "Targeted Spearphishing"]
-        }),
-        serde_json::json!({
-            "country": "United Arab Emirates", "country_name": "United Arab Emirates", "code": "AE", "country_code": "AE",
-            "lat": 23.4241, "lon": 53.8478, "lng": 53.8478, "count": 29, "hit_count": 29, "threat_count": 29,
-            "ip_count": 3, "ips": ["94.200.50.12", "185.120.80.45", "86.96.120.30"],
-            "attacks": ["VPN Scanning", "Exploit Kit Gateway"]
-        }),
-        serde_json::json!({
-            "country": "South Africa", "country_name": "South Africa", "code": "ZA", "country_code": "ZA",
-            "lat": -30.5595, "lon": 22.9375, "lng": 22.9375, "count": 37, "hit_count": 37, "threat_count": 37,
-            "ip_count": 3, "ips": ["197.242.150.10", "102.130.45.89", "41.13.120.55"],
-            "attacks": ["Spam Relay", "Brute Force RDP"]
-        }),
-    ];
-
-    // Dynamically augment with live ingested IPs from state.threat_intel and state.alerts
-    let live_entries = state.threat_intel.get_table_entries("malicious_ips");
-    for (ip, _desc) in live_entries.into_iter().take(50) {
-        if let Some(first_country) = countries.first_mut() {
-            if let Some(arr) = first_country.get_mut("ips").and_then(|v| v.as_array_mut()) {
-                let ip_val = serde_json::Value::String(ip);
-                if !arr.contains(&ip_val) {
-                    arr.push(ip_val);
-                    if let Some(cnt) = first_country.get_mut("hit_count").and_then(|v| v.as_u64()) {
-                        first_country["hit_count"] = serde_json::json!(cnt + 1);
-                        first_country["threat_count"] = serde_json::json!(cnt + 1);
-                        first_country["count"] = serde_json::json!(cnt + 1);
-                    }
-                }
-            }
-        }
-    }
-
-    Json(serde_json::json!({
-        "status": "ok",
-        "countries": countries
-    }))
-}
 
 async fn get_threat_intel_handler(State(state): State<AppState>) -> impl IntoResponse {
     let ips = state.threat_intel.get_list("malicious_ips").map(|l| l.total_entries()).unwrap_or(0);
@@ -2581,56 +2484,10 @@ async fn get_threat_intel_watchlist_handler() -> impl IntoResponse {
     Json(serde_json::json!([]))
 }
 
-async fn get_engines_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "engines": [
-            { "name": "provigil-siem-core-01", "status": "running", "mode": "primary", "version": "v4.14.7-rust", "cpu": 12.4, "memory_mb": 420, "eps": 1450, "uptime": "4d 18h", "active": true },
-            { "name": "provigil-ndr-worker-01", "status": "running", "mode": "worker", "version": "v4.14.7-rust", "cpu": 18.2, "memory_mb": 512, "eps": 2890, "uptime": "4d 18h", "active": true },
-            { "name": "provigil-ai-copilot-01", "status": "running", "mode": "assistant", "version": "v4.14.7-rust", "cpu": 5.1, "memory_mb": 310, "eps": 0, "uptime": "4d 18h", "active": true }
-        ]
-    }))
-}
 
-async fn post_engines_scale_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Cluster scaling acknowledged" }))
-}
 
-async fn get_leader_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "is_leader": true,
-        "term": 4,
-        "leader_id": "provigil-siem-core-01",
-        "active_nodes": 3,
-        "cluster_size": 3,
-        "election_state": "Leader"
-    }))
-}
 
-async fn get_kafka_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "connected": true,
-        "brokers_online": 3,
-        "total_brokers": 3,
-        "lag": 0,
-        "topics": ["siem.events", "siem.alerts", "siem.vulnerabilities", "siem.fim"]
-    }))
-}
 
-async fn get_telemetry_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "cpu_usage": 14.8,
-        "memory_usage": 28.4,
-        "disk_usage": 32.1,
-        "uptime_seconds": 412580,
-        "heap_used_mb": 428,
-        "heap_total_mb": 1024,
-        "active_threads": 32,
-        "open_file_descriptors": 148,
-        "network_rx_mb": 1420.5,
-        "network_tx_mb": 840.2
-    }))
-}
 
 async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
     let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
@@ -2702,148 +2559,16 @@ async fn get_server_info_handler() -> impl IntoResponse {
     }))
 }
 
-async fn get_health_handler(State(state): State<AppState>, ctx: Option<Extension<AuthCtx>>) -> impl IntoResponse {
-    let (events, alerts) = match ctx {
-        Some(Extension(ref c)) => (history::events(&state, c, history::DEFAULT_HOURS).await, history::alerts(&state, c, history::DEFAULT_HOURS).await),
-        None => (Vec::new(), Vec::new()),
-    };
-    let events_total = events.len() as u64;
-    let hits_total = alerts.len() as u64;
 
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-    let events_1h = events.iter().filter(|e| e.timestamp >= one_hour_ago).count() as u64;
 
-    let clickhouse_status = if state.db.is_connected() { "running" } else { "running" };
 
-    Json(serde_json::json!({
-        "status": "ok",
-        "events_total": events_total,
-        "hits_total": hits_total,
-        "events_1h": events_1h,
-        "sessions": 85,
-        "sigma_rules": 1435,
-        "services": {
-            "kafka": "running",
-            "engine": "running",
-            "clickhouse": clickhouse_status
-        }
-    }))
-}
 
-async fn get_sensor_keys_handler() -> impl IntoResponse {
-    Json(serde_json::json!([
-        {
-            "id": "sk-001",
-            "key_prefix": "sensor-srv-prod",
-            "name": "Production Ubuntu Cluster Sensor",
-            "tenant_id": "global",
-            "hostname": "srv-prod-ubuntu-01",
-            "interface": "eth0",
-            "os": "linux",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "active",
-            "active": true,
-            "created_at": "2026-10-01T00:00:00Z",
-            "last_seen": "Just now"
-        },
-        {
-            "id": "sk-002",
-            "key_prefix": "sensor-win-ad",
-            "name": "Active Directory Domain Controller",
-            "tenant_id": "tenant-acme",
-            "hostname": "win-ad-dc01",
-            "interface": "Ethernet0",
-            "os": "windows",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "idle",
-            "active": true,
-            "created_at": "2026-10-02T00:00:00Z",
-            "last_seen": "1m ago"
-        },
-        {
-            "id": "sk-003",
-            "key_prefix": "sensor-dmz-nginx",
-            "name": "DMZ Web Edge Ingress",
-            "tenant_id": "tenant-cybersec",
-            "hostname": "dmz-web-nginx",
-            "interface": "eth1",
-            "os": "linux",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "active",
-            "active": true,
-            "created_at": "2026-10-03T00:00:00Z",
-            "last_seen": "Just now"
-        }
-    ]))
-}
 
-async fn get_sensor_event_counts_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "counts": {
-            "sensor-srv-prod": 14200,
-            "sensor-win-ad": 8500,
-            "sensor-dmz-nginx": 12400
-        }
-    }))
-}
 
-async fn get_sensor_recent_ips_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "ips": {
-            "sensor-srv-prod": "192.168.10.15",
-            "sensor-win-ad": "192.168.10.20",
-            "sensor-dmz-nginx": "192.168.10.105"
-        }
-    }))
-}
 
-async fn post_sensor_keys_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
-    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("New Sensor").to_string();
-    let tenant_id = payload.get("tenant_id").and_then(|v| v.as_str()).unwrap_or("global").to_string();
-    let new_key = serde_json::json!({
-        "id": format!("sk-{}", uuid::Uuid::new_v4().to_string().chars().take(6).collect::<String>()),
-        "key_prefix": format!("sensor-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()),
-        "name": name,
-        "tenant_id": tenant_id,
-        "active": true,
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "last_seen": "Just now"
-    });
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key created", "key": new_key }))
-}
 
-async fn delete_sensor_key_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key revoked" }))
-}
 
-async fn reactivate_sensor_key_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key reactivated" }))
-}
 
-async fn post_sensor_control_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Command dispatched to sensor" }))
-}
-
-async fn get_interfaces_handler() -> impl IntoResponse {
-    Json(vec!["eth0".to_string(), "eth1".to_string(), "Ethernet0".to_string(), "lo".to_string()])
-}
-
-async fn get_agent_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "running": true, "connected": true, "agents_count": 4, "active_count": 4 }))
-}
-
-async fn get_scale_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "nominal", "nodes": 3, "capacity_percent": 34 }))
-}
 
 async fn get_unified_stats_handler() -> impl IntoResponse {
     Json(serde_json::json!({
@@ -4284,7 +4009,7 @@ async fn post_active_response_block(
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "A valid IP address is required" }))).into_response();
     }
     let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
-    if let Err(m) = decisions::gate_manual_block(&state, &ctx, &tenant, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600)).await {
+    if let Err(m) = decisions::gate_manual(&state, &ctx, &tenant, "manual_block", &req.ip, serde_json::json!({ "agent_id": agent_id, "ip": req.ip, "seconds": req.duration_seconds.unwrap_or(3600) })).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
@@ -4972,7 +4697,8 @@ fn agent_in_scope(state: &AppState, ctx: &AuthCtx, agent_id: &str) -> bool {
 /// send as `X-Tenant-Key` (admins, and users allowed to deploy agents).
 async fn get_tenant_agent_key_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     let tenant = ctx.scope();
-    if !ctx.can_manage(&tenant) && !ctx.has_permission("siem-agents") {
+    // the enrolment key deploys agents: the tenant admin, or an analyst given "Deploy Agents"
+    if !ctx.can_manage(&tenant) && !ctx.has_permission("siem-agent-deploy") {
         return tenancy::forbidden();
     }
     let key = state.agent_keys.get_or_create(&state.db, &tenant).await;

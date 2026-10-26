@@ -165,8 +165,10 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 9] = [
+pub const ANALYST_DDL: [&str; 11] = [
     crate::decisions::DDL,
+    crate::response::DDL[0],
+    crate::response::DDL[1],
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
     // each agent's latest system inventory (os, hardware, packages, ports, processes...)
@@ -215,6 +217,9 @@ pub enum DocTable {
     SwarmMatches,
     /// The hash-chained decision records (decisions.rs)
     Decisions,
+    /// IP blocks and host isolations (response.rs)
+    Blocks,
+    Isolations,
 }
 
 impl DocTable {
@@ -226,6 +231,8 @@ impl DocTable {
             DocTable::Inventory => "siem_agent_inventory",
             DocTable::SwarmMatches => "siem_swarm_matches",
             DocTable::Decisions => "siem_decisions",
+            DocTable::Blocks => "siem_blocks",
+            DocTable::Isolations => "siem_isolations",
         }
     }
 }
@@ -919,25 +926,33 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn insert_threat_intel_entry(&self, entry: &provigil_common::threat_intel::ThreatIntelEntry) {
-        if !self.is_connected() {
-            return;
+    /// Many entries in one INSERT (one ClickHouse part); the number written.
+    pub async fn insert_threat_intel_entries(&self, entries: &[provigil_common::threat_intel::ThreatIntelEntry]) -> usize {
+        if entries.is_empty() || !self.is_connected() {
+            return 0;
         }
-
-        let row = ClickHouseThreatIntelRow {
-            id: uuid::Uuid::new_v4().to_string(),
-            source: entry.source.clone(),
-            attack_type: entry.attack_type.clone(),
-            severity: entry.severity.clone(),
-            ioc_type: entry.ioc_type.clone(),
-            ioc_value: entry.ioc_value.clone(),
-            description: entry.description.clone(),
-            threat_pattern: entry.threat_pattern.clone(),
-        };
-
-        if let Ok(mut insert) = self.client.insert("siem_threat_intel") {
-            if insert.write(&row).await.is_ok() {
-                let _ = insert.end().await;
+        let Ok(mut insert) = self.client.insert("siem_threat_intel") else { return 0 };
+        for e in entries {
+            let row = ClickHouseThreatIntelRow {
+                id: uuid::Uuid::new_v4().to_string(),
+                source: e.source.clone(),
+                attack_type: e.attack_type.clone(),
+                severity: e.severity.clone(),
+                ioc_type: e.ioc_type.clone(),
+                ioc_value: e.ioc_value.clone(),
+                description: e.description.clone(),
+                threat_pattern: e.threat_pattern.clone(),
+            };
+            if let Err(err) = insert.write(&row).await {
+                warn!("threat intel entries not stored: {err}");
+                return 0;
+            }
+        }
+        match insert.end().await {
+            Ok(()) => entries.len(),
+            Err(err) => {
+                warn!("threat intel entries not stored: {err}");
+                0
             }
         }
     }

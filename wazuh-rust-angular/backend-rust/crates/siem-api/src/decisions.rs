@@ -50,13 +50,16 @@ pub struct Settings {
     pub max_suppress_hours: u32,
     /// AI verdicts below this confidence need approval before alerts are hidden.
     pub min_ai_confidence: u32,
+    pub max_isolations_per_hour: u32,
+    /// Below this alert level an automatic isolation also needs threat intel.
+    pub min_level_auto_isolate: u32,
     pub updated_by: String,
     pub updated_at: u64,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { protected: vec![], max_blocks_per_hour: 10, min_level_auto_block: 10, max_auto_block_hours: 24, max_suppress_hours: 72, min_ai_confidence: 70, updated_by: String::new(), updated_at: 0 }
+        Self { protected: vec![], max_blocks_per_hour: 10, min_level_auto_block: 10, max_auto_block_hours: 24, max_suppress_hours: 72, min_ai_confidence: 70, max_isolations_per_hour: 2, min_level_auto_isolate: 12, updated_by: String::new(), updated_at: 0 }
     }
 }
 
@@ -91,6 +94,35 @@ pub fn block_rules(s: &Settings) -> Vec<Rule> {
             "Conflicting evidence goes to a person",
         ),
     ]
+}
+
+pub fn isolate_rules(s: &Settings) -> Vec<Rule> {
+    vec![
+        rule("G6", "Never isolate a protected asset", cmp("target.protected", Op::Eq, Val::Bool(true)), Effect::Deny, true, "Tenant's protected-asset list; availability"),
+        rule("G7", "Only internal hosts are isolated", cmp("target.public", Op::Eq, Val::Bool(true)), Effect::Deny, true, "Isolation quarantines the tenant's own host"),
+        rule("G8", &format!("At most {} automatic isolations per hour", s.max_isolations_per_hour), cmp("rate.actions_last_hour", Op::Ge, n(s.max_isolations_per_hour)), Effect::RequireApproval, true, "Blast-radius limit; human oversight (EU AI Act Art. 14)"),
+        rule(
+            "P6",
+            &format!("Weak evidence: below level {} and no threat intel", s.min_level_auto_isolate),
+            Cond::All(vec![cmp("alert.level", Op::Lt, n(s.min_level_auto_isolate)), cmp("intel.malicious", Op::Eq, Val::Bool(false))]),
+            Effect::RequireApproval,
+            false,
+            "Proportionality: cutting a host off is disruptive",
+        ),
+        rule(
+            "P7",
+            "The AI judged this activity harmless",
+            Cond::All(vec![cmp("neural.verdict", Op::Eq, Val::Str("benign".into())), cmp("neural.confidence", Op::Ge, n(80))]),
+            Effect::RequireApproval,
+            false,
+            "Conflicting evidence goes to a person",
+        ),
+    ]
+}
+
+/// A person's block or isolation: refused on a protected asset (an operator may act on an internal host).
+pub fn manual_rules(s: &Settings) -> Vec<Rule> {
+    vec![block_rules(s).swap_remove(1)]
 }
 
 pub fn suppress_rules(s: &Settings) -> Vec<Rule> {
@@ -135,7 +167,7 @@ fn protected_fact(f: &mut Facts, s: Option<&Settings>, ip: Option<IpAddr>) {
     }
 }
 
-fn in_range(ip: IpAddr, entry: &str) -> bool {
+pub(crate) fn in_range(ip: IpAddr, entry: &str) -> bool {
     let (net, bits) = match entry.trim().split_once('/') {
         Some((a, b)) => (a, b.parse::<u32>().ok()),
         None => (entry.trim(), None),
@@ -231,16 +263,18 @@ pub mod anchor {
     }
 }
 
-/// Automatic blocks that ran (or were approved) in the last hour; `None` if unknown.
-async fn blocks_last_hour(state: &AppState, tenant: &str) -> Option<u64> {
+/// Automatic `action`s that ran (or were approved) in the last hour; `None` if unknown.
+async fn allowed_last_hour(state: &AppState, tenant: &str, action: &str) -> Option<u64> {
     state
         .db
         .tenant_client(tenant)
         .query(
             "SELECT count() FROM siem_decisions FINAL WHERE JSONExtractUInt(doc, 'ts') >= ? AND JSONExtractString(doc, 'outcome') = 'allowed' \
-             AND (JSONExtractString(doc, 'action') = 'block_ip' OR (JSONExtractString(doc, 'action') = 'review' AND JSONExtractString(doc, 'params', 'action') = 'block_ip'))",
+             AND (JSONExtractString(doc, 'action') = ? OR (JSONExtractString(doc, 'action') = 'review' AND JSONExtractString(doc, 'params', 'action') = ?))",
         )
         .bind(now().saturating_sub(3600))
+        .bind(action)
+        .bind(action)
         .fetch_one::<u64>()
         .await
         .ok()
@@ -305,8 +339,10 @@ fn neural_facts(f: &mut Facts, rec: Option<&siem_triage::Recommendation>) {
     }
 }
 
-/// SOAR `block_ip`: Ok = run it now; Err((run status, detail)) = held or denied.
-pub async fn gate_block(state: &AppState, pb: &provigil_common::soar::SoarNativePlaybook, ctx: &provigil_common::soar::SoarContext) -> Result<(), (String, String)> {
+/// SOAR `block_ip` (the alert's source IP) and `isolate_host` (the alert's host):
+/// Ok = run it now; Err((run status, detail)) = held or denied.
+pub async fn gate_network(state: &AppState, pb: &provigil_common::soar::SoarNativePlaybook, ctx: &provigil_common::soar::SoarContext) -> Result<(), (String, String)> {
+    let action = pb.action_type.as_str();
     let tenant = &pb.tenant_id;
     let loaded = settings(state, tenant).await;
     let s = loaded.clone().unwrap_or_default();
@@ -316,29 +352,39 @@ pub async fn gate_block(state: &AppState, pb: &provigil_common::soar::SoarNative
     let level = alert["rule"]["level"].as_u64().unwrap_or(0);
     let config: Value = serde_json::from_str(&pb.action_config).unwrap_or(json!({}));
     let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
-    let ip = ctx.src_ip.clone();
+    let (ip, what, rules) = if action == "isolate_host" {
+        (alert["agent"]["ip"].as_str().unwrap_or("").to_string(), "the host that raised the alert", isolate_rules(&s))
+    } else {
+        (ctx.src_ip.clone(), "the alert's source IP", block_rules(&s))
+    };
     let parsed = ip.parse::<IpAddr>().ok();
 
     let triage = crate::triage::load(state, tenant).await;
-    let rec = triage.recs.iter().find(|r| r.rule_id == rule_id && r.agent_id == agent_id && (r.src_ip.is_empty() || r.src_ip == ip));
-    // the rate is counted and the decision recorded under one lock, so parallel alerts cannot all pass G3
+    let rec = triage.recs.iter().find(|r| r.rule_id == rule_id && r.agent_id == agent_id && (r.src_ip.is_empty() || r.src_ip == ctx.src_ip));
+    // the rate is counted and the decision recorded under one lock, so parallel alerts cannot all pass the limit
     let _chain = chain_lock().lock().await;
 
     let mut f = Facts::new();
-    f.insert("target.ip".into(), fact(Val::Str(ip.clone()), Origin::Context, "the alert's source IP"));
+    f.insert("target.ip".into(), fact(Val::Str(ip.clone()), Origin::Context, what));
     f.insert("target.public".into(), fact(Val::Bool(parsed.is_some_and(provigil_common::soar::is_public)), Origin::Symbolic, "address class"));
     protected_fact(&mut f, loaded.as_ref(), parsed);
     f.insert("alert.level".into(), fact(Val::Num(level as f64), Origin::Context, &format!("rule {rule_id}: {}", alert["rule"]["description"].as_str().unwrap_or(""))));
     f.insert("intel.malicious".into(), fact(Val::Bool(ctx.is_malicious), Origin::Context, "threat intel, VirusTotal or the threat swarm"));
-    // unknown (database error) = missing, which holds the block (fail-safe)
-    if let Some(n) = blocks_last_hour(state, tenant).await {
-        f.insert("rate.blocks_last_hour".into(), fact(Val::Num(n as f64), Origin::Symbolic, "allowed or approved blocks since an hour ago"));
+    // unknown (database error) = missing, which holds the action (fail-safe)
+    if let Some(n) = allowed_last_hour(state, tenant, action).await {
+        let key = if action == "isolate_host" { "rate.actions_last_hour" } else { "rate.blocks_last_hour" };
+        f.insert(key.into(), fact(Val::Num(n as f64), Origin::Symbolic, "allowed or approved since an hour ago"));
     }
-    f.insert("action.hours".into(), fact(Val::Num(hours as f64), Origin::Context, "playbook setting"));
+    if action == "block_ip" {
+        f.insert("action.hours".into(), fact(Val::Num(hours as f64), Origin::Context, "playbook setting"));
+    }
     neural_facts(&mut f, rec);
 
-    let params = json!({ "agent_id": agent_id, "ip": ip, "hours": hours, "playbook": pb.name, "alert_id": alert["id"] });
-    let r = match decide_once(state, tenant, "block_ip", &ip, &format!("soar:{}", pb.name), f, block_rules(&s), params).await {
+    let params = json!({
+        "agent_id": agent_id, "ip": ip, "hours": hours, "playbook": pb.name, "alert_id": alert["id"],
+        "enforcement": config["enforcement"], "quarantine_vlan": config["quarantine_vlan"],
+    });
+    let r = match decide_once(state, tenant, action, &ip, &format!("soar:{}", pb.name), f, rules, params).await {
         Ok(Ok(r)) => r,
         Ok(Err((Outcome::Denied, id))) => return Err(("denied".into(), format!("Refused again, as in decision {id}"))),
         Ok(Err((_, id))) => return Err(("awaiting_approval".into(), format!("Already waiting for approval (decision {id})"))),
@@ -375,24 +421,18 @@ pub async fn gate_suppress(state: &AppState, tenant: &str, user: &str, rec: &sie
     }
 }
 
-pub fn manual_block_rules(s: &Settings) -> Vec<Rule> {
-    vec![block_rules(s).swap_remove(1)]
-}
-
-/// A person blocking an IP from the console: recorded, and refused on a protected asset
-/// (an operator may contain an internal host, so G1 does not apply). Ok(decision id).
-pub async fn gate_manual_block(state: &AppState, ctx: &AuthCtx, tenant: &str, agent_id: &str, ip: &str, seconds: u64) -> Result<String, String> {
+/// A person blocking or isolating from the console (`manual_block` / `manual_isolate`):
+/// recorded, and refused on a protected asset or when that cannot be checked. Ok(decision id).
+pub async fn gate_manual(state: &AppState, ctx: &AuthCtx, tenant: &str, action: &str, ip: &str, params: Value) -> Result<String, String> {
     let loaded = settings(state, tenant).await;
     let s = loaded.clone().unwrap_or_default();
     let mut f = Facts::new();
     f.insert("target.ip".into(), fact(Val::Str(ip.to_string()), Origin::Human, &format!("entered by {}", ctx.username)));
     protected_fact(&mut f, loaded.as_ref(), ip.parse::<IpAddr>().ok());
-    f.insert("action.hours".into(), fact(Val::Num((seconds as f64 / 36.0).round() / 100.0), Origin::Human, ""));
-    f.insert("target.agent".into(), fact(Val::Str(agent_id.to_string()), Origin::Human, ""));
     let _chain = chain_lock().lock().await;
-    let r = record_locked(state, tenant, "manual_block", ip, &ctx.username, f, manual_block_rules(&s), json!({ "agent_id": agent_id, "ip": ip, "seconds": seconds }))
+    let r = record_locked(state, tenant, action, ip, &ctx.username, f, manual_rules(&s), params)
         .await
-        .map_err(|e| format!("The decision could not be recorded, so nothing was blocked: {e}"))?;
+        .map_err(|e| format!("The decision could not be recorded, so nothing was done: {e}"))?;
     match r.outcome {
         Outcome::Allowed => Ok(r.id),
         // a person is acting: when the protected list cannot be checked, refuse rather than ask
@@ -495,7 +535,7 @@ pub async fn export(State(state): State<AppState>, Extension(ctx): Extension<Aut
 /// `GET /api/v1/siem/decisions/policy`
 pub async fn get_policy(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     let Some(s) = settings(&state, &ctx.scope()).await else { return error(StatusCode::SERVICE_UNAVAILABLE, "The policy could not be read") };
-    Json(json!({ "status": "ok", "settings": s, "rules": { "block_ip": block_rules(&s), "manual_block": manual_block_rules(&s), "suppress": suppress_rules(&s), "review": review_rules() } })).into_response()
+    Json(json!({ "status": "ok", "settings": s, "rules": { "block_ip": block_rules(&s), "isolate_host": isolate_rules(&s), "manual_block": manual_rules(&s), "suppress": suppress_rules(&s), "review": review_rules() } })).into_response()
 }
 
 /// `PUT /api/v1/siem/decisions/policy` (tenant admin). Logged in the chain.
@@ -511,6 +551,8 @@ pub async fn put_policy(State(state): State<AppState>, Extension(ctx): Extension
         return error(StatusCode::BAD_REQUEST, "At most 500 protected entries");
     }
     s.max_blocks_per_hour = s.max_blocks_per_hour.clamp(1, 100);
+    s.max_isolations_per_hour = s.max_isolations_per_hour.clamp(1, 50);
+    s.min_level_auto_isolate = s.min_level_auto_isolate.clamp(1, 16);
     s.min_level_auto_block = s.min_level_auto_block.clamp(1, 16);
     s.max_auto_block_hours = s.max_auto_block_hours.clamp(1, 720);
     s.max_suppress_hours = s.max_suppress_hours.clamp(1, siem_suppression::MAX_HOURS);
@@ -617,7 +659,12 @@ async fn execute(state: &AppState, tenant: &str, held: &Record) -> Value {
     let p = &held.params;
     let reason = format!("approved decision {}", held.id);
     let res = match held.action.as_str() {
-        "block_ip" => crate::soar::block_now(state, p["agent_id"].as_str().unwrap_or(""), p["ip"].as_str().unwrap_or(""), p["hours"].as_u64().unwrap_or(24), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or(""))).await,
+        "block_ip" => crate::response::block(state, tenant, p["ip"].as_str().unwrap_or(""), p["hours"].as_u64().unwrap_or(24), p["enforcement"].as_str().unwrap_or("both"), p["agent_id"].as_str(), &format!("soar:{}", p["playbook"].as_str().unwrap_or("")), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or("")))
+            .await
+            .map(|(_, d)| d),
+        "isolate_host" => crate::response::isolate(state, tenant, p["ip"].as_str().unwrap_or(""), p["enforcement"].as_str(), p["quarantine_vlan"].as_u64().map(|v| v as u16), "", &format!("soar:{}", p["playbook"].as_str().unwrap_or("")), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or("")))
+            .await
+            .map(|(_, d)| d),
         "suppress" => match serde_json::from_value::<siem_suppression::Request>(p["request"].clone()) {
             Ok(mut req) => {
                 req.reason = format!("{} ({reason})", req.reason);

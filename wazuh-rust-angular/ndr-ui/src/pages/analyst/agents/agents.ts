@@ -10,11 +10,8 @@ import {
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
-import {
-  AgentDeployService, DeployOs, DeployParams, WinInstallMode,
-  defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
-  linuxDeployScript, startCommand, windowsBatScript,
-} from '../../../services/siem/agent-deploy';
+import { defaultManagerUrl, fetchManagerUrl, downloadText } from '../../../services/siem/agent-deploy';
+import { AgentDeploy } from '../../../components/agent-deploy/agent-deploy';
 import { Agent, AgentInventory, ScaCheckResult, RawEvent } from '../../../services/siem/siem.models';
 
 type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fim' | 'rootcheck' | 'groups' | 'upgrade' | 'actions';
@@ -22,16 +19,17 @@ type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fi
 @Component({
   selector: 'app-agents',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, AgentDeploy],
   templateUrl: './agents.html',
   styleUrl: './agents.css',
 })
 export class Agents implements OnInit {
   private siem = inject(SiemService);
-  private deploy = inject(AgentDeployService);
   private auth = inject(AuthService);
   /** Upgrades are for the tenant's admins (the API checks it too). */
   canUpgrade = this.auth.isAdmin() || this.auth.isTenantAdmin();
+  /** Enrolling agents: tenant admins, or analysts the admin gave "Deploy agents". */
+  canDeploy = this.auth.isAdmin() || this.auth.isTenantAdmin() || this.auth.hasPermission('siem-agent-deploy');
 
   // Icons
   ServerIcon = Server;
@@ -76,36 +74,10 @@ export class Agents implements OnInit {
   selectedAgentTab = signal<AgentDetailTab>('specs');
   agentActionFeedback = signal<string | null>(null);
 
-  // Deploy wizard: commands come from services/siem/agent-deploy.ts (enrollment
-  // with a unique agent id, tenant key, manager URL, name and group).
-  showDeployModal = signal<boolean>(false);
-  deployOs = signal<DeployOs>('linux');
-  deployManagerUrl = signal<string>(defaultManagerUrl());
-  deployManagerLoopback = computed(() => isLoopbackManager(this.deployManagerUrl()));
-  deployAgentName = signal<string>('');
-  deployGroup = signal<string>('default');
-  deployTenantKey = signal<string>('');
-  deployTenantId = signal<string>('');
-  deployKeyError = signal<string | null>(null);
-  winInstallMode = signal<WinInstallMode>('auto-elevate');
-  copied = signal<boolean>(false);
-  copiedStart = signal<boolean>(false);
 
-  private deployParams = computed<DeployParams>(() => ({
-    os: this.deployOs(),
-    managerUrl: this.deployManagerUrl(),
-    agentName: this.deployAgentName(),
-    group: this.deployGroup(),
-    tenantKey: this.deployTenantKey(),
-    winMode: this.winInstallMode(),
-  }));
-  deployNameValid = computed(() => isValidAgentName(this.deployAgentName().trim()));
-  deployNameTaken = computed(() => {
-    const n = this.deployAgentName().trim().toLowerCase();
-    return this.agents().some(a => a.name.toLowerCase() === n);
-  });
-  deployInstallCommand = computed(() => (this.deployNameValid() ? installCommand(this.deployParams()) : ''));
-  deployStartCommand = computed(() => startCommand(this.deployParams()));
+  // the enrollment wizard is components/agent-deploy
+  showDeployModal = signal<boolean>(false);
+  deployManagerUrl = signal<string>(defaultManagerUrl());
 
   totalCount = computed(() => this.agents().length);
   activeCount = computed(() => this.agents().filter(a => a.status === 'active').length);
@@ -503,94 +475,6 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
     if (this.validIp(ip)) this.triggerAgentAction('block_ip', ip, this.blockSeconds(), windows ? this.blockMethod() : undefined);
   }
 
-  openDeployModal() {
-    this.selectDeployOs(this.deployOs());
-    this.copied.set(false);
-    this.copiedStart.set(false);
-    this.showDeployModal.set(true);
-    this.deployKeyError.set(null);
-    this.deploy.tenantKey().subscribe(r => {
-      this.deployTenantKey.set(r.key);
-      this.deployTenantId.set(r.tenant);
-      this.deployKeyError.set(r.error ?? null);
-    });
-  }
-
-  /** Picks the OS and proposes a fresh, unused agent name for it. */
-  selectDeployOs(os: DeployOs) {
-    this.deployOs.set(os);
-    this.regenerateAgentName();
-  }
-
-  regenerateAgentName() {
-    this.deployAgentName.set(generateAgentName(this.deployOs(), this.agents().map(a => a.name)));
-  }
-
-  downloadBatScript() {
-    downloadText(`install-${this.deployAgentName().trim()}.bat`, windowsBatScript(this.deployParams()), 'application/x-bat');
-  }
-
-  downloadDeployScript() {
-    downloadText(`install-${this.deployAgentName().trim()}.sh`, linuxDeployScript(this.deployParams()), 'text/x-shellscript');
-  }
-
-  copyInstallCommand() {
-    this.copyToClipboard(this.deployInstallCommand(), false);
-  }
-
-  copyStartCommand() {
-    this.copyToClipboard(this.deployStartCommand(), true);
-  }
-
-  /**
-   * Cross-browser clipboard copy with fallback to execCommand.
-   * Works on localhost, LAN IP (http://192.168.x.x:4200), and all browsers.
-   */
-  copyToClipboard(text: string, isStart = false) {
-    if (!text) return;
-    if (navigator?.clipboard?.writeText && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(() => {
-        this.triggerCopied(isStart);
-      }).catch(() => {
-        this.fallbackExecCopy(text, isStart);
-      });
-      return;
-    }
-    this.fallbackExecCopy(text, isStart);
-  }
-
-  private fallbackExecCopy(text: string, isStart: boolean) {
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      ta.style.top = '-9999px';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, 99999);
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (ok) {
-        this.triggerCopied(isStart);
-      }
-    } catch (err) {
-      console.warn('Fallback copy failed', err);
-    }
-  }
-
-  private triggerCopied(isStart: boolean) {
-    if (isStart) {
-      this.copiedStart.set(true);
-      setTimeout(() => this.copiedStart.set(false), 2500);
-    } else {
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 2500);
-    }
-  }
 
   /** Calculate endpoint security risk score (0-100) */
   getAgentRisk(agent: Agent): { score: number; label: string; color: string } {

@@ -60,6 +60,9 @@ export const routes: Routes = [
       { path: 'siem-memory',        canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/memory/siem-memory').then(m => m.SiemMemory) },
       { path: 'siem-swarm',         canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/swarm/siem-swarm').then(m => m.SiemSwarm) },
       { path: 'siem-decisions',     canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/decisions/siem-decisions').then(m => m.SiemDecisions) },
+      { path: 'siem-investigate',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/investigate/siem-investigate').then(m => m.SiemInvestigate) },
+      { path: 'siem-threat-intel',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/threat-intel/siem-threat-intel').then(m => m.SiemThreatIntel) },
+      { path: 'siem-sigma',         canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/sigma/siem-sigma').then(m => m.SiemSigma) },
 
       /* SIEM pages copied from frontend-angular (pages/siem-classic) */
       {
@@ -164,6 +167,7 @@ export const routes: Routes = [
       { path: 'analyst-insights', loadComponent: () => import('../pages/tenant-admin/analyst-insights/analyst-insights').then(m => m.AnalystInsights) },
       { path: 'threat-swarm',     loadComponent: () => import('../pages/tenant-admin/threat-swarm/threat-swarm').then(m => m.ThreatSwarm) },
       { path: 'ai-guardrails',    loadComponent: () => import('../pages/tenant-admin/ai-guardrails/ai-guardrails').then(m => m.AiGuardrails) },
+      { path: 'agent-deployment', loadComponent: () => import('../pages/tenant-admin/agent-deployment/agent-deployment').then(m => m.AgentDeployment) },
       { path: 'settings',       loadComponent: () => import('../pages/tenant-admin/settings/settings').then(m => m.TenantSettings) },
       { path: 'support',        loadComponent: () => import('../pages/tenant-admin/support/support').then(m => m.TenantSupport) },
     ]

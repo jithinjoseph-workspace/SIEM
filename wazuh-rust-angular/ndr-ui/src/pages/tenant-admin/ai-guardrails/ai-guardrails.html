@@ -59,6 +59,14 @@
         <label for="g-conf" class="text-xs text-slate-400 block mb-1">AI confidence needed to hide alerts without approval (%)</label>
         <input id="g-conf" name="conf" type="number" min="0" max="100" [(ngModel)]="form.min_ai_confidence" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
       </div>
+      <div>
+        <label for="g-iso" class="text-xs text-slate-400 block mb-1">Automatic host isolations per hour before a person must approve</label>
+        <input id="g-iso" name="iso" type="number" min="1" max="50" [(ngModel)]="form.max_isolations_per_hour" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
+      <div>
+        <label for="g-isol" class="text-xs text-slate-400 block mb-1">Alert level for an isolation without threat intel</label>
+        <input id="g-isol" name="isol" type="number" min="1" max="16" [(ngModel)]="form.min_level_auto_isolate" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5">
+      </div>
     </div>
     <div>
       <label for="g-prot" class="text-xs text-slate-400 block mb-1">Protected assets, never blocked automatically (IP or CIDR, one per line)</label>

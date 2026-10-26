@@ -84,7 +84,8 @@ impl AuthCtx {
     pub fn has_permission(&self, perm: &str) -> bool {
         self.is_super()
             || self.is_tenant_admin()
-            || self.permissions.iter().any(|p| p == perm || p == "all" || (p == "siem" && perm.starts_with("siem")))
+            // deploying agents is granted on its own, never by the SIEM suite
+            || self.permissions.iter().any(|p| p == perm || p == "all" || (p == "siem" && perm.starts_with("siem") && perm != "siem-agent-deploy"))
     }
 
     /// Whether the caller administers `tenant`.
@@ -227,6 +228,13 @@ pub async fn init_valkey() -> Result<(), String> {
     let cm = redis::aio::ConnectionManager::new(client).await.map_err(|e| format!("Valkey {url}: {e}"))?;
     let _ = VALKEY.set(cm);
     Ok(())
+}
+
+/// Whether the session store answers (the platform health page).
+pub async fn valkey_ok() -> bool {
+    let Some(cm) = VALKEY.get() else { return false };
+    let mut c = cm.clone();
+    redis::cmd("PING").query_async::<_, String>(&mut c).await.is_ok()
 }
 
 /// Whether auth-service still has this session (logout / force-logout
@@ -433,9 +441,11 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-parsers")
     } else if starts("/api/siem/sources") || starts("/api/sources") {
         Some("siem-sources")
-    } else if starts("/api/soar") {
+    } else if starts("/api/soar") || starts("/api/blocks") || starts("/api/isolat") || starts("/api/unisolate") {
         Some("soar")
-    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") {
+    } else if starts("/api/v1/siem/sigma") {
+        Some("siem-rules")
+    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") {
         Some("siem-alerts")
     } else if starts("/api/v1/siem/predictions") {
         Some("siem-mitre")
@@ -578,6 +588,9 @@ mod tests {
         assert!(c.has_permission("siem-agents") && !c.has_permission("siem-fim"));
         c.permissions = vec!["siem".into()];
         assert!(c.has_permission("siem-fim") && !c.has_permission("dashboard"));
+        assert!(!c.has_permission("siem-agent-deploy"), "deploying agents is granted on its own");
+        c.permissions = vec!["siem".into(), "siem-agent-deploy".into()];
+        assert!(c.has_permission("siem-agent-deploy"));
         c.permissions = vec!["all".into()];
         assert!(c.has_permission("dashboard"));
     }

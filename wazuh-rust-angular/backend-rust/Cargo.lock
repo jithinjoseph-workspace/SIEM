@@ -2840,6 +2840,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "siem-deception"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "siem-core",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "siem-decision"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "siem-engine"
 version = "0.1.0"
 dependencies = [

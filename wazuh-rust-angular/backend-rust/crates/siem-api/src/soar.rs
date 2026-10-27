@@ -19,7 +19,7 @@ use crate::tenancy::AuthCtx;
 use crate::AppState;
 
 /// Config keys that are secrets: returned empty, kept when a save leaves them empty.
-const SECRET_KEYS: [&str; 9] = ["api_key", "routing_key", "smtp_pass", "bot_token", "password", "token", "community", "aws_secret_access_key", "secret"];
+pub(crate) const SECRET_KEYS: [&str; 9] = ["api_key", "routing_key", "smtp_pass", "bot_token", "password", "token", "community", "aws_secret_access_key", "secret"];
 /// Runs of one playbook per minute; more matching alerts in that minute are not acted on.
 const MAX_RUNS_PER_MINUTE: u32 = 30;
 const CACHE_TTL: Duration = Duration::from_secs(30);
@@ -79,7 +79,11 @@ impl Store {
         let rows = self.db(tenant).query("SELECT id, name, type, config, enabled FROM soar_integrations FINAL ORDER BY created_at").fetch_all::<(String, String, String, String, u8)>().await?;
         Ok(rows
             .into_iter()
-            .map(|r| json!({ "id": r.0, "name": r.1, "type": r.2, "config": serde_json::from_str::<Value>(&r.3).unwrap_or(json!({})), "enabled": r.4 == 1 }))
+            .map(|r| {
+                // secrets are stored sealed (secrets.rs); `raw_config` is what the row holds
+                let raw = serde_json::from_str::<Value>(&r.3).unwrap_or(json!({}));
+                json!({ "id": r.0, "name": r.1, "type": r.2, "config": crate::secrets::open_config(&raw, &SECRET_KEYS), "raw_config": raw, "enabled": r.4 == 1 })
+            })
             .collect())
     }
 
@@ -94,7 +98,7 @@ impl Store {
             .bind(id)
             .bind(name)
             .bind(kind)
-            .bind(config.to_string())
+            .bind(crate::secrets::seal_config(config, &SECRET_KEYS).to_string())
             .bind(enabled as u8)
             .bind(tenant)
             .execute()
@@ -686,6 +690,9 @@ pub(crate) fn store(state: &AppState) -> Store {
 }
 
 fn mask(mut i: Value) -> Value {
+    if let Some(o) = i.as_object_mut() {
+        o.remove("raw_config");
+    }
     if let Some(c) = i["config"].as_object_mut() {
         for k in SECRET_KEYS {
             if c.get(k).and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) {

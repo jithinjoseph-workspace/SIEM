@@ -54,6 +54,7 @@ pub mod decisions;
 pub mod intel;
 pub mod investigate;
 pub mod case_ai;
+pub mod secrets;
 pub mod geomap;
 pub mod platform;
 pub mod response;
@@ -452,6 +453,10 @@ async fn main() {
         );
     }
     redswarm_store::spawn_sync(state.clone());
+    {
+        let st = state.clone();
+        tokio::spawn(async move { secrets::reseal_all(&st).await });
+    }
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
     if std::env::var("SIEM_DEMO_DATA").is_ok_and(|v| v == "1") {

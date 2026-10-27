@@ -1952,10 +1952,13 @@
           <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">{{ field.label }}</label>
           <select *ngIf="field.type === 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
             class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 transition-colors">
-            <option *ngFor="let o of field.options" [value]="o">{{ o }}</option>
+            <option *ngFor="let o of $any(field).options" [value]="o">{{ o }}</option>
           </select>
           <!-- a saved secret is not sent back: leaving it empty keeps it -->
-          <input *ngIf="field.type !== 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
+          <textarea *ngIf="field.type === 'textarea'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label" [placeholder]="field.placeholder" rows="4"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-xs font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"></textarea>
+          <div *ngIf="field.key === 'tls_insecure' && intConfig[field.key] === 'true'" class="text-[11px] text-amber-300 mt-1">The device's identity is not checked: anyone on the path could read its API key.</div>
+          <input *ngIf="field.type !== 'select' && field.type !== 'textarea'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
             [placeholder]="intConfig[field.key + '_set'] ? '•••••••• saved (leave empty to keep)' : field.placeholder" [type]="field.type || 'text'"
             class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
         </div>

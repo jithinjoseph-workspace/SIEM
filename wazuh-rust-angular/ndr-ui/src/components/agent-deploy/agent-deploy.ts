@@ -48,6 +48,9 @@ export class AgentDeploy implements OnInit {
   deployTenantId = signal<string>('');
   deployKeyError = signal<string | null>(null);
   winInstallMode = signal<WinInstallMode>('auto-elevate');
+  /** Optional Windows logging for the Sigma rules: Sysmon and PowerShell logging. */
+  winSysmon = signal(false);
+  winPsLogging = signal(false);
   copied = signal(false);
   copiedStart = signal(false);
 
@@ -58,6 +61,8 @@ export class AgentDeploy implements OnInit {
     group: this.deployGroup(),
     tenantKey: this.deployTenantKey(),
     winMode: this.winInstallMode(),
+    winSysmon: this.winSysmon(),
+    winPsLogging: this.winPsLogging(),
   }));
   deployNameValid = computed(() => isValidAgentName(this.deployAgentName().trim()));
   deployNameTaken = computed(() => this.agentNames().includes(this.deployAgentName().trim().toLowerCase()));

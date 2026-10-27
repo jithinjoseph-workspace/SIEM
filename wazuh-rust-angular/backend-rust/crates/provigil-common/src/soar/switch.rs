@@ -90,14 +90,7 @@ async fn unifi_block(config: &Value, target_ip: &str) -> SwitchResult {
         return SwitchResult::err("unifi", "host not configured");
     }
 
-    let client: Client = match Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => return SwitchResult::err("unifi", format!("client build error: {e}")),
-    };
+    let client: Client = crate::soar::firewall::device_client(config, Duration::from_secs(15));
 
     // Login — extract Set-Cookie for session
     let login_resp = match client
@@ -141,14 +134,7 @@ async fn unifi_unblock(config: &Value, target_ip: &str) -> bool {
     let password = config["password"].as_str().unwrap_or("");
     let site     = config["site"].as_str().unwrap_or("default");
 
-    let client: Client = match Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
+    let client: Client = crate::soar::firewall::device_client(config, Duration::from_secs(15));
 
     let cookie = match client
         .post(format!("{host}/api/login"))
@@ -242,14 +228,7 @@ async fn aruba_quarantine(config: &Value, target_ip: &str, quarantine_vlan: u16)
         return SwitchResult::err("aruba", "host or port not configured");
     }
 
-    let client = match Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => return SwitchResult::err("aruba", format!("client error: {e}")),
-    };
+    let client = crate::soar::firewall::device_client(config, Duration::from_secs(15));
 
     // Login to get session cookie
     let login = client
@@ -311,14 +290,7 @@ async fn aruba_restore(config: &Value, _target_ip: &str, original_vlan: u16) -> 
 
     if host.is_empty() || port.is_empty() { return false; }
 
-    let client = match Client::builder()
-        .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
+    let client = crate::soar::firewall::device_client(config, Duration::from_secs(15));
 
     let login = client
         .post(format!("{host}/rest/v10.10/login"))

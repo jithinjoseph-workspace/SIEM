@@ -23,6 +23,38 @@ export interface DeployParams {
   group: string;
   tenantKey: string;
   winMode: WinInstallMode;
+  /** Windows: also install Sysmon (Microsoft Sysinternals, its default configuration + network connections). */
+  winSysmon?: boolean;
+  /** Windows: turn on PowerShell script block (4104) and module (4103) logging. */
+  winPsLogging?: boolean;
+}
+
+/**
+ * The optional Windows logging steps; they run after the agent is installed and started,
+ * and a failure only warns (the agent is not affected). The agents' shared config
+ * collects the Sysmon and PowerShell logs (etc/shared/default/agent.conf).
+ */
+function windowsLoggingSteps(p: DeployParams): string[] {
+  const steps: string[] = [];
+  if (p.winPsLogging) {
+    steps.push(
+      `try { $k = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell'; ` +
+      `New-Item -Path "$k\\ScriptBlockLogging" -Force | Out-Null; Set-ItemProperty -Path "$k\\ScriptBlockLogging" -Name EnableScriptBlockLogging -Value 1 -Type DWord; ` +
+      `New-Item -Path "$k\\ModuleLogging\\ModuleNames" -Force | Out-Null; Set-ItemProperty -Path "$k\\ModuleLogging" -Name EnableModuleLogging -Value 1 -Type DWord; ` +
+      `Set-ItemProperty -Path "$k\\ModuleLogging\\ModuleNames" -Name '*' -Value '*'; Write-Host 'PowerShell script block and module logging turned on' } ` +
+      `catch { Write-Warning "PowerShell logging not changed: $_" }`,
+    );
+  }
+  if (p.winSysmon) {
+    steps.push(
+      `if (Get-Service Sysmon64, Sysmon -ErrorAction SilentlyContinue) { Write-Host 'Sysmon is already installed' } else { try { ` +
+      `$z = "$env:TEMP\\Sysmon.zip"; Invoke-WebRequest -UseBasicParsing -Uri 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile $z; ` +
+      `Expand-Archive -Path $z -DestinationPath "$env:TEMP\\Sysmon" -Force; ` +
+      `& "$env:TEMP\\Sysmon\\Sysmon64.exe" -accepteula -i -n | Out-Null; Write-Host 'Sysmon installed (default configuration + network connections)' } ` +
+      `catch { Write-Warning "Sysmon not installed: $_" } }`,
+    );
+  }
+  return steps;
 }
 
 export const WINDOWS_SERVICE = 'WazuhSvc';
@@ -168,6 +200,7 @@ export function windowsInstallScript(p: DeployParams): string {
     `& "$d\\wazuh-agent.exe" install-service | Out-Null`,
     `Start-Service -Name ${WINDOWS_SERVICE}`,
     `Write-Host "Wazuh agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,
+    ...windowsLoggingSteps(p),
     `Get-Service ${WINDOWS_SERVICE}`,
   ].join('; ');
 }

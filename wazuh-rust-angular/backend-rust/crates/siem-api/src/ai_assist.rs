@@ -49,7 +49,7 @@ pub async fn providers(state: &AppState, use_case: &str) -> Vec<Provider> {
             .await
             .unwrap_or_default()
             .into_iter()
-            .map(|r| Provider { name: r.name, provider_type: r.provider_type, api_key: r.api_key, model: r.model, base_url: r.base_url, endpoint_path: r.endpoint_path, priority: r.priority })
+            .map(|r| Provider { name: r.name, provider_type: r.provider_type, api_key: crate::secrets::open(&r.api_key), model: r.model, base_url: r.base_url, endpoint_path: r.endpoint_path, priority: r.priority })
             .collect()
     } else {
         Vec::new()
@@ -310,7 +310,42 @@ impl ProviderReq {
 }
 
 async fn stored_key(state: &AppState, name: &str) -> String {
-    state.db.root().query("SELECT api_key FROM ndr.ai_providers FINAL WHERE name = ? LIMIT 1").bind(name).fetch_optional::<String>().await.ok().flatten().unwrap_or_default()
+    let k = state.db.root().query("SELECT api_key FROM ndr.ai_providers FINAL WHERE name = ? LIMIT 1").bind(name).fetch_optional::<String>().await.ok().flatten().unwrap_or_default();
+    crate::secrets::open(&k)
+}
+
+/// Provider keys still stored in plain text, written again sealed; how many.
+pub async fn reseal_provider_keys(state: &AppState) -> usize {
+    let rows = state
+        .db
+        .root()
+        .query("SELECT name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled FROM ndr.ai_providers FINAL WHERE api_key != '' AND NOT startsWith(api_key, 'enc:v1:')")
+        .fetch_all::<ProviderListRow>()
+        .await
+        .unwrap_or_default();
+    for r in &rows {
+        let _ = state
+            .db
+            .root()
+            .query("INSERT INTO ndr.ai_providers (name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())")
+            .bind(&r.name)
+            .bind(&r.provider_type)
+            .bind(crate::secrets::seal(&r.api_key))
+            .bind(&r.model)
+            .bind(&r.base_url)
+            .bind(&r.endpoint_path)
+            .bind(&r.msg_format)
+            .bind(&r.use_case)
+            .bind(r.priority)
+            .bind(r.enabled)
+            .execute()
+            .await;
+    }
+    if !rows.is_empty() {
+        let _ = state.db.root().query("OPTIMIZE TABLE ndr.ai_providers FINAL").execute().await;
+        forget_providers();
+    }
+    rows.len()
 }
 
 /// `POST /api/settings/ai/providers`: add, or replace the one of that name.
@@ -338,7 +373,7 @@ pub async fn save_provider(State(state): State<AppState>, Extension(ctx): Extens
         .query("INSERT INTO ndr.ai_providers (name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())")
         .bind(&p.name)
         .bind(&p.provider_type)
-        .bind(&p.api_key)
+        .bind(crate::secrets::seal(&p.api_key))
         .bind(&p.model)
         .bind(&p.base_url)
         .bind(&p.endpoint_path)

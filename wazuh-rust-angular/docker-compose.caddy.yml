@@ -13,7 +13,7 @@ services:
     environment:
       - SITE_DOMAIN=localhost # Set to your domain (e.g. siem.company.com) in production
       - SIEM_UPSTREAM=host.docker.internal:8088
-      - AUTH_UPSTREAM=host.docker.internal:3001
+      - AUTH_UPSTREAM=host.docker.internal:3011
       - NDR_UPSTREAM=host.docker.internal:8088
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro

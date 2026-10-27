@@ -428,6 +428,58 @@ pub async fn unisolate_handler(State(state): State<AppState>, Extension(ctx): Ex
 mod tests {
     use super::*;
 
+    /// A firewall / switch with its own CA: refused by default, trusted with `ca_cert`,
+    /// reachable with `tls_insecure`; a `ca_cert` that is not a certificate fails closed.
+    #[tokio::test]
+    async fn device_tls_is_verified() {
+        use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair, KeyUsagePurpose};
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let ca_key = KeyPair::generate().unwrap();
+        let mut ca_p = CertificateParams::new(Vec::<String>::new()).unwrap();
+        ca_p.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        ca_p.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign, KeyUsagePurpose::DigitalSignature];
+        ca_p.distinguished_name.push(rcgen::DnType::CommonName, "Test Firewall CA");
+        let ca = ca_p.self_signed(&ca_key).unwrap();
+        let key = KeyPair::generate().unwrap();
+        let mut srv_p = CertificateParams::new(vec!["127.0.0.1".to_string(), "localhost".to_string()]).unwrap();
+        srv_p.distinguished_name.push(rcgen::DnType::CommonName, "firewall.test");
+        let cert = srv_p.signed_by(&key, &ca, &ca_key).unwrap();
+        let tls = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert.der().clone(), CertificateDer::from(ca.der().to_vec())], PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())))
+            .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(tls));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    if let Ok(mut s) = acceptor.accept(tcp).await {
+                        let mut buf = [0u8; 2048];
+                        let _ = s.read(&mut buf).await;
+                        let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await;
+                        let _ = s.shutdown().await;
+                    }
+                });
+            }
+        });
+        let url = format!("https://127.0.0.1:{port}/");
+        let status = |cfg: Value| {
+            let url = url.clone();
+            async move { provigil_common::soar::firewall::device_client(&cfg, std::time::Duration::from_secs(5)).get(&url).send().await.map(|r| r.status().as_u16()) }
+        };
+        assert!(status(json!({})).await.is_err(), "a certificate of an unknown CA is refused");
+        assert_eq!(status(json!({ "ca_cert": ca.pem() })).await.unwrap(), 200, "the device's CA is trusted");
+        assert_eq!(status(json!({ "tls_insecure": true })).await.unwrap(), 200, "verification off on request");
+        assert!(status(json!({ "ca_cert": "not a certificate" })).await.is_err(), "a broken ca_cert trusts nothing extra");
+    }
+
     #[test]
     fn integration_choice() {
         let list = vec![

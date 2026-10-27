@@ -277,6 +277,21 @@ SOAR notifications (Slack, e-mail…) are not gated: low impact.
   target's tenant; role checks used roles that do not exist; one draft per open gap; approving
   writes `etc/rules/redswarm_rules.xml` only after `wazuh-analysisd -t` accepts a staged copy,
   rollback removes it).
+- **SOAR case investigation (case_ai.rs, 2026-10-27):** every new case: the evidence about its
+  source IP, host and user, the logins (failed / succeeded / a success after failures), and a
+  verdict (compromised, malicious, attack attempt, likely benign, needs review) by rules and the
+  tenant's AI; stored per tenant, noted on the case. The AI Providers settings page had no backend:
+  `/api/settings/ai/providers` (list, save, delete, test) now exists.
+- **Security (2026-10-27):** firewall / switch HTTPS certificates are verified (`ca_cert` for a
+  device's own CA, `tls_insecure` only as an explicit lab option); SOAR integration secrets and
+  AI provider keys are stored sealed with `AGENT_KEYS_SECRET` (`enc:v1:`, secrets.rs), old plain
+  values re-sealed at start.
+- **Ports:** auth-service listens on 3011 (`LISTEN_ADDR`): 3001 is the NDR sensor agent's
+  (`NDR_AGENT_URL`), and WSL forwards a WSL listener to Windows localhost.
+- **Agent install:** optional Sysmon and PowerShell logging steps in the Windows command.
+- **Paused:** Red Swarm on real analysisd: agent events are injected as `1:[id] (name) ip->loc:log`
+  (syslog) and `f:` + `{"Message","Event":<XML>}` on location `EventChannel` (Windows) - both
+  decode like real agent events; a marker (location or an EventData field) finds the round's alert.
 - **Open (Libin's crates, not changed):** Risk Fabric and Attacker Intent Radar keep one global
   state for all tenants and start with sample processes / entities (192.168.10.15, "*swift*").
 - Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false

@@ -77,6 +77,29 @@ pub struct PreemptiveAction {
     pub created_at: DateTime<Utc>,
 }
 
+/// Real-time or historical alert record for kill-chain evidence mapping
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveAlertRecord {
+    pub timestamp: DateTime<Utc>,
+    pub agent_id: String,
+    pub agent_name: String,
+    pub agent_ip: String,
+    pub mitre_id: String,
+    #[serde(default)]
+    pub mitre_tactic: String,
+    #[serde(default)]
+    pub mitre_technique: String,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub src_ip: Option<String>,
+    #[serde(default)]
+    pub os_type: Option<String>,
+    pub rule_id: u32,
+    #[serde(default)]
+    pub rule_description: String,
+}
+
 /// Comprehensive Intent Dossier for an endpoint, campaign, or user identity
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EntityIntentDossier {
@@ -84,10 +107,12 @@ pub struct EntityIntentDossier {
     pub entity_id: String,
     pub entity_name: String,
     pub entity_ip: String,
+    #[serde(default)]
+    pub os_type: Option<String>,
     pub primary_intent: String,
     pub primary_probability: f64,
-    pub confidence_score: u8,
-    pub kill_chain_velocity: String, // "Rapid (Hours)" | "Moderate (Days)" | "Stealthy / Dormant"
+    pub confidence_score: f64,
+    pub kill_chain_velocity: String, // "Accelerating" | "Steady" | "Lurking"
     pub progression_percent: u8,
     pub hypotheses: Vec<IntentHypothesisScore>,
     pub milestones: Vec<KillChainMilestone>,
@@ -95,6 +120,8 @@ pub struct EntityIntentDossier {
     pub alerts_analyzed: usize,
     pub last_updated_at: DateTime<Utc>,
 }
+
+
 
 /// Executive posture and summary report
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

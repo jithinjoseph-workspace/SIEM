@@ -229,9 +229,20 @@
             </div>
 
             <div class="form-group">
+              <label>Select Enrolled Fleet Node</label>
+              <select class="form-control" [ngModel]="selectedSimAgentId()" (ngModelChange)="onSelectSimAgent($event)">
+                <option value="custom">-- Custom Manual Input --</option>
+                @for (agent of availableAgents(); track agent.id) {
+                  <option [value]="agent.id">{{ agent.name }} ({{ agent.ip }} - {{ agent.os_type || agent.os }})</option>
+                }
+              </select>
+              <span class="form-hint">Pulls real enrolled node metadata directly from the live SIEM fleet</span>
+            </div>
+
+            <div class="form-group">
               <label>Target Host / Agent Name</label>
               <input type="text" class="form-control" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event); runSimulation()" />
-              <span class="form-hint">Matches asset pattern (e.g. *pay*, *dc*, *dev*)</span>
+              <span class="form-hint">Matches asset pattern (e.g. *pay*, *win*, *linux*)</span>
             </div>
 
             <div class="form-group">
@@ -524,7 +535,7 @@
               @for (a of alerts(); track a.id) {
                 <tr>
                   <td>
-                    @if (a.risk_fabric; as rf) {
+                    @if (a.risk_fabric || a.data?.['risk_fabric']; as rf) {
                       <div class="score-badge-cell">
                         <span class="badge" [class]="getTierClass(rf.dynamic_risk_tier)">
                           {{ rf.dynamic_risk_score }}
@@ -540,7 +551,7 @@
                     <div class="td-subtitle">{{ a.agent.ip }}</div>
                   </td>
                   <td>
-                    @if (a.risk_fabric; as rf) {
+                    @if (a.risk_fabric || a.data?.['risk_fabric']; as rf) {
                       <div class="td-title">{{ rf.business_process }}</div>
                       <span class="badge" [class]="'crit-' + rf.process_criticality.toLowerCase()">
                         {{ rf.process_criticality }}
@@ -554,7 +565,7 @@
                     <div class="td-subtitle">{{ a.rule.description }}</div>
                   </td>
                   <td>
-                    @if (a.risk_fabric; as rf) {
+                    @if (a.risk_fabric || a.data?.['risk_fabric']; as rf) {
                       <p class="impact-preview">{{ rf.executive_impact }}</p>
                     } @else {
                       <p class="impact-preview text-muted">{{ a.full_log }}</p>

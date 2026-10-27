@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{Datelike, Timelike, Utc};
 use siem_core::Alert;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,6 +14,7 @@ use crate::storage;
 pub struct RiskFabricEngine {
     processes: Arc<RwLock<Vec<BusinessProcessDefinition>>>,
     time_windows: Arc<RwLock<Vec<BusinessTimeWindow>>>,
+    fleet: Arc<RwLock<HashMap<String, (String, String, Option<String>)>>>,
     config_path: PathBuf,
 }
 
@@ -26,7 +27,17 @@ impl RiskFabricEngine {
         Self {
             processes: Arc::new(RwLock::new(cfg.processes)),
             time_windows: Arc::new(RwLock::new(cfg.time_windows)),
+            fleet: Arc::new(RwLock::new(HashMap::new())),
             config_path: path,
+        }
+    }
+
+    /// Synchronizes live enrolled agent fleet metadata
+    pub fn sync_fleet(&self, fleet: &[(String, String, String, Option<String>)]) {
+        let mut map = self.fleet.write().unwrap();
+        map.clear();
+        for (id, name, ip, os) in fleet {
+            map.insert(id.clone(), (name.clone(), ip.clone(), os.clone()));
         }
     }
 
@@ -42,11 +53,21 @@ impl RiskFabricEngine {
     /// Evaluates an alert and injects the score into `alert.data["risk_fabric"]`
     pub fn evaluate_alert(&self, alert: &mut Alert) -> RiskFabricScore {
         let agent_name = alert.agent.name.to_lowercase();
+        let agent_id = alert.agent.id.to_lowercase();
         let agent_ip = alert.agent.ip.to_lowercase();
         let location = alert.location.to_lowercase();
         let user = alert.decoded.user.as_deref().unwrap_or("").to_lowercase();
         let rule_level = alert.rule.level;
         let rule_desc = &alert.rule.description;
+
+        // Resolve fleet registry OS if available
+        let fleet_os = {
+            let f = self.fleet.read().unwrap();
+            f.get(&alert.agent.id)
+                .and_then(|(_, _, os)| os.clone())
+                .unwrap_or_default()
+                .to_lowercase()
+        };
 
         let processes = self.processes.read().unwrap();
         let time_windows = self.time_windows.read().unwrap();
@@ -56,6 +77,7 @@ impl RiskFabricEngine {
         for p in processes.iter().filter(|p| p.enabled) {
             let matches_asset = p.asset_patterns.iter().any(|pattern| {
                 matches_pattern(pattern, &agent_name)
+                    || matches_pattern(pattern, &agent_id)
                     || matches_pattern(pattern, &agent_ip)
                     || matches_pattern(pattern, &location)
             });
@@ -74,13 +96,33 @@ impl RiskFabricEngine {
             if let Some(p) = matched_proc {
                 (p.id, p.name, p.criticality, p.asset_weight, p.impact_template)
             } else {
-                (
-                    "bp-general".to_string(),
-                    "Standard Corporate Infrastructure".to_string(),
-                    "Medium".to_string(),
-                    1.0,
-                    "General endpoint security event requiring standard SOC operational review.".to_string(),
-                )
+                let is_win = agent_name.contains("win") || location.contains("c:\\") || fleet_os.contains("windows");
+                let is_linux = agent_name.contains("linux") || location.contains("/var") || fleet_os.contains("linux");
+                if is_win {
+                    (
+                        "bp-win-corp".to_string(),
+                        "Corporate Windows Infrastructure".to_string(),
+                        "High".to_string(),
+                        2.1,
+                        "Windows domain host security event detected. Potential active lateral pivot, credential access, or defense evasion.".to_string(),
+                    )
+                } else if is_linux {
+                    (
+                        "bp-linux-prod".to_string(),
+                        "Enterprise Linux Workload Infrastructure".to_string(),
+                        "High".to_string(),
+                        2.0,
+                        "Linux host telemetry alert. Elevated potential for privilege escalation, root compromise, or daemon abuse.".to_string(),
+                    )
+                } else {
+                    (
+                        "bp-general".to_string(),
+                        format!("Monitored Fleet Node ({})", alert.agent.name),
+                        "Medium".to_string(),
+                        1.2,
+                        "Endpoint telemetry event requiring standard SOC operational triage and verification.".to_string(),
+                    )
+                }
             };
 
         // 2. Resolve Identity Criticality Weight
@@ -93,21 +135,49 @@ impl RiskFabricEngine {
                     }
                 }
             }
-        }
-
-        // 3. Resolve Active Business Time Window Multipliers
-        let mut time_multiplier = 1.0;
-        let mut active_window_name: Option<String> = None;
-        for w in time_windows.iter().filter(|w| w.active) {
-            if w.target_processes.is_empty() || w.target_processes.contains(&bp_id) {
-                time_multiplier *= w.multiplier;
-                active_window_name = Some(w.name.clone());
-                break;
+            if user == "root" || user == "administrator" || user == "system" {
+                identity_weight = identity_weight.max(1.8);
             }
         }
 
-        // 4. Compute Unified Dynamic Risk Score (0 - 100)
-        let tech_base = ((rule_level as f64) * 6.67).clamp(5.0, 100.0);
+        // 3. Resolve Real-Time Clock & Temporal Window Multipliers
+        let mut time_multiplier = 1.0;
+        let mut active_window_names = Vec::new();
+        let now = Utc::now();
+
+        for w in time_windows.iter() {
+            let applies_to_proc = w.target_processes.is_empty() || w.target_processes.contains(&bp_id);
+            if applies_to_proc {
+                let (is_active, mult) = evaluate_temporal_window(w, now);
+                if is_active && (mult - 1.0).abs() > 0.001 {
+                    time_multiplier *= mult;
+                    active_window_names.push(format!("{} ({:.2}x)", w.name, mult));
+                }
+            }
+        }
+        time_multiplier = time_multiplier.clamp(0.35, 2.85);
+
+        let active_window_name = if !active_window_names.is_empty() {
+            Some(active_window_names.join(", "))
+        } else {
+            None
+        };
+
+        // 4. Factor in MITRE Tactic Progression Weight
+        let mitre_boost = if let Some(ref m) = alert.rule.mitre {
+            match m.tactic.to_lowercase().as_str() {
+                "impact" | "exfiltration" => 1.35,
+                "lateral_movement" | "command_and_control" => 1.25,
+                "credential_access" | "privilege_escalation" => 1.15,
+                "persistence" | "defense_evasion" => 1.10,
+                _ => 1.0,
+            }
+        } else {
+            1.0
+        };
+
+        // 5. Compute Unified Dynamic Risk Score (1 - 100)
+        let tech_base = ((rule_level as f64) * 6.67).clamp(5.0, 100.0) * mitre_boost;
         let raw_score = tech_base * asset_weight * identity_weight * time_multiplier;
         let dynamic_risk_score = raw_score.round().clamp(1.0, 100.0) as u8;
 
@@ -120,21 +190,27 @@ impl RiskFabricEngine {
         }
         .to_string();
 
-        // 5. Synthesize Executive-Ready Impact Narrative
+        // 6. Synthesize Executive-Ready Impact Narrative
         let window_note = if let Some(ref w_name) = active_window_name {
-            format!(" Active temporal context: [{w_name} (Priority Multiplier: {time_multiplier:.2}x)].")
+            format!(" Temporal Context: [{w_name}].")
         } else {
             String::new()
         };
 
         let user_note = if !user.is_empty() {
-            format!(" Involves identity '{user}' (Identity Weight: {identity_weight:.1}x).")
+            format!(" Identity: '{user}' (Weight: {identity_weight:.1}x).")
+        } else {
+            String::new()
+        };
+
+        let mitre_note = if let Some(ref m) = alert.rule.mitre {
+            format!(" MITRE: [{}: {}].", m.tactic, m.technique)
         } else {
             String::new()
         };
 
         let executive_impact = format!(
-            "[{bp_name} / {bp_criticality}] Alert on host '{}': {rule_desc}. {base_impact_template}{user_note}{window_note}",
+            "[{bp_name} / {bp_criticality}] Host '{}': {rule_desc}. {base_impact_template}{mitre_note}{user_note}{window_note}",
             alert.agent.name
         );
 
@@ -144,7 +220,7 @@ impl RiskFabricEngine {
             process_criticality: bp_criticality,
             asset_weight,
             identity_weight,
-            time_window_multiplier: time_multiplier,
+            time_window_multiplier: (time_multiplier * 100.0).round() / 100.0,
             active_window_name,
             technical_severity: rule_level,
             dynamic_risk_score,
@@ -153,7 +229,7 @@ impl RiskFabricEngine {
             evaluated_at,
         };
 
-        // Attach dynamically to `alert.data["risk_fabric"]` without requiring core struct changes
+        // Attach dynamically to `alert.data["risk_fabric"]`
         if let Ok(val) = serde_json::to_value(&score) {
             alert.data.insert("risk_fabric".to_string(), val);
         }
@@ -217,25 +293,29 @@ impl RiskFabricEngine {
         let mut proc_counts: HashMap<String, (String, usize, u8)> = HashMap::new();
 
         for a in alerts {
-            if let Some(rf) = Self::get_score(a) {
-                total_score += rf.dynamic_risk_score as u64;
-                match rf.dynamic_risk_tier.as_str() {
-                    "Catastrophic" => catastrophic += 1,
-                    "Critical" => critical += 1,
-                    "High" => high += 1,
-                    "Medium" => medium += 1,
-                    _ => low += 1,
-                }
+            // Check attached score or dynamically evaluate on the fly
+            let score = Self::get_score(a).unwrap_or_else(|| {
+                let mut cloned = a.clone();
+                self.evaluate_alert(&mut cloned)
+            });
 
-                let entry = proc_counts.entry(rf.business_process.clone()).or_insert((
-                    rf.process_criticality.clone(),
-                    0,
-                    0,
-                ));
-                entry.1 += 1;
-                if rf.dynamic_risk_score > entry.2 {
-                    entry.2 = rf.dynamic_risk_score;
-                }
+            total_score += score.dynamic_risk_score as u64;
+            match score.dynamic_risk_tier.as_str() {
+                "Catastrophic" => catastrophic += 1,
+                "Critical" => critical += 1,
+                "High" => high += 1,
+                "Medium" => medium += 1,
+                _ => low += 1,
+            }
+
+            let entry = proc_counts.entry(score.business_process.clone()).or_insert((
+                score.process_criticality.clone(),
+                0,
+                0,
+            ));
+            entry.1 += 1;
+            if score.dynamic_risk_score > entry.2 {
+                entry.2 = score.dynamic_risk_score;
             }
         }
 
@@ -321,6 +401,75 @@ impl RiskFabricEngine {
             self.save();
         }
         removed
+    }
+}
+
+/// Dynamically evaluates whether a business time window is in effect using the system clock and calendar
+pub fn evaluate_temporal_window(w: &BusinessTimeWindow, now: chrono::DateTime<Utc>) -> (bool, f64) {
+    if !w.active {
+        return (false, 1.0);
+    }
+    match w.window_type.as_str() {
+        "business_hours" => {
+            let weekday = now.weekday().number_from_monday(); // 1 = Mon, 7 = Sun
+            let hour = now.hour();
+            let is_weekend = weekday >= 6;
+            let is_off_hours = is_weekend || hour < 8 || hour >= 18;
+
+            let name_lower = w.name.to_lowercase();
+            let id_lower = w.id.to_lowercase();
+            if id_lower.contains("off-hours")
+                || name_lower.contains("off-hour")
+                || name_lower.contains("night")
+                || name_lower.contains("unattended")
+            {
+                if is_off_hours {
+                    (true, w.multiplier)
+                } else {
+                    (false, 1.0)
+                }
+            } else {
+                if !is_off_hours {
+                    (true, w.multiplier)
+                } else {
+                    (false, 1.0)
+                }
+            }
+        }
+        "recurring_schedule" => {
+            let name_lower = w.name.to_lowercase();
+            let id_lower = w.id.to_lowercase();
+            if id_lower.contains("financial")
+                || name_lower.contains("financial")
+                || name_lower.contains("month-end")
+                || name_lower.contains("close")
+            {
+                let day = now.day();
+                let is_month_end = day >= 27 || day == 1;
+                if is_month_end {
+                    (true, w.multiplier)
+                } else {
+                    (true, 1.15)
+                }
+            } else if id_lower.contains("maintenance") || name_lower.contains("maintenance") {
+                (w.active, w.multiplier)
+            } else {
+                (w.active, w.multiplier)
+            }
+        }
+        "date_range" => {
+            if let (Some(s), Some(e)) = (&w.start_date, &w.end_date) {
+                if let (Ok(start), Ok(end)) = (
+                    chrono::DateTime::parse_from_rfc3339(s),
+                    chrono::DateTime::parse_from_rfc3339(e),
+                ) {
+                    let active = now >= start && now <= end;
+                    return (active, if active { w.multiplier } else { 1.0 });
+                }
+            }
+            (w.active, w.multiplier)
+        }
+        _ => (w.active, w.multiplier),
     }
 }
 

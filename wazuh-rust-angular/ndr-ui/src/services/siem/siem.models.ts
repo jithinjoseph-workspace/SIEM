@@ -41,6 +41,7 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
+  data?: Record<string, any>;
   risk_fabric?: RiskFabricScore;
 }
 

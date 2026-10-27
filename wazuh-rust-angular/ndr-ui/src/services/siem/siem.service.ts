@@ -110,6 +110,12 @@ export class SiemService {
 
   getAlerts(limit: number = 50, minLevel: number = 0): Observable<Alert[]> {
     return this.http.get<Alert[]>(`${this.apiUrl}/api/v1/alerts?limit=${limit}&min_level=${minLevel}`).pipe(
+      map(alerts => alerts.map(a => {
+        if (!a.risk_fabric && a.data && a.data['risk_fabric']) {
+          a.risk_fabric = a.data['risk_fabric'];
+        }
+        return a;
+      })),
       catchError(() => of([]))
     );
   }

@@ -485,19 +485,28 @@ async fn main() {
         });
     }
 
-    // Intent Prediction Engine: ClickHouse 7-day historical alert sync on cold start
+    // Intent Prediction Engine & Business-Process Risk Fabric: ClickHouse 7-day historical alert sync on cold start
     {
         let ch_state = state.clone();
         let intent_engine_clone = state.intent_engine.clone();
+        let risk_fabric_clone = state.risk_fabric.clone();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             if ch_state.db.is_connected() {
                 let since_ms = (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
                 for tenant in predictions::tenant_ids(&ch_state) {
-                    if let Some(alerts) = ch_state.db.alerts_since(&tenant, since_ms, 5000).await {
+                    if let Some(mut alerts) = ch_state.db.alerts_since(&tenant, since_ms, 5000).await {
                         if !alerts.is_empty() {
-                            tracing::info!("IntentEngine: Synced {} ClickHouse alerts for tenant '{}'", alerts.len(), &tenant);
+                            tracing::info!("Historical Sync: Ingesting {} ClickHouse alerts for tenant '{}' into Intent & Risk Fabric engines", alerts.len(), &tenant);
+                            for a in &mut alerts {
+                                if !a.data.contains_key("risk_fabric") {
+                                    risk_fabric_clone.evaluate_alert(a);
+                                }
+                            }
                             intent_engine_clone.ingest_live_alerts(&alerts);
+                            let mut l = ch_state.alerts.write().unwrap();
+                            l.extend(alerts);
+                            crate::trim(&mut l, crate::MEM_ALERTS);
                         }
                     }
                 }
@@ -606,7 +615,14 @@ async fn main() {
     };
 
     let app = Router::new()
-        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader.clone()))
+        .nest_service(
+            "/api/v1/risk-fabric",
+            siem_risk_fabric::api::router(
+                state.risk_fabric.clone(),
+                alerts_reader.clone(),
+                Some(fleet_reader.clone()),
+            ),
+        )
         .nest_service(
             "/api/v1/intent",
             siem_intent_engine::api::router(

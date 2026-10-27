@@ -147,13 +147,13 @@
 
         <div class="card kpi-card">
           <div class="kpi-header">
-            <span class="kpi-title">DETECTION ENGINE</span>
+            <span class="kpi-title">DETECTION RULES</span>
             <span class="kpi-icon icon-amber">
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </span>
           </div>
-          <div class="kpi-value mono text-cyan">0.4 ms</div>
-          <div class="kpi-footer text-muted">Average Rust regex match latency</div>
+          <div class="kpi-value mono text-cyan">{{ rules().length | number }}</div>
+          <div class="kpi-footer text-muted">Wazuh rules loaded (plus Sigma)</div>
         </div>
       </div>
 

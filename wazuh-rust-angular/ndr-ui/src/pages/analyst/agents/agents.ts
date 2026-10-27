@@ -7,7 +7,7 @@ import {
   Server, Shield, Terminal, RefreshCw, Plus, Search, Filter,
   CheckCircle2, AlertTriangle, Monitor, Cpu, HardDrive, Network,
   Layers, Copy, Check, Download, Play, X, ExternalLink, Activity,
-  LayoutGrid, Lock, ShieldAlert, TrendingUp, TrendingDown
+  LayoutGrid, Lock, ShieldAlert, TrendingDown
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
@@ -57,7 +57,6 @@ export class Agents implements OnInit {
   GridIcon = LayoutGrid;
   LockIcon = Lock;
   ShieldAlertIcon = ShieldAlert;
-  TrendingUpIcon = TrendingUp;
   TrendingDownIcon = TrendingDown;
 
   // View Mode: 'table' (like reference image) or 'grid' (cards)
@@ -166,10 +165,26 @@ export class Agents implements OnInit {
 
   /** The tenant's open CVEs (vulnerability detector), for the fleet status line. */
   fleetVulns = signal<{ critical: number; high: number } | null>(null);
+  /** Open CVEs per agent (critical, high, medium), for the risk score. */
+  agentVulns = signal<Record<string, { critical: number; high: number; medium: number }>>({});
+  /** The manager's Wazuh version: an agent on it is current. */
+  readonly managerVersion = '4.14.7';
 
   ngOnInit() {
     this.loadAgents();
-    this.siem.getVulnerabilities().subscribe({ next: v => this.fleetVulns.set({ critical: v.critical_count ?? 0, high: v.high_count ?? 0 }), error: () => {} });
+    this.siem.getVulnerabilities().subscribe({
+      next: v => {
+        this.fleetVulns.set({ critical: v.critical_count ?? 0, high: v.high_count ?? 0 });
+        const per: Record<string, { critical: number; high: number; medium: number }> = {};
+        for (const x of v.vulnerabilities ?? []) {
+          if (x.status !== 'active') continue;
+          const c = (per[x.agent_id] ??= { critical: 0, high: 0, medium: 0 });
+          if (x.severity === 'Critical') c.critical++; else if (x.severity === 'High') c.high++; else if (x.severity === 'Medium') c.medium++;
+        }
+        this.agentVulns.set(per);
+      },
+      error: () => {}
+    });
     // Resolve the real LAN IP from the backend so deploy commands work from any client
     fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
   }
@@ -486,14 +501,17 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
 
 
   /** Calculate endpoint security risk score (0-100) */
+  /** Risk from the agent's open CVEs (critical x10, high x3, medium x1, at most 100). */
   getAgentRisk(agent: Agent): { score: number; label: string; color: string } {
-    if (agent.status !== 'active') {
-      return { score: 92, label: 'Critical', color: 'rose' };
-    }
-    if (agent.os_type === 'windows') {
-      return { score: 14, label: 'Low', color: 'emerald' };
-    }
-    return { score: 18, label: 'Low', color: 'emerald' };
+    const v = this.agentVulns()[agent.id] ?? { critical: 0, high: 0, medium: 0 };
+    const score = Math.min(100, v.critical * 10 + v.high * 3 + v.medium);
+    const label = score >= 70 ? 'Critical' : score >= 40 ? 'High' : score >= 15 ? 'Medium' : 'Low';
+    return { score, label, color: score >= 40 ? 'rose' : 'emerald' };
+  }
+
+  /** Whether the agent runs the manager's Wazuh version. */
+  agentCurrent(agent: Agent): boolean {
+    return (agent.version || '').includes(this.managerVersion);
   }
 
   /** Format keepalive into readable time */

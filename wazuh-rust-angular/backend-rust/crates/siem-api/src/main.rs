@@ -1750,7 +1750,10 @@ async fn simulate_attack(
             (ag.name, ag.ip)
         };
 
-        if let Some(alert) = state.engine.process_event(&ev, &name, &ip) {
+        if let Some(mut alert) = state.engine.process_event(&ev, &name, &ip) {
+            // the live view shows it among real alerts: it must say it is a simulation
+            alert.rule.description = format!("[Simulation] {}", alert.rule.description);
+            alert.rule.groups.push("simulation".into());
             let alert = tenancy::tag_alert(alert, &tenant);
             keep_alerts(&state, [alert.clone()]);
             let _ = state.broadcast_tx.send(alert.clone());

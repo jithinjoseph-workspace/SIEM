@@ -10,7 +10,7 @@
         Regulatory Compliance & Audit Frameworks
       </h1>
       <p class="text-sm text-slate-400 mt-1.5 flex items-center gap-2">
-        <span>Automated control verification against PCI-DSS v4.0, SOC 2 Type II, ISO 27001, HIPAA, and NIST SP 800-53</span>
+        <span>Automated control verification against PCI-DSS, HIPAA, NIST SP 800-53, GDPR and SOC 2, from the alerts of their mapped rules</span>
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="text-xs text-emerald-400 font-mono">Live Auditing Active</span>
       </p>
@@ -52,7 +52,7 @@
         </h3>
       </div>
       <div class="text-[11px] text-slate-500 mt-0.5">
-        Last sync: {{ fw.lastSync || 'Just now' }}
+        Evaluated: {{ fw.lastSync || '—' }}
       </div>
 
       <!-- Glowing Progress Bar with Percentage -->
@@ -240,14 +240,14 @@
             [class.bg-slate-800]="item.resolved"
             [class.text-emerald-400]="item.resolved"
           >
-            {{ item.resolved ? 'Dispatched' : 'Remediate' }}
+            Show
           </button>
         </div>
       </div>
 
       <div class="pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 flex justify-between items-center">
-        <span>Auto-sync with Wazuh active response engine</span>
-        <span class="text-cyan-400 font-mono font-medium">5 tasks pending</span>
+        <span>Requirements whose mapped rules raised alerts</span>
+        <span class="text-cyan-400 font-mono font-medium">{{ remediations().length }} open</span>
       </div>
     </div>
 

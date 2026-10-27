@@ -71,8 +71,9 @@ export class CyberThreatGlobeComponent implements OnInit, OnDestroy, OnChanges {
 
   // Live Threat Feed Ticker
   activeThreatCount = signal<number>(4);
-  interceptRate = signal<string>('99.4%');
-  packetsScanned = signal<string>('184,920/s');
+  /** Agents online / enrolled, and the alerts drawn (real inputs, no sample figures). */
+  agentsOnline(): string { return `${this.agents.filter(a => a.status === 'active').length} / ${this.agents.length}`; }
+  alertsShown(): number { return this.alerts.length; }
   latestInterceptLog = signal<string>('LIVE: Intercepted SSH Brute Force from 185.220.101.5 -> srv-prod-ubuntu-01 (Netsh Blocked)');
 
   private scene!: THREE.Scene;

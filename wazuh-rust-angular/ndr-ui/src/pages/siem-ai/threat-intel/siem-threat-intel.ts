@@ -28,6 +28,11 @@ export class SiemThreatIntel implements OnInit {
   loading = signal(false);
   error = signal<string | null>(null);
   q = '';
+  /** The tenant's own indicators: they count as threat intel in its alerts, SOAR and decisions. */
+  watchlist = signal<any[]>([]);
+  watchError = signal<string | null>(null);
+  newValue = '';
+  newGroup = '';
 
   ngOnInit() {
     this.load();
@@ -39,6 +44,25 @@ export class SiemThreatIntel implements OnInit {
     this.siem.getIntelMatches().subscribe({
       next: r => { this.loading.set(false); this.matches.set(r.matches ?? []); },
       error: e => { this.loading.set(false); this.error.set(e?.status === 403 ? 'You do not have access to SIEM alerts.' : 'Threat intel is not available.'); },
+    });
+    this.siem.getWatchlist().subscribe({ next: r => this.watchlist.set(r.watchlist ?? []), error: () => {} });
+  }
+
+  addWatched() {
+    const v = this.newValue.trim();
+    if (!v) return;
+    this.watchError.set(null);
+    this.siem.addWatched(v, this.newGroup.trim()).subscribe({
+      next: r => { this.watchlist.update(l => [r.entry, ...l]); this.newValue = ''; this.newGroup = ''; },
+      error: e => this.watchError.set(e?.error?.message || 'Could not add it.'),
+    });
+  }
+
+  removeWatched(w: any) {
+    if (!confirm(`Remove ${w.value} from the watchlist?`)) return;
+    this.siem.removeWatched(w.id).subscribe({
+      next: () => this.watchlist.update(l => l.filter(x => x.id !== w.id)),
+      error: e => this.watchError.set(e?.error?.message || 'Could not remove it.'),
     });
   }
 

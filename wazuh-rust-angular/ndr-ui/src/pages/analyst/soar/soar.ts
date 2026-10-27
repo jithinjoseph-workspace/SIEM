@@ -1,3 +1,4 @@
+import { SiemService } from '../../../services/siem/siem.service';
 import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -260,7 +261,10 @@ export class Soar implements OnInit {
         'Evidence Collected': ['In Progress', 'Resolved', 'Closed', 'False Positive'],
     };
 
-    constructor(private api: Api, private arkime: ArkimeService, private auth: AuthService, private router: Router, private sanitizer: DomSanitizer) {}
+    /** The outcome of "add the attacker to threat intel" when a case is closed. */
+    intelAddResult = signal<string | null>(null);
+
+    constructor(private api: Api, private arkime: ArkimeService, private auth: AuthService, private router: Router, private sanitizer: DomSanitizer, private siem: SiemService) {}
 
     // ── Evidence overlay ──────────────────────────────────────────────────────
     viewEvidence(cid: string) {
@@ -1144,6 +1148,7 @@ export class Soar implements OnInit {
         this.expandedPktIdx.set(new Set());
         this.incidentReport.set(null);
         this.showCloseForm.set(false);
+        this.intelAddResult.set(null);
 
         this.api.getSoarCaseComments(c.id).subscribe({
             next: (res: any) => {
@@ -1156,7 +1161,8 @@ export class Soar implements OnInit {
         this.dismissedSessionIds.set(new Set());
         const hasPair = c.src_ip && c.dst_ip;
         const hasCid  = !!c.community_id;
-        if (hasPair || hasCid) {
+        // PCAP sessions and flow events come from an NDR sensor (Arkime); a SIEM case has none
+        if ((hasPair || hasCid) && this.auth.hasFeature('ndr')) {
             this.evidenceLoading.set(true);
             const pcapParams = hasPair
                 ? { src_ip: c.src_ip, dst_ip: c.dst_ip, limit: 50 }
@@ -1268,7 +1274,10 @@ export class Soar implements OnInit {
         if (!c) return;
         this._doUpdateStatus(this.pendingStatus());
         if (this.addToIntel && c.src_ip) {
-            this.api.addManualIoc('ip', c.src_ip, this.intelGroup).subscribe();
+            this.siem.addWatched(c.src_ip, this.intelGroup).subscribe({
+                next: () => this.intelAddResult.set(`${c.src_ip} added to the threat intel watchlist`),
+                error: (e: any) => this.intelAddResult.set(e?.status === 409 ? `${c.src_ip} is already on the watchlist` : (e?.error?.message || `Could not add ${c.src_ip} to the watchlist`))
+            });
         }
         this.incidentReport.set({
             case_number:  c.case_number,

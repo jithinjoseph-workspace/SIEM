@@ -171,16 +171,19 @@
       <div class="flex items-center gap-2.5">
         <lucide-angular [img]="ShieldIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
         <span class="text-xs text-slate-300 font-medium">Fleet Protection:</span>
-        <span class="text-xs font-semibold text-emerald-400">100% Protected (No active CVE exploits)</span>
+        <span *ngIf="fleetVulns() as v" class="text-xs font-semibold" [class.text-emerald-400]="!v.critical && !v.high" [class.text-rose-400]="v.critical" [class.text-amber-400]="!v.critical && v.high">
+          {{ v.critical || v.high ? v.critical + ' critical, ' + v.high + ' high CVEs open' : 'No critical or high CVEs open' }}
+        </span>
+        <span *ngIf="!fleetVulns()" class="text-xs text-slate-500">CVE status unavailable</span>
       </div>
-      <lucide-angular [img]="CheckIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
+      <a routerLink="/analyst/vulnerabilities" class="text-[11px] text-cyan-300 hover:underline">Details</a>
     </div>
 
     <div class="p-3.5 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <lucide-angular [img]="LockIcon" class="w-4 h-4 text-indigo-400"></lucide-angular>
         <span class="text-xs text-slate-300 font-medium">Transport Layer:</span>
-        <span class="text-xs font-mono text-indigo-300">TLS 1.3 / AES-256-GCM Verified</span>
+        <span class="text-xs font-mono text-indigo-300">Wazuh agent protocol, AES-encrypted (TCP 1514)</span>
       </div>
       <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">ENCRYPTED</span>
     </div>
@@ -731,7 +734,8 @@
             <span class="text-xs text-slate-200">[{{ check.check_id }}] {{ check.title }}</span>
             <span class="px-2 py-0.5 rounded text-[11px] font-semibold border"
               [class.bg-emerald-950]="isPassed(check.status)" [class.text-emerald-400]="isPassed(check.status)" [class.border-emerald-800]="isPassed(check.status)"
-              [class.bg-rose-950]="!isPassed(check.status)" [class.text-rose-400]="!isPassed(check.status)" [class.border-rose-800]="!isPassed(check.status)">
+              [class.bg-rose-950]="isFailed(check.status)" [class.text-rose-400]="isFailed(check.status)" [class.border-rose-800]="isFailed(check.status)"
+              [class.text-slate-400]="!isPassed(check.status) && !isFailed(check.status)" [class.border-slate-700]="!isPassed(check.status) && !isFailed(check.status)">
               {{ check.status }}
             </span>
           </div>

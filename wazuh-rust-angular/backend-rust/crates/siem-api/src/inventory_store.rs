@@ -49,17 +49,30 @@ async fn from_wazuh_db(agent_id: &str) -> Option<Value> {
 }
 
 /// Rows of an agent table, 100 at a time: one wazuh-db reply is at most 64 KB,
-/// so a large SELECT (full process command lines) would come back empty.
-async fn paged(id: &str, sql: &str, max: usize) -> Vec<Value> {
-    const PAGE: usize = 100;
+/// so a large SELECT (full process command lines) would come back empty. A page
+/// wazuh-db refuses (too long) is asked again in halves; a single row it still
+/// refuses is skipped (a few in a row: wazuh-db is down, stop).
+pub(crate) async fn paged(id: &str, sql: &str, max: usize) -> Vec<Value> {
+    let (mut page, mut offset, mut skipped) = (100usize, 0usize, 0usize);
     let mut out = Vec::new();
     while out.len() < max {
-        let rows = crate::wazuh_manager::agent_sql(id, &format!("{sql} LIMIT {PAGE} OFFSET {};", out.len())).await.unwrap_or_default();
+        let Some(rows) = crate::wazuh_manager::agent_sql(id, &format!("{sql} LIMIT {page} OFFSET {offset};")).await else {
+            if page > 1 {
+                page /= 2;
+            } else if skipped < 5 {
+                (offset, skipped) = (offset + 1, skipped + 1);
+            } else {
+                break;
+            }
+            continue;
+        };
         let n = rows.len();
+        (offset, skipped) = (offset + n, 0);
         out.extend(rows);
-        if n < PAGE {
+        if n < page {
             break;
         }
+        page = (page * 2).min(100);
     }
     out.truncate(max);
     out

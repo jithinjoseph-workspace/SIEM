@@ -40,8 +40,6 @@ impl RuleSynthesizer {
     <description>ProVigil Detection Gap: {} [{}]</description>
     <mitre>
       <id>{}</id>
-      <tactic>{}</tactic>
-      <technique>{}</technique>
     </mitre>
     <group>attack,purple_team,evasion_closed</group>
   </rule>
@@ -54,8 +52,6 @@ impl RuleSynthesizer {
             technique.name,
             technique.id,
             technique.id,
-            technique.tactic,
-            technique.name,
         );
 
         // Preliminary structural & regex validation

@@ -274,6 +274,7 @@
           </div>
 
           <!-- ── Incident Report (generated on close/resolve) ───────── -->
+          <div *ngIf="intelAddResult()" role="status" class="detail-section text-xs text-amber-300">{{ intelAddResult() }}</div>
           <div *ngIf="incidentReport()" class="detail-section incident-report-section">
             <div class="section-label">INCIDENT REPORT</div>
             <div class="incident-report">

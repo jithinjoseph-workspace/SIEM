@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, ShieldAlert, AlertTriangle, ShieldCheck, Search, RefreshCw, Radio, Terminal, ExternalLink, Filter, X, Shield, Lock, Activity, Check } from 'lucide-angular';
 import { Subscription } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import { SiemAlertsService } from '../../../services/siem/siem-alerts.service';
 import { SiemAgentsService } from '../../../services/siem/siem-agents.service';
 import { Alert } from '../../../models/siem.models';
@@ -17,6 +18,7 @@ import { Alert } from '../../../models/siem.models';
 export class SiemAlertsComponent implements OnInit, OnDestroy {
   private alertsService = inject(SiemAlertsService);
   private agentsService = inject(SiemAgentsService);
+  private http = inject(HttpClient);
   private subs: Subscription[] = [];
 
   @Input() compactMode = false;
@@ -135,75 +137,18 @@ export class SiemAlertsComponent implements OnInit, OnDestroy {
   }
 
   /** The agents have no network-isolation action yet: say so instead of pretending. */
-  isolateHost(agentId: string) {
-    this.actionFeedback.set(`Host isolation is not supported by the agent yet (agent ${agentId}). Use Block IP or Kill Process.`);
-    setTimeout(() => this.actionFeedback.set(null), 5000);
-  }
-
-  private getDefaultAlerts(): Alert[] {
-    return [
-      {
-        id: 'wazuh-alt-001',
-        timestamp: new Date().toISOString(),
-        rule: {
-          id: 5710,
-          level: 14,
-          description: 'SSH brute force attack detected (multiple authentication failures)',
-          groups: ['syslog', 'sshd', 'authentication_failures'],
-          mitre: { id: 'T1110.001', tactic: 'Credential Access', technique: 'Password Guessing' }
-        },
-        agent: { id: '001', name: 'prod-gateway-dc01', ip: '192.168.1.10' },
-        full_log: 'sshd[12480]: Failed password for root from 185.220.101.5 port 42318 ssh2',
-        decoded: {
-          decoder_name: 'sshd',
-          src_ip: '185.220.101.5',
-          dst_ip: '192.168.1.10',
-          dst_port: 22,
-          user: 'root',
-          program_name: 'sshd',
-          action: 'failed_login'
-        },
-        location: '/var/log/auth.log'
-      },
-      {
-        id: 'wazuh-alt-002',
-        timestamp: new Date(Date.now() - 180000).toISOString(),
-        rule: {
-          id: 60105,
-          level: 10,
-          description: 'Windows Defender quarantined malicious payload (Mimikatz memory dump)',
-          groups: ['windows', 'antivirus'],
-          mitre: { id: 'T1003.001', tactic: 'Credential Access', technique: 'LSASS Memory' }
-        },
-        agent: { id: '002', name: 'win-ad-controller', ip: '192.168.1.20' },
-        full_log: 'Microsoft-Windows-Windows Defender: Threat detected: HackTool:Win32/Mimikatz!dha',
-        decoded: {
-          decoder_name: 'windows-defender',
-          user: 'SYSTEM',
-          file_path: 'C:\\Users\\admin\\Downloads\\mimi.exe',
-          action: 'quarantine'
-        },
-        location: 'EventChannel: Microsoft-Windows-Windows Defender/Operational'
-      },
-      {
-        id: 'wazuh-alt-003',
-        timestamp: new Date(Date.now() - 450000).toISOString(),
-        rule: {
-          id: 550,
-          level: 7,
-          description: 'Integrity checksum altered for system binary: /etc/sudoers',
-          groups: ['syscheck', 'fim'],
-          mitre: { id: 'T1548.003', tactic: 'Privilege Escalation', technique: 'Sudo and Sudo Caching' }
-        },
-        agent: { id: '003', name: 'k8s-node-worker-01', ip: '192.168.1.30' },
-        full_log: 'syscheck: File /etc/sudoers was modified. Old md5: e5b6..., New md5: a1f2...',
-        decoded: {
-          decoder_name: 'syscheck',
-          file_path: '/etc/sudoers',
-          action: 'checksum_changed'
-        },
-        location: 'syscheck'
-      }
-    ];
+  /** Quarantines the agent's host through the tenant's switch / cloud integration (guardrails apply). */
+  isolateHost(alert: Alert) {
+    const ip = alert.agent?.ip;
+    if (!ip || ip === 'any' || ip === '0.0.0.0') {
+      this.actionFeedback.set(`Agent ${alert.agent?.id} has no known IP address to isolate.`);
+      return;
+    }
+    if (!confirm(`Isolate ${alert.agent.name} (${ip}) from the network?`)) return;
+    this.actionFeedback.set(`Isolating ${ip}…`);
+    this.http.post<{ status: string; message?: string }>('/api/isolate', { target_ip: ip, reason: `Alert ${alert.rule?.id}: ${alert.rule?.description}` }).subscribe({
+      next: () => this.actionFeedback.set(`${ip} isolated. Release it from SOAR > Isolations.`),
+      error: (e) => this.actionFeedback.set(e.error?.message || (e.status === 403 ? 'Isolation needs the SOAR permission.' : 'Isolation failed.'))
+    });
   }
 }

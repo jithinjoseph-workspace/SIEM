@@ -203,8 +203,8 @@ impl RedSwarmService {
             ).await;
             record.verification = verification;
 
-            // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval)
-            if record.verification.verdict != DetectionVerdict::Defended {
+            // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval), once per open gap
+            if record.verification.verdict != DetectionVerdict::Defended && !self.audit.has_pending_draft(tenant_id, &technique.id) {
                 let sample_log = technique
                     .sample_raw_logs
                     .first()
@@ -309,12 +309,13 @@ impl RedSwarmService {
                     let technique = applicable_techniques[round_counter % applicable_techniques.len()];
                     round_counter += 1;
 
-                    // Dynamically pick an agent that matches this technique's platform
-                    let target_agent = usable_fleet
+                    // An agent of the technique's platform, in turn (every tenant's agents get tested)
+                    let candidates: Vec<&FleetAgentTarget> = usable_fleet
                         .iter()
-                        .find(|a| technique.platforms.iter().any(|p| p.eq_ignore_ascii_case(&a.os_type)))
-                        .or_else(|| usable_fleet.first())
-                        .unwrap();
+                        .filter(|a| technique.platforms.iter().any(|p| p.eq_ignore_ascii_case(&a.os_type)))
+                        .collect();
+                    let target_agent = if candidates.is_empty() { &usable_fleet[0] } else { candidates[round_counter % candidates.len()] };
+                    let tenant = if target_agent.tenant_id.is_empty() { "default" } else { target_agent.tenant_id.as_str() };
 
                     let target_id = &target_agent.id;
                     let target_name = &target_agent.name;
@@ -335,7 +336,7 @@ impl RedSwarmService {
                         .executor
                         .execute_round(
                             &campaign.id,
-                            "default",
+                            tenant,
                             campaign.mode,
                             technique,
                             target_id,
@@ -362,17 +363,19 @@ impl RedSwarmService {
                         record.verification = verification;
 
                         if record.verification.verdict != DetectionVerdict::Defended {
-                            let sample_log = technique
-                                .sample_raw_logs
-                                .first()
-                                .cloned()
-                                .unwrap_or_default();
-                            let draft = RuleSynthesizer::synthesize_draft_rule(
-                                record.id,
-                                technique,
-                                &sample_log,
-                            );
-                            record.draft_rule = Some(draft);
+                            if !self.audit.has_pending_draft(tenant, &technique.id) {
+                                let sample_log = technique
+                                    .sample_raw_logs
+                                    .first()
+                                    .cloned()
+                                    .unwrap_or_default();
+                                let draft = RuleSynthesizer::synthesize_draft_rule(
+                                    record.id,
+                                    technique,
+                                    &sample_log,
+                                );
+                                record.draft_rule = Some(draft);
+                            }
                             campaign.total_gaps += 1;
                         } else {
                             campaign.total_defended += 1;

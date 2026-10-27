@@ -32,6 +32,7 @@ async fn state() -> AppState {
         rootcheck: Arc::new(siem_rootcheck::RootcheckScanner::with_default_db()),
         active_responses: Arc::new(RwLock::new(Vec::new())),
         parser_registry: Arc::new(siem_parser_gen::DynamicParserRegistry::new("")),
+        parser_tenants: Arc::new(RwLock::new(HashMap::new())),
         auth_keystore: Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new())),
         tenants: Arc::new(RwLock::new(Vec::new())),
         agent_keys: Arc::new(crate::tenancy::AgentKeys::new()),

@@ -38,6 +38,31 @@
     </div>
   </form>
 
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-3">
+    <div>
+      <div class="text-sm font-semibold text-white">Your watchlist</div>
+      <p class="text-xs text-slate-400 mt-1">IPs, file hashes and domains your team listed (here, or when closing a SOAR case). Only your organisation sees them; in your alerts they count as threat intel, for SOAR playbooks and the AI decisions.</p>
+    </div>
+    <form (ngSubmit)="addWatched()" class="flex flex-wrap gap-2">
+      <label for="wl-value" class="sr-only">Indicator</label>
+      <input id="wl-value" name="wlValue" [(ngModel)]="newValue" placeholder="IP, MD5 / SHA-1 / SHA-256 or domain" class="flex-1 min-w-[220px] bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono">
+      <label for="wl-group" class="sr-only">Group</label>
+      <input id="wl-group" name="wlGroup" [(ngModel)]="newGroup" placeholder="Group (optional, e.g. APT29)" class="w-56 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm">
+      <button type="submit" [disabled]="!newValue.trim()" class="px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm rounded-lg">Add</button>
+    </form>
+    <div *ngIf="watchError()" role="alert" class="text-xs text-rose-300">{{ watchError() }}</div>
+    <div *ngIf="watchlist().length === 0" class="text-xs text-slate-500">Nothing listed yet.</div>
+    <div class="divide-y divide-slate-800/60 text-sm">
+      <div *ngFor="let w of watchlist()" class="py-1.5 flex flex-wrap items-center gap-3">
+        <span class="text-[11px] uppercase text-slate-500 w-14">{{ w.kind }}</span>
+        <span class="font-mono text-slate-200">{{ w.value }}</span>
+        <span *ngIf="w.group" class="text-xs px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-200">{{ w.group }}</span>
+        <span class="text-[11px] text-slate-500">by {{ w.added_by }} · {{ when(w.added_at) }}</span>
+        <button (click)="removeWatched(w)" class="ml-auto text-xs text-rose-300 hover:underline">Remove</button>
+      </div>
+    </div>
+  </div>
+
   <div class="bg-slate-900/60 rounded-xl border border-slate-800 overflow-x-auto">
     <div class="px-4 pt-4 text-sm font-semibold text-white">In your alerts (last 24 hours)</div>
     <table class="w-full text-sm mt-2">

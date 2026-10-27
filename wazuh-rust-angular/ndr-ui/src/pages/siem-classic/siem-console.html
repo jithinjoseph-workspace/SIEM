@@ -819,7 +819,7 @@
           [ngModel]="mitreSearchQuery()"
           (ngModelChange)="mitreSearchQuery.set($event)"
         />
-        <span class="text-xs text-muted mono">14 Tactics | 100% Wazuh Parity</span>
+        <span class="text-xs text-muted mono">14 MITRE ATT&amp;CK tactics</span>
       </div>
 
       <!-- Matrix Grid -->
@@ -2151,14 +2151,17 @@
 
         <!-- TAB 4: SCA CIS COMPLIANCE -->
         <div *ngIf="selectedAgentTab() === 'sca'" class="tab-panel">
-          <div class="sca-summary-card card mb-4 p-4 flex items-center justify-between">
+          <div *ngIf="!selectedAgentSca()?.checks?.length" class="card mb-4 p-4 text-xs text-muted">
+            No SCA results from this agent yet. They arrive after the agent's next SCA scan (or restart the agent).
+          </div>
+          <div *ngIf="selectedAgentSca() as sca" [hidden]="!sca.checks.length" class="sca-summary-card card mb-4 p-4 flex items-center justify-between">
             <div>
               <div class="text-xs text-muted font-bold">CIS BENCHMARK COMPLIANCE POSTURE</div>
-              <h3 class="text-emerald text-xl font-bold mt-1">100% Security Baseline Hardened</h3>
-              <p class="text-xs text-muted">Evaluated against Wazuh CIS Windows Benchmark (cis_win11_enterprise)</p>
+              <h3 class="text-xl font-bold mt-1" [class.text-emerald]="sca.score >= 80" [class.text-amber]="sca.score >= 50 && sca.score < 80" [class.text-rose]="sca.score < 50">{{ sca.score }}% of the checks pass</h3>
+              <p class="text-xs text-muted">{{ sca.policy_name || sca.policy_id }}<span *ngIf="sca.not_applicable"> · {{ sca.not_applicable }} not applicable</span></p>
             </div>
             <div class="sca-score-circle">
-              <span class="score-val text-emerald">8/8</span>
+              <span class="score-val" [class.text-emerald]="sca.failed === 0" [class.text-rose]="sca.failed > 0">{{ sca.passed }}/{{ sca.passed + sca.failed }}</span>
               <span class="score-lbl text-xs text-muted">PASS</span>
             </div>
           </div>
@@ -2171,10 +2174,10 @@
                   <span class="mono text-xs text-cyan">CIS-{{ check.check_id }}</span>
                   <span class="text-sm font-semibold text-main">{{ check.title }}</span>
                 </div>
-                <div class="text-xs text-muted mt-1">Registry Policy & Account Lockdown Validation</div>
+                <div *ngIf="check.reason" class="text-xs text-muted mt-1">{{ check.reason }}</div>
               </div>
-              <span class="badge badge-emerald text-xs font-bold">
-                ✓ {{ check.status | uppercase }}
+              <span class="badge text-xs font-bold" [class.badge-emerald]="check.status === 'Passed'" [class.badge-rose]="check.status === 'Failed'">
+                {{ check.status === 'Passed' ? '✓' : check.status === 'Failed' ? '✗' : '–' }} {{ check.status | uppercase }}
               </span>
             </div>
           </div>

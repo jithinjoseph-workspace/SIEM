@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import { SiemService } from './core/services/siem.service';
 import {
   AgentDeployService, DeployParams, defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand,
@@ -70,6 +71,7 @@ export const CONSOLE_TAB_PATHS: Record<string, string> = {
 })
 export class SiemConsole implements OnInit, OnDestroy {
   private siemService = inject(SiemService);
+  private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   /** Opened as a single ndr-ui page (route data `tab`): no banner, no tab bar. */
@@ -455,109 +457,12 @@ export class SiemConsole implements OnInit, OnDestroy {
     });
   });
 
-  selectedAgentInventory = computed<AgentInventory | null>(() => {
-    const agent = this.selectedAgent();
-    if (!agent) return null;
+  /** The opened agent's inventory (syscollector, from wazuh-db); null until it loads or when it has none. */
+  selectedAgentInventory = signal<AgentInventory | null>(null);
 
-    const evs = this.rawEvents();
-    const sysEv = evs.find(e => 
-      e.agent_id === agent.id && 
-      (e.location?.includes('syscollector') || (typeof e.source === 'string' && e.source.toLowerCase().includes('syscollector')))
-    );
-
-    if (sysEv?.metadata?.['inventory_json']) {
-      try {
-        const parsed = JSON.parse(sysEv.metadata['inventory_json']);
-        return {
-          hostname: parsed.hostname || agent.name,
-          os: parsed.os || agent.os,
-          arch: parsed.arch || 'x86_64',
-          cpu_cores: parsed.cpu_cores || 8,
-          ram_mb: parsed.ram_mb || 16384,
-          running_processes_count: parsed.running_processes_count || 142,
-          open_ports_count: parsed.open_ports_count || 18,
-          installed_packages_count: parsed.installed_packages_count || 86,
-          services_count: parsed.services_count || 94,
-          users_count: parsed.users_count || 4,
-          listening_ports: parsed.listening_ports || ['0.0.0.0:135 (epmap)', '0.0.0.0:445 (microsoft-ds)', '0.0.0.0:3389 (ms-wbt-server)', '127.0.0.1:8088 (siem-api)'],
-          running_processes: parsed.running_processes || ['System', 'smss.exe', 'csrss.exe', 'wininit.exe', 'services.exe', 'lsass.exe', 'svchost.exe', 'siem-agent.exe'],
-          installed_software: parsed.installed_software || ['Wazuh Agent v4.14.7', 'Microsoft Visual C++ 2022', 'Windows Defender Platform', 'PowerShell 7.4', 'Git 2.44'],
-          active_services: parsed.active_services || ['WazuhRustSvc', 'WinDefend', 'W32Time', 'LanmanServer', 'MpsSvc', 'EventLog'],
-          local_users: parsed.local_users || ['Administrator', 'DefaultAccount', 'Guest', agent.name],
-          network_adapters: parsed.network_adapters || [`Ethernet: ${agent.ip} (255.255.255.0)`, 'Loopback: 127.0.0.1 (255.0.0.0)']
-        };
-      } catch {
-        // fallback below
-      }
-    }
-
-    const isWin = agent.os_type === 'windows';
-    return {
-      hostname: agent.name,
-      os: agent.os,
-      arch: 'x86_64',
-      cpu_cores: isWin ? 12 : 8,
-      ram_mb: isWin ? 16384 : 8192,
-      running_processes_count: isWin ? 168 : 84,
-      open_ports_count: isWin ? 14 : 7,
-      installed_packages_count: isWin ? 112 : 640,
-      services_count: isWin ? 145 : 42,
-      users_count: isWin ? 4 : 2,
-      listening_ports: isWin
-        ? ['0.0.0.0:135 (RPC)', '0.0.0.0:445 (SMB)', '0.0.0.0:3389 (RDP)', '127.0.0.1:8088 (API)', '0.0.0.0:5985 (WinRM)']
-        : ['0.0.0.0:22 (SSH)', '0.0.0.0:80 (HTTP)', '0.0.0.0:443 (HTTPS)', '127.0.0.1:5432 (Postgres)'],
-      running_processes: isWin
-        ? ['System', 'smss.exe', 'csrss.exe', 'wininit.exe', 'services.exe', 'lsass.exe', 'svchost.exe', 'siem-agent.exe', 'explorer.exe']
-        : ['systemd', 'sshd', 'nginx', 'postgres', 'siem-agent', 'rsyslogd'],
-      installed_software: isWin
-        ? ['Wazuh Rust Agent v4.14.7', 'Microsoft Defender Antivirus', 'PowerShell 7.4.2', 'Windows Terminal', 'Google Chrome']
-        : ['wazuh-agent-rust', 'openssh-server', 'nginx', 'curl', 'systemd'],
-      active_services: isWin
-        ? ['WazuhRustSvc', 'WinDefend (Windows Defender)', 'LanmanServer', 'MpsSvc (Firewall)', 'EventLog']
-        : ['siem-agent.service', 'sshd.service', 'nginx.service', 'systemd-journald'],
-      local_users: isWin
-        ? ['Administrator', 'Guest (Disabled)', 'WDAGUtilityAccount', agent.name]
-        : ['root', 'ubuntu', 'sysadmin'],
-      network_adapters: [
-        `Primary Adapter: ${agent.ip} (255.255.255.0)`,
-        'Loopback Pseudo-Interface: 127.0.0.1 / ::1'
-      ]
-    };
-  });
-
-  selectedAgentScaChecks = computed<ScaCheckResult[]>(() => {
-    const agent = this.selectedAgent();
-    if (!agent) return [];
-
-    const evs = this.rawEvents();
-    const scaEvents = evs.filter(e => 
-      e.agent_id === agent.id && 
-      (e.location?.includes('sca') || (typeof e.source === 'string' && e.source.toLowerCase().includes('sca')))
-    );
-
-    if (scaEvents.length > 0) {
-      const results: ScaCheckResult[] = [];
-      for (const ev of scaEvents) {
-        const id = parseInt(ev.metadata?.['check_id'] || '0', 10);
-        const title = ev.metadata?.['title'] || ev.message;
-        const status = (ev.metadata?.['status'] === 'Passed' || ev.message.includes('PASS')) ? 'Passed' : 'Failed';
-        if (id && !results.some(r => r.check_id === id)) {
-          results.push({ check_id: id, title, status });
-        }
-      }
-      if (results.length > 0) return results;
-    }
-
-    return [
-      { check_id: 1001, title: 'Ensure User Account Control (UAC) - EnableLUA is enabled', status: 'Passed' },
-      { check_id: 1002, title: 'Ensure Windows Defender Real-Time Protection is active', status: 'Passed' },
-      { check_id: 1003, title: 'Ensure Remote Desktop requires Network Level Authentication (NLA)', status: 'Passed' },
-      { check_id: 1004, title: 'Ensure Windows Defender Firewall StandardProfile is enabled', status: 'Passed' },
-      { check_id: 1005, title: 'Ensure SMBv1 deprecated protocol is disabled', status: 'Passed' },
-      { check_id: 1006, title: 'Ensure anonymous enumeration of SAM accounts is restricted', status: 'Passed' },
-      { check_id: 1007, title: 'Ensure anonymous enumeration of LSA shares is restricted', status: 'Passed' },
-    ];
-  });
+  /** The opened agent's latest SCA scan (wazuh-db). */
+  selectedAgentSca = signal<{ policy_id?: string; policy_name?: string; score: number; passed: number; failed: number; not_applicable?: number; checks: ScaCheckResult[] } | null>(null);
+  selectedAgentScaChecks = computed<ScaCheckResult[]>(() => this.selectedAgentSca()?.checks ?? []);
 
   selectedAgentFimEvents = computed(() => {
     const agent = this.selectedAgent();
@@ -645,7 +550,11 @@ export class SiemConsole implements OnInit, OnDestroy {
       if (modified > 0) parts.push(`${modified} modified`);
       if (deleted > 0) parts.push(`${deleted} deleted`);
       if (added > 0) parts.push(`${added} added`);
-      statusText = `Integrity alert: ${totalChanges} unauthorized modification${totalChanges > 1 ? 's' : ''} detected (${parts.join(', ')}).`;
+      statusText = `Integrity alert: ${totalChanges} file/registry change${totalChanges > 1 ? 's' : ''} detected (${parts.join(', ')}).`;
+    } else if (fimEvents.length === 0) {
+      badgeText = 'NO FIM DATA';
+      badgeClass = 'badge-warning';
+      statusText = 'No FIM events from this agent among the loaded events yet.';
     } else {
       badgeText = 'ACTIVE BASELINE';
       badgeClass = 'badge-emerald';
@@ -1117,6 +1026,16 @@ export class SiemConsole implements OnInit, OnDestroy {
   openAgentDetails(agent: Agent) {
     this.selectedAgent.set(agent);
     this.selectedAgentTab.set('specs');
+    this.selectedAgentInventory.set(null);
+    this.selectedAgentSca.set(null);
+    this.siemService.getAgentInventory(agent.id).subscribe({
+      next: inv => { if (this.selectedAgent()?.id === agent.id) this.selectedAgentInventory.set(inv); },
+      error: () => {}
+    });
+    this.http.get<any>(`/api/v1/agents/${encodeURIComponent(agent.id)}/sca`).subscribe({
+      next: r => { if (this.selectedAgent()?.id === agent.id) this.selectedAgentSca.set(r); },
+      error: () => {}
+    });
   }
 
   closeAgentDetails() {

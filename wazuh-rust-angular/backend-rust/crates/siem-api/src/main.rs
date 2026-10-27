@@ -129,7 +129,9 @@ pub struct AppState {
     pub threat_intel: Arc<siem_cdb::ThreatIntelManager>,
     pub rootcheck: Arc<siem_rootcheck::RootcheckScanner>,
     pub active_responses: Arc<RwLock<Vec<ActiveResponseRecord>>>,
+    /// The default tenant's learned parsers (other tenants: `parser_tenants`, parsers_store::for_tenant).
     pub parser_registry: Arc<siem_parser_gen::DynamicParserRegistry>,
+    pub parser_tenants: Arc<RwLock<HashMap<String, Arc<siem_parser_gen::DynamicParserRegistry>>>>,
     pub auth_keystore: Arc<RwLock<siem_crypto::keys::KeyStore>>,
     pub tenants: Arc<RwLock<Vec<TenantRecord>>>,
     /// Per-tenant agent keys (`X-Tenant-Key`).
@@ -187,7 +189,7 @@ async fn main() {
     let rootcheck = Arc::new(siem_rootcheck::RootcheckScanner::with_default_db());
     // Learned parsers live in ClickHouse (parsers_store.rs); the file only when ClickHouse is down.
     let parser_registry = Arc::new(siem_parser_gen::DynamicParserRegistry::new(if db.is_connected() { "" } else { parsers_store::LEGACY_FILE }));
-    let stored_parsers = parsers_store::load(&db, &parser_registry).await;
+    let stored_parsers = parsers_store::load(&db, &parser_registry, tenancy::DEFAULT_DB).await;
 
     // Pre-seed default learned parsers if registry is newly created
     if parser_registry.list_parsers().is_empty() {
@@ -323,6 +325,7 @@ async fn main() {
         rootcheck,
         active_responses,
         parser_registry,
+        parser_tenants: Arc::new(RwLock::new(HashMap::new())),
         auth_keystore,
         tenants: Arc::new(RwLock::new(Vec::new())),
         agent_keys: Arc::new(tenancy::AgentKeys::new()),
@@ -381,19 +384,17 @@ async fn main() {
                         });
                         (ag.name, ag.ip)
                     };
+                    // the target agent's tenant (set by the round), never another one
+                    let tenant = ev.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::tenant_of(&swarm_state.agent_tenants.read().unwrap(), &ev.agent_id));
                     if let Some(alert) = swarm_state.engine.process_event(ev, &name, &ip) {
-                        let alert = tenancy::tag_alert(alert, "default");
+                        let alert = tenancy::tag_alert(redswarm_simulated(alert), &tenant);
                         keep_alerts(&swarm_state, [alert.clone()]);
                         let _ = swarm_state.broadcast_tx.send(alert);
                     }
                     keep_events(&swarm_state, [ev.clone()]);
                 }
             },
-            move |_ag_id, cmd| {
-                // Command dispatcher (ControlledLive dispatch)
-                info!("RedSwarm Dispatching Live Command: {}", cmd.command);
-                Ok("Command dispatched to agent via active-response".into())
-            },
+            move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
             {
                 let alerts_state = state.clone();
                 move || {
@@ -405,10 +406,12 @@ async fn main() {
                 move || {
                     let mut targets = Vec::new();
                     // 1. Live connected agents in state.agents
+                    let tenants = fleet_state.agent_tenants.read().unwrap().clone();
                     {
                         let agents = fleet_state.agents.read().unwrap();
                         for a in agents.values() {
                             targets.push(siem_redswarm::FleetAgentTarget {
+                                tenant_id: tenancy::tenant_of(&tenants, &a.id),
                                 id: a.id.clone(),
                                 name: a.name.clone(),
                                 ip: a.ip.clone(),
@@ -432,6 +435,7 @@ async fn main() {
                                 &e.os_type
                             };
                             targets.push(siem_redswarm::FleetAgentTarget {
+                                tenant_id: e.tenant.clone(),
                                 id: id.clone(),
                                 name: e.name.clone(),
                                 ip: "127.0.0.1".into(),
@@ -462,7 +466,7 @@ async fn main() {
     // Active responses, vulnerability detections and queued agent commands (ClickHouse).
     persist::load_all(&state).await;
     if let Some(ids) = stored_parsers {
-        parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids);
+        parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids, tenancy::DEFAULT_DB.to_string());
     }
     // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
     vulnerability::spawn_sync(state.clone());
@@ -711,6 +715,8 @@ async fn main() {
         // threat intel (provigil-common feeds) and the investigation of one IP / host / user / hash / domain
         .route("/api/v1/siem/intel/status", get(intel::status))
         .route("/api/v1/siem/intel/lookup", get(intel::lookup_handler))
+        .route("/api/v1/siem/intel/watchlist", get(intel::watchlist).post(intel::add_watched))
+        .route("/api/v1/siem/intel/watchlist/:id", axum::routing::delete(intel::remove_watched))
         .route("/api/v1/siem/intel/matches", get(intel::matches))
         .route("/api/v1/siem/investigate", get(investigate::investigate))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
@@ -1416,8 +1422,10 @@ async fn ingest_event(
         // Persist agent heartbeat/status into ClickHouse database
         state.db.insert_or_update_agent(&tenant, &ag_clone).await;
 
-        // Method 2: Dynamic Parser Engine Hot-Path Execution (< 5 microseconds, 0ms AI delay)
-        let _maybe_dynamic_parsed = state.parser_registry.execute(&event.message);
+        // The tenant's learned parsers (< 5 microseconds); their fields are stored with the event
+        if let Some(p) = parsers_store::for_tenant(&state, &tenant).execute(&event.message) {
+            add_parsed_fields(&mut event.metadata, p);
+        }
 
         let maybe_alert = state.engine.process_event(&event, &agent_name, &agent_ip);
 
@@ -2683,7 +2691,7 @@ async fn post_honeypots_handler() -> impl IntoResponse {
 
 #[derive(Serialize)]
 struct SiemDashboardStats {
-    eps_current: usize,
+    eps_current: f64,
     logs_today: usize,
     logs_last_hour: usize,
     parse_errors: usize,
@@ -2717,7 +2725,34 @@ struct SiemSourceHealth {
     source_type: String,
     status: String,
     last_seen_at: String,
-    eps: usize,
+    /// events per second over the last 5 minutes
+    eps: f64,
+}
+
+/// Per agent: events in the last 5 minutes, the last hour and since midnight (UTC), from ClickHouse.
+async fn event_rates(state: &AppState, tenant: &str) -> HashMap<String, (u64, u64, u64)> {
+    let now = Utc::now();
+    let ms = |t: chrono::DateTime<Utc>| t.timestamp_millis().max(0) as u64;
+    let (t5, t60) = (ms(now - chrono::Duration::minutes(5)), ms(now - chrono::Duration::hours(1)));
+    let tday = ms(now.date_naive().and_hms_opt(0, 0, 0).unwrap_or_default().and_utc());
+    state
+        .db
+        .tenant_client(tenant)
+        .query("SELECT agent_id, countIf(timestamp >= ?), countIf(timestamp >= ?), countIf(timestamp >= ?) FROM siem_events WHERE timestamp >= ? GROUP BY agent_id")
+        .bind(t5)
+        .bind(t60)
+        .bind(tday)
+        .bind(t60.min(tday))
+        .fetch_all::<(String, u64, u64, u64)>()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(a, x, y, z)| (a, (x, y, z)))
+        .collect()
+}
+
+fn per_second(events_5m: u64) -> f64 {
+    (events_5m as f64 / 300.0 * 10.0).round() / 10.0
 }
 
 #[derive(Serialize)]
@@ -2731,11 +2766,9 @@ struct SiemDashboardResponse {
 async fn get_siem_dashboard(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemDashboardResponse> {
-    let events = history::events(&state, &ctx, history::DEFAULT_HOURS).await;
     let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let agents = scoped_agent_map(&state, &ctx);
 
-    let total_events = events.len();
     let total_alerts = alerts.len();
 
     let mut critical = 0;
@@ -2769,6 +2802,7 @@ async fn get_siem_dashboard(
         });
     }
 
+    let rates = event_rates(&state, &ctx.scope()).await;
     let mut sources = Vec::new();
     let mut active_count = 0;
     for ag in agents.values() {
@@ -2785,14 +2819,15 @@ async fn get_siem_dashboard(
                 _ => "active".into(),
             },
             last_seen_at: ag.last_keepalive.to_rfc3339(),
-            eps: 12,
+            eps: per_second(rates.get(&ag.id).map_or(0, |r| r.0)),
         });
     }
 
+    let sum = |f: fn(&(u64, u64, u64)) -> u64| rates.values().map(f).sum::<u64>() as usize;
     let stats = SiemDashboardStats {
-        eps_current: (total_events / 60).max(1),
-        logs_today: total_events,
-        logs_last_hour: (total_events / 2).max(1),
+        eps_current: per_second(sum(|r| r.0) as u64),
+        logs_today: sum(|r| r.2),
+        logs_last_hour: sum(|r| r.1),
         parse_errors: 0,
         active_sources: active_count,
         total_sources: agents.len(),
@@ -2823,6 +2858,7 @@ async fn get_siem_sources(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemSourcesResponse> {
     let agents = scoped_agent_map(&state, &ctx);
+    let rates = event_rates(&state, &ctx.scope()).await;
     let sources = agents.values().map(|ag| SiemSourceHealth {
         source_id: ag.id.clone(),
         name: ag.name.clone(),
@@ -2832,54 +2868,19 @@ async fn get_siem_sources(
             _ => "paused".into(),
         },
         last_seen_at: ag.last_keepalive.to_rfc3339(),
-        eps: 12,
+        eps: per_second(rates.get(&ag.id).map_or(0, |r| r.0)),
     }).collect();
 
     Json(SiemSourcesResponse { sources })
 }
 
-#[derive(Deserialize)]
-struct PostSourcePayload {
-    name: String,
-    source_type: String,
-}
-
-#[derive(Serialize)]
-struct PostSourceResponse {
-    source_id: String,
-    ingest_key: String,
-}
-
-async fn post_siem_sources(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(payload): Json<PostSourcePayload>,
-) -> Json<PostSourceResponse> {
-    // A free id across every tenant (ids are global), bound to the caller's tenant.
-    let new_id = {
-        next_free_agent_id(&state)
-    };
-    state.agent_tenants.write().unwrap().insert(new_id.clone(), ctx.scope());
-    persist_registry(&state, &new_id, &ctx.scope(), None, false);
-    let ingest_key = format!("wazuh_key_{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
-
-    let agent = Agent {
-        id: new_id.clone(),
-        name: payload.name,
-        ip: "0.0.0.0".into(),
-        os: format!("Collector ({})", payload.source_type),
-        version: "v4.14.7-rust".into(),
-        status: AgentStatus::Active,
-        last_keepalive: Utc::now(),
-        os_type: payload.source_type,
-    };
-
-    state.agents.write().unwrap().insert(new_id.clone(), agent);
-
-    Json(PostSourceResponse {
-        source_id: new_id,
-        ingest_key,
-    })
+/// `POST /api/siem/sources`: sources are Wazuh agents and syslog devices, added where they enroll.
+async fn post_siem_sources() -> axum::response::Response {
+    (
+        StatusCode::GONE,
+        Json(serde_json::json!({ "status": "error", "message": "Add a source by deploying a Wazuh agent (Agent Fleet > Deploy) or registering a syslog device (Tenant admin > Syslog Devices)" })),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -3178,8 +3179,16 @@ async fn post_agent_fim_handler(
 
 async fn get_agent_sca_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        let r = wazuh_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
+        return Json(r).into_response();
+    }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let policy_opt = db
@@ -3196,7 +3205,7 @@ async fn get_agent_sca_handler(
                 "passed": policy.passed_count(),
                 "failed": policy.failed_count(),
                 "checks": checks
-            }))
+            })).into_response()
         } else {
             Json(serde_json::json!({
                 "agent_id": agent_id,
@@ -3204,7 +3213,7 @@ async fn get_agent_sca_handler(
                 "passed": 0,
                 "failed": 0,
                 "checks": []
-            }))
+            })).into_response()
         }
     } else {
         Json(serde_json::json!({
@@ -3213,7 +3222,7 @@ async fn get_agent_sca_handler(
             "passed": 0,
             "failed": 0,
             "checks": []
-        }))
+        })).into_response()
     }
 }
 
@@ -4061,16 +4070,25 @@ async fn post_active_response_unblock(
 // Method 2: Self-Learning AI Auto-Generated Reusable Parser Engine Handlers
 // =========================================================================
 
-async fn get_parsers_handler(State(state): State<AppState>) -> Json<Vec<siem_parser_gen::DynamicParser>> {
-    Json(state.parser_registry.list_parsers())
+/// What a learned parser extracted from a log line, kept in the event's metadata
+/// (`parsed.<field>`, normalized names) with the parser's name.
+pub(crate) fn add_parsed_fields(metadata: &mut HashMap<String, String>, p: siem_parser_gen::DynamicParsedResult) {
+    for (k, v) in p.normalized_fields {
+        metadata.insert(format!("parsed.{k}"), v.as_str().map(String::from).unwrap_or_else(|| v.to_string()));
+    }
+    metadata.insert("parser".into(), p.parser_name);
 }
 
-async fn get_parsers_stats_handler(State(state): State<AppState>) -> Json<siem_parser_gen::ParserStatsSummary> {
-    Json(state.parser_registry.stats())
+async fn get_parsers_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Vec<siem_parser_gen::DynamicParser>> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).list_parsers())
 }
 
-async fn get_unmatched_parsers_handler(State(state): State<AppState>) -> Json<Vec<siem_parser_gen::UnmatchedFingerprintSummary>> {
-    Json(state.parser_registry.accumulator.list_unmatched())
+async fn get_parsers_stats_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<siem_parser_gen::ParserStatsSummary> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).stats())
+}
+
+async fn get_unmatched_parsers_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Vec<siem_parser_gen::UnmatchedFingerprintSummary>> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).accumulator.list_unmatched())
 }
 
 #[derive(Deserialize)]
@@ -4082,6 +4100,7 @@ struct SynthesizePayload {
 
 async fn post_synthesize_parser_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<SynthesizePayload>,
 ) -> impl IntoResponse {
     if payload.samples.is_empty() {
@@ -4098,8 +4117,7 @@ async fn post_synthesize_parser_handler(
     });
     let (_, sig) = siem_parser_gen::FingerprintEngine::compute(&payload.samples[0]);
 
-    match state
-        .parser_registry
+    match parsers_store::for_tenant(&state, &ctx.scope())
         .synthesize_and_register(fp, &sig, &payload.samples, payload.instructions.as_deref())
         .await
     {
@@ -4146,9 +4164,10 @@ async fn post_test_parser_handler(
 async fn put_parser_handler(
     Path(id): Path<uuid::Uuid>,
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(updated): Json<siem_parser_gen::DynamicParser>,
 ) -> impl IntoResponse {
-    match state.parser_registry.update_parser(id, updated) {
+    match parsers_store::for_tenant(&state, &ctx.scope()).update_parser(id, updated) {
         Ok(_) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "success", "message": "Parser updated successfully" })),
@@ -4165,8 +4184,9 @@ async fn put_parser_handler(
 async fn delete_parser_handler(
     Path(id): Path<uuid::Uuid>,
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    if state.parser_registry.delete_parser(id) {
+    if parsers_store::for_tenant(&state, &ctx.scope()).delete_parser(id) {
         (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "success", "message": "Parser deleted successfully" })),
@@ -4906,11 +4926,59 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
 // Continuous Red Agent Swarm & Perpetual Purple-Team Engine Handlers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// A Red Swarm alert says it is a simulation (the round injected the telemetry).
+fn redswarm_simulated(mut a: Alert) -> Alert {
+    a.rule.description = format!("[Red Swarm simulation] {}", a.rule.description);
+    a.rule.groups.push("redswarm_simulation".into());
+    a
+}
+
+/// Whether a Red Swarm round (by its target agent) belongs to the caller's tenant.
+fn swarm_record_visible(state: &AppState, ctx: &AuthCtx, r: &siem_redswarm::ExecutionRecord) -> bool {
+    tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &r.target_agent_id) == tenancy::normalize_tenant(&ctx.scope())
+}
+
+fn swarm_records(state: &AppState, ctx: &AuthCtx, limit: usize) -> Vec<siem_redswarm::ExecutionRecord> {
+    state.redswarm.audit().get_history(usize::MAX).into_iter().filter(|r| swarm_record_visible(state, ctx, r)).take(limit).collect()
+}
+
+/// The tenant's drafts: those of its rounds.
+fn swarm_drafts(state: &AppState, ctx: &AuthCtx) -> Vec<siem_redswarm::SynthesizedRuleDraft> {
+    let mine: HashSet<uuid::Uuid> = swarm_records(state, ctx, usize::MAX).iter().map(|r| r.id).collect();
+    state.redswarm.audit().drafts().into_iter().filter(|d| mine.contains(&d.execution_id)).collect()
+}
+
+/// Campaigns, the kill switch and detection rules are shared by every tenant: tenant or platform admins.
+fn swarm_admin(ctx: &AuthCtx) -> Option<axum::response::Response> {
+    (!(ctx.is_super() || ctx.can_manage(&ctx.scope()))).then(|| {
+        (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "Only a tenant admin or a platform admin can do this" }))).into_response()
+    })
+}
+
+const REDSWARM_RULES: &str = "redswarm_rules.xml";
+
+/// Live modes would run attack commands on endpoints; siem-api has no channel that does that safely.
+const REDSWARM_NO_LIVE: &str = "Live execution is not available: only the telemetry mode (SafeTelemetryOnly) runs";
+
+fn redswarm_live(mode: Option<siem_redswarm::SwarmExecutionMode>) -> Option<axum::response::Response> {
+    matches!(mode, Some(siem_redswarm::SwarmExecutionMode::ControlledLive | siem_redswarm::SwarmExecutionMode::FullLive))
+        .then(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": REDSWARM_NO_LIVE }))).into_response())
+}
+
 async fn get_redswarm_status_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let report = state.redswarm.get_status();
+    // the engine's state, with the counts of this tenant's rounds
+    let mut report = state.redswarm.get_status();
+    let since = Utc::now() - chrono::Duration::hours(24);
+    let recent: Vec<_> = swarm_records(&state, &ctx, usize::MAX).into_iter().filter(|r| r.timestamp >= since).collect();
+    let defended = recent.iter().filter(|r| r.verification.verdict == siem_redswarm::DetectionVerdict::Defended).count();
+    let drafts = swarm_drafts(&state, &ctx);
+    report.attacks_last_24h = recent.len() as u64;
+    report.defense_rate_percent = if recent.is_empty() { 100.0 } else { (defended as f64 * 1000.0 / recent.len() as f64).round() / 10.0 };
+    report.open_gaps_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::PendingApproval).map(|d| &d.technique_id).collect::<HashSet<_>>().len();
+    report.approved_rules_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed).count();
     Json(report)
 }
 
@@ -4924,11 +4992,14 @@ async fn get_redswarm_campaigns_handler(
 
 async fn post_redswarm_campaigns_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(campaign): Json<siem_redswarm::SwarmCampaign>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if let Some(r) = swarm_admin(&ctx).or_else(|| redswarm_live(Some(campaign.mode))) {
+        return r;
+    }
     state.redswarm.upsert_campaign(campaign.clone());
-    Json(serde_json::json!({ "status": "success", "campaign": campaign }))
+    Json(serde_json::json!({ "status": "success", "campaign": campaign })).into_response()
 }
 
 async fn post_redswarm_toggle_campaign_handler(
@@ -4936,17 +5007,9 @@ async fn post_redswarm_toggle_campaign_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only administrators or secops leads can toggle campaigns."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
     match state.redswarm.toggle_campaign(&id) {
         Ok(enabled) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "campaign_id": id, "enabled": enabled }))).into_response(),
         Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
@@ -4965,32 +5028,22 @@ async fn post_redswarm_run_once_handler(
     Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<RunOncePayload>,
 ) -> impl IntoResponse {
+    if let Some(r) = redswarm_live(payload.mode) {
+        return r;
+    }
     let tenant = ctx.scope();
-    let (target_agent_id, agent_name, agent_ip, agent_os) = {
-        let agents = state.agents.read().unwrap();
-        let target_agent = if let Some(ref id) = payload.target_agent_id {
-            agents.get(id).cloned()
-        } else {
-            agents.values().find(|a| a.status == AgentStatus::Active).cloned()
-                .or_else(|| agents.values().next().cloned())
-        };
-
-        if let Some(ag) = target_agent {
-            (ag.id, ag.name, ag.ip, ag.os_type)
-        } else {
-            let enrolled = state.enrolled.read().unwrap();
-            if let Some((id, e)) = enrolled.iter().next() {
-                let os = if e.os_type.is_empty() {
-                    if e.name.to_lowercase().contains("win") { "windows" } else { "linux" }
-                } else {
-                    &e.os_type
-                };
-                (id.clone(), e.name.clone(), "127.0.0.1".into(), os.to_lowercase())
-            } else {
-                ("001".into(), "endpoint-agent".into(), "192.168.1.100".into(), "windows".into())
-            }
+    // one of the tenant's own agents
+    let target = {
+        let agents = scoped_agent_map(&state, &ctx);
+        match payload.target_agent_id {
+            Some(ref id) => agents.get(id).cloned(),
+            None => agents.values().find(|a| a.status == AgentStatus::Active).cloned().or_else(|| agents.values().next().cloned()),
         }
     };
+    let Some(ag) = target else {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "No agent of yours to run the technique on" }))).into_response();
+    };
+    let (target_agent_id, agent_name, agent_ip, agent_os) = (ag.id, ag.name, ag.ip, ag.os_type);
 
     let target_tags = vec!["lab".into(), "redteam-allowed".into()];
 
@@ -5010,17 +5063,14 @@ async fn post_redswarm_run_once_handler(
         move |events| {
             for ev in events {
                 if let Some(alert) = swarm_state.engine.process_event(ev, &cl_agent_name, &cl_agent_ip) {
-                    let alert = tenancy::tag_alert(alert, &cl_tenant);
+                    let alert = tenancy::tag_alert(redswarm_simulated(alert), &cl_tenant);
                     keep_alerts(&swarm_state, [alert.clone()]);
                     let _ = swarm_state.broadcast_tx.send(alert);
                 }
                 keep_events(&swarm_state, [ev.clone()]);
             }
         },
-        move |_ag_id, cmd| {
-            info!("RunOnce dispatching live command: {}", cmd.command);
-            Ok("Command dispatched to agent via active-response".into())
-        },
+        move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
         move || {
             state.alerts.read().unwrap().clone()
         },
@@ -5034,59 +5084,51 @@ async fn post_redswarm_run_once_handler(
 
 async fn get_redswarm_history_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let history = state.redswarm.audit().get_history(100);
-    Json(history)
+    Json(swarm_records(&state, &ctx, 100))
 }
 
 async fn get_redswarm_gaps_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let gaps = state.redswarm.audit().get_pending_gaps();
+    // one open gap per technique: its newest draft (rounds before the dedupe made one a minute)
+    let mut gaps: Vec<_> = swarm_drafts(&state, &ctx).into_iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::PendingApproval).collect();
+    gaps.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    let mut seen = HashSet::new();
+    gaps.retain(|d| seen.insert(d.technique_id.clone()));
     Json(gaps)
 }
 
 async fn post_redswarm_apply_rule_handler(
     Path(id): Path<uuid::Uuid>,
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only users with 'admin', 'secops-lead', or 'manager' roles can approve and deploy detection rules."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
+    let Some(draft) = swarm_drafts(&state, &ctx).into_iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Draft rule not found" }))).into_response();
+    };
+    if draft.status != siem_redswarm::DraftRuleStatus::PendingApproval {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "This draft was already decided" }))).into_response();
+    }
+    // into the manager's custom rules (ids 119000-119999), only if wazuh-analysisd accepts them
+    // Wazuh's <mitre> takes only <id> (older drafts also had <tactic> / <technique>)
+    let xml: String = draft.rule_xml.lines().filter(|l| !l.trim_start().starts_with("<tactic>") && !l.trim_start().starts_with("<technique>")).collect::<Vec<_>>().join("\n");
+    let deployed = tokio::task::spawn_blocking(move || wazuh_manager::deploy_rule_group(REDSWARM_RULES, &xml, 119_000..=119_999)).await.unwrap_or_else(|e| Err(e.to_string()));
+    let (rule_id, xml) = match deployed {
+        Ok(x) => x,
+        Err(e) => return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    };
+    state.redswarm.audit().set_rule_xml(id, &xml);
     match state.redswarm.audit().approve_rule(id) {
         Ok(rule) => {
-            info!("Analyst {} APPROVED synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            info!("{} approved Red Swarm rule {} for {} (deployed as rule {rule_id})", ctx.username, rule.id, rule.technique_id);
             redswarm_store::upsert_draft(&state, &rule).await;
-
-            // 1. Hot reload into active in-memory correlation engine
-            state.engine.add_wazuh_rules_xml(&rule.rule_xml);
-            info!("Dynamically injected approved rule #{} into running correlation engine", rule.technique_id);
-
-            // 2. Persist to disk in manager custom rules
-            let rule_path = std::path::Path::new("data/manager/ruleset/rules/0999-redswarm-synthesized.xml");
-            if let Some(parent) = rule_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(rule_path) {
-                    use std::io::Write;
-                    let _ = writeln!(
-                        file,
-                        "\n<!-- Rule for {} approved by {} ({}) at {} -->\n{}",
-                        rule.technique_id, ctx.username, ctx.role, Utc::now(), rule.rule_xml
-                    );
-                }
-            }
-            (StatusCode::OK, Json(serde_json::json!({ "status": "approved", "rule": rule }))).into_response()
+            (StatusCode::OK, Json(serde_json::json!({ "status": "approved", "rule_id": rule_id, "rule": rule }))).into_response()
         }
         Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
     }
@@ -5097,20 +5139,25 @@ async fn post_redswarm_rollback_rule_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only users with 'admin' or 'secops-lead' roles can roll back detection rules."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
+    let Some(draft) = swarm_drafts(&state, &ctx).into_iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Rule not found" }))).into_response();
+    };
+    let rule_id = draft.rule_xml.split("<rule id=\"").nth(1).and_then(|p| p.split('"').next()?.parse::<u32>().ok());
+    if draft.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed {
+        let Some(rule_id) = rule_id else {
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": "The rule has no id" }))).into_response();
+        };
+        let removed = tokio::task::spawn_blocking(move || wazuh_manager::remove_rule_group(REDSWARM_RULES, rule_id)).await.unwrap_or_else(|e| Err(e.to_string()));
+        if let Err(e) = removed {
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response();
+        }
+    }
     match state.redswarm.audit().rollback_rule(id) {
         Ok(rule) => {
-            warn!("Analyst {} ROLLED BACK synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            warn!("{} rolled back Red Swarm rule {} for {}", ctx.username, rule.id, rule.technique_id);
             redswarm_store::upsert_draft(&state, &rule).await;
             (StatusCode::OK, Json(serde_json::json!({ "status": "rolled_back", "rule": rule }))).into_response()
         }
@@ -5128,17 +5175,9 @@ async fn post_redswarm_kill_switch_handler(
     Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<KillSwitchPayload>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only administrators or secops leads can engage or disengage the global kill-switch."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
     siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
     warn!(
         "SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})",
@@ -5157,10 +5196,10 @@ async fn post_redswarm_kill_switch_handler(
 
 async fn get_redswarm_heatmap_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
     let all_techs = siem_redswarm::get_curated_catalog();
-    let records = state.redswarm.audit().get_history(500);
+    let records = swarm_records(&state, &ctx, 500);
     let heatmap = siem_redswarm::MetricsCalculator::compute_heatmap(&all_techs, &records);
     Json(heatmap)
 }

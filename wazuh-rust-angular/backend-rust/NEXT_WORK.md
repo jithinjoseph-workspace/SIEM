@@ -265,6 +265,20 @@ SOAR notifications (Slack, e-mail…) are not gated: low impact.
 - **No more sample data** (platform.rs): health, engines, scale, leader, interfaces, agent status,
   sensor keys, Kafka (honestly "not used"), telemetry (sysinfo; platform admins only) are real.
 - SOAR conditions: `src_country` (GeoLite2) and ASN / org in the investigation and intel lookups.
+- **Analyst page audit (2026-10-27):** every UI call was checked against the routes and every
+  visible page's buttons run live. Fixed: SCA tab (read wazuh-db; it showed "100%" / fake checks,
+  and had no tenant check), FIM tab (wazuh-db replies over 64 KB came back empty: paging halves
+  and skips oversized rows; registry paths readable), sources / dashboard (real events per second,
+  no fake "add source"), classic dashboard / globe / alerts / console (no sample data; isolate and
+  block buttons call the real APIs), fleet status line (real CVE counts), SOAR (no NDR PCAP calls
+  for SIEM tenants; "add to threat intel" fills the new per-tenant watchlist), Dynamic Parsers
+  (per tenant in `<tenant db>.learned_parsers`, parsed fields stored with the event, test result
+  shown), Red Swarm (rounds, history, gaps, heatmap per tenant; simulated alerts marked and in the
+  target's tenant; role checks used roles that do not exist; one draft per open gap; approving
+  writes `etc/rules/redswarm_rules.xml` only after `wazuh-analysisd -t` accepts a staged copy,
+  rollback removes it).
+- **Open (Libin's crates, not changed):** Risk Fabric and Attacker Intent Radar keep one global
+  state for all tenants and start with sample processes / entities (192.168.10.15, "*swift*").
 - Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false
   hits on this data); a Sysmon-equipped Windows host would give the Windows rules most to see.
 

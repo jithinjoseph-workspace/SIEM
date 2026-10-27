@@ -172,7 +172,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
     // ── threat intel: the value itself, and the remote IPs a host / user dealt with ──
     let mut intel: Vec<Value> = Vec::new();
     if matches!(kind, Kind::Ip | Kind::Hash | Kind::Domain) {
-        let hits = crate::intel::lookup(&q);
+        let hits = crate::intel::lookup_for(&t, &q);
         if !hits.is_empty() {
             intel.push(json!({ "value": q, "geo": crate::geomap::describe(&q), "hits": hits }));
         }
@@ -184,7 +184,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
         .take(200)
         .collect();
     for ip in counterparts {
-        let hits = crate::intel::lookup(ip);
+        let hits = crate::intel::lookup_for(&t, ip);
         if !hits.is_empty() {
             intel.push(json!({ "value": ip, "geo": crate::geomap::describe(ip), "hits": hits }));
         }

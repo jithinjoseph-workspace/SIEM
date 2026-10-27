@@ -1,3 +1,4 @@
+<div *ngIf="error()" role="alert" class="mb-3 p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
 <div class="siem-dashboard-container">
   <!-- Top Stat Cards -->
   <div class="stats-grid">
@@ -63,7 +64,8 @@
       </div>
 
       <div class="mitre-list">
-        <div class="mitre-item" *ngFor="let t of mitreTactics">
+        <div *ngIf="mitreTactics().length === 0" class="text-xs text-slate-500">No alert mapped to a MITRE technique yet.</div>
+        <div class="mitre-item" *ngFor="let t of mitreTactics()">
           <div class="mitre-info">
             <span class="mitre-name">{{ t.name }}</span>
             <span class="mitre-count font-mono">{{ t.count }} hits ({{ t.pct }}%)</span>
@@ -88,16 +90,16 @@
       </div>
 
       <div class="incident-list">
-        <div class="incident-row" *ngFor="let inc of recentHostIncidents">
+        <div *ngIf="recentHostIncidents().length === 0" class="text-xs text-slate-500">No alerts yet.</div>
+        <div class="incident-row" *ngFor="let inc of recentHostIncidents()">
           <div class="incident-main">
             <div class="incident-host font-mono">
               <span class="host-name">{{ inc.host }}</span>
-              <span class="host-ip text-slate-400 text-xs">({{ inc.ip }})</span>
             </div>
             <div class="incident-text">{{ inc.alert }}</div>
           </div>
           <div class="incident-meta">
-            <span class="sev-tag crit">{{ inc.severity }}</span>
+            <span class="sev-tag" [class.crit]="inc.severity === 'CRITICAL' || inc.severity === 'HIGH'">{{ inc.severity }}</span>
             <span class="time-tag text-xs text-slate-400">{{ inc.time }}</span>
           </div>
         </div>

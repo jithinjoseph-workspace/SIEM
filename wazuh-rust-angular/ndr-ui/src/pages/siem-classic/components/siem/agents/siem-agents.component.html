@@ -113,36 +113,29 @@
 
       <!-- Tab 2: SCA -->
       <div *ngIf="activeTab() === 'sca'" class="tab-content">
-        <div class="compliance-badge">
-          <span class="score">94%</span>
-          <span class="text">CIS Security Benchmark Pass Rate</span>
-        </div>
-        <div class="check-list">
-          <div class="check-row passed">
-            <span class="status-tag">PASS</span>
-            <span class="check-text">Ensure Anonymous enumeration of SAM accounts and shares is restricted</span>
+        <p *ngIf="!sca()?.checks?.length" class="ar-desc">No SCA results from this agent yet. They arrive after its next SCA scan (or restart the agent).</p>
+        <ng-container *ngIf="sca() as r">
+          <div *ngIf="r.checks.length" class="compliance-badge">
+            <span class="score">{{ r.score }}%</span>
+            <span class="text">{{ r.policy_name || r.policy_id }}: {{ r.passed }} passed, {{ r.failed }} failed</span>
           </div>
-          <div class="check-row passed">
-            <span class="status-tag">PASS</span>
-            <span class="check-text">Ensure Windows Defender Antivirus Service is running and auto-start</span>
+          <div class="check-list">
+            <div *ngFor="let c of r.checks" class="check-row" [class.passed]="c.status === 'Passed'" [class.failed]="c.status === 'Failed'">
+              <span class="status-tag" [class.fail]="c.status === 'Failed'">{{ c.status === 'Passed' ? 'PASS' : c.status === 'Failed' ? 'FAIL' : 'N/A' }}</span>
+              <span class="check-text">{{ c.title }}</span>
+            </div>
           </div>
-          <div class="check-row failed">
-            <span class="status-tag fail">FAIL</span>
-            <span class="check-text">Audit: Account Logon Events failure audits disabled</span>
-          </div>
-        </div>
+        </ng-container>
       </div>
 
       <!-- Tab 3: FIM -->
       <div *ngIf="activeTab() === 'fim'" class="tab-content">
+        <p *ngIf="!fim()?.entries?.length" class="ar-desc">No FIM data from this agent yet. It is stored after the agent's first syscheck scan.</p>
+        <p *ngIf="fim()?.entries?.length" class="ar-desc">{{ fim()!.total | number }} monitored files and registry values; the most recently changed:</p>
         <div class="fim-list">
-          <div class="fim-row">
-            <span class="badge mod">MODIFIED</span>
-            <span class="path">C:\Windows\System32\drivers\etc\hosts</span>
-          </div>
-          <div class="fim-row">
-            <span class="badge add">CREATED</span>
-            <span class="path">C:\ProgramData\Google\Chrome Remote Desktop\host.json</span>
+          <div *ngFor="let f of fim()?.entries?.slice(0, 50)" class="fim-row">
+            <span class="badge mod">{{ f.type | uppercase }}</span>
+            <span class="path">{{ f.full_path }}</span>
           </div>
         </div>
       </div>
@@ -155,9 +148,9 @@
             <i-lucide [img]="ShieldIcon"></i-lucide>
             Isolate Host from Network
           </button>
-          <button class="ar-btn warn" (click)="executeAction('block_active_ip')">
+          <button class="ar-btn warn" (click)="executeAction('block_ip')">
             <i-lucide [img]="TerminalIcon"></i-lucide>
-            Block Attacking IPs (Firewall)
+            Block an IP on this Host (Firewall)
           </button>
           <button class="ar-btn default" (click)="executeAction('restart_agent')">
             <i-lucide [img]="RefreshIcon"></i-lucide>

@@ -1,5 +1,6 @@
 import { Component, OnInit, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import {
   LucideAngularModule,
@@ -19,7 +20,7 @@ type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fi
 @Component({
   selector: 'app-agents',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, AgentDeploy],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, AgentDeploy],
   templateUrl: './agents.html',
   styleUrl: './agents.css',
 })
@@ -163,8 +164,12 @@ export class Agents implements OnInit {
   agentGroupPick = signal<Record<string, boolean>>({});
   agentGroupFeedback = signal<string | null>(null);
 
+  /** The tenant's open CVEs (vulnerability detector), for the fleet status line. */
+  fleetVulns = signal<{ critical: number; high: number } | null>(null);
+
   ngOnInit() {
     this.loadAgents();
+    this.siem.getVulnerabilities().subscribe({ next: v => this.fleetVulns.set({ critical: v.critical_count ?? 0, high: v.high_count ?? 0 }), error: () => {} });
     // Resolve the real LAN IP from the backend so deploy commands work from any client
     fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
   }
@@ -209,6 +214,10 @@ export class Agents implements OnInit {
 
   isPassed(status: string): boolean {
     return /pass/i.test(status || '');
+  }
+
+  isFailed(status: string): boolean {
+    return /fail/i.test(status || '');
   }
 
   validIp(ip: string): boolean {

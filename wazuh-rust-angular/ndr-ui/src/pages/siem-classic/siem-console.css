@@ -88,6 +88,7 @@
 .text-cyan { color: var(--accent-cyan); }
 .text-rose { color: var(--accent-rose); }
 .text-emerald { color: var(--accent-emerald); }
+.text-amber { color: #fbbf24; }
 .text-xs { font-size: 12px; }
 
 .conn-pill {

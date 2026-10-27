@@ -14,7 +14,9 @@ use std::net::IpAddr;
 use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
-use axum::extract::{Extension, Query, State};
+use axum::extract::{Extension, Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use provigil_common::threat_intel::{collector, ThreatCollectorStore, ThreatIntel, ThreatIntelEntry};
 use serde::{Deserialize, Serialize};
@@ -105,6 +107,13 @@ pub fn lookup(value: &str) -> Vec<Hit> {
     lookup_in(&index().read().unwrap(), value)
 }
 
+/// The feeds and the tenant's own watchlist.
+pub fn lookup_for(tenant: &str, value: &str) -> Vec<Hit> {
+    let mut hits = lookup(value);
+    hits.extend(watch_hits(tenant, value));
+    hits
+}
+
 fn lookup_in(ix: &Index, value: &str) -> Vec<Hit> {
     let v = value.trim();
     if v.is_empty() {
@@ -168,10 +177,137 @@ pub fn indicators(alert: &Value) -> Vec<String> {
     out
 }
 
-/// The alert's indicators that the feeds list.
+/// The alert's indicators that the feeds or its tenant's watchlist list.
 pub fn alert_hits(alert: &Value) -> Vec<(String, Vec<Hit>)> {
+    let tenant = alert["data"]["tenant_id"].as_str().unwrap_or(crate::tenancy::DEFAULT_TENANT);
     let ix = index().read().unwrap();
-    indicators(alert).into_iter().map(|i| (i.clone(), lookup_in(&ix, &i))).filter(|(_, h)| !h.is_empty()).collect()
+    indicators(alert)
+        .into_iter()
+        .map(|i| {
+            let mut h = lookup_in(&ix, &i);
+            h.extend(watch_hits(tenant, &i));
+            (i, h)
+        })
+        .filter(|(_, h)| !h.is_empty())
+        .collect()
+}
+
+// ───────────────────────── the tenant's watchlist ─────────────────────────
+
+pub const WATCHLIST_DDL: &str = "CREATE TABLE IF NOT EXISTS siem_intel_watchlist (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id";
+
+/// An indicator the tenant's analysts listed themselves (closing a case, or on the Threat Intel page).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Watched {
+    pub id: String,
+    pub kind: String,
+    pub value: String,
+    pub group: String,
+    pub added_by: String,
+    pub added_at: u64,
+}
+
+fn watchlists() -> &'static RwLock<HashMap<String, Vec<Watched>>> {
+    static W: OnceLock<RwLock<HashMap<String, Vec<Watched>>>> = OnceLock::new();
+    W.get_or_init(Default::default)
+}
+
+/// How an indicator is compared: an IP in canonical form, anything else lower-case.
+fn key_of(value: &str) -> String {
+    ip_of(value).map(|a| a.to_string()).unwrap_or_else(|| value.trim().to_lowercase())
+}
+
+/// The kind of an indicator an analyst typed; None when it is none of them.
+fn kind_of(value: &str) -> Option<&'static str> {
+    let v = value.trim();
+    if v.parse::<IpAddr>().is_ok() {
+        return Some("ip");
+    }
+    if matches!(v.len(), 32 | 40 | 64) && v.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Some("hash");
+    }
+    let domain = v.contains('.') && !v.starts_with('.') && !v.ends_with('.') && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    domain.then_some("domain")
+}
+
+fn watch_hits(tenant: &str, value: &str) -> Vec<Hit> {
+    let k = key_of(value);
+    watchlists()
+        .read()
+        .unwrap()
+        .get(&crate::tenancy::normalize_tenant(tenant))
+        .map(|l| {
+            l.iter()
+                .filter(|w| w.value == k)
+                .map(|w| Hit {
+                    source: "Analyst watchlist".into(),
+                    kind: w.kind.clone(),
+                    attack_type: if w.group.is_empty() { "watchlist".into() } else { w.group.clone() },
+                    severity: "HIGH".into(),
+                    description: format!("Listed by {}", w.added_by),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn load_watchlists(state: &AppState) {
+    for t in crate::predictions::tenant_ids(state) {
+        let list: Vec<Watched> = state.db.docs(&t, crate::db::DocTable::Watchlist, 100_000).await.unwrap_or_default().iter().filter_map(|d| serde_json::from_str(d).ok()).collect();
+        watchlists().write().unwrap().insert(crate::tenancy::normalize_tenant(&t), list);
+    }
+}
+
+fn bad(code: StatusCode, m: &str) -> Response {
+    (code, Json(json!({ "status": "error", "message": m }))).into_response()
+}
+
+/// `GET /api/v1/siem/intel/watchlist`
+pub async fn watchlist(Extension(ctx): Extension<AuthCtx>) -> Json<Value> {
+    let mut l = watchlists().read().unwrap().get(&crate::tenancy::normalize_tenant(&ctx.scope())).cloned().unwrap_or_default();
+    l.sort_by(|a, b| b.added_at.cmp(&a.added_at));
+    Json(json!({ "status": "ok", "watchlist": l }))
+}
+
+#[derive(Deserialize)]
+pub struct NewWatched {
+    pub value: String,
+    #[serde(default)]
+    pub group: String,
+}
+
+/// `POST /api/v1/siem/intel/watchlist {value, group}`: an IP, file hash or domain.
+pub async fn add_watched(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(b): Json<NewWatched>) -> Response {
+    let value = b.value.trim();
+    let Some(kind) = kind_of(value).filter(|_| value.len() <= 253) else {
+        return bad(StatusCode::BAD_REQUEST, "Enter an IP address, a file hash (MD5 / SHA-1 / SHA-256) or a domain");
+    };
+    let tenant = crate::tenancy::normalize_tenant(&ctx.scope());
+    let key = key_of(value);
+    if watchlists().read().unwrap().get(&tenant).is_some_and(|l| l.iter().any(|w| w.value == key)) {
+        return bad(StatusCode::CONFLICT, &format!("{key} is already on the watchlist"));
+    }
+    let w = Watched { id: uuid::Uuid::new_v4().to_string(), kind: kind.into(), value: key, group: b.group.trim().chars().take(80).collect(), added_by: ctx.username.clone(), added_at: now() };
+    if let Err(e) = state.db.put_doc(&tenant, crate::db::DocTable::Watchlist, &w.id, &serde_json::to_string(&w).unwrap_or_default()).await {
+        return bad(StatusCode::SERVICE_UNAVAILABLE, &format!("Could not save: {e}"));
+    }
+    watchlists().write().unwrap().entry(tenant).or_default().push(w.clone());
+    Json(json!({ "status": "ok", "entry": w })).into_response()
+}
+
+/// `DELETE /api/v1/siem/intel/watchlist/:id`
+pub async fn remove_watched(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
+    let tenant = crate::tenancy::normalize_tenant(&ctx.scope());
+    if !watchlists().read().unwrap().get(&tenant).is_some_and(|l| l.iter().any(|w| w.id == id)) {
+        return bad(StatusCode::NOT_FOUND, "Not on the watchlist");
+    }
+    if let Err(e) = state.db.delete_doc(&tenant, crate::db::DocTable::Watchlist, &id).await {
+        return bad(StatusCode::SERVICE_UNAVAILABLE, &format!("Could not remove: {e}"));
+    }
+    if let Some(l) = watchlists().write().unwrap().get_mut(&tenant) {
+        l.retain(|w| w.id != id);
+    }
+    Json(json!({ "status": "ok" })).into_response()
 }
 
 // ───────────────────────── collection ─────────────────────────
@@ -206,6 +342,7 @@ impl ThreatCollectorStore for Store {
 pub fn spawn(state: AppState) {
     let s = state.clone();
     tokio::spawn(async move {
+        load_watchlists(&s).await;
         let _ = reload(&s).await;
         tokio::time::sleep(Duration::from_secs(30)).await;
         loop {
@@ -262,9 +399,9 @@ pub struct LookupQuery {
 }
 
 /// `GET /api/v1/siem/intel/lookup?q=`
-pub async fn lookup_handler(Query(q): Query<LookupQuery>) -> Json<Value> {
+pub async fn lookup_handler(Extension(ctx): Extension<AuthCtx>, Query(q): Query<LookupQuery>) -> Json<Value> {
     let v = q.q.trim().chars().take(512).collect::<String>();
-    Json(json!({ "status": "ok", "q": v, "hits": lookup(&v), "geo": crate::geomap::describe(&v) }))
+    Json(json!({ "status": "ok", "q": v, "hits": lookup_for(&ctx.scope(), &v), "geo": crate::geomap::describe(&v) }))
 }
 
 #[derive(clickhouse::Row, Deserialize)]
@@ -297,11 +434,28 @@ pub async fn matches(State(state): State<AppState>, Extension(ctx): Extension<Au
         .into_iter()
         .filter(|r| r.ip.parse::<IpAddr>().is_ok_and(provigil_common::soar::is_public))
         .filter_map(|r| {
-            let hits = lookup(&r.ip);
+            let hits = lookup_for(&ctx.scope(), &r.ip);
             (!hits.is_empty()).then(|| json!({ "value": r.ip, "geo": crate::geomap::describe(&r.ip), "hits": hits, "alerts": r.alerts, "last_seen": r.last, "max_level": r.max_level, "agents": r.agents }))
         })
         .collect();
     Json(json!({ "status": "ok", "matches": out }))
+}
+
+#[cfg(test)]
+mod watch_tests {
+    use super::*;
+
+    #[test]
+    fn kinds_keys_and_tenant_scope() {
+        assert_eq!((kind_of("203.0.113.9"), kind_of("2001:db8::1"), kind_of(&"a".repeat(64)), kind_of("evil.example.com")), (Some("ip"), Some("ip"), Some("hash"), Some("domain")));
+        assert_eq!((kind_of("hello"), kind_of("a b.com"), kind_of(".com")), (None, None, None));
+        assert_eq!(key_of(" Evil.Example.COM "), "evil.example.com");
+        watchlists().write().unwrap().insert("t-watch".into(), vec![Watched { id: "1".into(), kind: "ip".into(), value: "203.0.113.9".into(), group: "apt-x".into(), added_by: "ana".into(), added_at: 0 }]);
+        assert_eq!(watch_hits("t-watch", "203.0.113.9")[0].attack_type, "apt-x");
+        assert!(watch_hits("other-tenant", "203.0.113.9").is_empty(), "a tenant's watchlist is its own");
+        let alert = json!({ "data": { "tenant_id": "t-watch", "srcip": "203.0.113.9" } });
+        assert_eq!(alert_hits(&alert).len(), 1);
+    }
 }
 
 #[cfg(test)]

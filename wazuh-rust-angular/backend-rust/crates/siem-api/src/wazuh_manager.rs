@@ -527,6 +527,136 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
     }
 }
 
+/// Every `<rule id="N"` of the ruleset (`ruleset/rules`, `etc/rules`).
+fn used_rule_ids(home: &Path) -> std::collections::HashSet<u32> {
+    let mut ids = std::collections::HashSet::new();
+    for dir in ["ruleset/rules", "etc/rules"] {
+        for e in std::fs::read_dir(home.join(dir)).into_iter().flatten().flatten() {
+            if let Ok(t) = std::fs::read_to_string(e.path()) {
+                ids.extend(t.split("<rule id=\"").skip(1).filter_map(|p| p.split('"').next()?.parse::<u32>().ok()));
+            }
+        }
+    }
+    ids
+}
+
+static RULES_LOCK: Mutex<()> = Mutex::new(());
+
+/// Writes (or removes) `etc/rules/<file>` once `wazuh-analysisd -t` accepts the whole ruleset
+/// with the change, then restarts analysisd so it loads the rules. The check runs on a staged
+/// copy (`etc/rules.staging` and its own ossec.conf), so the running or restarting analysisd
+/// never reads a file that has not passed it; any ERROR, CRITICAL or duplicate rule id fails it.
+fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<(), String> {
+    let rules = home.join("etc/rules");
+    let staging = home.join("etc/rules.staging");
+    let conf = home.join("etc/ossec.staging.conf");
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&staging);
+        let _ = std::fs::remove_file(&conf);
+    };
+    cleanup();
+    let staged = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(&staging)?;
+        for e in std::fs::read_dir(&rules)?.flatten() {
+            if e.file_name() != std::ffi::OsStr::new(file) && e.path().is_file() {
+                std::fs::copy(e.path(), staging.join(e.file_name()))?;
+            }
+        }
+        if let Some(c) = content {
+            std::fs::write(staging.join(file), c)?;
+        }
+        Ok(())
+    })();
+    let main_conf = std::fs::read_to_string(home.join("etc/ossec.conf")).unwrap_or_default();
+    const RULE_DIR: &str = "<rule_dir>etc/rules</rule_dir>";
+    if staged.is_err() || main_conf.matches(RULE_DIR).count() != 1 || std::fs::write(&conf, main_conf.replace(RULE_DIR, "<rule_dir>etc/rules.staging</rule_dir>")).is_err() {
+        cleanup();
+        return Err(format!("Could not stage the rules for checking ({})", staged.err().map(|e| e.to_string()).unwrap_or_else(|| "ossec.conf".into())));
+    }
+    let mut c = Command::new(home.join("bin").join(exe_name("wazuh-analysisd")));
+    c.arg("-t").arg("-c").arg("etc/ossec.staging.conf").arg("-D").arg(home).current_dir(home).stdin(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    let checked = c.output();
+    cleanup();
+    let (ok, log) = match checked {
+        Ok(o) => {
+            let log = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+            let bad = log.lines().any(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"));
+            (o.status.success() && !bad, log)
+        }
+        Err(e) => (false, format!("wazuh-analysisd -t: {e}")),
+    };
+    if !ok {
+        let why = log.lines().find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)")).unwrap_or(log.trim()).to_string();
+        return Err(format!("wazuh-analysisd rejected the rules: {why}"));
+    }
+    let path = rules.join(file);
+    match content {
+        Some(c) => std::fs::write(&path, c),
+        None => std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
+    }
+    .map_err(|e| format!("{}: {e}", path.display()))?;
+    restart_daemons(&["wazuh-analysisd"]);
+    Ok(())
+}
+
+/// Adds a rule group to `etc/rules/<file>`, its `<rule id>` set to a free id of `ids`;
+/// returns the id and the XML as deployed.
+pub fn deploy_rule_group(file: &str, xml: &str, ids: std::ops::RangeInclusive<u32>) -> Result<(u32, String), String> {
+    if !enabled() {
+        return Err("The Wazuh manager is not running".into());
+    }
+    let _g = RULES_LOCK.lock().unwrap();
+    let home = home();
+    let used = used_rule_ids(&home);
+    let id = ids.into_iter().find(|i| !used.contains(i)).ok_or("No free rule id left in the Red Swarm range")?;
+    let start = xml.find("<rule id=\"").ok_or("The rule has no <rule id>")? + "<rule id=\"".len();
+    let end = start + xml[start..].find('"').ok_or("Malformed <rule id>")?;
+    let xml = format!("{}{id}{}", &xml[..start], &xml[end..]);
+    let cur = std::fs::read_to_string(home.join("etc/rules").join(file)).unwrap_or_default();
+    replace_rules_file(&home, file, Some(&format!("{cur}{xml}\n")))?;
+    Ok((id, xml))
+}
+
+/// Removes the rule group holding `<rule id="id">` from `etc/rules/<file>`.
+pub fn remove_rule_group(file: &str, id: u32) -> Result<(), String> {
+    if !enabled() {
+        return Err("The Wazuh manager is not running".into());
+    }
+    let _g = RULES_LOCK.lock().unwrap();
+    let home = home();
+    let cur = std::fs::read_to_string(home.join("etc/rules").join(file)).map_err(|_| "No rule of this kind is deployed".to_string())?;
+    let rest = without_group(&cur, id)?;
+    replace_rules_file(&home, file, (!rest.trim().is_empty()).then_some(rest.as_str()))
+}
+
+/// A rules file without the `<group name=…>` holding `<rule id="id">`.
+fn without_group(cur: &str, id: u32) -> Result<String, String> {
+    let at = cur.find(&format!("<rule id=\"{id}\"")).ok_or("The rule is no longer deployed")?;
+    // the group around the rule (the rule has a <group> element of its own inside)
+    let start = cur[..at].rfind("<group name=").ok_or("Malformed rules file")?;
+    let after_rule = at + cur[at..].find("</rule>").ok_or("Malformed rules file")?;
+    let end = after_rule + cur[after_rule..].find("</group>").ok_or("Malformed rules file")? + "</group>".len();
+    Ok(format!("{}{}", &cur[..start], cur[end..].trim_start_matches(['\r', '\n'])))
+}
+
+#[cfg(test)]
+mod rule_file_tests {
+    #[test]
+    fn removes_the_whole_group_of_a_rule() {
+        let g = |id: u32| format!("<group name=\"rs,m\">\n  <!-- c -->\n  <rule id=\"{id}\" level=\"8\">\n    <match>x</match>\n    <group>attack,purple_team</group>\n  </rule>\n</group>\n");
+        let file = format!("{}{}", g(119000), g(119001));
+        assert_eq!(super::without_group(&file, 119000).unwrap(), g(119001));
+        assert_eq!(super::without_group(&file, 119001).unwrap(), g(119000));
+        assert!(super::without_group(&g(119000), 119000).unwrap().trim().is_empty());
+        assert!(super::without_group(&file, 5).is_err());
+    }
+}
+
 /// Stops the running daemons named; their supervisors start them again.
 pub(crate) fn restart_daemons(names: &[&str]) {
     for (n, pid) in CHILDREN.lock().unwrap().iter() {
@@ -813,18 +943,53 @@ fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
 /// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
 pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
-    let rows = agent_sql(&id, "SELECT full_path, type, date, changes, arch, value_name, size, perm, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC LIMIT 1000;").await?;
-    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await.and_then(|r| r.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64())).unwrap_or(rows.len() as u64);
+    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await?.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()).unwrap_or(0);
+    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", 1000).await;
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|mut r| {
             let (d, m) = (ts(r.get("date")), ts(r.get("mtime")));
             r["date"] = d;
             r["mtime"] = m;
+            // registry entries are keyed by a hash; `file` is the key path (and `value_name` the value)
+            let path = match (r["file"].as_str().unwrap_or(""), r["value_name"].as_str().unwrap_or("")) {
+                ("", _) => None,
+                (f, "") => Some(f.to_string()),
+                (f, v) => Some(format!("{f}\\{v}")),
+            };
+            if let Some(p) = path {
+                r["key"] = r["full_path"].take();
+                r["full_path"] = serde_json::Value::String(p);
+            }
             r
         })
         .collect();
     Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "wazuh-db" }))
+}
+
+/// The latest SCA scan of a Wazuh agent (`sca_scan_info` / `sca_check` in its wazuh-db database).
+pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let scan = agent_sql(&id, "SELECT policy_id, pass, fail, invalid, score, end_scan FROM sca_scan_info ORDER BY end_scan DESC LIMIT 1;").await?.into_iter().next()?;
+    let policy = scan.get("policy_id")?.as_str()?.to_string();
+    let q = policy.replace('\'', "''");
+    let name = agent_sql(&id, &format!("SELECT name FROM sca_policy WHERE id = '{q}';")).await.and_then(|r| r.first().and_then(|x| x["name"].as_str().map(String::from)));
+    let checks: Vec<serde_json::Value> = crate::inventory_store::paged(&id, &format!("SELECT id, title, result, reason FROM sca_check WHERE policy_id = '{q}' ORDER BY id"), 5000)
+        .await
+        .into_iter()
+        .map(|r| {
+            let status = match r["result"].as_str().unwrap_or("") {
+                "passed" => "Passed",
+                "failed" => "Failed",
+                _ => "Not applicable",
+            };
+            serde_json::json!({ "check_id": r["id"], "title": r["title"], "status": status, "reason": r["reason"] })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "agent_id": agent_id, "policy_id": policy, "policy_name": name, "score": scan["score"], "passed": scan["pass"], "failed": scan["fail"],
+        "not_applicable": scan["invalid"], "scanned_at": ts(scan.get("end_scan")), "checks": checks, "source": "wazuh-db",
+    }))
 }
 
 /// The rootcheck findings of a Wazuh agent (`pm_event` in its wazuh-db database).

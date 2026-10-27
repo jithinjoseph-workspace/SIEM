@@ -145,7 +145,7 @@ export interface AgentInventory {
 export interface ScaCheckResult {
   check_id: number;
   title: string;
-  status: 'Passed' | 'Failed';
+  status: 'Passed' | 'Failed' | 'Not applicable';
   reason?: string;
 }
 

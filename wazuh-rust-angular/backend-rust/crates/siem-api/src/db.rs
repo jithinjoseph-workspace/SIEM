@@ -165,8 +165,9 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 11] = [
+pub const ANALYST_DDL: [&str; 12] = [
     crate::decisions::DDL,
+    crate::intel::WATCHLIST_DDL,
     crate::response::DDL[0],
     crate::response::DDL[1],
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
@@ -220,6 +221,8 @@ pub enum DocTable {
     /// IP blocks and host isolations (response.rs)
     Blocks,
     Isolations,
+    /// The tenant's own threat indicators (intel.rs)
+    Watchlist,
 }
 
 impl DocTable {
@@ -233,6 +236,7 @@ impl DocTable {
             DocTable::Decisions => "siem_decisions",
             DocTable::Blocks => "siem_blocks",
             DocTable::Isolations => "siem_isolations",
+            DocTable::Watchlist => "siem_intel_watchlist",
         }
     }
 }

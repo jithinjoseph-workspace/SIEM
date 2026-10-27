@@ -72,6 +72,8 @@ export class Parsers implements OnInit {
   studioIsSynthesizing = signal<boolean>(false);
   studioIsTesting = signal<boolean>(false);
   studioMessage = signal<string | null>(null);
+  /** A failed load / toggle / delete, shown on the page. */
+  pageError = signal<string | null>(null);
 
   filteredParsers = computed(() => {
     const list = this.parsers();
@@ -90,7 +92,12 @@ export class Parsers implements OnInit {
     this.loadParsers();
   }
 
+  private fail(what: string, e: any) {
+    this.pageError.set(`${what}: ${e?.error?.message || e?.error?.error || e?.message || 'request failed'}`);
+  }
+
   loadParsers() {
+    this.pageError.set(null);
     this.siem.getParsers().subscribe({
       next: (list) => {
         this.parsers.set(list);
@@ -98,17 +105,17 @@ export class Parsers implements OnInit {
           this.selectedParser.set(list[0]);
         }
       },
-      error: (e) => console.warn('Could not fetch parsers', e)
+      error: (e) => this.fail('Could not load the parsers', e)
     });
 
     this.siem.getParserStats().subscribe({
       next: (stats) => this.parserStats.set(stats),
-      error: (e) => console.warn('Could not fetch parser stats', e)
+      error: (e) => this.fail('Could not load the parser statistics', e)
     });
 
     this.siem.getUnmatchedFingerprints().subscribe({
       next: (unmatched) => this.unmatchedFingerprints.set(unmatched),
-      error: (e) => console.warn('Could not fetch unmatched fingerprints', e)
+      error: (e) => this.fail('Could not load the unmatched log formats', e)
     });
   }
 
@@ -132,7 +139,7 @@ export class Parsers implements OnInit {
       next: () => {
         this.parsers.update(list => list.map(item => item.id === p.id ? updated : item));
       },
-      error: (e) => console.warn('Failed to update parser status', e)
+      error: (e) => this.fail(`Could not ${newStatus === 'Active' ? 'enable' : 'disable'} "${p.name}"`, e)
     });
   }
 
@@ -145,7 +152,7 @@ export class Parsers implements OnInit {
           this.selectedParser.set(null);
         }
       },
-      error: (e) => console.warn('Failed to delete parser', e)
+      error: (e) => this.fail('Could not delete the parser', e)
     });
   }
 
@@ -186,7 +193,7 @@ export class Parsers implements OnInit {
       },
       error: (err) => {
         this.studioIsSynthesizing.set(false);
-        this.studioMessage.set(`Synthesis notice: ${err.error?.error || err.message || 'Pattern generated locally'}`);
+        this.studioMessage.set(`Synthesis failed: ${err.error?.message || err.error?.error || err.message || 'request failed'}`);
       }
     });
   }
@@ -198,48 +205,21 @@ export class Parsers implements OnInit {
 
     this.studioIsTesting.set(true);
     this.siem.testParser(pat, raw).subscribe({
+      // the server compiles the pattern with the same regex engine the parsers run on
       next: (res) => {
         this.studioIsTesting.set(false);
-        this.studioTestResult.set(res);
+        this.studioTestResult.set(res?.result ?? res);
       },
-      error: () => {
+      error: (e) => {
         this.studioIsTesting.set(false);
-        // Fallback live regex evaluation in browser
-        try {
-          const re = new RegExp(pat);
-          const match = re.exec(raw);
-          if (match) {
-            const fields: Record<string, string> = {};
-            if (match.groups) {
-              Object.assign(fields, match.groups);
-            }
-            this.studioTestResult.set({
-              success: true,
-              matches_count: 1,
-              total_samples: 1,
-              extracted_fields: fields,
-              execution_time_us: 14
-            });
-          } else {
-            this.studioTestResult.set({
-              success: false,
-              matches_count: 0,
-              total_samples: 1,
-              extracted_fields: {},
-              execution_time_us: 8,
-              error: 'Pattern did not match sample log'
-            });
-          }
-        } catch (e: any) {
-          this.studioTestResult.set({
-            success: false,
-            matches_count: 0,
-            total_samples: 1,
-            extracted_fields: {},
-            execution_time_us: 0,
-            error: e.message
-          });
-        }
+        this.studioTestResult.set({
+          success: false,
+          matches_count: 0,
+          total_samples: 1,
+          extracted_fields: {},
+          execution_time_us: 0,
+          error: e?.error?.error || e?.error?.message || e?.message || 'The test request failed'
+        });
       }
     });
   }

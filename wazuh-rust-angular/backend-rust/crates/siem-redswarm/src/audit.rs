@@ -51,6 +51,29 @@ impl AuditStore {
     }
 
     /// Get all open detection gaps with pending draft rules
+    /// Whether a draft for the technique still waits for approval in the tenant
+    /// (a new round then adds no second draft for the same gap).
+    pub fn has_pending_draft(&self, tenant_id: &str, technique_id: &str) -> bool {
+        let drafts = self.draft_rules.read().unwrap();
+        let records = self.records.read().unwrap();
+        drafts
+            .iter()
+            .filter(|d| d.status == DraftRuleStatus::PendingApproval && d.technique_id == technique_id)
+            .any(|d| records.iter().any(|r| r.id == d.execution_id && r.tenant_id == tenant_id))
+    }
+
+    /// Every draft, pending or decided.
+    pub fn drafts(&self) -> Vec<SynthesizedRuleDraft> {
+        self.draft_rules.read().unwrap().clone()
+    }
+
+    /// The XML a draft was deployed with (its rule id is the one given when deployed).
+    pub fn set_rule_xml(&self, draft_id: Uuid, xml: &str) {
+        if let Some(d) = self.draft_rules.write().unwrap().iter_mut().find(|d| d.id == draft_id) {
+            d.rule_xml = xml.to_string();
+        }
+    }
+
     pub fn get_pending_gaps(&self) -> Vec<SynthesizedRuleDraft> {
         let drafts = self.draft_rules.read().unwrap();
         drafts

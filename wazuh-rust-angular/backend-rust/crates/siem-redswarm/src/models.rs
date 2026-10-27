@@ -233,4 +233,7 @@ pub struct FleetAgentTarget {
     pub os_type: String, // "windows" | "linux" | "macos"
     pub status: String,  // "active" | "disconnected" | "pending"
     pub tags: Vec<String>,
+    /// The tenant the agent belongs to: the round's records and alerts are its.
+    #[serde(default)]
+    pub tenant_id: String,
 }

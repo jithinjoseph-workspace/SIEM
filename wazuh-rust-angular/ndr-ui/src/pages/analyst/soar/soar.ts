@@ -2,7 +2,7 @@ import { SiemService } from '../../../services/siem/siem.service';
 import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Api } from '../../../services/api/api';
 import { ArkimeService } from '../../../services/arkime/arkime';
@@ -21,7 +21,7 @@ import { reportRxjsError } from '../../../services/error-reporter/error-reporter
 @Component({
     selector: 'app-soar',
     standalone: true,
-    imports: [CommonModule, LucideAngularModule, FormsModule],
+    imports: [CommonModule, RouterLink, LucideAngularModule, FormsModule],
     templateUrl: './soar.html',
     styleUrl: './soar.css',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -263,6 +263,40 @@ export class Soar implements OnInit {
 
     /** The outcome of "add the attacker to threat intel" when a case is closed. */
     intelAddResult = signal<string | null>(null);
+
+    /** The open case's investigation (evidence, login pattern, verdict by AI or rules). */
+    caseInvestigation = signal<any>(null);
+    investigating = signal(false);
+    investigationError = signal<string | null>(null);
+
+    loadInvestigation(caseId: string, tries = 0) {
+        this.siem.getCaseInvestigation(caseId).subscribe({
+            next: (r: any) => {
+                if (this.selectedCase()?.id !== caseId) return;
+                if (r.status === 'ok') this.caseInvestigation.set(r.investigation);
+                // a new case is investigated a few seconds after it opens
+                else if (tries < 4) setTimeout(() => this.loadInvestigation(caseId, tries + 1), 4000);
+            },
+            error: () => {}
+        });
+    }
+
+    reinvestigate() {
+        const c = this.selectedCase();
+        if (!c) return;
+        this.investigating.set(true);
+        this.investigationError.set(null);
+        this.siem.runCaseInvestigation(c.id).subscribe({
+            next: (r: any) => { this.investigating.set(false); this.caseInvestigation.set(r.investigation); this.api.getSoarCaseComments(c.id).subscribe({ next: (x: any) => x.status === 'success' && this.caseComments.set(x.data) }); },
+            error: (e: any) => { this.investigating.set(false); this.investigationError.set(e?.error?.message || 'The investigation failed.'); }
+        });
+    }
+
+    verdictClass(label: string): string {
+        return ({ compromised: 'text-rose-300 border-rose-700 bg-rose-950/50', malicious: 'text-rose-300 border-rose-700 bg-rose-950/50',
+                  attack_attempt: 'text-amber-300 border-amber-700 bg-amber-950/40', likely_benign: 'text-emerald-300 border-emerald-700 bg-emerald-950/40' } as Record<string, string>)[label]
+            ?? 'text-slate-300 border-slate-600 bg-slate-900';
+    }
 
     constructor(private api: Api, private arkime: ArkimeService, private auth: AuthService, private router: Router, private sanitizer: DomSanitizer, private siem: SiemService) {}
 
@@ -1149,6 +1183,9 @@ export class Soar implements OnInit {
         this.incidentReport.set(null);
         this.showCloseForm.set(false);
         this.intelAddResult.set(null);
+        this.caseInvestigation.set(null);
+        this.investigationError.set(null);
+        this.loadInvestigation(c.id);
 
         this.api.getSoarCaseComments(c.id).subscribe({
             next: (res: any) => {

@@ -302,6 +302,10 @@ impl SoarStore for Store {
             .bind(tenant_id)
             .execute()
             .await?;
+        // every new case is investigated (evidence, login pattern, verdict), as playbooks open them
+        if let Some(s) = &self.state {
+            crate::case_ai::spawn_for_new_case(s.clone(), tenant_id.to_string(), id.to_string());
+        }
         Ok(())
     }
 
@@ -677,7 +681,7 @@ fn err(e: impl std::fmt::Display) -> Json<Value> {
     Json(json!({ "status": "error", "message": e.to_string() }))
 }
 
-fn store(state: &AppState) -> Store {
+pub(crate) fn store(state: &AppState) -> Store {
     Store { db: state.db.clone(), state: Some(state.clone()) }
 }
 

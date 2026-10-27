@@ -122,17 +122,22 @@ fn alert_filter(kind: &Kind) -> &'static str {
     }
 }
 
-fn fail(m: &str) -> Json<Value> {
-    Json(json!({ "status": "error", "message": m }))
+fn fail(m: &str) -> Value {
+    json!({ "status": "error", "message": m })
 }
 
 pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(p): Query<InvestigateQuery>) -> Json<Value> {
-    let q: String = p.q.trim().chars().take(256).collect();
+    Json(run(&state, &ctx.scope(), &p.q, p.days.unwrap_or(7)).await)
+}
+
+/// The investigation of one value in a tenant (the page, and the case investigations of case_ai.rs).
+pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
+    let q: String = q.trim().chars().take(256).collect();
     if q.len() < 2 {
         return fail("Enter an IP address, host, user, file hash or domain");
     }
-    let t = ctx.scope();
-    let days = p.days.unwrap_or(7).clamp(1, 90);
+    let t = tenant.to_string();
+    let days = days.clamp(1, 90);
     let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(days as u64 * 86_400_000);
     let tenant_agents: Vec<(String, String)> = {
         let owners = state.agent_tenants.read().unwrap().clone();
@@ -198,7 +203,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
         }
     };
     let swarm: Vec<Value> = state.db.docs(&t, DocTable::SwarmMatches, 2000).await.unwrap_or_default().iter().filter_map(|d| serde_json::from_str::<Value>(d).ok()).filter(about).collect();
-    let triage: Vec<Value> = crate::triage::load(&state, &t)
+    let triage: Vec<Value> = crate::triage::load(state, &t)
         .await
         .recs
         .into_iter()
@@ -209,7 +214,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
         })
         .map(|r| json!({ "id": r.id, "rule_id": r.rule_id, "rule": r.rule_description, "verdict": r.verdict, "source": r.source, "confidence": r.confidence, "status": r.status, "alerts": r.alert_count, "reason": r.reason }))
         .collect();
-    let suppressions: Vec<Value> = crate::suppressions::all(&state, &t)
+    let suppressions: Vec<Value> = crate::suppressions::all(state, &t)
         .await
         .into_iter()
         .filter(|s| s.active)
@@ -257,7 +262,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
     // ── the host itself ──
     let host = match &kind {
         Kind::Host(id, name) => {
-            let inv = crate::inventory_store::get(&state, id).await;
+            let inv = crate::inventory_store::get(state, id).await;
             let vulns: Vec<Value> = state
                 .vulnerabilities
                 .read()
@@ -294,7 +299,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
         users: if kind == Kind::User { vec![q.clone()] } else { Vec::new() },
         ..Default::default()
     };
-    let memory: Vec<Value> = crate::org_memory::precedents(&state, &t, &probe, 5)
+    let memory: Vec<Value> = crate::org_memory::precedents(state, &t, &probe, 5)
         .await
         .into_iter()
         .map(|x| json!({ "score": x.score, "reasons": x.reasons, "title": x.lesson.title, "outcome": siem_org_memory::outcome_label(&x.lesson.outcome), "decided_at": x.lesson.decided_at, "by": x.lesson.decided_by, "reason": x.lesson.rationale }))
@@ -320,7 +325,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
     timeline.sort_by(|a, b| b["ts"].as_u64().unwrap_or(0).cmp(&a["ts"].as_u64().unwrap_or(0)));
     timeline.truncate(400);
 
-    Json(json!({
+    json!({
         "status": "ok",
         "query": q,
         "kind": kind.name(),
@@ -350,7 +355,7 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
         "suppressions": suppressions,
         "host": host,
         "memory": memory,
-    }))
+    })
 }
 
 #[cfg(test)]

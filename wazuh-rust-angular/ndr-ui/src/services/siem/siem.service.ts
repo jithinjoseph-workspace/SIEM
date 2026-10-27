@@ -487,6 +487,9 @@ export class SiemService {
   /** The tenant's own indicators (IP, hash, domain) that count as threat intel. */
   getWatchlist(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/watchlist`); }
   addWatched(value: string, group = ''): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/intel/watchlist`, { value, group }); }
+  /** The SOAR case's investigation (evidence and verdict); POST runs it again. */
+  getCaseInvestigation(caseId: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`); }
+  runCaseInvestigation(caseId: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`, {}); }
   removeWatched(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/siem/intel/watchlist/${encodeURIComponent(id)}`); }
   getIntelMatches(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/matches`); }
   getSigma(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/sigma`); }

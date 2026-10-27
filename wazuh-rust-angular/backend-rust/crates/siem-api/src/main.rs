@@ -53,6 +53,7 @@ pub mod swarm;
 pub mod decisions;
 pub mod intel;
 pub mod investigate;
+pub mod case_ai;
 pub mod geomap;
 pub mod platform;
 pub mod response;
@@ -747,6 +748,10 @@ async fn main() {
         .route("/api/soar/cases/:id", put(soar::update_case))
         .route("/api/soar/cases/:id/status", put(soar::update_case_status))
         .route("/api/soar/cases/:id/comments", get(soar::get_case_comments).post(soar::add_case_comment))
+        .route("/api/soar/cases/:id/investigation", get(case_ai::get).post(case_ai::run))
+        .route("/api/settings/ai/providers", get(ai_assist::list_providers).post(ai_assist::save_provider))
+        .route("/api/settings/ai/providers/test", post(ai_assist::test_provider))
+        .route("/api/settings/ai/providers/:name", axum::routing::delete(ai_assist::delete_provider))
         .route("/api/v1/groups", get(groups::list_groups).post(groups::create_group))
         .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
         .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))

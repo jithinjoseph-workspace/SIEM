@@ -165,8 +165,9 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 12] = [
+pub const ANALYST_DDL: [&str; 13] = [
     crate::decisions::DDL,
+    crate::case_ai::DDL,
     crate::intel::WATCHLIST_DDL,
     crate::response::DDL[0],
     crate::response::DDL[1],
@@ -223,6 +224,8 @@ pub enum DocTable {
     Isolations,
     /// The tenant's own threat indicators (intel.rs)
     Watchlist,
+    /// The investigation of each SOAR case (case_ai.rs), id = case id
+    CaseInvestigations,
 }
 
 impl DocTable {
@@ -237,6 +240,7 @@ impl DocTable {
             DocTable::Blocks => "siem_blocks",
             DocTable::Isolations => "siem_isolations",
             DocTable::Watchlist => "siem_intel_watchlist",
+            DocTable::CaseInvestigations => "siem_case_investigations",
         }
     }
 }

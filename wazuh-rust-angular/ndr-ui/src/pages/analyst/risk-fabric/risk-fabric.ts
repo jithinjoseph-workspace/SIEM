@@ -32,7 +32,8 @@ import {
   RiskFabricSummary,
   RiskEvaluationRequest,
   RiskFabricScore,
-  Alert
+  Alert,
+  Agent
 } from '../../../services/siem/siem.models';
 
 type RiskFabricTab = 'overview' | 'simulator' | 'processes' | 'windows' | 'live_alerts';
@@ -91,10 +92,12 @@ export class RiskFabric implements OnInit {
   processes = signal<BusinessProcessDefinition[]>([]);
   windows = signal<BusinessTimeWindow[]>([]);
   alerts = signal<Alert[]>([]);
+  availableAgents = signal<Agent[]>([]);
 
   // Simulator Form State
-  simAgentName = signal<string>('srv-prod-ubuntu-01');
-  simAgentIp = signal<string>('192.168.10.15');
+  selectedSimAgentId = signal<string>('custom');
+  simAgentName = signal<string>('win-node-7a5e');
+  simAgentIp = signal<string>('192.168.1.142');
   simUser = signal<string>('administrator');
   simRuleLevel = signal<number>(10);
   simRuleId = signal<number>(100101);
@@ -152,6 +155,23 @@ export class RiskFabric implements OnInit {
       error: (e) => console.error('Failed to load time windows', e),
     });
 
+    // Fetch live agents for dynamic simulation targeting
+    this.siem.getAgents().subscribe({
+      next: (agents) => {
+        this.availableAgents.set(agents);
+        if (agents.length > 0 && this.selectedSimAgentId() === 'custom') {
+          const first = agents[0];
+          this.selectedSimAgentId.set(first.id);
+          this.simAgentName.set(first.name);
+          this.simAgentIp.set(first.ip);
+          const isWin = first.os_type === 'windows' || first.name.toLowerCase().includes('win');
+          this.simUser.set(isWin ? 'administrator' : 'root');
+          this.runSimulation();
+        }
+      },
+      error: (e) => console.warn('Failed to load agents for simulation', e)
+    });
+
     // Fetch recent alerts to display Risk Fabric enrichment
     this.siem.getAlerts().subscribe({
       next: (alts) => {
@@ -163,6 +183,21 @@ export class RiskFabric implements OnInit {
         console.error('Failed to load alerts', e);
       },
     });
+  }
+
+  onSelectSimAgent(target: any) {
+    const id = typeof target === 'string' ? target : (target?.target as HTMLSelectElement)?.value;
+    this.selectedSimAgentId.set(id);
+    if (id !== 'custom') {
+      const match = this.availableAgents().find(a => a.id === id);
+      if (match) {
+        this.simAgentName.set(match.name);
+        this.simAgentIp.set(match.ip);
+        const isWin = match.os_type === 'windows' || match.name.toLowerCase().includes('win');
+        this.simUser.set(isWin ? 'administrator' : 'root');
+      }
+    }
+    this.runSimulation();
   }
 
   runSimulation() {
@@ -189,30 +224,42 @@ export class RiskFabric implements OnInit {
   }
 
   loadSimulationScenario(scenario: 'pci_breach' | 'ad_takeover' | 'dev_noise' | 'dmz_probe') {
+    const agents = this.availableAgents();
+    const winAgent = agents.find(a => a.os_type === 'windows' || a.name.toLowerCase().includes('win'));
+    const linuxAgent = agents.find(a => a.os_type === 'linux' || a.name.toLowerCase().includes('linux'));
+
     if (scenario === 'pci_breach') {
-      this.simAgentName.set('srv-prod-ubuntu-01');
-      this.simAgentIp.set('192.168.10.15');
+      const target = linuxAgent || (agents.length > 0 ? agents[0] : null);
+      this.selectedSimAgentId.set(target ? target.id : 'custom');
+      this.simAgentName.set(target ? target.name : 'linux-node-8651');
+      this.simAgentIp.set(target ? target.ip : '127.0.0.1');
       this.simUser.set('cashier_svc');
       this.simRuleLevel.set(12);
       this.simRuleId.set(100104);
       this.simRuleDesc.set('Data Exfiltration: Outbound payload exceeds 100MB to unclassified external IP');
     } else if (scenario === 'ad_takeover') {
-      this.simAgentName.set('hq-dc-01');
-      this.simAgentIp.set('10.0.0.5');
+      const target = winAgent || (agents.length > 0 ? agents[0] : null);
+      this.selectedSimAgentId.set(target ? target.id : 'custom');
+      this.simAgentName.set(target ? target.name : 'win-node-7a5e');
+      this.simAgentIp.set(target ? target.ip : '192.168.1.142');
       this.simUser.set('administrator');
       this.simRuleLevel.set(10);
       this.simRuleId.set(100105);
       this.simRuleDesc.set('Privilege Escalation: User created and immediately added to Domain Admins group');
     } else if (scenario === 'dev_noise') {
-      this.simAgentName.set('dev-sandbox-02');
-      this.simAgentIp.set('10.200.4.12');
+      const target = linuxAgent || (agents.length > 0 ? agents[0] : null);
+      this.selectedSimAgentId.set(target ? target.id : 'custom');
+      this.simAgentName.set(target ? target.name : 'linux-node-8651');
+      this.simAgentIp.set(target ? target.ip : '127.0.0.1');
       this.simUser.set('intern_qa');
       this.simRuleLevel.set(8);
       this.simRuleId.set(100101);
       this.simRuleDesc.set('Brute Force: Failed SSH passwords on staging cluster');
     } else if (scenario === 'dmz_probe') {
-      this.simAgentName.set('dmz-web-nginx');
-      this.simAgentIp.set('172.16.0.10');
+      const target = agents.length > 0 ? agents[0] : null;
+      this.selectedSimAgentId.set(target ? target.id : 'custom');
+      this.simAgentName.set(target ? target.name : 'dmz-web-nginx');
+      this.simAgentIp.set(target ? target.ip : '172.16.0.10');
       this.simUser.set('www-data');
       this.simRuleLevel.set(9);
       this.simRuleId.set(100107);

@@ -84,7 +84,7 @@
         <span class="kpi-label">Avg Lead Warning Time</span>
         <lucide-icon [img]="ClockIcon" class="kpi-icon text-emerald"></lucide-icon>
       </div>
-      <div class="kpi-value text-emerald">{{ summary()?.average_advance_warning_hours || 4.2 }} hrs</div>
+      <div class="kpi-value text-emerald">{{ summary()?.average_advance_warning_hours ?? 0 }} hrs</div>
       <div class="kpi-sub">Preemptive intervention advance window</div>
     </div>
   </section>
@@ -596,20 +596,33 @@
           </p>
 
           <div class="form-group">
+            <label>Select Target Enrolled Host</label>
+            <select class="form-input" [ngModel]="selectedSimAgentId()" (change)="onSelectSimAgent($event)">
+              @for (agent of availableAgents(); track agent.entity_id) {
+                <option [value]="agent.entity_id">
+                  {{ agent.entity_name }} (ID: {{ agent.entity_id }}) - {{ agent.entity_ip }}
+                </option>
+              }
+              <option value="custom">+ Custom / New Simulated Endpoint</option>
+            </select>
+          </div>
+
+          <div class="form-group">
             <label>Target Host Name</label>
-            <input type="text" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event)" class="form-input" />
+            <input type="text" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event)" class="form-input" placeholder="e.g. srv-prod-db-01" />
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label>Host ID</label>
-              <input type="text" [ngModel]="simAgentId()" (ngModelChange)="simAgentId.set($event)" class="form-input" />
+              <input type="text" [ngModel]="simAgentId()" (ngModelChange)="simAgentId.set($event)" class="form-input" placeholder="e.g. 042" />
             </div>
             <div class="form-group">
               <label>Host IP</label>
-              <input type="text" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event)" class="form-input" />
+              <input type="text" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event)" class="form-input" placeholder="e.g. 192.168.1.50" />
             </div>
           </div>
+
 
           <div class="form-group">
             <label>Observed MITRE Techniques (Comma-separated)</label>

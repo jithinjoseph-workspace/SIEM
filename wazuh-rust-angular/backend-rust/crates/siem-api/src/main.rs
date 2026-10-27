@@ -154,6 +154,8 @@ pub struct AppState {
     pub redswarm: Arc<siem_redswarm::RedSwarmService>,
     /// Feature 5: Intent Prediction Engine
     pub intent_engine: Arc<siem_intent_engine::IntentEngine>,
+    /// Feature 9: Deception-as-Code & Adaptive Honeynet
+    pub deception_engine: Arc<siem_deception::DeceptionEngine>,
 }
 
 
@@ -312,6 +314,7 @@ async fn main() {
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
     let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
     let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new("data/intent_engine_config.json"));
+    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new("data/deception_config.json"));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -339,6 +342,7 @@ async fn main() {
         risk_fabric,
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
         intent_engine,
+        deception_engine,
     };
 
     // Red Swarm audit trail (history, gaps, draft rules): ClickHouse is the master copy.
@@ -502,6 +506,35 @@ async fn main() {
         });
     }
 
+    // Intent Prediction Engine & Business-Process Risk Fabric: ClickHouse 7-day historical alert sync on cold start
+    {
+        let ch_state = state.clone();
+        let intent_engine_clone = state.intent_engine.clone();
+        let risk_fabric_clone = state.risk_fabric.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            if ch_state.db.is_connected() {
+                let since_ms = (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
+                for tenant in predictions::tenant_ids(&ch_state) {
+                    if let Some(mut alerts) = ch_state.db.alerts_since(&tenant, since_ms, 5000).await {
+                        if !alerts.is_empty() {
+                            tracing::info!("Historical Sync: Ingesting {} ClickHouse alerts for tenant '{}' into Intent & Risk Fabric engines", alerts.len(), &tenant);
+                            for a in &mut alerts {
+                                if !a.data.contains_key("risk_fabric") {
+                                    risk_fabric_clone.evaluate_alert(a);
+                                }
+                            }
+                            intent_engine_clone.ingest_live_alerts(&alerts);
+                            let mut l = ch_state.alerts.write().unwrap();
+                            l.extend(alerts);
+                            crate::trim(&mut l, crate::MEM_ALERTS);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
@@ -534,9 +567,92 @@ async fn main() {
         Arc::new(move || alerts.read().unwrap().clone())
     };
 
+    let fleet_reader = {
+        let fleet_state = state.clone();
+        Arc::new(move || {
+            let mut fleet = Vec::new();
+            {
+                let agents = fleet_state.agents.read().unwrap();
+                for a in agents.values() {
+                    let os = if !a.os_type.is_empty() {
+                        Some(a.os_type.clone())
+                    } else if a.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    fleet.push((a.id.clone(), a.name.clone(), a.ip.clone(), os));
+                }
+            }
+            if fleet.is_empty() {
+                let enrolled = fleet_state.enrolled.read().unwrap();
+                for (id, e) in enrolled.iter() {
+                    let os = if !e.os_type.is_empty() {
+                        Some(e.os_type.clone())
+                    } else if e.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    fleet.push((id.clone(), e.name.clone(), "127.0.0.1".to_string(), os));
+                }
+            }
+            fleet
+        })
+    };
+
+    let active_response_dispatcher = {
+        let ar_state = state.clone();
+        Arc::new(move |agent_id: &str, action_type: &str, target: &str| {
+            tracing::info!("IntentEngine: Dispatching Live Active Response: {} on agent '{}' (target: '{}')", action_type, agent_id, target);
+            let action_name = match action_type {
+                "host_isolation" => "block_ip",
+                "firewall_block" => "firewall_drop",
+                "process_termination" => "kill_process",
+                "canary_tripwire" => "quarantine_file",
+                _ => "block_ip",
+            };
+            let cmd_id = uuid::Uuid::new_v4().to_string();
+            let cmd = serde_json::json!({
+                "command_id": cmd_id,
+                "action": action_name,
+                "target": target,
+                "command": action_name,
+                "parameters": { "keys": [target] },
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+
+            ar_state.pending_commands.write().unwrap()
+                .entry(agent_id.to_string())
+                .or_default()
+                .push(cmd.clone());
+
+            let save_state = ar_state.clone();
+            let aid = agent_id.to_string();
+            tokio::spawn(async move {
+                persist::save_commands(&save_state, &aid, &[cmd], false).await;
+            });
+        })
+    };
+
     let app = Router::new()
-        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader.clone()))
-        .nest_service("/api/v1/intent", siem_intent_engine::api::router(state.intent_engine.clone(), Some(alerts_reader)))
+        .nest_service(
+            "/api/v1/risk-fabric",
+            siem_risk_fabric::api::router(
+                state.risk_fabric.clone(),
+                alerts_reader.clone(),
+                Some(fleet_reader.clone()),
+            ),
+        )
+        .nest_service(
+            "/api/v1/intent",
+            siem_intent_engine::api::router(
+                state.intent_engine.clone(),
+                Some(alerts_reader),
+                Some(fleet_reader),
+                Some(active_response_dispatcher),
+            ),
+        )
         .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
         .route("/api/v1/alerts", get(get_alerts))
@@ -1006,6 +1122,7 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
             a
         })
         .collect();
+    state.intent_engine.ingest_live_alerts(&evaluated);
     let mut l = state.alerts.write().unwrap();
     l.extend(evaluated);
     trim(&mut l, MEM_ALERTS);

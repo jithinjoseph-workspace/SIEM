@@ -18,13 +18,22 @@ use crate::models::{
 pub struct IntentApiState {
     pub engine: Arc<IntentEngine>,
     pub get_alerts: Option<Arc<dyn Fn() -> Vec<siem_core::Alert> + Send + Sync>>,
+    pub get_fleet: Option<Arc<dyn Fn() -> Vec<(String, String, String, Option<String>)> + Send + Sync>>,
+    pub dispatcher: Option<Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
 }
 
 pub fn router(
     engine: Arc<IntentEngine>,
     get_alerts: Option<Arc<dyn Fn() -> Vec<siem_core::Alert> + Send + Sync>>,
+    get_fleet: Option<Arc<dyn Fn() -> Vec<(String, String, String, Option<String>)> + Send + Sync>>,
+    dispatcher: Option<Arc<dyn Fn(&str, &str, &str) + Send + Sync>>,
 ) -> Router {
-    let state = IntentApiState { engine, get_alerts };
+    let state = IntentApiState {
+        engine,
+        get_alerts,
+        get_fleet,
+        dispatcher,
+    };
 
     Router::new()
         .route("/summary", get(get_summary_handler))
@@ -39,6 +48,10 @@ pub fn router(
 async fn get_summary_handler(
     State(state): State<IntentApiState>,
 ) -> Json<IntentSummaryReport> {
+    if let Some(fleet_reader) = &state.get_fleet {
+        let fleet = fleet_reader();
+        state.engine.sync_enrolled_fleet(&fleet);
+    }
     if let Some(reader) = &state.get_alerts {
         let alerts = reader();
         state.engine.ingest_live_alerts(&alerts);
@@ -49,6 +62,10 @@ async fn get_summary_handler(
 async fn get_hypotheses_handler(
     State(state): State<IntentApiState>,
 ) -> Json<Vec<EntityIntentDossier>> {
+    if let Some(fleet_reader) = &state.get_fleet {
+        let fleet = fleet_reader();
+        state.engine.sync_enrolled_fleet(&fleet);
+    }
     if let Some(reader) = &state.get_alerts {
         let alerts = reader();
         state.engine.ingest_live_alerts(&alerts);
@@ -84,7 +101,7 @@ async fn post_execute_action_handler(
     State(state): State<IntentApiState>,
     Json(req): Json<ExecuteActionRequest>,
 ) -> Result<Json<PreemptiveAction>, (StatusCode, Json<serde_json::Value>)> {
-    match state.engine.execute_action(&req) {
+    match state.engine.execute_action(&req, state.dispatcher.as_ref()) {
         Ok(action) => Ok(Json(action)),
         Err(err) => Err((
             StatusCode::BAD_REQUEST,

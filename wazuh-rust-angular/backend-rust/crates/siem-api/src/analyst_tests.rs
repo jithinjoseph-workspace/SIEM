@@ -45,6 +45,7 @@ async fn state() -> AppState {
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
         // it writes its config file on start: a temp one, not the source tree
         intent_engine: Arc::new(siem_intent_engine::IntentEngine::new(std::env::temp_dir().join(format!("siem-test-intent-{}.json", std::process::id())))),
+        deception_engine: Arc::new(siem_deception::DeceptionEngine::new(std::env::temp_dir().join(format!("siem-test-deception-{}.json", std::process::id())))),
     }
 }
 

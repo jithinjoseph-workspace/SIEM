@@ -35,7 +35,13 @@ import {
   EntityIntentDossier,
   SimulationIntentRequest,
   PreemptiveAction,
-  ExecuteActionRequest
+  ExecuteActionRequest,
+  DeceptionAsset,
+  TripwireEvent,
+  DeceptionBlueprint,
+  DeceptionSummary,
+  CreateAssetRequest,
+  SimulateTripwireRequest
 } from './siem.models';
 
 @Injectable({
@@ -104,6 +110,12 @@ export class SiemService {
 
   getAlerts(limit: number = 50, minLevel: number = 0): Observable<Alert[]> {
     return this.http.get<Alert[]>(`${this.apiUrl}/api/v1/alerts?limit=${limit}&min_level=${minLevel}`).pipe(
+      map(alerts => alerts.map(a => {
+        if (!a.risk_fabric && a.data && a.data['risk_fabric']) {
+          a.risk_fabric = a.data['risk_fabric'];
+        }
+        return a;
+      })),
       catchError(() => of([]))
     );
   }
@@ -581,6 +593,35 @@ export class SiemService {
 
   getIntentCatalog(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/intent/catalog`);
+  }
+
+  // Feature 9: Deception-as-Code & Adaptive Honeynet
+  getDeceptionSummary(): Observable<DeceptionSummary> {
+    return this.http.get<DeceptionSummary>(`${this.apiUrl}/api/v1/deception/summary`);
+  }
+
+  getDeceptionAssets(): Observable<DeceptionAsset[]> {
+    return this.http.get<DeceptionAsset[]>(`${this.apiUrl}/api/v1/deception/assets`);
+  }
+
+  createDeceptionAsset(req: CreateAssetRequest): Observable<DeceptionAsset> {
+    return this.http.post<DeceptionAsset>(`${this.apiUrl}/api/v1/deception/assets`, req);
+  }
+
+  deleteDeceptionAsset(id: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/deception/assets/${encodeURIComponent(id)}`);
+  }
+
+  getDeceptionTriggers(): Observable<TripwireEvent[]> {
+    return this.http.get<TripwireEvent[]>(`${this.apiUrl}/api/v1/deception/triggers`);
+  }
+
+  simulateDeceptionTripwire(req: SimulateTripwireRequest): Observable<TripwireEvent> {
+    return this.http.post<TripwireEvent>(`${this.apiUrl}/api/v1/deception/test-trigger`, req);
+  }
+
+  getDeceptionTemplates(): Observable<DeceptionBlueprint[]> {
+    return this.http.get<DeceptionBlueprint[]>(`${this.apiUrl}/api/v1/deception/templates`);
   }
 }
 

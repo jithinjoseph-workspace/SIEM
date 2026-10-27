@@ -17,13 +17,19 @@ use crate::models::{
 pub struct RiskFabricApiState {
     pub engine: Arc<RiskFabricEngine>,
     pub get_alerts: Arc<dyn Fn() -> Vec<Alert> + Send + Sync>,
+    pub fleet_reader: Option<Arc<dyn Fn() -> Vec<(String, String, String, Option<String>)> + Send + Sync>>,
 }
 
 pub fn router(
     engine: Arc<RiskFabricEngine>,
     get_alerts: Arc<dyn Fn() -> Vec<Alert> + Send + Sync>,
+    fleet_reader: Option<Arc<dyn Fn() -> Vec<(String, String, String, Option<String>)> + Send + Sync>>,
 ) -> Router {
-    let state = RiskFabricApiState { engine, get_alerts };
+    let state = RiskFabricApiState {
+        engine,
+        get_alerts,
+        fleet_reader,
+    };
     Router::new()
         .route("/summary", get(get_summary_handler))
         .route(
@@ -43,6 +49,9 @@ pub fn router(
 async fn get_summary_handler(
     State(state): State<RiskFabricApiState>,
 ) -> Json<RiskFabricSummary> {
+    if let Some(ref fr) = state.fleet_reader {
+        state.engine.sync_fleet(&fr());
+    }
     let alerts = (state.get_alerts)();
     Json(state.engine.get_summary(&alerts))
 }
@@ -50,6 +59,9 @@ async fn get_summary_handler(
 async fn get_processes_handler(
     State(state): State<RiskFabricApiState>,
 ) -> Json<Vec<BusinessProcessDefinition>> {
+    if let Some(ref fr) = state.fleet_reader {
+        state.engine.sync_fleet(&fr());
+    }
     Json(state.engine.get_processes())
 }
 
@@ -105,6 +117,9 @@ async fn post_evaluate_handler(
     State(state): State<RiskFabricApiState>,
     Json(req): Json<RiskEvaluationRequest>,
 ) -> Json<RiskFabricScore> {
+    if let Some(ref fr) = state.fleet_reader {
+        state.engine.sync_fleet(&fr());
+    }
     let score = state.engine.simulate(&req);
     Json(score)
 }

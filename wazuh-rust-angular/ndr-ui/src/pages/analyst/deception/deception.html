@@ -1,0 +1,496 @@
+<div class="deception-page">
+  <!-- Top Notification Toast -->
+  @if (successToast()) {
+    <div class="toast-notification">
+      <lucide-icon [img]="CheckIcon" class="toast-icon"></lucide-icon>
+      <span>{{ successToast() }}</span>
+    </div>
+  }
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-left">
+      <div class="header-icon-badge">
+        <lucide-icon [img]="SparklesIcon" class="icon-lg text-amber"></lucide-icon>
+      </div>
+      <div>
+        <div class="header-breadcrumbs">
+          <span>SIEM & XDR</span>
+          <span class="sep">/</span>
+          <span>Adaptive Defense</span>
+          <span class="sep">/</span>
+          <span class="current">Deception-as-Code & Adaptive Honeynet</span>
+        </div>
+        <h1 class="page-title">Deception-as-Code & Fleet Honeynet Grid</h1>
+        <p class="page-subtitle">
+          Declarative deployment of high-fidelity decoys, canary tripwire documents, and honeytoken credentials across endpoints to trap unauthorized lateral movement with zero false positives.
+        </p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="openDeployModal()">
+        <lucide-icon [img]="PlusIcon" class="icon-sm"></lucide-icon>
+        <span>Deploy Decoy Asset</span>
+      </button>
+      <button class="btn btn-primary" (click)="refreshAll()" [disabled]="loading()">
+        <lucide-icon [img]="RefreshIcon" class="icon-sm" [class.spin]="loading()"></lucide-icon>
+        <span>Refresh Deception Grid</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Global Metrics KPI Bar -->
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Deployed Deception Assets</span>
+        <lucide-icon [img]="LayersIcon" class="kpi-icon text-cyan"></lucide-icon>
+      </div>
+      <div class="kpi-value">{{ summary()?.total_assets || assets().length }}</div>
+      <div class="kpi-sub">Total decoys, canaries & honeytokens</div>
+    </div>
+
+    <div class="kpi-card highlight-glow">
+      <div class="kpi-header">
+        <span class="kpi-label">Armed & Active Traps</span>
+        <lucide-icon [img]="ShieldCheckIcon" class="kpi-icon text-emerald"></lucide-icon>
+      </div>
+      <div class="kpi-value text-emerald">{{ summary()?.armed_assets || 0 }}</div>
+      <div class="kpi-sub">Silent tripwires monitoring unauthorized access</div>
+    </div>
+
+    <div class="kpi-card danger-glow">
+      <div class="kpi-header">
+        <span class="kpi-label">Triggered Infiltrations</span>
+        <lucide-icon [img]="ShieldAlertIcon" class="kpi-icon text-crimson"></lucide-icon>
+      </div>
+      <div class="kpi-value text-crimson">{{ summary()?.triggered_assets || 0 }}</div>
+      <div class="kpi-sub">Adversary interactions intercepted</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">High-Fidelity Incidents</span>
+        <lucide-icon [img]="ZapIcon" class="kpi-icon text-amber"></lucide-icon>
+      </div>
+      <div class="kpi-value text-amber">{{ summary()?.total_trips || triggers().length }}</div>
+      <div class="kpi-sub">Zero-FP attacker interaction events</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Fleet Decoy Coverage</span>
+        <lucide-icon [img]="ActivityIcon" class="kpi-icon text-purple"></lucide-icon>
+      </div>
+      <div class="kpi-value text-purple">{{ summary()?.fleet_coverage_percentage || 78 }}%</div>
+      <div class="kpi-sub">Protected endpoints with active decoys</div>
+    </div>
+  </section>
+
+  <!-- Error Banner -->
+  @if (errorMessage()) {
+    <div class="alert-banner">
+      <lucide-icon [img]="AlertTriangleIcon" class="icon-md text-amber"></lucide-icon>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- View Mode Tabs -->
+  <div class="tab-strip">
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'assets'"
+      (click)="activeTab.set('assets')"
+    >
+      <lucide-icon [img]="ShieldIcon" class="icon-sm"></lucide-icon>
+      <span>Armed Deception Assets</span>
+      <span class="tab-pill">{{ assets().length }}</span>
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'triggers'"
+      (click)="activeTab.set('triggers')"
+    >
+      <lucide-icon [img]="ZapIcon" class="icon-sm"></lucide-icon>
+      <span>Live Adversary Tripwires</span>
+      <span class="tab-pill">{{ triggers().length }}</span>
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab() === 'blueprints'"
+      (click)="activeTab.set('blueprints')"
+    >
+      <lucide-icon [img]="SparklesIcon" class="icon-sm"></lucide-icon>
+      <span>Deception-as-Code Library</span>
+      <span class="tab-pill">{{ blueprints().length }}</span>
+    </button>
+  </div>
+
+  <!-- TAB 1: ARMED ASSETS GRID -->
+  @if (activeTab() === 'assets') {
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="search-filter-row">
+          <div class="search-box">
+            <lucide-icon [img]="SearchIcon" class="search-icon"></lucide-icon>
+            <input
+              type="text"
+              placeholder="Search decoys by name, host, path, or tag..."
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+              class="input-search"
+            />
+          </div>
+
+          <div class="filter-pills">
+            <button class="pill-btn" [class.active]="typeFilter() === 'ALL'" (click)="typeFilter.set('ALL')">All Types</button>
+            <button class="pill-btn" [class.active]="typeFilter() === 'canary_file'" (click)="typeFilter.set('canary_file')">Canary Files</button>
+            <button class="pill-btn" [class.active]="typeFilter() === 'honeytoken_credential'" (click)="typeFilter.set('honeytoken_credential')">Honeytokens</button>
+            <button class="pill-btn" [class.active]="typeFilter() === 'decoy_network_service'" (click)="typeFilter.set('decoy_network_service')">Decoy Ports</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-sm" (click)="openDeployModal()">
+          <lucide-icon [img]="PlusIcon" class="icon-xs"></lucide-icon>
+          <span>New Trap</span>
+        </button>
+      </div>
+
+      <div class="assets-grid">
+        @for (asset of filteredAssets(); track asset.id) {
+          <div class="asset-card" [class.triggered-glow]="asset.status === 'triggered'">
+            <div class="asset-card-top">
+              <div>
+                <span class="asset-type-badge" [ngClass]="getAssetTypeBadge(asset.asset_type)">
+                  {{ getAssetTypeLabel(asset.asset_type) }}
+                </span>
+                <h3 class="asset-title">{{ asset.name }}</h3>
+              </div>
+              <span class="status-badge" [ngClass]="getStatusBadge(asset.status)">
+                @if (asset.status === 'triggered') {
+                  <lucide-icon [img]="ShieldAlertIcon" class="icon-xs"></lucide-icon>
+                  Tripped ({{ asset.tripped_count }})
+                } @else {
+                  <lucide-icon [img]="ShieldCheckIcon" class="icon-xs"></lucide-icon>
+                  Armed
+                }
+              </span>
+            </div>
+
+            <div class="asset-meta-row">
+              <span class="meta-item">
+                <lucide-icon [img]="ServerIcon" class="meta-icon"></lucide-icon>
+                <strong>{{ asset.target_agent_name }}</strong> (ID: {{ asset.target_agent_id }})
+              </span>
+              <span class="reduction-badge">-{{ asset.risk_reduction_score }}% Risk</span>
+            </div>
+
+            <div class="asset-path-box">
+              <code>{{ asset.target_path_or_port }}</code>
+            </div>
+
+            <div class="payload-preview">
+              <span class="payload-label">Canary Signature:</span>
+              <div class="payload-code">{{ asset.decoy_payload_preview }}</div>
+            </div>
+
+            <div class="asset-tags">
+              @for (tag of asset.tags; track tag) {
+                <span class="tag-chip">#{{ tag }}</span>
+              }
+            </div>
+
+            <div class="asset-footer">
+              <span class="tripped-stat">
+                @if (asset.last_tripped_at) {
+                  <span class="text-crimson font-medium">Last Tripped: {{ asset.last_tripped_at | date:'short' }}</span>
+                } @else {
+                  <span class="text-slate">Silent & Undetected</span>
+                }
+              </span>
+
+              <div class="action-btn-group">
+                <button
+                  class="btn btn-xs btn-test"
+                  title="Simulate tripwire trigger"
+                  (click)="openTestModal(asset)"
+                >
+                  <lucide-icon [img]="PlayIcon" class="icon-xs"></lucide-icon>
+                  <span>Test Tripwire</span>
+                </button>
+                <button
+                  class="btn btn-xs btn-danger-action"
+                  title="Decommission decoy"
+                  (click)="deleteAsset(asset)"
+                >
+                  <lucide-icon [img]="TrashIcon" class="icon-xs"></lucide-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        } @empty {
+          <div class="empty-state">
+            <lucide-icon [img]="InfoIcon" class="icon-lg text-slate"></lucide-icon>
+            <p>No deception assets match the current filters.</p>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- TAB 2: LIVE ADVERSARY TRIPWIRES -->
+  @if (activeTab() === 'triggers') {
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <lucide-icon [img]="ZapIcon" class="panel-icon text-crimson"></lucide-icon>
+          <span class="panel-title">Zero False-Positive Attacker Interaction Log</span>
+        </div>
+        <span class="panel-badge-crimson">High-Fidelity Telemetry</span>
+      </div>
+
+      <div class="triggers-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Tripped Decoy</th>
+              <th>Host / Endpoint</th>
+              <th>Adversary Source</th>
+              <th>Process / Technique</th>
+              <th>Raw Telemetry Evidence</th>
+              <th>Severity</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (trip of filteredTriggers(); track trip.id) {
+              <tr class="tripwire-row">
+                <td class="text-xs text-slate whitespace-nowrap">
+                  {{ trip.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}
+                </td>
+                <td>
+                  <strong>{{ trip.asset_name }}</strong>
+                  <div class="text-xs text-slate">{{ getAssetTypeLabel(trip.asset_type) }}</div>
+                </td>
+                <td>
+                  <span class="font-medium text-cyan">{{ trip.agent_name }}</span>
+                  <div class="text-xs text-slate">ID: {{ trip.agent_id }}</div>
+                </td>
+                <td>
+                  <span class="badge-ip">{{ trip.attacker_ip }}</span>
+                  <div class="text-xs text-slate">User: {{ trip.attacker_user }}</div>
+                </td>
+                <td>
+                  <span class="badge-tech">{{ trip.mitre_technique }}</span>
+                  <div class="text-xs text-slate">{{ trip.process_name }}</div>
+                </td>
+                <td class="evidence-cell">
+                  <span class="evidence-text">{{ trip.raw_evidence }}</span>
+                </td>
+                <td>
+                  <span class="badge-sev-critical">CRITICAL</span>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center py-6 text-slate">
+                  No tripwires have been tripped yet. The deception grid is silent and armed.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+
+  <!-- TAB 3: DECEPTION-AS-CODE BLUEPRINTS -->
+  @if (activeTab() === 'blueprints') {
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <lucide-icon [img]="SparklesIcon" class="panel-icon text-amber"></lucide-icon>
+          <span class="panel-title">Deception-as-Code Blueprint Catalog</span>
+        </div>
+        <span class="panel-badge">Pre-Packaged Low-FP Decoys</span>
+      </div>
+
+      <div class="blueprints-grid">
+        @for (bp of blueprints(); track bp.template_id) {
+          <div class="blueprint-card">
+            <div class="bp-top">
+              <span class="bp-category">{{ bp.category }}</span>
+              <span class="asset-type-badge" [ngClass]="getAssetTypeBadge(bp.asset_type)">
+                {{ getAssetTypeLabel(bp.asset_type) }}
+              </span>
+            </div>
+
+            <h3 class="bp-title">{{ bp.title }}</h3>
+            <p class="bp-desc">{{ bp.description }}</p>
+
+            <div class="bp-details">
+              <div class="bp-detail-row">
+                <span class="bp-label">Target Scope:</span>
+                <span class="bp-val">{{ bp.recommended_target }}</span>
+              </div>
+              <div class="bp-detail-row">
+                <span class="bp-label">Default Path:</span>
+                <code class="bp-code">{{ bp.default_path }}</code>
+              </div>
+              <div class="bp-detail-row">
+                <span class="bp-label">Threat Intercept:</span>
+                <span class="bp-val text-amber">{{ bp.threat_mitigation }}</span>
+              </div>
+            </div>
+
+            <div class="bp-footer">
+              <button class="btn btn-sm btn-primary w-full" (click)="openDeployModal(bp)">
+                <lucide-icon [img]="PlusIcon" class="icon-xs"></lucide-icon>
+                <span>1-Click Deploy Blueprint</span>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Deploy Asset Modal -->
+  @if (showDeployModal()) {
+    <div class="modal-backdrop" (click)="closeDeployModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <lucide-icon [img]="SparklesIcon" class="icon-md text-cyan"></lucide-icon>
+            <h3>Deploy Deception-as-Code Asset</h3>
+          </div>
+          <button class="modal-close-btn" (click)="closeDeployModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Decoy Asset Title</label>
+            <input type="text" [ngModel]="formName()" (ngModelChange)="formName.set($event)" class="form-input" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Asset Deception Type</label>
+              <select [ngModel]="formType()" (ngModelChange)="formType.set($event)" class="form-input">
+                <option value="canary_file">Canary File / Document</option>
+                <option value="honeytoken_credential">Honeytoken API / Key</option>
+                <option value="decoy_network_service">Decoy Port / Ghost Service</option>
+                <option value="active_directory_decoy">Decoy Active Directory SPN</option>
+                <option value="canary_registry_key">Canary Registry Key</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Target Agent Name</label>
+              <input type="text" [ngModel]="formAgentName()" (ngModelChange)="formAgentName.set($event)" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Target Agent ID</label>
+              <input type="text" [ngModel]="formAgentId()" (ngModelChange)="formAgentId.set($event)" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label>Target File Path or Port</label>
+              <input type="text" [ngModel]="formPath()" (ngModelChange)="formPath.set($event)" class="form-input code-font" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Decoy Payload / Canary Signature</label>
+            <textarea
+              rows="3"
+              [ngModel]="formPayload()"
+              (ngModelChange)="formPayload.set($event)"
+              class="form-input code-font"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Tags (Comma-separated)</label>
+            <input type="text" [ngModel]="formTags()" (ngModelChange)="formTags.set($event)" class="form-input" />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeDeployModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="submitDeploy()" [disabled]="deploying()">
+            @if (deploying()) {
+              <lucide-icon [img]="RefreshIcon" class="icon-sm spin"></lucide-icon>
+              <span>Arming Trap...</span>
+            } @else {
+              <lucide-icon [img]="ShieldCheckIcon" class="icon-sm"></lucide-icon>
+              <span>Arm Deception Trap</span>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Test / Simulate Tripwire Modal -->
+  @if (showTestModal()) {
+    <div class="modal-backdrop" (click)="closeTestModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <lucide-icon [img]="ZapIcon" class="icon-md text-amber"></lucide-icon>
+            <h3>Simulate Deception Tripwire Interception</h3>
+          </div>
+          <button class="modal-close-btn" (click)="closeTestModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="modal-desc">
+            Trigger a simulated adversary interaction against <strong>{{ selectedAssetForTest()?.name }}</strong> to verify end-to-end tripwire detection, telemetry logging, and response workflows.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Simulated Attacker IP</label>
+              <input type="text" [ngModel]="testAttackerIp()" (ngModelChange)="testAttackerIp.set($event)" class="form-input code-font" />
+            </div>
+            <div class="form-group">
+              <label>Compromised User Context</label>
+              <input type="text" [ngModel]="testAttackerUser()" (ngModelChange)="testAttackerUser.set($event)" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Probe Process Name</label>
+              <input type="text" [ngModel]="testProcessName()" (ngModelChange)="testProcessName.set($event)" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label>MITRE ATT&CK Technique</label>
+              <input type="text" [ngModel]="testTechnique()" (ngModelChange)="testTechnique.set($event)" class="form-input code-font" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Analyst Simulation Notes</label>
+            <input type="text" [ngModel]="testNotes()" (ngModelChange)="testNotes.set($event)" class="form-input" />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeTestModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="submitTestTrigger()" [disabled]="testing()">
+            @if (testing()) {
+              <lucide-icon [img]="RefreshIcon" class="icon-sm spin"></lucide-icon>
+              <span>Tripping Tripwire...</span>
+            } @else {
+              <lucide-icon [img]="PlayIcon" class="icon-sm"></lucide-icon>
+              <span>Execute Tripwire Test</span>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

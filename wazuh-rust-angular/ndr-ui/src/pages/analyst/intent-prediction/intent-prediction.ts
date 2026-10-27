@@ -94,12 +94,13 @@ export class IntentPrediction implements OnInit {
   // Simulation Modal Signals
   showSimModal = signal<boolean>(false);
   simEvaluating = signal<boolean>(false);
-  simAgentId = signal<string>('agent-089');
-  simAgentName = signal<string>('fin-db-vault-prod');
-  simAgentIp = signal<string>('172.16.88.42');
-  simTechniquesInput = signal<string>('T1190, T1059, T1078, T1003, T1486');
-  simUser = signal<string>('nt_authority\\system');
-  simContext = signal<string>('Suspicious high-volume SMB staging and volume shadow copy access detected');
+  selectedSimAgentId = signal<string>('custom');
+  simAgentId = signal<string>('');
+  simAgentName = signal<string>('');
+  simAgentIp = signal<string>('');
+  simTechniquesInput = signal<string>('T1190, T1059, T1003, T1486');
+  simUser = signal<string>('');
+  simContext = signal<string>('');
 
   // Action Execution State
   executingActionId = signal<string | null>(null);
@@ -154,9 +155,14 @@ export class IntentPrediction implements OnInit {
     this.siem.getIntentSummary().subscribe({
       next: (sum) => {
         this.summary.set(sum);
-        this.dossiers.set(sum.top_dossiers || []);
-        if (sum.top_dossiers && sum.top_dossiers.length > 0 && !this.selectedDossier()) {
-          this.selectedDossier.set(sum.top_dossiers[0]);
+        const list = sum.top_dossiers || [];
+        this.dossiers.set(list);
+        if (list.length > 0) {
+          const currentId = this.selectedDossier()?.entity_id;
+          const match = list.find(d => d.entity_id === currentId || d.id === this.selectedDossier()?.id);
+          this.selectedDossier.set(match || list[0]);
+        } else {
+          this.selectedDossier.set(null);
         }
         this.loading.set(false);
       },
@@ -221,13 +227,45 @@ export class IntentPrediction implements OnInit {
     });
   }
 
+  availableAgents = computed(() => this.dossiers());
+
   openSimulationModal() {
+    const current = this.selectedDossier() || (this.dossiers().length > 0 ? this.dossiers()[0] : null);
+    if (current) {
+      this.selectedSimAgentId.set(current.entity_id);
+      this.simAgentId.set(current.entity_id);
+      this.simAgentName.set(current.entity_name);
+      this.simAgentIp.set(current.entity_ip);
+    } else {
+      this.selectedSimAgentId.set('custom');
+      this.simAgentId.set('');
+      this.simAgentName.set('');
+      this.simAgentIp.set('');
+    }
     this.showSimModal.set(true);
+  }
+
+  onSelectSimAgent(event: Event) {
+    const id = (event.target as HTMLSelectElement).value;
+    this.selectedSimAgentId.set(id);
+    if (id === 'custom') {
+      this.simAgentId.set('');
+      this.simAgentName.set('');
+      this.simAgentIp.set('');
+    } else {
+      const match = this.dossiers().find(d => d.entity_id === id);
+      if (match) {
+        this.simAgentId.set(match.entity_id);
+        this.simAgentName.set(match.entity_name);
+        this.simAgentIp.set(match.entity_ip);
+      }
+    }
   }
 
   closeSimulationModal() {
     this.showSimModal.set(false);
   }
+
 
   submitSimulation() {
     const rawTechniques = this.simTechniquesInput()

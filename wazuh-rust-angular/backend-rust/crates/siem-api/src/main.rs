@@ -3369,6 +3369,12 @@ async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ct
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::rootcheck(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
+    }
     let r = wazuh_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
     Json(r).into_response()
 }

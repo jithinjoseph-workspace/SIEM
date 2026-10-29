@@ -1,6 +1,7 @@
-//! Each Wazuh agent's CIS / SCA results and FIM file list in ClickHouse (per tenant):
-//! `siem_sca_checks` (one row per check, with its scan's summary) and `siem_fim_files` (one
-//! row per monitored file or registry value). Copied from the manager's wazuh-db every 10
+//! Each Wazuh agent's CIS / SCA results, FIM file list and rootcheck findings in ClickHouse
+//! (per tenant): `siem_sca_checks` (one row per check, with its scan's summary),
+//! `siem_fim_files` (one row per monitored file or registry value) and
+//! `siem_rootcheck_events`. Copied from the manager's wazuh-db every 10
 //! minutes when they changed — a cheap query tells (the scan's end, the FIM row count and
 //! last change) —, and read by the agent pages; wazuh-db stays the manager's working copy.
 
@@ -13,11 +14,13 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-pub const DDL: [&str; 2] = [
+pub const DDL: [&str; 3] = [
     "CREATE TABLE IF NOT EXISTS siem_sca_checks (agent_id String, policy_id String, policy_name String, check_id String, title String, status LowCardinality(String), reason String, \
      score UInt32, passed UInt32, failed UInt32, not_applicable UInt32, scanned_at String, synced_at UInt64) ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, policy_id, check_id)",
     "CREATE TABLE IF NOT EXISTS siem_fim_files (agent_id String, full_path String, key String, type LowCardinality(String), size UInt64, uname String, gname String, \
      md5 String, sha1 String, sha256 String, mtime String, date String, changes UInt64, synced_at UInt64) ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, full_path, key)",
+    "CREATE TABLE IF NOT EXISTS siem_rootcheck_events (agent_id String, log String, date_first String, date_last String, pci_dss String, cis String, synced_at UInt64) \
+     ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, log)",
 ];
 
 const SYNC_SECS: u64 = 600;
@@ -59,6 +62,17 @@ struct FimRow {
     synced_at: u64,
 }
 
+#[derive(clickhouse::Row, Serialize, Deserialize)]
+struct RootcheckRow {
+    agent_id: String,
+    log: String,
+    date_first: String,
+    date_last: String,
+    pci_dss: String,
+    cis: String,
+    synced_at: u64,
+}
+
 fn st(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -75,22 +89,15 @@ fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64
 }
 
-/// What was last copied per agent: (SCA marker, FIM marker).
-static LAST: Mutex<Option<HashMap<String, (String, String)>>> = Mutex::new(None);
+/// What was last copied per agent and kind ("sca", "fim", "rootcheck"): its marker.
+static LAST: Mutex<Option<HashMap<(String, &'static str), String>>> = Mutex::new(None);
 
-fn last(agent: &str) -> (String, String) {
-    LAST.lock().unwrap().get_or_insert_with(HashMap::new).get(agent).cloned().unwrap_or_default()
+fn seen(agent: &str, kind: &'static str) -> String {
+    LAST.lock().unwrap().get_or_insert_with(HashMap::new).get(&(agent.to_string(), kind)).cloned().unwrap_or_default()
 }
 
-fn remember(agent: &str, sca: Option<String>, fim: Option<String>) {
-    let mut g = LAST.lock().unwrap();
-    let e = g.get_or_insert_with(HashMap::new).entry(agent.to_string()).or_default();
-    if let Some(s) = sca {
-        e.0 = s;
-    }
-    if let Some(f) = fim {
-        e.1 = f;
-    }
+fn remember(agent: &str, kind: &'static str, marker: String) {
+    LAST.lock().unwrap().get_or_insert_with(HashMap::new).insert((agent.to_string(), kind), marker);
 }
 
 fn tenant_of(state: &AppState, agent_id: &str) -> String {
@@ -116,11 +123,10 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
     let Ok(n) = agent_id.parse::<u32>() else { return false };
     let id = format!("{n:03}");
     let tenant = tenant_of(state, agent_id);
-    let (sca_seen, fim_seen) = last(agent_id);
     let mut changed = false;
 
     let sca_marker = crate::wazuh_manager::agent_sql(&id, "SELECT policy_id, end_scan, score FROM sca_scan_info ORDER BY end_scan DESC LIMIT 1;").await.map(|r| json!(r).to_string());
-    if let Some(marker) = sca_marker.filter(|m| *m != sca_seen) {
+    if let Some(marker) = sca_marker.filter(|m| *m != seen(agent_id, "sca")) {
         if let Some(s) = crate::wazuh_manager::agent_sca(agent_id).await {
             let synced_at = now_ms();
             let rows: Vec<ScaRow> = s["checks"]
@@ -147,7 +153,7 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
                 .unwrap_or_default();
             match replace(state, &tenant, "siem_sca_checks", agent_id, &rows).await {
                 Ok(()) => {
-                    remember(agent_id, Some(marker), None);
+                    remember(agent_id, "sca", marker);
                     changed = true;
                 }
                 Err(e) => tracing::warn!("SCA of agent {agent_id} not stored: {e}"),
@@ -156,7 +162,7 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
     }
 
     let fim_marker = crate::wazuh_manager::agent_sql(&id, "SELECT count(*) AS n, max(date) AS last FROM fim_entry;").await.map(|r| json!(r).to_string());
-    if let Some(marker) = fim_marker.filter(|m| *m != fim_seen) {
+    if let Some(marker) = fim_marker.filter(|m| *m != seen(agent_id, "fim")) {
         if let Some(f) = crate::wazuh_manager::agent_fim_upto(agent_id, MAX_FIM).await {
             if f["total"].as_u64().unwrap_or(0) > MAX_FIM as u64 {
                 tracing::warn!("FIM of agent {agent_id}: {} entries, the {MAX_FIM} most recently changed kept in ClickHouse", f["total"]);
@@ -187,14 +193,53 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
                 .unwrap_or_default();
             match replace(state, &tenant, "siem_fim_files", agent_id, &rows).await {
                 Ok(()) => {
-                    remember(agent_id, None, Some(marker));
+                    remember(agent_id, "fim", marker);
                     changed = true;
                 }
                 Err(e) => tracing::warn!("FIM of agent {agent_id} not stored: {e}"),
             }
         }
     }
+
+    let rc_marker = crate::wazuh_manager::agent_sql(&id, "SELECT count(*) AS n, max(date_last) AS last FROM pm_event;").await.map(|r| json!(r).to_string());
+    if let Some(marker) = rc_marker.filter(|m| *m != seen(agent_id, "rootcheck")) {
+        if let Some(r) = crate::wazuh_manager::agent_rootcheck(agent_id).await {
+            let synced_at = now_ms();
+            let rows: Vec<RootcheckRow> = r["events"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .map(|e| RootcheckRow { agent_id: agent_id.to_string(), log: st(&e["log"]), date_first: st(&e["date_first"]), date_last: st(&e["date_last"]), pci_dss: st(&e["pci_dss"]), cis: st(&e["cis"]), synced_at })
+                        .collect()
+                })
+                .unwrap_or_default();
+            match replace(state, &tenant, "siem_rootcheck_events", agent_id, &rows).await {
+                Ok(()) => {
+                    remember(agent_id, "rootcheck", marker);
+                    changed = true;
+                }
+                Err(e) => tracing::warn!("rootcheck of agent {agent_id} not stored: {e}"),
+            }
+        }
+    }
     changed
+}
+
+/// The agent's rootcheck findings as `wazuh_manager::agent_rootcheck` gives them, from ClickHouse.
+pub async fn rootcheck(state: &AppState, agent_id: &str) -> Option<Value> {
+    let rows = state
+        .db
+        .tenant_client(&tenant_of(state, agent_id))
+        .query("SELECT ?fields FROM siem_rootcheck_events FINAL WHERE agent_id = ? ORDER BY date_last DESC LIMIT 1000")
+        .bind(agent_id)
+        .fetch_all::<RootcheckRow>()
+        .await
+        .ok()?;
+    if rows.is_empty() {
+        return None;
+    }
+    let events: Vec<Value> = rows.iter().map(|r| json!({ "date_first": r.date_first, "date_last": r.date_last, "log": r.log, "pci_dss": r.pci_dss, "cis": r.cis })).collect();
+    Some(json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "clickhouse" }))
 }
 
 /// Every Wazuh agent every 10 minutes (the first pass 90 s after start).
@@ -211,7 +256,7 @@ pub fn spawn(state: AppState) {
                     }
                 }
                 if n > 0 {
-                    tracing::info!("SCA / FIM: {n} agent(s) updated in ClickHouse");
+                    tracing::info!("SCA / FIM / rootcheck: {n} agent(s) updated in ClickHouse");
                 }
             }
             tokio::time::sleep(Duration::from_secs(SYNC_SECS)).await;

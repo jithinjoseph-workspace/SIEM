@@ -165,7 +165,7 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 16] = [
+pub const ANALYST_DDL: [&str; 17] = [
     crate::decisions::DDL,
     crate::case_ai::DDL,
     crate::intel::WATCHLIST_DDL,
@@ -178,6 +178,7 @@ pub const ANALYST_DDL: [&str; 16] = [
     // each agent's CIS / SCA results and FIM file list (posture_store.rs)
     crate::posture_store::DDL[0],
     crate::posture_store::DDL[1],
+    crate::posture_store::DDL[2],
     "CREATE TABLE IF NOT EXISTS siem_yara_rules (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     // what analysts do on the triage / suppression pages (siem-analyst-insight), 30 days
     "CREATE TABLE IF NOT EXISTS siem_analyst_actions (ts UInt64, user String, action LowCardinality(String), rec_id String, verdict LowCardinality(String), source LowCardinality(String), confidence UInt8) ENGINE = MergeTree ORDER BY (user, ts) TTL toDateTime(ts) + INTERVAL 30 DAY",

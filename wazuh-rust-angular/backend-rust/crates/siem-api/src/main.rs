@@ -54,6 +54,7 @@ pub mod decisions;
 pub mod intel;
 pub mod investigate;
 pub mod case_ai;
+pub mod process_tree;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
@@ -764,6 +765,7 @@ async fn main() {
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
+        .route("/api/v1/agents/telemetry", get(get_agents_telemetry))
         .route("/api/v1/agents/deactivated", get(get_deactivated_agents_handler))
         .route("/api/v1/agents/:id/deactivate", post(deactivate_agent_handler))
         .route("/api/v1/agents/:id/activate", post(activate_agent_handler))
@@ -775,6 +777,7 @@ async fn main() {
         .route("/api/v1/agents/:id/syscollector/netiface", get(get_agent_netiface_handler))
         .route("/api/v1/agents/:id/fim", get(get_agent_fim_handler).post(post_agent_fim_handler))
         .route("/api/v1/agents/:id/sca", get(get_agent_sca_handler))
+        .route("/api/v1/agents/:id/process-tree", get(process_tree::get))
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
@@ -1953,6 +1956,10 @@ async fn download_windows_file(
         let conf = wazuh_manager::windows_agent_conf(&manager).ok_or(StatusCode::BAD_REQUEST)?;
         return Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], conf).into_response());
     }
+    if file == "sysmon.xml" {
+        // the Sysmon configuration the deploy script installs (EDR process telemetry)
+        return Ok(([(header::CONTENT_TYPE, "application/xml; charset=utf-8")], include_str!("sysmon.xml")).into_response());
+    }
     Ok(download_windows_binary(file).await?.into_response())
 }
 
@@ -2968,6 +2975,32 @@ async fn event_rates(state: &AppState, tenant: &str) -> HashMap<String, (u64, u6
         .into_iter()
         .map(|(a, x, y, z)| (a, (x, y, z)))
         .collect()
+}
+
+/// `GET /api/v1/agents/telemetry`: per agent of the caller's tenant, the Sysmon events of the
+/// last 24 hours and when the last one came (EDR process telemetry coverage). Read from the
+/// events ClickHouse already keeps: what is shown is what the SIEM really received.
+async fn get_agents_telemetry(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    let since = (Utc::now() - chrono::Duration::hours(24)).timestamp_millis().max(0) as u64;
+    let rows = state
+        .db
+        .tenant_client(&ctx.scope())
+        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 GROUP BY agent_id")
+        .bind(since)
+        .fetch_all::<(String, u64, u64)>()
+        .await;
+    match rows {
+        Ok(rows) => {
+            let sysmon: serde_json::Map<String, serde_json::Value> =
+                rows.into_iter().map(|(a, n, last)| (a, serde_json::json!({ "events_24h": n, "last": last }))).collect();
+            Json(serde_json::json!({ "sysmon": sysmon })).into_response()
+        }
+        // not "no Sysmon": the UI shows the coverage as unknown
+        Err(e) => {
+            tracing::warn!("agent telemetry query failed: {e}");
+            (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": "Telemetry is not available right now" }))).into_response()
+        }
+    }
 }
 
 fn per_second(events_5m: u64) -> f64 {

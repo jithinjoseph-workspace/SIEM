@@ -251,6 +251,13 @@ export class SiemService {
   }
 
   /** SCA policy results stored for an agent. */
+  /** Per agent, the Sysmon events of the last 24 h (`last` in ms); null when it cannot be read. */
+  getAgentsTelemetry(): Observable<{ sysmon: Record<string, { events_24h: number; last: number }> } | null> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/telemetry`).pipe(
+      catchError(() => of(null))
+    );
+  }
+
   getAgentSca(agentId: string): Observable<{ policy_id?: string; score?: number; passed?: number; failed?: number; checks?: any[] } | null> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/sca`).pipe(
       catchError(() => of(null))

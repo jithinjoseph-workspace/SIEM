@@ -131,7 +131,7 @@
     <div class="mt-3 space-y-1.5 text-xs text-slate-300">
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="checkbox" class="mt-0.5 accent-cyan-500" [checked]="winSysmon()" (change)="winSysmon.set($any($event.target).checked)">
-        <span>Also install <b>Sysmon</b> (Microsoft Sysinternals, downloaded on the endpoint) <span class="text-slate-500">· process, network and registry events for the Sigma rules</span></span>
+        <span>Also install <b>Sysmon</b> (from Microsoft, run only if Microsoft-signed) with the SIEM's configuration <span class="text-slate-500">· process, network and registry events for the Sigma rules and process trees; re-run to update the configuration</span></span>
       </label>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="checkbox" class="mt-0.5 accent-cyan-500" [checked]="winPsLogging()" (change)="winPsLogging.set($any($event.target).checked)">

@@ -238,20 +238,31 @@ pub fn alert_for(v: &Value, m: &DetectionMatch) -> siem_core::Alert {
     }
 }
 
-/// The Sigma alerts of a batch of archived events (each with its tenant).
+/// The Sigma alerts of a batch of archived events (each with its tenant), in event order.
+/// A large batch is split over half the cores: the rest stay with analysisd and ClickHouse.
 pub fn check(events: &[(Value, String)]) -> Vec<(siem_core::Alert, String)> {
     let e = engine().read().unwrap();
     if e.rule_count() == 0 {
         return Vec::new();
     }
-    let mut out = Vec::new();
-    for (v, tenant) in events {
-        let Some(ev) = normalize(v) else { continue };
-        for m in e.check_for_tenant(&ev, tenant) {
-            out.push((alert_for(v, &m), tenant.clone()));
+    let one = |part: &[(Value, String)]| {
+        let mut out = Vec::new();
+        for (v, tenant) in part {
+            let Some(ev) = normalize(v) else { continue };
+            for m in e.check_for_tenant(&ev, tenant) {
+                out.push((alert_for(v, &m), tenant.clone()));
+            }
         }
+        out
+    };
+    let threads = std::thread::available_parallelism().map_or(1, |n| (n.get() / 2).max(1));
+    if threads == 1 || events.len() < 512 {
+        return one(events);
     }
-    out
+    std::thread::scope(|s| {
+        let parts: Vec<_> = events.chunks(events.len().div_ceil(threads)).map(|p| s.spawn(move || one(p))).collect();
+        parts.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+    })
 }
 
 // ───────────────────────── API ─────────────────────────

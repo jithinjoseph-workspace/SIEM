@@ -447,6 +447,9 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-rules")
     } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") {
         Some("siem-alerts")
+    } else if agent_sub("process-tree") {
+        // investigating an alert
+        Some("siem-alerts")
     } else if starts("/api/v1/siem/predictions") {
         Some("siem-mitre")
     } else if starts("/api/v1/siem/retrospective") {
@@ -464,7 +467,7 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
 fn agent_id_in_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("/api/v1/agents/").or_else(|| path.strip_prefix("/api/agents/"))?;
     let id = rest.split('/').next().filter(|s| !s.is_empty())?;
-    (id != "enroll" && id != "deactivated").then_some(id)
+    (id != "enroll" && id != "deactivated" && id != "telemetry").then_some(id)
 }
 
 // ───────────────────────── tenant registry sync ─────────────────────────

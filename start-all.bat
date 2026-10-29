@@ -93,16 +93,16 @@ if errorlevel 1 (
   popd
 )
 
-call :port_open 3001
+call :port_open 3011
 if errorlevel 1 (
-  echo [*] Starting Auth Service on :3001...
+  echo [*] Starting Auth Service on :3011...
   if exist "%BACKEND_DIR%\target\release\auth-service.exe" (
-    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "target\release\auth-service.exe"
+    start "Provigil Auth Service (:3011)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "target\release\auth-service.exe"
   ) else (
-    start "Provigil Auth Service (:3001)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "cargo run --release -p auth-service"
+    start "Provigil Auth Service (:3011)" /D "%BACKEND_DIR%" %RUN_LOGGED% -Log "%LOG_DIR%\auth-service.log" -Cmd "cargo run --release -p auth-service"
   )
 )
-call :wait_port 3001 "Auth service" 60
+call :wait_port 3011 "Auth service" 60
 if errorlevel 1 goto :startup_error
 
 call :port_open 8088

@@ -13,7 +13,7 @@ function Start-Backend([string]$Title, [string]$Binary, [string]$Fallback) {
   else { Start-Process cmd.exe -WorkingDirectory $BackendDir -ArgumentList "/k title $Title & $Fallback" }
 }
 $env:CLICKHOUSE_URL = 'http://127.0.0.1:8123'; $env:CLICKHOUSE_USER = 'default'; $env:CLICKHOUSE_PASSWORD = ''
-$env:CLICKHOUSE_DB = 'ndr'; $env:VALKEY_URL = 'redis://127.0.0.1:6379'; $env:LISTEN_ADDR = '0.0.0.0:3001'
+$env:CLICKHOUSE_DB = 'ndr'; $env:VALKEY_URL = 'redis://127.0.0.1:6379'; $env:LISTEN_ADDR = '0.0.0.0:3011'
 $secretFile = Join-Path $BackendDir 'data\jwt_secret.txt'
 if (-not (Test-Path $secretFile)) { New-Item -ItemType Directory -Force (Split-Path $secretFile) | Out-Null; $bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [IO.File]::WriteAllText($secretFile, (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')) }
 $env:JWT_SECRET = (Get-Content -Raw $secretFile).Trim()
@@ -43,8 +43,8 @@ if (-not (Test-Path $nodeModules)) {
   Start-Process -FilePath 'npm' -ArgumentList 'install' -WorkingDirectory $FrontendDir -Wait -NoNewWindow
 }
 
-if (-not (Test-ListeningPort 3001)) { Start-Backend 'Provigil Auth Service (:3001)' (Join-Path $BackendDir 'target\release\auth-service.exe') 'cargo run --release -p auth-service' }
-if (-not (Wait-ListeningPort 3001 'Auth service' 60)) { exit 1 }
+if (-not (Test-ListeningPort 3011)) { Start-Backend 'Provigil Auth Service (:3011)' (Join-Path $BackendDir 'target\release\auth-service.exe') 'cargo run --release -p auth-service' }
+if (-not (Wait-ListeningPort 3011 'Auth service' 60)) { exit 1 }
 if (-not (Test-ListeningPort 8088)) { Start-Backend 'Provigil SIEM API (:8088)' (Join-Path $BackendDir 'target\release\siem-api.exe') 'cargo run --bin siem-api' }
 if (-not (Wait-ListeningPort 8088 'SIEM API' 60)) { exit 1 }
 if (-not (Test-ListeningPort 4200)) { Start-Process cmd.exe -WorkingDirectory $FrontendDir -ArgumentList '/k title Provigil Angular UI (:4200) & npm start' }

@@ -200,7 +200,11 @@ export class Agents implements OnInit {
       },
       error: () => this.loading.set(false)
     });
+    this.siem.getAgentsTelemetry().subscribe(t => this.sysmonTelemetry.set(t?.sysmon ?? null));
   }
+
+  /** Sysmon events per agent in the last 24 h; null = unknown (the query failed). */
+  sysmonTelemetry = signal<Record<string, { events_24h: number; last: number }> | null>(null);
 
   openAgentDetails(agent: Agent) {
     this.selectedAgent.set(agent);

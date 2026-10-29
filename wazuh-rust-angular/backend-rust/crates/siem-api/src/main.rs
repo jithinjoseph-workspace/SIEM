@@ -4112,19 +4112,41 @@ async fn post_synthesize_parser_handler(
         f
     });
     let (_, sig) = siem_parser_gen::FingerprintEngine::compute(&payload.samples[0]);
+    let registry = parsers_store::for_tenant(&state, &ctx.scope());
 
-    match parsers_store::for_tenant(&state, &ctx.scope())
+    // the AI providers configured in the platform settings first (as every AI feature)
+    let mut ai_note = None;
+    if ai_assist::tenant_ai_enabled(&state, &ctx.scope()) {
+        let providers = ai_assist::providers(&state, "chat").await;
+        if !providers.is_empty() {
+            let (system, user) = siem_parser_gen::AiParserSynthesizer::llm_prompts(fp, &sig, &payload.samples, payload.instructions.as_deref());
+            // a parser (pattern + fields) is a long answer
+            match siem_ai::generate_long(&providers, &system, &user, 8192).await {
+                Ok(reply) => match registry.register_from_ai_reply(fp, &sig, &payload.samples, &reply.text) {
+                    Ok(parser) => {
+                        info!("parser '{}' synthesized by {} for tenant {}", parser.name, reply.model, ctx.scope());
+                        return (StatusCode::OK, Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": reply.model }))).into_response();
+                    }
+                    Err(e) => ai_note = Some(format!("the AI's parser ({}) was not usable: {e}", reply.model)),
+                },
+                Err(e) => ai_note = Some(format!("no AI answer: {e}")),
+            }
+            warn!("parser synthesis for tenant {}: {}; trying the built-in synthesizer", ctx.scope(), ai_note.as_deref().unwrap_or(""));
+        }
+    }
+
+    match registry
         .synthesize_and_register(fp, &sig, &payload.samples, payload.instructions.as_deref())
         .await
     {
         Ok(parser) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "status": "success", "parser": parser })),
+            Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": "built-in synthesizer", "ai_note": ai_note })),
         )
             .into_response(),
         Err(e) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({ "status": "error", "error": e })),
+            Json(serde_json::json!({ "status": "error", "error": match &ai_note { Some(n) => format!("{e} (AI: {n})"), None => e } })),
         )
             .into_response(),
     }

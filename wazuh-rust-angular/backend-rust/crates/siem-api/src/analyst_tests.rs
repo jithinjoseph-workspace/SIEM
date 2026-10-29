@@ -295,6 +295,8 @@ async fn history_and_inventory_from_clickhouse() {
         a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
         a.decoded.file_path = Some("/etc/passwd".into());
         a.data.insert("syscheck".into(), json!({ "path": "/etc/passwd", "event": "modified" }));
+        // the compliance groups Wazuh's rule 5710 carries
+        a.data.insert("wazuh_rule".into(), json!({ "id": "5710", "pci_dss": ["10.2.4", "10.2.5"], "gdpr": ["IV_35.7.d"], "tsc": ["CC6.1"] }));
         let a = crate::tenancy::tag_alert(a, &ta);
         let mut other = crate::tenancy::tag_alert(alert(100200, 3, "tenant B only", "902", "", now - 30_000), &tb);
         other.rule.groups = vec!["b".into()];
@@ -310,11 +312,15 @@ async fn history_and_inventory_from_clickhouse() {
         assert_eq!(back.data["syscheck"]["event"], "modified");
         assert_eq!(crate::history::alert(&st, &ca, &a.id.to_string()).await.map(|x| x.rule.id), Some(5710));
 
-        // pages: compliance (PCI 10.2 counts rule 5710) and MITRE (T1110)
+        // pages: compliance (PCI DSS 10.2.4 from rule 5710's tags) and MITRE (T1110)
         let body = |r: axum::response::Response| async move { String::from_utf8_lossy(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).to_string() };
         use axum::response::IntoResponse;
-        let comp = body(crate::get_compliance_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
-        assert!(comp.contains("\"alerts_count\":1"), "compliance from ClickHouse: {}", &comp[..comp.len().min(400)]);
+        let comp: serde_json::Value = serde_json::from_str(&body(crate::compliance::get(State(st.clone()), Extension(ca.clone())).await).await).unwrap();
+        let pci = comp["frameworks"].as_array().unwrap().iter().find(|f| f["name"] == "PCI_DSS").unwrap();
+        let req = pci["requirements"].as_array().unwrap().iter().find(|r| r["id"] == "10.2.4").expect("PCI DSS 10.2.4 from the alert's tags");
+        assert_eq!((req["alerts_count"].as_u64(), req["status"].as_str(), req["source"].as_str()), (Some(1), Some("warning"), Some("alerts")));
+        assert!(pci["score_percent"].is_null(), "no configuration checks in this tenant: no score");
+        assert_eq!(comp["evidence"].as_array().unwrap().len(), 1, "tenant B's alert is not evidence for A");
         let mitre = body(crate::get_mitre_matrix_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
         assert!(mitre.contains("T1110"), "MITRE from ClickHouse: {}", &mitre[..mitre.len().min(400)]);
 

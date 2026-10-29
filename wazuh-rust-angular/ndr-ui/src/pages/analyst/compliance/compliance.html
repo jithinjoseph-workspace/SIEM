@@ -64,7 +64,7 @@
             [class.bg-amber-400]="fw.color === 'amber'"
             [class.bg-emerald-400]="fw.color === 'emerald'"
             [class.bg-rose-500]="fw.color === 'rose'"
-            [style.width.%]="fw.score_percent"
+            [style.width.%]="fw.score_percent ?? 0"
           ></div>
         </div>
         <span 
@@ -74,13 +74,15 @@
           [class.text-emerald-400]="fw.color === 'emerald'"
           [class.text-rose-400]="fw.color === 'rose'"
         >
-          {{ fw.score_percent }}%
+          {{ fw.score_percent === null ? 'n/a' : fw.score_percent + '%' }}
         </span>
       </div>
 
       <!-- Footer Info -->
       <div class="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-        <span>{{ fw.passed_count }}/{{ fw.total_requirements }} passed</span>
+        <span [title]="fw.score_percent === null ? 'No CIS check maps this framework: alerts only' : fw.checks_passed + ' passed / ' + fw.checks_failed + ' failed configuration check results'">
+          {{ fw.score_percent === null ? 'no config score' : fw.checks_failed + ' checks failing' }}
+        </span>
         <span [class.text-rose-400]="fw.alert_count > 0" [class.text-slate-500]="fw.alert_count === 0">
           {{ fw.alert_count }} alerts
         </span>
@@ -170,7 +172,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 text-slate-300">
             <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
-            <span>Unmapped Controls</span>
+            <span title="Requirements seen only in alerts: no configuration check maps them">Alerts only (no config check)</span>
           </div>
           <span class="font-mono font-bold text-slate-400">{{ unmappedControlsCount() | number }}</span>
         </div>
@@ -224,6 +226,7 @@
               <p class="text-[11px] text-slate-400 mt-0.5">
                 {{ item.framework }}
               </p>
+              <p *ngIf="item.detail" class="text-[11px] text-slate-500 mt-1 line-clamp-2" [title]="item.detail">Fix: {{ item.detail }}</p>
             </div>
           </div>
 
@@ -299,7 +302,7 @@
               [class.border-slate-800]="reportFormat() !== 'pdf'"
             >
               <lucide-angular [img]="FileTextIcon" class="w-3.5 h-3.5"></lucide-angular>
-              PDF
+              HTML
             </button>
 
             <button 
@@ -498,7 +501,7 @@
           [class.text-rose-400]="(selectedFramework()?.score_percent || 0) < 60"
           [class.border-rose-800]="(selectedFramework()?.score_percent || 0) < 60"
         >
-          {{ selectedFramework()?.score_percent }}% COMPLIANT
+          {{ selectedFramework()?.score_percent === null ? 'NO CONFIGURATION SCORE' : selectedFramework()?.score_percent + '% OF CHECKS PASS' }}
         </span>
       </div>
     </div>
@@ -574,6 +577,17 @@
             </h4>
           </div>
           <p class="text-xs text-slate-400 leading-relaxed">{{ req.description }}</p>
+          <details *ngIf="req.checks.length || req.alerts.length" class="text-[11px] text-slate-400 pt-1">
+            <summary class="cursor-pointer text-cyan-400 hover:text-cyan-300">{{ req.checks.length }} check(s) · {{ req.alerts.length }} alert rule(s)</summary>
+            <div *ngFor="let c of req.checks" class="mt-2 pl-3 border-l border-slate-800">
+              <div [class.text-rose-300]="c.failed_agents > 0" [class.text-emerald-300]="c.failed_agents === 0">
+                [{{ c.check_id }}] {{ c.title }} — {{ c.failed_agents > 0 ? 'fails on ' + c.failed_agents + ' agent(s)' : 'passes' }}
+              </div>
+              <div *ngIf="c.failed_agents > 0 && c.remediation" class="text-slate-400 mt-0.5">Fix: {{ c.remediation }}</div>
+              <div *ngIf="c.failed_agents > 0 && c.rationale" class="text-slate-500 mt-0.5">Why: {{ c.rationale }}</div>
+            </div>
+            <div *ngFor="let a of req.alerts" class="mt-1 pl-3 border-l border-slate-800">Rule {{ a.rule_id }}: {{ a.description }}</div>
+          </details>
         </div>
 
         <div class="flex items-center gap-3 flex-shrink-0">
@@ -592,7 +606,7 @@
             {{ req.status }}
           </span>
           <span class="text-xs font-mono text-slate-500 min-w-[70px] text-right">
-            {{ req.alerts_count }} events
+            {{ req.alerts_count }} alerts
           </span>
         </div>
       </div>

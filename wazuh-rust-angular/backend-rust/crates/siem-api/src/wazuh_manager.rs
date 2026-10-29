@@ -1076,7 +1076,19 @@ pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
     let policy = scan.get("policy_id")?.as_str()?.to_string();
     let q = policy.replace('\'', "''");
     let name = agent_sql(&id, &format!("SELECT name FROM sca_policy WHERE id = '{q}';")).await.and_then(|r| r.first().and_then(|x| x["name"].as_str().map(String::from)));
-    let checks: Vec<serde_json::Value> = crate::inventory_store::paged(&id, &format!("SELECT id, title, result, reason FROM sca_check WHERE policy_id = '{q}' ORDER BY id"), 5000)
+    // each check's frameworks as the agent sent them (`sca_check_compliance`: one row per
+    // framework, its requirement ids comma-separated)
+    let mut compliance: HashMap<String, serde_json::Map<String, serde_json::Value>> = HashMap::new();
+    for r in crate::inventory_store::paged(&id, "SELECT id_check, key, value FROM sca_check_compliance ORDER BY id_check", 50_000).await {
+        let check = match &r["id_check"] {
+            serde_json::Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        let (Some(key), Some(value)) = (r["key"].as_str(), r["value"].as_str()) else { continue };
+        let ids: Vec<serde_json::Value> = value.split(',').map(str::trim).filter(|v| !v.is_empty()).map(|v| serde_json::Value::String(v.into())).collect();
+        compliance.entry(check).or_default().insert(key.to_string(), serde_json::Value::Array(ids));
+    }
+    let checks: Vec<serde_json::Value> = crate::inventory_store::paged(&id, &format!("SELECT id, title, result, reason, description, rationale, remediation FROM sca_check WHERE policy_id = '{q}' ORDER BY id"), 5000)
         .await
         .into_iter()
         .map(|r| {
@@ -1085,7 +1097,13 @@ pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
                 "failed" => "Failed",
                 _ => "Not applicable",
             };
-            serde_json::json!({ "check_id": r["id"], "title": r["title"], "status": status, "reason": r["reason"] })
+            let cid = match &r["id"] {
+                serde_json::Value::String(s) => s.clone(),
+                v => v.to_string(),
+            };
+            serde_json::json!({ "check_id": r["id"], "title": r["title"], "status": status, "reason": r["reason"],
+                "description": r["description"], "rationale": r["rationale"], "remediation": r["remediation"],
+                "compliance": compliance.remove(&cid).map(serde_json::Value::Object).unwrap_or_else(|| serde_json::json!({})) })
         })
         .collect();
     Some(serde_json::json!({

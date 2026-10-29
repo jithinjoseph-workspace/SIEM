@@ -980,8 +980,8 @@
           (click)="selectedFramework.set(fw.name)"
         >
           <div class="comp-tab-name">{{ fw.name }}</div>
-          <div class="comp-tab-score mono" [class.text-emerald]="fw.score_percent >= 80" [class.text-yellow]="fw.score_percent < 80 && fw.score_percent >= 50" [class.text-rose]="fw.score_percent < 50">
-            {{ fw.score_percent }}% Pass
+          <div class="comp-tab-score mono" [class.text-emerald]="fw.score_percent !== null && fw.score_percent >= 80" [class.text-yellow]="fw.score_percent !== null && fw.score_percent < 80 && fw.score_percent >= 50" [class.text-rose]="fw.score_percent !== null && fw.score_percent < 50">
+            {{ fw.score_percent === null ? 'alerts only' : fw.score_percent + '% Pass' }}
           </div>
         </button>
       </div>
@@ -996,8 +996,8 @@
           <div class="flex items-center gap-4">
             <div class="text-right">
               <div class="text-xs text-muted">COMPLIANCE SCORE</div>
-              <div class="text-2xl font-mono font-bold" [class.text-emerald]="activeFw.score_percent >= 80" [class.text-yellow]="activeFw.score_percent < 80 && activeFw.score_percent >= 50" [class.text-rose]="activeFw.score_percent < 50">
-                {{ activeFw.score_percent }}%
+              <div class="text-2xl font-mono font-bold" [class.text-emerald]="activeFw.score_percent !== null && activeFw.score_percent >= 80" [class.text-yellow]="activeFw.score_percent !== null && activeFw.score_percent < 80 && activeFw.score_percent >= 50" [class.text-rose]="activeFw.score_percent !== null && activeFw.score_percent < 50">
+                {{ activeFw.score_percent === null ? 'n/a' : activeFw.score_percent + '%' }}
               </div>
             </div>
             <div class="comp-score-ring">

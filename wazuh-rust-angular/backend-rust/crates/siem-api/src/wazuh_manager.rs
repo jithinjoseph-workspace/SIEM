@@ -1503,9 +1503,16 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
     }
-    // Sigma rules (sigma.rs) on every archived event, besides the Wazuh ruleset
+    // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
+    // besides the Wazuh ruleset
     let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
-    let matched = tokio::task::spawn_blocking(move || crate::sigma::check(&tagged)).await.unwrap_or_default();
+    let matched = tokio::task::spawn_blocking(move || {
+        let mut m = crate::sigma::check(&tagged);
+        m.extend(crate::file_reputation::check(&tagged));
+        m
+    })
+    .await
+    .unwrap_or_default();
     if !matched.is_empty() {
         let (alerts, json): (Vec<Alert>, Vec<serde_json::Value>) = matched
             .into_iter()

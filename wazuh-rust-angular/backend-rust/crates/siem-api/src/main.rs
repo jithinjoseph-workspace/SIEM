@@ -55,6 +55,7 @@ pub mod intel;
 pub mod investigate;
 pub mod case_ai;
 pub mod process_tree;
+pub mod file_reputation;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;

@@ -9,13 +9,29 @@ use crate::normalizer::{NormalizedEvent, EventSource};
 use crate::detection::sigma::LogSource as SigmaLogSource;
 use std::collections::{HashMap, HashSet};
 
-fn logsource_matches(ls: &SigmaLogSource, event: &NormalizedEvent) -> bool {
-    let has_constraint = ls.product.is_some() || ls.category.is_some() || ls.service.is_some();
-    if !has_constraint { return true; }
+/// A rule's log source as every event is checked against it: lower-cased, with the Windows
+/// logs it reads resolved, once when the rules load (not per event and rule).
+struct Prepared {
+    any: bool,
+    product: String,
+    category: String,
+    service: String,
+    /// `windows_logs` of a Windows (or product-less) rule
+    win: Option<WinLogs>,
+}
 
-    let product  = ls.product.as_deref().unwrap_or("").to_lowercase();
-    let category = ls.category.as_deref().unwrap_or("").to_lowercase();
-    let service  = ls.service.as_deref().unwrap_or("").to_lowercase();
+impl Prepared {
+    fn new(ls: &SigmaLogSource) -> Self {
+        let lower = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
+        let (product, category, service) = (lower(&ls.product), lower(&ls.category), lower(&ls.service));
+        let win = if product == "windows" || product.is_empty() { windows_logs(&service, &category) } else { None };
+        Self { any: ls.product.is_none() && ls.category.is_none() && ls.service.is_none(), product, category, service, win }
+    }
+}
+
+fn logsource_matches(p: &Prepared, event: &NormalizedEvent) -> bool {
+    if p.any { return true; }
+    let (product, category, service) = (&p.product, &p.category, &p.service);
 
     match &event.event_source {
         EventSource::Zeek => {
@@ -50,11 +66,9 @@ fn logsource_matches(ls: &SigmaLogSource, event: &NormalizedEvent) -> bool {
             if matches!(product.as_str(), "linux" | "macos" | "zeek" | "suricata") { return false; }
             // the rule's Windows log (service / category) and event ids against the event's, when the channel is known
             if let Some(ch) = event.raw.get("Channel").and_then(|v| v.as_str()) {
-                if product == "windows" || product.is_empty() {
-                    if let Some(logs) = windows_logs(&service, &category) {
-                        let id = event.raw.get("EventID").map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string())).unwrap_or_default();
-                        return logs.iter().any(|(l, ids)| l.eq_ignore_ascii_case(ch) && (ids.is_empty() || ids.contains(&id.as_str())));
-                    }
+                if let Some(logs) = p.win {
+                    let id = event.raw.get("EventID").map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string())).unwrap_or_default();
+                    return logs.iter().any(|(l, ids)| l.eq_ignore_ascii_case(ch) && (ids.is_empty() || ids.contains(&id.as_str())));
                 }
             }
             if product == "windows" || product.is_empty() { return true; }
@@ -174,12 +188,35 @@ fn windows_logs(service: &str, category: &str) -> Option<WinLogs> {
 pub struct DetectionEngine {
     rules: Vec<SigmaRule>,
     disabled_overrides: HashMap<String, HashSet<String>>,
+    /// per rule (same index): its log source, prepared
+    prepared: Vec<Prepared>,
+    /// Windows rules by the (lower-case) channel they read, and every rule not tied to one
+    /// channel: a Windows event of a known channel needs only these (in rule order).
+    by_channel: HashMap<String, Vec<usize>>,
+    not_channel_bound: Vec<usize>,
 }
 
 impl DetectionEngine {
     pub fn new(_rules_dir: &str) -> Self {
         tracing::info!("Detection engine: starting empty, rules load from ClickHouse");
-        Self { rules: Vec::new(), disabled_overrides: HashMap::new() }
+        Self { rules: Vec::new(), disabled_overrides: HashMap::new(), prepared: Vec::new(), by_channel: HashMap::new(), not_channel_bound: Vec::new() }
+    }
+
+    /// The rules worth checking for an event, in rule order: for a Windows event of a known
+    /// channel, that channel's rules and the ones not bound to a channel (any other rule's
+    /// log source cannot match it); else all.
+    fn candidates(&self, event: &NormalizedEvent) -> Vec<usize> {
+        let ch = match event.event_source {
+            EventSource::WindowsEvent => event.raw.get("Channel").and_then(|v| v.as_str()),
+            _ => None,
+        };
+        let Some(ch) = ch else { return (0..self.rules.len()).collect() };
+        let mut c: Vec<usize> = self.not_channel_bound.clone();
+        if let Some(bound) = self.by_channel.get(&ch.to_lowercase()) {
+            c.extend_from_slice(bound);
+            c.sort_unstable();
+        }
+        c
     }
 
     pub fn check(&self, event: &NormalizedEvent) -> Vec<DetectionMatch> {
@@ -190,10 +227,12 @@ impl DetectionEngine {
 
     pub fn check_for_tenant(&self, event: &NormalizedEvent, tenant_id: &str) -> Vec<DetectionMatch> {
         let disabled = self.disabled_overrides.get(tenant_id);
-        self.rules.iter()
+        self.candidates(event)
+            .into_iter()
+            .filter(|&i| logsource_matches(&self.prepared[i], event))
+            .map(|i| &self.rules[i])
             .filter(|rule| rule.tenant_id == "*" || rule.tenant_id == tenant_id)
             .filter(|rule| disabled.map_or(true, |d| !d.contains(&rule.id)))
-            .filter(|rule| logsource_matches(&rule.logsource, event))
             .filter_map(|rule| self.eval(rule, event))
             .collect()
     }
@@ -227,7 +266,55 @@ impl DetectionEngine {
 
     pub fn set_rules(&mut self, rules: Vec<SigmaRule>, disabled: HashMap<String, HashSet<String>>) {
         tracing::info!("Rules updated: {} loaded, {} tenants with overrides", rules.len(), disabled.len());
+        self.prepared = rules.iter().map(|r| Prepared::new(&r.logsource)).collect();
+        self.by_channel.clear();
+        self.not_channel_bound.clear();
+        for (i, p) in self.prepared.iter().enumerate() {
+            match p.win {
+                Some(logs) => {
+                    for (ch, _) in logs.iter() {
+                        let v = self.by_channel.entry(ch.to_lowercase()).or_default();
+                        if v.last() != Some(&i) {
+                            v.push(i);
+                        }
+                    }
+                }
+                None => self.not_channel_bound.push(i),
+            }
+        }
         self.rules = rules;
         self.disabled_overrides = disabled;
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+
+    fn rule(y: &str) -> SigmaRule { parse_rule_content(y).unwrap() }
+
+    /// The channel index only skips rules that cannot match: same matches, in rule order.
+    #[test]
+    fn channel_index_keeps_every_match() {
+        let r = |id: &str, ls: &str, sel: &str| rule(&format!("title: {id}\nid: {id}\nlogsource:\n{ls}\ndetection:\n    s:\n        {sel}\n    condition: s\nlevel: low\n"));
+        let rules = vec![
+            r("sysmon-proc", "    product: windows\n    category: process_creation", "Image|endswith: 'x.exe'"),
+            r("security", "    product: windows\n    service: security", "Image|endswith: 'x.exe'"),
+            r("any-windows", "    product: windows", "Image|endswith: 'x.exe'"),
+            r("no-logsource", "    {}", "Image|endswith: 'x.exe'"),
+            r("linux", "    product: linux", "Image|endswith: 'x.exe'"),
+        ];
+        let mut e = DetectionEngine::new("");
+        e.set_rules(rules, HashMap::new());
+        let ev = |ch: &str, id: &str| {
+            let mut n = NormalizedEvent::blank();
+            n.event_source = EventSource::WindowsEvent;
+            n.raw = serde_json::json!({ "Channel": ch, "EventID": id, "Image": "C:\\a\\x.exe" });
+            n
+        };
+        let ids = |n: &NormalizedEvent| e.check_for_tenant(n, "t").into_iter().map(|m| m.rule_id).collect::<Vec<_>>();
+        assert_eq!(ids(&ev("Microsoft-Windows-Sysmon/Operational", "1")), ["sysmon-proc", "any-windows", "no-logsource"]);
+        assert_eq!(ids(&ev("Security", "4688")), ["sysmon-proc", "security", "any-windows", "no-logsource"], "4688 is process creation too");
+        assert_eq!(ids(&ev("Application", "1")), ["any-windows", "no-logsource"]);
     }
 }

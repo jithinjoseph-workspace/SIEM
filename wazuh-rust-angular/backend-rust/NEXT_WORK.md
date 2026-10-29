@@ -326,6 +326,25 @@ Step 1, Windows agents (not in Wazuh; siem-active-response `src/edr.rs` + 3 prog
 - Open: a live isolate on a lab VM (netsh rules, the agent staying connected, release,
   expiry); SOAR playbook actions for automatic kill / quarantine.
 
+Step 2, process telemetry — built 2026-10-29 with Sysmon, not a home-made ETW collector
+(the agent is Wazuh's C binary; Sysmon is Microsoft's signed driver):
+- `siem-api/src/sysmon.xml`, served at `/downloads/windows/sysmon.xml`: every process
+  start (md5, sha256, imphash) and end, remote threads, LSASS access, raw disk reads,
+  drivers, WMI, pipes, tampering, persistence registry keys, executables / scripts written;
+  network, image loads, DNS limited to attack binaries and places; no FileDelete archive,
+  no clipboard, nothing blocked. Checked against Sysmon 15.22's own schema (`-s`).
+- Deploy (Sysmon option): Sysmon only from download.sysinternals.com over HTTPS, run only
+  with a valid Authenticode signature by Microsoft (subject and issuer); installed Sysmon
+  gets `-c` (re-run = config update), temp folder always removed, failure only warns.
+  Dry-run verified on Windows (signature valid; an unsigned exe is refused).
+- Agents page: "Sysmon (24h)" column from `GET /api/v1/agents/telemetry` (tenant DB,
+  `siem_events`, EventChannel + Sysmon channel; 503 = unknown, not "none").
+- Sigma speed: rules prepared once (lower-cased log source, Windows logs) and indexed by
+  channel; large batches split over half the cores. 1440 rules × 40621 real events:
+  2523 → 44798 events/s, same 12 matches.
+- Open: a real install on a lab VM (the dev machine was not changed); the Sysmon config
+  is not pushed by the manager on its own (re-run the deploy command to update it).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

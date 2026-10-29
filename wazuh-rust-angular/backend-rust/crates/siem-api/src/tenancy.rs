@@ -464,7 +464,7 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
 fn agent_id_in_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("/api/v1/agents/").or_else(|| path.strip_prefix("/api/agents/"))?;
     let id = rest.split('/').next().filter(|s| !s.is_empty())?;
-    (id != "enroll" && id != "deactivated").then_some(id)
+    (id != "enroll" && id != "deactivated" && id != "telemetry").then_some(id)
 }
 
 // ───────────────────────── tenant registry sync ─────────────────────────

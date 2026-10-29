@@ -227,6 +227,7 @@
             <th class="text-left">OS &amp; Version</th>
             <th class="text-left">Risk Score</th>
             <th class="text-left">Last Telemetry / Scan</th>
+            <th class="text-left" title="Sysmon events the SIEM received from the agent in the last 24 hours">Sysmon (24h)</th>
             <th class="text-left">Encryption</th>
             <th class="text-left">Patch Status</th>
             <th class="text-right">Actions</th>
@@ -283,6 +284,19 @@
                 <span class="w-2 h-2 rounded-full" [class.bg-emerald-400]="ag.status === 'active'" [class.bg-rose-400]="ag.status !== 'active'"></span>
                 {{ getFormattedKeepalive(ag.last_keepalive) }}
               </div>
+            </td>
+
+            <!-- Sysmon (EDR process telemetry) -->
+            <td class="text-xs font-mono">
+              @if (ag.os_type !== 'windows') {
+                <span class="text-slate-600">—</span>
+              } @else if (sysmonTelemetry() === null) {
+                <span class="text-slate-500" title="The SIEM could not read the agent's events">unknown</span>
+              } @else if (sysmonTelemetry()![ag.id]; as t) {
+                <span class="text-emerald-400" [title]="'Last Sysmon event ' + (t.last | date:'medium')">{{ t.events_24h | number }} events</span>
+              } @else {
+                <span class="text-amber-400" title="No Sysmon events in 24 hours: install Sysmon from Deploy Agent (Windows, Sysmon option)">none</span>
+              }
             </td>
 
             <!-- Encryption -->

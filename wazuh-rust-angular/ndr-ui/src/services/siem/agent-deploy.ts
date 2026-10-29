@@ -23,7 +23,7 @@ export interface DeployParams {
   group: string;
   tenantKey: string;
   winMode: WinInstallMode;
-  /** Windows: also install Sysmon (Microsoft Sysinternals, its default configuration + network connections). */
+  /** Windows: also install Sysmon (Microsoft Sysinternals) with the manager's configuration (`/downloads/windows/sysmon.xml`). */
   winSysmon?: boolean;
   /** Windows: turn on PowerShell script block (4104) and module (4103) logging. */
   winPsLogging?: boolean;
@@ -46,12 +46,21 @@ function windowsLoggingSteps(p: DeployParams): string[] {
     );
   }
   if (p.winSysmon) {
+    // Sysmon only from Microsoft over HTTPS, run only if Microsoft signed it; an installed
+    // Sysmon gets the configuration (-c), so re-running the command updates the fleet's
     steps.push(
-      `if (Get-Service Sysmon64, Sysmon -ErrorAction SilentlyContinue) { Write-Host 'Sysmon is already installed' } else { try { ` +
-      `$z = "$env:TEMP\\Sysmon.zip"; Invoke-WebRequest -UseBasicParsing -Uri 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile $z; ` +
-      `Expand-Archive -Path $z -DestinationPath "$env:TEMP\\Sysmon" -Force; ` +
-      `& "$env:TEMP\\Sysmon\\Sysmon64.exe" -accepteula -i -n | Out-Null; Write-Host 'Sysmon installed (default configuration + network connections)' } ` +
-      `catch { Write-Warning "Sysmon not installed: $_" } }`,
+      `try { $t = Join-Path $env:TEMP ('sysmon-' + [guid]::NewGuid()); New-Item -ItemType Directory -Path $t | Out-Null; try { ` +
+      `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/sysmon.xml" -OutFile "$t\\sysmon.xml"; [xml](Get-Content -Raw "$t\\sysmon.xml") | Out-Null; ` +
+      `$svc = Get-CimInstance Win32_Service -Filter "Name='Sysmon64' OR Name='Sysmon64a' OR Name='Sysmon'" | Select-Object -First 1; ` +
+      `if ($svc) { $exe = $svc.PathName.Trim('"'); $op = '-c' } else { ` +
+      `Invoke-WebRequest -UseBasicParsing -Uri 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile "$t\\Sysmon.zip"; Expand-Archive -Path "$t\\Sysmon.zip" -DestinationPath $t -Force; ` +
+      `$exe = Join-Path $t $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'Sysmon64a.exe' } elseif ([Environment]::Is64BitOperatingSystem) { 'Sysmon64.exe' } else { 'Sysmon.exe' }); $op = '-i' }; ` +
+      `$sig = Get-AuthenticodeSignature $exe; ` +
+      `if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,' -or $sig.SignerCertificate.Issuer -notmatch 'O=Microsoft Corporation,') { throw "$exe is not signed by Microsoft ($($sig.Status))" }; ` +
+      `& $exe -accepteula $op "$t\\sysmon.xml" | Out-Null; if ($LASTEXITCODE -ne 0) { throw "Sysmon $op exited with $LASTEXITCODE (Sysmon 15 or later is needed)" }; ` +
+      `Write-Host $(if ($op -eq '-c') { 'Sysmon configuration updated' } else { 'Sysmon installed with the SIEM configuration' }) ` +
+      `} finally { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue } } ` +
+      `catch { Write-Warning "Sysmon not installed: $_" }`,
     );
   }
   return steps;

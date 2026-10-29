@@ -1,5 +1,5 @@
 #default
-!555 ar.conf
+!801 ar.conf
 restart-ossec0 - restart-ossec.sh - 0
 restart-ossec0 - restart-ossec.cmd - 0
 restart-wazuh0 - restart-ossec.sh - 0
@@ -15,7 +15,13 @@ netsh86400 - netsh.exe - 86400
 route-null600 - route-null.exe - 600
 route-null3600 - route-null.exe - 3600
 route-null86400 - route-null.exe - 86400
-!880 agent.conf
+kill-process0 - kill-process.exe - 0
+quarantine-file0 - quarantine-file.exe - 0
+isolate-host600 - isolate-host.exe - 600
+isolate-host3600 - isolate-host.exe - 3600
+isolate-host86400 - isolate-host.exe - 86400
+release-host0 - isolate-host.exe - 0
+!903 agent.conf
 <agent_config>
 
 </agent_config>

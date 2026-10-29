@@ -1,10 +1,10 @@
 {
   "dossiers": [
     {
-      "id": "dossier-e3eb82ff-036f-4fc9-a88f-499b0ee37df1",
+      "id": "dossier-affe8b8b-5a8f-406b-a357-2f61d0862452",
       "entity_id": "019",
       "entity_name": "linux-node-8651",
-      "entity_ip": "127.0.0.1",
+      "entity_ip": "any",
       "os_type": "linux",
       "primary_intent": "Long-Term APT & Identity Dominance",
       "primary_probability": 0.37,
@@ -89,7 +89,7 @@
           "observed_techniques": [
             "T1098"
           ],
-          "first_observed_at": "2026-10-27T05:46:47.874297100Z"
+          "first_observed_at": "2026-10-29T05:03:33.053570100Z"
         },
         {
           "stage_index": 3,
@@ -137,7 +137,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-93efb28d-35d1-4d49-9f2f-e9d6740a9b85",
+          "id": "act-71f19837-d566-4451-82d7-f34ede69484e",
           "title": "Terminate Suspect Script Process Tree on 'linux-node-8651'",
           "action_type": "process_termination",
           "target_agent_id": "019",
@@ -148,11 +148,11 @@
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
           "status": "pending_approval",
-          "created_at": "2026-10-27T05:46:47.874365500Z"
+          "created_at": "2026-10-29T05:03:33.053629500Z"
         }
       ],
       "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-27T05:46:47.874365500Z"
+      "last_updated_at": "2026-10-29T05:03:33.053629500Z"
     },
     {
       "id": "dossier-6222222e-e0ff-48d1-8676-3c0c8e585d99",

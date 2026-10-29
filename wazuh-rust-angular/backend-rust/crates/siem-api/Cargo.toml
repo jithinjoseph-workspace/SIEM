@@ -55,6 +55,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
 sha2 = "0.10"
+# EDR YARA: the rule engine (shared with the agent program) and the YARA Forge release zip
+siem-active-response = { path = "../siem-active-response" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 ring = "0.17"
 local-ip-address = "0.6"
 sysinfo = "0.30"

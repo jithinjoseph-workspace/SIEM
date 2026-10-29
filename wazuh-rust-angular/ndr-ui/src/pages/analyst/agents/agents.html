@@ -870,10 +870,11 @@
               <button (click)="killProcess()" [disabled]="!(+edrPid() > 4)" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Kill</button>
             </div>
 
-            <label class="block text-xs text-slate-400">Quarantine a file</label>
+            <label class="block text-xs text-slate-400">Scan or quarantine a file</label>
             <div class="flex gap-2">
               <input aria-label="File path" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="C:\Users\...\file.exe"
                 [ngModel]="edrPath()" (ngModelChange)="edrPath.set($event)" />
+              <button (click)="edrAction('yara_scan', { path: edrPath().trim() })" [disabled]="!edrPath().trim()" title="Scan with the YARA rules (a match becomes an alert)" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-40">YARA scan</button>
               <button (click)="quarantineFile()" [disabled]="!edrPath().trim()" class="px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-40">Quarantine</button>
             </div>
             <div class="flex gap-2">

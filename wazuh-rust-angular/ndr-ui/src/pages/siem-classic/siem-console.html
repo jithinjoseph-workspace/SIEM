@@ -1756,12 +1756,18 @@
             <button class="btn btn-warning btn-xs" *ngIf="selectedAlert()!.decoded.file_path" (click)="executeActiveResponse('quarantine_file', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id, { path: selectedAlert()!.decoded.file_path })">
               Quarantine File
             </button>
+            <button class="btn btn-outline btn-xs" *ngIf="selectedAlert()!.decoded.file_path" title="Scan with the YARA rules; a match becomes an alert" (click)="executeActiveResponse('yara_scan', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id, { path: selectedAlert()!.decoded.file_path })">
+              YARA Scan File
+            </button>
             <ng-container *ngIf="alertProcess(selectedAlert()!) as proc">
               <button class="btn btn-outline btn-xs" [title]="proc.image" (click)="executeActiveResponse('kill_process', '' + proc.pid, selectedAlert()!.agent.id, { pid: proc.pid, image: proc.image })">
                 Terminate {{ processName(proc.image) }} (PID {{ proc.pid }})
               </button>
               <button class="btn btn-outline btn-xs" *ngIf="proc.image" [title]="proc.image" (click)="executeActiveResponse('quarantine_file', proc.image, selectedAlert()!.agent.id, { path: proc.image })">
                 Quarantine {{ processName(proc.image) }}
+              </button>
+              <button class="btn btn-outline btn-xs" *ngIf="proc.image" [title]="'YARA scan ' + proc.image" (click)="executeActiveResponse('yara_scan', proc.image, selectedAlert()!.agent.id, { path: proc.image })">
+                YARA Scan {{ processName(proc.image) }}
               </button>
             </ng-container>
           </div>

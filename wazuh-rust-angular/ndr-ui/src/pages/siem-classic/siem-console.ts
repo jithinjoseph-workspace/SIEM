@@ -1158,7 +1158,7 @@ export class SiemConsole implements OnInit, OnDestroy {
   }
 
   /** `extra`: the action's own fields (kill_process: pid + image, quarantine_file: path). */
-  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001', extra: Record<string, unknown> = {}) {
+  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'yara_scan' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001', extra: Record<string, unknown> = {}) {
     if (!target) return;
     this.activeResponseStatus.set(`Dispatching ${action} against ${target} to Agent ${agentId}...`);
 

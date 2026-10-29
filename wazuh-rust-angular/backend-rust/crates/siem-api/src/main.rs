@@ -56,6 +56,7 @@ pub mod investigate;
 pub mod case_ai;
 pub mod process_tree;
 pub mod file_reputation;
+pub mod yara_edr;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
@@ -494,6 +495,7 @@ async fn main() {
     swarm::spawn(state.clone());
     // threat intel feeds from provigil-common (collector + blocklist engine)
     intel::spawn(state.clone());
+    yara_edr::spawn();
     // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
     platform::mark_start();
     sigma::spawn(state.clone());
@@ -779,6 +781,7 @@ async fn main() {
         .route("/api/v1/agents/:id/fim", get(get_agent_fim_handler).post(post_agent_fim_handler))
         .route("/api/v1/agents/:id/sca", get(get_agent_sca_handler))
         .route("/api/v1/agents/:id/process-tree", get(process_tree::get))
+        .route("/api/v1/edr/yara", get(yara_edr::status))
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
@@ -2160,7 +2163,7 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
         "sca_scan" | "syscollector_scan" => {
             return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
         }
-        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
+        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" | "yara_scan" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
         _ => return bad("Unknown action"),
     };
     match r {
@@ -2245,6 +2248,13 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             } else {
                 Err(notes.join("; "))
             }
+        }
+        "yara_scan" => {
+            // read-only on the endpoint: no decision gate
+            let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
+                return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
+            };
+            wazuh_manager::yara_scan(agent_id, &path).await.map(|_| format!("YARA scan of {path} sent to the agent; a match becomes an alert"))
         }
         _ => return reply(StatusCode::BAD_REQUEST, "Unknown action".into()),
     };

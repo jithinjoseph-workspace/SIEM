@@ -76,7 +76,7 @@ fn seen() -> &'static Mutex<HashMap<(String, String, String), Instant>> {
 }
 
 /// Whether this agent's file was reported within the hour (and remembers it now if not).
-fn reported_recently(tenant: &str, agent: &str, hash: &str) -> bool {
+pub(crate) fn reported_recently(tenant: &str, agent: &str, hash: &str) -> bool {
     let mut m = seen().lock().unwrap();
     let now = Instant::now();
     if m.len() >= MAX_SEEN {

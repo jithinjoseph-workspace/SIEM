@@ -222,6 +222,7 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "kill-process.exe",
     "quarantine-file.exe",
     "isolate-host.exe",
+    "yara-scan.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -936,6 +937,11 @@ pub async fn kill_process(agent_id: &str, pid: u32, image: Option<&str>) -> Resu
     send_edr(agent_id, "kill-process0", &args).await
 }
 
+/// EDR: scans `path` with the YARA rules the agent has (`yara_edr.rs`).
+pub async fn yara_scan(agent_id: &str, path: &str) -> Result<(), String> {
+    send_edr(agent_id, "yara-scan0", &[format!("path={path}")]).await
+}
+
 /// EDR: moves `path` into the agent's quarantine folder.
 pub async fn quarantine_file(agent_id: &str, path: &str) -> Result<(), String> {
     send_edr(agent_id, "quarantine-file0", &[format!("path={path}")]).await
@@ -978,7 +984,7 @@ pub async fn release_agent(agent_id: &str) -> Result<(), String> {
 /// The active responses the console can send: (command name, agent executable, takes
 /// a timeout). `route-null` and the EDR ones are Windows only; `release-host` is
 /// isolate-host run with `release`.
-const AR_COMMANDS: [(&str, &str, bool); 7] = [
+const AR_COMMANDS: [(&str, &str, bool); 8] = [
     ("firewall-drop", "firewall-drop", true),
     ("netsh", "netsh.exe", true),
     ("route-null", "route-null.exe", true),
@@ -986,6 +992,7 @@ const AR_COMMANDS: [(&str, &str, bool); 7] = [
     ("quarantine-file", "quarantine-file.exe", false),
     ("isolate-host", "isolate-host.exe", true),
     ("release-host", "isolate-host.exe", false),
+    ("yara-scan", "yara-scan.exe", false),
 ];
 
 /// The `<command>` and `<active-response>` blocks of one console command in the
@@ -1506,13 +1513,20 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
     // besides the Wazuh ruleset
     let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
-    let matched = tokio::task::spawn_blocking(move || {
+    let (matched, scans) = tokio::task::spawn_blocking(move || {
         let mut m = crate::sigma::check(&tagged);
         m.extend(crate::file_reputation::check(&tagged));
-        m
+        let (yara_alerts, scans) = crate::yara_edr::check(&tagged);
+        m.extend(yara_alerts);
+        (m, scans)
     })
     .await
     .unwrap_or_default();
+    for (_, agent, path) in scans {
+        if let Err(e) = yara_scan(&agent, &path).await {
+            warn!("YARA scan of {path} on agent {agent}: {e}");
+        }
+    }
     if !matched.is_empty() {
         let (alerts, json): (Vec<Alert>, Vec<serde_json::Value>) = matched
             .into_iter()

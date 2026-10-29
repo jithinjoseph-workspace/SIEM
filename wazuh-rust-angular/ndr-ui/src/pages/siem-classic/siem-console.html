@@ -1753,17 +1753,52 @@
             <button class="btn btn-danger btn-xs" *ngIf="selectedAlert()!.decoded.src_ip" (click)="executeActiveResponse('block_ip', selectedAlert()!.decoded.src_ip!, selectedAlert()!.agent.id)">
               Block IP in Firewall (netsh)
             </button>
-            <button class="btn btn-warning btn-xs" *ngIf="selectedAlert()!.decoded.file_path" (click)="executeActiveResponse('quarantine_file', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id)">
+            <button class="btn btn-warning btn-xs" *ngIf="selectedAlert()!.decoded.file_path" (click)="executeActiveResponse('quarantine_file', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id, { path: selectedAlert()!.decoded.file_path })">
               Quarantine File
             </button>
-            <button class="btn btn-outline btn-xs" *ngIf="selectedAlert()!.decoded.user" (click)="executeActiveResponse('disable_account', selectedAlert()!.decoded.user!, selectedAlert()!.agent.id)">
-              Disable User Account (net user)
-            </button>
-            <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('kill_process', '4688', selectedAlert()!.agent.id)">
-              Terminate Process
-            </button>
+            <ng-container *ngIf="alertProcess(selectedAlert()!) as proc">
+              <button class="btn btn-outline btn-xs" [title]="proc.image" (click)="executeActiveResponse('kill_process', '' + proc.pid, selectedAlert()!.agent.id, { pid: proc.pid, image: proc.image })">
+                Terminate {{ processName(proc.image) }} (PID {{ proc.pid }})
+              </button>
+              <button class="btn btn-outline btn-xs" *ngIf="proc.image" [title]="proc.image" (click)="executeActiveResponse('quarantine_file', proc.image, selectedAlert()!.agent.id, { path: proc.image })">
+                Quarantine {{ processName(proc.image) }}
+              </button>
+            </ng-container>
           </div>
         </div>
+
+        <!-- Process tree (EDR): from the agent's Sysmon events around the alert -->
+        <ng-container *ngIf="alertProcessGuid(selectedAlert()!)">
+          <div class="section-title mt-4">Process Tree</div>
+          <div class="text-xs text-dim" *ngIf="processTreeState() === 'loading'">Reading the agent's Sysmon events…</div>
+          <div class="text-xs text-rose" *ngIf="processTreeState() === 'error'">The agent's events cannot be read right now.</div>
+          <div class="text-xs text-dim" *ngIf="processTreeState() === 'not-found'">The process's start is not in the agent's Sysmon events of the 24 hours before the alert; what it started is shown below.</div>
+          <div class="process-tree mono text-xs" *ngIf="processTree()?.length">
+            <div *ngFor="let n of processTree()" class="pt-row" [style.padding-left.px]="8 + n.depth * 16"
+                 [class.pt-focal]="n.role === 'focal'" [class.pt-unknown]="!n.known">
+              <div class="pt-line" (click)="expandedProcess.set(expandedProcess() === n.guid ? null : n.guid)">
+                <span class="text-dim">{{ n.depth ? '└─' : '' }}</span>
+                <b [title]="n.image">{{ processName(n.image) }}</b>
+                <span class="text-dim" *ngIf="n.pid">PID {{ n.pid }}</span>
+                <span class="text-dim" *ngIf="n.user">{{ n.user }}</span>
+                <span class="text-dim" *ngIf="n.started">{{ n.started | date:'HH:mm:ss' }}</span>
+                <span class="text-dim" *ngIf="n.ended">ended {{ n.ended | date:'HH:mm:ss' }}</span>
+                <span class="text-dim" *ngIf="!n.known">(started before the window)</span>
+                <span *ngFor="let k of activityKinds(n)" class="pt-chip">{{ k[0] }} {{ k[1] }}</span>
+              </div>
+              <div class="pt-cmd text-dim" [title]="n.command_line">{{ n.command_line }}</div>
+              <div *ngIf="expandedProcess() === n.guid" class="pt-detail">
+                <div *ngIf="n.image">Image: {{ n.image }}</div>
+                <div *ngIf="n.hashes">Hashes: {{ n.hashes }}</div>
+                <div *ngFor="let a of n.activity?.samples">{{ a.ts | date:'HH:mm:ss' }} · {{ a.kind }} · {{ a.detail }}</div>
+                <div class="flex gap-2 mt-1" *ngIf="n.pid && !n.ended && n.known">
+                  <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('kill_process', '' + n.pid, selectedAlert()!.agent.id, { pid: n.pid, image: n.image })">Terminate PID {{ n.pid }}</button>
+                  <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('quarantine_file', n.image, selectedAlert()!.agent.id, { path: n.image })">Quarantine {{ processName(n.image) }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
 
         <div class="section-title mt-4">Raw Log Payload</div>
         <pre class="raw-log-box mono">{{ selectedAlert()!.full_log }}</pre>

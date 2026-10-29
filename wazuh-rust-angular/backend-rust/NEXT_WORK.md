@@ -345,6 +345,23 @@ Step 2, process telemetry — built 2026-10-29 with Sysmon, not a home-made ETW 
 - Open: a real install on a lab VM (the dev machine was not changed); the Sysmon config
   is not pushed by the manager on its own (re-run the deploy command to update it).
 
+Step 3, process tree per alert — built 2026-10-29 (`siem-api/src/process_tree.rs`):
+- `GET /api/v1/agents/:id/process-tree?guid=<ProcessGuid>&at=<ms>` (permission
+  `siem-alerts`, the agent's tenant checked like every `/api/v1/agents/:id` route): Sysmon
+  starts / ends (1, 5) of the agent from 24 h before to 1 h after the alert → ancestors
+  (the oldest one's parent from its start event), the alert's process, descendants (depth
+  first); each with its network, DNS, file, registry, image-load, injection, pipe events
+  (counts + first 25). Bounded: 50k starts, 32 ancestors, 300 descendants, 5k activity rows.
+- Console → alert drawer: Process Tree for alerts on a Sysmon process event (Wazuh or
+  Sigma); expand a process for its path, hashes, activity, and Terminate / Quarantine.
+- Fixed in the drawer: "Terminate Process" sent the fixed PID "4688" and Quarantine sent
+  no path (both refused by the manager while the UI said "Executed"); now the real PID +
+  image / path, and the manager's real answer is shown. "Disable User Account" removed
+  (no such action on Wazuh agents).
+- Verified live on seeded events (tree, activity, other agent / tenant, bad GUID, permission).
+- Open: Security 4688 alerts (no GUIDs) have no tree; big tenants: see the shortcut in
+  process_tree.rs (Sysmon events in their own table ordered by agent).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

@@ -447,6 +447,9 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-rules")
     } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") {
         Some("siem-alerts")
+    } else if agent_sub("process-tree") {
+        // investigating an alert
+        Some("siem-alerts")
     } else if starts("/api/v1/siem/predictions") {
         Some("siem-mitre")
     } else if starts("/api/v1/siem/retrospective") {

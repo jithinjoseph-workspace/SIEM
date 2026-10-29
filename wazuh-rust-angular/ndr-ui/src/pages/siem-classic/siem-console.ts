@@ -32,7 +32,8 @@ import {
   DynamicParser,
   ParserStatsSummary,
   UnmatchedFingerprintSummary,
-  ParserTestResult
+  ParserTestResult,
+  ProcessNode
 } from './core/models/siem.models';
 import { AmixHomeComponent } from './amix/amix-home.component';
 import { CyberThreatGlobeComponent } from './components/cyber-threat-globe/cyber-threat-globe.component';
@@ -925,10 +926,57 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   openAlertDetails(alert: Alert) {
     this.selectedAlert.set(alert);
+    this.loadProcessTree(alert);
   }
 
   closeAlertDetails() {
     this.selectedAlert.set(null);
+    this.processTree.set(null);
+  }
+
+  /** The alert's process tree (EDR): null = none for this alert (not a Sysmon process event). */
+  processTree = signal<ProcessNode[] | null>(null);
+  processTreeState = signal<'idle' | 'loading' | 'error' | 'not-found'>('idle');
+  expandedProcess = signal<string | null>(null);
+
+  /** The Sysmon process the alert is about (its event's ProcessGuid, or the source process's). */
+  alertProcessGuid(alert: Alert): string | null {
+    const ed = alert.data?.['win']?.['eventdata'] ?? {};
+    const g = ed.processGuid || ed.sourceProcessGuid;
+    return typeof g === 'string' && /^\{?[0-9a-fA-F-]{32,38}\}?$/.test(g) ? g : null;
+  }
+
+  loadProcessTree(alert: Alert) {
+    this.processTree.set(null);
+    this.expandedProcess.set(null);
+    const guid = this.alertProcessGuid(alert);
+    if (!guid) { this.processTreeState.set('idle'); return; }
+    this.processTreeState.set('loading');
+    this.siemService.getProcessTree(alert.agent.id, guid, new Date(alert.timestamp).getTime() || Date.now()).subscribe({
+      next: r => {
+        if (this.selectedAlert()?.id !== alert.id) return;
+        this.processTree.set(r.nodes ?? []);
+        this.processTreeState.set(r.found ? 'idle' : 'not-found');
+      },
+      error: () => this.processTreeState.set('error'),
+    });
+  }
+
+  processName(path: string): string {
+    return (path || '').split('\\').pop() || path || '(unknown)';
+  }
+
+  activityKinds(n: ProcessNode): [string, number][] {
+    return Object.entries(n.activity?.counts ?? {});
+  }
+
+  /** The alert's process (from the tree, else its own event data): what Terminate acts on. */
+  alertProcess(alert: Alert): { pid: number; image: string } | null {
+    const f = this.processTree()?.find(n => n.role === 'focal' && n.pid);
+    if (f?.pid) return { pid: f.pid, image: f.image };
+    const ed = alert.data?.['win']?.['eventdata'] ?? {};
+    const pid = Number(ed.processId);
+    return pid > 4 ? { pid, image: String(ed.image ?? '').replace(/\\\\/g, '\\') } : null;
   }
 
   runSimulation(scenario: string) {
@@ -1109,7 +1157,8 @@ export class SiemConsole implements OnInit, OnDestroy {
     }
   }
 
-  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'disable_account' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001') {
+  /** `extra`: the action's own fields (kill_process: pid + image, quarantine_file: path). */
+  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001', extra: Record<string, unknown> = {}) {
     if (!target) return;
     this.activeResponseStatus.set(`Dispatching ${action} against ${target} to Agent ${agentId}...`);
 
@@ -1121,13 +1170,15 @@ export class SiemConsole implements OnInit, OnDestroy {
         command_id: 'ar-' + Date.now(),
         agent_id: agentId,
         action: action,
-        target: target
+        target: target,
+        ...extra
       })
     })
-      .then(res => res.json())
-      .then(() => {
-        this.activeResponseStatus.set(`✓ Executed: ${action.toUpperCase()} on '${target}' queued for Agent ${agentId}!`);
-        setTimeout(() => this.activeResponseStatus.set(null), 5000);
+      .then(async res => {
+        const body = await res.json().catch(() => ({}));
+        // the manager's own answer (sent, refused by the decision gate, invalid...)
+        this.activeResponseStatus.set(res.ok ? `✓ ${body.message || `${action} sent to Agent ${agentId}`}` : `[REFUSED] ${body.message || `HTTP ${res.status}`}`);
+        setTimeout(() => this.activeResponseStatus.set(null), 8000);
       })
       .catch(err => {
         this.activeResponseStatus.set(`[ERROR] Failed to queue active response: ${err}`);

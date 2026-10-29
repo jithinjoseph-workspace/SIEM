@@ -54,6 +54,7 @@ pub mod decisions;
 pub mod intel;
 pub mod investigate;
 pub mod case_ai;
+pub mod process_tree;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
@@ -776,6 +777,7 @@ async fn main() {
         .route("/api/v1/agents/:id/syscollector/netiface", get(get_agent_netiface_handler))
         .route("/api/v1/agents/:id/fim", get(get_agent_fim_handler).post(post_agent_fim_handler))
         .route("/api/v1/agents/:id/sca", get(get_agent_sca_handler))
+        .route("/api/v1/agents/:id/process-tree", get(process_tree::get))
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))

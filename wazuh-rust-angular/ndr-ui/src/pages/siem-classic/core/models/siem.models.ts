@@ -41,6 +41,25 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
+  /** the event's decoded data (Windows: `win.system`, `win.eventdata`) */
+  data?: Record<string, any>;
+}
+
+/** One process of an alert's process tree (GET /api/v1/agents/:id/process-tree). */
+export interface ProcessNode {
+  guid: string;
+  pid: number | null;
+  image: string;
+  command_line: string;
+  user: string;
+  hashes: string;
+  started: number | null;
+  ended: number | null;
+  role: 'ancestor' | 'focal' | 'descendant';
+  depth: number;
+  /** false: only known from its child's start event (started before the window) */
+  known: boolean;
+  activity?: { counts: Record<string, number>; samples: { ts: number; kind: string; detail: string }[] };
 }
 
 export interface Agent {

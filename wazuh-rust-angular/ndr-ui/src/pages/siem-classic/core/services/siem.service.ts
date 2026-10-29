@@ -19,6 +19,7 @@ import {
   UnmatchedFingerprintSummary,
   ParserTestResult
 } from '../../models/siem.models';
+import { ProcessNode } from '../models/siem.models';
 import { SiemAgentsService } from './siem-agents.service';
 import { SiemRulesService } from './siem-rules.service';
 import { SiemLogsService } from './siem-logs.service';
@@ -96,6 +97,11 @@ export class SiemService {
   /** AI analysis of an event or alert (POST /api/v1/ai/analyze, needs GROQ_API_KEY on the manager). */
   analyzeEvent(req: any): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/ai/analyze`, req);
+  }
+
+  /** The process tree around a Sysmon process (the alert's), from the agent's events. */
+  getProcessTree(agentId: string, guid: string, at: number): Observable<{ found: boolean; nodes: ProcessNode[] }> {
+    return this.http.get<{ found: boolean; nodes: ProcessNode[] }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/process-tree`, { params: { guid, at } });
   }
 
   /** On-demand FIM scan on the agent (agents accept 'fim_scan' / 'syscheck restart'). */

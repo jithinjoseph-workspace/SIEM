@@ -57,7 +57,11 @@ function windowsLoggingSteps(p: DeployParams): string[] {
       `$exe = Join-Path $t $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'Sysmon64a.exe' } elseif ([Environment]::Is64BitOperatingSystem) { 'Sysmon64.exe' } else { 'Sysmon.exe' }); $op = '-i' }; ` +
       `$sig = Get-AuthenticodeSignature $exe; ` +
       `if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,' -or $sig.SignerCertificate.Issuer -notmatch 'O=Microsoft Corporation,') { throw "$exe is not signed by Microsoft ($($sig.Status))" }; ` +
-      `& $exe -accepteula $op "$t\\sysmon.xml" | Out-Null; if ($LASTEXITCODE -ne 0) { throw "Sysmon $op exited with $LASTEXITCODE (Sysmon 15 or later is needed)" }; ` +
+      // Sysmon writes UTF-16 to stderr (an error under 'Stop'): drop the NULs, keep its last
+      // lines as the reason of a failure
+      `$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; ` +
+      `$o = (& $exe -accepteula $op "$t\\sysmon.xml" 2>&1 | Out-String) -replace [char]0, ''; $ErrorActionPreference = $eap; ` +
+      `if ($LASTEXITCODE -ne 0) { throw "Sysmon $op exited with $($LASTEXITCODE): $((($o -split '\\r?\\n') | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' / ')" }; ` +
       `Write-Host $(if ($op -eq '-c') { 'Sysmon configuration updated' } else { 'Sysmon installed with the SIEM configuration' }) ` +
       `} finally { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue } } ` +
       `catch { Write-Warning "Sysmon not installed: $_" }`,

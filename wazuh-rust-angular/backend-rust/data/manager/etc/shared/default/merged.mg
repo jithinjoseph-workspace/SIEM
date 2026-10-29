@@ -21,7 +21,7 @@ isolate-host600 - isolate-host.exe - 600
 isolate-host3600 - isolate-host.exe - 3600
 isolate-host86400 - isolate-host.exe - 86400
 release-host0 - isolate-host.exe - 0
-!880 agent.conf
+!903 agent.conf
 <agent_config>
 
 </agent_config>

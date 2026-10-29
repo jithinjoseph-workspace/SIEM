@@ -5,68 +5,22 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { SiemService } from './core/services/siem.service';
-import {
-  AgentDeployService, DeployParams, defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand,
-  isValidAgentName, linuxDeployScript, startCommand, windowsBatScript, windowsInstallScript,
-} from '../../services/siem/agent-deploy';
-import {
-  Agent,
-  Alert,
-  RawEvent,
-  Rule,
-  SiemStats,
-  AiAnalysisResponse,
-  AiAnalysisRequest,
-  AiChatMessage,
-  AgentInventory,
-  ScaCheckResult,
-  AgentDetailTab,
-  MitreTacticColumn,
-  MitreTechniqueSummary,
-  ComplianceFramework,
-  ComplianceRequirement,
-  VulnerabilityDetectionItem,
-  FimSummaryRecord,
-  LogtestResult,
-  ActiveResponseRecord,
-  DynamicParser,
-  ParserStatsSummary,
-  UnmatchedFingerprintSummary,
-  ParserTestResult,
-  ProcessNode
-} from './core/models/siem.models';
-import { AmixHomeComponent } from './amix/amix-home.component';
+import { Agent, Alert, RawEvent, Rule, SiemStats, AiAnalysisResponse, AiAnalysisRequest, AiChatMessage, ProcessNode } from './core/models/siem.models';
 import { CyberThreatGlobeComponent } from './components/cyber-threat-globe/cyber-threat-globe.component';
 
-type ActiveTab =
-  | 'dashboard'
-  | 'alerts'
-  | 'telemetry'
-  | 'agents'
-  | 'mitre'
-  | 'vulnerabilities'
-  | 'compliance'
-  | 'fim'
-  | 'rules'
-  | 'parsers'
-  | 'logtest'
-  | 'active_response'
-  | 'simulator'
-  | 'copilot'
-  | 'amix';
+/** The console's own tabs; agents, MITRE, vulnerabilities, compliance, FIM, logtest,
+ *  active response and parsers are their own pages (the analyst menu). */
+type ActiveTab = 'dashboard' | 'alerts' | 'telemetry' | 'rules' | 'simulator' | 'copilot';
 
 /** Route path of each console tab (see app.routes.ts). */
 export const CONSOLE_TAB_PATHS: Record<string, string> = {
-  dashboard: 'overview', alerts: 'alerts', telemetry: 'telemetry', agents: 'agents', rules: 'rules',
-  simulator: 'simulator', copilot: 'copilot', mitre: 'mitre', vulnerabilities: 'vulnerabilities',
-  compliance: 'compliance', fim: 'fim', logtest: 'logtest', active_response: 'active-response',
-  parsers: 'parsers', amix: 'xdr-3d',
+  dashboard: 'overview', alerts: 'alerts', telemetry: 'telemetry', rules: 'rules', simulator: 'simulator', copilot: 'copilot',
 };
 
 @Component({
   selector: 'app-siem-console',
   standalone: true,
-  imports: [CommonModule, FormsModule, AmixHomeComponent, CyberThreatGlobeComponent],
+  imports: [CommonModule, FormsModule, CyberThreatGlobeComponent],
   templateUrl: './siem-console.html',
   styleUrls: ['./siem-console.css']
 })
@@ -77,7 +31,6 @@ export class SiemConsole implements OnInit, OnDestroy {
   private router = inject(Router);
   /** Opened as a single ndr-ui page (route data `tab`): no banner, no tab bar. */
   embedded = signal<boolean>(false);
-  private agentDeploy = inject(AgentDeployService);
   private subs = new Subscription();
 
   // State signals
@@ -98,14 +51,6 @@ export class SiemConsole implements OnInit, OnDestroy {
   rules = signal<Rule[]>([]);
   rawEvents = signal<RawEvent[]>([]);
   isConnected = signal<boolean>(false);
-
-  // Agent Fleet filters & details
-  agentSearchQuery = signal<string>('');
-  agentOsFilter = signal<'all' | 'windows' | 'linux' | 'macos'>('all');
-  agentStatusFilter = signal<'all' | 'active' | 'disconnected'>('all');
-  selectedAgent = signal<Agent | null>(null);
-  selectedAgentTab = signal<AgentDetailTab>('specs');
-  agentActionFeedback = signal<string | null>(null);
 
   // Telemetry signals
   selectedSource = signal<string>('all');
@@ -141,158 +86,6 @@ export class SiemConsole implements OnInit, OnDestroy {
   isCopilotThinking = signal<boolean>(false);
   copiedCmdIndex = signal<number | null>(null);
   activeResponseStatus = signal<string | null>(null);
-  isFimScanning = signal<boolean>(false);
-  lastFimScanResult = signal<{ time: string; status: string } | null>(null);
-
-  // --- Wazuh Parity: MITRE ATT&CK Matrix ---
-  mitreMatrix = signal<MitreTacticColumn[]>([]);
-  mitreSearchQuery = signal<string>('');
-  selectedMitreTechnique = signal<MitreTechniqueSummary | null>(null);
-  totalMitreAlerts = signal<number>(0);
-
-  // --- Wazuh Parity: Vulnerabilities (CVE) ---
-  vulnerabilities = signal<VulnerabilityDetectionItem[]>([]);
-  vulnStats = signal<{ total: number; critical: number; high: number; medium: number; low: number }>({
-    total: 0,
-    critical: 0,
-    high: 0,
-    medium: 0,
-    low: 0
-  });
-  vulnSeverityFilter = signal<string>('all');
-  vulnSearchQuery = signal<string>('');
-  isScanningVulns = signal<boolean>(false);
-
-  // --- Wazuh Parity: Regulatory Compliance ---
-  complianceFrameworks = signal<ComplianceFramework[]>([]);
-  selectedFramework = signal<string>('PCI_DSS');
-  complianceSearchQuery = signal<string>('');
-
-  // --- Wazuh Parity: FIM (File Integrity Monitoring) ---
-  fimStats = signal<{ total: number; added: number; modified: number; deleted: number }>({
-    total: 0,
-    added: 0,
-    modified: 0,
-    deleted: 0
-  });
-  fimRecords = signal<FimSummaryRecord[]>([]);
-  selectedFimRecord = signal<FimSummaryRecord | null>(null);
-  fimSearchQuery = signal<string>('');
-  fimActionFilter = signal<'all' | 'Added' | 'Modified' | 'Deleted'>('all');
-
-  // --- Wazuh Parity: Interactive Logtest Console ---
-  logtestInput = signal<string>(
-    'Oct 03 14:22:01 ubuntu-server sshd[28412]: Failed password for invalid user admin from 192.168.1.100 port 51234 ssh2'
-  );
-  logtestOutput = signal<string>('');
-  logtestResult = signal<LogtestResult | null>(null);
-  isTestingLog = signal<boolean>(false);
-
-  // --- Wazuh Parity: Active Response Management ---
-  activeResponses = signal<ActiveResponseRecord[]>([]);
-  arTargetIp = signal<string>('');
-  arAgentId = signal<string>('');
-  arFeedback = signal<string | null>(null);
-  arDuration = signal<number>(3600);
-  arReason = signal<string>('Manual operator block: brute-force / unauthorized access');
-  isBlocking = signal<boolean>(false);
-
-  // --- Method 2: AI Parser Studio & Dynamic Rules ---
-  parsers = signal<DynamicParser[]>([]);
-  parserStats = signal<ParserStatsSummary | null>(null);
-  unmatchedFingerprints = signal<UnmatchedFingerprintSummary[]>([]);
-  selectedParser = signal<DynamicParser | null>(null);
-  parserSearchQuery = signal<string>('');
-  studioInputSamples = signal<string>(
-    '2026-10-04 10:15:30 AUTH_FAIL user=attacker src=198.51.100.99 reason=bad_pass\n2026-10-04 10:15:32 AUTH_FAIL user=admin src=203.0.113.15 reason=account_locked'
-  );
-  studioCustomPrompt = signal<string>('');
-  studioPattern = signal<string>('');
-  studioTestLog = signal<string>('2026-10-04 10:16:00 AUTH_FAIL user=charlie src=192.168.1.50 reason=timeout');
-  studioTestResult = signal<ParserTestResult | null>(null);
-  studioIsSynthesizing = signal<boolean>(false);
-  studioIsTesting = signal<boolean>(false);
-  studioMessage = signal<string | null>(null);
-
-
-  // Agent Deployment Wizard State (Mirroring Wazuh Dashboard register-agent)
-  showDeployModal = signal<boolean>(false);
-  deployOs = signal<'windows' | 'linux' | 'macos'>('linux');
-  deployLinuxPkgType = signal<'deb-amd64' | 'rpm-amd64' | 'deb-arm64' | 'rpm-arm64' | 'universal'>('deb-amd64');
-  deployManagerUrl = signal<string>(defaultManagerUrl());
-  deployAgentName = signal<string>('linux-node-01');
-  deployGroup = signal<string>('default');
-  winInstallMode = signal<'auto-elevate' | 'admin-ps'>('auto-elevate');
-  copied = signal<boolean>(false);
-  copiedStart = signal<boolean>(false);
-
-  deployTenantKey = signal<string>('');
-  deployTenantId = signal<string>('');
-  deployKeyError = signal<string | null>(null);
-  private deployParams = computed<DeployParams>(() => ({
-    os: this.deployOs(),
-    managerUrl: this.deployManagerUrl(),
-    agentName: this.deployAgentName(),
-    group: this.deployGroup(),
-    tenantKey: this.deployTenantKey(),
-    winMode: this.winInstallMode(),
-  }));
-  deployNameValid = computed(() => isValidAgentName(this.deployAgentName().trim()));
-  deployInstallCommand = computed(() =>
-    this.deployOs() === 'macos'
-      ? '# There is no macOS agent build on this manager yet.'
-      : this.deployNameValid() ? installCommand(this.deployParams()) : '# Fix the agent name (2-128 chars: letters, digits, . _ -)');
-
-  deployStartCommand = computed(() => startCommand(this.deployParams()));
-
-  selectDeployOs(os: 'windows' | 'linux' | 'macos') {
-    this.deployOs.set(os);
-    this.deployAgentName.set(generateAgentName(os, this.agents().map((a: any) => a.name)));
-  }
-
-  openDeployModal() {
-    this.selectDeployOs(this.deployOs());
-    this.showDeployModal.set(true);
-    this.copied.set(false);
-    this.copiedStart.set(false);
-    this.deployKeyError.set(null);
-    this.agentDeploy.tenantKey().subscribe(r => {
-      this.deployTenantKey.set(r.key);
-      this.deployTenantId.set(r.tenant);
-      this.deployKeyError.set(r.error ?? null);
-    });
-  }
-
-  closeDeployModal() {
-    this.showDeployModal.set(false);
-  }
-
-  copyDeployCommand() {
-    navigator.clipboard.writeText(this.deployInstallCommand()).then(() => {
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 3000);
-    });
-  }
-
-  copyDeployStartCommand() {
-    navigator.clipboard.writeText(this.deployStartCommand()).then(() => {
-      this.copiedStart.set(true);
-      setTimeout(() => this.copiedStart.set(false), 3000);
-    });
-  }
-
-  downloadDeployScript() {
-    const p = this.deployParams();
-    if (this.deployOs() === 'windows') {
-      downloadText(`install-${this.deployAgentName().trim()}.ps1`, windowsInstallScript(p) + '\r\n', 'text/plain');
-    } else {
-      downloadText(`install-${this.deployAgentName().trim()}.sh`, linuxDeployScript(p), 'text/x-shellscript');
-    }
-  }
-
-  downloadBatScript() {
-    downloadText(`install-${this.deployAgentName().trim()}.bat`, windowsBatScript(this.deployParams()), 'application/x-bat');
-  }
 
   // Computed filtered alerts
   filteredAlerts = computed(() => {
@@ -322,91 +115,6 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   // --- Wazuh Parity Computed Properties ---
 
-  filteredMitreMatrix = computed(() => {
-    const matrix = this.mitreMatrix();
-    const q = this.mitreSearchQuery().toLowerCase().trim();
-    if (!q) return matrix;
-
-    return matrix.map(col => ({
-      ...col,
-      techniques: col.techniques.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q)
-      )
-    }));
-  });
-
-  selectedComplianceFramework = computed(() => {
-    const list = this.complianceFrameworks();
-    const sel = this.selectedFramework();
-    return list.find(f => f.name === sel) || list[0] || null;
-  });
-
-  filteredRequirements = computed(() => {
-    const fw = this.selectedComplianceFramework();
-    if (!fw) return [];
-    const q = this.complianceSearchQuery().toLowerCase().trim();
-    if (!q) return fw.requirements;
-    return fw.requirements.filter(r =>
-      r.id.toLowerCase().includes(q) ||
-      r.title.toLowerCase().includes(q) ||
-      r.description.toLowerCase().includes(q)
-    );
-  });
-
-  filteredVulnerabilities = computed(() => {
-    const list = this.vulnerabilities();
-    const sev = this.vulnSeverityFilter().toLowerCase();
-    const q = this.vulnSearchQuery().toLowerCase().trim();
-
-    return list.filter(v => {
-      if (sev !== 'all' && v.severity.toLowerCase() !== sev) return false;
-      if (!q) return true;
-      return (
-        v.cve.toLowerCase().includes(q) ||
-        v.title.toLowerCase().includes(q) ||
-        v.package_name.toLowerCase().includes(q) ||
-        v.agent_id.toLowerCase().includes(q)
-      );
-    });
-  });
-
-  filteredFimRecords = computed(() => {
-    const list = this.fimRecords();
-    const act = this.fimActionFilter();
-    const q = this.fimSearchQuery().toLowerCase().trim();
-
-    return list.filter(r => {
-      if (act !== 'all' && r.action !== act) return false;
-      if (!q) return true;
-      return (
-        r.path.toLowerCase().includes(q) ||
-        r.agent_name.toLowerCase().includes(q) ||
-        r.agent_id.toLowerCase().includes(q) ||
-        (r.md5?.toLowerCase().includes(q) ?? false) ||
-        (r.sha256?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  });
-
-  activeBlockedCount = computed(() => {
-    return this.activeResponses().filter(r => r.status === 'Active').length;
-  });
-
-  filteredParsers = computed(() => {
-    const list = this.parsers();
-    const q = this.parserSearchQuery().toLowerCase().trim();
-    if (!q) return list;
-    return list.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.pattern.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.fingerprint_signature.toLowerCase().includes(q) ||
-      p.fields.some(f => f.name.toLowerCase().includes(q))
-    );
-  });
-
   filteredRawEvents = computed(() => {
     const list = this.rawEvents();
     const src = this.selectedSource();
@@ -427,153 +135,6 @@ export class SiemConsole implements OnInit, OnDestroy {
     });
   });
 
-  fleetStats = computed(() => {
-    const ags = this.agents();
-    const total = ags.length;
-    const active = ags.filter(a => a.status === 'active').length;
-    const disconnected = ags.filter(a => a.status !== 'active').length;
-    const windows = ags.filter(a => a.os_type === 'windows').length;
-    const linux = ags.filter(a => a.os_type === 'linux').length;
-    const macos = ags.filter(a => a.os_type === 'macos').length;
-    return { total, active, disconnected, windows, linux, macos };
-  });
-
-  filteredAgents = computed(() => {
-    const list = this.agents();
-    const q = this.agentSearchQuery().toLowerCase().trim();
-    const os = this.agentOsFilter();
-    const st = this.agentStatusFilter();
-
-    return list.filter(a => {
-      if (os !== 'all' && a.os_type !== os) return false;
-      if (st !== 'all' && a.status !== st) return false;
-      if (!q) return true;
-      return (
-        a.name.toLowerCase().includes(q) ||
-        a.id.toLowerCase().includes(q) ||
-        a.ip.includes(q) ||
-        a.os.toLowerCase().includes(q) ||
-        a.version.toLowerCase().includes(q)
-      );
-    });
-  });
-
-  /** The opened agent's inventory (syscollector, from wazuh-db); null until it loads or when it has none. */
-  selectedAgentInventory = signal<AgentInventory | null>(null);
-
-  /** The opened agent's latest SCA scan (wazuh-db). */
-  selectedAgentSca = signal<{ policy_id?: string; policy_name?: string; score: number; passed: number; failed: number; not_applicable?: number; checks: ScaCheckResult[] } | null>(null);
-  selectedAgentScaChecks = computed<ScaCheckResult[]>(() => this.selectedAgentSca()?.checks ?? []);
-
-  selectedAgentFimEvents = computed(() => {
-    const agent = this.selectedAgent();
-    if (!agent) return [];
-    const evs = this.rawEvents();
-    return evs.filter(e => 
-      e.agent_id === agent.id && 
-      ((typeof e.source === 'string' && e.source.toLowerCase().includes('fim')) || e.location?.includes('syscheck'))
-    );
-  });
-
-  selectedAgentFimSummary = computed(() => {
-    const agent = this.selectedAgent();
-    if (!agent) {
-      return {
-        totalChanges: 0,
-        modified: 0,
-        deleted: 0,
-        added: 0,
-        lastScanTime: null as string | null,
-        statusText: 'Baseline verified: 0 unauthorized file/registry modifications detected.',
-        badgeText: 'ACTIVE BASELINE',
-        badgeClass: 'badge-emerald'
-      };
-    }
-
-    const fimEvents = this.selectedAgentFimEvents();
-    const manualResult = this.lastFimScanResult();
-
-    // Scan through fim events to identify file changes
-    const fileChangeEvents = fimEvents.filter(e => {
-      const loc = e.location || '';
-      const msg = e.message || '';
-      const action = e.metadata?.['action'];
-      if (loc === 'syscheck/scan_info' || msg.includes('FIM_SCAN_START')) {
-        return false;
-      }
-      if (msg.includes('FIM_SCAN_END') && !action) {
-        return false;
-      }
-      return (
-        action === 'modified' ||
-        action === 'deleted' ||
-        action === 'added' ||
-        msg.includes(' modified:') ||
-        msg.includes(' modified ') ||
-        msg.includes(' deleted') ||
-        msg.includes(' added:') ||
-        msg.includes(' added ')
-      );
-    });
-
-    const modified = fileChangeEvents.filter(e => e.metadata?.['action'] === 'modified' || e.message?.includes(' modified:') || e.message?.includes(' modified ')).length;
-    const deleted = fileChangeEvents.filter(e => e.metadata?.['action'] === 'deleted' || e.message?.includes(' deleted')).length;
-    const added = fileChangeEvents.filter(e => e.metadata?.['action'] === 'added' || e.message?.includes(' added:') || e.message?.includes(' added ')).length;
-    const totalChanges = modified + deleted + added;
-
-    // Determine timestamp
-    let lastScanTime = manualResult?.time;
-    if (!lastScanTime) {
-      const latestScanEnd = fimEvents.find(e => e.message?.includes('FIM_SCAN_END') || e.metadata?.['event_type'] === 'FIM_SCAN_END');
-      if (latestScanEnd?.timestamp) {
-        try {
-          lastScanTime = new Date(latestScanEnd.timestamp).toLocaleTimeString();
-        } catch {
-          lastScanTime = latestScanEnd.timestamp;
-        }
-      } else if (fimEvents.length > 0 && fimEvents[0]?.timestamp) {
-        try {
-          lastScanTime = new Date(fimEvents[0].timestamp).toLocaleTimeString();
-        } catch {
-          lastScanTime = fimEvents[0].timestamp;
-        }
-      }
-    }
-
-    let statusText: string;
-    let badgeText: string;
-    let badgeClass: string;
-
-    if (totalChanges > 0) {
-      badgeText = 'TAMPERING DETECTED';
-      badgeClass = 'badge-rose';
-      const parts: string[] = [];
-      if (modified > 0) parts.push(`${modified} modified`);
-      if (deleted > 0) parts.push(`${deleted} deleted`);
-      if (added > 0) parts.push(`${added} added`);
-      statusText = `Integrity alert: ${totalChanges} file/registry change${totalChanges > 1 ? 's' : ''} detected (${parts.join(', ')}).`;
-    } else if (fimEvents.length === 0) {
-      badgeText = 'NO FIM DATA';
-      badgeClass = 'badge-warning';
-      statusText = 'No FIM events from this agent among the loaded events yet.';
-    } else {
-      badgeText = 'ACTIVE BASELINE';
-      badgeClass = 'badge-emerald';
-      statusText = 'Baseline verified: 0 unauthorized file/registry modifications detected.';
-    }
-
-    return {
-      totalChanges,
-      modified,
-      deleted,
-      added,
-      lastScanTime,
-      statusText,
-      badgeText,
-      badgeClass
-    };
-  });
-
   ngOnInit() {
     const tab = this.route.snapshot.data?.['tab'] as ActiveTab | undefined;
     if (tab) {
@@ -581,8 +142,6 @@ export class SiemConsole implements OnInit, OnDestroy {
       this.switchTab(tab);
     }
     this.fetchData();
-    // Resolve the real LAN IP from the backend so deploy commands work from any client
-    fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
 
     // Subscribe to real-time WebSocket connection status
     this.subs.add(
@@ -635,131 +194,6 @@ export class SiemConsole implements OnInit, OnDestroy {
     });
 
     this.loadRawEvents();
-    this.loadMitreMatrix();
-    this.loadCompliance();
-    this.loadVulnerabilities();
-    this.loadFimSummary();
-    this.loadActiveResponses();
-    this.loadParsers();
-  }
-
-  loadMitreMatrix() {
-    this.siemService.getMitreMatrix().subscribe({
-      next: (res) => {
-        this.mitreMatrix.set(res.matrix);
-        this.totalMitreAlerts.set(res.total_mitre_alerts);
-      },
-      error: (e) => console.warn('Could not fetch MITRE matrix', e)
-    });
-  }
-
-  loadCompliance() {
-    this.siemService.getCompliance().subscribe({
-      next: (res) => {
-        this.complianceFrameworks.set(res.frameworks);
-      },
-      error: (e) => console.warn('Could not fetch compliance', e)
-    });
-  }
-
-  loadVulnerabilities() {
-    this.siemService.getVulnerabilities().subscribe({
-      next: (res) => {
-        this.vulnerabilities.set(res.vulnerabilities);
-        this.vulnStats.set({
-          total: res.total,
-          critical: res.critical_count,
-          high: res.high_count,
-          medium: res.medium_count,
-          low: res.low_count
-        });
-      },
-      error: (e) => console.warn('Could not fetch vulnerabilities', e)
-    });
-  }
-
-  triggerVulnScanNow() {
-    this.isScanningVulns.set(true);
-    const targetAgent = this.selectedAgent()?.id || '001';
-    this.siemService.triggerVulnScan(targetAgent).subscribe({
-      next: () => {
-        this.isScanningVulns.set(false);
-        this.loadVulnerabilities();
-        this.fetchData();
-      },
-      error: () => {
-        this.isScanningVulns.set(false);
-        this.loadVulnerabilities();
-      }
-    });
-  }
-
-  loadFimSummary() {
-    this.siemService.getFimSummary().subscribe({
-      next: (res) => {
-        this.fimRecords.set(res.recent_changes);
-        this.fimStats.set({
-          total: res.total_monitored_files,
-          added: res.added_count,
-          modified: res.modified_count,
-          deleted: res.deleted_count
-        });
-      },
-      error: (e) => console.warn('Could not fetch FIM summary', e)
-    });
-  }
-
-  runLogtestAction() {
-    const raw = this.logtestInput().trim();
-    if (!raw) return;
-    this.isTestingLog.set(true);
-    this.siemService.runLogtest(raw).subscribe({
-      next: (res) => {
-        this.isTestingLog.set(false);
-        this.logtestResult.set(res.result);
-        this.logtestOutput.set(res.output);
-      },
-      error: (err) => {
-        this.isTestingLog.set(false);
-        this.logtestOutput.set(`Logtest Error: ${err?.message || 'Failed to evaluate log through engine'}`);
-      }
-    });
-  }
-
-  loadActiveResponses() {
-    this.siemService.getActiveResponses().subscribe({
-      next: (res) => {
-        this.activeResponses.set(res.records);
-      },
-      error: (e) => console.warn('Could not fetch active responses', e)
-    });
-  }
-
-  blockIpAction() {
-    const ip = this.arTargetIp().trim();
-    const agent = this.arAgentId() || (this.agents().find(a => a.status === 'active') || this.agents()[0])?.id;
-    if (!ip || !agent) return;
-    this.isBlocking.set(true);
-    this.arFeedback.set(null);
-    this.siemService.blockIp(ip, this.arDuration(), this.arReason(), agent).subscribe({
-      next: (r: any) => {
-        this.isBlocking.set(false);
-        this.arFeedback.set(`✓ ${r?.message || 'Block sent'}`);
-        this.loadActiveResponses();
-      },
-      error: (err) => {
-        this.isBlocking.set(false);
-        this.arFeedback.set(`✗ ${err?.error?.message || 'request failed'}`);
-        this.loadActiveResponses();
-      }
-    });
-  }
-
-  unblockIpAction(ip: string) {
-    this.siemService.unblockIp(ip).subscribe({
-      next: () => this.loadActiveResponses(),
-      error: () => this.loadActiveResponses()
-    });
   }
 
   loadRawEvents() {
@@ -806,122 +240,6 @@ export class SiemConsole implements OnInit, OnDestroy {
       return;
     }
     this.activeTab.set(tab);
-    if (tab === 'mitre') this.loadMitreMatrix();
-    if (tab === 'compliance') this.loadCompliance();
-    if (tab === 'vulnerabilities') this.loadVulnerabilities();
-    if (tab === 'fim') this.loadFimSummary();
-    if (tab === 'active_response') this.loadActiveResponses();
-    if (tab === 'parsers') this.loadParsers();
-  }
-
-  // --- Dynamic Parser Engine Methods (Method 2) ---
-  loadParsers() {
-    this.siemService.getParsers().subscribe({
-      next: (list) => this.parsers.set(list),
-      error: (e) => console.warn('Could not fetch dynamic parsers', e)
-    });
-    this.siemService.getParserStats().subscribe({
-      next: (s) => this.parserStats.set(s),
-      error: (e) => console.warn('Could not fetch parser stats', e)
-    });
-    this.siemService.getUnmatchedFingerprints().subscribe({
-      next: (u) => this.unmatchedFingerprints.set(u),
-      error: (e) => console.warn('Could not fetch unmatched fingerprints', e)
-    });
-  }
-
-  triggerSynthesize(fp?: number, samples?: string[]) {
-    const rawSamples = samples && samples.length > 0 
-      ? samples 
-      : this.studioInputSamples().split('\n').map(s => s.trim()).filter(s => s.length > 0);
-
-    if (rawSamples.length === 0) {
-      this.studioMessage.set('Please provide at least 1 log sample for synthesis.');
-      return;
-    }
-
-    this.studioIsSynthesizing.set(true);
-    this.studioMessage.set('Analyzing structural signature & synthesizing reusable parser with AI...');
-
-    this.siemService.synthesizeParser({
-      fingerprint: fp,
-      samples: rawSamples,
-      instructions: this.studioCustomPrompt().trim() || undefined
-    }).subscribe({
-      next: (res) => {
-        this.studioIsSynthesizing.set(false);
-        if (res.parser) {
-          this.selectedParser.set(res.parser);
-          this.studioPattern.set(res.parser.pattern);
-          this.studioMessage.set(`Successfully synthesized parser "${res.parser.name}" with 100% sample verification!`);
-          this.loadParsers();
-          if (res.parser.sample_logs && res.parser.sample_logs.length > 0) {
-            this.studioTestLog.set(res.parser.sample_logs[0]);
-            this.runParserTest();
-          }
-        }
-      },
-      error: (err) => {
-        this.studioIsSynthesizing.set(false);
-        this.studioMessage.set(`Synthesis failed: ${err.error?.error || err.message}`);
-      }
-    });
-  }
-
-  runParserTest() {
-    const pattern = this.studioPattern().trim();
-    const log = this.studioTestLog().trim();
-    if (!pattern || !log) return;
-
-    this.studioIsTesting.set(true);
-    this.siemService.testParser(pattern, log).subscribe({
-      next: (res) => {
-        this.studioIsTesting.set(false);
-        this.studioTestResult.set(res.result || null);
-      },
-      error: (err) => {
-        this.studioIsTesting.set(false);
-        this.studioTestResult.set({
-          success: false,
-          matches_count: 0,
-          total_samples: 1,
-          extracted_fields: {},
-          execution_time_us: 0,
-          error: err.error?.error || err.message
-        });
-      }
-    });
-  }
-
-  toggleParserStatus(parser: DynamicParser) {
-    const newStatus = parser.status === 'Active' ? 'Disabled' : 'Active';
-    const updated = { ...parser, status: newStatus as any };
-    this.siemService.updateParser(parser.id, updated).subscribe({
-      next: () => this.loadParsers(),
-      error: (e) => console.error('Failed to toggle parser status:', e)
-    });
-  }
-
-  deleteParser(id: string) {
-    if (!confirm('Are you sure you want to permanently delete this learned parser?')) return;
-    this.siemService.deleteParser(id).subscribe({
-      next: () => {
-        if (this.selectedParser()?.id === id) {
-          this.selectedParser.set(null);
-        }
-        this.loadParsers();
-      },
-      error: (e) => console.error('Failed to delete parser:', e)
-    });
-  }
-
-  selectParserForTesting(p: DynamicParser) {
-    this.selectedParser.set(p);
-    this.studioPattern.set(p.pattern);
-    if (p.sample_logs && p.sample_logs.length > 0) {
-      this.studioTestLog.set(p.sample_logs[0]);
-    }
-    this.runParserTest();
   }
 
   openAlertDetails(alert: Alert) {
@@ -1071,90 +389,9 @@ export class SiemConsole implements OnInit, OnDestroy {
     });
   }
 
-  openAgentDetails(agent: Agent) {
-    this.selectedAgent.set(agent);
-    this.selectedAgentTab.set('specs');
-    this.selectedAgentInventory.set(null);
-    this.selectedAgentSca.set(null);
-    this.siemService.getAgentInventory(agent.id).subscribe({
-      next: inv => { if (this.selectedAgent()?.id === agent.id) this.selectedAgentInventory.set(inv); },
-      error: () => {}
-    });
-    this.http.get<any>(`/api/v1/agents/${encodeURIComponent(agent.id)}/sca`).subscribe({
-      next: r => { if (this.selectedAgent()?.id === agent.id) this.selectedAgentSca.set(r); },
-      error: () => {}
-    });
-  }
-
-  closeAgentDetails() {
-    this.selectedAgent.set(null);
-  }
-
-  setAgentDetailTab(tab: AgentDetailTab) {
-    this.selectedAgentTab.set(tab);
-  }
-
-  restartAgentFromFleet(agent: Agent) {
-    this.executeActiveResponse('restart_agent', agent.id, agent.id);
-    this.agentActionFeedback.set(`Restart signal successfully dispatched to Agent ${agent.name} (${agent.id})!`);
-    setTimeout(() => this.agentActionFeedback.set(null), 4000);
-  }
-
-  triggerFimScanForAgent(agent: Agent) {
-    this.isFimScanning.set(true);
-    this.agentActionFeedback.set(`Dispatching on-demand FIM scan to ${agent.name} (${agent.id})...`);
-    this.siemService.restartSyscheck(agent.id).subscribe({
-      next: () => {
-        setTimeout(() => {
-          this.fetchData();
-          this.loadRawEvents();
-          this.isFimScanning.set(false);
-          this.lastFimScanResult.set({
-            time: new Date().toLocaleTimeString(),
-            status: 'FIM scan cycle executed.'
-          });
-          const summary = this.selectedAgentFimSummary();
-          if (summary.totalChanges > 0) {
-            this.agentActionFeedback.set(`⚠️ FIM Alert on ${agent.name}: ${summary.totalChanges} unauthorized file change(s) detected!`);
-          } else {
-            this.agentActionFeedback.set(`✓ FIM scan completed successfully on ${agent.name}! Baseline verified.`);
-          }
-          setTimeout(() => this.agentActionFeedback.set(null), 5000);
-        }, 3000);
-      },
-      error: () => {
-        this.isFimScanning.set(false);
-        this.agentActionFeedback.set(`Failed to trigger FIM scan on ${agent.name}`);
-        setTimeout(() => this.agentActionFeedback.set(null), 4000);
-      }
-    });
-  }
-
-  triggerScaAuditForAgent(agent: Agent) {
-    this.siemService.sendAgentCommand(agent.id, 'sca_scan', 'all').subscribe();
-    this.agentActionFeedback.set(`SCA CIS Benchmark compliance scan command dispatched to Agent ${agent.name} (${agent.id}).`);
-    setTimeout(() => this.agentActionFeedback.set(null), 4000);
-  }
-
-  jumpToAgentTelemetry(agent: Agent) {
-    this.telemetryQuery.set(agent.id);
-    this.selectedSource.set('all');
-    this.activeTab.set('telemetry');
-    this.closeAgentDetails();
-  }
-
-  jumpToAgentAlerts(agent: Agent) {
-    this.searchQuery.set(agent.name);
-    this.selectedSeverity.set('all');
-    this.activeTab.set('alerts');
-    this.closeAgentDetails();
-  }
-
+  /** A host on the globe: its page in the Agent Fleet. */
   onGlobeInspect(agentId: string) {
-    const ag = this.agents().find(a => a.id === agentId);
-    if (ag) {
-      this.openAgentDetails(ag);
-    }
+    this.router.navigate(['/analyst/agents'], { queryParams: { agent: agentId } });
   }
 
   /** `extra`: the action's own fields (kill_process: pid + image, quarantine_file: path). */

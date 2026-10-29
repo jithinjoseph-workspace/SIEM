@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Bell, FileText, ShieldAlert, Search,
   Database, Settings, Network, Zap, FolderSearch, Bot, Server,
   ChevronDown, Map as MapIcon, Shield, RotateCcw,
-  Radio, BarChart2, ScrollText, ListChecks,
+  ScrollText, ListChecks,
   Cpu, Bug, ShieldCheck, FileCheck, Terminal, Monitor, Globe,
   ListFilter, EyeOff, Crosshair, Gauge, Brain, Share2, Target, Sparkles, Scale, ScanSearch, FileSearch,
   LucideAngularModule
@@ -165,22 +165,9 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'Wazuh Rules',         route: '/analyst/siem-classic/console/rules',      icon: ShieldAlert, permission: 'siem-rules' },
       { label: 'Attack Simulator',    route: '/analyst/siem-classic/console/simulator',  icon: Zap,         permission: 'siem-console' },
       { label: 'AI Copilot',          route: '/analyst/siem-classic/console/copilot',    icon: Bot,         permission: 'siem-console' },
-      { label: '3D XDR Matrix',       route: '/analyst/siem-classic/console/xdr-3d',     icon: Shield,      permission: 'siem-console' },
       { label: 'Full SIEM Console',   route: '/analyst/siem-classic/console',            icon: Monitor,     permission: 'siem-console' },
     ];
     const consoleItems: NavItem[] = hasSiem ? consoleCandidates.filter(i => has(i.permission!)) : [];
-
-    // The standalone frontend-angular pages, kept as they were.
-    const classicCandidates: NavItem[] = [
-      { label: 'Classic Overview',    route: '/analyst/siem-classic/overview',  icon: LayoutDashboard, permission: 'siem-dashboard' },
-      { label: 'Classic Dashboard',   route: '/analyst/siem-classic/dashboard', icon: BarChart2,   permission: 'siem-dashboard' },
-      { label: 'Classic Agents',      route: '/analyst/siem-classic/agents',    icon: Server,      permission: 'siem-agents' },
-      { label: 'Classic Alerts',      route: '/analyst/siem-classic/alerts',    icon: Bell,        permission: 'siem-alerts' },
-      { label: 'Classic Logs',        route: '/analyst/siem-classic/logs',      icon: ScrollText,  permission: 'siem-logs' },
-      { label: 'Classic Rules',       route: '/analyst/siem-classic/rules',     icon: ShieldAlert, permission: 'siem-rules' },
-      { label: 'Classic Sources',     route: '/analyst/siem-classic/sources',   icon: Radio,       permission: 'siem-sources' },
-    ];
-    const classicItems: NavItem[] = hasSiem ? classicCandidates.filter(i => has(i.permission!)) : [];
 
     // XDR Correlated Incidents — available when both NDR & SIEM are enabled
     if (hasNdr && hasSiem && has('alerts')) {
@@ -193,7 +180,6 @@ export class Sidebar implements OnInit, OnDestroy {
       ...(siemItems.length      ? [{ section: 'SIEM & HOSTS', collapsed: false, items: siemItems   }] : []),
       ...(siemAiItems.length    ? [{ section: 'SIEM AI & RESPONSE', collapsed: false, items: siemAiItems }] : []),
       ...(consoleItems.length   ? [{ section: 'SIEM CONSOLE', collapsed: false, items: consoleItems }] : []),
-      ...(classicItems.length   ? [{ section: 'SIEM CLASSIC PAGES', collapsed: true, items: classicItems }] : []),
       ...(networkItems.length   ? [{ section: 'NETWORK',   collapsed: false, items: networkItems   }] : []),
       ...(enforceItems.length   ? [{ section: 'ENFORCE',   collapsed: false, items: enforceItems   }] : []),
       ...(systemItems.length    ? [{ section: 'SYSTEM',    collapsed: false, items: systemItems    }] : []),

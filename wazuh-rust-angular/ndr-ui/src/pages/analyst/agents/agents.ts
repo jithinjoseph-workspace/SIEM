@@ -1,6 +1,6 @@
 import { Component, OnInit, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import {
   LucideAngularModule,
@@ -27,6 +27,7 @@ type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fi
 export class Agents implements OnInit {
   private siem = inject(SiemService);
   private auth = inject(AuthService);
+  private route = inject(ActivatedRoute);
   /** Upgrades are for the tenant's admins (the API checks it too). */
   canUpgrade = this.auth.isAdmin() || this.auth.isTenantAdmin();
   /** Enrolling agents: tenant admins, or analysts the admin gave "Deploy agents". */
@@ -197,6 +198,10 @@ export class Agents implements OnInit {
       next: (list) => {
         this.agents.set(list);
         this.loading.set(false);
+        // ?agent=<id> (from the console's globe and other pages): that agent's details
+        const wanted = this.route.snapshot.queryParamMap.get('agent');
+        const ag = wanted ? list.find(a => a.id === wanted) : undefined;
+        if (ag && this.selectedAgent()?.id !== ag.id) this.openAgentDetails(ag);
       },
       error: () => this.loading.set(false)
     });

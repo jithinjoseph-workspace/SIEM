@@ -27,7 +27,19 @@ export interface DeployParams {
   winSysmon?: boolean;
   /** Windows: turn on PowerShell script block (4104) and module (4103) logging. */
   winPsLogging?: boolean;
+  /** Windows: the audit policy the detections need (logons, lockouts, account changes, process starts with command line). */
+  winAuditPolicy?: boolean;
 }
+
+/** Audit subcategories by GUID (their names are translated in non-English Windows): [GUID, what, success, failure]. */
+const AUDIT_SUBCATEGORIES: [string, string, boolean, boolean][] = [
+  ['{0CCE923F-69AE-11D9-BED3-505054503030}', 'Credential Validation', true, true],
+  ['{0CCE9215-69AE-11D9-BED3-505054503030}', 'Logon', true, true],
+  ['{0CCE9217-69AE-11D9-BED3-505054503030}', 'Account Lockout', false, true],
+  ['{0CCE9235-69AE-11D9-BED3-505054503030}', 'User Account Management', true, true],
+  ['{0CCE9237-69AE-11D9-BED3-505054503030}', 'Security Group Management', true, false],
+  ['{0CCE922B-69AE-11D9-BED3-505054503030}', 'Process Creation', true, false],
+];
 
 /**
  * The optional Windows logging steps; they run after the agent is installed and started,
@@ -43,6 +55,19 @@ function windowsLoggingSteps(p: DeployParams): string[] {
       `New-Item -Path "$k\\ModuleLogging\\ModuleNames" -Force | Out-Null; Set-ItemProperty -Path "$k\\ModuleLogging" -Name EnableModuleLogging -Value 1 -Type DWord; ` +
       `Set-ItemProperty -Path "$k\\ModuleLogging\\ModuleNames" -Name '*' -Value '*'; Write-Host 'PowerShell script block and module logging turned on' } ` +
       `catch { Write-Warning "PowerShell logging not changed: $_" }`,
+    );
+  }
+  if (p.winAuditPolicy) {
+    // subcategory settings override the legacy category ones (CIS 26013), else they may not apply
+    const sets = AUDIT_SUBCATEGORIES.map(([guid, , ok, fail]) =>
+      `& auditpol /set /subcategory:"${guid}"${ok ? ' /success:enable' : ''}${fail ? ' /failure:enable' : ''} | Out-Null; if ($LASTEXITCODE -ne 0) { throw "auditpol ${guid} exited with $LASTEXITCODE" }; `).join('');
+    steps.push(
+      `try { Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name SCENoApplyLegacyAuditPolicy -Value 1 -Type DWord; ` +
+      sets +
+      `$k = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit'; New-Item -Path $k -Force | Out-Null; ` +
+      `Set-ItemProperty -Path $k -Name ProcessCreationIncludeCmdLine_Enabled -Value 1 -Type DWord; ` +
+      `Write-Host 'Windows audit policy set: ${AUDIT_SUBCATEGORIES.map(a => a[1]).join(', ')} (with command lines)' } ` +
+      `catch { Write-Warning "Audit policy not changed: $_" }`,
     );
   }
   if (p.winSysmon) {

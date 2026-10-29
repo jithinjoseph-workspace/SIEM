@@ -57,6 +57,7 @@ pub mod case_ai;
 pub mod process_tree;
 pub mod file_reputation;
 pub mod yara_edr;
+pub mod posture_store;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
@@ -495,7 +496,8 @@ async fn main() {
     swarm::spawn(state.clone());
     // threat intel feeds from provigil-common (collector + blocklist engine)
     intel::spawn(state.clone());
-    yara_edr::spawn();
+    yara_edr::spawn(state.clone());
+    posture_store::spawn(state.clone());
     // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
     platform::mark_start();
     sigma::spawn(state.clone());
@@ -3335,6 +3337,11 @@ async fn get_agent_fim_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        // kept in ClickHouse; brought up to date first (two cheap queries when nothing changed)
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::fim(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
         let r = wazuh_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
         return Json(r).into_response();
     }
@@ -3449,6 +3456,10 @@ async fn get_agent_sca_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::sca(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
         let r = wazuh_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
         return Json(r).into_response();
     }

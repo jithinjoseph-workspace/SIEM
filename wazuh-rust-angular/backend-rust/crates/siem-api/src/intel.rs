@@ -356,12 +356,47 @@ pub fn spawn(state: AppState) {
             tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
         }
     });
+    let s2 = state.clone();
     tokio::spawn(async move {
         loop {
             engine().refresh().await;
+            if s2.db.is_connected() {
+                persist_malware_bazaar(&s2).await;
+            }
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }
     });
+}
+
+/// MalwareBazaar's hashes (the engine keeps only what it fetched since start) into
+/// `siem_threat_intel` with the other feeds: kept over restarts, in the lookup index, 90 days.
+async fn persist_malware_bazaar(state: &AppState) {
+    let client = state.db.tenant_client(crate::tenancy::DEFAULT_TENANT);
+    let known: HashSet<String> = client.query("SELECT ioc_value FROM siem_threat_intel WHERE ioc_type = 'hash'").fetch_all::<String>().await.unwrap_or_default().into_iter().collect();
+    let today = chrono::Utc::now().format("%Y-%m-%d");
+    let new: Vec<ThreatIntelEntry> = engine()
+        .malicious_hashes
+        .iter()
+        .filter(|h| !known.contains(h.as_str()))
+        .map(|h| ThreatIntelEntry {
+            source: "malwarebazaar".into(),
+            attack_type: "malware".into(),
+            severity: "HIGH".into(),
+            ioc_type: "hash".into(),
+            ioc_value: h.clone(),
+            description: "MalwareBazaar malware sample".into(),
+            threat_pattern: format!("first_seen:{today}"),
+        })
+        .collect();
+    let added = state.db.insert_threat_intel_entries(&new).await;
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).format("%Y-%m-%d");
+    if let Err(e) = client.query("DELETE FROM siem_threat_intel WHERE source = 'malwarebazaar' AND threat_pattern < ?").bind(format!("first_seen:{cutoff}")).execute().await {
+        tracing::warn!("MalwareBazaar samples older than 90 days not removed: {e}");
+    }
+    if added > 0 {
+        tracing::info!("MalwareBazaar: {added} new hashes stored in ClickHouse");
+        let _ = reload(state).await;
+    }
 }
 
 // ───────────────────────── API ─────────────────────────

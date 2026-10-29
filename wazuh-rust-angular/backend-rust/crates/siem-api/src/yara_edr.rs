@@ -48,6 +48,8 @@ pub fn version_of(text: &str) -> String {
     Sha256::digest(text.as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// The rule set is kept in ClickHouse (`siem_yara_rules`, encoded); this file is the
+/// manager's cache of it, used when ClickHouse is not reachable at start.
 fn store() -> PathBuf {
     crate::data_file_path("yara").join("current.rules")
 }
@@ -100,15 +102,38 @@ fn set(text: &str, rules: usize, source: &str) {
     *rule_set().write().unwrap() = RuleSet { version: version_of(text), rules, updated_at: chrono::Utc::now().timestamp().max(0) as u64, source: source.into(), last_error: None };
 }
 
-/// Installs the last rule set at start, then a new one every day (an hour after a failure).
-pub fn spawn() {
-    tokio::spawn(async {
-        if let Some(text) = std::fs::read_to_string(store()).ok().and_then(|s| siem_active_response::yara::decode_rules(&s).ok()) {
+/// Whether the rule set was stored in ClickHouse.
+async fn save(state: &crate::AppState, text: &str) -> bool {
+    let doc = json!({ "rules": siem_active_response::yara::encode_rules(text), "version": version_of(text) }).to_string();
+    match state.db.put_doc(crate::tenancy::DEFAULT_TENANT, crate::db::DocTable::YaraRules, "current", &doc).await {
+        Ok(()) => true,
+        Err(e) => {
+            warn!("YARA rules not stored in ClickHouse: {e}");
+            false
+        }
+    }
+}
+
+/// The stored rule set (ClickHouse, else the cache file) and whether ClickHouse had it.
+async fn load(state: &crate::AppState) -> Option<(String, bool)> {
+    let doc = state.db.doc(crate::tenancy::DEFAULT_TENANT, crate::db::DocTable::YaraRules, "current").await.ok().flatten();
+    let from_db = doc.and_then(|d| serde_json::from_str::<Value>(&d).ok()).and_then(|v| v["rules"].as_str().map(String::from));
+    let in_db = from_db.is_some();
+    let stored = from_db.or_else(|| std::fs::read_to_string(store()).ok())?;
+    Some((siem_active_response::yara::decode_rules(&stored).ok()?, in_db))
+}
+
+/// Installs the stored rule set at start, then a new one every day (an hour after a failure).
+pub fn spawn(state: crate::AppState) {
+    tokio::spawn(async move {
+        let mut in_db = false;
+        if let Some((text, stored)) = load(&state).await {
             let rules = text.matches("\nrule ").count() + text.matches("\nprivate rule ").count();
             match install(&text) {
-                Ok(()) => set(&text, rules, "last download"),
+                Ok(()) => set(&text, rules, "stored"),
                 Err(e) => warn!("YARA rules: {e}"),
             }
+            in_db = stored || save(&state, &text).await;
         }
         tokio::time::sleep(Duration::from_secs(60)).await;
         loop {
@@ -118,6 +143,9 @@ pub fn spawn() {
                     match install(&text) {
                         Ok(()) => {
                             set(&text, rules, SOURCE);
+                            if changed || !in_db {
+                                in_db = save(&state, &text).await;
+                            }
                             if changed {
                                 info!("YARA rules: {rules} rules (version {}) sent to the agents", version_of(&text));
                             }

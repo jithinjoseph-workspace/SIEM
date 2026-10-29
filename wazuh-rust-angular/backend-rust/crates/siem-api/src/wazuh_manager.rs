@@ -1039,9 +1039,14 @@ fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
 
 /// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
 pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
+    agent_fim_upto(agent_id, 1000).await
+}
+
+/// The agent's FIM entries, the `max` most recently changed (`total`: all of them).
+pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
     let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await?.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()).unwrap_or(0);
-    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", 1000).await;
+    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", max).await;
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|mut r| {

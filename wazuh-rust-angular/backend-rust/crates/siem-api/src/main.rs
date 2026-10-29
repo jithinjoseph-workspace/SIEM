@@ -347,6 +347,7 @@ async fn main() {
 
     // Red Swarm audit trail (history, gaps, draft rules): ClickHouse is the master copy.
     redswarm_store::load(&state).await;
+    reload_redswarm_rules(&state);
 
     // Start Red Swarm Continuous Background Swarm Engine
     {
@@ -885,6 +886,7 @@ async fn main() {
         .route("/api/v1/redswarm/history", get(get_redswarm_history_handler))
         .route("/api/v1/redswarm/gaps", get(get_redswarm_gaps_handler))
         .route("/api/v1/redswarm/gaps/:id/apply-rule", post(post_redswarm_apply_rule_handler))
+        .route("/api/v1/redswarm/gaps/:id/reject", post(post_redswarm_reject_rule_handler))
         .route("/api/v1/redswarm/rules/:id/rollback", post(post_redswarm_rollback_rule_handler))
         .route("/api/v1/redswarm/kill-switch", post(post_redswarm_kill_switch_handler))
         .route("/api/v1/redswarm/heatmap", get(get_redswarm_heatmap_handler))
@@ -1116,7 +1118,8 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
-            if !a.data.contains_key("risk_fabric") {
+            // a Red Swarm simulation must not raise the real agent's risk
+            if !a.data.contains_key("risk_fabric") && !a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
                 state.risk_fabric.evaluate_alert(&mut a);
             }
             a
@@ -2149,6 +2152,7 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
         "sca_scan" | "syscollector_scan" => {
             return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
         }
+        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
         _ => return bad("Unknown action"),
     };
     match r {
@@ -2157,6 +2161,91 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             Json(serde_json::json!({ "status": "sent", "message": m })).into_response()
         }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+/// EDR actions on a Windows Wazuh agent (siem-active-response's kill-process,
+/// quarantine-file, isolate-host). Each passes the decision gate on the agent's
+/// address (recorded; a protected host is refused), except lifting an isolation.
+/// The agent logs the outcome to active-responses.log, which comes back as events.
+async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, action: &str, payload: &serde_json::Value) -> axum::response::Response {
+    let reply = |code: StatusCode, m: String| (code, Json(serde_json::json!({ "status": if code.is_success() { "sent" } else { "error" }, "message": m }))).into_response();
+    if !agent_is_windows(state, agent_id) {
+        return reply(StatusCode::BAD_REQUEST, "Endpoint response (kill, quarantine, isolate) runs on Windows agents for now".into());
+    }
+    let str_of = |k: &str| payload.get(k).and_then(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
+    let ip = state.agents.read().unwrap().get(agent_id).map(|a| a.ip.clone()).unwrap_or_default();
+    let gate = |name: &'static str, params: serde_json::Value| {
+        let ip = ip.clone();
+        let tenant = tenant.clone();
+        async move { decisions::gate_manual(state, ctx, &tenant, name, &ip, params).await }
+    };
+    let r: Result<String, String> = match action {
+        "kill_process" => {
+            let Some(pid) = payload.get("pid").and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))).filter(|p| *p > 4 && *p <= u32::MAX as u64) else {
+                return reply(StatusCode::BAD_REQUEST, "A process id (pid) is required".into());
+            };
+            let image = str_of("image");
+            if let Err(m) = gate("manual_kill_process", serde_json::json!({ "agent_id": agent_id, "pid": pid, "image": image })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::kill_process(agent_id, pid as u32, image.as_deref()).await.map(|_| format!("Kill of process {pid} sent to the agent"))
+        }
+        "quarantine_file" => {
+            let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
+                return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
+            };
+            if let Err(m) = gate("manual_quarantine_file", serde_json::json!({ "agent_id": agent_id, "path": path })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::quarantine_file(agent_id, &path).await.map(|_| format!("Quarantine of {path} sent to the agent"))
+        }
+        "restore_file" => {
+            let Some(id) = str_of("quarantine_id").filter(|i| i.len() <= 64 && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) else {
+                return reply(StatusCode::BAD_REQUEST, "The quarantine id (from the agent's quarantine event) is required".into());
+            };
+            if let Err(m) = gate("manual_restore_file", serde_json::json!({ "agent_id": agent_id, "quarantine_id": id })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::restore_file(agent_id, &id).await.map(|_| format!("Restore of quarantined file {id} sent to the agent"))
+        }
+        // through response.rs, so it is listed and lifted with the other isolations
+        "isolate_host" => {
+            let target = if ip.parse::<std::net::IpAddr>().is_ok() { ip.clone() } else { "0.0.0.0".to_string() };
+            if let Err(m) = gate("manual_isolate", serde_json::json!({ "agent_id": agent_id, "enforcement": "agent" })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            let reason = str_of("reason").unwrap_or_else(|| format!("Isolated by {}", ctx.username));
+            response::isolate(state, &tenant, &target, Some("agent"), None, "", &ctx.username, &reason, Some(agent_id))
+                .await
+                .map(|(i, _)| format!("Isolation sent to the agent (record {}); only the manager stays reachable, for at most 24 h", i.id))
+        }
+        "release_host" => {
+            let recs = response::active_agent_isolations(state, &tenant, agent_id).await;
+            let mut notes = Vec::new();
+            for id in &recs {
+                if let Err(e) = response::unisolate(state, &tenant, id).await {
+                    notes.push(e);
+                }
+            }
+            // also with no record (an isolation from before a restart): the release is harmless
+            if recs.is_empty() {
+                wazuh_manager::release_agent(agent_id).await.map(|_| "Release sent to the agent".to_string())
+            } else if notes.is_empty() {
+                Ok("Release sent to the agent".to_string())
+            } else {
+                Err(notes.join("; "))
+            }
+        }
+        _ => return reply(StatusCode::BAD_REQUEST, "Unknown action".into()),
+    };
+    match r {
+        Ok(m) => {
+            info!("Wazuh agent {agent_id}: {action} by {} ({m})", ctx.username);
+            reply(StatusCode::OK, m)
+        }
+        Err(e) => reply(StatusCode::SERVICE_UNAVAILABLE, e),
     }
 }
 
@@ -5087,6 +5176,12 @@ fn swarm_admin(ctx: &AuthCtx) -> Option<axum::response::Response> {
 
 const REDSWARM_RULES: &str = "redswarm_rules.xml";
 
+/// The deployed Red Swarm rules into the in-process engine the rounds are verified on.
+fn reload_redswarm_rules(state: &AppState) {
+    let xml = std::fs::read_to_string(wazuh_manager::home().join("etc/rules").join(REDSWARM_RULES)).unwrap_or_default();
+    state.engine.set_custom_rules_xml(&xml);
+}
+
 /// Live modes would run attack commands on endpoints; siem-api has no channel that does that safely.
 const REDSWARM_NO_LIVE: &str = "Live execution is not available: only the telemetry mode (SafeTelemetryOnly) runs";
 
@@ -5109,24 +5204,44 @@ async fn get_redswarm_status_handler(
     report.defense_rate_percent = if recent.is_empty() { 100.0 } else { (defended as f64 * 1000.0 / recent.len() as f64).round() / 10.0 };
     report.open_gaps_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::PendingApproval).map(|d| &d.technique_id).collect::<HashSet<_>>().len();
     report.approved_rules_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed).count();
+    report.kill_switch_active = state.redswarm.is_tenant_halted(&ctx.scope());
     Json(report)
+}
+
+/// The campaigns the caller sees: the platform ones and its tenant's.
+fn swarm_campaign_visible(ctx: &AuthCtx, c: &siem_redswarm::SwarmCampaign) -> bool {
+    c.tenant_id.is_empty() || c.tenant_id == ctx.scope()
+}
+
+/// A platform campaign runs over every tenant: only a platform admin changes it.
+fn swarm_campaign_owner(ctx: &AuthCtx, c: &siem_redswarm::SwarmCampaign) -> Option<axum::response::Response> {
+    (!ctx.is_super() && c.tenant_id != ctx.scope()).then(|| {
+        (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "This campaign is shared by every tenant: only a platform admin can change it. Use the kill switch to stop Red Swarm for your tenant." }))).into_response()
+    })
 }
 
 async fn get_redswarm_campaigns_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let campaigns = state.redswarm.get_campaigns();
+    let campaigns: Vec<_> = state.redswarm.get_campaigns().into_iter().filter(|c| swarm_campaign_visible(&ctx, c)).collect();
     Json(campaigns)
 }
 
 async fn post_redswarm_campaigns_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
-    Json(campaign): Json<siem_redswarm::SwarmCampaign>,
+    Json(mut campaign): Json<siem_redswarm::SwarmCampaign>,
 ) -> axum::response::Response {
     if let Some(r) = swarm_admin(&ctx).or_else(|| redswarm_live(Some(campaign.mode))) {
         return r;
+    }
+    if !ctx.is_super() {
+        // a tenant admin's campaign tests its own agents only
+        if let Some(r) = state.redswarm.get_campaigns().iter().find(|c| c.id == campaign.id).and_then(|c| swarm_campaign_owner(&ctx, c)) {
+            return r;
+        }
+        campaign.tenant_id = ctx.scope();
     }
     state.redswarm.upsert_campaign(campaign.clone());
     Json(serde_json::json!({ "status": "success", "campaign": campaign })).into_response()
@@ -5138,6 +5253,12 @@ async fn post_redswarm_toggle_campaign_handler(
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
     if let Some(r) = swarm_admin(&ctx) {
+        return r;
+    }
+    let Some(campaign) = state.redswarm.get_campaigns().into_iter().find(|c| c.id == id && swarm_campaign_visible(&ctx, c)) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": format!("Campaign {id} not found") }))).into_response();
+    };
+    if let Some(r) = swarm_campaign_owner(&ctx, &campaign) {
         return r;
     }
     match state.redswarm.toggle_campaign(&id) {
@@ -5253,6 +5374,7 @@ async fn post_redswarm_apply_rule_handler(
         Ok(x) => x,
         Err(e) => return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
     };
+    reload_redswarm_rules(&state);
     state.redswarm.audit().set_rule_xml(id, &xml);
     match state.redswarm.audit().approve_rule(id) {
         Ok(rule) => {
@@ -5284,6 +5406,7 @@ async fn post_redswarm_rollback_rule_handler(
         if let Err(e) = removed {
             return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response();
         }
+        reload_redswarm_rules(&state);
     }
     match state.redswarm.audit().rollback_rule(id) {
         Ok(rule) => {
@@ -5308,20 +5431,58 @@ async fn post_redswarm_kill_switch_handler(
     if let Some(r) = swarm_admin(&ctx) {
         return r;
     }
-    siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
-    warn!(
-        "SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})",
-        payload.engage, ctx.username, ctx.role
-    );
-    let status = state.redswarm.get_status();
+    // a platform admin's switch stops every tenant; a tenant admin's, its own tenant
+    let tenant = ctx.scope();
+    if ctx.is_super() {
+        siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
+        if !payload.engage {
+            state.redswarm.set_tenant_halted(&tenant, false);
+        }
+        warn!("SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})", payload.engage, ctx.username, ctx.role);
+    } else {
+        if !payload.engage && siem_redswarm::SafetyGatekeeper::is_kill_switch_engaged() {
+            return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "The platform-wide kill switch is engaged: only a platform admin can release it" }))).into_response();
+        }
+        state.redswarm.set_tenant_halted(&tenant, payload.engage);
+        warn!("SECURITY NOTICE: Red Swarm Kill-Switch for tenant {} set to {} by {} ({})", tenant, payload.engage, ctx.username, ctx.role);
+    }
+    let mut status = state.redswarm.get_status();
+    status.kill_switch_active = state.redswarm.is_tenant_halted(&tenant);
     (
         StatusCode::OK,
         Json(serde_json::json!({
             "status": "ok",
-            "kill_switch_active": payload.engage,
+            "kill_switch_active": status.kill_switch_active,
             "swarm_status": status
         })),
     ).into_response()
+}
+
+async fn post_redswarm_reject_rule_handler(
+    Path(id): Path<uuid::Uuid>,
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
+    }
+    let drafts = swarm_drafts(&state, &ctx);
+    let Some(draft) = drafts.iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Draft rule not found" }))).into_response();
+    };
+    if draft.status != siem_redswarm::DraftRuleStatus::PendingApproval {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "This draft was already decided" }))).into_response();
+    }
+    // the gap's every pending draft (the page shows one per technique); later rounds draft no more for it
+    let mut rejected = 0;
+    for d in drafts.iter().filter(|d| d.technique_id == draft.technique_id && d.status == siem_redswarm::DraftRuleStatus::PendingApproval) {
+        if let Ok(rule) = state.redswarm.audit().reject_rule(d.id) {
+            redswarm_store::upsert_draft(&state, &rule).await;
+            rejected += 1;
+        }
+    }
+    info!("{} rejected the Red Swarm draft rules for {} ({rejected} drafts)", ctx.username, draft.technique_id);
+    (StatusCode::OK, Json(serde_json::json!({ "status": "rejected", "technique_id": draft.technique_id, "rejected": rejected }))).into_response()
 }
 
 async fn get_redswarm_heatmap_handler(

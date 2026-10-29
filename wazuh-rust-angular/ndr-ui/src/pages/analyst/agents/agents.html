@@ -842,6 +842,42 @@
             <button (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Block IP</button>
           </div>
           <p class="text-[11px] text-slate-500">The agent drops the IP (firewall-drop on Linux; on Windows a netsh firewall rule or a null route) and removes the block when the time runs out.</p>
+
+          <ng-container *ngIf="selectedAgent()?.os_type === 'windows'">
+            <h4 class="font-semibold text-white pt-2">Endpoint Response (EDR)</h4>
+            <p class="text-[11px] text-slate-500">Each action is recorded as a decision; protected hosts are refused. Critical Windows processes, Windows files and the agent itself are never touched.</p>
+
+            <label class="block text-xs text-slate-400">Kill a process</label>
+            <div class="flex gap-2">
+              <input aria-label="Process id" class="w-28 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="PID"
+                [ngModel]="edrPid()" (ngModelChange)="edrPid.set($event)" />
+              <input aria-label="Process image (optional)" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="Image path (optional, checked before the kill)"
+                [ngModel]="edrImage()" (ngModelChange)="edrImage.set($event)" />
+              <button (click)="killProcess()" [disabled]="!(+edrPid() > 4)" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Kill</button>
+            </div>
+
+            <label class="block text-xs text-slate-400">Quarantine a file</label>
+            <div class="flex gap-2">
+              <input aria-label="File path" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="C:\Users\...\file.exe"
+                [ngModel]="edrPath()" (ngModelChange)="edrPath.set($event)" />
+              <button (click)="quarantineFile()" [disabled]="!edrPath().trim()" class="px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-40">Quarantine</button>
+            </div>
+            <div class="flex gap-2">
+              <input aria-label="Quarantine id" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="Quarantine id (from the quarantine event)"
+                [ngModel]="edrQuarantineId()" (ngModelChange)="edrQuarantineId.set($event)" />
+              <button (click)="restoreFile()" [disabled]="!edrQuarantineId().trim()" class="px-3 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-200 text-xs font-semibold disabled:opacity-40">Restore</button>
+            </div>
+
+            <label class="block text-xs text-slate-400">Network isolation</label>
+            <div class="grid grid-cols-2 gap-3">
+              <button (click)="isolateHost()" class="p-3 bg-rose-950/40 hover:bg-rose-900/40 border border-rose-800 rounded-lg text-left text-xs font-semibold text-rose-200 transition">
+                Isolate host (only the manager stays reachable)
+              </button>
+              <button (click)="edrAction('release_host', {})" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
+                Release isolation
+              </button>
+            </div>
+          </ng-container>
         </div>
       </div>
     </div>

@@ -51,14 +51,14 @@ impl AuditStore {
     }
 
     /// Get all open detection gaps with pending draft rules
-    /// Whether a draft for the technique still waits for approval in the tenant
-    /// (a new round then adds no second draft for the same gap).
-    pub fn has_pending_draft(&self, tenant_id: &str, technique_id: &str) -> bool {
+    /// Whether a new round should draft no rule for the technique in the tenant: a draft
+    /// still waits for approval (no second draft for the same gap), or the analyst rejected it.
+    pub fn drafting_held(&self, tenant_id: &str, technique_id: &str) -> bool {
         let drafts = self.draft_rules.read().unwrap();
         let records = self.records.read().unwrap();
         drafts
             .iter()
-            .filter(|d| d.status == DraftRuleStatus::PendingApproval && d.technique_id == technique_id)
+            .filter(|d| matches!(d.status, DraftRuleStatus::PendingApproval | DraftRuleStatus::Rejected) && d.technique_id == technique_id)
             .any(|d| records.iter().any(|r| r.id == d.execution_id && r.tenant_id == tenant_id))
     }
 
@@ -150,9 +150,13 @@ impl AuditStore {
         self.draft_rules.read().unwrap().clone()
     }
 
-    /// Replace the in-memory drafts from the persisted copy (ClickHouse is the source of truth).
-    pub fn set_drafts(&self, drafts: Vec<SynthesizedRuleDraft>) {
-        *self.draft_rules.write().unwrap() = drafts;
+    /// Take the persisted copy of the drafts (ClickHouse is the source of truth), keeping
+    /// drafts made since that are not persisted yet (drafts are never deleted).
+    pub fn merge_drafts(&self, mut persisted: Vec<SynthesizedRuleDraft>) {
+        let mut drafts = self.draft_rules.write().unwrap();
+        let known: std::collections::HashSet<Uuid> = persisted.iter().map(|d| d.id).collect();
+        persisted.extend(drafts.drain(..).filter(|d| !known.contains(&d.id)));
+        *drafts = persisted;
     }
 
     /// Repopulate the store from persisted state at startup (before the swarm loop runs).

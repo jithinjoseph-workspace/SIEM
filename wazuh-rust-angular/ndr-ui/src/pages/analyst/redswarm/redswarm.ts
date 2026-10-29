@@ -150,6 +150,18 @@ export class RedswarmComponent implements OnInit {
     this.ruleDeployMessage.set(null);
   }
 
+  rejectRule(draftId: string) {
+    if (!confirm('Reject this draft rule? Red Swarm stops drafting rules for this technique.')) return;
+    this.actionError.set(null);
+    this.siem.rejectRedSwarmRule(draftId).subscribe({
+      next: () => {
+        this.closeRuleModal();
+        this.refreshAll();
+      },
+      error: (err) => this.actionError.set(err?.error?.message || 'The draft could not be rejected.')
+    });
+  }
+
   approveAndDeployRule(draftId: string) {
     this.siem.approveAndDeployRule(draftId).subscribe({
       next: (res: any) => {

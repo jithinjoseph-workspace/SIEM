@@ -7,6 +7,8 @@ use std::io::{BufRead, Write};
 
 use siem_cjson::Json;
 
+pub mod edr;
+
 /// `LOG_FILE`
 #[cfg(unix)]
 pub const LOG_FILE: &str = "logs/active-responses.log";

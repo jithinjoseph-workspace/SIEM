@@ -209,8 +209,26 @@ pub async fn unblock(state: &AppState, tenant: &str, id: &str, status: &str) -> 
     Ok(notes.join("; "))
 }
 
-/// Isolates `ip`: a quarantine VLAN on its switch, else a cloud deny (`enforcement` picks the integration).
-pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Option<&str>, vlan: Option<u16>, gateway: &str, triggered_by: &str, reason: &str) -> Result<(Isolation, String), String> {
+/// The tenant's Windows Wazuh agent to isolate: `agent_id`, else the agent at `ip`.
+async fn windows_agent(state: &AppState, tenant: &str, ip: &str, agent_id: Option<&str>) -> Option<String> {
+    let id = {
+        let tenants = state.agent_tenants.read().unwrap().clone();
+        let agents = state.agents.read().unwrap();
+        let mine = |id: &str| crate::tenancy::tenant_of(&tenants, id) == tenant;
+        match agent_id.filter(|a| !a.is_empty()) {
+            Some(a) => mine(a).then(|| a.to_string()),
+            None => agents.values().find(|a| a.ip == ip && mine(&a.id)).map(|a| a.id.clone()),
+        }
+    }?;
+    (crate::agent_is_windows(state, &id) && crate::wazuh_manager::is_wazuh_agent(&id).await).then_some(id)
+}
+
+/// How long an agent isolation lasts: the agent lifts it then by itself.
+const AGENT_ISOLATION_SECONDS: u64 = 86400;
+
+/// Isolates `ip`: a quarantine VLAN on its switch, else a cloud deny, else the firewall
+/// of its Windows agent (`agent_id`, or the agent at `ip`); `enforcement` picks one.
+pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Option<&str>, vlan: Option<u16>, gateway: &str, triggered_by: &str, reason: &str, agent_id: Option<&str>) -> Result<(Isolation, String), String> {
     if ip.parse::<IpAddr>().is_err() {
         return Err("A valid IP address is required".into());
     }
@@ -219,7 +237,8 @@ pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Opti
     }
     let want_switch = enforcement.is_none_or(|e| SWITCHES.contains(&e));
     let want_cloud = enforcement.is_none_or(|e| CLOUDS.contains(&e));
-    if !want_switch && !want_cloud {
+    let want_agent = enforcement.is_none_or(|e| e == "agent");
+    if !want_switch && !want_cloud && !want_agent {
         return Err(format!("Unknown isolation method {}", enforcement.unwrap_or("")));
     }
     let list = integrations(state, tenant).await;
@@ -244,10 +263,14 @@ pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Opti
             return Err(format!("{kind}: {}", r.message));
         }
         (kind, json!({ "rule_id": r.rule_id }).to_string(), "cloud_deny")
+    } else if let Some(agent) = if want_agent { windows_agent(state, tenant, ip, agent_id).await } else { None } {
+        let (iso, timeout) = crate::wazuh_manager::isolate_agent(&agent, AGENT_ISOLATION_SECONDS).await?;
+        ("agent".to_string(), json!({ "agent_id": agent, "isolation_id": iso, "expires_ts": now() + timeout }).to_string(), "agent_firewall")
     } else {
         return Err(match enforcement {
+            Some("agent") => format!("No Windows agent of yours at {ip} to isolate with"),
             Some(e) => format!("No enabled {e} integration (SOAR → Integrations)"),
-            None => "No switch or cloud integration to isolate with (SOAR → Integrations)".into(),
+            None => format!("No switch or cloud integration (SOAR → Integrations), and no Windows agent at {ip}, to isolate with"),
         });
     };
     let t = iso(now());
@@ -270,13 +293,31 @@ pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Opti
     Ok((i, format!("{ip} isolated with {iso_kind}")))
 }
 
+/// The ids of the agent's active firewall isolations.
+pub async fn active_agent_isolations(state: &AppState, tenant: &str, agent_id: &str) -> Vec<String> {
+    all::<Isolation>(state, tenant, DocTable::Isolations)
+        .await
+        .into_iter()
+        .filter(|i| i.status == "active" && i.method == "agent_firewall")
+        .filter(|i| serde_json::from_str::<Value>(&i.enforcement_detail).is_ok_and(|d| d["agent_id"].as_str() == Some(agent_id)))
+        .map(|i| i.id)
+        .collect()
+}
+
 pub async fn unisolate(state: &AppState, tenant: &str, id: &str) -> Result<String, String> {
     let mut i: Isolation = state.db.doc(tenant, DocTable::Isolations, id).await?.and_then(|d| serde_json::from_str(&d).ok()).ok_or("Isolation not found")?;
     if i.status != "active" {
         return Err(format!("This isolation is already {}", i.status));
     }
-    let list = integrations(state, tenant).await;
     let d: Value = serde_json::from_str(&i.enforcement_detail).unwrap_or(json!({}));
+    if i.method == "agent_firewall" {
+        crate::wazuh_manager::release_agent(d["agent_id"].as_str().unwrap_or("")).await?;
+        i.status = "released".into();
+        i.updated_at = iso(now());
+        put(state, tenant, DocTable::Isolations, &i.id, &i).await?;
+        return Ok(format!("Release sent to agent {}", d["agent_id"].as_str().unwrap_or("")));
+    }
+    let list = integrations(state, tenant).await;
     let Some(integ) = pick(&list, &[i.enforcement.as_str()], None) else {
         return Err(format!("The {} integration is no longer enabled; restore the device by hand", i.enforcement));
     };
@@ -306,6 +347,17 @@ pub async fn sweep(state: &AppState) -> usize {
                     tracing::info!("block {} on {} expired: {d}", b.id, b.src_ip);
                 }
                 Err(e) => tracing::warn!("block {} on {} not lifted: {e}", b.id, b.src_ip),
+            }
+        }
+        // an agent lifts its isolation at its own timeout: the record follows
+        for mut i in all::<Isolation>(state, &tenant, DocTable::Isolations).await.into_iter().filter(|i| i.status == "active" && i.method == "agent_firewall") {
+            let d: Value = serde_json::from_str(&i.enforcement_detail).unwrap_or(json!({}));
+            if d["expires_ts"].as_u64().is_some_and(|e| e <= t) {
+                i.status = "expired".into();
+                i.updated_at = iso(t);
+                if put(state, &tenant, DocTable::Isolations, &i.id, &i).await.is_ok() {
+                    n += 1;
+                }
             }
         }
     }
@@ -397,6 +449,8 @@ pub struct IsolateBody {
     pub enforcement: Option<String>,
     pub quarantine_vlan: Option<u16>,
     pub reason: Option<String>,
+    /// The Windows agent to isolate with its own firewall (else the agent at `target_ip`).
+    pub agent_id: Option<String>,
 }
 
 /// `POST /api/isolate`: a person isolates a host (recorded, protected list applies).
@@ -410,7 +464,7 @@ pub async fn isolate_handler(State(state): State<AppState>, Extension(ctx): Exte
         return fail(StatusCode::FORBIDDEN, m);
     }
     let reason = b.reason.clone().filter(|r| !r.trim().is_empty()).unwrap_or_else(|| format!("Isolated by {}", ctx.username));
-    match isolate(&state, &t, ip, b.enforcement.as_deref(), b.quarantine_vlan, b.gateway_ip.as_deref().unwrap_or(""), &ctx.username, &reason).await {
+    match isolate(&state, &t, ip, b.enforcement.as_deref(), b.quarantine_vlan, b.gateway_ip.as_deref().unwrap_or(""), &ctx.username, &reason, b.agent_id.as_deref()).await {
         Ok((i, _)) => Json(json!({ "status": "ok", "id": i.id, "target_ip": i.target_ip })).into_response(),
         Err(e) => fail(StatusCode::BAD_GATEWAY, e),
     }

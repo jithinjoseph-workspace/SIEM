@@ -2578,6 +2578,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+ "sha2",
  "siem-cjson",
  "siem-ipc",
  "siem-log",

@@ -885,8 +885,8 @@ async fn network_response_end_to_end() {
         assert_eq!(mb("203.0.113.60", "firewall").await.status(), 200);
 
         // ── isolation on the switch ──
-        assert!(crate::response::isolate(&st, &tenant, "10.0.0.77", Some("aws_sg"), None, "", "t", "r").await.unwrap_err().contains("No enabled aws_sg"));
-        let (i, _) = crate::response::isolate(&st, &tenant, "10.0.0.77", None, Some(999), "", "t", "r").await.unwrap();
+        assert!(crate::response::isolate(&st, &tenant, "10.0.0.77", Some("aws_sg"), None, "", "t", "r", None).await.unwrap_err().contains("No enabled aws_sg"));
+        let (i, _) = crate::response::isolate(&st, &tenant, "10.0.0.77", None, Some(999), "", "t", "r", None).await.unwrap();
         assert!(seen("stamgr", "cmd", "block-sta") && seen("stamgr", "ip", "10.0.0.77"), "the controller got block-sta");
         assert_eq!((i.method.as_str(), i.enforcement.as_str()), ("switch_vlan", "unifi"));
         let isos = crate::response::list_isolations(State(st.clone()), Extension(analyst.clone())).await.0;
@@ -929,5 +929,43 @@ async fn network_response_end_to_end() {
     st.db.root().query(&format!("DROP DATABASE IF EXISTS `{dbname}`")).execute().await.unwrap();
     if let Err(p) = res {
         std::panic::resume_unwind(p);
+    }
+}
+
+/// EDR actions refuse what they must before the decision gate and before anything is
+/// sent to an agent: a non-Windows agent, a missing / system pid, a missing path, an
+/// id that could be a path.
+#[tokio::test]
+#[ignore]
+async fn edr_actions_refuse_before_sending() {
+    let st = state().await;
+    let c = ctx("t_edr_test");
+    for (id, os) in [("901", "linux"), ("902", "windows")] {
+        st.agents.write().unwrap().insert(
+            id.into(),
+            siem_core::Agent { id: id.into(), name: format!("h{id}"), ip: "10.0.0.9".into(), os: os.into(), version: "v4.14.7".into(), status: siem_core::AgentStatus::Active, last_keepalive: chrono::Utc::now(), os_type: os.into() },
+        );
+        st.agent_tenants.write().unwrap().insert(id.into(), "t_edr_test".into());
+    }
+    let run = |agent: &'static str, p: serde_json::Value| {
+        let (st, c) = (st.clone(), c.clone());
+        async move {
+            let r = crate::edr_agent_action(&st, &c, agent, p["action"].as_str().unwrap(), &p).await;
+            let code = r.status();
+            let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+            (code.as_u16(), String::from_utf8_lossy(&b).to_string())
+        }
+    };
+    let (code, m) = run("901", json!({ "action": "kill_process", "pid": 1234 })).await;
+    assert!(code == 400 && m.contains("Windows"), "{m}");
+    for p in [
+        json!({ "action": "kill_process" }),
+        json!({ "action": "kill_process", "pid": 4 }),
+        json!({ "action": "kill_process", "pid": "abc" }),
+        json!({ "action": "quarantine_file", "path": "  " }),
+        json!({ "action": "restore_file", "quarantine_id": r"..\..\x" }),
+    ] {
+        let (code, m) = run("902", p.clone()).await;
+        assert_eq!(code, 400, "{p}: {m}");
     }
 }

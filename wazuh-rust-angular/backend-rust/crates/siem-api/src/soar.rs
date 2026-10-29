@@ -388,7 +388,7 @@ impl SoarStore for Store {
                 Some(s) => {
                     let ip = alert["agent"]["ip"].as_str().unwrap_or("");
                     let vlan = config["quarantine_vlan"].as_u64().or_else(|| config["quarantine_vlan"].as_str().and_then(|v| v.parse().ok())).map(|v| v as u16);
-                    crate::response::isolate(s, tenant, ip, config["enforcement"].as_str().filter(|e| !e.is_empty()), vlan, "", &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name)).await.map(|(_, d)| d)
+                    crate::response::isolate(s, tenant, ip, config["enforcement"].as_str().filter(|e| !e.is_empty()), vlan, "", &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name), alert["agent"]["id"].as_str()).await.map(|(_, d)| d)
                 }
                 None => Err("isolation unavailable".into()),
             },

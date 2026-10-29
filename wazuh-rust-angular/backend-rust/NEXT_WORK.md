@@ -297,6 +297,35 @@ SOAR notifications (Slack, e-mail…) are not gated: low impact.
 - Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false
   hits on this data); a Sysmon-equipped Windows host would give the Windows rules most to see.
 
+## 1h. EDR — step 1 (endpoint response) built 2026-10-29
+
+Gaps found 2026-10-27, in the order agreed: (1) response actions on the endpoint,
+(2) process telemetry without Sysmon (ETW), (3) process tree per alert, (4) YARA / hash
+scan of new files, (5) live response (collect files / process list), (6) agent tamper
+protection, (7) Linux agent parity (section C), (8) macOS agent.
+
+Step 1, Windows agents (not in Wazuh; siem-active-response `src/edr.rs` + 3 programs):
+- `kill-process.exe` (`pid=`, optional `image=` checked first: PIDs are reused),
+  `quarantine-file.exe` (`path=` → agent `quarantine\<id>.bin` + `<id>.json` with SHA-256;
+  `restore=<id>`), `isolate-host.exe` (`id=`, `allow=<manager IPs>`; Windows Firewall block
+  rules for all but the manager, loopback and DHCP; `release` lifts it; execd lifts it at
+  its timeout, only if it is still the same isolation). Never touched: PID <= 4, critical
+  System32 processes, the agent, files under %SystemRoot% (but Temp), the agent's files.
+- Manager: commands in `AR_COMMANDS` (ossec.conf → ar.conf: `kill-process0`,
+  `quarantine-file0`, `isolate-host<timeout>`, `release-host0`); console actions
+  `kill_process`, `quarantine_file`, `restore_file`, `isolate_host`, `release_host` on
+  `/api/v1/agent/commands` (decision gate on the agent's IP); `response::isolate` has the
+  agent firewall as a third method (switch → cloud → agent), so SOAR `isolate_host`,
+  approved decisions and `/api/isolate` use it; agent isolations expire after 24 h.
+- Isolation keeps `SIEM_LAN_IP` (else `MANAGER_IP`) and `EDR_ISOLATION_ALLOW` reachable;
+  without one it is refused. UI: Agents → Actions → Endpoint Response (Windows agents).
+- Verified: kill / image-mismatch refusal / quarantine (SHA-256) / restore / Windows-file
+  refusal run for real on Windows; isolation rules unit-tested only.
+- The firewall profiles' state is read from the registry (`EnableFirewall`), the same in
+  every Windows language (2026-10-29; it was English `netsh` output).
+- Open: a live isolate on a lab VM (netsh rules, the agent staying connected, release,
+  expiry); SOAR playbook actions for automatic kill / quarantine.
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

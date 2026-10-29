@@ -135,7 +135,7 @@ export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
 const WINDOWS_AGENT_FILES = ['wazuh-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
 
 /** The active-response programs installed in active-response\bin. */
-const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe'];
+const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe'];
 
 /** The directories the MSI creates under the install directory. */
 const WINDOWS_AGENT_DIRS = [

@@ -156,6 +156,12 @@ export class SiemService {
     });
   }
 
+  /** EDR action on a Windows agent: kill_process {pid, image?}, quarantine_file {path},
+   *  restore_file {quarantine_id}, isolate_host, release_host. */
+  sendEdrAction(agentId: string, action: string, params: Record<string, string | number> = {}): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, { command_id: 'cmd-' + Date.now(), agent_id: agentId, action, ...params });
+  }
+
   /** FIM entries of an agent (wazuh-db fim_entry). */
   getAgentFim(agentId: string): Observable<{ total: number; entries: any[] }> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/fim`).pipe(
@@ -428,6 +434,10 @@ export class SiemService {
 
   approveAndDeployRule(draftId: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/apply-rule`, {});
+  }
+
+  rejectRedSwarmRule(draftId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/reject`, {});
   }
 
   rollbackRedSwarmRule(ruleId: string): Observable<any> {

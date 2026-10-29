@@ -443,6 +443,41 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
     });
   }
 
+  // EDR (Windows agents)
+  edrPid = signal<string>('');
+  edrImage = signal<string>('');
+  edrPath = signal<string>('');
+  edrQuarantineId = signal<string>('');
+
+  edrAction(action: string, params: Record<string, string | number>, confirmText?: string) {
+    const ag = this.selectedAgent();
+    if (!ag || (confirmText && !confirm(confirmText))) return;
+    this.agentActionFeedback.set(`Sending '${action}' to ${ag.name}…`);
+    this.siem.sendEdrAction(ag.id, action, params).subscribe({
+      next: (r) => this.agentActionFeedback.set(`✓ ${r?.message || 'Sent'}. The result arrives as an active-response event from the agent.`),
+      error: (err) => this.agentActionFeedback.set(`✗ ${err?.error?.message || err?.statusText || 'request failed'}`),
+    });
+  }
+
+  killProcess() {
+    const pid = this.edrPid().trim();
+    const image = this.edrImage().trim();
+    this.edrAction('kill_process', image ? { pid, image } : { pid }, `Kill process ${pid}${image ? ` (${image})` : ''} on ${this.selectedAgent()?.name}?`);
+  }
+
+  quarantineFile() {
+    const path = this.edrPath().trim();
+    this.edrAction('quarantine_file', { path }, `Move ${path} into quarantine on ${this.selectedAgent()?.name}?`);
+  }
+
+  restoreFile() {
+    this.edrAction('restore_file', { quarantine_id: this.edrQuarantineId().trim() });
+  }
+
+  isolateHost() {
+    this.edrAction('isolate_host', {}, `Isolate ${this.selectedAgent()?.name} from the network?\n\nOnly the manager stays reachable. It lifts by itself after 24 h, or with Release.`);
+  }
+
   loadDeactivated() {
     this.siem.getDeactivatedAgents().subscribe(list => this.deactivatedAgents.set(list));
   }

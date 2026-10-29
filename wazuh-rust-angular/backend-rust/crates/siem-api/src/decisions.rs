@@ -662,7 +662,7 @@ async fn execute(state: &AppState, tenant: &str, held: &Record) -> Value {
         "block_ip" => crate::response::block(state, tenant, p["ip"].as_str().unwrap_or(""), p["hours"].as_u64().unwrap_or(24), p["enforcement"].as_str().unwrap_or("both"), p["agent_id"].as_str(), &format!("soar:{}", p["playbook"].as_str().unwrap_or("")), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or("")))
             .await
             .map(|(_, d)| d),
-        "isolate_host" => crate::response::isolate(state, tenant, p["ip"].as_str().unwrap_or(""), p["enforcement"].as_str(), p["quarantine_vlan"].as_u64().map(|v| v as u16), "", &format!("soar:{}", p["playbook"].as_str().unwrap_or("")), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or("")))
+        "isolate_host" => crate::response::isolate(state, tenant, p["ip"].as_str().unwrap_or(""), p["enforcement"].as_str(), p["quarantine_vlan"].as_u64().map(|v| v as u16), "", &format!("soar:{}", p["playbook"].as_str().unwrap_or("")), &format!("Playbook: {} ({reason})", p["playbook"].as_str().unwrap_or("")), p["agent_id"].as_str())
             .await
             .map(|(_, d)| d),
         "suppress" => match serde_json::from_value::<siem_suppression::Request>(p["request"].clone()) {

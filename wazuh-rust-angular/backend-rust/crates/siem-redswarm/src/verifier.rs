@@ -93,9 +93,7 @@ impl PurpleLoopVerifier {
             .filter(|a| {
                 a.timestamp >= start_time
                     && a.timestamp <= end_time
-                    && (a.agent.id == target_agent_id
-                        || a.agent.name.contains("sim")
-                        || target_agent_id.is_empty())
+                    && (a.agent.id == target_agent_id || target_agent_id.is_empty())
             })
             .collect();
 

@@ -218,6 +218,10 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "netsh.exe",
     "restart-wazuh.exe",
     "route-null.exe",
+    // EDR responses (siem-active-response, not in Wazuh)
+    "kill-process.exe",
+    "quarantine-file.exe",
+    "isolate-host.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -655,6 +659,17 @@ mod rule_file_tests {
         assert!(super::without_group(&g(119000), 119000).unwrap().trim().is_empty());
         assert!(super::without_group(&file, 5).is_err());
     }
+
+    /// One-shot EDR commands get one `<active-response>` without a timeout (ar.conf
+    /// `kill-process0`, what the console sends); isolation gets the three timeouts.
+    #[test]
+    fn edr_commands_in_ossec_conf() {
+        let k = super::ar_conf_section("kill-process", "kill-process.exe", false);
+        assert!(k.contains("<timeout_allowed>no</timeout_allowed>") && !k.contains("<timeout>") && k.matches("<active-response>").count() == 1, "{k}");
+        let i = super::ar_conf_section("isolate-host", "isolate-host.exe", true);
+        assert_eq!(i.matches("<timeout>").count(), super::AR_TIMEOUTS.len());
+        assert!(super::AR_COMMANDS.iter().filter(|c| c.1 == "isolate-host.exe").count() == 2, "isolate and release");
+    }
 }
 
 /// Stops the running daemons named; their supervisors start them again.
@@ -901,16 +916,91 @@ pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64, met
     Ok(command)
 }
 
-/// The active responses the console can send: (command name, agent executable).
-/// `route-null` is Windows only (the Linux port has firewall-drop).
-const AR_COMMANDS: [(&str, &str); 3] = [("firewall-drop", "firewall-drop"), ("netsh", "netsh.exe"), ("route-null", "route-null.exe")];
+/// One EDR command to a Windows agent (`extra_args` as `key=value` items, see
+/// siem-active-response's edr.rs).
+async fn send_edr(agent_id: &str, command: &str, extra_args: &[String]) -> Result<(), String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let m = serde_json::json!({
+        "version": 1,
+        "origin": { "name": serde_json::Value::Null, "module": "api" },
+        "command": command,
+        "parameters": { "extra_args": extra_args, "alert": {} },
+    });
+    send_ar_queue(&format!("(msg_to_agent) [] NNS {id} {m}")).await
+}
+
+/// EDR: ends process `pid` on the agent (with `image`, only while the PID still runs it).
+pub async fn kill_process(agent_id: &str, pid: u32, image: Option<&str>) -> Result<(), String> {
+    let mut args = vec![format!("pid={pid}")];
+    args.extend(image.map(|i| format!("image={i}")));
+    send_edr(agent_id, "kill-process0", &args).await
+}
+
+/// EDR: moves `path` into the agent's quarantine folder.
+pub async fn quarantine_file(agent_id: &str, path: &str) -> Result<(), String> {
+    send_edr(agent_id, "quarantine-file0", &[format!("path={path}")]).await
+}
+
+/// EDR: puts quarantined file `id` back (the id is in the agent's quarantine log line).
+pub async fn restore_file(agent_id: &str, id: &str) -> Result<(), String> {
+    send_edr(agent_id, "quarantine-file0", &[format!("restore={id}")]).await
+}
+
+/// The manager addresses an isolated host keeps reaching: `SIEM_LAN_IP` (else
+/// `MANAGER_IP`) and `EDR_ISOLATION_ALLOW` (comma-separated, e.g. a NAT address).
+pub fn isolation_allow() -> Vec<std::net::Ipv4Addr> {
+    let own = std::env::var("SIEM_LAN_IP").or_else(|_| std::env::var("MANAGER_IP")).unwrap_or_default();
+    let extra = std::env::var("EDR_ISOLATION_ALLOW").unwrap_or_default();
+    let mut v: Vec<std::net::Ipv4Addr> = own.split(',').chain(extra.split(',')).filter_map(|a| a.trim().parse().ok()).collect();
+    v.dedup();
+    v
+}
+
+/// EDR: isolates the agent's host for `timeout` s (its execd lifts it then, even
+/// with no manager); the isolation id and its timeout.
+pub async fn isolate_agent(agent_id: &str, timeout: u64) -> Result<(String, u64), String> {
+    let allow = isolation_allow();
+    if allow.is_empty() {
+        return Err("Set SIEM_LAN_IP (the manager address the agents connect to) first: an isolated host must keep reaching the manager".into());
+    }
+    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
+    let iso = uuid::Uuid::new_v4().simple().to_string();
+    let allow = allow.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",");
+    send_edr(agent_id, &format!("isolate-host{timeout}"), &[format!("id={iso}"), format!("allow={allow}")]).await?;
+    Ok((iso, timeout))
+}
+
+/// EDR: lifts the isolation of the agent's host.
+pub async fn release_agent(agent_id: &str) -> Result<(), String> {
+    send_edr(agent_id, "release-host0", &["release".to_string()]).await
+}
+
+/// The active responses the console can send: (command name, agent executable, takes
+/// a timeout). `route-null` and the EDR ones are Windows only; `release-host` is
+/// isolate-host run with `release`.
+const AR_COMMANDS: [(&str, &str, bool); 7] = [
+    ("firewall-drop", "firewall-drop", true),
+    ("netsh", "netsh.exe", true),
+    ("route-null", "route-null.exe", true),
+    ("kill-process", "kill-process.exe", false),
+    ("quarantine-file", "quarantine-file.exe", false),
+    ("isolate-host", "isolate-host.exe", true),
+    ("release-host", "isolate-host.exe", false),
+];
 
 /// The `<command>` and `<active-response>` blocks of one console command in the
-/// manager's ossec.conf, at level 20 so no rule triggers them.
-fn ar_conf_section(name: &str, exe: &str) -> String {
-    let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n");
-    for t in AR_TIMEOUTS {
-        s.push_str(&format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n    <timeout>{t}</timeout>\n  </active-response>\n"));
+/// manager's ossec.conf, at level 20 so no rule triggers them (`<name><timeout>` in
+/// ar.conf, `<name>0` without one).
+fn ar_conf_section(name: &str, exe: &str, timed: bool) -> String {
+    let allowed = if timed { "yes" } else { "no" };
+    let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>{allowed}</timeout_allowed>\n  </command>\n");
+    let ar = |t: &str| format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n{t}  </active-response>\n");
+    if timed {
+        for t in AR_TIMEOUTS {
+            s.push_str(&ar(&format!("    <timeout>{t}</timeout>\n")));
+        }
+    } else {
+        s.push_str(&ar(""));
     }
     s
 }
@@ -920,8 +1010,8 @@ fn ensure_ar_commands(conf: &Path) {
     let Ok(t) = std::fs::read_to_string(conf) else { return };
     let missing: String = AR_COMMANDS
         .iter()
-        .filter(|(name, _)| !t.contains(&format!("<name>{name}</name>")))
-        .map(|(name, exe)| ar_conf_section(name, exe))
+        .filter(|(name, _, _)| !t.contains(&format!("<name>{name}</name>")))
+        .map(|(name, exe, timed)| ar_conf_section(name, exe, *timed))
         .collect();
     if missing.is_empty() {
         return;

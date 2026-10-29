@@ -19,12 +19,30 @@ impl RuleSynthesizer {
         let draft_rule_id = Uuid::new_v4();
         let rule_id_num = 100_000 + (draft_rule_id.as_u128() % 899_999) as u32;
 
-        // Generate tailored regex / match criteria based on technique telemetry
-        let match_target = technique
+        // Narrowest criteria: the longest indicator found in the sample log as <match>, and a
+        // second one as <regex> (a rule needs both), so the rule does not fire on any benign log
+        let mut present: Vec<&str> = technique
             .expected_telemetry
+            .iter()
+            .chain(&technique.detection_indicators)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && sample_log.contains(*s))
+            .collect();
+        present.sort();
+        present.dedup();
+        present.sort_by_key(|s| std::cmp::Reverse(s.len()));
+        let match_target = present
             .first()
-            .map(|s| s.as_str())
+            .copied()
+            .or_else(|| technique.expected_telemetry.first().map(|s| s.as_str()))
             .unwrap_or(sample_log);
+        // plain words only; `\.` is a literal dot in the engine's regex and any char in Wazuh's OS_Regex
+        let regex_line = present
+            .iter()
+            .skip(1)
+            .find(|s| !match_target.contains(**s) && s.chars().all(|c| c.is_ascii_alphanumeric() || " _-.".contains(c)))
+            .map(|s| format!("\n    <regex>{}</regex>", s.replace('.', r"\.")))
+            .unwrap_or_default();
 
         let sanitized_match = match_target
             .replace('&', "&amp;")
@@ -36,7 +54,7 @@ impl RuleSynthesizer {
   <!-- Auto-synthesized by ProVigil Red Swarm Perpetual Purple Engine -->
   <!-- Target Evasion: {} ({}) -->
   <rule id="{}" level="8">
-    <match>{}</match>
+    <match>{}</match>{}
     <description>ProVigil Detection Gap: {} [{}]</description>
     <mitre>
       <id>{}</id>
@@ -49,22 +67,24 @@ impl RuleSynthesizer {
             technique.id,
             rule_id_num,
             sanitized_match,
+            regex_line,
             technique.name,
             technique.id,
             technique.id,
         );
 
-        // Preliminary structural & regex validation
-        let logtest_passed = sample_log.to_lowercase().contains(&match_target.to_lowercase())
-            || !technique.expected_telemetry.is_empty();
+        // Logtest: run the drafted rule itself on the sample log
+        let logtest_passed = siem_engine::parse_rules_xml(&rule_xml).first().is_some_and(|r| {
+            r.matches(sample_log, "", None, &[], &[], &std::collections::HashMap::new(), None, "", None, None)
+        });
 
         let logtest_output = if logtest_passed {
             format!(
-                "**Phase 1: Pre-decoding passed.\n**Phase 2: Decoder matched.\n**Phase 3: Synthesized Rule #{} matched on sample log.\n    Level: 8\n    MITRE: {}\n    Status: Validated Successfully",
+                "Synthesized Rule #{} matched the sample log.\n    Level: 8\n    MITRE: {}\n    wazuh-analysisd checks the rule again when it is deployed.",
                 rule_id_num, technique.id
             )
         } else {
-            "Validation Warning: Match token not strictly found in sample log; analyst review required.".into()
+            format!("Validation Warning: Rule #{} did not match the sample log; analyst review required.", rule_id_num)
         };
 
         let hardening_recommendation = format!(
@@ -89,5 +109,29 @@ impl RuleSynthesizer {
             created_at: Utc::now(),
             status: DraftRuleStatus::PendingApproval,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::find_technique;
+
+    fn fires(xml: &str, log: &str) -> bool {
+        siem_engine::parse_rules_xml(xml)[0].matches(log, "", None, &[], &[], &Default::default(), None, "", None, None)
+    }
+
+    #[test]
+    fn draft_needs_the_attack_not_one_common_word() {
+        let t = find_technique("T1059.001").unwrap();
+        let d = RuleSynthesizer::synthesize_draft_rule(Uuid::new_v4(), &t, &t.sample_raw_logs[0]);
+        assert!(d.logtest_passed, "{}", d.rule_xml);
+        assert!(d.rule_xml.contains("<match>-EncodedCommand</match>") && d.rule_xml.contains(r"<regex>powershell\.exe</regex>"), "{}", d.rule_xml);
+        assert!(!fires(&d.rule_xml, "Process Create: powershell.exe -File backup.ps1"));
+
+        let t = find_technique("T1036.005").unwrap();
+        let d = RuleSynthesizer::synthesize_draft_rule(Uuid::new_v4(), &t, &t.sample_raw_logs[0]);
+        assert!(d.logtest_passed);
+        assert!(!fires(&d.rule_xml, r"Image: C:\Windows\System32\svchost.exe -k netsvcs"));
     }
 }

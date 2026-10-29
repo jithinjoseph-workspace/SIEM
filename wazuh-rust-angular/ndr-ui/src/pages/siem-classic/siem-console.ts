@@ -594,8 +594,8 @@ export class SiemConsole implements OnInit, OnDestroy {
     // Subscribe to live incoming alerts via WebSocket
     this.subs.add(
       this.siemService.getAlertStream().subscribe(alert => {
-        // Prepend new alert
-        this.alerts.update(prev => [alert, ...prev]);
+        // Prepend new alert; the newest 500 only, so a tab left open does not grow without end
+        this.alerts.update(prev => [alert, ...prev].slice(0, 500));
 
         // Refresh stats
         this.refreshStats();

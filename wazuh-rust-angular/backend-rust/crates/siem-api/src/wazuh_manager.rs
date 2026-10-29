@@ -1341,6 +1341,14 @@ fn flat(data: &serde_json::Value) -> HashMap<String, String> {
 }
 
 /// One `alerts.json` line as a platform alert of the agent's tenant.
+/// The user of a Windows event: the account logged on / failed / changed, else who acted
+/// ("-" is Windows for none; Wazuh doubles the backslash of DOMAIN\user).
+fn windows_user(v: &serde_json::Value) -> Option<String> {
+    ["targetUserName", "subjectUserName"].iter().find_map(|k| {
+        v.pointer(&format!("/data/win/eventdata/{k}")).and_then(|x| x.as_str()).map(|u| u.replace("\\\\", "\\")).filter(|u| !u.is_empty() && u != "-")
+    })
+}
+
 fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     let data = v.get("data").cloned().unwrap_or(serde_json::Value::Null);
     let first = |path: &[&str]| -> String {
@@ -1399,7 +1407,7 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
             dst_ip: opt("dstip"),
             src_port: sport("srcport"),
             dst_port: sport("dstport"),
-            user: opt("dstuser").or_else(|| opt("srcuser")),
+            user: opt("dstuser").or_else(|| opt("srcuser")).or_else(|| windows_user(v)),
             program_name: Some(s(v, &["predecoder", "program_name"])).filter(|x| !x.is_empty()),
             process_id: None,
             file_path: Some(s(v, &["syscheck", "path"])).filter(|x| !x.is_empty()),
@@ -1615,6 +1623,23 @@ async fn agent_status_loop(state: AppState) {
                 last_saved.insert(id, (status, ka));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod windows_user_tests {
+    use super::windows_user;
+    use serde_json::json;
+
+    #[test]
+    fn windows_events_give_their_user() {
+        let ev = |ed: serde_json::Value| json!({ "data": { "win": { "eventdata": ed } } });
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "alice", "subjectUserName": "SYSTEM" }))).as_deref(), Some("alice"));
+        // 4625 at the lock screen: no target name, the subject acted
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "", "subjectUserName": "EVOFOX$" }))).as_deref(), Some("EVOFOX$"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "LAB\\\\bob" }))).as_deref(), Some("LAB\\bob"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "-", "subjectUserName": "-" }))), None);
+        assert_eq!(windows_user(&json!({ "data": { "srcip": "1.2.3.4" } })), None);
     }
 }
 

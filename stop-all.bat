@@ -25,6 +25,6 @@ taskkill /F /IM auth-service.exe >nul 2>&1
 for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd wazuh-monitord wazuh-maild wazuh-integratord wazuh-csyslogd) do taskkill /F /IM %%p.exe >nul 2>&1
 
 echo.
-echo [OK] All services on ports 3001, 8088 and 4200 have been stopped.
+echo [OK] All services on ports 3011, 8088 and 4200 have been stopped.
 echo ==============================================================================
 timeout /t 3

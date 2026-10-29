@@ -362,6 +362,23 @@ Step 3, process tree per alert — built 2026-10-29 (`siem-api/src/process_tree.
 - Open: Security 4688 alerts (no GUIDs) have no tree; big tenants: see the shortcut in
   process_tree.rs (Sysmon events in their own table ordered by agent).
 
+Step 4, file scanning — built 2026-10-29:
+- 4a `file_reputation.rs`: every hash in the stream (Sysmon 1/6/7/15/23/26/29, FIM) against
+  threat intel (ThreatFox ~5.5k hashes in ClickHouse, MalwareBazaar via its API hourly —
+  its export list is gone, HTTP 410 —, the tenant watchlist): 940100 ran (L14), 940101
+  written / loaded / deleted (L12); once per agent, file and kind an hour.
+- 4b `yara_edr.rs` + `yara-scan.exe` (boreal): YARA Forge core (5,128 rules) daily, only a
+  set that compiles, + test rule `SIEM_EDR_YARA_Test_File` (marker
+  `SIEM-EDR-YARA-TEST-FILE-7c1e5b2a`); shipped as `shared/siem-yara.rules`, deflate +
+  base64 — NEVER plain: Defender removed merged.mg (all agents' agent.conf) when it held
+  plain rules (Trojan:Python/RemoteShellExec). Auto scans: new executables / scripts /
+  programs started from user-writable folders, once per SHA-256 and rule version, ≤ 20 per
+  agent / 10 min; match = 940102 (L13). Manual: YARA Scan in the alert drawer and Agents >
+  Actions. Compile 0.5 s + ~17 ms/MB per scan, below-normal priority, ≤ 64 MB files.
+- Open: agents deployed before 4b lack yara-scan.exe (copy it to active-response\bin or
+  redeploy); boreal 1.4's scanner serialization fails ("CompilerProfile: 25"), so each
+  scan compiles the rules (0.5 s).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

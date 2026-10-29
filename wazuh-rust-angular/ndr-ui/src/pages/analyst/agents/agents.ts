@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, signal, computed, inject, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -7,7 +7,8 @@ import {
   Server, Shield, Terminal, RefreshCw, Plus, Search, Filter,
   CheckCircle2, AlertTriangle, Monitor, Cpu, HardDrive, Network,
   Layers, Copy, Check, Download, Play, X, ExternalLink, Activity,
-  LayoutGrid, Lock, ShieldAlert, TrendingDown
+  LayoutGrid, Lock, ShieldAlert, TrendingDown, Laptop, BarChart3, Users, FileSearch,
+  Bug, Boxes, ArrowUpCircle, Zap, Power, ScanSearch
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
@@ -59,9 +60,33 @@ export class Agents implements OnInit {
   LockIcon = Lock;
   ShieldAlertIcon = ShieldAlert;
   TrendingDownIcon = TrendingDown;
+  LaptopIcon = Laptop;
+  ChartIcon = BarChart3;
+  PowerIcon = Power;
+  ScanIcon = ScanSearch;
+
+  /** The tabs of the agent details (Upgrade only for the tenant's admins). */
+  readonly detailTabs = computed(() => ([
+    { id: 'specs', label: 'Hardware', icon: Cpu },
+    { id: 'network_ports', label: 'Network', icon: Network },
+    { id: 'users_services', label: 'Software', icon: Boxes },
+    { id: 'sca', label: 'CIS SCA', icon: ShieldAlert },
+    { id: 'fim', label: 'FIM', icon: FileSearch },
+    { id: 'rootcheck', label: 'Rootcheck', icon: Bug },
+    { id: 'groups', label: 'Groups', icon: Users },
+    ...(this.canUpgrade ? [{ id: 'upgrade', label: 'Upgrade', icon: ArrowUpCircle }] : []),
+    { id: 'actions', label: 'Response', icon: Zap },
+  ] as { id: AgentDetailTab; label: string; icon: any }[]));
 
   // View Mode: 'table' (like reference image) or 'grid' (cards)
-  viewMode = signal<'table' | 'grid'>('table');
+  viewMode = signal<'table' | 'grid'>(this.stored('agents.view') === 'grid' ? 'grid' : 'table');
+  /** Advanced view: the fleet charts and the extra table columns. */
+  advanced = signal<boolean>(this.stored('agents.advanced') !== 'off');
+
+  setView(v: 'table' | 'grid') { this.viewMode.set(v); this.store('agents.view', v); }
+  toggleAdvanced() { this.advanced.update(a => !a); this.store('agents.advanced', this.advanced() ? 'on' : 'off'); }
+  private stored(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
+  private store(k: string, v: string) { try { localStorage.setItem(k, v); } catch {} }
 
   // State
   agents = signal<Agent[]>([]);
@@ -85,6 +110,86 @@ export class Agents implements OnInit {
   disconnectedCount = computed(() => this.agents().filter(a => a.status !== 'active').length);
   windowsCount = computed(() => this.agents().filter(a => a.os_type === 'windows').length);
   linuxCount = computed(() => this.agents().filter(a => a.os_type === 'linux').length);
+  outdatedCount = computed(() => this.agents().filter(a => a.version && !this.agentCurrent(a)).length);
+  onlinePct = computed(() => this.totalCount() ? Math.round(this.activeCount() * 100 / this.totalCount()) : 0);
+
+  // ── Fleet charts (all from the agents, CVE and Sysmon data the page loads) ──
+  /** Connection state of the agents (status colors; each has a label). */
+  statusSplit = computed(() => this.split([
+    { label: 'Online', n: this.activeCount(), color: 'var(--st-good)' },
+    { label: 'Disconnected', n: this.agents().filter(a => a.status === 'disconnected').length, color: 'var(--st-critical)' },
+    { label: 'Never connected', n: this.agents().filter(a => a.status === 'pending').length, color: 'var(--st-warning)' },
+  ]));
+  /** Operating systems (a fixed hue per OS, so a filter never repaints them). */
+  platformSplit = computed(() => this.split([
+    { label: 'Windows', n: this.windowsCount(), color: 'var(--series-1)', os: 'windows' as const },
+    { label: 'Linux', n: this.linuxCount(), color: 'var(--series-2)', os: 'linux' as const },
+    { label: 'macOS', n: this.agents().filter(a => a.os_type === 'macos').length, color: 'var(--series-3)', os: 'macos' as const },
+  ]));
+  versionSplit = computed(() => this.split([
+    { label: 'Current', n: this.agents().filter(a => this.agentCurrent(a)).length, color: 'var(--st-good)' },
+    { label: 'Outdated', n: this.outdatedCount(), color: 'var(--st-warning)' },
+  ]));
+  /** The agents with the most open CVEs (critical, high, medium). */
+  cveTop = computed(() => {
+    const per = this.agentVulns();
+    const rows = this.agents().map(a => ({ agent: a, ...(per[a.id] ?? { critical: 0, high: 0, medium: 0 }) }))
+      .map(r => ({ ...r, total: r.critical + r.high + r.medium }))
+      .filter(r => r.total > 0)
+      .sort((x, y) => (y.critical - x.critical) || (y.high - x.high) || (y.total - x.total))
+      .slice(0, 6);
+    const max = Math.max(1, ...rows.map(r => r.total));
+    return rows.map(r => ({ ...r, scale: r.total * 100 / max }));
+  });
+  /** Sysmon events of the Windows agents in 24 h. */
+  sysmonTop = computed(() => {
+    const t = this.sysmonTelemetry() ?? {};
+    const rows = this.agents().filter(a => a.os_type === 'windows')
+      .map(a => ({ agent: a, events: t[a.id]?.events_24h ?? 0 }))
+      .sort((x, y) => y.events - x.events).slice(0, 6);
+    const max = Math.max(1, ...rows.map(r => r.events));
+    return rows.map(r => ({ ...r, pct: r.events * 100 / max }));
+  });
+  sysmonCovered = computed(() => {
+    const t = this.sysmonTelemetry();
+    return t ? this.agents().filter(a => a.os_type === 'windows' && (t[a.id]?.events_24h ?? 0) > 0).length : 0;
+  });
+
+  private split<T extends { n: number }>(parts: T[]) {
+    const total = parts.reduce((s, p) => s + p.n, 0);
+    return parts.filter(p => p.n > 0).map(p => {
+      const pct = total ? p.n * 100 / total : 0;
+      return { ...p, pct, pctLabel: Math.round(pct) + '%' };
+    });
+  }
+
+  /** Chart tooltip (one for the page, follows the pointer or the focused mark). */
+  tip = signal<{ x: number; y: number; text: string } | null>(null);
+  showTip(ev: Event, text: string) {
+    const me = ev as MouseEvent;
+    let x = me.clientX, y = me.clientY;
+    if (x === undefined) { const r = (ev.target as HTMLElement).getBoundingClientRect(); x = r.left + r.width / 2; y = r.top; }
+    const w = Math.min(260, innerWidth - 16);
+    this.tip.set({ x: Math.max(8, Math.min(x + 14, innerWidth - w - 8)), y: y + 48 > innerHeight ? y - 44 : y + 16, text });
+  }
+  hideTip() { this.tip.set(null); }
+
+  /** Relative time since the agent's last keepalive. */
+  ago(dateStr?: string): string {
+    const t = dateStr ? new Date(dateStr).getTime() : NaN;
+    if (isNaN(t)) return dateStr || '—';
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.round(s / 60) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape() {
+    if (this.showDeployModal()) this.showDeployModal.set(false);
+    else if (this.selectedAgent()) this.closeAgentDetails();
+  }
 
   filteredAgents = computed(() => {
     let list = this.agents();
@@ -115,7 +220,16 @@ export class Agents implements OnInit {
 
   /** SCA results stored for the agent (GET /api/v1/agents/:id/sca). */
   selectedAgentScaChecks = signal<ScaCheckResult[]>([]);
-  scaSummary = signal<{ policy_id?: string; score: number; passed: number; failed: number } | null>(null);
+  scaSummary = signal<{ policy_id?: string; policy_name?: string; score: number; passed: number; failed: number; not_applicable: number; scanned_at?: string } | null>(null);
+  scaFilter = signal<'all' | 'failed' | 'passed'>('all');
+  scaQuery = signal<string>('');
+  scaOpen = signal<number | null>(null);
+  filteredSca = computed(() => {
+    const f = this.scaFilter(), q = this.scaQuery().toLowerCase().trim();
+    return this.selectedAgentScaChecks().filter(c =>
+      (f === 'all' || (f === 'failed' ? this.isFailed(c.status) : this.isPassed(c.status))) &&
+      (!q || (c.title || '').toLowerCase().includes(q) || String(c.check_id).includes(q)));
+  });
   /** IP and duration for the block action. */
   actionIp = signal<string>('');
   blockSeconds = signal<number>(3600);
@@ -214,6 +328,10 @@ export class Agents implements OnInit {
   openAgentDetails(agent: Agent) {
     this.selectedAgent.set(agent);
     this.selectedAgentTab.set('specs');
+    this.scaFilter.set('all');
+    this.scaQuery.set('');
+    this.scaOpen.set(null);
+    this.fimFilter.set('');
     this.upgradeFeedback.set(null);
     this.agentActionFeedback.set(null);
     this.loadAgentDetails(agent.id);
@@ -232,7 +350,9 @@ export class Agents implements OnInit {
     this.siem.getAgentSca(agentId).subscribe(sca => {
       if (this.selectedAgent()?.id !== agentId || !sca) return;
       this.selectedAgentScaChecks.set(sca.checks || []);
-      this.scaSummary.set({ policy_id: sca.policy_id, score: sca.score ?? 0, passed: sca.passed ?? 0, failed: sca.failed ?? 0 });
+      const s = sca as any;
+      this.scaSummary.set({ policy_id: s.policy_id, policy_name: s.policy_name, score: s.score ?? 0, passed: s.passed ?? 0, failed: s.failed ?? 0,
+        not_applicable: s.not_applicable ?? 0, scanned_at: s.scanned_at });
     });
   }
 

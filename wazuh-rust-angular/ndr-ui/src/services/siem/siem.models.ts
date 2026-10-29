@@ -148,6 +148,9 @@ export interface ScaCheckResult {
   title: string;
   status: 'Passed' | 'Failed' | 'Not applicable';
   reason?: string;
+  description?: string;
+  rationale?: string;
+  remediation?: string;
 }
 
 export type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fim' | 'actions';

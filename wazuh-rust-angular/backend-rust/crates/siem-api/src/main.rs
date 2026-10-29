@@ -55,6 +55,9 @@ pub mod intel;
 pub mod investigate;
 pub mod case_ai;
 pub mod process_tree;
+pub mod file_reputation;
+pub mod yara_edr;
+pub mod posture_store;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
@@ -493,6 +496,8 @@ async fn main() {
     swarm::spawn(state.clone());
     // threat intel feeds from provigil-common (collector + blocklist engine)
     intel::spawn(state.clone());
+    yara_edr::spawn(state.clone());
+    posture_store::spawn(state.clone());
     // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
     platform::mark_start();
     sigma::spawn(state.clone());
@@ -778,6 +783,7 @@ async fn main() {
         .route("/api/v1/agents/:id/fim", get(get_agent_fim_handler).post(post_agent_fim_handler))
         .route("/api/v1/agents/:id/sca", get(get_agent_sca_handler))
         .route("/api/v1/agents/:id/process-tree", get(process_tree::get))
+        .route("/api/v1/edr/yara", get(yara_edr::status))
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
@@ -2159,7 +2165,7 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
         "sca_scan" | "syscollector_scan" => {
             return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
         }
-        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
+        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" | "yara_scan" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
         _ => return bad("Unknown action"),
     };
     match r {
@@ -2244,6 +2250,13 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             } else {
                 Err(notes.join("; "))
             }
+        }
+        "yara_scan" => {
+            // read-only on the endpoint: no decision gate
+            let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
+                return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
+            };
+            wazuh_manager::yara_scan(agent_id, &path).await.map(|_| format!("YARA scan of {path} sent to the agent; a match becomes an alert"))
         }
         _ => return reply(StatusCode::BAD_REQUEST, "Unknown action".into()),
     };
@@ -2985,7 +2998,7 @@ async fn get_agents_telemetry(State(state): State<AppState>, Extension(ctx): Ext
     let rows = state
         .db
         .tenant_client(&ctx.scope())
-        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 GROUP BY agent_id")
+        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 AND JSONExtractString(JSONExtractString(raw_metadata, 'data_json'), 'win', 'system', 'channel') = 'Microsoft-Windows-Sysmon/Operational' GROUP BY agent_id")
         .bind(since)
         .fetch_all::<(String, u64, u64)>()
         .await;
@@ -3324,6 +3337,11 @@ async fn get_agent_fim_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        // kept in ClickHouse; brought up to date first (two cheap queries when nothing changed)
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::fim(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
         let r = wazuh_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
         return Json(r).into_response();
     }
@@ -3350,6 +3368,12 @@ async fn get_agent_fim_handler(
 async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(agent_id): Path<String>) -> axum::response::Response {
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::rootcheck(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
     }
     let r = wazuh_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
     Json(r).into_response()
@@ -3438,6 +3462,10 @@ async fn get_agent_sca_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::sca(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
         let r = wazuh_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
         return Json(r).into_response();
     }

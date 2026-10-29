@@ -222,6 +222,7 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "kill-process.exe",
     "quarantine-file.exe",
     "isolate-host.exe",
+    "yara-scan.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -936,6 +937,11 @@ pub async fn kill_process(agent_id: &str, pid: u32, image: Option<&str>) -> Resu
     send_edr(agent_id, "kill-process0", &args).await
 }
 
+/// EDR: scans `path` with the YARA rules the agent has (`yara_edr.rs`).
+pub async fn yara_scan(agent_id: &str, path: &str) -> Result<(), String> {
+    send_edr(agent_id, "yara-scan0", &[format!("path={path}")]).await
+}
+
 /// EDR: moves `path` into the agent's quarantine folder.
 pub async fn quarantine_file(agent_id: &str, path: &str) -> Result<(), String> {
     send_edr(agent_id, "quarantine-file0", &[format!("path={path}")]).await
@@ -978,7 +984,7 @@ pub async fn release_agent(agent_id: &str) -> Result<(), String> {
 /// The active responses the console can send: (command name, agent executable, takes
 /// a timeout). `route-null` and the EDR ones are Windows only; `release-host` is
 /// isolate-host run with `release`.
-const AR_COMMANDS: [(&str, &str, bool); 7] = [
+const AR_COMMANDS: [(&str, &str, bool); 8] = [
     ("firewall-drop", "firewall-drop", true),
     ("netsh", "netsh.exe", true),
     ("route-null", "route-null.exe", true),
@@ -986,6 +992,7 @@ const AR_COMMANDS: [(&str, &str, bool); 7] = [
     ("quarantine-file", "quarantine-file.exe", false),
     ("isolate-host", "isolate-host.exe", true),
     ("release-host", "isolate-host.exe", false),
+    ("yara-scan", "yara-scan.exe", false),
 ];
 
 /// The `<command>` and `<active-response>` blocks of one console command in the
@@ -1032,9 +1039,14 @@ fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
 
 /// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
 pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
+    agent_fim_upto(agent_id, 1000).await
+}
+
+/// The agent's FIM entries, the `max` most recently changed (`total`: all of them).
+pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
     let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await?.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()).unwrap_or(0);
-    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", 1000).await;
+    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", max).await;
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|mut r| {
@@ -1341,6 +1353,14 @@ fn flat(data: &serde_json::Value) -> HashMap<String, String> {
 }
 
 /// One `alerts.json` line as a platform alert of the agent's tenant.
+/// The user of a Windows event: the account logged on / failed / changed, else who acted
+/// ("-" is Windows for none; Wazuh doubles the backslash of DOMAIN\user).
+fn windows_user(v: &serde_json::Value) -> Option<String> {
+    ["targetUserName", "subjectUserName"].iter().find_map(|k| {
+        v.pointer(&format!("/data/win/eventdata/{k}")).and_then(|x| x.as_str()).map(|u| u.replace("\\\\", "\\")).filter(|u| !u.is_empty() && u != "-")
+    })
+}
+
 fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     let data = v.get("data").cloned().unwrap_or(serde_json::Value::Null);
     let first = |path: &[&str]| -> String {
@@ -1399,7 +1419,7 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
             dst_ip: opt("dstip"),
             src_port: sport("srcport"),
             dst_port: sport("dstport"),
-            user: opt("dstuser").or_else(|| opt("srcuser")),
+            user: opt("dstuser").or_else(|| opt("srcuser")).or_else(|| windows_user(v)),
             program_name: Some(s(v, &["predecoder", "program_name"])).filter(|x| !x.is_empty()),
             process_id: None,
             file_path: Some(s(v, &["syscheck", "path"])).filter(|x| !x.is_empty()),
@@ -1495,9 +1515,23 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
     }
-    // Sigma rules (sigma.rs) on every archived event, besides the Wazuh ruleset
+    // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
+    // besides the Wazuh ruleset
     let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
-    let matched = tokio::task::spawn_blocking(move || crate::sigma::check(&tagged)).await.unwrap_or_default();
+    let (matched, scans) = tokio::task::spawn_blocking(move || {
+        let mut m = crate::sigma::check(&tagged);
+        m.extend(crate::file_reputation::check(&tagged));
+        let (yara_alerts, scans) = crate::yara_edr::check(&tagged);
+        m.extend(yara_alerts);
+        (m, scans)
+    })
+    .await
+    .unwrap_or_default();
+    for (_, agent, path) in scans {
+        if let Err(e) = yara_scan(&agent, &path).await {
+            warn!("YARA scan of {path} on agent {agent}: {e}");
+        }
+    }
     if !matched.is_empty() {
         let (alerts, json): (Vec<Alert>, Vec<serde_json::Value>) = matched
             .into_iter()
@@ -1615,6 +1649,23 @@ async fn agent_status_loop(state: AppState) {
                 last_saved.insert(id, (status, ka));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod windows_user_tests {
+    use super::windows_user;
+    use serde_json::json;
+
+    #[test]
+    fn windows_events_give_their_user() {
+        let ev = |ed: serde_json::Value| json!({ "data": { "win": { "eventdata": ed } } });
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "alice", "subjectUserName": "SYSTEM" }))).as_deref(), Some("alice"));
+        // 4625 at the lock screen: no target name, the subject acted
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "", "subjectUserName": "EVOFOX$" }))).as_deref(), Some("EVOFOX$"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "LAB\\\\bob" }))).as_deref(), Some("LAB\\bob"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "-", "subjectUserName": "-" }))), None);
+        assert_eq!(windows_user(&json!({ "data": { "srcip": "1.2.3.4" } })), None);
     }
 }
 

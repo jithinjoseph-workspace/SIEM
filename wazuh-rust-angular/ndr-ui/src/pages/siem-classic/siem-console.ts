@@ -594,8 +594,8 @@ export class SiemConsole implements OnInit, OnDestroy {
     // Subscribe to live incoming alerts via WebSocket
     this.subs.add(
       this.siemService.getAlertStream().subscribe(alert => {
-        // Prepend new alert
-        this.alerts.update(prev => [alert, ...prev]);
+        // Prepend new alert; the newest 500 only, so a tab left open does not grow without end
+        this.alerts.update(prev => [alert, ...prev].slice(0, 500));
 
         // Refresh stats
         this.refreshStats();
@@ -1158,7 +1158,7 @@ export class SiemConsole implements OnInit, OnDestroy {
   }
 
   /** `extra`: the action's own fields (kill_process: pid + image, quarantine_file: path). */
-  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001', extra: Record<string, unknown> = {}) {
+  executeActiveResponse(action: 'block_ip' | 'kill_process' | 'quarantine_file' | 'yara_scan' | 'restart_agent' | 'unblock_ip', target: string, agentId = '001', extra: Record<string, unknown> = {}) {
     if (!target) return;
     this.activeResponseStatus.set(`Dispatching ${action} against ${target} to Agent ${agentId}...`);
 

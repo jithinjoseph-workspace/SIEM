@@ -29,13 +29,15 @@ const MAX_DESCENDANTS: usize = 300;
 const MAX_ACTIVITY: u64 = 5_000;
 const SAMPLES_PER_NODE: usize = 25;
 
-/// The agent's Sysmon events in the window, with their event data (`d`).
+/// The agent's Sysmon events in the window, with their event data (`d`). The text search is
+/// only a cheap first filter: other events can contain the channel's name (a logged script).
 // shortcut: siem_events is ordered by (timestamp, agent_id), so this reads the tenant's whole
 // 25 h window; when trees get slow on big tenants, keep Sysmon events in their own table
 // ordered by (agent_id, timestamp).
 const SYSMON: &str = "SELECT timestamp, JSONExtractString(raw_metadata, 'data_json') AS d FROM siem_events \
      WHERE timestamp >= ? AND timestamp <= ? AND agent_id = ? AND location = 'EventChannel' \
-     AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0";
+     AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 \
+     AND JSONExtractString(JSONExtractString(raw_metadata, 'data_json'), 'win', 'system', 'channel') = 'Microsoft-Windows-Sysmon/Operational'";
 
 fn ed(k: &str) -> String {
     format!("JSONExtractString(d, 'win', 'eventdata', '{k}')")

@@ -2985,7 +2985,7 @@ async fn get_agents_telemetry(State(state): State<AppState>, Extension(ctx): Ext
     let rows = state
         .db
         .tenant_client(&ctx.scope())
-        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 GROUP BY agent_id")
+        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 AND JSONExtractString(JSONExtractString(raw_metadata, 'data_json'), 'win', 'system', 'channel') = 'Microsoft-Windows-Sysmon/Operational' GROUP BY agent_id")
         .bind(since)
         .fetch_all::<(String, u64, u64)>()
         .await;

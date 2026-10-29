@@ -201,6 +201,11 @@
         <TargetFilename condition="begin with">C:\Windows\WinSxS\</TargetFilename>
         <TargetFilename condition="begin with">C:\Windows\assembly\NativeImages_</TargetFilename>
         <TargetFilename condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Definition Updates\</TargetFilename>
+        <!-- the AppLocker policy test file PowerShell writes to Temp at every start -->
+        <Rule groupRelation="and">
+          <TargetFilename condition="contains">\__PSScriptPolicyTest_</TargetFilename>
+          <Image condition="contains any">\WindowsPowerShell\v1.0\powershell.exe;\PowerShell\7\pwsh.exe</Image>
+        </Rule>
       </FileCreate>
     </RuleGroup>
 

@@ -415,11 +415,11 @@ export class Navbar implements OnInit, OnDestroy {
 
 
   private applySystemStatus(data: any) {
-    const kafkaRunning      = this.isRunning(data?.services?.kafka);
-    const clickhouseRunning = this.isRunning(data?.services?.clickhouse);
-    // Both are core to every deployment model (cloud and on-prem) - unlike the
-    // local capture agent, they're always meaningful to check here.
-    this.systemStatus = kafkaRunning && clickhouseRunning ? 'OPERATIONAL' : 'DEGRADED';
+    // Every service the platform reports must run, except the ones this deployment does
+    // not have ('not used': the SIEM has no Kafka); ClickHouse is always required.
+    const services: Record<string, unknown> = data?.services ?? {};
+    const healthy = Object.values(services).every(s => String(s).toLowerCase() === 'not used' || this.isRunning(s));
+    this.systemStatus = healthy && this.isRunning(services['clickhouse']) ? 'OPERATIONAL' : 'DEGRADED';
   }
 
   private isRunning(status: unknown) {

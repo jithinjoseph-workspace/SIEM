@@ -330,7 +330,7 @@
       "last_updated_at": "2026-10-27T05:36:53.852790500Z"
     },
     {
-      "id": "dossier-cf6ee986-837f-40df-a30a-c0c475d6203f",
+      "id": "dossier-d4c0735a-b211-4b29-8e31-d339a3f00aeb",
       "entity_id": "043",
       "entity_name": "win-node-e296",
       "entity_ip": "192.168.1.70",
@@ -4340,7 +4340,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-fea443b3-589e-48fe-a858-38076b07cf95",
+          "id": "act-68cac1a5-9b38-430e-a044-1c97b3f8a479",
           "title": "Terminate Suspect Script Process Tree on 'win-node-e296'",
           "action_type": "process_termination",
           "target_agent_id": "043",
@@ -4351,14 +4351,14 @@
           "description": "Terminate active PowerShell and command shell parent process trees.",
           "execution_command": "powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T05:16:52.307800500Z"
+          "created_at": "2026-10-29T06:38:16.053182600Z"
         }
       ],
       "alerts_analyzed": 3853,
-      "last_updated_at": "2026-10-29T05:16:52.307800500Z"
+      "last_updated_at": "2026-10-29T06:38:16.053182600Z"
     },
     {
-      "id": "dossier-de3e00f7-dd0e-4e41-bedb-a21eef09e59e",
+      "id": "dossier-43c47d49-ce6f-44c9-9485-39f42dbb1da5",
       "entity_id": "030",
       "entity_name": "win-node-e296",
       "entity_ip": "any",
@@ -4495,7 +4495,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-5c60a94e-383a-422a-a5b1-c961855f655c",
+          "id": "act-29912056-66e3-4400-9c97-51d8c093fe0d",
           "title": "Terminate Suspect Script Process Tree on 'win-node-e296'",
           "action_type": "process_termination",
           "target_agent_id": "030",
@@ -4506,82 +4506,74 @@
           "description": "Terminate active PowerShell and command shell parent process trees.",
           "execution_command": "powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T05:16:52.346433300Z"
+          "created_at": "2026-10-29T06:07:49.008107300Z"
         }
       ],
       "alerts_analyzed": 2,
-      "last_updated_at": "2026-10-29T05:16:52.346433300Z"
+      "last_updated_at": "2026-10-29T06:07:49.008107300Z"
     },
     {
-      "id": "dossier-5d05b92b-745b-4408-8b2e-4b2b037ae96c",
+      "id": "dossier-92c55214-53fb-47df-934d-64962a66720d",
       "entity_id": "000",
       "entity_name": "EVOFOX",
-      "entity_ip": "any",
+      "entity_ip": "",
       "os_type": "linux",
-      "primary_intent": "Long-Term APT & Identity Dominance",
-      "primary_probability": 0.45,
-      "confidence_score": 0.96,
-      "kill_chain_velocity": "Accelerating",
-      "progression_percent": 60,
+      "primary_intent": "Ransomware & Double Extortion",
+      "primary_probability": 0.29,
+      "confidence_score": 0.66,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 20,
       "hypotheses": [
-        {
-          "intent_type": "apt_espionage",
-          "display_name": "Long-Term APT & Identity Dominance",
-          "probability": 0.45,
-          "confidence": 0.96,
-          "impact_severity": "Critical",
-          "key_indicators": [
-            "Technique T1110.001 detected [Affinity +3.5]",
-            "Observed MITRE tactic 'Credential Access' (T1110.001)",
-            "Technique T1078 detected [Affinity +4.0]",
-            "Observed MITRE tactic 'Defense Evasion' (T1078)",
-            "Privileged credential activity observed for user 'admin'"
-          ],
-          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
-        },
-        {
-          "intent_type": "data_exfiltration",
-          "display_name": "Data Theft & Exfiltration",
-          "probability": 0.33,
-          "confidence": 0.96,
-          "impact_severity": "High",
-          "key_indicators": [
-            "Technique T1110.001 detected [Affinity +2.5]",
-            "Observed MITRE tactic 'Credential Access' (T1110.001)",
-            "Technique T1078 detected [Affinity +3.0]",
-            "Observed MITRE tactic 'Defense Evasion' (T1078)"
-          ],
-          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
-        },
         {
           "intent_type": "ransomware_extortion",
           "display_name": "Ransomware & Double Extortion",
-          "probability": 0.18,
-          "confidence": 0.96,
+          "probability": 0.29,
+          "confidence": 0.66,
           "impact_severity": "Critical",
           "key_indicators": [
-            "Observed MITRE tactic 'Credential Access' (T1110.001)",
-            "Technique T1078 detected [Affinity +2.8]",
-            "Observed MITRE tactic 'Defense Evasion' (T1078)"
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1204.002)"
           ],
           "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
         },
         {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.29,
+          "confidence": 0.66,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1204.002)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.29,
+          "confidence": 0.66,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1204.002)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
           "intent_type": "destructive_sabotage",
           "display_name": "Destructive Wiper / Sabotage",
-          "probability": 0.03,
-          "confidence": 0.96,
+          "probability": 0.06,
+          "confidence": 0.66,
           "impact_severity": "Catastrophic",
-          "key_indicators": [
-            "Observed MITRE tactic 'Defense Evasion' (T1078)"
-          ],
+          "key_indicators": [],
           "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
         },
         {
           "intent_type": "cryptojacking",
           "display_name": "Cryptojacking & Resource Hijacking",
-          "probability": 0.01,
-          "confidence": 0.96,
+          "probability": 0.06,
+          "confidence": 0.66,
           "impact_severity": "Medium",
           "key_indicators": [],
           "projected_impact": "Unauthorized consumption of system compute and GPU resources."
@@ -4597,14 +4589,19 @@
         {
           "stage_index": 1,
           "stage_name": "Execution",
-          "status": "unreached",
-          "observed_techniques": []
+          "status": "current",
+          "observed_techniques": [
+            "T1105",
+            "T1204.002"
+          ],
+          "first_observed_at": "2026-10-29T07:50:19.146Z"
         },
         {
           "stage_index": 2,
           "stage_name": "Persistence",
-          "status": "unreached",
-          "observed_techniques": []
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Persistence next based on Ransomware & Double Extortion trajectory."
         },
         {
           "stage_index": 3,
@@ -4615,32 +4612,20 @@
         {
           "stage_index": 4,
           "stage_name": "Defense Evasion",
-          "status": "observed",
-          "observed_techniques": [
-            "T1078"
-          ],
-          "first_observed_at": "2026-10-27T11:29:53.278Z"
+          "status": "unreached",
+          "observed_techniques": []
         },
         {
           "stage_index": 5,
           "stage_name": "Credential Access",
-          "status": "current",
-          "observed_techniques": [
-            "T1110.001",
-            "T1110.001",
-            "T1110.001",
-            "T1110.001",
-            "T1110.001",
-            "T1110.001"
-          ],
-          "first_observed_at": "2026-10-27T11:29:53.276Z"
+          "status": "unreached",
+          "observed_techniques": []
         },
         {
           "stage_index": 6,
           "stage_name": "Discovery",
-          "status": "predicted_next",
-          "observed_techniques": [],
-          "prediction_reason": "Adversary likely to pivot to Discovery next based on Long-Term APT & Identity Dominance trajectory."
+          "status": "unreached",
+          "observed_techniques": []
         },
         {
           "stage_index": 7,
@@ -4663,25 +4648,39 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-d49bd98c-993b-4670-9bf7-3da9f8b1b43b",
-          "title": "Terminate Suspect Script Process Tree on 'EVOFOX'",
-          "action_type": "process_termination",
+          "id": "act-5036616c-d25f-41d5-9588-6caa3e51fa0f",
+          "title": "Preemptively Isolate Linux Endpoint 'EVOFOX'",
+          "action_type": "host_isolation",
           "target_agent_id": "000",
           "target_agent_name": "EVOFOX",
           "target_entity": "EVOFOX",
-          "urgency": "Elevated",
-          "risk_reduction_percent": 82,
-          "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
-          "execution_command": "pkill -9 -f 'bash|sh|python'",
+          "urgency": "Immediate",
+          "risk_reduction_percent": 94,
+          "description": "Drop all lateral east-west network interfaces to prevent mass encryption while maintaining management C2 telemetry.",
+          "execution_command": "iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP",
           "status": "pending_approval",
-          "created_at": "2026-10-27T11:29:54.167642100Z"
+          "created_at": "2026-10-29T07:50:19.496481800Z"
+        },
+        {
+          "id": "act-90bc4382-fff5-466e-ac85-a62ba711bf4b",
+          "title": "Deploy Decoy Honeytoken Canaries on Critical Shares",
+          "action_type": "canary_tripwire",
+          "target_agent_id": "000",
+          "target_agent_name": "EVOFOX",
+          "target_entity": "/var/data/shared/",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 86,
+          "description": "Seed decoy tripwire files. Any unauthorized file write instantly halts caller process.",
+          "execution_command": "touch /var/data/shared/.vault_token.docx",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T07:50:19.496481800Z"
         }
       ],
-      "alerts_analyzed": 7,
-      "last_updated_at": "2026-10-27T11:29:54.167642100Z"
+      "alerts_analyzed": 2,
+      "last_updated_at": "2026-10-29T07:50:19.496481800Z"
     },
     {
-      "id": "dossier-305d63ec-de86-4480-852c-da4c3f813cec",
+      "id": "dossier-43359750-95be-4de2-9c2c-8d73f2aac3f2",
       "entity_id": "044",
       "entity_name": "linux-node-dfd2",
       "entity_ip": "any",
@@ -4784,7 +4783,7 @@
           "observed_techniques": [
             "T1110"
           ],
-          "first_observed_at": "2026-10-29T04:12:21.841560400Z"
+          "first_observed_at": "2026-10-29T06:39:12.725836300Z"
         },
         {
           "stage_index": 6,
@@ -4814,7 +4813,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-4a73d602-c9fb-47f2-ad9a-46786b3b5a9c",
+          "id": "act-710e9c96-bc42-4f86-9254-8c18a41dc8f5",
           "title": "Terminate Suspect Script Process Tree on 'linux-node-dfd2'",
           "action_type": "process_termination",
           "target_agent_id": "044",
@@ -4825,14 +4824,1298 @@
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
           "status": "pending_approval",
-          "created_at": "2026-10-29T04:12:21.841731300Z"
+          "created_at": "2026-10-29T06:39:12.725970500Z"
         }
       ],
       "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-29T04:12:21.841731300Z"
+      "last_updated_at": "2026-10-29T06:39:12.725970500Z"
+    },
+    {
+      "id": "dossier-a115b98f-db1e-4b87-8c1c-64bd6c4e2e5a",
+      "entity_id": "021",
+      "entity_name": "paste-test-01",
+      "entity_ip": "127.0.0.1",
+      "os_type": "linux",
+      "primary_intent": "Long-Term APT & Identity Dominance",
+      "primary_probability": 0.3,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 30,
+      "hypotheses": [
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.3,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1547.001)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.23,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1547.001)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.2,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1547.001)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.19,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1547.001)"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.08,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "current",
+          "observed_techniques": [
+            "T1547.001"
+          ],
+          "first_observed_at": "2026-10-29T06:40:12.827803800Z"
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Privilege Escalation next based on Long-Term APT & Identity Dominance trajectory."
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-9430f8f6-88d1-4b06-b00b-0696d9817fa5",
+          "title": "Terminate Suspect Script Process Tree on 'paste-test-01'",
+          "action_type": "process_termination",
+          "target_agent_id": "021",
+          "target_agent_name": "paste-test-01",
+          "target_entity": "paste-test-01",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 82,
+          "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
+          "execution_command": "pkill -9 -f 'bash|sh|python'",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T06:40:12.827877800Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T06:40:12.827877800Z"
+    },
+    {
+      "id": "dossier-ebcbb5b4-1891-4b02-99c0-dce8840700d6",
+      "entity_id": "045",
+      "entity_name": "win-node-e296",
+      "entity_ip": "192.168.1.70",
+      "os_type": "windows",
+      "primary_intent": "Long-Term APT & Identity Dominance",
+      "primary_probability": 0.34,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 30,
+      "hypotheses": [
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.34,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +3.6]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +3.0]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.23,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +2.5]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.12,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.05,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "current",
+          "observed_techniques": [
+            "T1543.003"
+          ],
+          "first_observed_at": "2026-10-29T06:27:19.234904100Z"
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Privilege Escalation next based on Long-Term APT & Identity Dominance trajectory."
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-d7bee9c4-f435-47f0-95ce-f90d6240d16a",
+          "title": "Terminate Suspect Script Process Tree on 'win-node-e296'",
+          "action_type": "process_termination",
+          "target_agent_id": "045",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "win-node-e296",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 82,
+          "description": "Terminate active PowerShell and command shell parent process trees.",
+          "execution_command": "powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T06:27:19.234988500Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T06:27:19.234988500Z"
+    },
+    {
+      "id": "dossier-bc9a1c4d-591e-47c5-90c7-4ec119a944ae",
+      "entity_id": "001",
+      "entity_name": "agent-sim",
+      "entity_ip": "10.0.0.50",
+      "os_type": "linux",
+      "primary_intent": "Long-Term APT & Identity Dominance",
+      "primary_probability": 0.48,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 60,
+      "hypotheses": [
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.48,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1110 detected [Affinity +3.5]",
+            "Observed MITRE tactic 'Credential Access' (T1110)",
+            "Privileged credential activity observed for user 'root'"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.28,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Technique T1110 detected [Affinity +2.5]",
+            "Observed MITRE tactic 'Credential Access' (T1110)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.15,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed MITRE tactic 'Credential Access' (T1110)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.05,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.05,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "current",
+          "observed_techniques": [
+            "T1110"
+          ],
+          "first_observed_at": "2026-10-29T05:54:25.965270900Z"
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Discovery next based on Long-Term APT & Identity Dominance trajectory."
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-514db17b-5cf9-4961-a9be-23cade0aeb7e",
+          "title": "Terminate Suspect Script Process Tree on 'agent-sim'",
+          "action_type": "process_termination",
+          "target_agent_id": "001",
+          "target_agent_name": "agent-sim",
+          "target_entity": "agent-sim",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 82,
+          "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
+          "execution_command": "pkill -9 -f 'bash|sh|python'",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T05:54:25.965438200Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T05:54:25.965438200Z"
+    },
+    {
+      "id": "dossier-3d7c7717-6209-4880-91e1-8af1ada8dc6b",
+      "entity_id": "046",
+      "entity_name": "win-node-e296",
+      "entity_ip": "192.168.1.70",
+      "os_type": "windows",
+      "primary_intent": "Long-Term APT & Identity Dominance",
+      "primary_probability": 0.34,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 30,
+      "hypotheses": [
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.34,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +3.6]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +3.0]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.23,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Technique T1543.003 detected [Affinity +2.5]",
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.12,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1543.003)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.05,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "current",
+          "observed_techniques": [
+            "T1543.003"
+          ],
+          "first_observed_at": "2026-10-29T06:34:20.648228100Z"
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Privilege Escalation next based on Long-Term APT & Identity Dominance trajectory."
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-7abfc8ee-0002-420d-8ea8-00acca75c149",
+          "title": "Terminate Suspect Script Process Tree on 'win-node-e296'",
+          "action_type": "process_termination",
+          "target_agent_id": "046",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "win-node-e296",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 82,
+          "description": "Terminate active PowerShell and command shell parent process trees.",
+          "execution_command": "powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T06:34:20.648293100Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T06:34:20.648293100Z"
+    },
+    {
+      "id": "dossier-7245bb36-16be-41d6-b01e-6dfb41079158",
+      "entity_id": "047",
+      "entity_name": "win-node-e296",
+      "entity_ip": "192.168.1.70",
+      "os_type": "windows",
+      "primary_intent": "Ransomware & Double Extortion",
+      "primary_probability": 0.27,
+      "confidence_score": 0.82,
+      "kill_chain_velocity": "Accelerating",
+      "progression_percent": 20,
+      "hypotheses": [
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.27,
+          "confidence": 0.82,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]",
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1202)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.27,
+          "confidence": 0.82,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]",
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1202)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.27,
+          "confidence": 0.82,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]",
+            "Observed activity in 'Execution' stage (T1105)",
+            "Observed activity in 'Execution' stage (T1202)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.15,
+          "confidence": 0.82,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.0]"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.03,
+          "confidence": 0.82,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "current",
+          "observed_techniques": [
+            "T1059.001",
+            "T1105",
+            "T1202",
+            "T1059.001"
+          ],
+          "first_observed_at": "2026-10-29T06:45:48.257Z"
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Persistence next based on Ransomware & Double Extortion trajectory."
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-4bab1198-7e45-4697-bb20-ce7663725747",
+          "title": "Preemptively Isolate Windows Host 'win-node-e296'",
+          "action_type": "host_isolation",
+          "target_agent_id": "047",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "192.168.1.70",
+          "urgency": "Immediate",
+          "risk_reduction_percent": 94,
+          "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
+          "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:54:07.236308100Z"
+        },
+        {
+          "id": "act-07378ab6-10b5-4c7d-80b9-4b0146366945",
+          "title": "Deploy Canary Decoy Tripwire on Windows Shares",
+          "action_type": "canary_tripwire",
+          "target_agent_id": "047",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "C:\\Shares\\Confidential\\",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 86,
+          "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
+          "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:54:07.236308100Z"
+        }
+      ],
+      "alerts_analyzed": 4,
+      "last_updated_at": "2026-10-29T09:54:07.236308100Z"
+    },
+    {
+      "id": "dossier-798f17c9-7279-45b1-b689-d228bb27a731",
+      "entity_id": "013",
+      "entity_name": "e2e-ui-pc",
+      "entity_ip": "127.0.0.1",
+      "os_type": "linux",
+      "primary_intent": "Destructive Wiper / Sabotage",
+      "primary_probability": 0.32,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 50,
+      "hypotheses": [
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.32,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Technique T1070.001 detected [Affinity +4.5]",
+            "Observed MITRE tactic 'Defense Evasion' (T1070.001)"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1070.001 detected [Affinity +3.6]",
+            "Observed MITRE tactic 'Defense Evasion' (T1070.001)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.26,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1070.001 detected [Affinity +3.0]",
+            "Observed MITRE tactic 'Defense Evasion' (T1070.001)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.11,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed MITRE tactic 'Defense Evasion' (T1070.001)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.04,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "current",
+          "observed_techniques": [
+            "T1070.001"
+          ],
+          "first_observed_at": "2026-10-29T06:42:13.033063700Z"
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Credential Access next based on Destructive Wiper / Sabotage trajectory."
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-d360389e-ece3-43f2-870a-81f9afc3c4ee",
+          "title": "Terminate Suspect Script Process Tree on 'e2e-ui-pc'",
+          "action_type": "process_termination",
+          "target_agent_id": "013",
+          "target_agent_name": "e2e-ui-pc",
+          "target_entity": "e2e-ui-pc",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 82,
+          "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
+          "execution_command": "pkill -9 -f 'bash|sh|python'",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T06:42:13.033139500Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T06:42:13.033139500Z"
+    },
+    {
+      "id": "dossier-c53d7c42-5dc0-4faf-a25c-1307dcc7e20e",
+      "entity_id": "048",
+      "entity_name": "win-node-e296",
+      "entity_ip": "",
+      "os_type": "windows",
+      "primary_intent": "Ransomware & Double Extortion",
+      "primary_probability": 0.3,
+      "confidence_score": 0.74,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 20,
+      "hypotheses": [
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.3,
+          "confidence": 0.74,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.3,
+          "confidence": 0.74,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.3,
+          "confidence": 0.74,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.04,
+          "confidence": 0.74,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.04,
+          "confidence": 0.74,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "current",
+          "observed_techniques": [
+            "T1006",
+            "T1006",
+            "T1006"
+          ],
+          "first_observed_at": "2026-10-29T07:08:04.308Z"
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Persistence next based on Ransomware & Double Extortion trajectory."
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-a4c52719-43fa-4aef-b2af-240767a936c4",
+          "title": "Preemptively Isolate Windows Host 'win-node-e296'",
+          "action_type": "host_isolation",
+          "target_agent_id": "048",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "win-node-e296",
+          "urgency": "Immediate",
+          "risk_reduction_percent": 94,
+          "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
+          "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:54:07.308431400Z"
+        },
+        {
+          "id": "act-49b9dcc2-c4dd-4361-8d49-1ca3ba663731",
+          "title": "Deploy Canary Decoy Tripwire on Windows Shares",
+          "action_type": "canary_tripwire",
+          "target_agent_id": "048",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "C:\\Shares\\Confidential\\",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 86,
+          "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
+          "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:54:07.308431400Z"
+        }
+      ],
+      "alerts_analyzed": 3,
+      "last_updated_at": "2026-10-29T09:54:07.308431400Z"
+    },
+    {
+      "id": "dossier-bb6f6ab7-3040-473e-883d-0d8cf990daa0",
+      "entity_id": "049",
+      "entity_name": "win-node-e296",
+      "entity_ip": "192.168.1.70",
+      "os_type": "windows",
+      "primary_intent": "Ransomware & Double Extortion",
+      "primary_probability": 0.27,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 20,
+      "hypotheses": [
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.27,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Observed activity in 'Execution' stage (T1006)"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.09,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.09,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "current",
+          "observed_techniques": [
+            "T1006"
+          ],
+          "first_observed_at": "2026-10-29T09:57:46.653Z"
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Persistence next based on Ransomware & Double Extortion trajectory."
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-9738e08b-bb0e-4c76-8886-43189a790fce",
+          "title": "Preemptively Isolate Windows Host 'win-node-e296'",
+          "action_type": "host_isolation",
+          "target_agent_id": "049",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "192.168.1.70",
+          "urgency": "Immediate",
+          "risk_reduction_percent": 94,
+          "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
+          "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:57:47.699818500Z"
+        },
+        {
+          "id": "act-fc30f22e-ac82-46fc-9f5d-925a2a4234e5",
+          "title": "Deploy Canary Decoy Tripwire on Windows Shares",
+          "action_type": "canary_tripwire",
+          "target_agent_id": "049",
+          "target_agent_name": "win-node-e296",
+          "target_entity": "C:\\Shares\\Confidential\\",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 86,
+          "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
+          "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T09:57:47.699818500Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T09:57:47.699818500Z"
+    },
+    {
+      "id": "dossier-7e5f823e-79a5-4d09-8402-fe1e39b2a20a",
+      "entity_id": "016",
+      "entity_name": "win-node-11a2",
+      "entity_ip": "127.0.0.1",
+      "os_type": "windows",
+      "primary_intent": "Baseline Activity (Normal)",
+      "primary_probability": 0.0,
+      "confidence_score": 0.95,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 0,
+      "hypotheses": [],
+      "milestones": [],
+      "recommended_actions": [],
+      "alerts_analyzed": 0,
+      "last_updated_at": "2026-10-29T09:46:26.763493300Z"
     }
   ],
   "executed_actions": [
     "act-bbf455e7-5e7c-4cc4-b77a-dd12e99fc873"
   ]
-}
+}                     

@@ -14,7 +14,7 @@ import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
 import { defaultManagerUrl, fetchManagerUrl, downloadText } from '../../../services/siem/agent-deploy';
 import { AgentDeploy } from '../../../components/agent-deploy/agent-deploy';
-import { Agent, AgentInventory, ScaCheckResult, RawEvent } from '../../../services/siem/siem.models';
+import { Agent, AgentInventory, ScaCheckResult, RawEvent, LiveResponseRequest, TamperStatus } from '../../../services/siem/siem.models';
 
 type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fim' | 'rootcheck' | 'groups' | 'upgrade' | 'actions';
 
@@ -287,6 +287,7 @@ export class Agents implements OnInit {
 
   ngOnInit() {
     this.loadAgents();
+    this.loadTamper();
     this.siem.getVulnerabilities().subscribe({
       next: v => {
         this.fleetVulns.set({ critical: v.critical_count ?? 0, high: v.high_count ?? 0 });
@@ -334,6 +335,13 @@ export class Agents implements OnInit {
     this.fimFilter.set('');
     this.upgradeFeedback.set(null);
     this.agentActionFeedback.set(null);
+    this.lrRequests.set([]);
+    this.lrView.set(null);
+    this.lrPath.set('');
+    if (agent.os_type === 'windows') {
+      this.loadLiveResponses();
+      this.loadTamper();
+    }
     this.loadAgentDetails(agent.id);
   }
 
@@ -605,6 +613,140 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
 
   isolateHost() {
     this.edrAction('isolate_host', {}, `Isolate ${this.selectedAgent()?.name} from the network?\n\nOnly the manager stays reachable. It lifts by itself after 24 h, or with Release.`);
+  }
+
+  // EDR live response (Windows agents): ask the endpoint, read the answer
+  lrRequests = signal<LiveResponseRequest[]>([]);
+  lrPath = signal('');
+  lrView = signal<{ request: LiveResponseRequest; result?: any; error?: string } | null>(null);
+  lrFilter = signal('');
+  private lrPolls = 0;
+
+  /** The table each listing shows: a label and the first key the agent filled. */
+  private static readonly LR_COLUMNS: Record<string, { label: string; keys: string[] }[]> = {
+    processes: [{ label: 'PID', keys: ['pid'] }, { label: 'Parent', keys: ['ppid'] }, { label: 'Name', keys: ['name'] }, { label: 'Command line', keys: ['cmd'] }],
+    connections: [{ label: 'Proto', keys: ['protocol'] }, { label: 'Local', keys: ['local_ip'] }, { label: 'Port', keys: ['local_port'] }, { label: 'Remote', keys: ['remote_ip'] }, { label: 'Port', keys: ['remote_port'] }, { label: 'State', keys: ['state'] }, { label: 'PID', keys: ['pid'] }, { label: 'Process', keys: ['process'] }],
+    services: [{ label: 'Name', keys: ['service_name', 'name'] }, { label: 'Display name', keys: ['display_name'] }, { label: 'State', keys: ['service_state', 'status'] }, { label: 'Start', keys: ['service_start_type', 'start_type'] }, { label: 'Program', keys: ['process_executable', 'file_path', 'path'] }],
+  };
+
+  lrColumns = computed(() => Agents.LR_COLUMNS[this.lrView()?.request.action ?? ''] ?? []);
+  lrRows = computed(() => {
+    const v = this.lrView();
+    const rows: any[] = v?.request.action === 'dir' ? (v.result?.entries ?? []) : Array.isArray(v?.result) ? v!.result : [];
+    const q = this.lrFilter().toLowerCase().trim();
+    return q ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q)) : rows;
+  });
+
+  lrCell(row: any, keys: string[]): string {
+    for (const k of keys) {
+      const v = row?.[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v);
+    }
+    return '';
+  }
+
+  loadLiveResponses() {
+    const ag = this.selectedAgent();
+    if (!ag) return;
+    this.siem.getLiveResponses(ag.id).subscribe({
+      next: (r) => {
+        if (this.selectedAgent()?.id !== ag.id) return;
+        this.lrRequests.set(r.requests ?? []);
+        // the open result updates when its answer arrives
+        const open = this.lrView();
+        const now = open && r.requests.find(x => x.id === open.request.id);
+        if (open && now && now.status !== open.request.status) this.openLiveResponse(now);
+        // an answer usually takes seconds: look again while one is pending, for up to 2 minutes
+        if (r.requests.some(x => x.status === 'pending') && this.lrPolls++ < 40) setTimeout(() => this.loadLiveResponses(), 3000);
+      },
+      error: () => this.lrRequests.set([]),
+    });
+  }
+
+  startLiveResponse(action: string, path?: string) {
+    const ag = this.selectedAgent();
+    if (!ag) return;
+    if (action === 'file' && !confirm(`Copy ${path} from ${ag.name} to the manager?\n\nThe file is read, not changed. It is kept 30 days and recorded as a decision.`)) return;
+    this.agentActionFeedback.set(`Asking ${ag.name}…`);
+    this.siem.startLiveResponse(ag.id, action, path).subscribe({
+      next: (r) => {
+        this.agentActionFeedback.set(`✓ ${r.message}`);
+        this.lrPolls = 0;
+        this.openLiveResponse(r.request);
+        this.loadLiveResponses();
+      },
+      error: (err) => this.agentActionFeedback.set(`✗ ${err?.error?.message || err?.statusText || 'request failed'}`),
+    });
+  }
+
+  openLiveResponse(req: LiveResponseRequest) {
+    const ag = this.selectedAgent();
+    if (!ag) return;
+    this.lrFilter.set('');
+    this.lrView.set({ request: req });
+    if (req.status !== 'done' || req.action === 'file') return;
+    this.siem.getLiveResponse(ag.id, req.id).subscribe({
+      next: (r) => this.lrView()?.request.id === req.id && this.lrView.set(r),
+      error: (err) => this.lrView.set({ request: req, error: err?.error?.message || 'The result could not be read' }),
+    });
+  }
+
+  /** A folder entry: open a folder, or collect a file. */
+  lrEntryPath(name: string): string {
+    const base = (this.lrView()?.request.path ?? '').replace(/[\\/]+$/, '');
+    return `${base}\\${name}`;
+  }
+
+  downloadCollected(req: LiveResponseRequest) {
+    const ag = this.selectedAgent();
+    if (!ag) return;
+    this.siem.downloadLiveResponseFile(ag.id, req.id).subscribe({
+      next: (blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(req.path.split(/[\\/]/).pop() || 'file').replace(/[^\w.-]/g, '_')}.collected`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      },
+      error: () => this.agentActionFeedback.set('✗ The collected file could not be downloaded (incomplete, or older than 30 days)'),
+    });
+  }
+
+  // EDR tamper protection (Windows agents)
+  tamper = signal<TamperStatus | null>(null);
+  tamperMsg = signal<string | null>(null);
+  tamperMinutes = signal(60);
+  tamperReason = signal('');
+  tamperOfSelected = computed(() => this.tamper()?.agents.find(a => a.agent_id === this.selectedAgent()?.id) ?? null);
+
+  loadTamper() {
+    this.siem.getTamper().subscribe({ next: t => this.tamper.set(t), error: () => this.tamper.set(null) });
+  }
+
+  toggleTamper() {
+    const t = this.tamper();
+    if (!t?.editable) return;
+    const on = !t.settings.enabled;
+    const text = on
+      ? 'Turn on tamper protection?\n\nEvery Windows agent locks its service: administrators can no longer stop, change or remove it, and a killed agent restarts. Upgrades and removals then need a maintenance window from this page.'
+      : 'Turn off tamper protection?\n\nEvery Windows agent service gets its normal permissions back.';
+    if (!confirm(text)) return;
+    this.siem.setTamper(on).subscribe({
+      next: r => { this.tamperMsg.set(`✓ ${r.message}`); this.loadTamper(); setTimeout(() => this.tamperMsg.set(null), 6000); },
+      error: e => this.tamperMsg.set(`✗ ${e?.error?.message || 'not changed'}`),
+    });
+  }
+
+  tamperAction(action: 'lock' | 'maintenance') {
+    const ag = this.selectedAgent();
+    if (!ag) return;
+    if (action === 'maintenance' && !confirm(`Open a ${this.tamperMinutes() >= 1440 ? '24-hour' : this.tamperMinutes() + '-minute'} maintenance window on ${ag.name}?\n\nAdministrators on it can stop, change or remove the agent until the window ends. It is recorded as a decision.`)) return;
+    this.siem.tamperAgent(ag.id, action, this.tamperMinutes(), this.tamperReason().trim() || undefined).subscribe({
+      next: r => { this.agentActionFeedback.set(`✓ ${r.message}`); this.loadTamper(); setTimeout(() => this.loadTamper(), 8000); },
+      error: e => this.agentActionFeedback.set(`✗ ${e?.error?.message || 'request failed'}`),
+    });
   }
 
   loadDeactivated() {

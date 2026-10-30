@@ -20,6 +20,8 @@ base64 = "0.22"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
+# live response: the syscollector's process / port / service collectors
+siem-sysinfo = { path = "../siem-sysinfo" }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_WinTrust", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
 
 [[bin]]
@@ -54,3 +56,11 @@ path = "src/bin/isolate_host.rs"
 [[bin]]
 name = "yara-scan"
 path = "src/bin/yara_scan.rs"
+
+[[bin]]
+name = "live-response"
+path = "src/bin/live_response.rs"
+
+[[bin]]
+name = "tamper-protect"
+path = "src/bin/tamper_protect.rs"

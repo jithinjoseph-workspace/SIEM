@@ -223,6 +223,9 @@ export interface ComplianceFramework {
   checks_passed: number;
   checks_failed: number;
   requirements: ComplianceRequirement[];
+  /** the agent groups in its audit scope (empty: every agent) */
+  scope_groups?: string[];
+  agents_in_scope?: number;
 }
 
 /** A failing check and the requirements it breaks, with the agent's fix. */
@@ -254,6 +257,41 @@ export interface ComplianceResponse {
   agents: number;
   total_alerts_evaluated: number;
   last_updated: string;
+  /** checks the tenant marked not needed (left out of every score) */
+  excluded_checks?: number;
+  profile_updated_by?: string;
+  profile_updated_at?: string;
+}
+
+/** What the tenant's compliance audits count. */
+export interface ComplianceProfile {
+  /** empty: every framework */
+  frameworks: string[];
+  /** framework -> agent groups in its scope (missing: every agent) */
+  scope: Record<string, string[]>;
+  excluded_checks: string[];
+  updated_by?: string;
+  updated_at?: string;
+}
+
+export interface ComplianceProfileCheck {
+  policy_id: string;
+  policy: string;
+  check_id: string;
+  title: string;
+  frameworks: string[];
+  failed_agents: number;
+  passed_agents: number;
+  required: boolean;
+}
+
+export interface ComplianceProfileResponse {
+  profile: ComplianceProfile;
+  frameworks: { name: string; full_name: string }[];
+  groups: { name: string; agents: number }[];
+  checks: ComplianceProfileCheck[];
+  /** the tenant admin may save it */
+  editable: boolean;
 }
 
 // --- Vulnerabilities (CVE) ---
@@ -781,3 +819,29 @@ export interface SimulateTripwireRequest {
   notes?: string;
 }
 
+/** An EDR live response request on an agent, and its outcome. */
+export interface LiveResponseRequest {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  /** processes | connections | services | dir | file */
+  action: string;
+  path: string;
+  requested_by: string;
+  requested_at: string;
+  /** pending | done | failed | no_answer */
+  status: string;
+  message: string;
+  bytes: number;
+  file_sha256: string;
+  completed_at: string;
+}
+
+/** EDR tamper protection: the tenant's setting and each Windows agent's state. */
+export interface TamperStatus {
+  settings: { enabled: boolean; updated_by: string; updated_at: string };
+  /** the tenant admin may change it and open maintenance windows */
+  editable: boolean;
+  agents: { agent_id: string; name: string; state: 'locked' | 'maintenance' | 'off' | 'failed' | 'sent' | 'unknown'; message: string; window_until: string; updated_at: string; updated_by: string }[];
+  window_minutes: number[];
+}

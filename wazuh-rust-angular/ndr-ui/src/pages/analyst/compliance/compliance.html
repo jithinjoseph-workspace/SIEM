@@ -24,8 +24,149 @@
         <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 group-hover:rotate-180 transition-transform duration-500" [class.animate-spin]="loading()"></lucide-angular>
         Re-evaluate
       </button>
+      <button
+        (click)="settingsOpen() ? settingsOpen.set(false) : openSettings()"
+        [attr.aria-expanded]="settingsOpen()"
+        class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-sm font-semibold rounded-xl border border-slate-700/80 hover:border-cyan-500/40 transition-all shadow-md"
+      >
+        <lucide-angular [img]="SlidersIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
+        Audit settings
+      </button>
     </div>
   </div>
+
+  <!-- What the scores count: frameworks, scope, checks not needed -->
+  @if (excludedCount() > 0 || settingsUpdatedBy()) {
+    <div class="text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+      <span>Scores leave out <b class="text-slate-200">{{ excludedCount() | number }}</b> check(s) marked not needed.</span>
+      @if (settingsUpdatedBy()) { <span>Audit settings last changed by {{ settingsUpdatedBy() }}.</span> }
+    </div>
+  }
+
+  <!-- ================= AUDIT SETTINGS ================= -->
+  @if (settingsOpen()) {
+    <section class="bg-slate-900/80 border border-cyan-500/30 rounded-2xl p-5 space-y-5" aria-label="Audit settings">
+      <div class="flex flex-wrap justify-between items-start gap-3">
+        <div>
+          <h2 class="text-base font-bold text-white">Audit settings</h2>
+          <p class="text-xs text-slate-400 mt-1 max-w-3xl">Choose the frameworks this organisation reports on, which agent groups each one covers, and which checks it needs. Checks marked "not needed" are left out of every score.</p>
+        </div>
+        <button (click)="settingsOpen.set(false)" class="text-xs text-slate-400 hover:text-white px-2 py-1">Close</button>
+      </div>
+
+      @if (settingsMsg(); as m) {
+        <div class="p-3 rounded-xl text-xs font-semibold border" [class.border-rose-500/40]="!m.ok" [class.bg-rose-950/50]="!m.ok" [class.text-rose-200]="!m.ok">{{ m.text }}</div>
+      }
+
+      @if (settingsLoading()) {
+        <div class="text-xs text-slate-400">Loading the audit settings...</div>
+      } @else if (settings(); as st) {
+        @if (!st.editable) {
+          <div class="p-3 rounded-xl text-xs border border-amber-500/30 bg-amber-950/40 text-amber-200">You can view these settings. Only a tenant admin can change them, because they decide what an audit counts.</div>
+        }
+
+        <!-- 1. Frameworks and their scope -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">1. Frameworks and audit scope</h3>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            @for (fw of st.frameworks; track fw.name) {
+              <div class="p-3 rounded-xl border bg-slate-950/60" [class.border-cyan-500/40]="draftFrameworks().has(fw.name)" [class.border-slate-800]="!draftFrameworks().has(fw.name)">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                  <input type="checkbox" [id]="'fw-' + fw.name" [checked]="draftFrameworks().has(fw.name)" (change)="toggleFramework(fw.name)" [disabled]="!st.editable" class="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-950 text-cyan-500" />
+                  <span>
+                    <span class="text-sm font-semibold text-white">{{ fw.name }}</span>
+                    <span class="block text-[11px] text-slate-400">{{ fw.full_name }}</span>
+                  </span>
+                </label>
+                @if (draftFrameworks().has(fw.name)) {
+                  <div class="mt-2.5 pl-6.5 space-y-1.5">
+                    <div class="text-[11px] text-slate-400">
+                      Covers:
+                      @if (scopeAgents(fw.name) === null) { <b class="text-slate-200">every agent</b> } @else { <b class="text-slate-200">{{ scopeAgents(fw.name) }} agent(s)</b> in the groups chosen }
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                      @for (g of st.groups; track g.name) {
+                        <button type="button" (click)="toggleScope(fw.name, g.name)" [disabled]="!st.editable" [attr.aria-pressed]="inScope(fw.name, g.name)"
+                          class="px-2 py-0.5 rounded-lg text-[11px] font-mono border transition"
+                          [class.bg-cyan-950]="inScope(fw.name, g.name)" [class.text-cyan-300]="inScope(fw.name, g.name)" [class.border-cyan-600]="inScope(fw.name, g.name)"
+                          [class.text-slate-400]="!inScope(fw.name, g.name)" [class.border-slate-700]="!inScope(fw.name, g.name)">
+                          {{ g.name }} · {{ g.agents }}
+                        </button>
+                      } @empty {
+                        <span class="text-[11px] text-slate-500">No agent groups yet. Create them on the Agent Fleet page to limit a framework to some agents.</span>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- 2. Checks required / not needed -->
+        <div class="space-y-2">
+          <div class="flex flex-wrap justify-between items-end gap-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">2. Checks this organisation needs</h3>
+            <span class="text-xs text-slate-400"><b class="text-white">{{ requiredCount() | number }}</b> of {{ st.checks.length | number }} required · {{ st.checks.length - requiredCount() | number }} not needed</span>
+          </div>
+          @if (!st.checks.length) {
+            <div class="text-xs text-slate-500">No configuration checks yet: they appear after your agents run their first scan.</div>
+          } @else {
+            <div class="flex flex-wrap gap-2 items-end">
+              <label class="text-[11px] text-slate-400 grid gap-1">Search
+                <input id="chk-q" type="search" [ngModel]="checkSearch()" (ngModelChange)="checkSearch.set($event); checkLimit.set(200)" placeholder="Title or check ID" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white w-56" />
+              </label>
+              <label class="text-[11px] text-slate-400 grid gap-1">Policy
+                <select id="chk-pol" [ngModel]="checkPolicy()" (ngModelChange)="checkPolicy.set($event); checkLimit.set(200)" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white max-w-[260px]">
+                  <option value="">All policies</option>
+                  @for (p of policies(); track p.id) { <option [value]="p.id">{{ p.name }}</option> }
+                </select>
+              </label>
+              <label class="text-[11px] text-slate-400 grid gap-1">Framework
+                <select id="chk-fw" [ngModel]="checkFramework()" (ngModelChange)="checkFramework.set($event); checkLimit.set(200)" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white">
+                  <option value="">Any</option>
+                  @for (fw of st.frameworks; track fw.name) { <option [value]="fw.name">{{ fw.name }}</option> }
+                </select>
+              </label>
+              <label class="text-[11px] text-slate-400 grid gap-1">Show
+                <select id="chk-view" [ngModel]="checkView()" (ngModelChange)="checkView.set($event); checkLimit.set(200)" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white">
+                  <option value="all">All</option><option value="required">Required</option><option value="not_needed">Not needed</option>
+                </select>
+              </label>
+              @if (st.editable) {
+                <button type="button" (click)="setShownRequired(true)" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-emerald-700 text-emerald-300 hover:bg-emerald-950">Require all {{ filteredChecks().length | number }} shown</button>
+                <button type="button" (click)="setShownRequired(false)" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-slate-700 text-slate-300 hover:bg-slate-800">Mark {{ filteredChecks().length | number }} shown not needed</button>
+              }
+            </div>
+            <div class="border border-slate-800 rounded-xl divide-y divide-slate-800/70 max-h-[460px] overflow-y-auto">
+              @for (c of shownChecks(); track c.policy_id + c.check_id) {
+                <label class="flex items-start gap-3 px-3 py-2 text-xs hover:bg-slate-950/70 cursor-pointer" [class.opacity-60]="!isRequired(c)">
+                  <input type="checkbox" [checked]="isRequired(c)" (change)="setRequired([c.check_id], !isRequired(c))" [disabled]="!st.editable" class="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-950 text-emerald-500" [attr.aria-label]="'Required: ' + c.title" />
+                  <span class="font-mono text-slate-500 w-12 shrink-0">{{ c.check_id }}</span>
+                  <span class="flex-1 min-w-0">
+                    <span class="text-slate-200">{{ c.title }}</span>
+                    <span class="block text-[11px] text-slate-500">{{ c.policy }}@if (c.frameworks.length) { · {{ c.frameworks.join(', ') }} }</span>
+                  </span>
+                  <span class="shrink-0 text-[11px] whitespace-nowrap" [class.text-rose-400]="c.failed_agents > 0" [class.text-emerald-400]="c.failed_agents === 0">{{ c.failed_agents > 0 ? 'fails on ' + c.failed_agents : 'passes' }}</span>
+                </label>
+              }
+            </div>
+            @if (filteredChecks().length > shownChecks().length) {
+              <button type="button" (click)="checkLimit.set(checkLimit() + 300)" class="text-xs text-cyan-400 hover:text-cyan-300">Show more ({{ filteredChecks().length - shownChecks().length | number }} left)</button>
+            }
+          }
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800/80">
+          <button type="button" (click)="saveSettings()" [disabled]="!st.editable || savingSettings()"
+            class="px-4 py-2 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+            {{ savingSettings() ? 'Saving...' : 'Save audit settings' }}
+          </button>
+          <span class="text-[11px] text-slate-500">Saved per organisation in ClickHouse. Every score on this page uses them.</span>
+        </div>
+      }
+    </section>
+  }
 
   <!-- Feedback Banner for Remediation & Report -->
   <div *ngIf="remediationFeedback() || reportFeedback()" 
@@ -53,6 +194,10 @@
       </div>
       <div class="text-[11px] text-slate-500 mt-0.5">
         Evaluated: {{ fw.lastSync || '—' }}
+      </div>
+      <div class="text-[11px] mt-0.5 truncate" [class.text-cyan-300]="fw.scope_groups?.length" [class.text-slate-500]="!fw.scope_groups?.length"
+           [title]="fw.scope_groups?.length ? 'Audit scope: agents in ' + fw.scope_groups!.join(', ') : 'Audit scope: every agent'">
+        Scope: {{ fw.scope_groups?.length ? fw.scope_groups!.join(', ') + ' (' + fw.agents_in_scope + ')' : 'all agents' }}
       </div>
 
       <!-- Glowing Progress Bar with Percentage -->

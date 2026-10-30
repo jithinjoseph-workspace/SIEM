@@ -261,7 +261,14 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 20] = [
+pub const ANALYST_DDL: [&str; 24] = [
+    // EDR tamper protection: the tenant's setting and each agent's lock state (tamper.rs)
+    crate::tamper::DDL,
+    // EDR live response requests and their results (live_response.rs)
+    crate::live_response::DDL[0],
+    crate::live_response::DDL[1],
+    // what the tenant's compliance audits count (compliance.rs)
+    crate::compliance::DDL,
     // the AI Copilot's conversations and incident reports (copilot.rs)
     crate::copilot::DDL[0],
     crate::copilot::DDL[1],

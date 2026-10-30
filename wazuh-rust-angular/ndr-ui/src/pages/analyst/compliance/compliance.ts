@@ -9,7 +9,7 @@ import {
   AlertOctagon, SlidersHorizontal, Search
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
-import { ComplianceFramework, ComplianceResponse } from '../../../services/siem/siem.models';
+import { ComplianceFramework, ComplianceProfileCheck, ComplianceProfileResponse, ComplianceResponse } from '../../../services/siem/siem.models';
 import { downloadText } from '../../../services/siem/agent-deploy';
 
 export interface AuditLogItem {
@@ -105,6 +105,41 @@ export class Compliance implements OnInit {
   auditSearch = signal<string>('');
   auditStatusFilter = signal<'all' | 'pass' | 'fail' | 'review'>('all');
 
+  /** checks marked not needed, and who last changed the audit settings */
+  excludedCount = signal(0);
+  settingsUpdatedBy = signal('');
+
+  // Audit settings: frameworks reported on, their agent-group scope, checks not needed
+  settingsOpen = signal(false);
+  settings = signal<ComplianceProfileResponse | null>(null);
+  settingsLoading = signal(false);
+  savingSettings = signal(false);
+  settingsMsg = signal<{ ok: boolean; text: string } | null>(null);
+  draftFrameworks = signal<Set<string>>(new Set());
+  draftScope = signal<Record<string, string[]>>({});
+  draftExcluded = signal<Set<string>>(new Set());
+  checkSearch = signal('');
+  checkPolicy = signal('');
+  checkFramework = signal('');
+  checkView = signal<'all' | 'required' | 'not_needed'>('all');
+  checkLimit = signal(200);
+
+  policies = computed(() => {
+    const m = new Map<string, string>();
+    for (const c of this.settings()?.checks ?? []) m.set(c.policy_id, c.policy);
+    return [...m].map(([id, name]) => ({ id, name }));
+  });
+  filteredChecks = computed(() => {
+    const q = this.checkSearch().toLowerCase().trim(), pol = this.checkPolicy(), fw = this.checkFramework(), view = this.checkView();
+    const ex = this.draftExcluded();
+    return (this.settings()?.checks ?? []).filter(c =>
+      (!pol || c.policy_id === pol) && (!fw || c.frameworks.includes(fw))
+      && (view === 'all' || (view === 'required') === !ex.has(c.check_id))
+      && (!q || c.check_id.includes(q) || c.title.toLowerCase().includes(q)));
+  });
+  shownChecks = computed(() => this.filteredChecks().slice(0, this.checkLimit()));
+  requiredCount = computed(() => (this.settings()?.checks ?? []).filter(c => !this.draftExcluded().has(c.check_id)).length);
+
   // Computed metrics: the average of the frameworks that have a configuration score
   overallMappedPercent = computed(() => {
     const scored = this.frameworks().map(f => f.score_percent).filter((p): p is number => p !== null);
@@ -177,9 +212,11 @@ export class Compliance implements OnInit {
         });
 
         this.frameworks.set(enriched);
-        if (enriched.length > 0 && !this.selectedFramework()) {
-          this.selectedFramework.set(enriched[0]);
-        }
+        this.excludedCount.set(res.excluded_checks ?? 0);
+        this.settingsUpdatedBy.set(res.profile_updated_by ?? '');
+        // keep the selection only while that framework is still reported on
+        const sel = this.selectedFramework();
+        this.selectedFramework.set(enriched.find(f => f.name === sel?.name) ?? enriched[0] ?? null);
         this.loading.set(false);
         this.setRemediations(res);
         this.setEvidence(res);
@@ -255,6 +292,95 @@ export class Compliance implements OnInit {
     if (s < 3600) return `${Math.floor(s / 60)}m ago`;
     if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
     return `${Math.floor(s / 86400)}d ago`;
+  }
+
+  /** Opens the audit settings with the saved profile as the draft. */
+  openSettings() {
+    this.settingsOpen.set(true);
+    this.settingsMsg.set(null);
+    this.settingsLoading.set(true);
+    this.siem.getComplianceProfile().subscribe({
+      next: (res) => {
+        const all = res.frameworks.map(f => f.name);
+        this.settings.set(res);
+        this.draftFrameworks.set(new Set(res.profile.frameworks.length ? res.profile.frameworks : all));
+        this.draftScope.set({ ...res.profile.scope });
+        this.draftExcluded.set(new Set(res.profile.excluded_checks));
+        this.settingsLoading.set(false);
+      },
+      error: (e) => {
+        this.settingsLoading.set(false);
+        this.settingsMsg.set({ ok: false, text: e?.error?.message || 'The audit settings could not be loaded.' });
+      }
+    });
+  }
+
+  toggleFramework(name: string) {
+    const s = new Set(this.draftFrameworks());
+    s.has(name) ? s.delete(name) : s.add(name);
+    this.draftFrameworks.set(s);
+  }
+
+  inScope(fw: string, group: string): boolean {
+    return (this.draftScope()[fw] ?? []).includes(group);
+  }
+
+  toggleScope(fw: string, group: string) {
+    const cur = this.draftScope()[fw] ?? [];
+    const next = cur.includes(group) ? cur.filter(g => g !== group) : [...cur, group];
+    this.draftScope.set({ ...this.draftScope(), [fw]: next });
+  }
+
+  scopeAgents(fw: string): number | null {
+    const groups = this.draftScope()[fw] ?? [];
+    if (!groups.length) return null;
+    return (this.settings()?.groups ?? []).filter(g => groups.includes(g.name)).reduce((n, g) => n + g.agents, 0);
+  }
+
+  isRequired(c: ComplianceProfileCheck): boolean {
+    return !this.draftExcluded().has(c.check_id);
+  }
+
+  setRequired(ids: string[], required: boolean) {
+    const s = new Set(this.draftExcluded());
+    for (const id of ids) required ? s.delete(id) : s.add(id);
+    this.draftExcluded.set(s);
+  }
+
+  /** Every check the filters show (not only the rows rendered so far). */
+  setShownRequired(required: boolean) {
+    this.setRequired(this.filteredChecks().map(c => c.check_id), required);
+  }
+
+  saveSettings() {
+    const res = this.settings();
+    if (!res) return;
+    const chosen = res.frameworks.map(f => f.name).filter(n => this.draftFrameworks().has(n));
+    if (!chosen.length) {
+      this.settingsMsg.set({ ok: false, text: 'Choose at least one framework to report on.' });
+      return;
+    }
+    const scope: Record<string, string[]> = {};
+    for (const n of chosen) if (this.draftScope()[n]?.length) scope[n] = this.draftScope()[n];
+    this.savingSettings.set(true);
+    this.siem.saveComplianceProfile({
+      // every framework chosen: saved as "all", so new frameworks show up too
+      frameworks: chosen.length === res.frameworks.length ? [] : chosen,
+      scope,
+      excluded_checks: [...this.draftExcluded()],
+    }).subscribe({
+      next: () => {
+        this.savingSettings.set(false);
+        this.settingsOpen.set(false);
+        this.remediationFeedback.set('Audit settings saved. Scores now use them.');
+        setTimeout(() => this.remediationFeedback.set(null), 4000);
+        this.loadCompliance();
+      },
+      error: (e) => {
+        this.savingSettings.set(false);
+        this.settingsMsg.set({ ok: false, text: e?.status === 403 ? 'Only a tenant admin can change the audit settings.' : (e?.error?.message || 'The audit settings were not saved.') });
+      }
+    });
   }
 
   selectFramework(fw: ExtendedFramework) {

@@ -59,6 +59,20 @@ fn group_dir(m: &str) -> std::path::PathBuf {
     wazuh_manager::home().join("etc/shared").join(m)
 }
 
+/// `tenant`'s group names (`default` first).
+pub fn tenant_groups(tenant: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(wazuh_manager::home().join("etc/shared"))
+        .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).filter_map(|e| display_name(tenant, &e.file_name().to_string_lossy())).collect())
+        .unwrap_or_default();
+    names.sort_by(|a, b| (a != "default", a).cmp(&(b != "default", b)));
+    names
+}
+
+/// `tenant`'s names of the groups of an enrolled agent.
+pub fn tenant_agent_groups(tenant: &str, csv: &str) -> Vec<String> {
+    agent_groups(csv).iter().filter_map(|m| display_name(tenant, m)).collect()
+}
+
 /// The groups of an enrolled agent (`default` when none was set).
 pub fn agent_groups(csv: &str) -> Vec<String> {
     let v: Vec<String> = csv.split(',').map(str::trim).filter(|g| !g.is_empty()).map(str::to_string).collect();
@@ -146,10 +160,7 @@ pub async fn list_groups(State(state): State<AppState>, Extension(ctx): Extensio
         return r;
     }
     let tenant = ctx.scope();
-    let mut names: Vec<String> = std::fs::read_dir(wazuh_manager::home().join("etc/shared"))
-        .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).filter_map(|e| display_name(&tenant, &e.file_name().to_string_lossy())).collect())
-        .unwrap_or_default();
-    names.sort_by(|a, b| (a != "default", a).cmp(&(b != "default", b)));
+    let names = tenant_groups(&tenant);
     let enrolled = state.enrolled.read().unwrap();
     let mine: Vec<(&String, Vec<String>)> = enrolled.iter().filter(|(_, e)| e.tenant == tenant).map(|(id, e)| (id, agent_groups(&e.groups))).collect();
     let items: Vec<_> = names

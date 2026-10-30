@@ -35,6 +35,15 @@
         <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="loading()"></lucide-angular>
         Refresh
       </button>
+      @if (tamper(); as t) {
+        <button type="button" (click)="toggleTamper()" [disabled]="!t.editable" [attr.aria-pressed]="t.settings.enabled"
+          [title]="t.editable ? 'Lock every Windows agent so it cannot be stopped or removed' : 'Only a tenant admin can change this'"
+          class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition disabled:cursor-default"
+          [ngClass]="t.settings.enabled ? 'bg-emerald-950/70 text-emerald-200 border-emerald-500/50' : 'bg-slate-900/90 text-slate-300 border-slate-700/80'">
+          <lucide-angular [img]="LockIcon" class="w-3.5 h-3.5"></lucide-angular>
+          Tamper protection: {{ t.settings.enabled ? 'on' : 'off' }}
+        </button>
+      }
       <button *ngIf="canDeploy" type="button" (click)="showDeployModal.set(true)"
         class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition hover:-translate-y-0.5">
         <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular>
@@ -42,6 +51,9 @@
       </button>
     </div>
   </header>
+  @if (tamperMsg()) {
+    <div class="text-xs px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/80 text-slate-200">{{ tamperMsg() }}</div>
+  }
 
   <!-- ── KPI cards ── -->
   <section class="grid grid-cols-1 min-[480px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Fleet summary">
@@ -977,6 +989,134 @@
                     <button type="button" (click)="isolateHost()" class="p-3 bg-rose-950/40 hover:bg-rose-900/40 border border-rose-800 rounded-xl text-left text-xs font-semibold text-rose-200 transition">Isolate host (only the manager stays reachable)</button>
                     <button type="button" (click)="edrAction('release_host', {})" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-left text-xs font-semibold text-white transition">Release isolation</button>
                   </div>
+                </div>
+
+                <!-- Tamper protection: the agent service locked, maintenance windows -->
+                <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="text-xs text-slate-300 font-semibold">Tamper protection</div>
+                    @if (tamperOfSelected(); as tp) {
+                      <span class="text-[11px] font-semibold px-2 py-0.5 rounded border"
+                        [ngClass]="tp.state === 'locked' ? 'text-emerald-300 border-emerald-700 bg-emerald-950/50' : tp.state === 'maintenance' ? 'text-amber-300 border-amber-700 bg-amber-950/50' : tp.state === 'failed' ? 'text-rose-300 border-rose-700 bg-rose-950/50' : 'text-slate-300 border-slate-700'">
+                        {{ tp.state === 'locked' ? 'Locked' : tp.state === 'maintenance' ? 'Maintenance until ' + (tp.window_until | date:'MMM d, HH:mm') : tp.state === 'off' ? 'Off' : tp.state === 'failed' ? 'Lock failed' : tp.state === 'sent' ? 'Sent, waiting for the agent' : 'Unknown' }}
+                      </span>
+                    }
+                  </div>
+                  <p class="text-[11px] text-slate-500">Locked, administrators on the endpoint cannot stop, change or remove the agent, and a killed agent restarts. Every attempt raises an alert. @if (!tamper()?.settings?.enabled) { Turned on for all Windows agents with the "Tamper protection" button at the top. }</p>
+                  @if (tamperOfSelected()?.state === 'failed' && tamperOfSelected()?.message) { <p class="text-[11px] text-rose-300">{{ tamperOfSelected()?.message }}</p> }
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <button type="button" (click)="tamperAction('lock')" class="px-3 py-2 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-semibold whitespace-nowrap">Lock now</button>
+                    @if (tamper()?.editable) {
+                      <select aria-label="Maintenance window length" [ngModel]="tamperMinutes()" (ngModelChange)="tamperMinutes.set(+$event)" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs">
+                        <option [ngValue]="10">10 minutes</option><option [ngValue]="60">1 hour</option><option [ngValue]="1440">24 hours</option>
+                      </select>
+                      <input aria-label="Reason for the maintenance window" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 text-xs" placeholder="Reason (upgrade, removal…)"
+                        [ngModel]="tamperReason()" (ngModelChange)="tamperReason.set($event)" />
+                      <button type="button" (click)="tamperAction('maintenance')" class="px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold whitespace-nowrap">Open maintenance window</button>
+                    }
+                  </div>
+                </div>
+
+                <!-- Live response: read-only questions to the endpoint -->
+                <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                  <div>
+                    <div class="text-xs text-slate-300 font-semibold">Live response</div>
+                    <p class="text-[11px] text-slate-500 mt-0.5">Ask the endpoint what is running and connected right now, list a folder or copy a file to the manager. Read-only: nothing on the endpoint changes. It also works on an isolated host.</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" (click)="startLiveResponse('processes')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold">Running processes</button>
+                    <button type="button" (click)="startLiveResponse('connections')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold">Network connections</button>
+                    <button type="button" (click)="startLiveResponse('services')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold">Services</button>
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input id="lr-path" aria-label="Folder or file path on the endpoint" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="C:\Users\...\Downloads  or  C:\...\file.exe"
+                      [ngModel]="lrPath()" (ngModelChange)="lrPath.set($event)" />
+                    <div class="flex gap-2">
+                      <button type="button" (click)="startLiveResponse('dir', lrPath().trim())" [disabled]="!lrPath().trim()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">List folder</button>
+                      <button type="button" (click)="startLiveResponse('file', lrPath().trim())" [disabled]="!lrPath().trim()" title="Up to 25 MB; kept 30 days" class="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-cyan-800 hover:bg-cyan-700 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">Collect file</button>
+                    </div>
+                  </div>
+
+                  @if (lrView(); as v) {
+                    <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="text-xs text-slate-200 min-w-0">
+                          <b>{{ v.request.action }}</b>@if (v.request.path) { <span class="font-mono text-slate-400 break-all"> {{ v.request.path }}</span> }
+                          <span class="ml-2 text-[11px]" [class.text-emerald-400]="v.request.status === 'done'" [class.text-amber-300]="v.request.status === 'pending'" [class.text-rose-400]="v.request.status === 'failed' || v.request.status === 'no_answer'">
+                            {{ v.request.status === 'pending' ? 'waiting for the agent…' : v.request.status === 'no_answer' ? 'no answer' : v.request.status }}
+                          </span>
+                        </div>
+                        <button type="button" (click)="lrView.set(null)" class="text-[11px] text-slate-400 hover:text-white">Close</button>
+                      </div>
+                      @if (v.request.message) { <p class="text-[11px] text-rose-300">{{ v.request.message }}</p> }
+                      @if (v.error) { <p class="text-[11px] text-rose-300">{{ v.error }}</p> }
+
+                      @if (v.request.status === 'done' && v.request.action === 'file') {
+                        <div class="text-[11px] text-slate-300 space-y-1">
+                          <div>{{ v.request.bytes | number }} bytes · SHA-256 <span class="font-mono break-all text-slate-400">{{ v.request.file_sha256 }}</span></div>
+                          <button type="button" (click)="downloadCollected(v.request)" class="px-3 py-1.5 rounded-lg bg-cyan-800 hover:bg-cyan-700 text-white text-xs font-semibold">Download (.collected)</button>
+                          <p class="text-slate-500">Saved with a ".collected" ending so it cannot be opened by accident. Handle possible malware in an analysis VM.</p>
+                        </div>
+                      }
+
+                      @if (v.result) {
+                        <input aria-label="Filter the result" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs" placeholder="Filter…"
+                          [ngModel]="lrFilter()" (ngModelChange)="lrFilter.set($event)" />
+                        <div class="text-[11px] text-slate-500">{{ lrRows().length | number }} row(s)@if (v.result?.truncated) { · the first 5,000 entries }</div>
+                        <div class="max-h-80 overflow-auto border border-slate-800 rounded-lg">
+                          @if (v.request.action === 'dir') {
+                            <table class="w-full text-[11px] min-w-[480px]">
+                              <thead class="text-slate-500 sticky top-0 bg-slate-900"><tr><th class="text-left px-2 py-1.5">Name</th><th class="text-right px-2 py-1.5">Size</th><th class="text-left px-2 py-1.5">Modified</th><th class="px-2 py-1.5"></th></tr></thead>
+                              <tbody>
+                                @for (e of lrRows(); track e.name) {
+                                  <tr class="border-t border-slate-800/70">
+                                    <td class="px-2 py-1 font-mono text-slate-200 break-all">{{ e.dir ? '📁 ' : '' }}{{ e.name }}</td>
+                                    <td class="px-2 py-1 text-right text-slate-400 whitespace-nowrap">{{ e.dir ? '' : (e.size | number) }}</td>
+                                    <td class="px-2 py-1 text-slate-400 whitespace-nowrap">{{ e.modified * 1000 | date:'MMM d y, HH:mm' }}</td>
+                                    <td class="px-2 py-1 text-right whitespace-nowrap">
+                                      @if (e.dir) {
+                                        <button type="button" (click)="lrPath.set(lrEntryPath(e.name)); startLiveResponse('dir', lrEntryPath(e.name))" class="text-cyan-400 hover:text-cyan-300">Open</button>
+                                      } @else {
+                                        <button type="button" (click)="lrPath.set(lrEntryPath(e.name)); startLiveResponse('file', lrEntryPath(e.name))" class="text-cyan-400 hover:text-cyan-300">Collect</button>
+                                      }
+                                    </td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          } @else {
+                            <table class="w-full text-[11px] min-w-[560px]">
+                              <thead class="text-slate-500 sticky top-0 bg-slate-900"><tr>@for (c of lrColumns(); track $index) { <th class="text-left px-2 py-1.5 whitespace-nowrap">{{ c.label }}</th> }</tr></thead>
+                              <tbody>
+                                @for (row of lrRows(); track $index) {
+                                  <tr class="border-t border-slate-800/70 align-top">
+                                    @for (c of lrColumns(); track $index) { <td class="px-2 py-1 text-slate-300 font-mono break-all">{{ lrCell(row, c.keys) }}</td> }
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+
+                  @if (lrRequests().length) {
+                    <details class="text-[11px] text-slate-400">
+                      <summary class="cursor-pointer hover:text-slate-200">History ({{ lrRequests().length }})</summary>
+                      <div class="mt-1 divide-y divide-slate-800/70 border border-slate-800 rounded-lg">
+                        @for (r of lrRequests(); track r.id) {
+                          <button type="button" (click)="openLiveResponse(r)" class="w-full text-left px-2 py-1.5 hover:bg-slate-900 flex flex-wrap gap-x-2">
+                            <span class="text-slate-500 whitespace-nowrap">{{ r.requested_at | date:'MMM d, HH:mm:ss' }}</span>
+                            <span class="text-slate-200">{{ r.action }}</span>
+                            @if (r.path) { <span class="font-mono break-all">{{ r.path }}</span> }
+                            <span [class.text-emerald-400]="r.status === 'done'" [class.text-amber-300]="r.status === 'pending'" [class.text-rose-400]="r.status === 'failed' || r.status === 'no_answer'">{{ r.status }}</span>
+                            <span class="text-slate-500">by {{ r.requested_by }}</span>
+                          </button>
+                        }
+                      </div>
+                    </details>
+                  }
                 </div>
               </div>
             }

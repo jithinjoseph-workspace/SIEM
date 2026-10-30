@@ -58,6 +58,9 @@ rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"]
 sha2 = "0.10"
 # EDR YARA: the rule engine (shared with the agent program) and the YARA Forge release zip
 siem-active-response = { path = "../siem-active-response" }
+# live response results: gzip + base64 chunks from the agent
+flate2 = "1"
+base64 = "0.22"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ring = "0.17"
 local-ip-address = "0.6"

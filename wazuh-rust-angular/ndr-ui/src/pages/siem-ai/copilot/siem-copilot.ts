@@ -54,6 +54,8 @@ export class SiemCopilot implements OnInit {
   readonly suggestions = [
     'Find the latest critical alert',
     'How many alerts today, and which rules fire most?',
+    'Any login failures or account changes in the last 3 days?',
+    'What is the oldest log from my agent?',
     'Show high alerts from the last hour',
     'Open a case for the latest critical alert, collect the evidence and tell me why it happened',
     'Make an incident report for that case',
@@ -167,7 +169,7 @@ export class SiemCopilot implements OnInit {
 
   toolLabel(t: string): string {
     return ({
-      search_alerts: 'Searched alerts', get_alert: 'Read alert', alert_stats: 'Counted alerts', investigate: 'Investigated',
+      search_alerts: 'Searched alerts', search_events: 'Searched logs', agent_info: 'Read agents', get_alert: 'Read alert', alert_stats: 'Counted alerts', investigate: 'Investigated',
       create_case: 'Opened case', investigate_case: 'Investigated case', add_case_note: 'Added note', make_report: 'Wrote report',
     } as Record<string, string>)[t] || t;
   }

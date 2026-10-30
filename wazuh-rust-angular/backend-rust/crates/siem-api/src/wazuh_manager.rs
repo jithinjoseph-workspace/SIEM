@@ -223,6 +223,8 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "quarantine-file.exe",
     "isolate-host.exe",
     "yara-scan.exe",
+    "live-response.exe",
+    "tamper-protect.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -942,6 +944,31 @@ pub async fn yara_scan(agent_id: &str, path: &str) -> Result<(), String> {
     send_edr(agent_id, "yara-scan0", &[format!("path={path}")]).await
 }
 
+/// EDR live response: request `id` (`live_response.rs`), `action` with its `path`.
+pub async fn live_response(agent_id: &str, id: &str, action: &str, path: &str) -> Result<(), String> {
+    let mut args = vec![format!("id={id}"), format!("action={action}")];
+    if !path.is_empty() {
+        args.push(format!("path={path}"));
+    }
+    send_edr(agent_id, "live-response0", &args).await
+}
+
+/// EDR tamper protection: locks the agent service (`tamper.rs`).
+pub async fn tamper_lock(agent_id: &str) -> Result<(), String> {
+    send_edr(agent_id, "tamper-protect0", &["lock".to_string()]).await
+}
+
+/// EDR tamper protection off: the service gets its own permissions back.
+pub async fn tamper_off(agent_id: &str) -> Result<(), String> {
+    send_edr(agent_id, "tamper-protect0", &["off".to_string()]).await
+}
+
+/// EDR tamper protection: maintenance window `window` for `secs` (the agent locks again at its end).
+pub async fn tamper_window(agent_id: &str, window: &str, secs: u64) -> Result<(), String> {
+    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= secs).unwrap_or(86400);
+    send_edr(agent_id, &format!("tamper-unlock{timeout}"), &[format!("window={window}")]).await
+}
+
 /// EDR: moves `path` into the agent's quarantine folder.
 pub async fn quarantine_file(agent_id: &str, path: &str) -> Result<(), String> {
     send_edr(agent_id, "quarantine-file0", &[format!("path={path}")]).await
@@ -984,7 +1011,7 @@ pub async fn release_agent(agent_id: &str) -> Result<(), String> {
 /// The active responses the console can send: (command name, agent executable, takes
 /// a timeout). `route-null` and the EDR ones are Windows only; `release-host` is
 /// isolate-host run with `release`.
-const AR_COMMANDS: [(&str, &str, bool); 8] = [
+const AR_COMMANDS: [(&str, &str, bool); 11] = [
     ("firewall-drop", "firewall-drop", true),
     ("netsh", "netsh.exe", true),
     ("route-null", "route-null.exe", true),
@@ -993,6 +1020,9 @@ const AR_COMMANDS: [(&str, &str, bool); 8] = [
     ("isolate-host", "isolate-host.exe", true),
     ("release-host", "isolate-host.exe", false),
     ("yara-scan", "yara-scan.exe", false),
+    ("live-response", "live-response.exe", false),
+    ("tamper-protect", "tamper-protect.exe", false),
+    ("tamper-unlock", "tamper-protect.exe", true),
 ];
 
 /// The `<command>` and `<active-response>` blocks of one console command in the
@@ -1450,7 +1480,9 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     }
 }
 
-async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
+async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
+    // live response results are data, not alerts (live_response.rs)
+    vs.retain(|v| !crate::live_response::is_result(v));
     let alerts: Vec<Alert> = vs
         .iter()
         .map(|v| {
@@ -1516,6 +1548,11 @@ fn event_source(location: &str, decoder: &str) -> EventSource {
 
 /// One `archives.json` line (every event analysisd received) as a platform event.
 async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
+    // live response results go to their own table, not the event archive
+    let (live, vs): (Vec<_>, Vec<_>) = vs.into_iter().partition(crate::live_response::is_result);
+    if !live.is_empty() {
+        crate::live_response::ingest(&state, live).await;
+    }
     let events: Vec<RawEvent> = vs.iter().map(|v| to_event(&state, v)).collect();
     // retry the tenants that failed until ClickHouse has them; the offset is saved after
     let mut pending: Vec<&RawEvent> = events.iter().collect();
@@ -1536,15 +1573,18 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
     // besides the Wazuh ruleset
     let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
-    let (matched, scans) = tokio::task::spawn_blocking(move || {
+    let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
         let mut m = crate::sigma::check(&tagged);
+        let mut tamper = crate::tamper::check(&tagged);
+        m.append(&mut tamper.alerts);
         m.extend(crate::file_reputation::check(&tagged));
         let (yara_alerts, scans) = crate::yara_edr::check(&tagged);
         m.extend(yara_alerts);
-        (m, scans)
+        (m, scans, tamper)
     })
     .await
     .unwrap_or_default();
+    crate::tamper::apply(&state, tamper.started, tamper.results).await;
     for (_, agent, path) in scans {
         if let Err(e) = yara_scan(&agent, &path).await {
             warn!("YARA scan of {path} on agent {agent}: {e}");

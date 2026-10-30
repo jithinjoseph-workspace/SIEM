@@ -29,6 +29,8 @@ pub mod db;
 pub mod parsers_store;
 pub mod redswarm_store;
 pub mod vulnerability;
+pub mod live_response;
+pub mod tamper;
 pub mod syslog;
 pub mod syslog_tenancy;
 pub mod persist;
@@ -804,6 +806,12 @@ async fn main() {
         .route("/api/ws", get(ws_alerts_handler))
         .route("/api/v1/logtest", post(post_logtest_handler))
         .route("/api/v1/compliance", get(compliance::get))
+        .route("/api/v1/agents/:id/live-response", get(live_response::list).post(live_response::create))
+        .route("/api/v1/edr/tamper", get(tamper::get).put(tamper::put))
+        .route("/api/v1/agents/:id/tamper", axum::routing::post(tamper::agent_action))
+        .route("/api/v1/agents/:id/live-response/:rid", get(live_response::get))
+        .route("/api/v1/agents/:id/live-response/:rid/download", get(live_response::download))
+        .route("/api/v1/compliance/profile", get(compliance::get_profile).put(compliance::put_profile))
         .route("/api/v1/mitre/matrix", get(mitre::matrix))
         .route("/api/v1/fim/summary", get(get_fim_summary_handler))
         .route("/api/v1/active-response/actions", get(get_active_response_actions).post(post_active_response_block))
@@ -2954,14 +2962,28 @@ async fn get_agent_vulnerabilities(
     Json(vulnerabilities_response(list))
 }
 
-/// `POST /api/v1/vulnerabilities`: the scanner runs on its own (on every
-/// inventory change and after every feed update); this re-reads its results.
+/// `POST /api/v1/vulnerabilities`: the scanner re-scans the caller's agents
+/// from wazuh-db's package inventory, then the results are read again.
 async fn post_scan_now(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    // shortcut: agents of the default tenant are not in agent_tenants; they get re-scanned only when they already have results
+    let mut agents: std::collections::BTreeSet<String> = state.agent_tenants.read().unwrap().keys().filter(|a| agent_in_scope(&state, &ctx, a)).cloned().collect();
+    agents.extend(state.vulnerabilities.read().unwrap().iter().filter(|v| agent_in_scope(&state, &ctx, &v.agent_id)).map(|v| v.agent_id.clone()));
+    let sent = agents.iter().filter(|a| match vulnerability::request_rescan(a) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("vulnerability re-scan of agent {a} not requested: {e}");
+            false
+        }
+    }).count();
+    if sent > 0 {
+        // a scan takes a few seconds per agent
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+    }
     vulnerability::sync_once(&state).await;
     let n = state.vulnerabilities.read().unwrap().iter().filter(|v| agent_in_scope(&state, &ctx, &v.agent_id)).count();
     Json(serde_json::json!({
         "status": "ok",
-        "message": format!("{n} active vulnerabilities. The manager scans each agent when its inventory changes and after every hourly CVE feed update."),
+        "message": format!("Re-scan requested for {sent} agent(s); {n} active vulnerabilities. Results keep updating for a minute."),
     }))
     .into_response()
 }

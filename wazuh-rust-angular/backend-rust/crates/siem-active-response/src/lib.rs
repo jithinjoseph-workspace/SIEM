@@ -8,6 +8,8 @@ use std::io::{BufRead, Write};
 use siem_cjson::Json;
 
 pub mod edr;
+pub mod live;
+pub mod tamper;
 pub mod yara;
 
 /// `LOG_FILE`

@@ -41,8 +41,7 @@ import {
   DeceptionBlueprint,
   DeceptionSummary,
   CreateAssetRequest,
-  SimulateTripwireRequest
-} from './siem.models';
+  SimulateTripwireRequest, ComplianceProfile, ComplianceProfileResponse, LiveResponseRequest, TamperStatus } from './siem.models';
 
 @Injectable({
   providedIn: 'root'
@@ -162,6 +161,39 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, { command_id: 'cmd-' + Date.now(), agent_id: agentId, action, ...params });
   }
 
+  /** EDR live response on a Windows agent: processes | connections | services | dir {path} | file {path}. */
+  startLiveResponse(agentId: string, action: string, path?: string): Observable<{ status: string; message: string; request: LiveResponseRequest }> {
+    return this.http.post<{ status: string; message: string; request: LiveResponseRequest }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response`, { action, path });
+  }
+
+  getLiveResponses(agentId: string): Observable<{ requests: LiveResponseRequest[] }> {
+    return this.http.get<{ requests: LiveResponseRequest[] }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response`);
+  }
+
+  /** The request and, for a finished listing, its result. */
+  getLiveResponse(agentId: string, id: string): Observable<{ request: LiveResponseRequest; result?: any; error?: string }> {
+    return this.http.get<{ request: LiveResponseRequest; result?: any; error?: string }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response/${id}`);
+  }
+
+  /** A collected file's bytes. */
+  downloadLiveResponseFile(agentId: string, id: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response/${id}/download`, { responseType: 'blob' });
+  }
+
+  /** EDR tamper protection: the tenant's setting and each Windows agent's lock state. */
+  getTamper(): Observable<TamperStatus> {
+    return this.http.get<TamperStatus>(`${this.apiUrl}/api/v1/edr/tamper`);
+  }
+
+  setTamper(enabled: boolean): Observable<{ status: string; message: string }> {
+    return this.http.put<{ status: string; message: string }>(`${this.apiUrl}/api/v1/edr/tamper`, { enabled });
+  }
+
+  /** lock | maintenance {minutes: 10 | 60 | 1440, reason} */
+  tamperAgent(agentId: string, action: 'lock' | 'maintenance', minutes?: number, reason?: string): Observable<{ status: string; message: string }> {
+    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/tamper`, { action, minutes, reason });
+  }
+
   /** FIM entries of an agent (wazuh-db fim_entry). */
   getAgentFim(agentId: string): Observable<{ total: number; entries: any[] }> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/fim`).pipe(
@@ -272,6 +304,15 @@ export class SiemService {
   /** `refresh`: the agents' latest SCA results are copied first (Re-evaluate). */
   getCompliance(refresh = false): Observable<ComplianceResponse> {
     return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance${refresh ? '?refresh=1' : ''}`);
+  }
+
+  /** What the tenant's compliance audits count: frameworks, their agent-group scope, checks not needed. */
+  getComplianceProfile(): Observable<ComplianceProfileResponse> {
+    return this.http.get<ComplianceProfileResponse>(`${this.apiUrl}/api/v1/compliance/profile`);
+  }
+
+  saveComplianceProfile(profile: ComplianceProfile): Observable<{ status: string; profile: ComplianceProfile }> {
+    return this.http.put<{ status: string; profile: ComplianceProfile }>(`${this.apiUrl}/api/v1/compliance/profile`, profile);
   }
 
   getMitreMatrix(): Observable<MitreMatrixResponse> {

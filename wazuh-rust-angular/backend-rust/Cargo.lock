@@ -2684,6 +2684,7 @@ dependencies = [
  "siem-cjson",
  "siem-ipc",
  "siem-log",
+ "siem-sysinfo",
  "windows-sys 0.61.2",
 ]
 
@@ -2806,8 +2807,10 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "clickhouse 0.13.3",
+ "flate2",
  "futures-util",
  "local-ip-address",
  "provigil-common",

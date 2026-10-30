@@ -54,7 +54,11 @@ Your reply is exactly ONE JSON object, nothing else:
   {"run":[{"command":"<name>","args":{...}}]}   to run commands (at most 3 per reply), or
   {"answer":"<your answer to the analyst, markdown>"}   when you have what you need.
 Commands:
-- search_alerts {text?, min_level?, max_level?, agent?, ip?, rule_id?, mitre?, hours? (1-720, default 24), limit? (1-50, default 10)}: alerts newest first and how many match. Levels: critical 12-16, high 8-11, medium 4-7, low 0-3. "latest alert" = limit 1.
+- search_alerts {groups?, any_text?, text?, min_level?, max_level?, agent?, ip?, rule_id?, mitre?, hours? (1-8760, or "all"; default 24), order? ("newest"|"oldest"), limit? (1-100, default 10)}: a summary of ALL matching alerts (total, by severity, top rules, top hosts, first and last time) plus the newest (or oldest) rows. Levels: critical 12-16, high 8-11, medium 4-7, low 0-3. "latest alert" = limit 1; "first/oldest alert" = order "oldest", limit 1. For "all alerts of ..." answer from the summary: the rows are only a sample.
+  groups = Wazuh rule categories, any of them. USE THEM for a kind of activity: login/logon failures, bad or wrong password -> ["authentication_failed","authentication_failures"]; successful logons -> ["authentication_success"]; brute force -> ["authentication_failures"]; account or password changes, users created or deleted -> ["account_changed","adduser","group_changed"]; policy or audit changes -> ["policy_changed"]; file integrity -> ["syscheck"]; configuration checks -> ["sca"]; Sysmon -> ["sysmon"]; malware or rootkits -> ["rootcheck","virustotal","yara"]; Sigma -> ["sigma"]. Also attack.<tactic> tags such as "attack.credential-access".
+  any_text = several words or phrases, any of them (literal, case-insensitive; Windows writes "logon", not "login"). text = one exact phrase. Prefer groups, then any_text with short words; a long phrase rarely matches. If a search finds nothing, try groups or other words before saying there is none.
+- search_events {text?, agent?, event_id?, channel?, source? (windows_event|syslog|fim|sca|syscollector|active_response), hours? (1-8760 or "all"), order?, limit? (1-100)}: the raw logs and events the agents sent (not alerts): a summary (total, by source, by event id, first and last time) plus rows. "oldest log of an agent" = agent, order "oldest", hours "all", limit 1.
+- agent_info {agent?}: the agents (removed ones too) with OS, status, version, and when their events and alerts start and end.
 - get_alert {id}: one alert in full (log line, fields, MITRE).
 - alert_stats {hours?}: alert counts by severity and the most frequent rules.
 - investigate {value, days? (1-90)}: what is known about an IP, host, user, file hash or domain.
@@ -69,19 +73,42 @@ Rules: use only ids that results or the context give; never invent alerts, hosts
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AlertFilter {
     pub text: Option<String>,
+    /// any of these words or phrases (in the description or the log)
+    pub any_text: Vec<String>,
+    /// any of these Wazuh rule groups (authentication_failed, account_changed...)
+    pub groups: Vec<String>,
     pub min_level: Option<u8>,
     pub max_level: Option<u8>,
     pub agent: Option<String>,
     pub ip: Option<String>,
     pub rule_id: Option<u32>,
     pub mitre: Option<String>,
+    /// 0 = all the data kept
     pub hours: u32,
     pub limit: usize,
+    /// oldest first (else newest first)
+    pub oldest: bool,
+}
+
+/// What `search_events` looks for in the raw logs and events of the agents.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EventFilter {
+    pub text: Option<String>,
+    pub agent: Option<String>,
+    pub event_id: Option<String>,
+    pub channel: Option<String>,
+    pub source: Option<String>,
+    /// 0 = all the data kept
+    pub hours: u32,
+    pub limit: usize,
+    pub oldest: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tool {
     SearchAlerts(AlertFilter),
+    SearchEvents(EventFilter),
+    AgentInfo(Option<String>),
     GetAlert(String),
     AlertStats(u32),
     Investigate { value: String, days: u32 },
@@ -95,6 +122,8 @@ impl Tool {
     pub fn name(&self) -> &'static str {
         match self {
             Tool::SearchAlerts(_) => "search_alerts",
+            Tool::SearchEvents(_) => "search_events",
+            Tool::AgentInfo(_) => "agent_info",
             Tool::GetAlert(_) => "get_alert",
             Tool::AlertStats(_) => "alert_stats",
             Tool::Investigate { .. } => "investigate",
@@ -139,17 +168,43 @@ pub fn parse_action(v: &Value) -> Result<Tool, String> {
     let s = |k: &str| a[k].as_str().map(str::trim).filter(|x| !x.is_empty()).map(|x| x.chars().take(256).collect::<String>());
     let n = |k: &str| a[k].as_u64().or_else(|| a[k].as_str().and_then(|x| x.trim().parse().ok()));
     let need = |k: &str| s(k).ok_or_else(|| format!("'{k}' is required"));
+    // a list argument (or one string), at most 10 items of 100 characters
+    let list = |k: &str| -> Vec<String> {
+        match &a[k] {
+            Value::Array(v) => v.iter().filter_map(|x| x.as_str()).map(str::trim).filter(|x| !x.is_empty()).take(10).map(|x| x.chars().take(100).collect()).collect(),
+            Value::String(x) if !x.trim().is_empty() => vec![x.trim().chars().take(100).collect()],
+            _ => Vec::new(),
+        }
+    };
+    // hours: 1-8760, or 0 / "all" for all the data kept
+    let hours = |d: u64| if a["hours"].as_str().is_some_and(|h| h.eq_ignore_ascii_case("all")) { 0 } else { n("hours").unwrap_or(d).min(8760) as u32 };
+    let oldest = s("order").is_some_and(|o| o.eq_ignore_ascii_case("oldest") || o.eq_ignore_ascii_case("asc"));
+    let limit = n("limit").unwrap_or(10).clamp(1, 100) as usize;
     match name {
+        "search_events" => Ok(Tool::SearchEvents(EventFilter {
+            text: s("text"),
+            agent: s("agent"),
+            event_id: s("event_id"),
+            channel: s("channel"),
+            source: s("source").map(|x| x.to_lowercase()),
+            hours: hours(24),
+            limit,
+            oldest,
+        })),
+        "agent_info" => Ok(Tool::AgentInfo(s("agent"))),
         "search_alerts" => Ok(Tool::SearchAlerts(AlertFilter {
             text: s("text"),
+            any_text: list("any_text"),
+            groups: list("groups").into_iter().chain(s("group")).map(|g| g.to_lowercase()).collect(),
             min_level: n("min_level").map(|x| x.min(16) as u8),
             max_level: n("max_level").map(|x| x.min(16) as u8),
             agent: s("agent"),
             ip: s("ip"),
             rule_id: n("rule_id").map(|x| x.min(u32::MAX as u64) as u32),
             mitre: s("mitre").map(|m| m.to_uppercase()),
-            hours: n("hours").unwrap_or(24).clamp(1, 720) as u32,
-            limit: n("limit").unwrap_or(10).clamp(1, 50) as usize,
+            hours: hours(24),
+            limit,
+            oldest,
         })),
         "get_alert" => Ok(Tool::GetAlert(need("id")?)),
         "alert_stats" => Ok(Tool::AlertStats(n("hours").unwrap_or(24).clamp(1, 720) as u32)),
@@ -226,13 +281,25 @@ struct CaseRow {
 enum Bind {
     U(u64),
     S(String),
+    L(Vec<String>),
 }
 
 fn bind(q: clickhouse::query::Query, b: &Bind) -> clickhouse::query::Query {
     match b {
         Bind::U(n) => q.bind(*n),
         Bind::S(s) => q.bind(s.as_str()),
+        Bind::L(v) => q.bind(v),
     }
+}
+
+/// "first .. last" of a set of rows (ms timestamps), for the AI and the page.
+fn span(first: u64, last: u64) -> Value {
+    let t = |ms: u64| if ms == 0 { Value::Null } else { json!(chrono::DateTime::from_timestamp_millis(ms as i64).map(|t| t.to_rfc3339())) };
+    json!({ "first": t(first), "last": t(last) })
+}
+
+fn hours_text(h: u32) -> String {
+    if h == 0 { "all the data kept".into() } else if h % 24 == 0 && h >= 48 { format!("the last {} days", h / 24) } else { format!("the last {h} h") }
 }
 
 /// One question: the tools it ran and what they found.
@@ -252,6 +319,9 @@ struct Run<'a> {
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, Deserialize)]
 pub struct Last {
     pub alert_id: Option<String>,
+    /// the agent the last results were about (for "that agent")
+    #[serde(default)]
+    pub agent: Option<String>,
     pub case_id: Option<String>,
     pub case_number: Option<String>,
     pub report_id: Option<String>,
@@ -283,6 +353,8 @@ impl<'a> Run<'a> {
     async fn exec(&mut self, tool: &Tool) -> Result<(String, Value), String> {
         match tool {
             Tool::SearchAlerts(f) => self.search_alerts(f).await,
+            Tool::SearchEvents(f) => self.search_events(f).await,
+            Tool::AgentInfo(a) => self.agent_info(a.as_deref()).await,
             Tool::GetAlert(id) => {
                 let a = crate::history::alert(self.state, self.ctx, id).await.ok_or("No such alert in this tenant")?;
                 let d = alert_detail(&a);
@@ -329,12 +401,26 @@ impl<'a> Run<'a> {
         }
     }
 
+    /// A query on the tenant's database with its bound values, in order.
+    fn query(&self, sql: &str, binds: &[Bind]) -> clickhouse::query::Query {
+        binds.iter().fold(self.state.db.tenant_client(&self.tenant).query(sql), bind)
+    }
+
+    /// The agent ids a name or id stands for (agents of the tenant; else as given).
+    fn agent_ids(&self, a: &str) -> Vec<String> {
+        let ids: Vec<String> = crate::scoped_agents(self.state, self.ctx).into_iter().filter(|x| x.id == a || x.name.eq_ignore_ascii_case(a)).map(|x| x.id).collect();
+        if ids.is_empty() { vec![a.to_string()] } else { ids }
+    }
+
     async fn search_alerts(&mut self, f: &AlertFilter) -> Result<(String, Value), String> {
         if !self.state.db.is_connected() {
             return Err("ClickHouse is not reachable".into());
         }
-        let mut cond = vec!["timestamp >= ?".to_string()];
-        let mut binds = vec![Bind::U(now_ms().saturating_sub(f.hours as u64 * 3_600_000))];
+        let (mut cond, mut binds) = (vec!["1 = 1".to_string()], Vec::new());
+        if f.hours > 0 {
+            cond.push("timestamp >= ?".into());
+            binds.push(Bind::U(now_ms().saturating_sub(f.hours as u64 * 3_600_000)));
+        }
         if let Some(n) = f.min_level {
             cond.push("rule_level >= ?".into());
             binds.push(Bind::U(n as u64));
@@ -347,9 +433,21 @@ impl<'a> Run<'a> {
             cond.push("(positionCaseInsensitive(rule_description, ?) > 0 OR positionCaseInsensitive(full_log, ?) > 0)".into());
             binds.extend([Bind::S(t.clone()), Bind::S(t.clone())]);
         }
+        if !f.any_text.is_empty() {
+            let one = "positionCaseInsensitive(rule_description, ?) > 0 OR positionCaseInsensitive(full_log, ?) > 0";
+            cond.push(format!("({})", vec![one; f.any_text.len()].join(" OR ")));
+            for t in &f.any_text {
+                binds.extend([Bind::S(t.clone()), Bind::S(t.clone())]);
+            }
+        }
+        if !f.groups.is_empty() {
+            cond.push("hasAny(JSONExtract(alert_json, 'rule', 'groups', 'Array(String)'), ?)".into());
+            binds.push(Bind::L(f.groups.clone()));
+        }
         if let Some(a) = &f.agent {
-            cond.push("(lower(agent_name) = lower(?) OR agent_id = ?)".into());
-            binds.extend([Bind::S(a.clone()), Bind::S(a.clone())]);
+            // a host re-enrolled keeps its name: its older agent ids count too
+            cond.push("(lower(agent_name) = lower(?) OR has(?, agent_id))".into());
+            binds.extend([Bind::S(a.clone()), Bind::L(self.agent_ids(a))]);
         }
         if let Some(ip) = &f.ip {
             cond.push("(src_ip = ? OR dst_ip = ? OR agent_ip = ?)".into());
@@ -364,19 +462,40 @@ impl<'a> Run<'a> {
             binds.push(Bind::S(m.clone()));
         }
         let cond = cond.join(" AND ");
-        let client = self.state.db.tenant_client(&self.tenant);
-        let mut q = client.query(&format!("SELECT count() FROM siem_alerts WHERE {cond}"));
-        for b in &binds {
-            q = bind(q, b);
+        #[derive(clickhouse::Row, Deserialize)]
+        struct Sum {
+            total: u64,
+            critical: u64,
+            high: u64,
+            medium: u64,
+            low: u64,
+            first: u64,
+            last: u64,
         }
-        let total: u64 = q.fetch_one().await.map_err(|e| format!("search failed: {e}"))?;
-        let mut q = client.query(&format!(
-            "SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, src_ip, user FROM siem_alerts WHERE {cond} ORDER BY timestamp DESC LIMIT ?"
-        ));
-        for b in &binds {
-            q = bind(q, b);
-        }
-        let rows = q.bind(f.limit as u64).fetch_all::<AlertHit>().await.map_err(|e| format!("search failed: {e}"))?;
+        let fail = |e: clickhouse::error::Error| format!("search failed: {e}");
+        let sum: Sum = self
+            .query(&format!("SELECT count() AS total, countIf(rule_level >= 12) AS critical, countIf(rule_level BETWEEN 8 AND 11) AS high, countIf(rule_level BETWEEN 4 AND 7) AS medium, countIf(rule_level <= 3) AS low, min(timestamp) AS first, max(timestamp) AS last FROM siem_alerts WHERE {cond}"), &binds)
+            .fetch_one()
+            .await
+            .map_err(fail)?;
+        let top_rules: Vec<(u32, String, u64)> = self
+            .query(&format!("SELECT rule_id, any(rule_description), count() AS n FROM siem_alerts WHERE {cond} GROUP BY rule_id ORDER BY n DESC LIMIT 5"), &binds)
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        let top_hosts: Vec<(String, u64)> = self
+            .query(&format!("SELECT agent_name, count() AS n FROM siem_alerts WHERE {cond} GROUP BY agent_name ORDER BY n DESC LIMIT 5"), &binds)
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        let order = if f.oldest { "ASC" } else { "DESC" };
+        let mut row_binds = binds;
+        row_binds.push(Bind::U(f.limit as u64));
+        let rows = self
+            .query(&format!("SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, src_ip, user FROM siem_alerts WHERE {cond} ORDER BY timestamp {order} LIMIT ?"), &row_binds)
+            .fetch_all::<AlertHit>()
+            .await
+            .map_err(fail)?;
         let list: Vec<Value> = rows
             .iter()
             .map(|r| {
@@ -389,10 +508,171 @@ impl<'a> Run<'a> {
             .collect();
         if let Some(first) = rows.first() {
             self.last.alert_id = Some(first.id.clone());
+            self.last.agent = Some(first.agent_name.clone()).filter(|n| !n.is_empty()).or(Some(first.agent_id.clone()));
         }
-        let v = json!({ "matching": total, "hours": f.hours, "shown": list.len(), "alerts": list });
+        let v = json!({
+            "matching": sum.total, "hours": f.hours, "period": hours_text(f.hours), "order": if f.oldest { "oldest" } else { "newest" }, "shown": list.len(),
+            "summary": {
+                "critical": sum.critical, "high": sum.high, "medium": sum.medium, "low": sum.low, "time": span(sum.first, sum.last),
+                "top_rules": top_rules.iter().map(|(id, d, n)| json!({ "rule_id": id, "description": d, "alerts": n })).collect::<Vec<_>>(),
+                "top_hosts": top_hosts.iter().map(|(h, n)| json!({ "host": h, "alerts": n })).collect::<Vec<_>>(),
+            },
+            "alerts": list,
+        });
         self.artifacts.insert("alerts".into(), v.clone());
-        Ok((format!("{total} matching alert(s) in {} h, {} shown", f.hours, rows.len()), v))
+        Ok((format!("{} matching alert(s) in {}, {} shown", sum.total, hours_text(f.hours), rows.len()), v))
+    }
+
+    /// The raw logs and events the agents sent (siem_events): a summary of all that match, and rows.
+    async fn search_events(&mut self, f: &EventFilter) -> Result<(String, Value), String> {
+        if !self.state.db.is_connected() {
+            return Err("ClickHouse is not reachable".into());
+        }
+        const DATA: &str = "JSONExtractString(raw_metadata, 'data_json')";
+        let event_id = format!("JSONExtractString({DATA}, 'win', 'system', 'eventID')");
+        let channel = format!("JSONExtractString({DATA}, 'win', 'system', 'channel')");
+        let (mut cond, mut binds) = (vec!["1 = 1".to_string()], Vec::new());
+        if f.hours > 0 {
+            cond.push("timestamp >= ?".into());
+            binds.push(Bind::U(now_ms().saturating_sub(f.hours as u64 * 3_600_000)));
+        }
+        if let Some(t) = &f.text {
+            cond.push("(positionCaseInsensitive(message, ?) > 0 OR positionCaseInsensitive(raw_metadata, ?) > 0)".into());
+            binds.extend([Bind::S(t.clone()), Bind::S(t.clone())]);
+        }
+        if let Some(a) = &f.agent {
+            cond.push("has(?, agent_id)".into());
+            binds.push(Bind::L(self.agent_ids(a)));
+        }
+        if let Some(e) = &f.event_id {
+            cond.push(format!("{event_id} = ?"));
+            binds.push(Bind::S(e.clone()));
+        }
+        if let Some(c) = &f.channel {
+            cond.push(format!("positionCaseInsensitive({channel}, ?) > 0"));
+            binds.push(Bind::S(c.clone()));
+        }
+        if let Some(src) = &f.source {
+            cond.push("source = ?".into());
+            binds.push(Bind::S(src.clone()));
+        }
+        let cond = cond.join(" AND ");
+        let fail = |e: clickhouse::error::Error| format!("search failed: {e}");
+        let (total, first, last): (u64, u64, u64) = self
+            .query(&format!("SELECT count(), min(timestamp), max(timestamp) FROM siem_events WHERE {cond}"), &binds)
+            .fetch_one()
+            .await
+            .map_err(fail)?;
+        let by_source: Vec<(String, u64)> = self
+            .query(&format!("SELECT source, count() AS n FROM siem_events WHERE {cond} GROUP BY source ORDER BY n DESC LIMIT 6"), &binds)
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        let by_event: Vec<(String, String, u64)> = self
+            .query(&format!("SELECT {event_id} AS e, any({channel}), count() AS n FROM siem_events WHERE {cond} AND e != '' GROUP BY e ORDER BY n DESC LIMIT 8"), &binds)
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        #[derive(clickhouse::Row, Deserialize)]
+        struct Ev {
+            id: String,
+            timestamp: u64,
+            agent_id: String,
+            source: String,
+            location: String,
+            message: String,
+            event_id: String,
+            channel: String,
+            text: String,
+        }
+        let order = if f.oldest { "ASC" } else { "DESC" };
+        let mut row_binds = binds;
+        row_binds.push(Bind::U(f.limit as u64));
+        let rows = self
+            .query(
+                &format!(
+                    "SELECT id, timestamp, agent_id, source, location, message, {event_id} AS event_id, {channel} AS channel, \
+                     substring(if(JSONExtractString({DATA}, 'win', 'system', 'message') != '', JSONExtractString({DATA}, 'win', 'system', 'message'), {DATA}), 1, 400) AS text \
+                     FROM siem_events WHERE {cond} ORDER BY timestamp {order} LIMIT ?"
+                ),
+                &row_binds,
+            )
+            .fetch_all::<Ev>()
+            .await
+            .map_err(fail)?;
+        let list: Vec<Value> = rows
+            .iter()
+            .map(|r| {
+                let text = if r.message.trim().is_empty() { r.text.trim_matches('"').replace("\\r\\n", " ") } else { r.message.clone() };
+                json!({
+                    "id": r.id, "time": chrono::DateTime::from_timestamp_millis(r.timestamp as i64).map(|t| t.to_rfc3339()),
+                    "agent_id": r.agent_id, "source": r.source, "location": r.location, "event_id": r.event_id, "channel": r.channel, "text": clip(&text, 300),
+                })
+            })
+            .collect();
+        if let Some(first) = rows.first() {
+            self.last.agent = Some(first.agent_id.clone());
+        }
+        let v = json!({
+            "matching": total, "hours": f.hours, "period": hours_text(f.hours), "order": if f.oldest { "oldest" } else { "newest" }, "shown": list.len(),
+            "summary": {
+                "time": span(first, last),
+                "by_source": by_source.iter().map(|(s, n)| json!({ "source": s, "events": n })).collect::<Vec<_>>(),
+                "by_event_id": by_event.iter().map(|(e, c, n)| json!({ "event_id": e, "channel": c, "events": n })).collect::<Vec<_>>(),
+            },
+            "events": list,
+        });
+        self.artifacts.insert("events".into(), v.clone());
+        Ok((format!("{total} matching event(s) in {}, {} shown", hours_text(f.hours), rows.len()), v))
+    }
+
+    /// The tenant's agents, removed ones too, and when their events and alerts start and end.
+    async fn agent_info(&mut self, filter: Option<&str>) -> Result<(String, Value), String> {
+        let registry = crate::scoped_agents(self.state, self.ctx);
+        let fail = |e: clickhouse::error::Error| format!("agent data not read: {e}");
+        let events: Vec<(String, u64, u64, u64)> = self
+            .query("SELECT agent_id, count(), min(timestamp), max(timestamp) FROM siem_events GROUP BY agent_id", &[])
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        let alerts: Vec<(String, String, u64, u64, u64)> = self
+            .query("SELECT agent_id, any(agent_name), count(), min(timestamp), max(timestamp) FROM siem_alerts GROUP BY agent_id", &[])
+            .fetch_all()
+            .await
+            .map_err(fail)?;
+        let mut ids: Vec<String> = registry.iter().map(|a| a.id.clone()).collect();
+        ids.extend(events.iter().map(|e| e.0.clone()).chain(alerts.iter().map(|a| a.0.clone())).filter(|i| !i.is_empty() && i != "000"));
+        ids.sort();
+        ids.dedup();
+        let mut list = Vec::new();
+        for id in ids {
+            let reg = registry.iter().find(|a| a.id == id);
+            let ev = events.iter().find(|e| e.0 == id);
+            let al = alerts.iter().find(|a| a.0 == id);
+            let name = reg.map(|a| a.name.clone()).or_else(|| al.map(|a| a.1.clone())).unwrap_or_default();
+            if let Some(f) = filter {
+                if !(id == f || name.eq_ignore_ascii_case(f)) {
+                    continue;
+                }
+            }
+            list.push(json!({
+                "id": id, "name": name, "registered": reg.is_some(),
+                "status": reg.map(|a| json!(a.status)).unwrap_or(json!("removed")),
+                "os": reg.map(|a| a.os.clone()), "ip": reg.map(|a| a.ip.clone()), "version": reg.map(|a| a.version.clone()),
+                "last_keepalive": reg.map(|a| a.last_keepalive.to_rfc3339()),
+                "events": ev.map_or(0, |e| e.1), "events_time": ev.map_or(Value::Null, |e| span(e.2, e.3)),
+                "alerts": al.map_or(0, |a| a.2), "alerts_time": al.map_or(Value::Null, |a| span(a.3, a.4)),
+            }));
+        }
+        if list.is_empty() {
+            return Err(match filter { Some(f) => format!("No agent '{f}' in this tenant"), None => "This tenant has no agents".into() });
+        }
+        if list.len() == 1 {
+            self.last.agent = list[0]["name"].as_str().filter(|n| !n.is_empty()).or(list[0]["id"].as_str()).map(String::from);
+        }
+        let v = json!({ "agents": list });
+        self.artifacts.insert("agents".into(), v.clone());
+        Ok((format!("{} agent(s)", v["agents"].as_array().map_or(0, |a| a.len())), v))
     }
 
     /// A case of the tenant by id or number (INC-2026-0001).
@@ -620,7 +900,8 @@ fn report_html(case: &CaseRow, summary: &str, inv: &Value, evidence: Option<&Ale
 pub fn filter_from_text(message: &str, agents: &[(String, String)]) -> AlertFilter {
     let m = message.to_lowercase();
     let words: Vec<&str> = message.split(|c: char| c.is_whitespace() || ",;()".contains(c)).filter(|w| !w.is_empty()).collect();
-    let mut f = AlertFilter { hours: 168, limit: 10, ..Default::default() };
+    let mut f = AlertFilter { hours: hours_in(&m).unwrap_or(168), limit: 10, ..Default::default() };
+    f.oldest = oldest_in(&m);
     if m.contains("critical") {
         f.min_level = Some(12);
     } else if m.contains("high") {
@@ -630,22 +911,107 @@ pub fn filter_from_text(message: &str, agents: &[(String, String)]) -> AlertFilt
     } else if m.contains(" low") || m.starts_with("low") {
         f.max_level = Some(3);
     }
-    if m.contains("last hour") || m.contains("past hour") || m.contains("1h") {
-        f.hours = 1;
-    } else if m.contains("today") || m.contains("24h") || m.contains("24 h") || m.contains("last day") {
-        f.hours = 24;
-    } else if m.contains("month") || m.contains("30d") || m.contains("30 days") {
-        f.hours = 720;
-    }
-    let single = ["latest alert", "last alert", "newest alert", "most recent alert", "recent alert", "latest critical", "last critical", "latest high", "last high"];
+    let single = ["latest alert", "last alert", "newest alert", "most recent alert", "recent alert", "latest critical", "last critical", "latest high", "last high", "first alert", "oldest alert", "earliest alert"];
     if single.iter().any(|s| m.contains(s)) {
         f.limit = 1;
+    } else if m.contains("all ") {
+        f.limit = 50;
     }
     f.ip = words.iter().map(|w| w.trim_matches(|c: char| !c.is_ascii_hexdigit() && c != '.' && c != ':')).find(|w| w.parse::<std::net::IpAddr>().is_ok()).map(String::from);
     f.mitre = words.iter().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.').to_uppercase()).find(|w| w.len() >= 5 && w.starts_with('T') && w[1..5].chars().all(|c| c.is_ascii_digit()));
     f.agent = agents.iter().find(|(id, name)| (!name.is_empty() && m.contains(&name.to_lowercase())) || words.iter().any(|w| w == id)).map(|(id, _)| id.clone());
     // "rule 92213", "rule #92213"
     f.rule_id = words.windows(2).find(|w| w[0].eq_ignore_ascii_case("rule")).and_then(|w| w[1].trim_start_matches('#').parse().ok());
+    f.text = message.split('"').nth(1).map(str::trim).filter(|t| !t.is_empty()).map(|t| t.chars().take(200).collect());
+    f.groups = groups_in(&m);
+    f
+}
+
+/// The Wazuh rule groups a kind of activity stands for ("login failures" -> authentication_failed...).
+pub fn groups_in(m: &str) -> Vec<String> {
+    let m = m.to_lowercase();
+    let has = |w: &[&str]| w.iter().any(|x| m.contains(x));
+    let mut g: Vec<&str> = Vec::new();
+    let login = has(&["login", "logon", "log on", "log-on", "sign in", "sign-in", "signin", "authentication", "credential"]);
+    if (login && has(&["fail", "wrong", "bad", "invalid", "denied", "unsuccessful"])) || has(&["bad password", "wrong password", "failed password", "password fail"]) {
+        g.extend(["authentication_failed", "authentication_failures"]);
+    }
+    if has(&["brute force", "brute-force", "bruteforce", "password spray"]) {
+        g.push("authentication_failures");
+    }
+    if login && has(&["success", "successful", "logged in", "logged on"]) {
+        g.push("authentication_success");
+    }
+    if has(&["account change", "account changed", "user change", "password change", "password changed", "password reset", "account created", "new user", "user created", "user added", "account deleted", "user deleted", "account"]) && !has(&["service account logon"]) {
+        g.extend(["account_changed", "adduser", "group_changed"]);
+    }
+    if has(&["policy change", "audit policy", "policy changed"]) {
+        g.push("policy_changed");
+    }
+    if has(&["malware", "rootkit", "virus", "yara"]) {
+        g.extend(["rootcheck", "virustotal", "yara"]);
+    }
+    g.dedup();
+    g.into_iter().map(String::from).collect()
+}
+
+/// The period a request names: "last hour", "today", "last 3 days", "past 12 hours",
+/// "this week/month", "all time" (0 = all the data kept).
+pub fn hours_in(m: &str) -> Option<u32> {
+    let m = m.to_lowercase();
+    if ["all time", "ever", "all the data", "since the start", "since start"].iter().any(|w| m.contains(w)) {
+        return Some(0);
+    }
+    let words: Vec<&str> = m.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    for w in words.windows(3) {
+        if ["last", "past", "previous"].contains(&w[0]) {
+            if let Ok(n) = w[1].parse::<u32>() {
+                let mult = if w[2].starts_with("hour") || w[2] == "h" || w[2] == "hrs" { 1 } else if w[2].starts_with("day") { 24 } else if w[2].starts_with("week") { 168 } else { 0 };
+                if mult > 0 {
+                    return Some((n * mult).clamp(1, 8760));
+                }
+            }
+        }
+    }
+    if m.contains("last hour") || m.contains("past hour") || m.contains(" 1h") {
+        Some(1)
+    } else if m.contains("today") || m.contains("24h") || m.contains("24 h") || m.contains("last day") || m.contains("24 hours") {
+        Some(24)
+    } else if m.contains("week") {
+        Some(168)
+    } else if m.contains("month") || m.contains("30d") || m.contains("30 days") {
+        Some(720)
+    } else {
+        None
+    }
+}
+
+/// "the oldest / first / earliest ..." (else the newest first).
+pub fn oldest_in(m: &str) -> bool {
+    let m = m.to_lowercase();
+    ["oldest", "earliest", "first "].iter().any(|w| m.contains(w)) && !m.contains("first time seen")
+}
+
+/// What the built-in planner reads for `search_events`.
+pub fn event_filter_from_text(message: &str, agents: &[(String, String)], last_agent: Option<&str>) -> EventFilter {
+    let m = message.to_lowercase();
+    let words: Vec<&str> = m.split(|c: char| !c.is_alphanumeric() && c != '-').filter(|w| !w.is_empty()).collect();
+    let mut f = EventFilter { hours: hours_in(&m).unwrap_or(24), limit: 10, oldest: oldest_in(&m), ..Default::default() };
+    // "the oldest log" (one), and "oldest" without a period means since the start
+    if ["oldest log", "first log", "earliest log", "oldest event", "first event", "earliest event", "latest log", "last log", "newest log", "latest event", "last event"].iter().any(|w| m.contains(w)) {
+        f.limit = 1;
+    }
+    if f.oldest && hours_in(&m).is_none() {
+        f.hours = 0;
+    }
+    f.agent = agents.iter().find(|(id, name)| (!name.is_empty() && m.contains(&name.to_lowercase())) || words.iter().any(|w| w == id)).map(|(id, _)| id.clone());
+    if f.agent.is_none() && ["that agent", "this agent", "same agent", "that host", "this host", "the agent"].iter().any(|w| m.contains(w)) {
+        f.agent = last_agent.map(String::from);
+    }
+    // "event 4625", "event id 4625", "eventid 4625"
+    f.event_id = words.windows(2).find(|w| w[0] == "event" || w[0] == "id" || w[0] == "eventid").and_then(|w| w[1].parse::<u32>().ok()).map(|n| n.to_string());
+    f.channel = [("sysmon", "Sysmon"), ("security log", "Security"), ("powershell", "PowerShell"), ("system log", "System"), ("application log", "Application")].iter().find(|(k, _)| m.contains(k)).map(|(_, v)| v.to_string());
+    f.source = [("syslog", "syslog"), ("fim", "fim"), ("sca", "sca"), ("inventory", "syscollector"), ("syscollector", "syscollector")].iter().find(|(k, _)| words.contains(k)).map(|(_, v)| v.to_string());
     f.text = message.split('"').nth(1).map(str::trim).filter(|t| !t.is_empty()).map(|t| t.chars().take(200).collect());
     f
 }
@@ -782,7 +1148,10 @@ async fn rule_mode(run: &mut Run<'_>, agents: &[(String, String)]) -> String {
         );
     }
 
-    if has(&["how many", "stat", "overview", "summary", "count", "fired most", "fire most", "most frequent", "top rule", "which rule", "noisiest"]) {
+    // general statistics, unless the question is about a kind of activity (login failures...): that is an alert search
+    let msg_words: Vec<&str> = m.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let stats_word = msg_words.iter().any(|w| ["count", "counts", "stat", "stats", "statistics"].contains(w));
+    if groups_in(&m).is_empty() && (stats_word || has(&["how many", "overview", "summary", "fired most", "fire most", "most frequent", "top rule", "which rule", "noisiest"])) {
         let hours = filter_from_text(&msg, agents).hours.min(720);
         let raw = json!({ "tool": "alert_stats", "args": { "hours": hours } });
         let r = run.act(Ok(Tool::AlertStats(hours)), &raw).await;
@@ -802,15 +1171,82 @@ async fn rule_mode(run: &mut Run<'_>, agents: &[(String, String)]) -> String {
         };
     }
 
-    let f = filter_from_text(&msg, agents);
-    let raw = json!({ "tool": "search_alerts", "args": { "limit": f.limit, "hours": f.hours } });
+    let words: Vec<&str> = m.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let word = |w: &[&str]| words.iter().any(|x| w.contains(x));
+    if word(&["agent", "agents", "host", "hosts"]) && has(&["which", "list", "info", "status", "when", "enrolled", "how many agent", "my agent", "agents"]) && !word(&["log", "logs", "event", "events", "alert", "alerts"]) {
+        let who = agents.iter().find(|(id, name)| (!name.is_empty() && m.contains(&name.to_lowercase())) || words.contains(&id.as_str())).map(|(id, _)| id.clone());
+        let raw = json!({ "tool": "agent_info", "args": { "agent": who } });
+        let r = run.act(Ok(Tool::AgentInfo(who)), &raw).await;
+        let Some(list) = r["result"]["agents"].as_array() else { return format!("{}", r["result"]["error"].as_str().unwrap_or("No agents found.")) };
+        let mut s = String::new();
+        for a in list {
+            let _ = writeln!(
+                s,
+                "- **{}** ({}) · {} · {} events from {} to {} · {} alerts",
+                a["name"].as_str().unwrap_or(""),
+                a["id"].as_str().unwrap_or(""),
+                a["status"].as_str().unwrap_or(""),
+                a["events"],
+                a["events_time"]["first"].as_str().unwrap_or("—").get(..19).unwrap_or("—"),
+                a["events_time"]["last"].as_str().unwrap_or("—").get(..19).unwrap_or("—"),
+                a["alerts"]
+            );
+        }
+        return s;
+    }
+    if word(&["log", "logs", "event", "events", "telemetry", "raw"]) && !word(&["alert", "alerts"]) {
+        let f = event_filter_from_text(&msg, agents, run.last.agent.as_deref());
+        let raw = json!({ "tool": "search_events", "args": { "limit": f.limit, "hours": f.hours, "order": if f.oldest { "oldest" } else { "newest" } } });
+        let r = run.act(Ok(Tool::SearchEvents(f.clone())), &raw).await;
+        let res = &r["result"];
+        let list = res["events"].as_array().cloned().unwrap_or_default();
+        if list.is_empty() {
+            return format!("No logs match that in {}.", hours_text(f.hours));
+        }
+        let t = &res["summary"]["time"];
+        let mut s = format!(
+            "**{}** matching log event(s) in {} (from {} to {}); the {}:\n",
+            res["matching"],
+            hours_text(f.hours),
+            t["first"].as_str().unwrap_or("—").get(..19).unwrap_or("—"),
+            t["last"].as_str().unwrap_or("—").get(..19).unwrap_or("—"),
+            if f.oldest { "oldest" } else { "newest" }
+        );
+        for e in list.iter().take(10) {
+            let _ = writeln!(s, "- {} · agent {} · {} {} · {}", e["time"].as_str().unwrap_or("").get(..19).unwrap_or(""), e["agent_id"].as_str().unwrap_or(""), e["source"].as_str().unwrap_or(""), e["event_id"].as_str().map(|x| format!("event {x}")).unwrap_or_default(), e["text"].as_str().unwrap_or(""));
+        }
+        return s;
+    }
+
+    let mut f = filter_from_text(&msg, agents);
+    if f.agent.is_none() && ["that agent", "this agent", "same agent", "that host", "this host"].iter().any(|w| m.contains(w)) {
+        f.agent = run.last.agent.clone();
+    }
+    let raw = json!({ "tool": "search_alerts", "args": { "limit": f.limit, "hours": f.hours, "order": if f.oldest { "oldest" } else { "newest" } } });
     let r = run.act(Ok(Tool::SearchAlerts(f.clone())), &raw).await;
     let res = &r["result"];
     let list = res["alerts"].as_array().cloned().unwrap_or_default();
     if list.is_empty() {
-        return format!("No alerts match that in the last {} h.", f.hours);
+        return format!("No alerts match that in {}.", hours_text(f.hours));
     }
-    let mut s = format!("**{}** matching alert(s) in the last {} h; the newest:\n", res["matching"], f.hours);
+    let sm = &res["summary"];
+    let mut s = format!(
+        "**{}** matching alert(s) in {} — {} critical, {} high, {} medium, {} low (from {} to {}).\n",
+        res["matching"],
+        hours_text(f.hours),
+        sm["critical"],
+        sm["high"],
+        sm["medium"],
+        sm["low"],
+        sm["time"]["first"].as_str().unwrap_or("—").get(..19).unwrap_or("—"),
+        sm["time"]["last"].as_str().unwrap_or("—").get(..19).unwrap_or("—")
+    );
+    if let Some(top) = sm["top_rules"].as_array().filter(|t| t.len() > 1 && list.len() > 1) {
+        s.push_str("Most frequent: ");
+        s.push_str(&top.iter().take(3).map(|x| format!("{} ×{}", x["description"].as_str().unwrap_or(""), x["alerts"])).collect::<Vec<_>>().join("; "));
+        s.push('\n');
+    }
+    let _ = writeln!(s, "The {}:", if f.oldest { "oldest" } else { "newest" });
     for a in list.iter().take(10) {
         let _ = writeln!(s, "- {} · **{}** (L{}) · rule {} · {} · {}", a["time"].as_str().unwrap_or("").get(..19).unwrap_or(""), a["severity"].as_str().unwrap_or(""), a["level"], a["rule_id"], a["description"].as_str().unwrap_or(""), a["agent"].as_str().unwrap_or(""));
     }
@@ -878,6 +1314,9 @@ fn last_context(l: &Last) -> String {
     let mut s = String::from("Conversation context:");
     if let Some(a) = &l.alert_id {
         let _ = write!(s, " last alert id {a};");
+    }
+    if let Some(a) = &l.agent {
+        let _ = write!(s, " last agent {a};");
     }
     if let (Some(id), Some(n)) = (&l.case_id, &l.case_number) {
         let _ = write!(s, " last case {n} (id {id});");
@@ -1063,7 +1502,7 @@ mod tests {
     #[test]
     fn the_ai_plan_is_checked() {
         let t = parse_action(&json!({ "tool": "search_alerts", "args": { "min_level": 99, "hours": 100000, "limit": "500", "mitre": "t1059" } })).unwrap();
-        assert_eq!(t, Tool::SearchAlerts(AlertFilter { min_level: Some(16), hours: 720, limit: 50, mitre: Some("T1059".into()), ..Default::default() }));
+        assert_eq!(t, Tool::SearchAlerts(AlertFilter { min_level: Some(16), hours: 8760, limit: 100, mitre: Some("T1059".into()), ..Default::default() }));
         assert!(parse_action(&json!({ "tool": "delete_everything", "args": {} })).is_err(), "only the fixed tools");
         assert_eq!(parse_action(&json!({ "command": "get_alert", "args": { "id": "a1" } })), Ok(Tool::GetAlert("a1".into())), "the plan's own format");
         assert!(parse_action(&json!({ "tool": "get_alert", "args": {} })).is_err(), "required argument");
@@ -1091,6 +1530,35 @@ mod tests {
         assert!(!intent("which rules fired most today?").any());
         assert!(!intent("find the latest critical alert").any());
         assert!(!intent("what does the report page show?").report, "a question about reports writes none");
+    }
+
+    #[test]
+    fn kinds_of_activity_are_rule_groups() {
+        let g = groups_in("is there any login failure or password account change alerts");
+        assert!(g.contains(&"authentication_failed".to_string()) && g.contains(&"account_changed".to_string()), "{g:?}");
+        assert_eq!(groups_in("show the latest critical alert"), Vec::<String>::new());
+        assert_eq!(groups_in("brute force on the server"), vec!["authentication_failures".to_string()]);
+        assert!(!groups_in("is there any login failure or password account change alerts").is_empty(), "an activity question, not statistics (\"account\" holds \"count\")");
+        let t = parse_action(&json!({ "command": "search_alerts", "args": { "groups": ["Authentication_Failed"], "any_text": ["logon", "password"], "hours": 72 } })).unwrap();
+        let Tool::SearchAlerts(f) = t else { panic!() };
+        assert_eq!((f.groups, f.any_text, f.hours), (vec!["authentication_failed".to_string()], vec!["logon".to_string(), "password".to_string()], 72));
+    }
+
+    #[test]
+    fn periods_order_and_logs() {
+        assert_eq!((hours_in("alerts of the last 3 days"), hours_in("past 12 hours"), hours_in("all time"), hours_in("show alerts")), (Some(72), Some(12), Some(0), None));
+        assert!(oldest_in("what is the oldest log of that agent") && !oldest_in("latest alert"));
+        let agents = vec![("049".to_string(), "win-node-e296".to_string())];
+        let f = event_filter_from_text("What is the oldest log from that agent?", &agents, Some("049"));
+        assert_eq!((f.agent.as_deref(), f.oldest, f.hours, f.limit), (Some("049"), true, 0, 1), "since the start, one row");
+        let f = event_filter_from_text("show sysmon event 1 logs on win-node-e296 last 2 hours", &agents, None);
+        assert_eq!((f.agent.as_deref(), f.event_id.as_deref(), f.channel.as_deref(), f.hours), (Some("049"), Some("1"), Some("Sysmon"), 2));
+        let f = filter_from_text("all critical alerts of the last 24 hours", &agents);
+        assert_eq!((f.min_level, f.hours, f.limit, f.oldest), (Some(12), 24, 50, false));
+        assert_eq!(filter_from_text("the first alert ever", &agents).limit, 1);
+        let t = parse_action(&json!({ "command": "search_events", "args": { "agent": "049", "order": "oldest", "hours": "all", "limit": 500 } })).unwrap();
+        assert_eq!(t, Tool::SearchEvents(EventFilter { agent: Some("049".into()), oldest: true, hours: 0, limit: 100, ..Default::default() }));
+        assert_eq!(parse_action(&json!({ "command": "agent_info", "args": {} })), Ok(Tool::AgentInfo(None)));
     }
 
     #[test]

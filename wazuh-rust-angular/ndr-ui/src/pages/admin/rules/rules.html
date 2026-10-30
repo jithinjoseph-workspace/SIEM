@@ -250,7 +250,7 @@
       </div>
 
       <!-- Actions -->
-      <div class="row-actions rules-actions">
+      <div class="row-actions rules-actions" *ngIf="rule.editable">
         <button class="icon-button" title="Edit" (click)="openEditForm(rule)">
           <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
         </button>

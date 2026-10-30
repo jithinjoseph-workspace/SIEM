@@ -206,7 +206,8 @@ export interface ComplianceFramework {
   name: string;
   full_name: string;
   version: string;
-  score_percent: number;
+  /** null: no configuration check maps the framework (alerts only) */
+  score_percent: number | null;
   total_requirements: number;
   passed_count: number;
   alert_count: number;

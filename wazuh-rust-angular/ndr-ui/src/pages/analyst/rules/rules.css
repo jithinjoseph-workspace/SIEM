@@ -815,6 +815,16 @@
   border-color: rgba(99,102,241,0.3);
   color: #818cf8;
 }
+.rule-type-custom {
+  background: rgba(16,185,129,0.1);
+  border-color: rgba(16,185,129,0.35);
+  color: #34d399;
+}
+.rule-type-wazuh {
+  background: rgba(99,102,241,0.1);
+  border-color: rgba(99,102,241,0.3);
+  color: #818cf8;
+}
 .rule-type-agents {
   background: rgba(249,115,22,0.1);
   border-color: rgba(249,115,22,0.3);

@@ -148,6 +148,9 @@ export interface ScaCheckResult {
   title: string;
   status: 'Passed' | 'Failed' | 'Not applicable';
   reason?: string;
+  description?: string;
+  rationale?: string;
+  remediation?: string;
 }
 
 export type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fim' | 'actions';
@@ -171,33 +174,84 @@ export interface MitreTacticColumn {
 export interface MitreMatrixResponse {
   matrix: MitreTacticColumn[];
   total_tactics: number;
+  /** Techniques of the full ATT&CK Enterprise catalog (the manager's mitre.db). */
+  total_techniques?: number;
   total_mitre_alerts: number;
+  /** Technique ids in alerts that the catalog does not have (revoked, or a rule's typo). */
+  unmapped?: { id: string; alert_count: number; max_level: number }[];
   last_updated: string;
 }
 
 // --- Regulatory Compliance ---
+/** One CIS / SCA check a requirement maps (the agent's own text and results). */
+export interface ComplianceCheck {
+  check_id: string;
+  title: string;
+  failed_agents: number;
+  passed_agents: number;
+  failing_on: string[];
+  remediation: string;
+  rationale: string;
+}
+
 export interface ComplianceRequirement {
   id: string;
+  /** its most failing check's title (or its top alert's): no hand-written text */
   title: string;
   description: string;
+  /** failed: a mapped check fails; warning: alerts only; passed: its checks pass */
   status: 'passed' | 'warning' | 'failed';
+  source: 'configuration' | 'alerts' | 'both';
   alerts_count: number;
+  max_level: number;
   rule_ids: number[];
+  alerts: { rule_id: number; description: string }[];
+  checks_passed: number;
+  checks_failed: number;
+  checks: ComplianceCheck[];
 }
 
 export interface ComplianceFramework {
   name: string;
   full_name: string;
   version: string;
-  score_percent: number;
+  /** passed share of its configuration check results; null when no check maps it (GDPR) */
+  score_percent: number | null;
   total_requirements: number;
   passed_count: number;
   alert_count: number;
+  checks_passed: number;
+  checks_failed: number;
   requirements: ComplianceRequirement[];
+}
+
+/** A failing check and the requirements it breaks, with the agent's fix. */
+export interface ComplianceRemediation {
+  check_id: string;
+  title: string;
+  remediation: string;
+  rationale: string;
+  failed_agents: number;
+  requirements: string[];
+}
+
+/** A recent alert whose Wazuh rule carries compliance groups. */
+export interface ComplianceEvidence {
+  timestamp: number;
+  agent_id: string;
+  agent_name: string;
+  rule_id: number;
+  level: number;
+  description: string;
+  requirements: string[];
 }
 
 export interface ComplianceResponse {
   frameworks: ComplianceFramework[];
+  remediations: ComplianceRemediation[];
+  evidence: ComplianceEvidence[];
+  window_hours: number;
+  agents: number;
   total_alerts_evaluated: number;
   last_updated: string;
 }

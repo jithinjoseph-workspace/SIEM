@@ -273,8 +273,9 @@ export class SiemService {
     return this.http.post<LogtestResponse>(`${this.apiUrl}/api/v1/logtest`, { log });
   }
 
-  getCompliance(): Observable<ComplianceResponse> {
-    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance`);
+  /** `refresh`: the agents' latest SCA results are copied first (Re-evaluate). */
+  getCompliance(refresh = false): Observable<ComplianceResponse> {
+    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance${refresh ? '?refresh=1' : ''}`);
   }
 
   getMitreMatrix(): Observable<MitreMatrixResponse> {

@@ -176,7 +176,9 @@ export class Rules extends RulesBase implements OnInit {
   private mapAgentZRule(r: any): any {
     return {
       name: r.title || 'Unknown',
-      type: 'Agent-Z',
+      // custom rules (the tenant's, stored in ClickHouse) can be edited; Wazuh's ruleset is read-only
+      type: r.source === 'custom' ? 'Custom' : 'Wazuh',
+      editable: !!r.editable,
       severity: (r.severity || 'medium').toUpperCase(),
       status: r.enabled ? 'ACTIVE' : 'INACTIVE',
       id: r.id,

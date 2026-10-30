@@ -80,26 +80,14 @@ When you use the tenant summary below, say so; do not invent alerts, hosts or nu
 
 /// A read-only summary of the caller's tenant (last 24 h, ClickHouse), for the chat.
 async fn tenant_summary(state: &AppState, ctx: &AuthCtx) -> String {
-    let alerts = crate::history::alerts(state, ctx, 24).await;
+    let (c, top) = tokio::join!(crate::history::counts(state, ctx, 24), crate::history::top_rules(state, ctx, 24, 8));
     let agents = crate::scoped_agent_map(state, ctx);
-    let (mut crit, mut high, mut med, mut low) = (0, 0, 0, 0);
-    let mut rules: HashMap<(u32, String), u32> = HashMap::new();
-    for a in &alerts {
-        match a.rule.level {
-            12.. => crit += 1,
-            8..=11 => high += 1,
-            4..=7 => med += 1,
-            _ => low += 1,
-        }
-        *rules.entry((a.rule.id, a.rule.description.clone())).or_default() += 1;
-    }
-    let mut top: Vec<_> = rules.into_iter().collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
-    let top: Vec<String> = top.into_iter().take(8).map(|((id, d), n)| format!("rule {id} x{n}: {}", d.chars().take(120).collect::<String>())).collect();
+    let (crit, high, med, low) = (c.critical(), c.high(), c.medium(), c.low());
+    let top: Vec<String> = top.into_iter().map(|(id, d, n)| format!("rule {id} x{n}: {}", d.chars().take(120).collect::<String>())).collect();
     format!(
         "Tenant summary (last 24 h): {} agents; {} alerts (critical {crit}, high {high}, medium {med}, low {low}).\nMost frequent rules:\n{}",
         agents.len(),
-        alerts.len(),
+        c.alerts(),
         siem_ai::untrusted(&top.join("\n"), 2000)
     )
 }
@@ -143,7 +131,7 @@ pub async fn analyze(State(state): State<AppState>, Extension(ctx): Extension<Au
     let mut location = req.location.clone().unwrap_or_default();
     let mut text = String::new();
     if let Some(eid) = &req.event_id {
-        if let Some(ev) = crate::history::events(&state, &ctx, crate::history::DEFAULT_HOURS).await.into_iter().find(|e| &e.id.to_string() == eid) {
+        if let Some(ev) = crate::history::event(&state, &ctx, eid).await {
             host = ev.agent_id.clone();
             source = format!("{:?}", ev.source);
             location = ev.location.clone();

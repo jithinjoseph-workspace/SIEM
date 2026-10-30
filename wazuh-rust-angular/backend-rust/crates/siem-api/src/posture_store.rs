@@ -14,13 +14,16 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-pub const DDL: [&str; 3] = [
+pub const DDL: [&str; 4] = [
     "CREATE TABLE IF NOT EXISTS siem_sca_checks (agent_id String, policy_id String, policy_name String, check_id String, title String, status LowCardinality(String), reason String, \
      score UInt32, passed UInt32, failed UInt32, not_applicable UInt32, scanned_at String, synced_at UInt64) ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, policy_id, check_id)",
     "CREATE TABLE IF NOT EXISTS siem_fim_files (agent_id String, full_path String, key String, type LowCardinality(String), size UInt64, uname String, gname String, \
      md5 String, sha1 String, sha256 String, mtime String, date String, changes UInt64, synced_at UInt64) ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, full_path, key)",
     "CREATE TABLE IF NOT EXISTS siem_rootcheck_events (agent_id String, log String, date_first String, date_last String, pci_dss String, cis String, synced_at UInt64) \
      ENGINE = ReplacingMergeTree(synced_at) ORDER BY (agent_id, log)",
+    // each check's text and frameworks (the agent's own), for compliance and the fixes
+    "ALTER TABLE siem_sca_checks ADD COLUMN IF NOT EXISTS description String DEFAULT '', ADD COLUMN IF NOT EXISTS rationale String DEFAULT '', \
+     ADD COLUMN IF NOT EXISTS remediation String DEFAULT '', ADD COLUMN IF NOT EXISTS compliance String DEFAULT '{}'",
 ];
 
 const SYNC_SECS: u64 = 600;
@@ -42,6 +45,11 @@ struct ScaRow {
     not_applicable: u32,
     scanned_at: String,
     synced_at: u64,
+    description: String,
+    rationale: String,
+    remediation: String,
+    /// {"pci_dss_v4.0": ["8.3.4"], "soc_2": ["CC6.1"], ...}
+    compliance: String,
 }
 
 #[derive(clickhouse::Row, Serialize, Deserialize)]
@@ -147,6 +155,10 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
                             not_applicable: num(&s["not_applicable"]) as u32,
                             scanned_at: st(&s["scanned_at"]),
                             synced_at,
+                            description: st(&c["description"]),
+                            rationale: st(&c["rationale"]),
+                            remediation: st(&c["remediation"]),
+                            compliance: c["compliance"].to_string(),
                         })
                         .collect()
                 })
@@ -275,7 +287,13 @@ pub async fn sca(state: &AppState, agent_id: &str) -> Option<Value> {
         .await
         .ok()?;
     let f = rows.first()?;
-    let checks: Vec<Value> = rows.iter().map(|r| json!({ "check_id": r.check_id, "title": r.title, "status": r.status, "reason": r.reason })).collect();
+    let checks: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({ "check_id": r.check_id, "title": r.title, "status": r.status, "reason": r.reason, "description": r.description, "rationale": r.rationale,
+                    "remediation": r.remediation, "compliance": serde_json::from_str::<Value>(&r.compliance).unwrap_or_else(|_| json!({})) })
+        })
+        .collect();
     Some(json!({
         "agent_id": agent_id, "policy_id": f.policy_id, "policy_name": f.policy_name, "score": f.score, "passed": f.passed, "failed": f.failed,
         "not_applicable": f.not_applicable, "scanned_at": f.scanned_at, "checks": checks, "source": "clickhouse",

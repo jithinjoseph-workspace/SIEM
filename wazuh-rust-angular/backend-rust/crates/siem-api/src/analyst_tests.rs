@@ -295,6 +295,8 @@ async fn history_and_inventory_from_clickhouse() {
         a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
         a.decoded.file_path = Some("/etc/passwd".into());
         a.data.insert("syscheck".into(), json!({ "path": "/etc/passwd", "event": "modified" }));
+        // the compliance groups Wazuh's rule 5710 carries
+        a.data.insert("wazuh_rule".into(), json!({ "id": "5710", "pci_dss": ["10.2.4", "10.2.5"], "gdpr": ["IV_35.7.d"], "tsc": ["CC6.1"] }));
         let a = crate::tenancy::tag_alert(a, &ta);
         let mut other = crate::tenancy::tag_alert(alert(100200, 3, "tenant B only", "902", "", now - 30_000), &tb);
         other.rule.groups = vec!["b".into()];
@@ -303,19 +305,38 @@ async fn history_and_inventory_from_clickhouse() {
         // memory is empty (a fresh siem-api): the history comes from ClickHouse, complete
         assert!(st.alerts.read().unwrap().is_empty());
         let ca = AuthCtx { role: "analyst".into(), ..ctx(&ta) };
-        let h = crate::history::alerts(&st, &ca, 24).await;
+        let h = crate::history::recent_alerts(&st, &ca, 24, 500, None).await;
         assert_eq!(h.len(), 1, "tenant A sees only its alert");
         let back = &h[0];
         assert_eq!((back.id, back.rule.groups.clone(), back.decoded.file_path.clone()), (a.id, a.rule.groups.clone(), Some("/etc/passwd".to_string())));
         assert_eq!(back.data["syscheck"]["event"], "modified");
         assert_eq!(crate::history::alert(&st, &ca, &a.id.to_string()).await.map(|x| x.rule.id), Some(5710));
 
-        // pages: compliance (PCI 10.2 counts rule 5710) and MITRE (T1110)
+        // the aggregates are computed by ClickHouse, per tenant (B's alert never counts for A)
+        let c = crate::history::counts(&st, &ca, 24).await;
+        assert_eq!((c.alerts(), c.alerts_1h, c.medium(), c.critical()), (1, 1, 1, 0), "{c:?}");
+        let cb = crate::history::counts(&st, &AuthCtx { role: "analyst".into(), ..ctx(&tb) }, 24).await;
+        assert_eq!((cb.alerts(), cb.low()), (1, 1), "{cb:?}");
+        assert_eq!(crate::history::top_rules(&st, &ca, 24, 10).await, vec![(5710, "sshd: attempt to login using a non-existent user".to_string(), 1)]);
+        assert_eq!(crate::history::top_values(&st, &ca, 24, crate::db::AlertField::SrcIp, 10, false).await, vec![("203.0.113.9".to_string(), 1)]);
+        assert_eq!(crate::history::mitre_counts(&st, &ca, 24).await, vec![("T1110".to_string(), 1, 5)]);
+        let buckets = crate::history::alert_buckets(&st, &ca, 3_600_000, 24).await;
+        assert_eq!((buckets.len(), buckets[23]), (24, [0, 0, 1, 0]), "the alert of a minute ago is in the newest hour, medium");
+        assert_eq!(crate::history::recent_alerts(&st, &ca, 24, 500, Some("203.0.113.9")).await.len(), 1);
+        assert!(crate::history::recent_alerts(&st, &ca, 24, 500, Some("198.51.100.1")).await.is_empty(), "IP filter");
+        assert_eq!(crate::history::alerts_containing(&st, &ca, 24, "\"syscheck\"").await.len(), 1);
+        assert!(crate::history::alerts_containing(&st, &ca, 24, "\"no-such-key\"").await.is_empty());
+
+        // pages: compliance (PCI DSS 10.2.4 from rule 5710's tags) and MITRE (T1110)
         let body = |r: axum::response::Response| async move { String::from_utf8_lossy(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).to_string() };
         use axum::response::IntoResponse;
-        let comp = body(crate::get_compliance_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
-        assert!(comp.contains("\"alerts_count\":1"), "compliance from ClickHouse: {}", &comp[..comp.len().min(400)]);
-        let mitre = body(crate::get_mitre_matrix_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
+        let comp: serde_json::Value = serde_json::from_str(&body(crate::compliance::get(State(st.clone()), Extension(ca.clone()), axum::extract::Query(serde_json::from_value(json!({})).unwrap())).await).await).unwrap();
+        let pci = comp["frameworks"].as_array().unwrap().iter().find(|f| f["name"] == "PCI_DSS").unwrap();
+        let req = pci["requirements"].as_array().unwrap().iter().find(|r| r["id"] == "10.2.4").expect("PCI DSS 10.2.4 from the alert's tags");
+        assert_eq!((req["alerts_count"].as_u64(), req["status"].as_str(), req["source"].as_str()), (Some(1), Some("warning"), Some("alerts")));
+        assert!(pci["score_percent"].is_null(), "no configuration checks in this tenant: no score");
+        assert_eq!(comp["evidence"].as_array().unwrap().len(), 1, "tenant B's alert is not evidence for A");
+        let mitre = body(crate::mitre::matrix(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
         assert!(mitre.contains("T1110"), "MITRE from ClickHouse: {}", &mitre[..mitre.len().min(400)]);
 
         // inventory of a siem-agent: stored in ClickHouse, read back by the endpoint

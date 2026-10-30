@@ -206,9 +206,10 @@ export class DeviceDrawer implements OnChanges {
   loadNodeAlerts(ip: string) {
     this.loadingAlerts = true;
     this.selectedNodeAlerts = [];
-    this.api.getAlerts().subscribe({
+    // the server returns only the alerts from or to this IP
+    this.api.getAlerts(ip).subscribe({
       next: (hits: any[]) => {
-        this.selectedNodeAlerts = hits.filter((h: any) => h.src_ip === ip || h.dst_ip === ip);
+        this.selectedNodeAlerts = hits;
         this.loadingAlerts = false;
         this.cdr.detectChanges();
       },

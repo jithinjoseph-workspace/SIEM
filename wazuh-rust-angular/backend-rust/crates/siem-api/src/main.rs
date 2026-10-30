@@ -58,11 +58,14 @@ pub mod process_tree;
 pub mod file_reputation;
 pub mod yara_edr;
 pub mod posture_store;
+pub mod compliance;
 pub mod secrets;
 pub mod geomap;
 pub mod platform;
 pub mod response;
 pub mod sigma;
+pub mod mitre;
+pub mod rules_api;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -669,13 +672,13 @@ async fn main() {
         .route("/agents", delete(delete_agents_wazuh_handler))
         .route("/api/v1/events", get(get_events))
         .route("/api/events", get(get_events))
-        .route("/api/v1/rules", get(get_rules_api_handler).post(post_rules_handler))
-        .route("/api/rules", get(get_rules_api_handler).post(post_rules_handler))
+        .route("/api/v1/rules", get(rules_api::list).post(rules_api::create))
+        .route("/api/rules", get(rules_api::list).post(rules_api::create))
         .route("/api/rules/hit-counts", get(get_rules_hit_counts_handler))
-        .route("/api/rules/:id", delete(delete_rules_handler))
-        .route("/api/rules/:id/toggle", post(toggle_rules_handler))
-        .route("/api/rules/reload", post(reload_rules_handler))
-        .route("/api/rules/sync-community", post(sync_community_rules_handler))
+        .route("/api/rules/:id", get(rules_api::get_one).delete(rules_api::delete))
+        .route("/api/rules/:id/toggle", post(rules_api::toggle))
+        .route("/api/rules/reload", post(rules_api::reload))
+        .route("/api/rules/sync-community", post(rules_api::sync_community))
         .route("/api/v1/ai/analyze", post(ai_assist::analyze))
         .route("/api/v1/ai/chat", post(ai_assist::chat))
         .route("/api/v1/ingest", post(ingest_event))
@@ -738,6 +741,7 @@ async fn main() {
         .route("/api/stats/unified", get(get_unified_stats_handler))
         .route("/api/stats/timeline", get(get_stats_timeline_handler))
         .route("/api/hits", get(get_hits_handler))
+        .route("/api/hits/timeline", get(get_hits_timeline_handler))
         .route("/api/top-ips", get(get_top_ips_handler))
         .route("/api/severity", get(get_severity_handler))
         .route("/api/support/messages", get(get_support_messages_handler))
@@ -799,8 +803,8 @@ async fn main() {
         .route("/ws", get(ws_alerts_handler))
         .route("/api/ws", get(ws_alerts_handler))
         .route("/api/v1/logtest", post(post_logtest_handler))
-        .route("/api/v1/compliance", get(get_compliance_handler))
-        .route("/api/v1/mitre/matrix", get(get_mitre_matrix_handler))
+        .route("/api/v1/compliance", get(compliance::get))
+        .route("/api/v1/mitre/matrix", get(mitre::matrix))
         .route("/api/v1/fim/summary", get(get_fim_summary_handler))
         .route("/api/v1/active-response/actions", get(get_active_response_actions).post(post_active_response_block))
         .route("/api/v1/active-response/unblock", post(post_active_response_unblock))
@@ -2424,143 +2428,39 @@ async fn get_tenant_features_handler() -> impl IntoResponse {
     }))
 }
 
-#[derive(Deserialize, Default)]
-struct RulesQuery {
-    limit: Option<usize>,
-    offset: Option<usize>,
-    q: Option<String>,
-    #[allow(dead_code)]
-    order: Option<String>,
-}
-
-async fn get_rules_api_handler(
-    State(state): State<AppState>,
-    Query(query): Query<RulesQuery>,
-) -> impl IntoResponse {
-    let raw_rules = state.engine.list_rules();
-    let _total_count = raw_rules.len();
-    let active_count = raw_rules.len();
-
-    let mut mapped: Vec<serde_json::Value> = raw_rules
-        .into_iter()
-        .map(|r| {
-            let sev = match r.level {
-                12..=15 => "critical",
-                8..=11 => "high",
-                4..=7 => "medium",
-                _ => "low",
-            };
-            serde_json::json!({
-                "id": r.id.to_string(),
-                "title": r.description.clone(),
-                "description": r.description,
-                "level": r.level,
-                "severity": sev,
-                "enabled": true,
-                "groups": r.groups.clone(),
-                "tags": r.groups,
-                "conditions": 1,
-                "mitre": r.mitre,
-            })
-        })
-        .collect();
-
-    if let Some(ref q) = query.q {
-        let q_lower = q.to_lowercase();
-        mapped.retain(|r| {
-            r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-                || r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-        });
-    }
-
-    let filtered_total = mapped.len();
-    let offset = query.offset.unwrap_or(0);
-    let paged: Vec<serde_json::Value> = if let Some(limit) = query.limit {
-        mapped.into_iter().skip(offset).take(limit).collect()
-    } else {
-        mapped
-    };
-
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert("X-Total-Count", filtered_total.to_string().parse().unwrap());
-    headers.insert("X-Active-Count", active_count.to_string().parse().unwrap());
-
-    (StatusCode::OK, headers, Json(paged))
-}
-
 async fn get_rules_hit_counts_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for alert in alerts.iter() {
-        *counts.entry(alert.rule.description.clone()).or_insert(0) += 1;
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for (_, desc, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        // a Sigma alert is "Sigma: <title>": the rules pages look custom rules up by their title
+        if let Some(title) = desc.strip_prefix("Sigma: ") {
+            *counts.entry(title.to_string()).or_insert(0) += n;
+        }
+        *counts.entry(desc).or_insert(0) += n;
     }
     Json(counts)
 }
 
-async fn post_rules_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Rule created successfully", "rule": payload }))
-}
-
-async fn delete_rules_handler(Path(rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": format!("Rule {} deleted", rule_id) }))
-}
-
-async fn toggle_rules_handler(Path(_rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "enabled": true }))
-}
-
-async fn reload_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Detection rules successfully reloaded" }))
-}
-
-async fn sync_community_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Community rules synchronized", "count": 1250 }))
-}
 
 async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events_guard = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let alerts_guard = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-
-    let events_total = events_guard.len() as u64;
-    let hits_total = alerts_guard.len() as u64;
-
-    let events_1h = events_guard.iter().filter(|e| e.timestamp >= one_hour_ago).count() as u64;
-    let hits_1h = alerts_guard.iter().filter(|a| a.timestamp >= one_hour_ago).count() as u64;
-
-    let agent_z_events = events_guard.iter().filter(|e| {
-        let src_str = serde_json::to_string(&e.source).unwrap_or_default();
-        src_str.contains("network") || e.location.contains("flow") || e.location.contains("zeek")
-    }).count() as u64;
-    let agent_s_events = events_total.saturating_sub(agent_z_events);
+    let (c, (_, agent_z_events)) = tokio::join!(
+        history::admin_counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true)
+    );
+    let agent_s_events = c.events.saturating_sub(agent_z_events);
 
     Json(serde_json::json!({
-        "events_total": events_total,
-        "hits_total": hits_total,
-        "events_1h": events_1h,
-        "hits_1h": hits_1h,
+        "events_total": c.events,
+        "hits_total": c.alerts(),
+        "events_1h": c.events_1h,
+        "hits_1h": c.alerts_1h,
         "agent_z_events": agent_z_events,
         "agent_s_events": agent_s_events
     }))
 }
 
 async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut critical = 0u64;
-    let mut high = 0u64;
-    let mut medium = 0u64;
-    let mut low = 0u64;
-
-    for alert in alerts.iter() {
-        match alert.rule.level {
-            l if l >= 12 => critical += 1,
-            l if l >= 8 => high += 1,
-            l if l >= 4 => medium += 1,
-            _ => low += 1,
-        }
-    }
+    let c = history::admin_counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (critical, high, medium, low) = (c.critical(), c.high(), c.medium(), c.low());
 
     let tenants_count = state.tenants.read().unwrap().len() as u64;
     let t_total = if tenants_count == 0 { 1 } else { tenants_count };
@@ -2576,67 +2476,23 @@ async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extensi
 }
 
 async fn get_top_ips_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut src_map: HashMap<String, u64> = HashMap::new();
-    let mut dst_map: HashMap<String, u64> = HashMap::new();
+    Json(top_ips_json(&state, &ctx, true).await)
+}
 
-    for alert in alerts.iter() {
-        if let Some(ref ip) = alert.decoded.src_ip {
-            if !ip.is_empty() {
-                *src_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-        if let Some(ref ip) = alert.decoded.dst_ip {
-            if !ip.is_empty() {
-                *dst_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-    }
-
-    let mut top_src: Vec<(&String, &u64)> = src_map.iter().collect();
-    top_src.sort_by(|a, b| b.1.cmp(a.1));
-    let top_src_ips: Vec<serde_json::Value> = top_src.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    let mut top_dst: Vec<(&String, &u64)> = dst_map.iter().collect();
-    top_dst.sort_by(|a, b| b.1.cmp(a.1));
-    let top_dst_ips: Vec<serde_json::Value> = top_dst.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    Json(serde_json::json!({
-        "top_src_ips": top_src_ips,
-        "top_dst_ips": top_dst_ips
-    }))
+/// The 10 source and destination IPs with the most alerts of the history window.
+async fn top_ips_json(state: &AppState, ctx: &AuthCtx, all_tenants: bool) -> serde_json::Value {
+    let (src, dst) = tokio::join!(
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 10, all_tenants),
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::DstIp, 10, all_tenants)
+    );
+    let pairs = |v: Vec<(String, u64)>| v.into_iter().map(|(ip, n)| serde_json::json!([ip, n])).collect::<Vec<_>>();
+    serde_json::json!({ "top_src_ips": pairs(src), "top_dst_ips": pairs(dst) })
 }
 
 async fn get_protocols_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut proto_map: HashMap<String, u64> = HashMap::new();
-
-    for ev in events.iter() {
-        let proto = if ev.location.to_lowercase().contains("ssh") || ev.message.to_lowercase().contains("ssh") {
-            "SSH"
-        } else if ev.location.to_lowercase().contains("http") || ev.message.to_lowercase().contains("http") {
-            "HTTP"
-        } else if ev.location.to_lowercase().contains("tls") || ev.location.to_lowercase().contains("ssl") || ev.message.to_lowercase().contains("tls") {
-            "TLS"
-        } else if ev.location.to_lowercase().contains("dns") || ev.message.to_lowercase().contains("dns") {
-            "DNS"
-        } else if ev.location.to_lowercase().contains("smb") || ev.message.to_lowercase().contains("smb") {
-            "SMB"
-        } else if ev.location.to_lowercase().contains("syslog") {
-            "SYSLOG"
-        } else {
-            "TCP/IP"
-        };
-        *proto_map.entry(proto.to_string()).or_insert(0) += 1;
-    }
-
-    let mut proto_list: Vec<(&String, &u64)> = proto_map.iter().collect();
-    proto_list.sort_by(|a, b| b.1.cmp(a.1));
-    let protocols: Vec<serde_json::Value> = proto_list.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
-
-    Json(serde_json::json!({
-        "protocols": protocols
-    }))
+    let (protocols, _) = history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true).await;
+    let protocols: Vec<serde_json::Value> = protocols.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
+    Json(serde_json::json!({ "protocols": protocols }))
 }
 
 async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
@@ -2644,10 +2500,13 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     let unique_hashes = state.threat_intel.get_list("malicious_hashes").map(|l| l.total_entries()).unwrap_or(0);
     let unique_domains = state.threat_intel.get_list("malicious_domains").map(|l| l.total_entries()).unwrap_or(0);
 
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let detected_in_network = alerts.iter().filter(|a| {
-        a.decoded.src_ip.as_ref().map(|ip| state.threat_intel.check_ip(ip).is_some()).unwrap_or(false)
-    }).count();
+    // alerts whose source IP is on a threat list: ClickHouse sends one row per IP
+    let detected_in_network: u64 = history::top_values(&state, &ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 1_000_000, true)
+        .await
+        .into_iter()
+        .filter(|(ip, _)| state.threat_intel.check_ip(ip).is_some())
+        .map(|(_, n)| n)
+        .sum();
 
     Json(serde_json::json!({
         "status": "ok",
@@ -2737,11 +2596,11 @@ async fn get_threat_intel_watchlist_handler() -> impl IntoResponse {
 
 
 async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let critical_count = alerts.iter().filter(|a| a.rule.level >= 12).count();
-    let high_count = alerts.iter().filter(|a| a.rule.level >= 8 && a.rule.level < 12).count();
+    // polled by the ARIA bot every 30 s: counts and the newest alert only
+    let (counts, latest) = tokio::join!(history::counts(&state, &ctx, history::DEFAULT_HOURS), history::latest_alert(&state, &ctx, history::DEFAULT_HOURS));
+    let (critical_count, high_count) = (counts.critical(), counts.high());
 
-    let latest_alert = alerts.last();
+    let latest_alert = latest.as_ref();
     let latest_sev = latest_alert.map(|a| if a.rule.level >= 12 { "CRITICAL" } else if a.rule.level >= 8 { "HIGH" } else { "MEDIUM" }).unwrap_or("");
     let latest_src = latest_alert.and_then(|a| a.decoded.src_ip.clone()).unwrap_or_default();
     let latest_dst = latest_alert.and_then(|a| a.decoded.dst_ip.clone()).unwrap_or_default();
@@ -2765,8 +2624,8 @@ async fn post_aria_chat_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let msg = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    let alerts_count = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.len();
-    let events_count = history::events(&state, &ctx, history::DEFAULT_HOURS).await.len();
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (alerts_count, events_count) = (c.alerts(), c.events);
 
     let reply = format!(
         "ARIA AI Security Copilot: Telemetry monitoring is active with {} ingested events and {} alerts. In response to: \"{}\", all active correlation pipelines are operational.",
@@ -2817,55 +2676,70 @@ async fn get_server_info_handler() -> impl IntoResponse {
 
 
 
-async fn get_unified_stats_handler() -> impl IntoResponse {
+/// The tenant's last 24 h for the analyst dashboard's KPI strip (network-sensor events are the "NDR" ones).
+async fn get_unified_stats_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let (day, (_, ndr_day), (_, ndr_hour)) = tokio::join!(
+        history::counts(&state, &ctx, 24),
+        history::event_breakdown(&state, &ctx, 24, false),
+        history::event_breakdown(&state, &ctx, 1, false)
+    );
     Json(serde_json::json!({
-        "ndr_events_today": 458920,
-        "ndr_events_1h": 14500,
-        "siem_logs_today": 320400,
-        "siem_logs_1h": 11200,
-        "siem_eps": 1450,
-        "correlation_hits_1h": 42,
-        "critical_alerts": 12,
-        "high_alerts": 34,
-        "medium_alerts": 65
+        "ndr_events_today": ndr_day,
+        "ndr_events_1h": ndr_hour,
+        "siem_logs_today": day.events,
+        "siem_logs_1h": day.events_1h,
+        "siem_eps": (day.events_1h as f64 / 3600.0 * 10.0).round() / 10.0,
+        "correlation_hits_1h": day.alerts_1h,
+        "critical_alerts": day.critical(),
+        "high_alerts": day.high(),
+        "medium_alerts": day.medium()
     }))
 }
 
-async fn get_stats_timeline_handler() -> impl IntoResponse {
+/// The tenant's events per minute over the last 60 minutes, oldest first.
+async fn get_stats_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "points": history::event_buckets(&state, &ctx, 60_000, 60).await }))
+}
+
+#[derive(Deserialize)]
+struct HitsQuery {
+    src_ip: Option<String>,
+    limit: Option<usize>,
+}
+
+/// The tenant's newest alerts (500 by default, at most 5000); `src_ip`: only those from or to that IP.
+async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsQuery>) -> impl IntoResponse {
+    let ip = q.src_ip.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    Json(history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, q.limit.unwrap_or(500).clamp(1, 5000), ip).await)
+}
+
+#[derive(Deserialize)]
+struct HitsTimelineQuery {
+    /// "24h" (hourly), "7d" or "30d" (daily)
+    range: Option<String>,
+}
+
+/// The tenant's alerts per time slice and severity (Assets page's threat landscape).
+async fn get_hits_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsTimelineQuery>) -> impl IntoResponse {
+    let (bucket_ms, buckets) = match q.range.as_deref() {
+        Some("7d") => (86_400_000, 7),
+        Some("30d") => (86_400_000, 30),
+        _ => (3_600_000, 24),
+    };
+    let rows = history::alert_buckets(&state, &ctx, bucket_ms, buckets).await;
     Json(serde_json::json!({
-        "status": "ok",
-        "points": [120, 145, 132, 180, 210, 195, 230, 240, 220, 260, 280, 310, 290, 320, 340, 310, 305, 330, 360, 380]
+        "bucket_ms": bucket_ms,
+        "buckets": rows.iter().map(|[c, h, m, l]| serde_json::json!({ "critical": c, "high": h, "medium": m, "low": l })).collect::<Vec<_>>()
     }))
 }
 
-async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    Json(alerts.clone())
+async fn get_top_ips_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(top_ips_json(&state, &ctx, false).await)
 }
 
-async fn get_top_ips_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "top_src_ips": [
-            ["192.168.10.105", 1420],
-            ["192.168.10.15", 980],
-            ["45.33.32.156", 740],
-            ["185.220.101.5", 520]
-        ],
-        "top_dst_ips": [
-            ["192.168.10.20", 2100],
-            ["192.168.10.15", 1850],
-            ["1.1.1.1", 940]
-        ]
-    }))
-}
-
-async fn get_severity_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "critical": 12,
-        "high": 34,
-        "medium": 65,
-        "low": 89
-    }))
+async fn get_severity_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    Json(serde_json::json!({ "critical": c.critical(), "high": c.high(), "medium": c.medium(), "low": c.low() }))
 }
 
 async fn get_announcements_handler() -> impl IntoResponse {
@@ -3031,30 +2905,22 @@ struct SiemDashboardResponse {
 async fn get_siem_dashboard(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemDashboardResponse> {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (counts, recent) = tokio::join!(
+        history::counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, 20, None)
+    );
     let agents = scoped_agent_map(&state, &ctx);
 
-    let total_alerts = alerts.len();
-
-    let mut critical = 0;
-    let mut high = 0;
-    let mut medium = 0;
+    // this page's bands: critical 10+, high 7-9, medium 4-6 (of the whole window)
+    let total_alerts = counts.alerts() as usize;
+    let (critical, high, medium) = (counts.band(10, 16) as usize, counts.band(7, 9) as usize, counts.band(4, 6) as usize);
 
     let mut recent_alerts = Vec::new();
-    for a in alerts.iter().rev().take(20) {
+    for a in recent.iter() {
         let sev_str = match a.rule.level {
-            10..=15 => {
-                critical += 1;
-                "CRITICAL"
-            }
-            7..=9 => {
-                high += 1;
-                "HIGH"
-            }
-            4..=6 => {
-                medium += 1;
-                "MEDIUM"
-            }
+            10.. => "CRITICAL",
+            7..=9 => "HIGH",
+            4..=6 => "MEDIUM",
             _ => "LOW",
         };
         recent_alerts.push(SiemRecentAlert {
@@ -3735,424 +3601,6 @@ async fn post_logtest_handler(
     }))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComplianceRequirement {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub status: String,
-    pub alerts_count: usize,
-    pub rule_ids: Vec<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComplianceFramework {
-    pub name: String,
-    pub full_name: String,
-    pub version: String,
-    pub score_percent: f64,
-    pub total_requirements: usize,
-    pub passed_count: usize,
-    pub alert_count: usize,
-    pub requirements: Vec<ComplianceRequirement>,
-}
-
-async fn get_compliance_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let count_alerts_for_rules = |rule_ids: &[u32]| -> usize {
-        alerts.iter().filter(|a| rule_ids.contains(&a.rule.id)).count()
-    };
-
-    let pci_reqs = vec![
-        ComplianceRequirement {
-            id: "10.2".to_string(),
-            title: "Audit Trails & Event Logging".to_string(),
-            description: "Implement automated audit trails for all system components to reconstruct user and system events.".to_string(),
-            status: if count_alerts_for_rules(&[5500, 5710, 5715, 5716]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5500, 5710, 5715, 5716]),
-            rule_ids: vec![5500, 5710, 5715, 5716],
-        },
-        ComplianceRequirement {
-            id: "10.6".to_string(),
-            title: "Log Review & Threat Monitoring".to_string(),
-            description: "Review logs and security events for all system components to identify anomalies or suspicious activity.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![1002, 1003],
-        },
-        ComplianceRequirement {
-            id: "11.5".to_string(),
-            title: "File Integrity Monitoring (FIM)".to_string(),
-            description: "Deploy a change-detection mechanism to alert personnel to unauthorized modification of critical system files.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-        ComplianceRequirement {
-            id: "8.3".to_string(),
-            title: "Strong Authentication & MFA".to_string(),
-            description: "Establish strong identification and authentication controls for all user accounts accessing systems.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5712, 5760]) > 2 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5712, 5760]),
-            rule_ids: vec![5710, 5712, 5760],
-        },
-        ComplianceRequirement {
-            id: "11.2".to_string(),
-            title: "Vulnerability Management".to_string(),
-            description: "Run automated internal and external network vulnerability scans periodically.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![20100, 20101],
-        },
-    ];
-
-    let pci_alerts: usize = pci_reqs.iter().map(|r| r.alerts_count).sum();
-    let pci_passed = pci_reqs.iter().filter(|r| r.status == "passed").count();
-    let pci_score = ((pci_passed as f64 / pci_reqs.len() as f64) * 100.0).round();
-
-    let hipaa_reqs = vec![
-        ComplianceRequirement {
-            id: "164.312(a)(1)".to_string(),
-            title: "Access Control".to_string(),
-            description: "Implement technical policies and procedures for electronic information systems to allow access only to authorized personnel.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-        ComplianceRequirement {
-            id: "164.312(b)".to_string(),
-            title: "Audit Controls".to_string(),
-            description: "Implement hardware, software, and procedural mechanisms that record and examine activity in information systems.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 5715],
-        },
-        ComplianceRequirement {
-            id: "164.312(c)(1)".to_string(),
-            title: "Integrity Controls".to_string(),
-            description: "Implement policies and procedures to protect electronic protected health information from improper alteration or destruction.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-        ComplianceRequirement {
-            id: "164.312(e)(1)".to_string(),
-            title: "Transmission Security".to_string(),
-            description: "Implement technical security measures to guard against unauthorized access to electronic health information in transit.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![31101],
-        },
-    ];
-
-    let hipaa_alerts: usize = hipaa_reqs.iter().map(|r| r.alerts_count).sum();
-    let hipaa_passed = hipaa_reqs.iter().filter(|r| r.status == "passed").count();
-    let hipaa_score = ((hipaa_passed as f64 / hipaa_reqs.len() as f64) * 100.0).round();
-
-    let nist_reqs = vec![
-        ComplianceRequirement {
-            id: "AC-2".to_string(),
-            title: "Account Management".to_string(),
-            description: "Manage system accounts, establish conditions for group membership, and monitor account authorizations.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5712]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5712]),
-            rule_ids: vec![5710, 5712],
-        },
-        ComplianceRequirement {
-            id: "AU-2".to_string(),
-            title: "Event Logging".to_string(),
-            description: "Identify types of events that the system is capable of logging in support of auditing requirements.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 1002],
-        },
-        ComplianceRequirement {
-            id: "AU-6".to_string(),
-            title: "Audit Record Review & Analysis".to_string(),
-            description: "Review and analyze system audit records for indications of unusual or suspicious activity.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![1002, 1003],
-        },
-        ComplianceRequirement {
-            id: "SI-4".to_string(),
-            title: "System Monitoring".to_string(),
-            description: "Monitor the system to detect attacks and indicators of potential compromise.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 31101, 510]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 31101, 510]),
-            rule_ids: vec![5710, 31101, 510],
-        },
-        ComplianceRequirement {
-            id: "SI-7".to_string(),
-            title: "Software & Information Integrity".to_string(),
-            description: "Employ integrity verification tools to detect unauthorized changes to software and information.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-    ];
-
-    let nist_alerts: usize = nist_reqs.iter().map(|r| r.alerts_count).sum();
-    let nist_passed = nist_reqs.iter().filter(|r| r.status == "passed").count();
-    let nist_score = ((nist_passed as f64 / nist_reqs.len() as f64) * 100.0).round();
-
-    let gdpr_reqs = vec![
-        ComplianceRequirement {
-            id: "Art. 32(1)(b)".to_string(),
-            title: "Ongoing Confidentiality & Integrity".to_string(),
-            description: "Ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553, 5710]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553, 5710]),
-            rule_ids: vec![550, 554, 553, 5710],
-        },
-        ComplianceRequirement {
-            id: "Art. 32(1)(d)".to_string(),
-            title: "Security Effectiveness Testing".to_string(),
-            description: "A process for regularly testing, assessing and evaluating the effectiveness of security measures.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![20100],
-        },
-        ComplianceRequirement {
-            id: "Art. 33".to_string(),
-            title: "Breach Detection & Notification".to_string(),
-            description: "Detect personal data breaches without undue delay to notify relevant supervisory authority within 72 hours.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-    ];
-
-    let gdpr_alerts: usize = gdpr_reqs.iter().map(|r| r.alerts_count).sum();
-    let gdpr_passed = gdpr_reqs.iter().filter(|r| r.status == "passed").count();
-    let gdpr_score = ((gdpr_passed as f64 / gdpr_reqs.len() as f64) * 100.0).round();
-
-    let tsc_reqs = vec![
-        ComplianceRequirement {
-            id: "CC6.1".to_string(),
-            title: "Logical Access Controls".to_string(),
-            description: "Implement logical access security software, infrastructure, and architectures over protected information assets.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-        ComplianceRequirement {
-            id: "CC6.8".to_string(),
-            title: "Malicious Software Prevention".to_string(),
-            description: "Controls are implemented to prevent or detect and act upon the introduction of unauthorized or malicious software.".to_string(),
-            status: if count_alerts_for_rules(&[510]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[510]),
-            rule_ids: vec![510],
-        },
-        ComplianceRequirement {
-            id: "CC7.2".to_string(),
-            title: "Anomaly & Incident Monitoring".to_string(),
-            description: "The entity monitors system components and the operation of those components for anomalies that are indicative of malicious acts.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 1002],
-        },
-    ];
-
-    let tsc_alerts: usize = tsc_reqs.iter().map(|r| r.alerts_count).sum();
-    let tsc_passed = tsc_reqs.iter().filter(|r| r.status == "passed").count();
-    let tsc_score = ((tsc_passed as f64 / tsc_reqs.len() as f64) * 100.0).round();
-
-    let frameworks = vec![
-        ComplianceFramework {
-            name: "PCI_DSS".to_string(),
-            full_name: "Payment Card Industry Data Security Standard".to_string(),
-            version: "v4.0".to_string(),
-            score_percent: pci_score,
-            total_requirements: pci_reqs.len(),
-            passed_count: pci_passed,
-            alert_count: pci_alerts,
-            requirements: pci_reqs,
-        },
-        ComplianceFramework {
-            name: "HIPAA".to_string(),
-            full_name: "Health Insurance Portability and Accountability Act".to_string(),
-            version: "Security Rule §164.312".to_string(),
-            score_percent: hipaa_score,
-            total_requirements: hipaa_reqs.len(),
-            passed_count: hipaa_passed,
-            alert_count: hipaa_alerts,
-            requirements: hipaa_reqs,
-        },
-        ComplianceFramework {
-            name: "NIST_800_53".to_string(),
-            full_name: "NIST SP 800-53 Security and Privacy Controls".to_string(),
-            version: "Rev. 5".to_string(),
-            score_percent: nist_score,
-            total_requirements: nist_reqs.len(),
-            passed_count: nist_passed,
-            alert_count: nist_alerts,
-            requirements: nist_reqs,
-        },
-        ComplianceFramework {
-            name: "GDPR".to_string(),
-            full_name: "General Data Protection Regulation".to_string(),
-            version: "Art. 32 & 33".to_string(),
-            score_percent: gdpr_score,
-            total_requirements: gdpr_reqs.len(),
-            passed_count: gdpr_passed,
-            alert_count: gdpr_alerts,
-            requirements: gdpr_reqs,
-        },
-        ComplianceFramework {
-            name: "SOC_2".to_string(),
-            full_name: "AICPA Trust Services Criteria (SOC 2 Type II)".to_string(),
-            version: "2024 Criteria".to_string(),
-            score_percent: tsc_score,
-            total_requirements: tsc_reqs.len(),
-            passed_count: tsc_passed,
-            alert_count: tsc_alerts,
-            requirements: tsc_reqs,
-        },
-    ];
-
-    Json(serde_json::json!({
-        "frameworks": frameworks,
-        "total_alerts_evaluated": alerts.len(),
-        "last_updated": chrono::Utc::now(),
-    }))
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTechniqueSummary {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub alert_count: usize,
-    pub max_level: u8,
-    pub subtechniques: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTacticColumn {
-    pub tactic_id: String,
-    pub name: String,
-    pub techniques: Vec<MitreTechniqueSummary>,
-}
-
-async fn get_mitre_matrix_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let count_technique_alerts = |tech_id: &str| -> (usize, u8) {
-        let matching: Vec<&Alert> = alerts.iter().filter(|a| {
-            if let Some(ref m) = a.rule.mitre {
-                m.id.starts_with(tech_id)
-            } else {
-                false
-            }
-        }).collect();
-        let max_lvl = matching.iter().map(|a| a.rule.level).max().unwrap_or(0);
-        (matching.len(), max_lvl)
-    };
-
-    let tactics_def = vec![
-        ("TA0043", "Reconnaissance", vec![
-            ("T1595", "Active Scanning", "Scanning IP blocks, ports, or web application vulnerabilities.", vec!["T1595.001", "T1595.002"]),
-            ("T1590", "Gather Victim Network Info", "Gathering IP ranges and DNS topology.", vec!["T1590.001"]),
-        ]),
-        ("TA0042", "Resource Development", vec![
-            ("T1583", "Acquire Infrastructure", "Adversaries acquiring servers, domains, or third-party web services.", vec!["T1583.001"]),
-            ("T1588", "Obtain Capabilities", "Acquiring exploits, malware tools, or code certificates.", vec!["T1588.002"]),
-        ]),
-        ("TA0001", "Initial Access", vec![
-            ("T1190", "Exploit Public-Facing Application", "Exploiting security flaws in internet-exposed services.", vec!["T1190.001"]),
-            ("T1078", "Valid Accounts", "Obtaining and abusing credentials of existing accounts.", vec!["T1078.001", "T1078.003"]),
-            ("T1566", "Phishing", "Spearphishing attachments and malicious links delivered via email.", vec!["T1566.001"]),
-        ]),
-        ("TA0002", "Execution", vec![
-            ("T1059", "Command & Scripting Interpreter", "Executing arbitrary commands in PowerShell, Bash, Python, or cmd.", vec!["T1059.001", "T1059.004"]),
-            ("T1204", "User Execution", "Relying on target users to execute malicious attachments or binaries.", vec!["T1204.002"]),
-            ("T1053", "Scheduled Task/Job", "Abusing cron, at, or Windows Task Scheduler to run task.", vec!["T1053.003", "T1053.005"]),
-        ]),
-        ("TA0003", "Persistence", vec![
-            ("T1543", "Create or Modify System Process", "Creating services or systemd units to repeatedly execute malware.", vec!["T1543.002"]),
-            ("T1547", "Boot or Logon Autostart Execution", "Modifying registry Run keys, Startup folders, or init scripts.", vec!["T1547.001"]),
-            ("T1136", "Create Account", "Creating local administrator or domain backdoor accounts.", vec!["T1136.001"]),
-        ]),
-        ("TA0004", "Privilege Escalation", vec![
-            ("T1068", "Exploitation for Privilege Escalation", "Exploiting kernel vulnerabilities to elevate permissions.", vec!["T1068.001"]),
-            ("T1548", "Abuse Elevation Control Mechanism", "Abusing sudo, UAC bypass, or setuid binaries.", vec!["T1548.001", "T1548.003"]),
-        ]),
-        ("TA0005", "Defense Evasion", vec![
-            ("T1070", "Indicator Removal", "Clearing event logs, audit logs, or bash history.", vec!["T1070.001", "T1070.002"]),
-            ("T1562", "Impair Defenses", "Disabling antivirus, EDR agents, or firewall rules.", vec!["T1562.001"]),
-            ("T1036", "Masquerading", "Renaming executables to match legitimate OS binaries (svchost, systemd).", vec!["T1036.005"]),
-            ("T1014", "Rootkit", "Hiding malicious activities and files via kernel rootkits.", vec!["T1014.001"]),
-        ]),
-        ("TA0006", "Credential Access", vec![
-            ("T1110", "Brute Force", "Password guessing, dictionary attacks, or password spraying.", vec!["T1110.001", "T1110.003"]),
-            ("T1003", "OS Credential Dumping", "Dumping LSASS memory, /etc/shadow, or SAM hive.", vec!["T1003.001", "T1003.008"]),
-            ("T1555", "Credentials from Password Stores", "Extracting keys from browser caches or credential managers.", vec!["T1555.003"]),
-        ]),
-        ("TA0007", "Discovery", vec![
-            ("T1082", "System Information Discovery", "Querying OS version, kernel build, and hardware specs.", vec!["T1082.001"]),
-            ("T1046", "Network Service Discovery", "Scanning remote subnets and ports with nmap or netcat.", vec!["T1046.001"]),
-            ("T1057", "Process Discovery", "Listing running processes with ps or tasklist.", vec!["T1057.001"]),
-        ]),
-        ("TA0008", "Lateral Movement", vec![
-            ("T1021", "Remote Services", "Logging into adjacent hosts via SSH, RDP, or SMB.", vec!["T1021.001", "T1021.004"]),
-            ("T1550", "Use Alternate Authentication Material", "Pass-the-Hash or Pass-the-Ticket Kerberos attacks.", vec!["T1550.002"]),
-        ]),
-        ("TA0009", "Collection", vec![
-            ("T1005", "Data from Local System", "Harvesting sensitive documents, database dumps, and source code.", vec!["T1005.001"]),
-            ("T1560", "Archive Collected Data", "Compressing files into tar.gz or 7z before exfiltration.", vec!["T1560.001"]),
-        ]),
-        ("TA0011", "Command and Control", vec![
-            ("T1071", "Application Layer Protocol", "C2 beaconing over HTTP, HTTPS, or DNS tunnels.", vec!["T1071.001", "T1071.004"]),
-            ("T1573", "Encrypted Channel", "Encrypting C2 channels with custom AES or TLS tunnels.", vec!["T1573.001"]),
-        ]),
-        ("TA0010", "Exfiltration", vec![
-            ("T1048", "Exfiltration Over Alternative Protocol", "Exfiltrating sensitive files via cloud storage, webhook, or DNS.", vec!["T1048.003"]),
-            ("T1567", "Exfiltration to Cloud Storage", "Transferring stolen data to AWS S3, Google Drive, or Mega.", vec!["T1567.002"]),
-        ]),
-        ("TA0040", "Impact", vec![
-            ("T1486", "Data Encrypted for Impact", "Ransomware encryption of endpoint and network storage.", vec!["T1486.001"]),
-            ("T1489", "Service Stop", "Terminating critical services or database daemons to cause denial of service.", vec!["T1489.001"]),
-            ("T1565", "Stored Data Manipulation", "Unauthorized modification or tampering with critical files (FIM).", vec!["T1565.001"]),
-        ]),
-    ];
-
-    let mut matrix = Vec::new();
-    let mut total_mitre_alerts = 0;
-
-    for (tactic_id, name, tech_list) in tactics_def {
-        let mut tech_objs = Vec::new();
-        for (tid, tname, tdesc, subs) in tech_list {
-            let (acount, max_lvl) = count_technique_alerts(tid);
-            total_mitre_alerts += acount;
-            tech_objs.push(MitreTechniqueSummary {
-                id: tid.to_string(),
-                name: tname.to_string(),
-                description: tdesc.to_string(),
-                alert_count: acount,
-                max_level: max_lvl,
-                subtechniques: subs.into_iter().map(|s| s.to_string()).collect(),
-            });
-        }
-        matrix.push(MitreTacticColumn {
-            tactic_id: tactic_id.to_string(),
-            name: name.to_string(),
-            techniques: tech_objs,
-        });
-    }
-
-    Json(serde_json::json!({
-        "matrix": matrix,
-        "total_tactics": 14,
-        "total_mitre_alerts": total_mitre_alerts,
-        "last_updated": chrono::Utc::now(),
-    }))
-}
 
 #[derive(Debug, Serialize)]
 pub struct FimSummaryRecord {
@@ -4205,7 +3653,8 @@ async fn get_fim_summary_handler(
         }
     }
 
-    for a in history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.iter().rev() {
+    // only the FIM alerts come from ClickHouse (they carry data.syscheck)
+    for a in history::alerts_containing(&state, &ctx, history::DEFAULT_HOURS, "\"syscheck\"").await.iter().rev() {
         let Some(sc) = a.data.get("syscheck") else { continue };
         let text = |p: &str| sc.pointer(p).and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(String::from);
         let action = match text("/event").as_deref() {
@@ -4396,19 +3845,41 @@ async fn post_synthesize_parser_handler(
         f
     });
     let (_, sig) = siem_parser_gen::FingerprintEngine::compute(&payload.samples[0]);
+    let registry = parsers_store::for_tenant(&state, &ctx.scope());
 
-    match parsers_store::for_tenant(&state, &ctx.scope())
+    // the AI providers configured in the platform settings first (as every AI feature)
+    let mut ai_note = None;
+    if ai_assist::tenant_ai_enabled(&state, &ctx.scope()) {
+        let providers = ai_assist::providers(&state, "chat").await;
+        if !providers.is_empty() {
+            let (system, user) = siem_parser_gen::AiParserSynthesizer::llm_prompts(fp, &sig, &payload.samples, payload.instructions.as_deref());
+            // a parser (pattern + fields) is a long answer
+            match siem_ai::generate_long(&providers, &system, &user, 8192).await {
+                Ok(reply) => match registry.register_from_ai_reply(fp, &sig, &payload.samples, &reply.text) {
+                    Ok(parser) => {
+                        info!("parser '{}' synthesized by {} for tenant {}", parser.name, reply.model, ctx.scope());
+                        return (StatusCode::OK, Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": reply.model }))).into_response();
+                    }
+                    Err(e) => ai_note = Some(format!("the AI's parser ({}) was not usable: {e}", reply.model)),
+                },
+                Err(e) => ai_note = Some(format!("no AI answer: {e}")),
+            }
+            warn!("parser synthesis for tenant {}: {}; trying the built-in synthesizer", ctx.scope(), ai_note.as_deref().unwrap_or(""));
+        }
+    }
+
+    match registry
         .synthesize_and_register(fp, &sig, &payload.samples, payload.instructions.as_deref())
         .await
     {
         Ok(parser) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "status": "success", "parser": parser })),
+            Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": "built-in synthesizer", "ai_note": ai_note })),
         )
             .into_response(),
         Err(e) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({ "status": "error", "error": e })),
+            Json(serde_json::json!({ "status": "error", "error": match &ai_note { Some(n) => format!("{e} (AI: {n})"), None => e } })),
         )
             .into_response(),
     }
@@ -4785,41 +4256,29 @@ async fn post_agent_enroll_handler(
 async fn get_reports_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts_guard = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut engine = siem_reportd::ReportEngine::new();
-
-    for alert in alerts_guard.iter() {
-        let record = siem_reportd::AlertRecord {
-            rule_id: alert.rule.id.to_string(),
-            level: alert.rule.level as u32,
-            groups: alert.rule.groups.clone(),
-            location: alert.location.clone(),
-            srcip: alert.decoded.src_ip.clone(),
-            user: alert.decoded.user.clone(),
-            filename: alert.decoded.file_path.clone(),
-            raw: alert.full_log.clone(),
-        };
-        engine.total_alerts += 1;
-        engine.matched_alerts += 1;
-        *engine.field_counts.entry(record.rule_id).or_default() += 1;
+    for (rule_id, _, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        let n = n as usize;
+        engine.total_alerts += n;
+        engine.matched_alerts += n;
+        *engine.field_counts.entry(rule_id.to_string()).or_default() += n;
     }
+
+    // per framework: the alerts whose Wazuh rule carries its tag (the scores are /api/v1/compliance)
+    let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(history::DEFAULT_HOURS as u64 * 3_600_000);
+    let tags = state.db.compliance_tag_counts(&ctx.scope(), since, &["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"]).await.unwrap_or_default();
+    let compliance_summary: serde_json::Map<String, serde_json::Value> = tags
+        .into_iter()
+        .map(|(tag, alerts, requirements)| (tag.to_string(), serde_json::json!({ "alerts": alerts, "requirements_with_alerts": requirements })))
+        .collect();
 
     Json(serde_json::json!({
         "total_alerts": engine.total_alerts,
         "matched_alerts": engine.matched_alerts,
         "rule_distribution": engine.field_counts,
-        "compliance_summary": {
-            "pci_dss": {
-                "evaluated": true,
-                "status": "compliant",
-                "rules_analyzed": engine.total_alerts
-            },
-            "soc2": {
-                "evaluated": true,
-                "status": "monitored",
-                "active_controls": ["CC6.1", "CC6.8", "CC7.2"]
-            }
-        }
+        "window_hours": history::DEFAULT_HOURS,
+        "compliance_summary": compliance_summary,
+        "compliance_scores": "/api/v1/compliance"
     }))
 }
 

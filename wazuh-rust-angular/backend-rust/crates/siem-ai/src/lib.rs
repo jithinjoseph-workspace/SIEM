@@ -58,6 +58,11 @@ pub async fn chat(providers: &[Provider], system: &str, messages: &[Message]) ->
     chat_with(providers, system, messages, MAX_TOKENS, false).await
 }
 
+/// As `chat`, with room for a long answer (see `generate_long`).
+pub async fn chat_long(providers: &[Provider], system: &str, messages: &[Message], max_tokens: u32) -> Result<Reply, String> {
+    chat_with(providers, system, messages, max_tokens, true).await
+}
+
 /// `brief_first`: ask reasoning models to think briefly from the start (a long answer).
 async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], max_tokens: u32, brief_first: bool) -> Result<Reply, String> {
     let mut ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty()).collect();

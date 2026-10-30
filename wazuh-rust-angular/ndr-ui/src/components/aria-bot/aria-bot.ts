@@ -150,12 +150,13 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     this.routerSub = this.router.events.subscribe((e: any) => {
       const url = e.urlAfterRedirects || e.url;
       if (url) {
-        this.isVisible = !url.includes('/admin');
+        // the AI Copilot page has its own chat
+        this.isVisible = !url.includes('/admin') && !url.includes('/siem-copilot');
         this.cdr.detectChanges();
       }
     });
     const initUrl = this.router.url;
-    this.isVisible = !initUrl.includes('/admin');
+    this.isVisible = !initUrl.includes('/admin') && !initUrl.includes('/siem-copilot');
 
     this.fetchStatus();
     this.pollSub = interval(30000).pipe(

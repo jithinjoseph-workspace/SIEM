@@ -66,6 +66,7 @@ pub mod response;
 pub mod sigma;
 pub mod mitre;
 pub mod rules_api;
+pub mod copilot;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -855,6 +856,11 @@ async fn main() {
         .route("/api/v1/siem/intel/watchlist/:id", axum::routing::delete(intel::remove_watched))
         .route("/api/v1/siem/intel/matches", get(intel::matches))
         .route("/api/v1/siem/investigate", get(investigate::investigate))
+        .route("/api/v1/siem/copilot", post(copilot::ask))
+        .route("/api/v1/siem/copilot/status", get(copilot::status))
+        .route("/api/v1/siem/copilot/conversations", get(copilot::conversations))
+        .route("/api/v1/siem/copilot/conversations/:id", get(copilot::conversation).delete(copilot::delete_conversation))
+        .route("/api/v1/siem/copilot/reports/:id", get(copilot::report))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))

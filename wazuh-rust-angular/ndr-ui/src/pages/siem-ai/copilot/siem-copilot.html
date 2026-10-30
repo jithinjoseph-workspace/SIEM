@@ -1,0 +1,235 @@
+<div class="copilot flex h-[calc(100dvh-76px)] w-full text-slate-200 relative">
+
+  <!-- Conversations (a drawer below 1024px) -->
+  <aside class="conv-list flex-none w-72 border-r border-slate-800 bg-slate-950/80 flex flex-col"
+    [class.open]="showList()" aria-label="Conversations">
+    <div class="p-3 border-b border-slate-800 flex items-center gap-2">
+      <button type="button" (click)="newChat()" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-sm font-semibold">
+        <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular> New conversation
+      </button>
+      <button type="button" class="lg:hidden p-2 rounded-lg border border-slate-700 text-slate-300" (click)="showList.set(false)" aria-label="Close the list">✕</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-2 space-y-1">
+      @for (c of conversations(); track c.id) {
+        <button type="button" (click)="open(c.id)"
+          class="group w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+          [ngClass]="c.id === conversationId() ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-900'">
+          <lucide-angular [img]="ChatIcon" class="w-4 h-4 flex-none text-slate-500"></lucide-angular>
+          <span class="flex-1 min-w-0 truncate">{{ c.title }}</span>
+          <span (click)="remove(c.id, $event)" role="button" tabindex="0" aria-label="Delete conversation"
+            class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded hover:bg-rose-950 text-slate-500 hover:text-rose-300">
+            <lucide-angular [img]="TrashIcon" class="w-3.5 h-3.5"></lucide-angular>
+          </span>
+        </button>
+      } @empty {
+        <p class="px-3 py-4 text-xs text-slate-500">Your conversations appear here.</p>
+      }
+    </div>
+  </aside>
+  @if (showList()) { <div class="conv-backdrop lg:hidden" (click)="showList.set(false)"></div> }
+
+  <!-- Chat -->
+  <section class="flex-1 min-w-0 flex flex-col">
+    <header class="flex-none px-4 sm:px-6 py-3 border-b border-slate-800 flex items-center gap-3">
+      <button type="button" class="lg:hidden p-2 rounded-lg border border-slate-700 text-slate-300" (click)="showList.set(true)" aria-label="Conversations">
+        <lucide-angular [img]="PanelIcon" class="w-4 h-4"></lucide-angular>
+      </button>
+      <span class="w-9 h-9 rounded-xl bg-cyan-950 border border-cyan-700/60 flex items-center justify-center text-cyan-300 flex-none">
+        <lucide-angular [img]="BotIcon" class="w-5 h-5"></lucide-angular>
+      </span>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-base sm:text-lg font-bold text-white truncate">AI Copilot</h1>
+        <p class="text-xs text-slate-500 truncate">{{ title() }}</p>
+      </div>
+      @if (status(); as s) {
+        <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border"
+          [ngClass]="s.ai ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60' : 'bg-amber-950/60 text-amber-300 border-amber-800/60'"
+          [title]="s.ai ? 'Plans with the tenant AI provider ' + s.provider : 'No AI provider for this tenant: the built-in planner answers'">
+          <lucide-angular [img]="SparkIcon" class="w-3.5 h-3.5"></lucide-angular>
+          {{ s.ai ? 'AI · ' + s.model : 'Built-in planner' }}
+        </span>
+      }
+    </header>
+
+    <!-- Thread -->
+    <div #thread class="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-6 thread">
+      @if (!turns().length && !pending()) {
+        <div class="max-w-2xl mx-auto text-center pt-6 sm:pt-12 space-y-5">
+          <span class="inline-flex w-14 h-14 rounded-2xl bg-cyan-950 border border-cyan-700/60 items-center justify-center text-cyan-300">
+            <lucide-angular [img]="BotIcon" class="w-7 h-7"></lucide-angular>
+          </span>
+          <div>
+            <h2 class="text-xl font-bold text-white">What should I look into?</h2>
+            <p class="text-sm text-slate-400 mt-1">I search your alerts, investigate hosts, IPs and users, open cases with the evidence, explain why something happened and write incident reports. I only change things (cases, notes, reports) when you ask.</p>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2 text-left">
+            @for (s of suggestions; track s) {
+              <button type="button" (click)="send(s)" class="px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-900/70 hover:border-cyan-700 hover:bg-slate-900 text-sm text-slate-300 transition">{{ s }}</button>
+            }
+          </div>
+        </div>
+      }
+
+      @for (t of turns(); track $index) {
+        <!-- the analyst -->
+        <div class="flex justify-end">
+          <div class="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl rounded-br-md bg-cyan-800/60 border border-cyan-700/50 text-sm text-white whitespace-pre-wrap break-words">{{ t.user }}</div>
+        </div>
+
+        <!-- the copilot -->
+        <div class="flex gap-3 max-w-4xl">
+          <span class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-cyan-300 flex-none mt-0.5">
+            <lucide-angular [img]="BotIcon" class="w-4 h-4"></lucide-angular>
+          </span>
+          <div class="min-w-0 flex-1 space-y-3">
+            @if (t.steps.length) {
+              <div class="flex flex-wrap gap-1.5">
+                @for (s of t.steps; track $index) {
+                  <span class="inline-flex items-center gap-1.5 max-w-full px-2 py-1 rounded-lg text-[11px] border"
+                    [ngClass]="s.ok ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-rose-800/70 bg-rose-950/40 text-rose-300'" [title]="s.summary">
+                    <lucide-angular [img]="s.ok ? OkIcon : FailIcon" class="w-3.5 h-3.5 flex-none" [ngClass]="s.ok ? 'text-emerald-400' : 'text-rose-400'"></lucide-angular>
+                    <span class="font-semibold flex-none">{{ toolLabel(s.tool) }}</span>
+                    <span class="truncate text-slate-400">{{ s.summary }}</span>
+                  </span>
+                }
+              </div>
+            }
+
+            <div class="answer text-sm text-slate-200 leading-relaxed break-words" [innerHTML]="render(t.answer)"></div>
+            @if (t.note) {
+              <p class="text-[11px] text-amber-300/90 flex items-center gap-1.5"><lucide-angular [img]="WarnIcon" class="w-3.5 h-3.5"></lucide-angular> {{ t.note }}</p>
+            }
+
+            <!-- what the tools found -->
+            @if (t.artifacts['alerts']; as al) {
+              @if (al.alerts?.length) {
+                <div class="card overflow-hidden">
+                  <div class="px-3 py-2 text-xs text-slate-400 border-b border-slate-800">{{ al.matching | number }} matching in {{ al.hours }} h · newest {{ al.shown }}</div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-xs min-w-[600px]">
+                      <tbody>
+                        @for (a of al.alerts; track a.id) {
+                          <tr class="border-t border-slate-800/70 first:border-t-0">
+                            <td class="px-3 py-2 font-mono text-slate-400 whitespace-nowrap">{{ a.time | date:'MMM d, HH:mm:ss' }}</td>
+                            <td class="px-2 py-2"><span [class]="sevClass(a.severity)">{{ a.severity }}</span></td>
+                            <td class="px-2 py-2 font-mono text-slate-400">{{ a.rule_id }}</td>
+                            <td class="px-2 py-2 text-slate-200 w-full max-w-0 truncate" [title]="a.description">{{ a.description }}</td>
+                            <td class="px-2 py-2 text-slate-400 whitespace-nowrap">{{ a.agent }}</td>
+                            <td class="px-3 py-2 text-right whitespace-nowrap">
+                              <button type="button" class="link" (click)="send('Show alert ' + a.id)">Details</button>
+                              <button type="button" class="link ml-3" (click)="send('Open a case for alert ' + a.id + ', collect the evidence and tell me why it happened')">Open case</button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
+            }
+
+            @if (t.artifacts['alert']; as a) {
+              <div class="card p-3 space-y-2 text-xs">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span [class]="sevClass(a.severity)">{{ a.severity }} · L{{ a.level }}</span>
+                  <span class="font-mono text-slate-400">rule {{ a.rule_id }}</span>
+                  <span class="text-slate-400">{{ a.agent?.name }} · {{ a.time | date:'medium' }}</span>
+                  @if (a.mitre?.id) { <span class="font-mono text-cyan-300">{{ a.mitre.id }}</span> }
+                </div>
+                <div class="text-sm text-white">{{ a.description }}</div>
+                <pre class="log">{{ a.full_log }}</pre>
+              </div>
+            }
+
+            @if (t.artifacts['case']; as c) {
+              <div class="card p-3 flex flex-wrap items-center gap-3 text-sm">
+                <lucide-angular [img]="CaseIcon" class="w-5 h-5 text-cyan-300"></lucide-angular>
+                <div class="min-w-0 flex-1">
+                  <div class="font-semibold text-white">{{ c.case_number }} <span [class]="sevClass(c.severity)" class="ml-1">{{ c.severity }}</span></div>
+                  <div class="text-xs text-slate-400 truncate">{{ c.title }} · {{ c.status }}</div>
+                </div>
+                <a routerLink="/analyst/soar" class="link text-xs">Open in SOAR</a>
+              </div>
+            }
+
+            @if (t.artifacts['investigation']; as inv) {
+              <div class="card p-3 space-y-2 text-sm">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span [class]="verdictClass(inv.verdict?.label)">{{ inv.verdict?.label }}</span>
+                  <span class="text-xs text-slate-400">{{ inv.verdict?.confidence }}% confidence · by {{ inv.verdict_source === 'ai' ? 'AI' : 'rules' }} · {{ inv.case_number }}</span>
+                </div>
+                @if (inv.verdict?.summary) { <p class="text-slate-200">{{ inv.verdict.summary }}</p> }
+                @if (inv.verdict?.reasons?.length) {
+                  <div><div class="text-xs font-semibold text-slate-400">Why</div>
+                    <ul class="list-disc pl-5 text-slate-300 text-xs space-y-0.5">@for (r of inv.verdict.reasons; track $index) { <li>{{ r }}</li> }</ul></div>
+                }
+                @if (inv.verdict?.next_steps?.length) {
+                  <div><div class="text-xs font-semibold text-slate-400">Next steps</div>
+                    <ul class="list-disc pl-5 text-slate-300 text-xs space-y-0.5">@for (r of inv.verdict.next_steps; track $index) { <li>{{ r }}</li> }</ul></div>
+                }
+              </div>
+            }
+
+            @if (t.artifacts['entity']; as e) {
+              <div class="card p-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                <lucide-angular [img]="InvestigateIcon" class="w-5 h-5 text-cyan-300"></lucide-angular>
+                <span class="font-mono text-white text-sm">{{ e.query }}</span>
+                <span class="text-slate-400">{{ e.kind }}</span>
+                <span><b class="text-white">{{ e.summary?.alerts }}</b> alerts</span>
+                <span><b class="text-white">{{ e.summary?.events }}</b> events</span>
+                <span>verdict <b class="text-white">{{ e.summary?.verdict || '—' }}</b></span>
+                <a routerLink="/analyst/siem-investigate" [queryParams]="{ q: e.query, days: e.days }" class="link ml-auto">Full investigation</a>
+              </div>
+            }
+
+            @if (t.artifacts['stats']; as st) {
+              <div class="card p-3 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                <div><div class="text-slate-500">Alerts ({{ st.hours }} h)</div><div class="text-lg font-bold text-white">{{ st.alerts | number }}</div></div>
+                <div><div class="text-slate-500">Critical</div><div class="text-lg font-bold text-rose-300">{{ st.critical | number }}</div></div>
+                <div><div class="text-slate-500">High</div><div class="text-lg font-bold text-orange-300">{{ st.high | number }}</div></div>
+                <div><div class="text-slate-500">Medium</div><div class="text-lg font-bold text-amber-300">{{ st.medium | number }}</div></div>
+                <div><div class="text-slate-500">Low</div><div class="text-lg font-bold text-slate-300">{{ st.low | number }}</div></div>
+              </div>
+            }
+
+            @if (t.artifacts['report']; as rp) {
+              <div class="card p-3 flex flex-wrap items-center gap-3 text-sm">
+                <lucide-angular [img]="ReportIcon" class="w-5 h-5 text-cyan-300"></lucide-angular>
+                <span class="flex-1 min-w-0 truncate text-white">{{ rp.title }}</span>
+                <button type="button" (click)="openReport(rp.report_id)" class="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold">Open report · Save as PDF</button>
+              </div>
+            }
+
+            <div class="text-[10px] text-slate-600">{{ t.at | date:'medium' }} · {{ t.mode === 'ai' ? 'AI ' + (t.model || '') : t.mode === 'steps' ? 'evidence steps' : 'built-in planner' }}</div>
+          </div>
+        </div>
+      }
+
+      @if (pending(); as p) {
+        <div class="flex justify-end">
+          <div class="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl rounded-br-md bg-cyan-800/60 border border-cyan-700/50 text-sm text-white whitespace-pre-wrap break-words">{{ p }}</div>
+        </div>
+        <div class="flex items-center gap-3 text-sm text-slate-400" role="status">
+          <span class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-cyan-300"><lucide-angular [img]="BotIcon" class="w-4 h-4"></lucide-angular></span>
+          Working on it<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+      }
+    </div>
+
+    <!-- Composer -->
+    <div class="flex-none border-t border-slate-800 px-4 sm:px-6 py-3 bg-slate-950/60">
+      @if (error()) { <div role="alert" class="mb-2 px-3 py-2 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-xs">{{ error() }}</div> }
+      <form (ngSubmit)="send()" class="flex items-end gap-2 max-w-4xl">
+        <label for="copilot-input" class="sr-only">Ask the copilot</label>
+        <textarea id="copilot-input" name="message" rows="1" [(ngModel)]="input" (keydown)="onKey($event)" maxlength="2000"
+          placeholder="e.g. open a case for the latest critical alert and tell me why it happened"
+          class="flex-1 min-w-0 resize-none max-h-40 bg-slate-900 border border-slate-700 focus:border-cyan-600 focus:outline-none rounded-xl px-3 py-2.5 text-sm text-white"></textarea>
+        <button type="submit" [disabled]="!input.trim() || pending()" aria-label="Send"
+          class="h-[42px] px-4 rounded-xl bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white inline-flex items-center gap-2 text-sm font-semibold">
+          <lucide-angular [img]="SendIcon" class="w-4 h-4"></lucide-angular><span class="hidden sm:inline">Send</span>
+        </button>
+      </form>
+      <p class="mt-1.5 text-[10px] text-slate-600">Enter sends, Shift+Enter adds a line. Your tenant's data only. Cases, notes and reports are made only when you ask.</p>
+    </div>
+  </section>
+</div>

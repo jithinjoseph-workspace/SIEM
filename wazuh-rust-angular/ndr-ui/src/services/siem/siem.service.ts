@@ -526,6 +526,17 @@ export class SiemService {
   syncSigma(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/sigma/sync`, {}); }
   investigate(q: string, days: number): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params: { q, days } }); }
 
+  // AI Copilot (siem-api copilot.rs): plain-language requests run with the SIEM's tools
+  copilotAsk(message: string, conversationId?: string | null): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/copilot`, { message, conversation_id: conversationId || null });
+  }
+  copilotStatus(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/status`); }
+  copilotConversations(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/conversations`); }
+  copilotConversation(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/conversations/${encodeURIComponent(id)}`); }
+  copilotDeleteConversation(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/siem/copilot/conversations/${encodeURIComponent(id)}`); }
+  /** The report page (same origin; the session cookie authorizes it). */
+  copilotReportUrl(id: string): string { return `${this.apiUrl}/api/v1/siem/copilot/reports/${encodeURIComponent(id)}`; }
+
   reviewDecision(id: string, approve: boolean): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {});
   }

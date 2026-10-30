@@ -62,6 +62,7 @@ export const routes: Routes = [
       { path: 'siem-swarm',         canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/swarm/siem-swarm').then(m => m.SiemSwarm) },
       { path: 'siem-decisions',     canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/decisions/siem-decisions').then(m => m.SiemDecisions) },
       { path: 'siem-investigate',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/investigate/siem-investigate').then(m => m.SiemInvestigate) },
+      { path: 'siem-copilot',       canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/copilot/siem-copilot').then(m => m.SiemCopilot) },
       { path: 'siem-threat-intel',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/threat-intel/siem-threat-intel').then(m => m.SiemThreatIntel) },
       { path: 'siem-sigma',         canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/sigma/siem-sigma').then(m => m.SiemSigma) },
 

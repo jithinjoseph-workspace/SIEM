@@ -138,6 +138,7 @@ export class Sidebar implements OnInit, OnDestroy {
 
     // SIEM analyst AI and response (siem-api /api/v1/siem/*), apart from the NDR's pages
     const siemAiCandidates: NavItem[] = [
+      { label: 'AI Copilot',            route: '/analyst/siem-copilot',       icon: Bot,        permission: 'siem-alerts' },
       { label: 'Investigation',         route: '/analyst/siem-investigate',   icon: ScanSearch, permission: 'siem-alerts' },
       { label: 'SIEM Alert Triage',     route: '/analyst/siem-triage',        icon: ListFilter, permission: 'siem-alerts' },
       { label: 'SIEM Suppressions',     route: '/analyst/siem-suppressions',  icon: EyeOff,    permission: 'siem-alerts' },
@@ -164,7 +165,6 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'Telemetry Stream',    route: '/analyst/siem-classic/console/telemetry',  icon: ScrollText,  permission: 'siem-logs' },
       { label: 'Wazuh Rules',         route: '/analyst/siem-classic/console/rules',      icon: ShieldAlert, permission: 'siem-rules' },
       { label: 'Attack Simulator',    route: '/analyst/siem-classic/console/simulator',  icon: Zap,         permission: 'siem-console' },
-      { label: 'AI Copilot',          route: '/analyst/siem-classic/console/copilot',    icon: Bot,         permission: 'siem-console' },
       { label: 'Full SIEM Console',   route: '/analyst/siem-classic/console',            icon: Monitor,     permission: 'siem-console' },
     ];
     const consoleItems: NavItem[] = hasSiem ? consoleCandidates.filter(i => has(i.permission!)) : [];

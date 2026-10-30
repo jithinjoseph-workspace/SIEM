@@ -3,7 +3,7 @@
     <div>
       <h1 class="text-2xl font-bold text-white flex items-center gap-2">
         <lucide-angular [img]="FilterIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
-        SIEM Alert Triage
+        Alert Triage
       </h1>
       <p class="text-sm text-slate-400 mt-1">
         Groups of identical Wazuh alerts (same rule, host and source) from the last {{ data()?.lookback_hours ?? 24 }} h.
@@ -113,11 +113,15 @@
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ ago(r.last_seen) }}</td>
             <td class="px-4 py-3">
-              <div class="flex items-center justify-end gap-2">
+              <div class="flex flex-wrap items-center justify-end gap-2">
                 <button (click)="view(r)" [attr.aria-expanded]="openId() === r.id" [attr.aria-label]="'View alerts of rule ' + r.rule_id"
                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs whitespace-nowrap">
                   <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular> View alerts
                 </button>
+                <a routerLink="/analyst/siem-investigate" [queryParams]="{ q: r.src_ip || r.agent_name || r.agent_id, days: 7 }" title="Everything about this host or source IP"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs whitespace-nowrap">Investigate</a>
+                <a routerLink="/analyst/siem-copilot" [queryParams]="{ ask: caseAsk(r) }" title="Open a SOAR case for the newest alert, with its evidence (AI Copilot)"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-cyan-800 hover:bg-cyan-950 text-cyan-300 text-xs whitespace-nowrap">Open case</a>
                 <ng-container *ngIf="r.verdict !== 'suspicious' && !verdictHidden(r)">
                   <select [(ngModel)]="hours[r.id]" [attr.aria-label]="'Hide duration for rule ' + r.rule_id"
                     class="bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs">
@@ -167,6 +171,6 @@
         </tbody>
       </table>
     </div>
-    <p class="text-[11px] text-slate-500">Hiding creates a suppression (SIEM Suppressions page): the alerts are still stored and searchable, but not shown live or acted on by SOAR. Critical alerts (level 12+) are never hidden.</p>
+    <p class="text-[11px] text-slate-500">Hiding creates a suppression (Suppressions page): the alerts are still stored and searchable, but not shown live or acted on by SOAR. Critical alerts (level 12+) are never hidden.</p>
   </ng-container>
 </div>

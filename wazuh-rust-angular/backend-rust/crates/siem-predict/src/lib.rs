@@ -232,7 +232,8 @@ pub fn predict(rows: &[AlertRow], previous: &BTreeMap<String, f64>, total_agents
         let hits: u32 = cs.iter().map(|c| c.alerts).sum();
         let attack_type = title(TACTICS[stage]);
         let delta = previous.get(&attack_type).map(|prev| p - prev).unwrap_or(0.0);
-        let names: Vec<String> = cs.iter().map(|c| if c.agent_name.is_empty() { c.agent_id.clone() } else { c.agent_name.clone() }).collect();
+        // a host re-enrolled under a new agent id is still one host
+        let names: Vec<String> = cs.iter().map(|c| if c.agent_name.is_empty() { c.agent_id.clone() } else { c.agent_name.clone() }).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
         let lead = cs.iter().max_by(|a, b| a.probability().partial_cmp(&b.probability()).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
         let path = lead.chain.iter().map(|i| title(TACTICS[*i])).collect::<Vec<_>>().join(" -> ");
         out.push(Prediction {
@@ -243,11 +244,11 @@ pub fn predict(rows: &[AlertRow], previous: &BTreeMap<String, f64>, total_agents
             trend: if delta > 0.05 { "rising" } else if delta < -0.05 { "falling" } else { "stable" }.into(),
             trend_delta: (delta * 1000.0).round() / 1000.0,
             intel_signal_count: 0,
-            exposure_score: if total_agents == 0 { 0.0 } else { (100.0 * cs.len() as f64 / total_agents as f64).min(100.0) },
+            exposure_score: if total_agents == 0 { 0.0 } else { (100.0 * names.len() as f64 / total_agents as f64).min(100.0) },
             internal_hit_count: hits,
             explanation: format!(
                 "{} host(s) went through {} stage(s) in order; the furthest, {}, went {}. {} is the next stage not seen yet.",
-                cs.len(),
+                names.len(),
                 lead.chain.len(),
                 if lead.agent_name.is_empty() { &lead.agent_id } else { &lead.agent_name },
                 path,
@@ -317,5 +318,17 @@ mod tests {
         assert_eq!((p.agents.clone(), p.exposure_score), (vec!["host-1".to_string()], 25.0));
         assert!(p.explanation.contains("Initial Access -> Execution -> Credential Access"), "{}", p.explanation);
         assert!(!p.recommendations.is_empty());
+    }
+
+    /// One machine enrolled twice (agents 047 and 049, same name) is one host.
+    #[test]
+    fn a_re_enrolled_host_counts_once() {
+        let mut rows = vec![row("047", 10, "Execution", 7), row("047", 20, "Defense Evasion", 7), row("049", 30, "Execution", 7), row("049", 40, "Defense Evasion", 8)];
+        for r in &mut rows {
+            r.agent_name = "win-node-e296".into();
+        }
+        let p = &predict(&rows, &BTreeMap::new(), 1, "2026-10-30T08:00:00Z")[0];
+        assert!(p.explanation.starts_with("1 host(s)"), "{}", p.explanation);
+        assert_eq!((p.agents.clone(), p.exposure_score), (vec!["win-node-e296".to_string()], 100.0));
     }
 }

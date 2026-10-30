@@ -1,7 +1,7 @@
 import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import {
   LucideAngularModule, Bot, Send, Plus, Trash2, MessageSquare, CheckCircle2, XCircle, FileText,
   FolderOpen, ScanSearch, BarChart3, Sparkles, PanelLeft, AlertTriangle,
@@ -34,6 +34,8 @@ interface Turn {
 })
 export class SiemCopilot implements OnInit {
   private siem = inject(SiemService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
   @ViewChild('thread') thread?: ElementRef<HTMLElement>;
 
   BotIcon = Bot; SendIcon = Send; PlusIcon = Plus; TrashIcon = Trash2; ChatIcon = MessageSquare;
@@ -62,6 +64,12 @@ export class SiemCopilot implements OnInit {
   ngOnInit() {
     this.siem.copilotStatus().subscribe({ next: s => this.status.set(s), error: () => this.status.set(null) });
     this.loadConversations();
+    // other pages hand a request over (?ask=: sent once) or a conversation (?c=)
+    const q = this.route.snapshot.queryParamMap;
+    const ask = q.get('ask'), c = q.get('c');
+    if (c) this.open(c);
+    if (ask) this.send(ask.slice(0, 2000));
+    if (ask || c) this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
   }
 
   loadConversations() {

@@ -12,8 +12,28 @@ import { Api } from '../../../services/api/api';
  * just renamed here and there) is the add/edit/save/delete/toggle form flow
  * and the field/matcher/severity reference lists, so only that lives here.
  */
+/** The fields the SIEM's Sigma engine reads (Windows event channel + Sysmon, Linux audit, syslog). */
+export const SIEM_FIELD_OPTIONS = [
+  { value: 'CommandLine',    label: 'Command Line',      description: 'Process command line (Sysmon 1, Security 4688, Linux execve)', examples: ['-EncodedCommand', 'nc -e', 'vssadmin delete shadows'] },
+  { value: 'Image',          label: 'Process Image',     description: 'Full path of the program that ran',               examples: ['\\powershell.exe', '\\AppData\\Local\\Temp\\', '/tmp/'] },
+  { value: 'ParentImage',    label: 'Parent Process',    description: 'The program that started it',                     examples: ['\\winword.exe', '\\explorer.exe', '/usr/sbin/sshd'] },
+  { value: 'User',           label: 'User',              description: 'Account the process ran as',                      examples: ['NT AUTHORITY\\SYSTEM', 'root', 'www-data'] },
+  { value: 'EventID',        label: 'Windows Event ID',  description: 'Event id of the Windows event (Security, System, Sysmon)', examples: ['4625', '4720', '7045', '1102'] },
+  { value: 'Channel',        label: 'Windows Channel',   description: 'Event log the event came from',                   examples: ['Security', 'System', 'Microsoft-Windows-Sysmon/Operational'] },
+  { value: 'TargetFilename', label: 'File Written',      description: 'File created or written (Sysmon 11)',             examples: ['\\Startup\\', '.ps1', '/etc/cron'] },
+  { value: 'TargetObject',   label: 'Registry Key',      description: 'Registry key set or deleted (Sysmon 12/13)',      examples: ['\\CurrentVersion\\Run', '\\Services\\'] },
+  { value: 'DestinationIp',  label: 'Destination IP',    description: 'Outbound connection target (Sysmon 3)',          examples: ['185.220.101.5', '10.0.0.'] },
+  { value: 'DestinationPort',label: 'Destination Port',  description: 'Outbound connection port (Sysmon 3)',            examples: ['4444', '3389', '445'] },
+  { value: 'QueryName',      label: 'DNS Query',         description: 'Domain looked up (Sysmon 22)',                    examples: ['.onion', 'pastebin.com'] },
+  { value: 'Hashes',         label: 'File Hashes',       description: 'Hashes of the program (Sysmon)',                  examples: ['SHA256='] },
+  { value: 'SourceIp',       label: 'Source IP',         description: 'Source address in the log',                       examples: ['203.0.113.9'] },
+  { value: 'message',        label: 'Syslog Message',    description: 'The whole syslog line (Linux, network devices)', examples: ['Failed password', 'segfault'] },
+];
+
 @Directive()
 export abstract class RulesBase {
+  /** The form's first field (the SIEM pages start on CommandLine). */
+  defaultField = 'event_type';
   loading       = true;
   saving        = false;
   syncing       = false;
@@ -31,7 +51,7 @@ export abstract class RulesBase {
 
   ruleForm = {
     title: '', severity: 'medium', description: '',
-    field: 'event_type', value: '', matcher: 'equals', tags: [] as string[],
+    field: this.defaultField, value: '', matcher: 'equals', tags: [] as string[],
   };
 
   fieldOptions = [
@@ -143,7 +163,7 @@ export abstract class RulesBase {
           title: data.title || rule.name,
           severity: data.severity || 'medium',
           description: data.description || '',
-          field: data.field || 'event_type',
+          field: data.field || this.defaultField,
           value: data.value || '',
           matcher: data.matcher || 'equals',
           tags: data.tags || [],
@@ -155,7 +175,7 @@ export abstract class RulesBase {
           title: rule.name,
           severity: rule.severity.toLowerCase(),
           description: rule.description || '',
-          field: 'event_type',
+          field: this.defaultField,
           value: '',
           matcher: 'equals',
           tags: rule.tags || [],
@@ -257,7 +277,7 @@ export abstract class RulesBase {
   resetForm(): void {
     this.ruleForm = {
       title: '', severity: 'medium', description: '',
-      field: 'event_type', value: '', matcher: 'equals', tags: [],
+      field: this.defaultField, value: '', matcher: 'equals', tags: [],
     };
     this.showConnHelp = false;
     this.showFieldInfo = false;

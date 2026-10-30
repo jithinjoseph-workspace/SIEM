@@ -644,6 +644,8 @@ pub fn filter_from_text(message: &str, agents: &[(String, String)]) -> AlertFilt
     f.ip = words.iter().map(|w| w.trim_matches(|c: char| !c.is_ascii_hexdigit() && c != '.' && c != ':')).find(|w| w.parse::<std::net::IpAddr>().is_ok()).map(String::from);
     f.mitre = words.iter().map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.').to_uppercase()).find(|w| w.len() >= 5 && w.starts_with('T') && w[1..5].chars().all(|c| c.is_ascii_digit()));
     f.agent = agents.iter().find(|(id, name)| (!name.is_empty() && m.contains(&name.to_lowercase())) || words.iter().any(|w| w == id)).map(|(id, _)| id.clone());
+    // "rule 92213", "rule #92213"
+    f.rule_id = words.windows(2).find(|w| w[0].eq_ignore_ascii_case("rule")).and_then(|w| w[1].trim_start_matches('#').parse().ok());
     f.text = message.split('"').nth(1).map(str::trim).filter(|t| !t.is_empty()).map(|t| t.chars().take(200).collect());
     f
 }
@@ -1098,6 +1100,8 @@ mod tests {
         assert_eq!((f.min_level, f.limit, f.hours, f.agent.as_deref()), (Some(12), 1, 24, Some("049")));
         let f = filter_from_text("high alerts from 203.0.113.9 with T1110.001 last hour about \"failed password\"", &agents);
         assert_eq!((f.min_level, f.max_level, f.ip.as_deref(), f.mitre.as_deref(), f.hours, f.text.as_deref()), (Some(8), Some(11), Some("203.0.113.9"), Some("T1110.001"), 1, Some("failed password")));
+        let f = filter_from_text("Open a case for the latest alert of rule 92213 on win-node-e296", &agents);
+        assert_eq!((f.rule_id, f.agent.as_deref(), f.limit), (Some(92213), Some("049"), 1));
         assert_eq!(case_ref_in("write a report for inc-2026-0007."), Some("INC-2026-0007".into()));
         assert_eq!(entity_in("investigate 10.0.0.5 please"), Some("10.0.0.5".into()));
         assert_eq!(entity_in("what about evil-domain.example?"), Some("evil-domain.example".into()));

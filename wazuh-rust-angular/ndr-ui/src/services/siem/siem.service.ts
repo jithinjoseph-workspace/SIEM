@@ -264,10 +264,6 @@ export class SiemService {
     );
   }
 
-  /** Runs a simulation scenario on the manager (POST /api/v1/simulate). */
-  simulateAttack(scenario: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/api/v1/simulate`, { scenario });
-  }
 
   runLogtest(log: string): Observable<LogtestResponse> {
     return this.http.post<LogtestResponse>(`${this.apiUrl}/api/v1/logtest`, { log });

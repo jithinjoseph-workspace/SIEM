@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Api } from '../../../services/api/api';
 import { AuthService } from '../../../services/auth/auth';
 import { LucideAngularModule, ShieldCheck, Activity, Target } from 'lucide-angular';
-import { RulesBase } from '../../shared/rules/rules-base';
+import { RulesBase, SIEM_FIELD_OPTIONS } from '../../shared/rules/rules-base';
 
 import { reportRxjsError } from '../../../services/error-reporter/error-reporter';
 @Component({
@@ -113,9 +113,16 @@ export class Rules extends RulesBase implements OnInit {
 
   constructor(api: Api, private auth: AuthService, cdr: ChangeDetectorRef) {
     super(api, cdr);
+    if (!this.auth.hasFeature('ndr')) {
+      this.fieldOptions = SIEM_FIELD_OPTIONS;
+      this.defaultField = 'CommandLine';
+      this.ruleForm.field = 'CommandLine';
+    }
   }
 
   get isAdmin() { return this.auth.isAdmin(); }
+  /** NDR tenants also see the sensors' (Agent-Z / Agent-S) rules; SIEM tenants their hosts' fields. */
+  get ndr() { return this.auth.hasFeature('ndr'); }
 
   get activeRulesCount() {
     // rulesActiveTotal comes from the backend (X-Active-Count) so this stays
@@ -148,6 +155,7 @@ export class Rules extends RulesBase implements OnInit {
       error: () => { }
     });
 
+    if (!this.ndr) return;
     // Load Agent-S fired rules from ndr_hits.sigma_hits — a small set (single
     // digits typically), so no pagination needed here.
     this.api.getFiredRules().subscribe({

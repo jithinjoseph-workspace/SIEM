@@ -6,7 +6,8 @@
       <div>
         <div class="eyebrow">Detection Engine</div>
         <h2 class="rules-title">Rules</h2>
-        <p class="rules-sub">SIGMA detection rules applied to Agent-Z and Agent-S events.</p>
+        <p class="rules-sub" *ngIf="ndr">SIGMA detection rules applied to Agent-Z and Agent-S events.</p>
+        <p class="rules-sub" *ngIf="!ndr">Wazuh's ruleset (read-only) and your custom rules. A custom rule is a Sigma rule checked on every event your agents send, from the moment you save it.</p>
       </div>
     </div>
     <div class="rules-actions">
@@ -20,7 +21,7 @@
         [disabled]="syncing"
         class="ghost-btn"
         type="button"
-        title="Fetch latest SigmaHQ community network rules"
+        title="Fetch new SigmaHQ community rules (they also sync weekly)"
       >
         <lucide-icon [name]="DownloadIcon" class="w-4 h-4"></lucide-icon>
         {{ syncing ? 'Syncing…' : 'Sync Rules' }}
@@ -231,6 +232,25 @@
       <div class="form-section">
         <div class="form-label mb-s">Quick Templates</div>
         <div class="template-chips">
+          <ng-container *ngIf="!ndr">
+          <button type="button" class="template-btn"
+            (click)="ruleForm.field='CommandLine'; ruleForm.value='-EncodedCommand'; ruleForm.matcher='contains'; ruleForm.title='Encoded PowerShell command'; ruleForm.severity='high'; ruleForm.description='PowerShell run with a base64-encoded command (often used to hide what runs)'">
+            Encoded PowerShell
+          </button>
+          <button type="button" class="template-btn"
+            (click)="ruleForm.field='EventID'; ruleForm.value='4625'; ruleForm.matcher='equals'; ruleForm.title='Windows failed logon'; ruleForm.severity='medium'; ruleForm.description='Windows Security event 4625: an account failed to log on'">
+            Failed Logon
+          </button>
+          <button type="button" class="template-btn"
+            (click)="ruleForm.field='Image'; ruleForm.value='\\AppData\\Local\\Temp\\'; ruleForm.matcher='contains'; ruleForm.title='Program run from a Temp folder'; ruleForm.severity='high'; ruleForm.description='A program started from a user Temp folder, where downloaded malware often lands'">
+            Run from Temp
+          </button>
+          <button type="button" class="template-btn"
+            (click)="ruleForm.field='TargetObject'; ruleForm.value='\\CurrentVersion\\Run'; ruleForm.matcher='contains'; ruleForm.title='Run key persistence'; ruleForm.severity='high'; ruleForm.description='A registry Run key was set: the program starts at every logon'">
+            Run Key
+          </button>
+          </ng-container>
+          <ng-container *ngIf="ndr">
           <button type="button" class="template-btn"
             (click)="ruleForm.field='event_type'; ruleForm.value='alert'; ruleForm.matcher='equals'; ruleForm.title='Agent-S Alert Detected'; ruleForm.severity='high'; ruleForm.description='Detects any Agent-S alert'">
             Agent-S Alert
@@ -247,6 +267,7 @@
             (click)="ruleForm.field='alert.severity'; ruleForm.value='1'; ruleForm.matcher='equals'; ruleForm.title='Critical Agent-S Alert'; ruleForm.severity='critical'; ruleForm.description='Detects highest severity Agent-S alerts'">
             Critical Alert
           </button>
+          </ng-container>
           <button type="button" class="template-btn"
             (click)="ruleForm.field='Image'; ruleForm.value='/tmp/'; ruleForm.matcher='startswith'; ruleForm.title='Execution from /tmp'; ruleForm.severity='high'; ruleForm.description='Detects process execution from /tmp (common malware staging directory)'">
             Exec /tmp
@@ -308,7 +329,7 @@
   </div>
 
   <!-- ── Engine tab switcher ─────────────────────── -->
-  <div *ngIf="!loading" class="engine-tabs">
+  <div *ngIf="!loading && ndr" class="engine-tabs">
     <button [class]="'engine-tab' + (activeTab === 'all' ? ' active' : '')" (click)="activeTab = 'all'">
       All
       <span class="engine-tab-count">{{ rulesTotal + agentSRules.length }}</span>

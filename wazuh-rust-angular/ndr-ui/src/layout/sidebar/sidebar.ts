@@ -117,57 +117,51 @@ export class Sidebar implements OnInit, OnDestroy {
     if (hasNdr && has('ai-activity') && this.auth.isTenantAiEnabled())
       intelItems.push({ label: 'AI Activity', route: '/analyst/ai-activity', icon: Bot, permission: 'ai-activity' });
 
-    // SIEM section — unified host, fleet & security detection suite
+    // SIEM: the menu follows the SOC's work: watch, investigate and respond, the hosts'
+    // posture, detection engineering, threat intel, and oversight of the AI.
     const hasSiem = this.auth.hasFeature('siem');
-    // Each SIEM page needs the tenant's 'siem' feature and its own page permission.
-    const siemCandidates: NavItem[] = [
-      { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
-      { label: 'Risk Fabric',         route: '/analyst/risk-fabric',     icon: Network,     permission: 'siem-agents' },
-      { label: 'Attacker Intent Radar', route: '/analyst/intent-prediction', icon: Target,  permission: 'siem-agents' },
-      { label: 'Deception & Honeynet', route: '/analyst/deception',       icon: Sparkles,    permission: 'siem-agents' },
-      { label: 'Red Swarm & Purple Team', route: '/analyst/redswarm',    icon: Zap,         permission: 'siem-mitre' },
-      { label: 'Dynamic Parsers',     route: '/analyst/parsers',         icon: Cpu,         permission: 'siem-parsers' },
-      { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },
-      { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug,         permission: 'siem-vulnerabilities' },
-      { label: 'Compliance Audit',    route: '/analyst/compliance',      icon: ShieldCheck, permission: 'siem-compliance' },
-      { label: 'FIM Syscheck',        route: '/analyst/fim',             icon: FileCheck,   permission: 'siem-fim' },
-      { label: 'Active Response',     route: '/analyst/active-response', icon: Zap,         permission: 'siem-active-response' },
-      { label: 'Logtest Console',     route: '/analyst/logtest',         icon: Terminal,    permission: 'siem-logtest' },
-    ];
-    const siemItems: NavItem[] = hasSiem ? siemCandidates.filter(i => has(i.permission!)) : [];
-
-    // SIEM analyst AI and response (siem-api /api/v1/siem/*), apart from the NDR's pages
-    const siemAiCandidates: NavItem[] = [
-      { label: 'AI Copilot',            route: '/analyst/siem-copilot',       icon: Bot,        permission: 'siem-alerts' },
-      { label: 'Investigation',         route: '/analyst/siem-investigate',   icon: ScanSearch, permission: 'siem-alerts' },
-      { label: 'SIEM Alert Triage',     route: '/analyst/siem-triage',        icon: ListFilter, permission: 'siem-alerts' },
-      { label: 'SIEM Suppressions',     route: '/analyst/siem-suppressions',  icon: EyeOff,    permission: 'siem-alerts' },
-      { label: 'SIEM Threat Predictions', route: '/analyst/siem-predictions', icon: Crosshair, permission: 'siem-mitre' },
-      { label: 'SIEM Retrospective',    route: '/analyst/siem-retrospective', icon: RotateCcw, permission: 'siem-rules' },
-      { label: 'My Workload & AI Use',  route: '/analyst/siem-my-insights',   icon: Gauge,     permission: 'siem-alerts' },
-      { label: 'Security Memory',       route: '/analyst/siem-memory',        icon: Brain,     permission: 'siem-alerts' },
-      { label: 'Threat Intel',          route: '/analyst/siem-threat-intel',  icon: Globe,     permission: 'siem-alerts' },
-      { label: 'Sigma Detection',       route: '/analyst/siem-sigma',         icon: FileSearch, permission: 'siem-rules' },
-      { label: 'Threat Swarm',          route: '/analyst/siem-swarm',         icon: Share2,    permission: 'siem-alerts' },
-      { label: 'AI Decision Audit',     route: '/analyst/siem-decisions',     icon: Scale,     permission: 'siem-alerts' },
-    ];
-    const siemAiItems: NavItem[] = hasSiem ? siemAiCandidates.filter(i => has(i.permission!)) : [];
-    // the per-tenant SOAR (one page for NDR and SIEM): reachable from the SIEM menu too
+    const siemGroup = (items: NavItem[]) => hasSiem ? items.filter(i => has(i.permission!)) : [];
+    const monitorItems = siemGroup([
+      { label: 'Overview',            route: '/analyst/siem-classic/console/overview',  icon: LayoutDashboard, permission: 'siem-dashboard' },
+      { label: 'Alerts',              route: '/analyst/siem-classic/console/alerts',    icon: Bell,        permission: 'siem-alerts' },
+      { label: 'Alert Triage',        route: '/analyst/siem-triage',                    icon: ListFilter,  permission: 'siem-alerts' },
+      { label: 'Telemetry',           route: '/analyst/siem-classic/console/telemetry', icon: ScrollText,  permission: 'siem-logs' },
+    ]);
+    const respondItems = siemGroup([
+      { label: 'AI Copilot',          route: '/analyst/siem-copilot',     icon: Bot,         permission: 'siem-alerts' },
+      { label: 'Investigation',       route: '/analyst/siem-investigate', icon: ScanSearch,  permission: 'siem-alerts' },
+      { label: 'Active Response',     route: '/analyst/active-response',  icon: Zap,         permission: 'siem-active-response' },
+    ]);
+    // the per-tenant SOAR (cases and playbooks; one page for NDR and SIEM)
     if (hasSiem && !hasNdr && has('soar') && this.auth.hasFeature('soar'))
-      siemAiItems.push({ label: 'SOAR Playbooks', route: '/analyst/soar', icon: Zap, permission: 'soar' });
-    // Data source management is a tenant-admin page; analysts never get it in their sidebar.
-
-    // Pages copied from frontend-angular (/analyst/siem-classic/*), same permission model.
-    // SIEM console tabs (copied from frontend-angular), each its own page.
-    const consoleCandidates: NavItem[] = [
-      { label: 'Threat Overview',     route: '/analyst/siem-classic/console/overview',   icon: Globe,       permission: 'siem-dashboard' },
-      { label: 'SIEM Alerts',         route: '/analyst/siem-classic/console/alerts',     icon: Bell,        permission: 'siem-alerts' },
-      { label: 'Telemetry Stream',    route: '/analyst/siem-classic/console/telemetry',  icon: ScrollText,  permission: 'siem-logs' },
-      { label: 'Wazuh Rules',         route: '/analyst/siem-classic/console/rules',      icon: ShieldAlert, permission: 'siem-rules' },
-      { label: 'Attack Simulator',    route: '/analyst/siem-classic/console/simulator',  icon: Zap,         permission: 'siem-console' },
-      { label: 'Full SIEM Console',   route: '/analyst/siem-classic/console',            icon: Monitor,     permission: 'siem-console' },
-    ];
-    const consoleItems: NavItem[] = hasSiem ? consoleCandidates.filter(i => has(i.permission!)) : [];
+      respondItems.splice(2, 0, { label: 'Cases & Playbooks', route: '/analyst/soar', icon: FolderSearch, permission: 'soar' });
+    const postureItems = siemGroup([
+      { label: 'Agent Fleet',         route: '/analyst/agents',          icon: Server,      permission: 'siem-agents' },
+      { label: 'Vulnerabilities',     route: '/analyst/vulnerabilities', icon: Bug,         permission: 'siem-vulnerabilities' },
+      { label: 'Compliance',          route: '/analyst/compliance',      icon: ShieldCheck, permission: 'siem-compliance' },
+      { label: 'File Integrity (FIM)', route: '/analyst/fim',            icon: FileCheck,   permission: 'siem-fim' },
+      { label: 'MITRE ATT&CK',        route: '/analyst/mitre',           icon: Shield,      permission: 'siem-mitre' },
+    ]);
+    const detectionItems = siemGroup([
+      { label: 'Rules',               route: '/analyst/siem-rules',          icon: ShieldAlert, permission: 'siem-rules' },
+      { label: 'Sigma Detection',     route: '/analyst/siem-sigma',          icon: FileSearch,  permission: 'siem-rules' },
+      { label: 'Dynamic Parsers',     route: '/analyst/parsers',             icon: Cpu,         permission: 'siem-parsers' },
+      { label: 'Logtest',             route: '/analyst/logtest',             icon: Terminal,    permission: 'siem-logtest' },
+      { label: 'Retrospective',       route: '/analyst/siem-retrospective',  icon: RotateCcw,   permission: 'siem-rules' },
+      { label: 'Suppressions',        route: '/analyst/siem-suppressions',   icon: EyeOff,      permission: 'siem-alerts' },
+    ]);
+    const intelSiemItems = siemGroup([
+      { label: 'Threat Intel',        route: '/analyst/siem-threat-intel',  icon: Globe,     permission: 'siem-alerts' },
+      { label: 'Threat Predictions',  route: '/analyst/siem-predictions',   icon: Crosshair, permission: 'siem-mitre' },
+      { label: 'Threat Swarm',        route: '/analyst/siem-swarm',         icon: Share2,    permission: 'siem-alerts' },
+      { label: 'Attacker Intent Radar', route: '/analyst/intent-prediction', icon: Target,   permission: 'siem-agents' },
+      { label: 'Risk Fabric',         route: '/analyst/risk-fabric',        icon: Network,   permission: 'siem-agents' },
+      { label: 'Red Swarm & Purple Team', route: '/analyst/redswarm',       icon: Zap,       permission: 'siem-mitre' },
+      { label: 'Deception & Honeynet', route: '/analyst/deception',         icon: Sparkles,  permission: 'siem-agents' },
+    ]);
+    const oversightItems = siemGroup([
+      { label: 'AI Oversight',        route: '/analyst/siem-ai-oversight',  icon: Scale,     permission: 'siem-alerts' },
+    ]);
 
     // XDR Correlated Incidents — available when both NDR & SIEM are enabled
     if (hasNdr && hasSiem && has('alerts')) {
@@ -177,9 +171,12 @@ export class Sidebar implements OnInit, OnDestroy {
     this.navGroups = [
       ...(overviewItems.length  ? [{ section: 'OVERVIEW',  collapsed: false, items: overviewItems  }] : []),
       ...(threatItems.length    ? [{ section: 'THREATS',   collapsed: false, items: threatItems    }] : []),
-      ...(siemItems.length      ? [{ section: 'SIEM & HOSTS', collapsed: false, items: siemItems   }] : []),
-      ...(siemAiItems.length    ? [{ section: 'SIEM AI & RESPONSE', collapsed: false, items: siemAiItems }] : []),
-      ...(consoleItems.length   ? [{ section: 'SIEM CONSOLE', collapsed: false, items: consoleItems }] : []),
+      ...(monitorItems.length   ? [{ section: 'MONITOR', collapsed: false, items: monitorItems }] : []),
+      ...(respondItems.length   ? [{ section: 'INVESTIGATE & RESPOND', collapsed: false, items: respondItems }] : []),
+      ...(postureItems.length   ? [{ section: 'HOSTS & POSTURE', collapsed: false, items: postureItems }] : []),
+      ...(detectionItems.length ? [{ section: 'DETECTION', collapsed: false, items: detectionItems }] : []),
+      ...(intelSiemItems.length ? [{ section: 'THREAT INTEL', collapsed: false, items: intelSiemItems }] : []),
+      ...(oversightItems.length ? [{ section: 'AI OVERSIGHT', collapsed: false, items: oversightItems }] : []),
       ...(networkItems.length   ? [{ section: 'NETWORK',   collapsed: false, items: networkItems   }] : []),
       ...(enforceItems.length   ? [{ section: 'ENFORCE',   collapsed: false, items: enforceItems   }] : []),
       ...(systemItems.length    ? [{ section: 'SYSTEM',    collapsed: false, items: systemItems    }] : []),

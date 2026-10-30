@@ -330,7 +330,7 @@ async fn history_and_inventory_from_clickhouse() {
         // pages: compliance (PCI DSS 10.2.4 from rule 5710's tags) and MITRE (T1110)
         let body = |r: axum::response::Response| async move { String::from_utf8_lossy(&axum::body::to_bytes(r.into_body(), 1 << 22).await.unwrap()).to_string() };
         use axum::response::IntoResponse;
-        let comp: serde_json::Value = serde_json::from_str(&body(crate::compliance::get(State(st.clone()), Extension(ca.clone())).await).await).unwrap();
+        let comp: serde_json::Value = serde_json::from_str(&body(crate::compliance::get(State(st.clone()), Extension(ca.clone()), axum::extract::Query(serde_json::from_value(json!({})).unwrap())).await).await).unwrap();
         let pci = comp["frameworks"].as_array().unwrap().iter().find(|f| f["name"] == "PCI_DSS").unwrap();
         let req = pci["requirements"].as_array().unwrap().iter().find(|r| r["id"] == "10.2.4").expect("PCI DSS 10.2.4 from the alert's tags");
         assert_eq!((req["alerts_count"].as_u64(), req["status"].as_str(), req["source"].as_str()), (Some(1), Some("warning"), Some("alerts")));

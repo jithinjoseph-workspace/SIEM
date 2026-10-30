@@ -18,7 +18,7 @@
 
     <div class="flex items-center gap-3">
       <button 
-        (click)="loadCompliance()" 
+        (click)="loadCompliance(true)" 
         class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-sm font-semibold rounded-xl border border-slate-700/80 hover:border-cyan-500/40 transition-all shadow-md group"
       >
         <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 group-hover:rotate-180 transition-transform duration-500" [class.animate-spin]="loading()"></lucide-angular>

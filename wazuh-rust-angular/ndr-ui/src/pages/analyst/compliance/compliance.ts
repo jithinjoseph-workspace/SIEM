@@ -164,9 +164,10 @@ export class Compliance implements OnInit {
     this.loadCompliance();
   }
 
-  loadCompliance() {
+  /** `refresh` (Re-evaluate): the agents' latest scan results are fetched first. */
+  loadCompliance(refresh = false) {
     this.loading.set(true);
-    this.siem.getCompliance().subscribe({
+    this.siem.getCompliance(refresh).subscribe({
       next: (res) => {
         const synced = res.last_updated ? this.ago(res.last_updated) : undefined;
         const enriched: ExtendedFramework[] = (res.frameworks || []).map(f => {

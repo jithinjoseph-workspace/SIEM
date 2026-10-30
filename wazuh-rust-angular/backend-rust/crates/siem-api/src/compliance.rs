@@ -7,11 +7,11 @@
 //!   `nist_800_53`, `tsc`), counted per requirement as the Wazuh dashboard's modules do.
 //! Nothing is assumed: a framework the checks do not map (GDPR) has no score, only alerts.
 //!
-//! `GET /api/v1/compliance`
+//! `GET /api/v1/compliance` (`?refresh=1`: the agents' latest SCA results copied first)
 
 use std::collections::{BTreeMap, HashMap};
 
-use axum::extract::{Extension, State};
+use axum::extract::{Extension, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -21,6 +21,14 @@ use crate::tenancy::AuthCtx;
 use crate::AppState;
 
 const WINDOW_HOURS: i64 = 24;
+/// Agents brought up to date by a refresh (two cheap wazuh-db queries each when unchanged);
+/// beyond them the 10-minute background copy applies.
+const REFRESH_AGENTS: usize = 200;
+
+#[derive(serde::Deserialize)]
+pub struct CompQuery {
+    refresh: Option<String>,
+}
 
 struct Framework {
     name: &'static str,
@@ -102,9 +110,14 @@ fn err(code: StatusCode, m: String) -> Response {
     (code, Json(json!({ "status": "error", "message": m }))).into_response()
 }
 
-pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Response {
+pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<CompQuery>) -> Response {
     let client = state.db.tenant_client(&ctx.scope());
     let agents: Vec<String> = crate::scoped_agents(&state, &ctx).into_iter().map(|a| a.id).collect();
+    if q.refresh.as_deref().is_some_and(|r| r == "1" || r == "true") && crate::wazuh_manager::enabled() {
+        for a in agents.iter().take(REFRESH_AGENTS) {
+            crate::posture_store::sync_agent(&state, a).await;
+        }
+    }
     let since = (chrono::Utc::now() - chrono::Duration::hours(WINDOW_HOURS)).timestamp_millis().max(0) as u64;
 
     let mut frameworks = Vec::new();

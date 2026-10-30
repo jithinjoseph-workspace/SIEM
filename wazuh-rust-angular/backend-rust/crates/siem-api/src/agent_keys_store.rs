@@ -29,7 +29,7 @@ struct KeyRow {
     updated_at: u64,
 }
 
-fn cipher() -> Option<LessSafeKey> {
+pub(crate) fn cipher() -> Option<LessSafeKey> {
     let secret = std::env::var("AGENT_KEYS_SECRET").ok().filter(|s| !s.trim().is_empty())?;
     let k = Sha256::digest(secret.trim().as_bytes());
     Some(LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &k).ok()?))

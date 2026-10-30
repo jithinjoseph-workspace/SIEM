@@ -1,1120 +1,1024 @@
-<div class="agents-page p-6 w-full max-w-[1780px] mx-auto space-y-6">
-  <!-- Header with Live Telemetry Pulse & Actions -->
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-5">
-    <div>
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold text-white flex items-center gap-2.5 tracking-tight">
-          <div class="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/20">
+<div class="agents-page w-full max-w-[1780px] mx-auto px-4 sm:px-6 pt-5 sm:pt-6 pb-28 space-y-5" data-check-root>
+
+  <!-- ── Header ── -->
+  <header class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 class="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5 tracking-tight">
+          <span class="w-9 h-9 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/20 flex-none">
             <lucide-angular [img]="ServerIcon" class="w-5 h-5"></lucide-angular>
-          </div>
+          </span>
           Endpoint Agent Fleet
         </h1>
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          Telemetry Active
+        <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-semibold border"
+          [ngClass]="activeCount() > 0 ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60' : 'bg-slate-900 text-slate-400 border-slate-700'">
+          <span class="pulse-dot" [class.live]="activeCount() > 0" [style.background]="activeCount() > 0 ? 'var(--st-good)' : '#64748b'"></span>
+          {{ activeCount() }} of {{ totalCount() }} online
         </span>
       </div>
-      <p class="text-xs sm:text-sm text-slate-400 mt-1.5">
-        Real-time endpoint security posture, syscollector hardware inventory, and continuous telemetry stream
+      <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+        Inventory, posture and response for this tenant's Wazuh agents.
+        <span class="whitespace-nowrap">Manager <span class="font-mono text-cyan-300 break-all">{{ deployManagerUrl() }}</span></span>
+        <span class="text-slate-500"> · AES-encrypted agent protocol (TCP 1514)</span>
       </p>
     </div>
 
-    <div class="flex items-center gap-3">
-      <button 
-        (click)="loadAgents()" 
-        class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700/80 hover:border-slate-600 transition shadow-sm"
-      >
+    <div class="flex flex-wrap lg:flex-nowrap lg:flex-none items-center gap-2">
+      <button type="button" (click)="toggleAdvanced()" [attr.aria-pressed]="advanced()"
+        class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition"
+        [ngClass]="advanced() ? 'bg-indigo-950/70 text-indigo-200 border-indigo-500/50' : 'bg-slate-900/90 text-slate-300 border-slate-700/80'">
+        <lucide-angular [img]="ChartIcon" class="w-3.5 h-3.5"></lucide-angular>
+        Advanced view
+      </button>
+      <button type="button" (click)="loadAgents()"
+        class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700/80 transition">
         <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="loading()"></lucide-angular>
         Refresh
       </button>
-
-      <button 
-        (click)="openDeployModal()" 
-        class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-cyan-500/30 border border-cyan-400/40 transition transform hover:-translate-y-0.5"
-      >
+      <button *ngIf="canDeploy" type="button" (click)="showDeployModal.set(true)"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition hover:-translate-y-0.5">
         <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular>
-        + Enroll New Agent
+        Enroll agent
       </button>
     </div>
-  </div>
+  </header>
 
-  <!-- KPI Metric Overview Cards (Cyber Glass with Sparklines) -->
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-    <!-- Total Enrolled -->
-    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
-      <div>
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Enrolled</span>
-          <span class="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
-            <lucide-angular [img]="TrendingUpIcon" class="w-3 h-3"></lucide-angular> +2.4%
-          </span>
+  <!-- ── KPI cards ── -->
+  <section class="grid grid-cols-1 min-[480px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-label="Fleet summary">
+    <!-- Enrolled -->
+    <div class="panel kpi-card rise p-4 sm:p-5" style="--i: 0; --accent: #06b6d4">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Enrolled agents</span>
+        <lucide-angular [img]="LayersIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
+      </div>
+      <div class="text-3xl font-extrabold font-mono text-white mt-2">{{ totalCount() }}</div>
+      @if (platformSplit().length) {
+        <div class="track mt-3" role="img" [attr.aria-label]="'Platforms: ' + windowsCount() + ' Windows, ' + linuxCount() + ' Linux'">
+          @for (p of platformSplit(); track p.label) {
+            <span class="seg" tabindex="0" [style.--i]="$index" [style.width.%]="p.pct" [style.background]="p.color"
+              (mouseenter)="showTip($event, p.label + ': ' + p.n + ' (' + p.pctLabel + ')')" (mousemove)="showTip($event, p.label + ': ' + p.n)"
+              (mouseleave)="hideTip()" (focus)="showTip($event, p.label + ': ' + p.n)" (blur)="hideTip()"></span>
+          }
         </div>
-        <div class="text-3xl font-extrabold font-mono text-white mt-2">{{ totalCount() }}</div>
-        <div class="text-[11px] text-slate-400 mt-1">Cross-platform endpoints</div>
-      </div>
-      <!-- Mini Sparkline Bars (Living Telemetry Equalizer) -->
-      <div class="sparkline-container mt-3 pt-2 border-t border-slate-800/60" title="Live Telemetry Heartbeat">
-        <span class="sparkline-bar h-[45%] bg-cyan-500/40"></span>
-        <span class="sparkline-bar h-[70%] bg-cyan-500/50"></span>
-        <span class="sparkline-bar h-[55%] bg-cyan-500/60"></span>
-        <span class="sparkline-bar h-[85%] bg-cyan-400/70"></span>
-        <span class="sparkline-bar h-[65%] bg-cyan-400/70"></span>
-        <span class="sparkline-bar h-[90%] bg-cyan-400/80"></span>
-        <span class="sparkline-bar h-[75%] bg-cyan-300 shadow-[0_0_8px_#06b6d4]"></span>
-        <span class="sparkline-bar h-[100%] bg-cyan-200 shadow-[0_0_12px_#06b6d4]"></span>
+      }
+      <div class="text-xs text-slate-400 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        @for (p of platformSplit(); track p.label) {
+          <button type="button" class="hover:text-white inline-flex items-center gap-1.5" (click)="osFilter.set(p.os)"><span class="swatch" [style.background]="p.color"></span>{{ p.n }} {{ p.label }}</button>
+        } @empty { <span>No agents enrolled yet</span> }
       </div>
     </div>
 
-    <!-- Active Online -->
-    <div (click)="statusFilter.set('active')" class="kpi-card p-4 rounded-xl border border-slate-800/90 hover:border-emerald-500/50 transition cursor-pointer flex flex-col justify-between">
-      <div>
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Active Online</span>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-            100% HEALTHY
-          </span>
+    <!-- Online -->
+    <div class="panel kpi-card rise p-4 sm:p-5 flex items-center gap-4" style="--i: 1; --accent: #22c55e">
+      <div class="ring" [style.--p]="onlinePct()" style="--ring: var(--st-good)" role="img" [attr.aria-label]="onlinePct() + '% online'">
+        <span class="text-sm font-bold font-mono text-white">{{ onlinePct() }}%</span>
+      </div>
+      <div class="min-w-0">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Online</span>
+        <div class="text-3xl font-extrabold font-mono text-white leading-tight">{{ activeCount() }}</div>
+        <button type="button" (click)="statusFilter.set('disconnected')" class="text-xs hover:underline text-left"
+          [class.text-rose-300]="disconnectedCount() > 0" [class.text-slate-400]="disconnectedCount() === 0">
+          {{ disconnectedCount() }} not connected
+        </button>
+      </div>
+    </div>
+
+    <!-- CVE exposure -->
+    <a routerLink="/analyst/vulnerabilities" class="panel kpi-card rise p-4 sm:p-5 block" style="--i: 2; --accent: #f43f5e">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-rose-300">Open CVEs</span>
+        <lucide-angular [img]="ShieldAlertIcon" class="w-4 h-4 text-rose-400"></lucide-angular>
+      </div>
+      @if (fleetVulns(); as v) {
+        <div class="flex items-baseline gap-4 mt-2">
+          <div><span class="text-3xl font-extrabold font-mono text-white">{{ v.critical }}</span><span class="text-xs text-slate-400 ml-1.5">critical</span></div>
+          <div><span class="text-2xl font-bold font-mono text-slate-200">{{ v.high }}</span><span class="text-xs text-slate-400 ml-1.5">high</span></div>
         </div>
-        <div class="text-3xl font-extrabold font-mono text-emerald-400 mt-2">{{ activeCount() }}</div>
-        <div class="text-[11px] text-slate-400 mt-1">Sending keepalives</div>
+        <div class="text-xs text-slate-400 mt-2">{{ cveTop().length }} agent{{ cveTop().length === 1 ? '' : 's' }} with open CVEs · details</div>
+      } @else {
+        <div class="text-sm text-slate-500 mt-3">CVE status unavailable</div>
+      }
+    </a>
+
+    <!-- EDR telemetry -->
+    <div class="panel kpi-card rise p-4 sm:p-5" style="--i: 3; --accent: #6366f1">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Sysmon telemetry</span>
+        <lucide-angular [img]="ActivityIcon" class="w-4 h-4 text-indigo-400"></lucide-angular>
       </div>
-      <!-- Sparkline -->
-      <div class="sparkline-container mt-3 pt-2 border-t border-slate-800/60" title="Active Keepalive Heartbeat">
-        <span class="sparkline-bar h-[50%] !bg-emerald-500/40"></span>
-        <span class="sparkline-bar h-[75%] !bg-emerald-500/50"></span>
-        <span class="sparkline-bar h-[65%] !bg-emerald-500/60"></span>
-        <span class="sparkline-bar h-[85%] !bg-emerald-500/70"></span>
-        <span class="sparkline-bar h-[70%] !bg-emerald-400/80"></span>
-        <span class="sparkline-bar h-[92%] !bg-emerald-400 shadow-[0_0_8px_#10b981]"></span>
-        <span class="sparkline-bar h-[80%] !bg-emerald-300 shadow-[0_0_10px_#10b981]"></span>
-        <span class="sparkline-bar h-[100%] !bg-emerald-200 shadow-[0_0_12px_#10b981]"></span>
+      @if (sysmonTelemetry() === null) {
+        <div class="text-sm text-slate-500 mt-3">Unknown (the events could not be read)</div>
+      } @else {
+        <div class="mt-2"><span class="text-3xl font-extrabold font-mono text-white">{{ sysmonCovered() }}</span><span class="text-lg font-mono text-slate-500">/{{ windowsCount() }}</span></div>
+        <div class="text-xs text-slate-400 mt-1">Windows agents sending Sysmon events (24 h)</div>
+      }
+      <div class="text-xs mt-1" [class.text-amber-300]="outdatedCount() > 0" [class.text-slate-500]="outdatedCount() === 0">
+        {{ outdatedCount() ? outdatedCount() + ' agent' + (outdatedCount() === 1 ? '' : 's') + ' not on ' + managerVersion : 'All agents on ' + managerVersion }}
       </div>
     </div>
+  </section>
 
-    <!-- Disconnected -->
-    <div (click)="statusFilter.set('disconnected')" class="kpi-card p-4 rounded-xl border border-slate-800/90 hover:border-rose-500/50 transition cursor-pointer flex flex-col justify-between">
-      <div>
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-rose-400">Disconnected</span>
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase"
-            [class.bg-rose-950]="disconnectedCount() > 0"
-            [class.text-rose-400]="disconnectedCount() > 0"
-            [class.bg-slate-800]="disconnectedCount() === 0"
-            [class.text-slate-400]="disconnectedCount() === 0">
-            {{ disconnectedCount() > 0 ? 'CRITICAL' : 'OPTIMAL' }}
-          </span>
+  <!-- ── Advanced view: fleet charts ── -->
+  @if (advanced()) {
+    <section class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Fleet analytics">
+      <!-- Composition -->
+      <div class="panel rise p-4 sm:p-5 space-y-5 min-w-0" style="--i: 1">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Fleet composition</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Connection, platform and agent version of all {{ totalCount() }} agents</p>
         </div>
-        <div class="text-3xl font-extrabold font-mono mt-2" [class.text-rose-400]="disconnectedCount() > 0" [class.text-slate-400]="disconnectedCount() === 0">
-          {{ disconnectedCount() }}
+        @for (row of [{ title: 'Connection', parts: statusSplit() }, { title: 'Platform', parts: platformSplit() }, { title: 'Agent version', parts: versionSplit() }]; track row.title; let ri = $index) {
+          <div class="space-y-2">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ row.title }}</div>
+            @if (row.parts.length) {
+              <div class="track thick">
+                @for (p of row.parts; track p.label) {
+                  <span class="seg" tabindex="0" [style.--i]="ri * 2 + $index" [style.width.%]="p.pct" [style.background]="p.color"
+                    [attr.aria-label]="row.title + ' ' + p.label + ': ' + p.n"
+                    (mouseenter)="showTip($event, p.label + ': ' + p.n + ' agent' + (p.n === 1 ? '' : 's') + ' (' + p.pctLabel + ')')"
+                    (mousemove)="showTip($event, p.label + ': ' + p.n + ' agent' + (p.n === 1 ? '' : 's') + ' (' + p.pctLabel + ')')"
+                    (mouseleave)="hideTip()" (focus)="showTip($event, p.label + ': ' + p.n)" (blur)="hideTip()"></span>
+                }
+              </div>
+              <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+                @for (p of row.parts; track p.label) {
+                  <span class="inline-flex items-center gap-1.5"><span class="swatch" [style.background]="p.color"></span>{{ p.label }} <span class="font-mono text-slate-400">{{ p.n }}</span></span>
+                }
+              </div>
+            } @else {
+              <div class="text-xs text-slate-500">No agents</div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- CVE exposure per agent -->
+      <div class="panel rise p-4 sm:p-5 min-w-0 flex flex-col" style="--i: 2">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0">
+            <h2 class="text-sm font-semibold text-white">CVE exposure by agent</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Open vulnerabilities from the vulnerability detector</p>
+          </div>
+          <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+            <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: var(--sev-critical)"></span>Critical</span>
+            <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: var(--sev-high)"></span>High</span>
+            <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: var(--sev-medium)"></span>Medium</span>
+          </div>
         </div>
-        <div class="text-[11px] text-slate-400 mt-1">Missed keepalives</div>
-      </div>
-      <!-- Sparkline -->
-      <div class="sparkline-container mt-3 pt-2 border-t border-slate-800/60" title="Dropout Frequency">
-        <span class="sparkline-bar h-[35%] !bg-rose-500/40"></span>
-        <span class="sparkline-bar h-[50%] !bg-rose-500/50"></span>
-        <span class="sparkline-bar h-[30%] !bg-rose-500/40"></span>
-        <span class="sparkline-bar h-[65%] !bg-rose-500/60"></span>
-        <span class="sparkline-bar h-[45%] !bg-rose-500/50"></span>
-        <span class="sparkline-bar h-[70%] !bg-rose-400/80 shadow-[0_0_6px_#f43f5e]"></span>
-        <span class="sparkline-bar h-[55%] !bg-rose-400/80 shadow-[0_0_8px_#f43f5e]"></span>
-        <span class="sparkline-bar h-[80%] !bg-rose-300 shadow-[0_0_10px_#f43f5e]"></span>
-      </div>
-    </div>
-
-    <!-- OS Breakdown -->
-    <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
-      <div>
-        <div class="flex items-center justify-between">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Platform Coverage</span>
-          <span class="p-1 rounded bg-indigo-950 text-indigo-400 border border-indigo-800/50">
-            <lucide-angular [img]="MonitorIcon" class="w-3.5 h-3.5"></lucide-angular>
-          </span>
+        <div class="mt-4 space-y-3 flex-1">
+          @for (r of cveTop(); track r.agent.id) {
+            <button type="button" class="w-full text-left group" (click)="openAgentDetails(r.agent)">
+              <div class="flex items-center justify-between gap-3 text-xs">
+                <span class="truncate text-slate-200 group-hover:text-cyan-300">{{ r.agent.name }} <span class="font-mono text-slate-500">{{ r.agent.id }}</span></span>
+                <span class="font-mono text-slate-300 flex-none">{{ r.total }}</span>
+              </div>
+              <div class="mt-1.5 h-3 rounded bg-slate-800/40">
+                <div class="track thick h-3 bg-transparent" [style.width.%]="r.scale">
+                  @if (r.critical) { <span class="seg" [style.--i]="$index" [style.flex]="r.critical + ' 1 0'" style="background: var(--sev-critical)"
+                    (mouseenter)="showTip($event, r.agent.name + ': ' + r.critical + ' critical')" (mousemove)="showTip($event, r.agent.name + ': ' + r.critical + ' critical')" (mouseleave)="hideTip()"></span> }
+                  @if (r.high) { <span class="seg" [style.--i]="$index" [style.flex]="r.high + ' 1 0'" style="background: var(--sev-high)"
+                    (mouseenter)="showTip($event, r.agent.name + ': ' + r.high + ' high')" (mousemove)="showTip($event, r.agent.name + ': ' + r.high + ' high')" (mouseleave)="hideTip()"></span> }
+                  @if (r.medium) { <span class="seg" [style.--i]="$index" [style.flex]="r.medium + ' 1 0'" style="background: var(--sev-medium)"
+                    (mouseenter)="showTip($event, r.agent.name + ': ' + r.medium + ' medium')" (mousemove)="showTip($event, r.agent.name + ': ' + r.medium + ' medium')" (mouseleave)="hideTip()"></span> }
+                </div>
+              </div>
+            </button>
+          } @empty {
+            <div class="h-full min-h-24 grid place-items-center text-xs text-slate-500 text-center">
+              {{ fleetVulns() ? 'No open critical, high or medium CVEs on any agent.' : 'CVE data unavailable.' }}
+            </div>
+          }
         </div>
-        <div class="text-sm font-mono text-slate-200 mt-2 flex items-center gap-3">
-          <span (click)="osFilter.set('windows')" class="cursor-pointer hover:text-cyan-400 transition">
-            Win: <strong class="text-cyan-400 text-2xl font-bold">{{ windowsCount() }}</strong>
-          </span>
-          <span class="text-slate-700">|</span>
-          <span (click)="osFilter.set('linux')" class="cursor-pointer hover:text-indigo-400 transition">
-            Lin: <strong class="text-indigo-400 text-2xl font-bold">{{ linuxCount() }}</strong>
-          </span>
+      </div>
+
+      <!-- Sysmon events per Windows agent -->
+      <div class="panel rise p-4 sm:p-5 min-w-0 flex flex-col lg:col-span-2 xl:col-span-1" style="--i: 3">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Sysmon events, last 24 h</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Process, network and file telemetry per Windows agent</p>
         </div>
-        <div class="text-[11px] text-slate-400 mt-1">Multi-OS Support</div>
+        <div class="mt-4 space-y-3 flex-1">
+          @if (sysmonTelemetry() === null) {
+            <div class="min-h-24 grid place-items-center text-xs text-slate-500">The SIEM could not read the agents' events.</div>
+          } @else {
+            @for (r of sysmonTop(); track r.agent.id) {
+              <button type="button" class="w-full text-left group" (click)="openAgentDetails(r.agent)">
+                <div class="flex items-center justify-between gap-3 text-xs">
+                  <span class="truncate text-slate-200 group-hover:text-cyan-300">{{ r.agent.name }} <span class="font-mono text-slate-500">{{ r.agent.id }}</span></span>
+                  <span class="font-mono flex-none" [class.text-slate-300]="r.events" [class.text-amber-300]="!r.events">{{ r.events ? (r.events | number) : 'none' }}</span>
+                </div>
+                <div class="mt-1.5 track">
+                  @if (r.events) {
+                    <span class="seg" [style.--i]="$index" [style.width.%]="r.pct" style="background: var(--series-1)"
+                      (mouseenter)="showTip($event, r.agent.name + ': ' + r.events.toLocaleString() + ' Sysmon events in 24 h')" (mousemove)="showTip($event, r.agent.name + ': ' + r.events.toLocaleString() + ' events')" (mouseleave)="hideTip()"></span>
+                  }
+                </div>
+              </button>
+            } @empty {
+              <div class="min-h-24 grid place-items-center text-xs text-slate-500">No Windows agents in the fleet.</div>
+            }
+          }
+        </div>
       </div>
-      <!-- Sparkline -->
-      <div class="sparkline-container mt-3 pt-2 border-t border-slate-800/60" title="Cross-Platform Telemetry">
-        <span class="sparkline-bar h-[45%] !bg-indigo-500/40"></span>
-        <span class="sparkline-bar h-[65%] !bg-indigo-500/50"></span>
-        <span class="sparkline-bar h-[55%] !bg-indigo-500/60"></span>
-        <span class="sparkline-bar h-[80%] !bg-indigo-500/70"></span>
-        <span class="sparkline-bar h-[70%] !bg-indigo-400/80"></span>
-        <span class="sparkline-bar h-[90%] !bg-indigo-400 shadow-[0_0_8px_#6366f1]"></span>
-        <span class="sparkline-bar h-[85%] !bg-indigo-300 shadow-[0_0_10px_#6366f1]"></span>
-        <span class="sparkline-bar h-[100%] !bg-indigo-200 shadow-[0_0_12px_#6366f1]"></span>
-      </div>
-    </div>
-  </div>
+    </section>
+  }
 
-  <!-- Telemetry & Security Posture Status Row -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="p-3.5 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]"></div>
-        <span class="text-xs text-slate-300 font-medium">Manager Endpoint:</span>
-        <span class="text-xs font-mono text-cyan-300 font-semibold">{{ deployManagerUrl() }}</span>
-      </div>
-      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">TCP 1514 / 8088</span>
-    </div>
-
-    <div class="p-3.5 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <lucide-angular [img]="ShieldIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
-        <span class="text-xs text-slate-300 font-medium">Fleet Protection:</span>
-        <span class="text-xs font-semibold text-emerald-400">100% Protected (No active CVE exploits)</span>
-      </div>
-      <lucide-angular [img]="CheckIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
-    </div>
-
-    <div class="p-3.5 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <lucide-angular [img]="LockIcon" class="w-4 h-4 text-indigo-400"></lucide-angular>
-        <span class="text-xs text-slate-300 font-medium">Transport Layer:</span>
-        <span class="text-xs font-mono text-indigo-300">TLS 1.3 / AES-256-GCM Verified</span>
-      </div>
-      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">ENCRYPTED</span>
-    </div>
-  </div>
-
-  <!-- Search & Filter Controls with View Mode Toggle -->
-  <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/70 p-3.5 rounded-xl border border-slate-800/90 shadow-md">
-    <div class="relative flex-1 w-full md:max-w-md">
-      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
-      <input 
-        [(ngModel)]="searchQuery" 
-        placeholder="Search by device name, IP, ID or OS..." 
-        class="w-full pl-9 pr-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
-      />
+  <!-- ── Search, filters, view ── -->
+  <section class="panel p-3 sm:p-4 flex flex-col xl:flex-row xl:items-center gap-3" aria-label="Filters">
+    <div class="relative flex-1 min-w-0 xl:max-w-md">
+      <span class="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500"><lucide-angular [img]="SearchIcon" class="w-4 h-4"></lucide-angular></span>
+      <label for="agent-search" class="sr-only">Search agents</label>
+      <input id="agent-search" [(ngModel)]="searchQuery" placeholder="Search name, IP, ID or OS"
+        style="padding-left: 2.25rem" class="w-full pr-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition" />
     </div>
 
-    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-400 uppercase font-semibold">OS:</span>
-        <select 
-          [(ngModel)]="osFilter" 
-          class="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
-        >
-          <option value="all">All Platforms</option>
-          <option value="windows">Windows</option>
-          <option value="linux">Linux</option>
-          <option value="macos">macOS</option>
-        </select>
-      </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" class="chip" [class.on]="statusFilter() === 'all'" (click)="statusFilter.set('all')">All <span class="font-mono">{{ totalCount() }}</span></button>
+      <button type="button" class="chip" [class.on]="statusFilter() === 'active'" (click)="statusFilter.set('active')">
+        <span class="pulse-dot" style="background: var(--st-good)"></span>Online <span class="font-mono">{{ activeCount() }}</span></button>
+      <button type="button" class="chip" [class.on]="statusFilter() === 'disconnected'" (click)="statusFilter.set('disconnected')">
+        <span class="pulse-dot" style="background: var(--st-critical)"></span>Disconnected</button>
+      <label for="os-filter" class="sr-only">Platform</label>
+      <select id="os-filter" [(ngModel)]="osFilter"
+        class="px-3 py-1.5 bg-slate-950/80 border border-slate-700/70 rounded-full text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+        <option value="all">All platforms</option>
+        <option value="windows">Windows</option>
+        <option value="linux">Linux</option>
+        <option value="macos">macOS</option>
+      </select>
+    </div>
 
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-400 uppercase font-semibold">Status:</span>
-        <select 
-          [(ngModel)]="statusFilter" 
-          class="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
-        >
-          <option value="all">All States</option>
-          <option value="active">Active Online</option>
-          <option value="disconnected">Disconnected</option>
-        </select>
-      </div>
-
-      <!-- Export CSV -->
-      <button 
-        (click)="exportCsv()" 
-        title="Export CSV of filtered endpoints"
-        class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition"
-      >
+    <div class="flex items-center gap-2 xl:ml-auto">
+      <span class="text-xs text-slate-500 mr-auto xl:mr-1 whitespace-nowrap">{{ filteredAgents().length }} of {{ totalCount() }}</span>
+      <button type="button" (click)="exportCsv()" [disabled]="!filteredAgents().length" title="Export the shown agents as CSV"
+        class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition disabled:opacity-40">
         <lucide-angular [img]="DownloadIcon" class="w-3.5 h-3.5"></lucide-angular>
-        Export CSV
+        CSV
       </button>
-
-      <!-- View Switcher: Table vs Cards -->
-      <div class="inline-flex rounded-lg border border-slate-800 p-0.5 bg-slate-950">
-        <button 
-          (click)="viewMode.set('table')" 
-          [class.bg-slate-800]="viewMode() === 'table'"
-          [class.text-cyan-400]="viewMode() === 'table'"
-          [class.text-slate-400]="viewMode() !== 'table'"
-          title="Table View (Executive)"
-          class="p-2 rounded-md text-xs font-semibold flex items-center gap-1.5 transition"
-        >
-          <lucide-angular [img]="LayersIcon" class="w-4 h-4"></lucide-angular>
-          <span class="hidden sm:inline">Table</span>
+      <div class="hidden min-[1400px]:inline-flex rounded-lg border border-slate-800 p-0.5 bg-slate-950" role="group" aria-label="View">
+        <button type="button" (click)="setView('table')" [attr.aria-pressed]="viewMode() === 'table'"
+          [class.bg-slate-800]="viewMode() === 'table'" [class.text-cyan-400]="viewMode() === 'table'" [class.text-slate-400]="viewMode() !== 'table'"
+          class="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition">
+          <lucide-angular [img]="LayersIcon" class="w-4 h-4"></lucide-angular> Table
         </button>
-        <button 
-          (click)="viewMode.set('grid')" 
-          [class.bg-slate-800]="viewMode() === 'grid'"
-          [class.text-cyan-400]="viewMode() === 'grid'"
-          [class.text-slate-400]="viewMode() !== 'grid'"
-          title="Card Grid View"
-          class="p-2 rounded-md text-xs font-semibold flex items-center gap-1.5 transition"
-        >
-          <lucide-angular [img]="GridIcon" class="w-4 h-4"></lucide-angular>
-          <span class="hidden sm:inline">Cards</span>
+        <button type="button" (click)="setView('grid')" [attr.aria-pressed]="viewMode() === 'grid'"
+          [class.bg-slate-800]="viewMode() === 'grid'" [class.text-cyan-400]="viewMode() === 'grid'" [class.text-slate-400]="viewMode() !== 'grid'"
+          class="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition">
+          <lucide-angular [img]="GridIcon" class="w-4 h-4"></lucide-angular> Cards
         </button>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- TABLE VIEW (Matching Reference Design Image 3) -->
-  <div *ngIf="viewMode() === 'table'" class="fleet-table-container">
-    <div class="overflow-x-auto">
-      <table class="fleet-table">
-        <thead>
-          <tr>
-            <th class="text-left">Device Name &amp; IP</th>
-            <th class="text-left">OS &amp; Version</th>
-            <th class="text-left">Risk Score</th>
-            <th class="text-left">Last Telemetry / Scan</th>
-            <th class="text-left">Encryption</th>
-            <th class="text-left">Patch Status</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let ag of filteredAgents()" (click)="openAgentDetails(ag)">
-            <!-- Device Name & IP -->
-            <td>
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-cyan-950/70 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
-                  <lucide-angular [img]="ServerIcon" class="w-4 h-4"></lucide-angular>
-                </div>
-                <div>
-                  <div class="font-bold text-white text-sm hover:text-cyan-400 transition flex items-center gap-2">
-                    {{ ag.name }}
-                    <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">ID: {{ ag.id }}</span>
+  <!-- ── Table (from 1400px; its columns need the room) ── -->
+  @if (viewMode() === 'table') {
+    <section class="panel overflow-hidden hidden min-[1400px]:block" aria-label="Agents">
+      <div class="overflow-x-auto nice-scroll">
+        <table class="fleet-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Platform</th>
+              <th>Last seen</th>
+              <th title="From the agent's open CVEs: critical x10, high x3, medium x1 (at most 100)">Risk</th>
+              @if (advanced()) { <th title="Sysmon events the SIEM received from the agent in the last 24 hours">Sysmon 24h</th> }
+              <th style="text-align: right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (ag of filteredAgents(); track ag.id) {
+              <tr class="rise" [style.--i]="$index < 12 ? $index : 12" (click)="openAgentDetails(ag)" data-agent-open>
+                <td>
+                  <div class="flex items-center gap-3 min-w-[180px]">
+                    <div class="relative w-9 h-9 rounded-lg bg-cyan-950/70 border border-cyan-800/60 flex items-center justify-center text-cyan-400 flex-none">
+                      <lucide-angular [img]="ag.os_type === 'windows' ? MonitorIcon : ag.os_type === 'macos' ? LaptopIcon : TerminalIcon" class="w-4 h-4"></lucide-angular>
+                      <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-950"
+                        [style.background]="ag.status === 'active' ? 'var(--st-good)' : ag.status === 'pending' ? 'var(--st-warning)' : 'var(--st-critical)'"></span>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="font-semibold text-white text-sm flex items-center gap-2">
+                        <span class="truncate max-w-[190px]" [title]="ag.name">{{ ag.name }}</span>
+                        <span class="text-[10px] font-mono px-1.5 py-px rounded bg-slate-800 text-slate-400 flex-none">{{ ag.id }}</span>
+                      </div>
+                      <div class="text-xs font-mono text-cyan-400/90 mt-0.5">{{ ag.ip }}</div>
+                    </div>
                   </div>
-                  <div class="text-xs font-mono text-cyan-400/90 mt-0.5">{{ ag.ip }}</div>
-                </div>
-              </div>
-            </td>
-
-            <!-- OS Version -->
-            <td>
-              <div class="text-xs font-medium text-slate-200">{{ ag.os }}</div>
-              <div class="text-[11px] font-mono text-slate-400 mt-0.5">Wazuh {{ ag.version }}</div>
-            </td>
-
-            <!-- Risk Score -->
-            <td>
-              <div class="flex items-center gap-2.5">
-                <span class="w-2 h-2 rounded-full" 
-                  [class.bg-emerald-400]="getAgentRisk(ag).color === 'emerald'"
-                  [class.bg-rose-400]="getAgentRisk(ag).color === 'rose'"></span>
-                <span class="font-mono text-xs font-bold"
-                  [class.text-emerald-400]="getAgentRisk(ag).color === 'emerald'"
-                  [class.text-rose-400]="getAgentRisk(ag).color === 'rose'">
-                  {{ getAgentRisk(ag).score }}
-                </span>
-                <div class="risk-bar-track">
-                  <div class="risk-bar-fill"
-                    [style.width.%]="getAgentRisk(ag).score"
-                    [class.bg-emerald-400]="getAgentRisk(ag).color === 'emerald'"
-                    [class.bg-rose-400]="getAgentRisk(ag).color === 'rose'">
+                </td>
+                <td>
+                  <div class="text-xs truncate max-w-[210px]" [class.text-slate-200]="ag.os" [class.text-slate-500]="!ag.os" [title]="ag.os">{{ ag.os || 'Not reported yet' }}</div>
+                  <div class="text-[11px] font-mono mt-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                    <span class="text-slate-400">{{ ag.version || 'no version' }}</span>
+                    @if (ag.version) {
+                      <span class="px-1.5 rounded text-[10px] font-sans font-semibold"
+                        [class.bg-emerald-950]="agentCurrent(ag)" [class.text-emerald-300]="agentCurrent(ag)"
+                        [class.bg-amber-950]="!agentCurrent(ag)" [class.text-amber-300]="!agentCurrent(ag)">{{ agentCurrent(ag) ? 'current' : 'outdated' }}</span>
+                    }
                   </div>
-                </div>
-              </div>
-            </td>
+                </td>
+                <td>
+                  <div class="flex items-center gap-2 text-xs whitespace-nowrap" [title]="getFormattedKeepalive(ag.last_keepalive)">
+                    <span class="pulse-dot" [class.live]="ag.status === 'active'"
+                      [style.background]="ag.status === 'active' ? 'var(--st-good)' : ag.status === 'pending' ? 'var(--st-warning)' : 'var(--st-critical)'"></span>
+                    <span class="font-semibold" [class.text-emerald-300]="ag.status === 'active'" [class.text-rose-300]="ag.status === 'disconnected'" [class.text-amber-300]="ag.status === 'pending'">
+                      {{ ag.status === 'active' ? 'Online' : ag.status === 'pending' ? 'Never connected' : 'Disconnected' }}</span>
+                  </div>
+                  <div class="text-[11px] font-mono text-slate-500 mt-0.5">{{ ago(ag.last_keepalive) }}</div>
+                </td>
+                <td>
+                  @let risk = getAgentRisk(ag);
+                  <div class="flex items-center gap-2 whitespace-nowrap">
+                    <span class="font-mono text-xs font-bold w-7 text-right" [class.text-emerald-300]="risk.score < 15" [class.text-amber-300]="risk.score >= 15 && risk.score < 40" [class.text-rose-300]="risk.score >= 40">{{ risk.score }}</span>
+                    <div class="track w-16 h-1.5">
+                      @if (risk.score) { <span class="seg" [style.width.%]="risk.score" [style.background]="risk.score >= 40 ? 'var(--st-critical)' : risk.score >= 15 ? 'var(--st-warning)' : 'var(--st-good)'"></span> }
+                    </div>
+                    <span class="text-[11px] text-slate-500">{{ risk.label }}</span>
+                  </div>
+                </td>
+                @if (advanced()) {
+                  <td class="text-xs font-mono whitespace-nowrap">
+                    @if (ag.os_type !== 'windows') {
+                      <span class="text-slate-600">—</span>
+                    } @else if (sysmonTelemetry() === null) {
+                      <span class="text-slate-500">unknown</span>
+                    } @else if (sysmonTelemetry()![ag.id]; as t) {
+                      <span class="text-emerald-300" [title]="'Last Sysmon event ' + (t.last | date:'medium')">{{ t.events_24h | number }}</span>
+                    } @else {
+                      <span class="text-amber-300" title="No Sysmon events in 24 hours: install Sysmon from Enroll agent (Windows, Sysmon option)">none</span>
+                    }
+                  </td>
+                }
+                <td>
+                  <div class="flex items-center justify-end gap-1.5" (click)="$event.stopPropagation()">
+                    <button type="button" class="icon-btn !text-cyan-300 !border-cyan-800/70" (click)="openAgentDetails(ag)" title="Open the agent details" aria-label="Open the agent details">
+                      <lucide-angular [img]="ExternalIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+                    <button type="button" class="icon-btn" (click)="quickAction(ag, 'restart_agent')" title="Restart the agent" aria-label="Restart the agent">
+                      <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+                    <button type="button" class="icon-btn" (click)="quickAction(ag, 'fim_scan')" title="Run a FIM scan" aria-label="Run a FIM scan">
+                      <lucide-angular [img]="ScanIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+                    <button type="button" class="icon-btn danger" (click)="deactivateAgent(ag)" title="Deactivate the agent" aria-label="Deactivate the agent">
+                      <lucide-angular [img]="PowerIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+                  </div>
+                  @if (rowFeedback()[ag.id]) { <div class="mt-1 text-[11px] text-cyan-300 text-right max-w-[260px] ml-auto">{{ rowFeedback()[ag.id] }}</div> }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
 
-            <!-- Last Telemetry / Scan -->
-            <td>
-              <div class="flex items-center gap-2 text-xs font-mono text-slate-300">
-                <span class="w-2 h-2 rounded-full" [class.bg-emerald-400]="ag.status === 'active'" [class.bg-rose-400]="ag.status !== 'active'"></span>
-                {{ getFormattedKeepalive(ag.last_keepalive) }}
-              </div>
-            </td>
-
-            <!-- Encryption -->
-            <td>
-              <span class="inline-flex items-center gap-1.5 text-xs text-emerald-400">
-                <lucide-angular [img]="LockIcon" class="w-3.5 h-3.5"></lucide-angular>
-                TLS 1.3
-              </span>
-            </td>
-
-            <!-- Patch / Agent Status -->
-            <td>
-              <span 
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-                [class.bg-emerald-950]="ag.status === 'active'"
-                [class.text-emerald-400]="ag.status === 'active'"
-                [class.border]="true"
-                [class.border-emerald-800]="ag.status === 'active'"
-                [class.bg-rose-950]="ag.status !== 'active'"
-                [class.text-rose-400]="ag.status !== 'active'"
-                [class.border-rose-800]="ag.status !== 'active'"
-              >
-                <span class="w-1.5 h-1.5 rounded-full" [class.bg-emerald-400]="ag.status === 'active'" [class.bg-rose-400]="ag.status !== 'active'"></span>
-                {{ ag.status === 'active' ? 'Up to date' : 'Disconnected' }}
-              </span>
-            </td>
-
-            <!-- Actions -->
-            <td class="text-right">
-              <div class="flex items-center justify-end gap-1.5" (click)="$event.stopPropagation()">
-                <button 
-                  (click)="openAgentDetails(ag)" 
-                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-cyan-600/30 text-cyan-400 text-xs font-semibold rounded-md border border-slate-700 transition"
-                >
-                  Inspect Specs
-                </button>
-                <button 
-                  (click)="quickAction(ag, 'restart_agent')" 
-                  title="Restart agent service"
-                  class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-md border border-slate-700"
-                >
-                  Restart
-                </button>
-                <button 
-                  (click)="quickAction(ag, 'fim_scan')" 
-                  title="Run FIM scan"
-                  class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-md border border-slate-700"
-                >
-                  FIM
-                </button>
-                <button 
-                  (click)="deactivateAgent(ag)" 
-                  title="Deactivate agent"
-                  class="px-2 py-1.5 bg-slate-800 hover:bg-rose-950/50 text-rose-300 text-xs rounded-md border border-slate-700"
-                >
-                  Deactivate
-                </button>
-              </div>
-              <div *ngIf="rowFeedback()[ag.id]" class="mt-1 text-[11px] text-cyan-300 text-right">{{ rowFeedback()[ag.id] }}</div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- GRID VIEW (Holographic Cyber Cards) -->
-  <div *ngIf="viewMode() === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-    <div 
-      *ngFor="let ag of filteredAgents()" 
-      (click)="openAgentDetails(ag)"
-      class="bg-slate-900/80 hover:bg-slate-800/80 cursor-pointer rounded-xl border border-slate-800 hover:border-cyan-500/50 p-5 transition-all shadow-md group relative overflow-hidden"
-    >
-      <div class="flex items-start justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400 shadow-md">
-            <lucide-angular [img]="ServerIcon" class="w-5 h-5"></lucide-angular>
+  <!-- ── Cards (always below 1400px; on wide screens when chosen) ── -->
+  <section class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4" [ngClass]="{ 'min-[1400px]:hidden': viewMode() === 'table' }" aria-label="Agents">
+    @for (ag of filteredAgents(); track ag.id) {
+      <article class="panel kpi-card rise p-4 cursor-pointer min-w-0" [style.--i]="$index < 12 ? $index : 12" style="--accent: #06b6d4"
+        tabindex="0" role="button" [attr.aria-label]="'Open ' + ag.name" (click)="openAgentDetails(ag)" (keydown.enter)="openAgentDetails(ag)" data-agent-open>
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="relative w-10 h-10 rounded-xl bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400 flex-none">
+              <lucide-angular [img]="ag.os_type === 'windows' ? MonitorIcon : ag.os_type === 'macos' ? LaptopIcon : TerminalIcon" class="w-5 h-5"></lucide-angular>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-white truncate">{{ ag.name }}</h3>
+              <p class="text-xs font-mono text-slate-400 truncate">{{ ag.id }} · {{ ag.ip }}</p>
+            </div>
           </div>
-          <div>
-            <h3 class="text-base font-semibold text-white group-hover:text-cyan-400 transition">{{ ag.name }}</h3>
-            <p class="text-xs font-mono text-slate-400">ID: {{ ag.id }} • {{ ag.ip }}</p>
+          <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold border flex-none"
+            [class.bg-emerald-950]="ag.status === 'active'" [class.text-emerald-300]="ag.status === 'active'" [class.border-emerald-800]="ag.status === 'active'"
+            [class.bg-rose-950]="ag.status === 'disconnected'" [class.text-rose-300]="ag.status === 'disconnected'" [class.border-rose-800]="ag.status === 'disconnected'"
+            [class.bg-amber-950]="ag.status === 'pending'" [class.text-amber-300]="ag.status === 'pending'" [class.border-amber-800]="ag.status === 'pending'">
+            <span class="pulse-dot" [class.live]="ag.status === 'active'"
+              [style.background]="ag.status === 'active' ? 'var(--st-good)' : ag.status === 'pending' ? 'var(--st-warning)' : 'var(--st-critical)'"></span>
+            {{ ag.status === 'active' ? 'Online' : ag.status === 'pending' ? 'Pending' : 'Offline' }}
+          </span>
+        </div>
+
+        @let risk = getAgentRisk(ag);
+        <dl class="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+          <div class="min-w-0 col-span-2">
+            <dt class="text-slate-500">Platform</dt>
+            <dd class="truncate" [class.text-slate-200]="ag.os" [class.text-slate-500]="!ag.os" [title]="ag.os">{{ ag.os || 'Not reported yet' }}</dd>
           </div>
-        </div>
+          <div class="min-w-0">
+            <dt class="text-slate-500">Agent</dt>
+            <dd class="font-mono truncate" [class.text-emerald-300]="agentCurrent(ag)" [class.text-amber-300]="!agentCurrent(ag)">{{ ag.version || '—' }}{{ ag.version && !agentCurrent(ag) ? ' (outdated)' : '' }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-slate-500">Last seen</dt>
+            <dd class="font-mono text-slate-300 truncate" [title]="getFormattedKeepalive(ag.last_keepalive)">{{ ago(ag.last_keepalive) }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-slate-500">Risk</dt>
+            <dd class="flex items-center gap-2">
+              <span class="font-mono font-bold" [class.text-emerald-300]="risk.score < 15" [class.text-amber-300]="risk.score >= 15 && risk.score < 40" [class.text-rose-300]="risk.score >= 40">{{ risk.score }}</span>
+              <span class="track flex-1 h-1.5 max-w-24">
+                @if (risk.score) { <span class="seg" [style.width.%]="risk.score" [style.background]="risk.score >= 40 ? 'var(--st-critical)' : risk.score >= 15 ? 'var(--st-warning)' : 'var(--st-good)'"></span> }
+              </span>
+            </dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-slate-500">Sysmon 24h</dt>
+            <dd class="font-mono truncate">
+              @if (ag.os_type !== 'windows') { <span class="text-slate-600">—</span> }
+              @else if (sysmonTelemetry() === null) { <span class="text-slate-500">unknown</span> }
+              @else if (sysmonTelemetry()![ag.id]; as t) { <span class="text-emerald-300">{{ t.events_24h | number }}</span> }
+              @else { <span class="text-amber-300">none</span> }
+            </dd>
+          </div>
+        </dl>
 
-        <span 
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-          [class.bg-emerald-950]="ag.status === 'active'"
-          [class.text-emerald-400]="ag.status === 'active'"
-          [class.border]="true"
-          [class.border-emerald-800]="ag.status === 'active'"
-          [class.bg-rose-950]="ag.status !== 'active'"
-          [class.text-rose-400]="ag.status !== 'active'"
-          [class.border-rose-800]="ag.status !== 'active'"
-        >
-          <span class="w-1.5 h-1.5 rounded-full" [class.bg-emerald-400]="ag.status === 'active'" [class.bg-rose-400]="ag.status !== 'active'"></span>
-          {{ ag.status | uppercase }}
-        </span>
-      </div>
+        <div class="mt-4 flex items-center gap-2" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()">
+          <button type="button" (click)="openAgentDetails(ag)" class="flex-1 h-8 bg-cyan-950/50 hover:bg-cyan-600/30 text-cyan-300 text-xs font-semibold rounded-lg border border-cyan-800/60 transition">Inspect</button>
+          <button type="button" class="icon-btn" (click)="quickAction(ag, 'restart_agent')" title="Restart the agent" aria-label="Restart the agent">
+            <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+          <button type="button" class="icon-btn" (click)="quickAction(ag, 'fim_scan')" title="Run a FIM scan" aria-label="Run a FIM scan">
+            <lucide-angular [img]="ScanIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+          <button type="button" class="icon-btn danger" (click)="deactivateAgent(ag)" title="Deactivate the agent" aria-label="Deactivate the agent">
+            <lucide-angular [img]="PowerIcon" class="w-3.5 h-3.5"></lucide-angular></button>
+        </div>
+        @if (rowFeedback()[ag.id]) { <div class="mt-2 text-[11px] text-cyan-300 break-words">{{ rowFeedback()[ag.id] }}</div> }
+      </article>
+    }
+  </section>
 
-      <div class="mt-4 pt-3 border-t border-slate-800/80 space-y-2 text-xs text-slate-300">
-        <div class="flex justify-between">
-          <span class="text-slate-500">Platform:</span>
-          <span class="truncate max-w-[220px] font-medium text-slate-200">{{ ag.os }}</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">Agent Version:</span>
-          <span class="font-mono text-cyan-400 font-semibold">Wazuh {{ ag.version }}</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-500">Keepalive:</span>
-          <span class="font-mono text-slate-300">{{ getFormattedKeepalive(ag.last_keepalive) }}</span>
-        </div>
-      </div>
-
-      <div class="mt-4 flex gap-2 pt-2">
-        <button 
-          (click)="$event.stopPropagation(); openAgentDetails(ag)"
-          class="flex-1 py-1.5 bg-slate-800 hover:bg-cyan-600/30 text-cyan-400 text-xs font-semibold rounded-lg border border-slate-700 transition"
-        >
-          Inspect Specs
-        </button>
-        <button (click)="$event.stopPropagation(); quickAction(ag, 'restart_agent')" title="Restart agent service"
-          class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700">Restart</button>
-        <button (click)="$event.stopPropagation(); quickAction(ag, 'fim_scan')" title="Run FIM scan"
-          class="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700">FIM Scan</button>
-        <button (click)="$event.stopPropagation(); deactivateAgent(ag)" title="Stop this agent"
-          class="py-1.5 px-2.5 bg-slate-800 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold rounded-lg border border-slate-700">Deactivate</button>
-      </div>
-      <div *ngIf="rowFeedback()[ag.id]" class="mt-2 text-[11px] text-cyan-300">{{ rowFeedback()[ag.id] }}</div>
+  @if (filteredAgents().length === 0) {
+    <div class="panel p-10 text-center text-sm text-slate-500">
+      {{ loading() ? 'Loading agents…' : totalCount() ? 'No agents match the search or filters.' : 'No agents enrolled yet.' }}
     </div>
-  </div>
+  }
 
-  <div *ngIf="filteredAgents().length === 0" class="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800 text-slate-500">
-    No agents matching search criteria.
-  </div>
-
-  <!-- Agent groups: centralized agent.conf, pushed by the manager to the group's agents -->
-  <div class="mt-8">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wide">Agent groups ({{ groups().length }})</h2>
-      <div *ngIf="canUpgrade" class="flex items-center gap-2">
+  <!-- ── Agent groups: centralized agent.conf, pushed by the manager to the group's agents ── -->
+  <section class="panel p-4 sm:p-5 space-y-3" aria-labelledby="groups-title">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h2 id="groups-title" class="text-sm font-semibold text-white">Agent groups <span class="text-slate-500 font-mono">({{ groups().length }})</span></h2>
+        <p class="text-xs text-slate-500 mt-0.5">Each group has an agent.conf the manager pushes to its agents.</p>
+      </div>
+      <div *ngIf="canUpgrade" class="flex items-center gap-2 w-full sm:w-auto">
         <label for="new-group" class="sr-only">New group name</label>
-        <input id="new-group" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono" placeholder="new-group-name"
+        <input id="new-group" class="flex-1 sm:w-48 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono" placeholder="new-group-name"
           [ngModel]="newGroupName()" (ngModelChange)="newGroupName.set($event)" (keyup.enter)="createGroup()" />
-        <button (click)="createGroup()" [disabled]="!newGroupName().trim()" class="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Create group</button>
+        <button type="button" (click)="createGroup()" [disabled]="!newGroupName().trim()" class="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">Create group</button>
       </div>
     </div>
-    <div *ngIf="groupFeedback()" class="mb-3 px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300">{{ groupFeedback() }}</div>
-    <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-900/40 text-xs text-slate-500">No groups (the Wazuh manager is not running).</div>
-    <div *ngIf="groups().length > 0" class="rounded-xl border border-slate-800 overflow-hidden">
-      <table class="w-full text-xs">
-        <thead class="bg-slate-950 text-slate-400 uppercase">
+    <div *ngIf="groupFeedback()" class="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300 break-words">{{ groupFeedback() }}</div>
+    <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No groups (the Wazuh manager is not running).</div>
+    <div *ngIf="groups().length > 0" class="rounded-xl border border-slate-800 overflow-x-auto nice-scroll">
+      <table class="w-full text-xs min-w-[420px]">
+        <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider">
           <tr><th class="text-left px-4 py-2">Group</th><th class="text-left px-4 py-2">Agents</th><th class="text-right px-4 py-2">Actions</th></tr>
         </thead>
         <tbody>
           <tr *ngFor="let g of groups()" class="border-t border-slate-800 text-slate-300">
-            <td class="px-4 py-2 font-mono">{{ g.name }}<span *ngIf="g.name === 'default'" class="text-slate-500"> (every tenant; platform admin only)</span></td>
-            <td class="px-4 py-2">{{ g.agents }}</td>
-            <td class="px-4 py-2 text-right space-x-2">
-              <button (click)="editGroupConf(g.name)" class="px-3 py-1 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 font-semibold">{{ g.editable ? 'Edit agent.conf' : 'View agent.conf' }}</button>
-              <button *ngIf="g.editable && g.name !== 'default'" (click)="deleteGroup(g.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold">Delete</button>
+            <td class="px-4 py-2.5 font-mono">{{ g.name }}<span *ngIf="g.name === 'default'" class="text-slate-500 font-sans"> (every tenant; platform admin only)</span></td>
+            <td class="px-4 py-2.5 font-mono">{{ g.agents }}</td>
+            <td class="px-4 py-2.5">
+              <div class="flex flex-wrap justify-end gap-2">
+                <button type="button" (click)="editGroupConf(g.name)" class="px-3 py-1 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 font-semibold whitespace-nowrap">{{ g.editable ? 'Edit agent.conf' : 'View agent.conf' }}</button>
+                <button type="button" *ngIf="g.editable && g.name !== 'default'" (click)="deleteGroup(g.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold">Delete</button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div *ngIf="editingGroup() as eg" class="mt-3 p-4 rounded-xl border border-slate-700 bg-slate-950 space-y-2">
-      <div class="flex items-center justify-between">
-        <label for="group-conf" class="text-xs font-semibold text-white">agent.conf of <span class="font-mono">{{ eg }}</span></label>
-        <button (click)="editingGroup.set(null)" class="text-xs text-slate-400 hover:text-white">Close</button>
+    <div *ngIf="editingGroup() as eg" class="p-4 rounded-xl border border-slate-700 bg-slate-950 space-y-2">
+      <div class="flex items-center justify-between gap-3">
+        <label for="group-conf" class="text-xs font-semibold text-white truncate">agent.conf of <span class="font-mono">{{ eg }}</span></label>
+        <button type="button" (click)="editingGroup.set(null)" class="text-xs text-slate-400 hover:text-white flex-none">Close</button>
       </div>
       <textarea id="group-conf" rows="16" spellcheck="false" [readonly]="!isGroupEditable(eg)"
-        class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-slate-100 font-mono"
+        class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs text-slate-100 font-mono nice-scroll"
         [ngModel]="groupConf()" (ngModelChange)="groupConf.set($event)"></textarea>
-      <div class="flex items-center gap-3">
-        <button *ngIf="isGroupEditable(eg)" (click)="saveGroupConf()" [disabled]="groupConfBusy()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Save and push to agents</button>
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <button type="button" *ngIf="isGroupEditable(eg)" (click)="saveGroupConf()" [disabled]="groupConfBusy()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">Save and push to agents</button>
         <span class="text-[11px] text-slate-500">Checked like the agent checks it (&lt;agent_config&gt; blocks; os/name/profile filters allowed). Agents pick it up on their next keepalive.</span>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- Deactivated agents: kept in the registry, stopped on the endpoint -->
-  <div class="mt-8">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wide">Deactivated agents ({{ deactivatedAgents().length }})</h2>
+  <!-- ── Deactivated agents: kept in the registry, stopped on the endpoint ── -->
+  <section class="panel p-4 sm:p-5 space-y-3" aria-labelledby="deact-title">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+      <h2 id="deact-title" class="text-sm font-semibold text-white">Deactivated agents <span class="text-slate-500 font-mono">({{ deactivatedAgents().length }})</span></h2>
       <span class="text-xs text-slate-500">Stopped on the endpoint; data is refused until reactivated.</span>
     </div>
-    <div *ngIf="deactivatedFeedback()" class="mb-3 px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300">{{ deactivatedFeedback() }}</div>
-    <div *ngIf="deactivatedAgents().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-900/40 text-xs text-slate-500">No deactivated agents.</div>
-    <div *ngIf="deactivatedAgents().length > 0" class="rounded-xl border border-slate-800 overflow-hidden">
-      <table class="w-full text-xs">
-        <thead class="bg-slate-950 text-slate-400 uppercase">
+    <div *ngIf="deactivatedFeedback()" class="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300 break-words">{{ deactivatedFeedback() }}</div>
+    <div *ngIf="deactivatedAgents().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No deactivated agents.</div>
+    <div *ngIf="deactivatedAgents().length > 0" class="rounded-xl border border-slate-800 overflow-x-auto nice-scroll">
+      <table class="w-full text-xs min-w-[560px]">
+        <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider">
           <tr><th class="text-left px-4 py-2">ID</th><th class="text-left px-4 py-2">Name</th><th class="text-left px-4 py-2">OS</th><th class="text-left px-4 py-2">Group</th><th class="text-right px-4 py-2">Actions</th></tr>
         </thead>
         <tbody>
           <tr *ngFor="let d of deactivatedAgents()" class="border-t border-slate-800 text-slate-300">
-            <td class="px-4 py-2 font-mono">{{ d.id }}</td>
-            <td class="px-4 py-2">{{ d.name }}</td>
-            <td class="px-4 py-2">{{ d.os_type || '—' }}</td>
-            <td class="px-4 py-2">{{ d.groups || '—' }}</td>
-            <td class="px-4 py-2 text-right space-x-2">
-              <button (click)="reactivateAgent(d.id, d.name)" class="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold">Reactivate</button>
-              <button (click)="deleteAgentPermanently(d.id, d.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold">Delete permanently</button>
+            <td class="px-4 py-2.5 font-mono">{{ d.id }}</td>
+            <td class="px-4 py-2.5">{{ d.name }}</td>
+            <td class="px-4 py-2.5">{{ d.os_type || '—' }}</td>
+            <td class="px-4 py-2.5">{{ d.groups || '—' }}</td>
+            <td class="px-4 py-2.5">
+              <div class="flex flex-wrap justify-end gap-2">
+                <button type="button" (click)="reactivateAgent(d.id, d.name)" class="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold">Reactivate</button>
+                <button type="button" (click)="deleteAgentPermanently(d.id, d.name)" class="px-3 py-1 rounded-lg border border-rose-700 text-rose-300 hover:bg-rose-950 font-semibold whitespace-nowrap">Delete permanently</button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-  </div>
+  </section>
+</div>
 
-  <!-- Agent Details Modal -->
-  <div *ngIf="selectedAgent()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-      <!-- Modal Header -->
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-        <div class="flex items-center gap-3">
-          <div class="p-2 bg-cyan-950 border border-cyan-800 rounded-lg text-cyan-400">
-            <lucide-angular [img]="MonitorIcon" class="w-5 h-5"></lucide-angular>
-          </div>
-          <div>
-            <h2 class="text-lg font-bold text-white">{{ selectedAgent()?.name }}</h2>
-            <p class="text-xs font-mono text-slate-400">Endpoint ID: {{ selectedAgent()?.id }} • {{ selectedAgent()?.ip }}</p>
-          </div>
+<!-- chart tooltip -->
+@if (tip(); as t) {
+  <div class="chart-tip" [style.left.px]="t.x" [style.top.px]="t.y" role="tooltip">{{ t.text }}</div>
+}
+
+<!-- ══ Agent details modal: full screen on phones, a centered panel from 640px ══ -->
+@if (selectedAgent(); as sa) {
+  <div class="fixed inset-0 z-[10001] bg-black/75 backdrop-blur-sm flex items-stretch sm:items-center justify-center sm:p-4" (click)="closeAgentDetails()">
+    <div data-agent-modal role="dialog" aria-modal="true" aria-labelledby="agent-modal-title" (click)="$event.stopPropagation()"
+      class="modal-card bg-slate-900 sm:border border-slate-700 sm:rounded-2xl w-full sm:max-w-5xl h-[100dvh] sm:h-[min(90dvh,900px)] flex flex-col overflow-hidden">
+
+      <!-- Header -->
+      <div class="px-4 sm:px-6 py-3.5 border-b border-slate-800 flex items-center gap-3 bg-slate-950/70 flex-none">
+        <div class="relative w-10 h-10 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 flex-none">
+          <lucide-angular [img]="sa.os_type === 'windows' ? MonitorIcon : sa.os_type === 'macos' ? LaptopIcon : TerminalIcon" class="w-5 h-5"></lucide-angular>
+          <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-slate-950"
+            [style.background]="sa.status === 'active' ? 'var(--st-good)' : sa.status === 'pending' ? 'var(--st-warning)' : 'var(--st-critical)'"></span>
         </div>
-
-        <button (click)="closeAgentDetails()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+        <div class="min-w-0 flex-1">
+          <h2 id="agent-modal-title" class="text-base sm:text-lg font-bold text-white truncate">{{ sa.name }}</h2>
+          <p class="text-xs font-mono text-slate-400 truncate">Agent {{ sa.id }} · {{ sa.ip }}</p>
+        </div>
+        <button type="button" (click)="closeAgentDetails()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 flex-none" aria-label="Close">
           <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
         </button>
       </div>
 
-      <!-- Action feedback alert -->
-      <div *ngIf="agentActionFeedback()" class="px-6 py-2 bg-cyan-950/60 border-b border-cyan-800 text-cyan-300 text-xs font-medium">
-        {{ agentActionFeedback() }}
+      <!-- Summary strip -->
+      @let srisk = getAgentRisk(sa);
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-800/70 border-b border-slate-800 flex-none text-xs">
+        <div class="bg-slate-900 px-4 py-2.5 min-w-0">
+          <div class="text-slate-500">Status</div>
+          <div class="font-semibold truncate" [class.text-emerald-300]="sa.status === 'active'" [class.text-rose-300]="sa.status === 'disconnected'" [class.text-amber-300]="sa.status === 'pending'"
+            [title]="getFormattedKeepalive(sa.last_keepalive)">
+            {{ sa.status === 'active' ? 'Online' : sa.status === 'pending' ? 'Never connected' : 'Disconnected' }} · {{ ago(sa.last_keepalive) }}</div>
+        </div>
+        <div class="bg-slate-900 px-4 py-2.5 min-w-0">
+          <div class="text-slate-500">Platform</div>
+          <div class="text-slate-200 truncate" [title]="sa.os">{{ sa.os || 'Not reported yet' }}</div>
+        </div>
+        <div class="bg-slate-900 px-4 py-2.5 min-w-0">
+          <div class="text-slate-500">Agent version</div>
+          <div class="font-mono truncate" [class.text-emerald-300]="agentCurrent(sa)" [class.text-amber-300]="!agentCurrent(sa)">{{ sa.version || '—' }}{{ sa.version && !agentCurrent(sa) ? ' (outdated)' : '' }}</div>
+        </div>
+        <div class="bg-slate-900 px-4 py-2.5 min-w-0">
+          <div class="text-slate-500">CVE risk</div>
+          <div class="font-mono truncate" [class.text-emerald-300]="srisk.score < 15" [class.text-amber-300]="srisk.score >= 15 && srisk.score < 40" [class.text-rose-300]="srisk.score >= 40">{{ srisk.score }} · {{ srisk.label }}</div>
+        </div>
       </div>
 
-      <!-- Detail Tabs -->
-      <div class="flex border-b border-slate-800 px-6 gap-2 bg-slate-950/40 text-sm">
-        <button 
-          (click)="selectTab('specs')" 
-          [class.border-cyan-400]="selectedAgentTab() === 'specs'"
-          [class.text-cyan-400]="selectedAgentTab() === 'specs'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Hardware & OS
-        </button>
-        <button 
-          (click)="selectTab('network_ports')" 
-          [class.border-cyan-400]="selectedAgentTab() === 'network_ports'"
-          [class.text-cyan-400]="selectedAgentTab() === 'network_ports'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Ports & Network
-        </button>
-        <button 
-          (click)="selectTab('users_services')" 
-          [class.border-cyan-400]="selectedAgentTab() === 'users_services'"
-          [class.text-cyan-400]="selectedAgentTab() === 'users_services'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Services & Software
-        </button>
-        <button 
-          (click)="selectTab('sca')" 
-          [class.border-cyan-400]="selectedAgentTab() === 'sca'"
-          [class.text-cyan-400]="selectedAgentTab() === 'sca'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          CIS SCA Compliance
-        </button>
-        <button
-          (click)="selectTab('fim')"
-          [class.border-cyan-400]="selectedAgentTab() === 'fim'"
-          [class.text-cyan-400]="selectedAgentTab() === 'fim'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          File Integrity
-        </button>
-        <button
-          (click)="selectTab('rootcheck')"
-          [class.border-cyan-400]="selectedAgentTab() === 'rootcheck'"
-          [class.text-cyan-400]="selectedAgentTab() === 'rootcheck'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Rootcheck
-        </button>
-        <button
-          (click)="selectTab('groups')"
-          [class.border-cyan-400]="selectedAgentTab() === 'groups'"
-          [class.text-cyan-400]="selectedAgentTab() === 'groups'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Groups
-        </button>
-        <button *ngIf="canUpgrade"
-          (click)="selectTab('upgrade')"
-          [class.border-cyan-400]="selectedAgentTab() === 'upgrade'"
-          [class.text-cyan-400]="selectedAgentTab() === 'upgrade'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Upgrade
-        </button>
-        <button 
-          (click)="selectTab('actions')" 
-          [class.border-cyan-400]="selectedAgentTab() === 'actions'"
-          [class.text-cyan-400]="selectedAgentTab() === 'actions'"
-          class="py-3 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-medium transition"
-        >
-          Agent Actions
-        </button>
-      </div>
-
-      <!-- Modal Body -->
-      <div class="p-6 overflow-y-auto space-y-4 text-sm text-slate-300">
-        <div *ngIf="inventoryLoading() && ['specs', 'network_ports', 'users_services'].includes(selectedAgentTab())" class="text-xs text-slate-500">Loading inventory…</div>
-        <div *ngIf="!inventoryLoading() && !selectedAgentInventory() && ['specs', 'network_ports', 'users_services'].includes(selectedAgentTab())"
-          class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-          This agent has not reported a system inventory yet. The agent sends it on its inventory schedule and when it starts (Agent Actions → Restart).
-        </div>
-
-        <!-- Specs Tab -->
-        <div *ngIf="selectedAgentTab() === 'specs' && selectedAgentInventory() as inv" class="space-y-4">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">CPU Cores</span>
-              <span class="text-lg font-bold text-white">{{ inv.cpu_cores }} Cores</span>
-            </div>
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">RAM Memory</span>
-              <span class="text-lg font-bold text-white">{{ (inv.ram_mb / 1024) | number:'1.0-1' }} GB</span>
-            </div>
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">Running Processes</span>
-              <span class="text-lg font-bold text-cyan-400">{{ inv.running_processes_count }}</span>
-            </div>
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">Listening Ports</span>
-              <span class="text-lg font-bold text-emerald-400">{{ inv.open_ports_count }}</span>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">Installed Packages</span>
-              <span class="text-lg font-bold text-white">{{ inv.installed_packages_count }}</span>
-            </div>
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">Services</span>
-              <span class="text-lg font-bold text-white">{{ inv.services_count }}</span>
-            </div>
-            <div class="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
-              <span class="text-xs text-slate-500 block">Local Users</span>
-              <span class="text-lg font-bold text-white">{{ inv.users_count }}</span>
-            </div>
-          </div>
-
-          <div class="bg-slate-950/70 p-4 rounded-lg border border-slate-800 space-y-2">
-            <h4 class="font-semibold text-white">Operating System Specifications</h4>
-            <div class="text-xs font-mono text-slate-400 bg-slate-900 p-2.5 rounded border border-slate-800">
-              {{ inv.os }} · host {{ inv.hostname }} · architecture {{ inv.arch }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Network Ports Tab -->
-        <div *ngIf="selectedAgentTab() === 'network_ports' && selectedAgentInventory() as inv" class="space-y-4">
-          <h4 class="font-semibold text-white">Active Listening Ports</h4>
-          <div class="grid grid-cols-2 gap-2">
-            <div *ngFor="let port of inv.listening_ports" class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-xs text-cyan-300">{{ port }}</div>
-          </div>
-          <h4 class="font-semibold text-white">Network Adapters</h4>
-          <div *ngFor="let a of inv.network_adapters" class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-xs text-slate-300">{{ a }}</div>
-        </div>
-
-        <!-- Services Tab -->
-        <div *ngIf="selectedAgentTab() === 'users_services' && selectedAgentInventory() as inv" class="space-y-4">
-          <h4 class="font-semibold text-white">Installed Software Packages ({{ inv.installed_packages_count }})</h4>
-          <div class="flex flex-wrap gap-2 max-h-56 overflow-y-auto">
-            <span *ngFor="let s of inv.installed_software" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ s }}</span>
-          </div>
-          <h4 class="font-semibold text-white">Active Services</h4>
-          <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-            <span *ngFor="let s of inv.active_services" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ s }}</span>
-          </div>
-          <h4 class="font-semibold text-white">Local Users</h4>
-          <div class="flex flex-wrap gap-2">
-            <span *ngFor="let u of inv.local_users" class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300">{{ u }}</span>
-          </div>
-        </div>
-
-        <!-- SCA Tab -->
-        <div *ngIf="selectedAgentTab() === 'sca'" class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h4 class="font-semibold text-white">CIS Security Configuration Benchmark Checks</h4>
-            <span class="text-[11px] text-slate-500">Runs on the agent's SCA schedule and at agent start</span>
-          </div>
-          <div *ngIf="scaSummary() as sca" class="text-xs text-slate-400">
-            Policy {{ sca.policy_id || '—' }} · score {{ sca.score | number:'1.0-1' }}% · {{ sca.passed }} passed · {{ sca.failed }} failed
-          </div>
-          <div *ngIf="selectedAgentScaChecks().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-            No SCA results from this agent yet. They arrive after the agent's next SCA scan (or restart the agent).
-          </div>
-          <div *ngFor="let check of selectedAgentScaChecks()" class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
-            <span class="text-xs text-slate-200">[{{ check.check_id }}] {{ check.title }}</span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-semibold border"
-              [class.bg-emerald-950]="isPassed(check.status)" [class.text-emerald-400]="isPassed(check.status)" [class.border-emerald-800]="isPassed(check.status)"
-              [class.bg-rose-950]="!isPassed(check.status)" [class.text-rose-400]="!isPassed(check.status)" [class.border-rose-800]="!isPassed(check.status)">
-              {{ check.status }}
-            </span>
-          </div>
-        </div>
-
-
-        <!-- FIM Tab -->
-        <div *ngIf="selectedAgentTab() === 'fim'" class="space-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <h4 class="font-semibold text-white">Monitored files and registry ({{ fimTotal() }})</h4>
-            <div class="flex gap-2">
-              <input class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs w-56" placeholder="Filter by path"
-                [ngModel]="fimFilter()" (ngModelChange)="fimFilter.set($event)" />
-              <button (click)="triggerAgentAction('fim_scan')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
-              <button (click)="loadFim(selectedAgent()!.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">Refresh</button>
-            </div>
-          </div>
-          <div *ngIf="fimLoading()" class="text-xs text-slate-500">Loading…</div>
-          <div *ngIf="!fimLoading() && fimEntries().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-            No FIM data from this agent yet. It is stored after the agent's first syscheck scan.
-          </div>
-          <div *ngIf="filteredFim().length > 0" class="overflow-x-auto max-h-96 rounded-lg border border-slate-800">
-            <table class="w-full text-xs">
-              <thead class="bg-slate-950 text-slate-400 sticky top-0">
-                <tr><th class="text-left p-2">Path</th><th class="text-left p-2">Type</th><th class="text-left p-2">Size</th><th class="text-left p-2">Owner</th><th class="text-left p-2">Modified</th><th class="text-left p-2">SHA1</th></tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let e of filteredFim()" class="border-t border-slate-800">
-                  <td class="p-2 font-mono text-slate-200 break-all">{{ e.arch ? e.arch + ' ' : '' }}{{ e.full_path }}{{ e.value_name ? ' → ' + e.value_name : '' }}</td>
-                  <td class="p-2 text-slate-400">{{ e.type }}</td>
-                  <td class="p-2 text-slate-400">{{ e.size ?? '—' }}</td>
-                  <td class="p-2 text-slate-400">{{ e.uname || '—' }}</td>
-                  <td class="p-2 text-slate-400">{{ e.mtime ? (e.mtime | date:'short') : '—' }}</td>
-                  <td class="p-2 font-mono text-slate-500">{{ e.sha1 ? (e.sha1 | slice:0:12) : '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Rootcheck Tab -->
-        <div *ngIf="selectedAgentTab() === 'rootcheck'" class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h4 class="font-semibold text-white">Rootcheck findings ({{ rootcheckEvents().length }})</h4>
-            <div class="flex gap-2">
-              <button (click)="runRootcheck()" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
-              <button (click)="loadRootcheck(selectedAgent()!.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">Refresh</button>
-            </div>
-          </div>
-          <div *ngIf="rootcheckLoading()" class="text-xs text-slate-500">Loading…</div>
-          <div *ngIf="!rootcheckLoading() && rootcheckEvents().length === 0" class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">
-            No rootcheck findings stored for this agent.
-          </div>
-          <div *ngFor="let ev of rootcheckEvents()" class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
-            <div class="text-xs text-slate-200">{{ ev.log }}</div>
-            <div class="text-[11px] text-slate-500">
-              First {{ ev.date_first | date:'short' }} · last {{ ev.date_last | date:'short' }}
-              <span *ngIf="ev.pci_dss"> · PCI DSS {{ ev.pci_dss }}</span><span *ngIf="ev.cis"> · CIS {{ ev.cis }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Groups Tab -->
-        <div *ngIf="selectedAgentTab() === 'groups'" class="space-y-3">
-          <h4 class="font-semibold text-white">Groups of this agent</h4>
-          <p class="text-xs text-slate-400">The agent applies the agent.conf of each group, in the order listed (later groups override earlier ones). No group means 'default'.</p>
-          <div class="space-y-1">
-            <label *ngFor="let g of groups()" class="flex items-center gap-2 text-xs text-slate-200">
-              <input type="checkbox" [disabled]="!canUpgrade" [ngModel]="agentGroupPick()[g.name]" (ngModelChange)="toggleAgentGroup(g.name, $event)" />
-              <span class="font-mono">{{ g.name }}</span>
-            </label>
-          </div>
-          <button *ngIf="canUpgrade" (click)="saveAgentGroups()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold">Save groups</button>
-          <div *ngIf="agentGroupFeedback()" class="text-xs text-cyan-300">{{ agentGroupFeedback() }}</div>
-        </div>
-
-        <!-- Upgrade Tab -->
-        <div *ngIf="selectedAgentTab() === 'upgrade' && canUpgrade" class="space-y-4">
-          <div class="text-xs text-slate-400">Current version: <span class="text-white font-mono">{{ selectedAgent()?.version || '—' }}</span></div>
-          <div class="flex gap-2">
-            <button (click)="upgradeMode.set('repo')" [class.border-cyan-500]="upgradeMode() === 'repo'" class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200">From the WPK repository</button>
-            <button (click)="upgradeMode.set('custom')" [class.border-cyan-500]="upgradeMode() === 'custom'" class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200">Custom WPK</button>
-          </div>
-          <div *ngIf="upgradeMode() === 'repo'" class="grid grid-cols-2 gap-3 text-xs">
-            <label class="space-y-1"><span class="text-slate-400">Version (empty = the manager's)</span>
-              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="v4.14.7" [ngModel]="upgradeVersion()" (ngModelChange)="upgradeVersion.set($event)" /></label>
-            <label class="space-y-1"><span class="text-slate-400">Repository (empty = packages.wazuh.com)</span>
-              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="packages.wazuh.com/4.x/wpk/" [ngModel]="upgradeRepo()" (ngModelChange)="upgradeRepo.set($event)" /></label>
-            <label class="space-y-1"><span class="text-slate-400">Linux package type</span>
-              <select class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100" [ngModel]="upgradePackageType()" (ngModelChange)="upgradePackageType.set($event)">
-                <option value="">Detect</option><option value="deb">deb</option><option value="rpm">rpm</option>
-              </select></label>
-            <div class="flex flex-col justify-end gap-2">
-              <label class="flex items-center gap-2 text-slate-300"><input type="checkbox" [ngModel]="upgradeForce()" (ngModelChange)="upgradeForce.set($event)" /> Force (same or older version, or newer than the manager)</label>
-              <label class="flex items-center gap-2 text-slate-300"><input type="checkbox" [ngModel]="upgradeUseHttp()" (ngModelChange)="upgradeUseHttp.set($event)" /> Use HTTP instead of HTTPS</label>
-            </div>
-          </div>
-          <div *ngIf="upgradeMode() === 'custom'" class="grid grid-cols-2 gap-3 text-xs">
-            <label class="space-y-1"><span class="text-slate-400">WPK file path on the manager</span>
-              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="/var/ossec/var/upgrade/agent.wpk" [ngModel]="upgradeFilePath()" (ngModelChange)="upgradeFilePath.set($event)" /></label>
-            <label class="space-y-1"><span class="text-slate-400">Installer in the package (empty = upgrade.bat / upgrade.sh)</span>
-              <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" [ngModel]="upgradeInstaller()" (ngModelChange)="upgradeInstaller.set($event)" /></label>
-          </div>
-          <button (click)="startUpgrade()" [disabled]="upgradeBusy() || selectedAgent()?.status !== 'active'" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Upgrade agent</button>
-          <span *ngIf="selectedAgent()?.status !== 'active'" class="text-[11px] text-amber-400 ml-2">The agent must be connected.</span>
-          <div *ngIf="upgradeFeedback()" class="text-xs text-cyan-300">{{ upgradeFeedback() }}</div>
-          <div class="p-3 rounded-lg border border-slate-800 bg-slate-950/70 text-xs space-y-1">
-            <div class="font-semibold text-white">Last upgrade task</div>
-            <div *ngIf="!upgradeTask()" class="text-slate-500">No upgrade task for this agent.</div>
-            <ng-container *ngIf="upgradeTask() as t">
-              <div>Status: <span class="font-semibold" [class.text-emerald-400]="t.status === 'Updated'" [class.text-rose-400]="t.status === 'Error' || t.status === 'Timeout'" [class.text-cyan-300]="t.status === 'Updating' || t.status === 'In queue'">{{ t.status }}</span>
-                <span class="text-slate-500"> · task {{ t.task_id }} · {{ t.command }}</span></div>
-              <div *ngIf="t.error_msg" class="text-rose-300">{{ t.error_msg }}</div>
-              <div class="text-slate-500">Created {{ t.create_time }}<span *ngIf="t.update_time"> · updated {{ t.update_time }}</span></div>
-            </ng-container>
-          </div>
-        </div>
-
-        <!-- Actions Tab -->
-        <div *ngIf="selectedAgentTab() === 'actions'" class="space-y-4">
-          <h4 class="font-semibold text-white">Remote Management & Diagnostic Dispatch</h4>
-          <p class="text-xs text-slate-500">Sent to the agent through the manager (remoted), as the Wazuh API does.</p>
-          <div class="grid grid-cols-2 gap-3">
-            <button (click)="triggerAgentAction('restart_agent')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
-              Restart Wazuh Agent Service
-            </button>
-            <button (click)="triggerAgentAction('fim_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left text-xs font-semibold text-white transition">
-              Run FIM + Rootcheck Scan Now
-            </button>
-          </div>
-          <p class="text-[11px] text-slate-500">SCA and inventory scans run on the agent's schedule and when it starts: restart the agent to run them now.</p>
-
-          <h4 class="font-semibold text-white pt-2">Agent Lifecycle</h4>
-          <button (click)="deactivateAgent(selectedAgent()!)" class="w-full p-3 bg-amber-950/40 hover:bg-amber-900/40 border border-amber-800 rounded-lg text-left text-xs font-semibold text-amber-200 transition">
-            Deactivate agent — stop monitoring on the endpoint (kept, can be reactivated)
+      <!-- Tabs (scroll sideways on narrow screens) -->
+      <nav class="tabs-scroll flex overflow-x-auto border-b border-slate-800 bg-slate-950/40 px-2 sm:px-4 flex-none" role="tablist" aria-label="Agent details">
+        @for (t of detailTabs(); track t.id) {
+          <button type="button" role="tab" [attr.data-agent-tab]="t.id" [attr.aria-selected]="selectedAgentTab() === t.id"
+            (click)="selectTab(t.id); $any($event.currentTarget).scrollIntoView({ block: 'nearest', inline: 'nearest' })"
+            class="flex items-center gap-2 py-3 px-3 border-b-2 text-sm font-medium whitespace-nowrap transition flex-none"
+            [class.border-cyan-400]="selectedAgentTab() === t.id" [class.text-cyan-300]="selectedAgentTab() === t.id"
+            [ngClass]="selectedAgentTab() !== t.id ? 'border-transparent text-slate-400 hover:text-slate-200' : ''">
+            <lucide-angular [img]="t.icon" class="w-4 h-4"></lucide-angular>
+            {{ t.label }}
           </button>
+        }
+      </nav>
 
-          <h4 class="font-semibold text-white pt-2">Host Firewall Containment</h4>
-          <div class="flex gap-2">
-            <input class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="IP address, e.g. 203.0.113.7"
-              [ngModel]="actionIp()" (ngModelChange)="actionIp.set($event)" />
-            <select class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockSeconds()" (ngModelChange)="blockSeconds.set(+$event)">
-              <option [ngValue]="600">10 min</option>
-              <option [ngValue]="3600">1 hour</option>
-              <option [ngValue]="86400">24 hours</option>
-            </select>
-            <select *ngIf="selectedAgent()?.os_type === 'windows'" aria-label="Block method" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockMethod()" (ngModelChange)="blockMethod.set($event)">
-              <option value="netsh">Firewall rule</option>
-              <option value="route-null">Null route</option>
-            </select>
-            <button (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Block IP</button>
+      <!-- Action feedback -->
+      @if (agentActionFeedback()) {
+        <div class="px-4 sm:px-6 py-2 bg-cyan-950/60 border-b border-cyan-800 text-cyan-200 text-xs font-medium flex-none break-words" role="status">{{ agentActionFeedback() }}</div>
+      }
+
+      <!-- Body: the only part that scrolls -->
+      <div data-modal-body class="flex-1 min-h-0 overflow-y-auto nice-scroll p-4 sm:p-6 text-sm text-slate-300">
+        @switch (selectedAgentTab()) {
+
+        @case ('specs') {
+          <div class="tab-panel space-y-4">
+            @if (inventoryLoading()) { <div class="text-xs text-slate-500">Loading inventory…</div> }
+            @else if (!selectedAgentInventory()) {
+              <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">This agent has not reported a system inventory yet. The agent sends it on its inventory schedule and when it starts (Response → Restart).</div>
+            } @else {
+              @let inv = selectedAgentInventory()!;
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                @for (m of [
+                  { k: 'CPU cores', v: inv.cpu_cores, c: 'text-white' },
+                  { k: 'Memory', v: ((inv.ram_mb / 1024) | number:'1.0-1') + ' GB', c: 'text-white' },
+                  { k: 'Running processes', v: inv.running_processes_count, c: 'text-cyan-300' },
+                  { k: 'Listening ports', v: inv.open_ports_count, c: 'text-emerald-300' },
+                  { k: 'Installed packages', v: inv.installed_packages_count, c: 'text-white' },
+                  { k: 'Services', v: inv.services_count, c: 'text-white' },
+                  { k: 'Local users', v: inv.users_count, c: 'text-white' },
+                  { k: 'Architecture', v: inv.arch || '—', c: 'text-white' }
+                ]; track m.k) {
+                  <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 rise min-w-0" [style.--i]="$index">
+                    <span class="text-[11px] text-slate-500 block truncate">{{ m.k }}</span>
+                    <span class="text-lg font-bold font-mono truncate block" [class]="m.c">{{ m.v }}</span>
+                  </div>
+                }
+              </div>
+              <div class="bg-slate-950/70 p-4 rounded-xl border border-slate-800 space-y-2">
+                <h4 class="font-semibold text-white">Operating system</h4>
+                <div class="text-xs font-mono text-slate-300 bg-slate-900 p-2.5 rounded-lg border border-slate-800 break-words">
+                  {{ inv.os }} · host {{ inv.hostname }} · {{ inv.arch }}
+                </div>
+              </div>
+              @if ((inv.running_processes || []).length) {
+                <div class="space-y-2">
+                  <h4 class="font-semibold text-white">Running processes <span class="text-slate-500 font-mono text-xs">({{ inv.running_processes.length }})</span></h4>
+                  <div class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto nice-scroll">
+                    @for (p of inv.running_processes; track $index) { <span class="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-slate-300 break-all">{{ p }}</span> }
+                  </div>
+                </div>
+              }
+            }
           </div>
-          <p class="text-[11px] text-slate-500">The agent drops the IP (firewall-drop on Linux; on Windows a netsh firewall rule or a null route) and removes the block when the time runs out.</p>
-        </div>
+        }
+
+        @case ('network_ports') {
+          <div class="tab-panel space-y-4">
+            @if (inventoryLoading()) { <div class="text-xs text-slate-500">Loading inventory…</div> }
+            @else if (!selectedAgentInventory()) {
+              <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">This agent has not reported a system inventory yet.</div>
+            } @else {
+              @let inv = selectedAgentInventory()!;
+              <h4 class="font-semibold text-white">Listening ports <span class="text-slate-500 font-mono text-xs">({{ inv.listening_ports.length }})</span></h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                @for (port of inv.listening_ports; track $index) { <div class="bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 font-mono text-xs text-cyan-300 break-all">{{ port }}</div> }
+                @empty { <div class="text-xs text-slate-500">None reported.</div> }
+              </div>
+              <h4 class="font-semibold text-white pt-1">Network adapters</h4>
+              <div class="space-y-2">
+                @for (a of inv.network_adapters; track $index) { <div class="bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 break-all">{{ a }}</div> }
+                @empty { <div class="text-xs text-slate-500">None reported.</div> }
+              </div>
+            }
+          </div>
+        }
+
+        @case ('users_services') {
+          <div class="tab-panel space-y-4">
+            @if (inventoryLoading()) { <div class="text-xs text-slate-500">Loading inventory…</div> }
+            @else if (!selectedAgentInventory()) {
+              <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">This agent has not reported a system inventory yet.</div>
+            } @else {
+              @let inv = selectedAgentInventory()!;
+              <h4 class="font-semibold text-white">Installed software <span class="text-slate-500 font-mono text-xs">({{ inv.installed_packages_count }})</span></h4>
+              <div class="flex flex-wrap gap-2 max-h-56 overflow-y-auto nice-scroll">
+                @for (s of inv.installed_software; track $index) { <span class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300 break-all">{{ s }}</span> }
+              </div>
+              <h4 class="font-semibold text-white">Active services</h4>
+              <div class="flex flex-wrap gap-2 max-h-48 overflow-y-auto nice-scroll">
+                @for (s of inv.active_services; track $index) { <span class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300 break-all">{{ s }}</span> }
+              </div>
+              <h4 class="font-semibold text-white">Local users</h4>
+              <div class="flex flex-wrap gap-2">
+                @for (u of inv.local_users; track $index) { <span class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-slate-300 break-all">{{ u }}</span> }
+              </div>
+            }
+          </div>
+        }
+
+        @case ('sca') {
+          <div class="tab-panel space-y-4">
+            @if (scaSummary(); as sca) {
+              <div class="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-950/70">
+                <div class="ring" [style.--p]="sca.score" [style.--ring]="sca.score >= 70 ? 'var(--st-good)' : sca.score >= 40 ? 'var(--st-warning)' : 'var(--st-critical)'" role="img" [attr.aria-label]="'Score ' + sca.score + '%'">
+                  <span class="text-sm font-bold font-mono text-white">{{ sca.score | number:'1.0-0' }}%</span>
+                </div>
+                <div class="min-w-0 flex-1 space-y-2">
+                  <div class="text-sm font-semibold text-white break-words">{{ sca.policy_name || 'CIS benchmark' }}</div>
+                  <div class="text-xs text-slate-500 break-words">Policy {{ sca.policy_id || '—' }}@if (sca.scanned_at) { · scanned {{ sca.scanned_at | date:'medium' }} } · runs on the agent's SCA schedule and at agent start</div>
+                  @let scaTotal = sca.passed + sca.failed + sca.not_applicable;
+                  @if (scaTotal) {
+                    <div class="track thick max-w-md">
+                      @for (p of [{ l: 'Passed', n: sca.passed, c: 'var(--st-good)' }, { l: 'Failed', n: sca.failed, c: 'var(--st-critical)' }, { l: 'Not applicable', n: sca.not_applicable, c: '#64748b' }]; track p.l) {
+                        @if (p.n) { <span class="seg" [style.--i]="$index" [style.width.%]="p.n * 100 / scaTotal" [style.background]="p.c"
+                          (mouseenter)="showTip($event, p.l + ': ' + p.n)" (mousemove)="showTip($event, p.l + ': ' + p.n)" (mouseleave)="hideTip()"></span> }
+                      }
+                    </div>
+                  }
+                  <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+                    <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: var(--st-good)"></span>{{ sca.passed }} passed</span>
+                    <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: var(--st-critical)"></span>{{ sca.failed }} failed</span>
+                    @if (sca.not_applicable) { <span class="inline-flex items-center gap-1.5"><span class="swatch" style="background: #64748b"></span>{{ sca.not_applicable }} not applicable</span> }
+                  </div>
+                </div>
+              </div>
+            }
+            @if (selectedAgentScaChecks().length === 0) {
+              <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">No SCA results from this agent yet. They arrive after the agent's next SCA scan (or restart the agent).</div>
+            } @else {
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="chip" [class.on]="scaFilter() === 'all'" (click)="scaFilter.set('all')">All</button>
+                  <button type="button" class="chip" [class.on]="scaFilter() === 'failed'" (click)="scaFilter.set('failed')">Failed</button>
+                  <button type="button" class="chip" [class.on]="scaFilter() === 'passed'" (click)="scaFilter.set('passed')">Passed</button>
+                </div>
+                <label for="sca-search" class="sr-only">Search checks</label>
+                <input id="sca-search" class="sm:ml-auto w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs" placeholder="Search checks by title or id"
+                  [ngModel]="scaQuery()" (ngModelChange)="scaQuery.set($event)" />
+              </div>
+              <div class="text-[11px] text-slate-500">{{ filteredSca().length }} check{{ filteredSca().length === 1 ? '' : 's' }} · select a check for its rationale and fix</div>
+              <div class="space-y-2">
+                @for (check of filteredSca(); track check.check_id) {
+                  <div class="rounded-lg border bg-slate-950 transition" [class.border-slate-800]="scaOpen() !== check.check_id" [class.border-cyan-800]="scaOpen() === check.check_id">
+                    <button type="button" class="w-full p-3 flex items-start justify-between gap-3 text-left" [attr.aria-expanded]="scaOpen() === check.check_id"
+                      (click)="scaOpen.set(scaOpen() === check.check_id ? null : check.check_id)">
+                      <span class="text-xs text-slate-200 min-w-0 break-words"><span class="font-mono text-slate-500">{{ check.check_id }}</span> {{ check.title }}</span>
+                      <span class="px-2 py-0.5 rounded text-[11px] font-semibold border flex-none whitespace-nowrap"
+                        [class.bg-emerald-950]="isPassed(check.status)" [class.text-emerald-300]="isPassed(check.status)" [class.border-emerald-800]="isPassed(check.status)"
+                        [class.bg-rose-950]="isFailed(check.status)" [class.text-rose-300]="isFailed(check.status)" [class.border-rose-800]="isFailed(check.status)"
+                        [class.text-slate-400]="!isPassed(check.status) && !isFailed(check.status)" [class.border-slate-700]="!isPassed(check.status) && !isFailed(check.status)">
+                        {{ check.status || 'Unknown' }}
+                      </span>
+                    </button>
+                    @if (scaOpen() === check.check_id) {
+                      <div class="px-3 pb-3 space-y-2 text-xs tab-panel">
+                        @if (check.rationale) { <div><div class="text-slate-500 font-semibold">Rationale</div><p class="text-slate-300 break-words whitespace-pre-line">{{ check.rationale }}</p></div> }
+                        @if (check.remediation) { <div><div class="text-slate-500 font-semibold">Remediation</div><p class="text-slate-300 break-words whitespace-pre-line">{{ check.remediation }}</p></div> }
+                        @if (check.reason) { <div><div class="text-slate-500 font-semibold">Reason</div><p class="text-slate-300 break-words">{{ check.reason }}</p></div> }
+                        @if (!check.rationale && !check.remediation && !check.reason) { <p class="text-slate-500">No details in the policy for this check.</p> }
+                      </div>
+                    }
+                  </div>
+                } @empty {
+                  <div class="text-xs text-slate-500">No checks match.</div>
+                }
+              </div>
+            }
+          </div>
+        }
+
+        @case ('fim') {
+          <div class="tab-panel space-y-3">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+              <h4 class="font-semibold text-white">Monitored files and registry <span class="text-slate-500 font-mono text-xs">({{ fimTotal() | number }})</span></h4>
+              <div class="flex flex-wrap gap-2">
+                <label for="fim-filter" class="sr-only">Filter by path</label>
+                <input id="fim-filter" class="flex-1 md:flex-none min-w-0 md:w-56 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs" placeholder="Filter by path"
+                  [ngModel]="fimFilter()" (ngModelChange)="fimFilter.set($event)" />
+                <button type="button" (click)="triggerAgentAction('fim_scan')" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950 whitespace-nowrap">Scan now</button>
+                <button type="button" (click)="loadFim(sa.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800">Refresh</button>
+              </div>
+            </div>
+            @if (fimLoading()) { <div class="text-xs text-slate-500">Loading…</div> }
+            @else if (fimEntries().length === 0) {
+              <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">No FIM data from this agent yet. It is stored after the agent's first syscheck scan.</div>
+            } @else {
+              @if (fimTotal() > fimEntries().length) { <div class="text-[11px] text-slate-500">The newest {{ fimEntries().length | number }} entries are shown.</div> }
+              <div class="overflow-auto nice-scroll max-h-[60dvh] rounded-lg border border-slate-800">
+                <table class="w-full text-xs min-w-[760px]">
+                  <thead class="bg-slate-950 text-slate-400 sticky top-0 z-10">
+                    <tr><th class="text-left p-2">Path</th><th class="text-left p-2">Type</th><th class="text-left p-2">Size</th><th class="text-left p-2">Owner</th><th class="text-left p-2">Modified</th><th class="text-left p-2">SHA1</th></tr>
+                  </thead>
+                  <tbody>
+                    @for (e of filteredFim(); track $index) {
+                      <tr class="border-t border-slate-800 hover:bg-slate-800/30">
+                        <td class="p-2 font-mono text-slate-200 break-all min-w-[280px]">{{ e.arch ? e.arch + ' ' : '' }}{{ e.full_path }}{{ e.value_name ? ' → ' + e.value_name : '' }}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">{{ e.type }}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">{{ e.size ?? '—' }}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">{{ e.uname || '—' }}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">{{ e.mtime ? (e.mtime | date:'short') : '—' }}</td>
+                        <td class="p-2 font-mono text-slate-500 whitespace-nowrap" [title]="e.sha1 || ''">{{ e.sha1 ? (e.sha1 | slice:0:12) : '—' }}</td>
+                      </tr>
+                    } @empty {
+                      <tr><td colspan="6" class="p-3 text-slate-500">No entries match the filter.</td></tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        }
+
+        @case ('rootcheck') {
+          <div class="tab-panel space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h4 class="font-semibold text-white">Rootcheck findings <span class="text-slate-500 font-mono text-xs">({{ rootcheckEvents().length }})</span></h4>
+              <div class="flex gap-2">
+                <button type="button" (click)="runRootcheck()" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
+                <button type="button" (click)="loadRootcheck(sa.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800">Refresh</button>
+              </div>
+            </div>
+            @if (rootcheckLoading()) { <div class="text-xs text-slate-500">Loading…</div> }
+            @else {
+              @for (ev of rootcheckEvents(); track $index) {
+                <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                  <div class="text-xs text-slate-200 break-words">{{ ev.log }}</div>
+                  <div class="text-[11px] text-slate-500">
+                    First {{ ev.date_first | date:'short' }} · last {{ ev.date_last | date:'short' }}
+                    @if (ev.pci_dss) { <span> · PCI DSS {{ ev.pci_dss }}</span> }@if (ev.cis) { <span> · CIS {{ ev.cis }}</span> }
+                  </div>
+                </div>
+              } @empty {
+                <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">No rootcheck findings stored for this agent.</div>
+              }
+            }
+          </div>
+        }
+
+        @case ('groups') {
+          <div class="tab-panel space-y-3">
+            <h4 class="font-semibold text-white">Groups of this agent</h4>
+            <p class="text-xs text-slate-400">The agent applies the agent.conf of each group, in the order listed (later groups override earlier ones). No group means 'default'.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              @for (g of groups(); track g.name) {
+                <label class="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 text-xs text-slate-200 min-w-0" [class.cursor-pointer]="canUpgrade">
+                  <input type="checkbox" [disabled]="!canUpgrade" [ngModel]="agentGroupPick()[g.name]" (ngModelChange)="toggleAgentGroup(g.name, $event)" />
+                  <span class="font-mono truncate">{{ g.name }}</span>
+                  <span class="ml-auto text-slate-500 flex-none">{{ g.agents }} agent{{ g.agents === 1 ? '' : 's' }}</span>
+                </label>
+              } @empty {
+                <div class="text-xs text-slate-500">No groups.</div>
+              }
+            </div>
+            @if (canUpgrade) { <button type="button" (click)="saveAgentGroups()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold">Save groups</button> }
+            @if (agentGroupFeedback()) { <div class="text-xs text-cyan-300 break-words">{{ agentGroupFeedback() }}</div> }
+          </div>
+        }
+
+        @case ('upgrade') {
+          @if (canUpgrade) {
+            <div class="tab-panel space-y-4">
+              <div class="text-xs text-slate-400">Current version: <span class="text-white font-mono">{{ sa.version || '—' }}</span> · manager <span class="font-mono">{{ managerVersion }}</span></div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="chip" [class.on]="upgradeMode() === 'repo'" (click)="upgradeMode.set('repo')">From the WPK repository</button>
+                <button type="button" class="chip" [class.on]="upgradeMode() === 'custom'" (click)="upgradeMode.set('custom')">Custom WPK</button>
+              </div>
+              @if (upgradeMode() === 'repo') {
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Version (empty = the manager's)</span>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="v4.14.7" [ngModel]="upgradeVersion()" (ngModelChange)="upgradeVersion.set($event)" /></label>
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Repository (empty = packages.wazuh.com)</span>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="packages.wazuh.com/4.x/wpk/" [ngModel]="upgradeRepo()" (ngModelChange)="upgradeRepo.set($event)" /></label>
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Linux package type</span>
+                    <select class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100" [ngModel]="upgradePackageType()" (ngModelChange)="upgradePackageType.set($event)">
+                      <option value="">Detect</option><option value="deb">deb</option><option value="rpm">rpm</option>
+                    </select></label>
+                  <div class="flex flex-col justify-end gap-2">
+                    <label class="flex items-start gap-2 text-slate-300"><input type="checkbox" class="mt-0.5" [ngModel]="upgradeForce()" (ngModelChange)="upgradeForce.set($event)" /> Force (same or older version, or newer than the manager)</label>
+                    <label class="flex items-start gap-2 text-slate-300"><input type="checkbox" class="mt-0.5" [ngModel]="upgradeUseHttp()" (ngModelChange)="upgradeUseHttp.set($event)" /> Use HTTP instead of HTTPS</label>
+                  </div>
+                </div>
+              } @else {
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">WPK file path on the manager</span>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="/var/ossec/var/upgrade/agent.wpk" [ngModel]="upgradeFilePath()" (ngModelChange)="upgradeFilePath.set($event)" /></label>
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Installer in the package (empty = upgrade.bat / upgrade.sh)</span>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" [ngModel]="upgradeInstaller()" (ngModelChange)="upgradeInstaller.set($event)" /></label>
+                </div>
+              }
+              <div class="flex flex-wrap items-center gap-3">
+                <button type="button" (click)="startUpgrade()" [disabled]="upgradeBusy() || sa.status !== 'active'" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Upgrade agent</button>
+                @if (sa.status !== 'active') { <span class="text-[11px] text-amber-300">The agent must be connected.</span> }
+              </div>
+              @if (upgradeFeedback()) { <div class="text-xs text-cyan-300 break-words">{{ upgradeFeedback() }}</div> }
+              <div class="p-3 rounded-lg border border-slate-800 bg-slate-950/70 text-xs space-y-1">
+                <div class="font-semibold text-white">Last upgrade task</div>
+                @if (upgradeTask(); as t) {
+                  <div>Status: <span class="font-semibold" [class.text-emerald-300]="t.status === 'Updated'" [class.text-rose-300]="t.status === 'Error' || t.status === 'Timeout'" [class.text-cyan-300]="t.status === 'Updating' || t.status === 'In queue'">{{ t.status }}</span>
+                    <span class="text-slate-500"> · task {{ t.task_id }} · {{ t.command }}</span></div>
+                  @if (t.error_msg) { <div class="text-rose-300 break-words">{{ t.error_msg }}</div> }
+                  <div class="text-slate-500">Created {{ t.create_time }}@if (t.update_time) { · updated {{ t.update_time }} }</div>
+                } @else {
+                  <div class="text-slate-500">No upgrade task for this agent.</div>
+                }
+              </div>
+            </div>
+          }
+        }
+
+        @case ('actions') {
+          <div class="tab-panel space-y-5">
+            <div class="space-y-2">
+              <h4 class="font-semibold text-white">Remote management</h4>
+              <p class="text-xs text-slate-500">Sent to the agent through the manager (remoted), as the Wazuh API does.</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button type="button" (click)="triggerAgentAction('restart_agent')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-800 rounded-xl text-left text-xs font-semibold text-white transition flex items-center gap-3">
+                  <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 flex-none"></lucide-angular> Restart the Wazuh agent service</button>
+                <button type="button" (click)="triggerAgentAction('fim_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-800 rounded-xl text-left text-xs font-semibold text-white transition flex items-center gap-3">
+                  <lucide-angular [img]="ScanIcon" class="w-4 h-4 text-cyan-400 flex-none"></lucide-angular> Run a FIM + rootcheck scan now</button>
+              </div>
+              <p class="text-[11px] text-slate-500">SCA and inventory scans run on the agent's schedule and when it starts: restart the agent to run them now.</p>
+            </div>
+
+            <div class="space-y-2">
+              <h4 class="font-semibold text-white">Host firewall containment</h4>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <label for="block-ip" class="sr-only">IP address to block</label>
+                <input id="block-ip" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="IP address, e.g. 203.0.113.7"
+                  [ngModel]="actionIp()" (ngModelChange)="actionIp.set($event)" />
+                <div class="flex gap-2">
+                  <select aria-label="Block duration" class="flex-1 sm:flex-none bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockSeconds()" (ngModelChange)="blockSeconds.set(+$event)">
+                    <option [ngValue]="600">10 min</option>
+                    <option [ngValue]="3600">1 hour</option>
+                    <option [ngValue]="86400">24 hours</option>
+                  </select>
+                  @if (sa.os_type === 'windows') {
+                    <select aria-label="Block method" class="flex-1 sm:flex-none bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 text-xs" [ngModel]="blockMethod()" (ngModelChange)="blockMethod.set($event)">
+                      <option value="netsh">Firewall rule</option>
+                      <option value="route-null">Null route</option>
+                    </select>
+                  }
+                  <button type="button" (click)="blockIpOnAgent()" [disabled]="!validIp(actionIp())" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">Block IP</button>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500">The agent drops the IP (firewall-drop on Linux; on Windows a netsh firewall rule or a null route) and removes the block when the time runs out.</p>
+            </div>
+
+            @if (sa.os_type === 'windows') {
+              <div class="space-y-3">
+                <div>
+                  <h4 class="font-semibold text-white">Endpoint response (EDR)</h4>
+                  <p class="text-[11px] text-slate-500 mt-1">Each action is recorded as a decision; protected hosts are refused. Critical Windows processes, Windows files and the agent itself are never touched.</p>
+                </div>
+
+                <div class="space-y-1.5">
+                  <label for="edr-pid" class="block text-xs text-slate-400">Kill a process</label>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input id="edr-pid" class="sm:w-28 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="PID"
+                      [ngModel]="edrPid()" (ngModelChange)="edrPid.set($event)" />
+                    <input aria-label="Process image (optional)" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="Image path (optional, checked before the kill)"
+                      [ngModel]="edrImage()" (ngModelChange)="edrImage.set($event)" />
+                    <button type="button" (click)="killProcess()" [disabled]="!(+edrPid() > 4)" class="px-4 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold disabled:opacity-40">Kill</button>
+                  </div>
+                </div>
+
+                <div class="space-y-1.5">
+                  <label for="edr-path" class="block text-xs text-slate-400">Scan or quarantine a file</label>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input id="edr-path" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="C:\Users\...\file.exe"
+                      [ngModel]="edrPath()" (ngModelChange)="edrPath.set($event)" />
+                    <div class="flex gap-2">
+                      <button type="button" (click)="edrAction('yara_scan', { path: edrPath().trim() })" [disabled]="!edrPath().trim()" title="Scan with the YARA rules (a match becomes an alert)" class="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold disabled:opacity-40 whitespace-nowrap">YARA scan</button>
+                      <button type="button" (click)="quarantineFile()" [disabled]="!edrPath().trim()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-40">Quarantine</button>
+                    </div>
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <input aria-label="Quarantine id" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs" placeholder="Quarantine id (from the quarantine event)"
+                      [ngModel]="edrQuarantineId()" (ngModelChange)="edrQuarantineId.set($event)" />
+                    <button type="button" (click)="restoreFile()" [disabled]="!edrQuarantineId().trim()" class="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-200 text-xs font-semibold disabled:opacity-40">Restore</button>
+                  </div>
+                </div>
+
+                <div class="space-y-1.5">
+                  <div class="text-xs text-slate-400">Network isolation</div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button type="button" (click)="isolateHost()" class="p-3 bg-rose-950/40 hover:bg-rose-900/40 border border-rose-800 rounded-xl text-left text-xs font-semibold text-rose-200 transition">Isolate host (only the manager stays reachable)</button>
+                    <button type="button" (click)="edrAction('release_host', {})" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-left text-xs font-semibold text-white transition">Release isolation</button>
+                  </div>
+                </div>
+              </div>
+            }
+
+            <div class="space-y-2">
+              <h4 class="font-semibold text-white">Agent lifecycle</h4>
+              <button type="button" (click)="deactivateAgent(sa)" class="w-full p-3 bg-amber-950/40 hover:bg-amber-900/40 border border-amber-800 rounded-xl text-left text-xs font-semibold text-amber-200 transition flex items-center gap-3">
+                <lucide-angular [img]="PowerIcon" class="w-4 h-4 flex-none"></lucide-angular>
+                Deactivate the agent: stops monitoring on the endpoint (kept, can be reactivated)
+              </button>
+            </div>
+          </div>
+        }
+        }
       </div>
     </div>
   </div>
+}
 
-  <!-- End of Agents Page Content -->
-</div>
-
-<!-- Deploy Agent Wizard Modal (Cyber Glassmorphism - Full Viewport) -->
-<div *ngIf="showDeployModal()" 
-     class="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 md:p-6" 
-     (click)="showDeployModal.set(false)">
-  <div class="cyber-modal-card bg-slate-900/98 border border-cyan-500/40 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto" 
-       (click)="$event.stopPropagation()">
-    <!-- Modal Header -->
-    <div class="px-5 py-3.5 sm:px-6 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-md shrink-0">
+<!-- ══ Enroll agent modal ══ -->
+@if (showDeployModal()) {
+  <div class="fixed inset-0 z-[10001] bg-black/80 backdrop-blur-md flex items-stretch sm:items-center justify-center sm:p-4 md:p-6" (click)="showDeployModal.set(false)">
+    <div class="modal-card bg-slate-900 sm:border border-cyan-500/40 sm:rounded-2xl w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col overflow-hidden"
+      role="dialog" aria-modal="true" aria-labelledby="deploy-modal-title" (click)="$event.stopPropagation()">
+      <div class="px-4 py-3.5 sm:px-6 sm:py-4 border-b border-slate-800 flex items-center gap-3 bg-slate-950/90 flex-none">
+        <div class="w-9 h-9 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 flex-none">
           <lucide-angular [img]="PlusIcon" class="w-5 h-5"></lucide-angular>
         </div>
-        <div>
-          <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            Enroll New Endpoint Agent
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">v4.7.2</span>
+        <div class="min-w-0 flex-1">
+          <h2 id="deploy-modal-title" class="text-base sm:text-lg font-bold text-white flex flex-wrap items-center gap-2">
+            Enroll a new agent
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">Wazuh {{ managerVersion }}</span>
           </h2>
-          <p class="text-xs text-slate-400">Enrolls on first run, generates cryptographic keys, and joins this tenant fleet.</p>
+          <p class="text-xs text-slate-400">The agent enrolls on first run, gets its key and joins this tenant's fleet.</p>
         </div>
+        <button type="button" (click)="showDeployModal.set(false)" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition flex-none" aria-label="Close">
+          <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
+        </button>
       </div>
-      <button (click)="showDeployModal.set(false)" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
-        <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
-      </button>
-    </div>
-
-    <div class="p-4 sm:p-6 overflow-y-auto space-y-5 text-sm flex-1 custom-modal-scroll">
-      <!-- 1. Operating system selector -->
-      <div>
-        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-          <span class="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 text-[11px] flex items-center justify-center font-bold">1</span>
-          Target Operating System
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button 
-            (click)="selectDeployOs('linux')" 
-            [class.border-cyan-400]="deployOs() === 'linux'" 
-            [class.bg-cyan-950\/60]="deployOs() === 'linux'"
-            [class.shadow-\[0_0_15px_rgba\(6\,182\,212\,0\.25\)\]]="deployOs() === 'linux'"
-            class="p-3 sm:p-3.5 rounded-xl border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition"
-          >
-            <div class="text-sm font-bold text-white flex items-center justify-center gap-2">
-              <lucide-angular [img]="TerminalIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
-              Linux
-            </div>
-            <span class="block text-[11px] font-normal text-slate-400 mt-1">install.sh (Ubuntu, Debian, RHEL)</span>
-          </button>
-
-          <button 
-            (click)="selectDeployOs('windows')" 
-            [class.border-cyan-400]="deployOs() === 'windows'" 
-            [class.bg-cyan-950\/60]="deployOs() === 'windows'"
-            [class.shadow-\[0_0_15px_rgba\(6\,182\,212\,0\.25\)\]]="deployOs() === 'windows'"
-            class="p-3 sm:p-3.5 rounded-xl border border-slate-800 text-center font-semibold text-white hover:border-slate-700 transition"
-          >
-            <div class="text-sm font-bold text-white flex items-center justify-center gap-2">
-              <lucide-angular [img]="MonitorIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
-              Windows
-            </div>
-            <span class="block text-[11px] font-normal text-slate-400 mt-1">PowerShell / 1-Click .BAT</span>
-          </button>
-
-          <button 
-            (click)="selectDeployOs('macos')" 
-            [class.border-cyan-400]="deployOs() === 'macos'" 
-            [class.bg-cyan-950\/60]="deployOs() === 'macos'"
-            class="p-3 sm:p-3.5 rounded-xl border border-slate-800 text-center font-semibold text-slate-400 hover:border-slate-700 transition opacity-60"
-          >
-            <div class="text-sm font-bold flex items-center justify-center gap-2">
-              macOS
-            </div>
-            <span class="block text-[11px] font-normal text-slate-500 mt-1">Coming soon</span>
-          </button>
-        </div>
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 nice-scroll" data-modal-body>
+        <app-agent-deploy [closable]="true" (closed)="showDeployModal.set(false)"></app-agent-deploy>
       </div>
-
-      <div *ngIf="deployOs() === 'macos'" class="p-4 rounded-xl border border-amber-700/50 bg-amber-950/30 text-amber-200 text-xs">
-        There is no macOS agent build on this manager yet. Use a Linux or Windows endpoint.
-      </div>
-
-      <ng-container *ngIf="deployOs() !== 'macos'">
-        <!-- 2. Settings -->
-        <div>
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-            <span class="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 text-[11px] flex items-center justify-center font-bold">2</span>
-            Agent Configuration
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <label class="block">
-              <span class="text-xs text-slate-300 font-medium">Manager URL (Reachable LAN Address)</span>
-              <input class="mt-1.5 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-500 transition"
-                [ngModel]="deployManagerUrl()" (ngModelChange)="deployManagerUrl.set($event)" />
-              <span *ngIf="deployManagerLoopback()" class="block mt-1 text-xs text-amber-400">
-                ⚠️ This address only works when the agent runs on this same machine. For remote endpoints, use your LAN IP (e.g. 192.168.x.x).
-              </span>
-            </label>
-
-            <label class="block">
-              <span class="text-xs text-slate-300 font-medium">Agent Name</span>
-              <div class="mt-1.5 flex gap-2">
-                <input class="flex-1 bg-slate-950 border rounded-lg px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500 transition"
-                  [class.border-slate-800]="deployNameValid()" [class.border-red-600]="!deployNameValid()"
-                  [ngModel]="deployAgentName()" (ngModelChange)="deployAgentName.set($event)" />
-                <button (click)="regenerateAgentName()" title="Generate a new randomized hostname"
-                  class="px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition">
-                  <lucide-angular [img]="RefreshIcon" class="w-4 h-4"></lucide-angular>
-                </button>
-              </div>
-              <span *ngIf="!deployNameValid()" class="text-[11px] text-red-400 mt-1 block">2-128 characters: letters, digits, '.', '_', '-'.</span>
-              <span *ngIf="deployNameValid() && deployNameTaken()" class="text-[11px] text-amber-400 mt-1 block">
-                An agent with this name exists: installing re-enrolls it and keeps its agent id.
-              </span>
-            </label>
-
-            <label class="block">
-              <span class="text-xs text-slate-300 font-medium">Agent Group</span>
-              <select class="mt-1.5 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500 transition"
-                [ngModel]="deployGroup()" (ngModelChange)="deployGroup.set($event)">
-                <option value="default">default</option>
-                <ng-container *ngFor="let g of groups()"><option *ngIf="g.name !== 'default'" [value]="g.name">{{ g.name }}</option></ng-container>
-              </select>
-            </label>
-
-            <div class="block">
-              <span class="text-xs text-slate-300 font-medium">Tenant Enrolment Key</span>
-              <div class="mt-1.5 px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 font-mono text-xs flex items-center justify-between"
-                [class.text-emerald-300]="deployTenantKey()" [class.text-amber-300]="!deployTenantKey()">
-                <span>{{ deployTenantKey() ? ('tenant ' + deployTenantId() + ' · ' + deployTenantKey().slice(0, 12) + '…') : (deployKeyError() || 'loading…') }}</span>
-                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">AES KEY</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Windows install mode -->
-        <div *ngIf="deployOs() === 'windows'">
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <span class="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 text-[11px] flex items-center justify-center font-bold">3</span>
-            Execution Privilege
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button (click)="winInstallMode.set('auto-elevate')" 
-              [class.border-cyan-500]="winInstallMode() === 'auto-elevate'"
-              [class.bg-cyan-950\/40]="winInstallMode() === 'auto-elevate'"
-              class="p-2.5 rounded-lg border border-slate-800 text-white text-xs font-semibold text-left transition">
-              Auto-Elevate (Recommended)
-              <span class="block font-normal text-slate-400 text-[11px] mt-0.5">Run from any PowerShell; prompts UAC</span>
-            </button>
-            <button (click)="winInstallMode.set('admin-ps')" 
-              [class.border-cyan-500]="winInstallMode() === 'admin-ps'"
-              [class.bg-cyan-950\/40]="winInstallMode() === 'admin-ps'"
-              class="p-2.5 rounded-lg border border-slate-800 text-white text-xs font-semibold text-left transition">
-              Admin PowerShell
-              <span class="block font-normal text-slate-400 text-[11px] mt-0.5">Paste into an already-elevated shell</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 3. Install command with copy -->
-        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/90 space-y-2.5 shadow-inner">
-          <div class="flex justify-between items-center gap-2">
-            <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <lucide-angular [img]="TerminalIcon" class="w-4 h-4 text-cyan-400"></lucide-angular>
-              Execute on Endpoint {{ deployOs() === 'windows' ? '(PowerShell)' : '(Bash / sudo)' }}
-            </span>
-            <button 
-              (click)="copyInstallCommand()" 
-              [disabled]="!deployInstallCommand()" 
-              [class.bg-emerald-600]="copied()"
-              [class.text-white]="copied()"
-              [class.border-emerald-500]="copied()"
-              [class.shadow-\[0_0_12px_#10b981\]]="copied()"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cyan-950 hover:bg-cyan-900 text-xs font-bold text-cyan-300 border border-cyan-800 transition disabled:opacity-40 shrink-0"
-            >
-              <lucide-angular [img]="copied() ? CheckIcon : CopyIcon" class="w-3.5 h-3.5"></lucide-angular>
-              {{ copied() ? '✓ Copied!' : 'Copy Command' }}
-            </button>
-          </div>
-          <pre class="p-3 bg-slate-900/90 border border-slate-800 rounded-lg font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap break-all select-all">{{ deployInstallCommand() || 'Fix the agent name to generate the command.' }}</pre>
-        </div>
-
-        <!-- 4. Start / status command with copy -->
-        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/90 space-y-2.5 shadow-inner">
-          <div class="flex justify-between items-center gap-2">
-            <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <lucide-angular [img]="PlayIcon" class="w-4 h-4 text-indigo-400"></lucide-angular>
-              Start Service / Verify Status
-            </span>
-            <button 
-              (click)="copyStartCommand()" 
-              [class.bg-emerald-600]="copiedStart()"
-              [class.text-white]="copiedStart()"
-              [class.border-emerald-500]="copiedStart()"
-              [class.shadow-\[0_0_12px_#10b981\]]="copiedStart()"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition shrink-0"
-            >
-              <lucide-angular [img]="copiedStart() ? CheckIcon : CopyIcon" class="w-3.5 h-3.5"></lucide-angular>
-              {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
-            </button>
-          </div>
-          <pre class="p-3 bg-slate-900/90 border border-slate-800 rounded-lg font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap select-all">{{ deployStartCommand() }}</pre>
-        </div>
-
-        <!-- 1-Click Downloads & Actions -->
-        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-          <div class="flex items-center gap-2">
-            <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployNameValid()"
-              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/30 transition disabled:opacity-40">
-              <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
-              Download 1-Click install.bat
-            </button>
-            <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployNameValid()"
-              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/30 transition disabled:opacity-40">
-              <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
-              Download install.sh Script
-            </button>
-          </div>
-
-          <button (click)="showDeployModal.set(false)" class="px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition">
-            Close Window
-          </button>
-        </div>
-      </ng-container>
     </div>
   </div>
-</div>
+}

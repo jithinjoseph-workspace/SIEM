@@ -47,8 +47,19 @@ pub async fn generate(providers: &[Provider], system: &str, prompt: &str) -> Res
     chat(providers, system, &[Message { role: "user".into(), content: prompt.into() }]).await
 }
 
+/// As `generate`, for a long answer (a parser, a rule): reasoning models spend part of
+/// the budget thinking before they write, and an answer cut short comes back empty.
+pub async fn generate_long(providers: &[Provider], system: &str, prompt: &str, max_tokens: u32) -> Result<Reply, String> {
+    chat_with(providers, system, &[Message { role: "user".into(), content: prompt.into() }], max_tokens, true).await
+}
+
 /// A conversation; the first provider (by priority) that answers wins.
 pub async fn chat(providers: &[Provider], system: &str, messages: &[Message]) -> Result<Reply, String> {
+    chat_with(providers, system, messages, MAX_TOKENS, false).await
+}
+
+/// `brief_first`: ask reasoning models to think briefly from the start (a long answer).
+async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], max_tokens: u32, brief_first: bool) -> Result<Reply, String> {
     let mut ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty()).collect();
     if ps.is_empty() {
         return Err("No AI provider is configured (Settings > AI Configuration)".into());
@@ -56,8 +67,21 @@ pub async fn chat(providers: &[Provider], system: &str, messages: &[Message]) ->
     ps.sort_by_key(|p| p.priority);
     let mut last = String::new();
     for p in ps {
-        match call(p, system, messages).await {
-            Ok(t) if !t.trim().is_empty() => return Ok(Reply { text: t.trim().to_string(), model: model_of(p) }),
+        // `reasoning_effort` (OpenAI-format APIs): a reasoning model that thinks until the
+        // budget runs out answers nothing; a model without the option refuses the call
+        let openai = p.provider_type != "anthropic";
+        let brief = brief_first && openai;
+        let mut r = call(p, system, messages, max_tokens, brief).await;
+        if brief && r.is_err() {
+            r = call(p, system, messages, max_tokens, false).await;
+        } else if !brief && openai && matches!(&r, Ok((t, stop)) if t.trim().is_empty() && stop == "length") {
+            if let Ok(again) = call(p, system, messages, max_tokens, true).await {
+                r = Ok(again);
+            }
+        }
+        match r {
+            Ok((t, _)) if !t.trim().is_empty() => return Ok(Reply { text: t.trim().to_string(), model: model_of(p) }),
+            Ok((_, stop)) if stop == "length" || stop == "max_tokens" => last = format!("{}: empty reply, cut at {max_tokens} tokens", p.name),
             Ok(_) => last = format!("{}: empty reply", p.name),
             Err(e) => last = format!("{}: {e}", p.name),
         }
@@ -75,7 +99,8 @@ fn model_of(p: &Provider) -> String {
     }
 }
 
-async fn call(p: &Provider, system: &str, messages: &[Message]) -> Result<String, String> {
+/// The answer's text and why it stopped (`length` / `max_tokens`: the budget ran out).
+async fn call(p: &Provider, system: &str, messages: &[Message], max_tokens: u32, brief: bool) -> Result<(String, String), String> {
     let http = reqwest::Client::builder().timeout(TIMEOUT).build().map_err(|e| e.to_string())?;
     let model = model_of(p);
     let msgs: Vec<Value> = messages.iter().map(|m| json!({ "role": if m.role == "assistant" { "assistant" } else { "user" }, "content": m.content })).collect();
@@ -86,7 +111,7 @@ async fn call(p: &Provider, system: &str, messages: &[Message]) -> Result<String
             .post(format!("{base}{path}"))
             .header("x-api-key", &p.api_key)
             .header("anthropic-version", "2023-06-01")
-            .json(&json!({ "model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": msgs }))
+            .json(&json!({ "model": model, "max_tokens": max_tokens, "system": system, "messages": msgs }))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -95,7 +120,7 @@ async fn call(p: &Provider, system: &str, messages: &[Message]) -> Result<String
         if !status.is_success() {
             return Err(format!("HTTP {status}: {}", v["error"]["message"].as_str().unwrap_or("")));
         }
-        return Ok(v["content"][0]["text"].as_str().unwrap_or("").to_string());
+        return Ok((v["content"][0]["text"].as_str().unwrap_or("").to_string(), v["stop_reason"].as_str().unwrap_or("").to_string()));
     }
     let base = if p.base_url.is_empty() { "https://api.openai.com" } else { p.base_url.trim_end_matches('/') };
     let path = if p.endpoint_path.is_empty() { "/v1/chat/completions" } else { p.endpoint_path.as_str() };
@@ -104,7 +129,13 @@ async fn call(p: &Provider, system: &str, messages: &[Message]) -> Result<String
     let r = http
         .post(format!("{base}{path}"))
         .bearer_auth(&p.api_key)
-        .json(&json!({ "model": model, "temperature": 0.1, "max_tokens": MAX_TOKENS, "messages": all }))
+        .json(&{
+            let mut b = json!({ "model": model, "temperature": 0.1, "max_tokens": max_tokens, "messages": all });
+            if brief {
+                b["reasoning_effort"] = json!("low");
+            }
+            b
+        })
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -113,7 +144,7 @@ async fn call(p: &Provider, system: &str, messages: &[Message]) -> Result<String
     if !status.is_success() {
         return Err(format!("HTTP {status}: {}", v["error"]["message"].as_str().unwrap_or("")));
     }
-    Ok(v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string())
+    Ok((v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string(), v["choices"][0]["finish_reason"].as_str().unwrap_or("").to_string()))
 }
 
 /// Attacker-controlled text (log lines, alert fields) for a prompt: cut to

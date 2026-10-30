@@ -198,6 +198,187 @@ Live-tested 2026-10-25 (71 API checks across 4 roles on tenants default + acm, a
   share, since detection is the ruleset plus the LLM); hub-to-hub federation; revoking
   fingerprints already published.
 
+## 1f. Neurosymbolic decision engine — built 2026-10-25
+
+Crate siem-decision + siem-api decisions.rs. Before a high-impact action the AI's
+evidence (triage verdict/confidence; origin "neural" only when an AI model produced it)
+and the alert's context become facts, and the tenant's policy decides: deny > needs
+approval > allow; a rule with a missing fact holds the action (fail-safe). Gated now:
+SOAR `block_ip` (soar.rs run_playbooks) and hiding alerts from triage (triage.rs apply).
+Hard guardrails (G1 no internal IPs, G2 protected list, G3 blocks/hour, G4 no level 12+
+hidden, G5 no AI-suspicious hidden, R1 four eyes, R2 24 h expiry) can't be removed;
+P1-P5 thresholds are the tenant admin's (AI Guardrails page). Every decision, review
+and policy change is a record (facts, rules, every comparison, outcome) in the tenant's
+hash-chained `siem_decisions`; `/verify` re-derives each record, `/export` gives
+auditors the chain with how to check it. Repeated requests for the same target while
+one is waiting make one request. Tests: `decisions_end_to_end` (`--ignored`); live-tested
+through analysisd -> SOAR (43 checks) and in the browser.
+Manual operator blocks are recorded too (`manual_block`; G2 applies, G1 does not: an
+operator may contain an internal host). G3 and the request merge are read from
+`siem_decisions` under one lock (no in-memory state; concurrent alerts and two admins
+reviewing at once are serialized). The head is anchored in `data/decision_anchors.json`
+(env `SIEM_DECISION_ANCHORS`), so `/verify` also finds records removed from the end.
+SOAR notifications (Slack, e-mail…) are not gated: low impact.
+- **Keeper metadata loss (fixed 2026-10-25):** Keeper started over on 2026-10-20, so the
+  43 Replicated* tables created before (all of `ndr_acm`, `ndr.ndr_events`, `ndr.ndr_hits`)
+  were read-only. siem-api now runs `SYSTEM RESTORE REPLICA` on such tables at startup
+  (`db::restore_lost_replicas`, test `lost_replica_metadata_is_restored`). Backup taken
+  first: database `replica_backup_20261025` (47 rows; drop it once you are satisfied).
+
+## 1g. Agent deployment, threat intel, investigation — built 2026-10-26 (branch ui-changes)
+
+- **Agent deployment:** the enrollment wizard is one component (`components/agent-deploy`),
+  on the analyst Agents page and the tenant admin's new Agent Deployment page. The
+  enrolment key (`/api/v1/tenant/agent-key`) needs the tenant admin or the new
+  `siem-agent-deploy` permission ("Deploy Agents" on Users); the SIEM suite does not
+  grant it and new analysts do not get it by default.
+- **Threat intel** (intel.rs): provigil-common's collector (CISA KEV, Emerging Threats,
+  Feodo, URLhaus, ThreatFox, Spamhaus) into `siem_threat_intel` in one INSERT per feed,
+  every 6 h, plus its blocklist engine hourly. Feed hits set SOAR `is_malicious`, so the
+  `threat_intel` playbook condition and the decision engine's `intel.malicious` see them.
+  URLhaus/ThreatFox APIs now need a free abuse.ch key: `ABUSECH_AUTH_KEY` (AbuseIPDB /
+  OTX: `ABUSEIPDB_API_KEY` / `OTX_API_KEY`). Page: analyst Threat Intel.
+- **Investigation** (investigate.rs, analyst page): one IP / host / user / hash / domain
+  across alerts, events, intel, swarm, SOAR cases + runs, AI decisions, triage,
+  suppressions, host inventory + vulnerabilities (CISA KEV marked), security memory.
+- **Maps** (geomap.rs): `/api/threat-map` (tenant's alert sources, 7 days), `/api/admin/threat-map-all-tenants`
+  (super admin) and `/api/threat-intel-map` (the feeds' IPs and ranges) are real data, placed with
+  provigil-common's GeoLite2 lookup (`GEOIP_CITY_DB`, else data/, else the NDR engine's copy); nothing
+  is sent to an outside geo service. They replaced built-in sample countries and a map that put every
+  attacker in the US (and answered in a format the page could not read).
+- **Network response** (response.rs): SOAR `block_ip` blocks on the agent and/or pushes to the
+  tenant's firewall (pfSense, FortiGate, PAN-OS, OPNsense, REST) and cloud (AWS SG, Azure NSG,
+  GCP VPC) integrations via provigil-common, public IPs only, expiring (swept every minute);
+  new `isolate_host` moves the agent's host to a quarantine VLAN on a switch integration
+  (UniFi, Cisco, Aruba, SNMP), else cloud deny; ARP isolation needs an NDR sensor and is refused.
+  Both pass the decision engine (`gate_network`; manual ones `gate_manual`): new guardrails deny
+  protected or public targets, cap isolations per hour (`max_isolations_per_hour`, 2) and hold
+  weak evidence (`min_level_auto_isolate`, 12). Pages: `/api/blocks`, `/api/isolations`.
+- **Sigma** (sigma.rs): SigmaHQ rules (1440: Windows, Linux, network) synced weekly into
+  `ndr.sigma_rules` and run on every archived event; a match is a SIEM alert (rule 950000-999999,
+  "Sigma: <title>"). Fixes in provigil-common's engine (both copies): numeric value lists were
+  dropped and an empty selection matched everything; modifier chains (`contains|all`, `windash`),
+  wildcards, `null`, `exists`, keyword lists; unknown modifiers never match. A Windows rule
+  only reads its log and event ids (category -> Sysmon id, Security 4688); unknown service /
+  category: no match. siem-api undoes the agent's doubled backslashes and maps 4688 fields.
+  Verified: 0 matches over 142k real events, true positives fire live. Page: analyst Sigma Detection.
+- **No more sample data** (platform.rs): health, engines, scale, leader, interfaces, agent status,
+  sensor keys, Kafka (honestly "not used"), telemetry (sysinfo; platform admins only) are real.
+- SOAR conditions: `src_country` (GeoLite2) and ASN / org in the investigation and intel lookups.
+- **Analyst page audit (2026-10-27):** every UI call was checked against the routes and every
+  visible page's buttons run live. Fixed: SCA tab (read wazuh-db; it showed "100%" / fake checks,
+  and had no tenant check), FIM tab (wazuh-db replies over 64 KB came back empty: paging halves
+  and skips oversized rows; registry paths readable), sources / dashboard (real events per second,
+  no fake "add source"), classic dashboard / globe / alerts / console (no sample data; isolate and
+  block buttons call the real APIs), fleet status line (real CVE counts), SOAR (no NDR PCAP calls
+  for SIEM tenants; "add to threat intel" fills the new per-tenant watchlist), Dynamic Parsers
+  (per tenant in `<tenant db>.learned_parsers`, parsed fields stored with the event, test result
+  shown), Red Swarm (rounds, history, gaps, heatmap per tenant; simulated alerts marked and in the
+  target's tenant; role checks used roles that do not exist; one draft per open gap; approving
+  writes `etc/rules/redswarm_rules.xml` only after `wazuh-analysisd -t` accepts a staged copy,
+  rollback removes it).
+- **SOAR case investigation (case_ai.rs, 2026-10-27):** every new case: the evidence about its
+  source IP, host and user, the logins (failed / succeeded / a success after failures), and a
+  verdict (compromised, malicious, attack attempt, likely benign, needs review) by rules and the
+  tenant's AI; stored per tenant, noted on the case. The AI Providers settings page had no backend:
+  `/api/settings/ai/providers` (list, save, delete, test) now exists.
+- **Security (2026-10-27):** firewall / switch HTTPS certificates are verified (`ca_cert` for a
+  device's own CA, `tls_insecure` only as an explicit lab option); SOAR integration secrets and
+  AI provider keys are stored sealed with `AGENT_KEYS_SECRET` (`enc:v1:`, secrets.rs), old plain
+  values re-sealed at start.
+- **Ports:** auth-service listens on 3011 (`LISTEN_ADDR`): 3001 is the NDR sensor agent's
+  (`NDR_AGENT_URL`), and WSL forwards a WSL listener to Windows localhost.
+- **Agent install:** optional Sysmon and PowerShell logging steps in the Windows command.
+- **Paused:** Red Swarm on real analysisd: agent events are injected as `1:[id] (name) ip->loc:log`
+  (syslog) and `f:` + `{"Message","Event":<XML>}` on location `EventChannel` (Windows) - both
+  decode like real agent events; a marker (location or an EventData field) finds the round's alert.
+- **Open (Libin's crates, not changed):** Risk Fabric and Attacker Intent Radar keep one global
+  state for all tenants and start with sample processes / entities (192.168.10.15, "*swift*").
+- Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false
+  hits on this data); a Sysmon-equipped Windows host would give the Windows rules most to see.
+
+## 1h. EDR — step 1 (endpoint response) built 2026-10-29
+
+Gaps found 2026-10-27, in the order agreed: (1) response actions on the endpoint,
+(2) process telemetry without Sysmon (ETW), (3) process tree per alert, (4) YARA / hash
+scan of new files, (5) live response (collect files / process list), (6) agent tamper
+protection, (7) Linux agent parity (section C), (8) macOS agent.
+
+Step 1, Windows agents (not in Wazuh; siem-active-response `src/edr.rs` + 3 programs):
+- `kill-process.exe` (`pid=`, optional `image=` checked first: PIDs are reused),
+  `quarantine-file.exe` (`path=` → agent `quarantine\<id>.bin` + `<id>.json` with SHA-256;
+  `restore=<id>`), `isolate-host.exe` (`id=`, `allow=<manager IPs>`; Windows Firewall block
+  rules for all but the manager, loopback and DHCP; `release` lifts it; execd lifts it at
+  its timeout, only if it is still the same isolation). Never touched: PID <= 4, critical
+  System32 processes, the agent, files under %SystemRoot% (but Temp), the agent's files.
+- Manager: commands in `AR_COMMANDS` (ossec.conf → ar.conf: `kill-process0`,
+  `quarantine-file0`, `isolate-host<timeout>`, `release-host0`); console actions
+  `kill_process`, `quarantine_file`, `restore_file`, `isolate_host`, `release_host` on
+  `/api/v1/agent/commands` (decision gate on the agent's IP); `response::isolate` has the
+  agent firewall as a third method (switch → cloud → agent), so SOAR `isolate_host`,
+  approved decisions and `/api/isolate` use it; agent isolations expire after 24 h.
+- Isolation keeps `SIEM_LAN_IP` (else `MANAGER_IP`) and `EDR_ISOLATION_ALLOW` reachable;
+  without one it is refused. UI: Agents → Actions → Endpoint Response (Windows agents).
+- Verified: kill / image-mismatch refusal / quarantine (SHA-256) / restore / Windows-file
+  refusal run for real on Windows; isolation rules unit-tested only.
+- The firewall profiles' state is read from the registry (`EnableFirewall`), the same in
+  every Windows language (2026-10-29; it was English `netsh` output).
+- Open: a live isolate on a lab VM (netsh rules, the agent staying connected, release,
+  expiry); SOAR playbook actions for automatic kill / quarantine.
+
+Step 2, process telemetry — built 2026-10-29 with Sysmon, not a home-made ETW collector
+(the agent is Wazuh's C binary; Sysmon is Microsoft's signed driver):
+- `siem-api/src/sysmon.xml`, served at `/downloads/windows/sysmon.xml`: every process
+  start (md5, sha256, imphash) and end, remote threads, LSASS access, raw disk reads,
+  drivers, WMI, pipes, tampering, persistence registry keys, executables / scripts written;
+  network, image loads, DNS limited to attack binaries and places; no FileDelete archive,
+  no clipboard, nothing blocked. Checked against Sysmon 15.22's own schema (`-s`).
+- Deploy (Sysmon option): Sysmon only from download.sysinternals.com over HTTPS, run only
+  with a valid Authenticode signature by Microsoft (subject and issuer); installed Sysmon
+  gets `-c` (re-run = config update), temp folder always removed, failure only warns.
+  Dry-run verified on Windows (signature valid; an unsigned exe is refused).
+- Agents page: "Sysmon (24h)" column from `GET /api/v1/agents/telemetry` (tenant DB,
+  `siem_events`, EventChannel + Sysmon channel; 503 = unknown, not "none").
+- Sigma speed: rules prepared once (lower-cased log source, Windows logs) and indexed by
+  channel; large batches split over half the cores. 1440 rules × 40621 real events:
+  2523 → 44798 events/s, same 12 matches.
+- Open: a real install on a lab VM (the dev machine was not changed); the Sysmon config
+  is not pushed by the manager on its own (re-run the deploy command to update it).
+
+Step 3, process tree per alert — built 2026-10-29 (`siem-api/src/process_tree.rs`):
+- `GET /api/v1/agents/:id/process-tree?guid=<ProcessGuid>&at=<ms>` (permission
+  `siem-alerts`, the agent's tenant checked like every `/api/v1/agents/:id` route): Sysmon
+  starts / ends (1, 5) of the agent from 24 h before to 1 h after the alert → ancestors
+  (the oldest one's parent from its start event), the alert's process, descendants (depth
+  first); each with its network, DNS, file, registry, image-load, injection, pipe events
+  (counts + first 25). Bounded: 50k starts, 32 ancestors, 300 descendants, 5k activity rows.
+- Console → alert drawer: Process Tree for alerts on a Sysmon process event (Wazuh or
+  Sigma); expand a process for its path, hashes, activity, and Terminate / Quarantine.
+- Fixed in the drawer: "Terminate Process" sent the fixed PID "4688" and Quarantine sent
+  no path (both refused by the manager while the UI said "Executed"); now the real PID +
+  image / path, and the manager's real answer is shown. "Disable User Account" removed
+  (no such action on Wazuh agents).
+- Verified live on seeded events (tree, activity, other agent / tenant, bad GUID, permission).
+- Open: Security 4688 alerts (no GUIDs) have no tree; big tenants: see the shortcut in
+  process_tree.rs (Sysmon events in their own table ordered by agent).
+
+Step 4, file scanning — built 2026-10-29:
+- 4a `file_reputation.rs`: every hash in the stream (Sysmon 1/6/7/15/23/26/29, FIM) against
+  threat intel (ThreatFox ~5.5k hashes in ClickHouse, MalwareBazaar via its API hourly —
+  its export list is gone, HTTP 410 —, the tenant watchlist): 940100 ran (L14), 940101
+  written / loaded / deleted (L12); once per agent, file and kind an hour.
+- 4b `yara_edr.rs` + `yara-scan.exe` (boreal): YARA Forge core (5,128 rules) daily, only a
+  set that compiles, + test rule `SIEM_EDR_YARA_Test_File` (marker
+  `SIEM-EDR-YARA-TEST-FILE-7c1e5b2a`); shipped as `shared/siem-yara.rules`, deflate +
+  base64 — NEVER plain: Defender removed merged.mg (all agents' agent.conf) when it held
+  plain rules (Trojan:Python/RemoteShellExec). Auto scans: new executables / scripts /
+  programs started from user-writable folders, once per SHA-256 and rule version, ≤ 20 per
+  agent / 10 min; match = 940102 (L13). Manual: YARA Scan in the alert drawer and Agents >
+  Actions. Compile 0.5 s + ~17 ms/MB per scan, below-normal priority, ≤ 64 MB files.
+- Open: agents deployed before 4b lack yara-scan.exe (copy it to active-response\bin or
+  redeploy); boreal 1.4's scanner serialization fails ("CompilerProfile: 25"), so each
+  scan compiles the rules (0.5 s).
+
 ## 2. Per-tenant alert e-mails
 
 - **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP

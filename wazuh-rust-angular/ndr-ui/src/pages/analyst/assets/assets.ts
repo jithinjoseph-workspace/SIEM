@@ -294,23 +294,11 @@ export class Assets implements OnInit, AfterViewInit {
     }, true);
   }
 
-  private parseAlertDate(value: any): number {
-    if (value === null || value === undefined || value === '') return 0;
-    if (typeof value === 'number') {
-      return value > 9999999999 ? value : value * 1000;
-    }
-    const raw = String(value).trim();
-    if (/^\d+$/.test(raw)) return this.parseAlertDate(Number(raw));
-    const n = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    const z = /Z$|[+-]\d{2}:?\d{2}$/.test(n) ? n : `${n}Z`;
-    const d = new Date(z);
-    return isNaN(d.getTime()) ? 0 : d.getTime();
-  }
-
   fetchAndRenderThreatLandscape() {
     if (!this.threatLandscapeChart) return;
-    this.api.getAlerts().subscribe({
-      next: (hits: any[]) => {
+    // alerts per time slice and severity, counted by the server (not every alert)
+    this.api.getHitsTimeline(this.timeFilter).subscribe({
+      next: (r: { buckets: { critical: number; high: number; medium: number; low: number }[] }) => {
         const nowMs = Date.now();
         let bucketMs = 3600 * 1000; // 24h default
         let numBuckets = 24;
@@ -337,19 +325,11 @@ export class Assets implements OnInit, AfterViewInit {
           labels.push(formatLabel(d));
         }
 
-        hits.forEach(hit => {
-          const ts = this.parseAlertDate(hit.timestamp || hit.ts);
-          if (ts === 0) return;
-          const diffMs = nowMs - ts;
-          const index = (numBuckets - 1) - Math.floor(diffMs / bucketMs);
-          
-          if (index >= 0 && index < numBuckets) {
-            const sev = (hit.severity || '').toUpperCase();
-            if (sev === 'CRITICAL' || sev === 'HIGH') dataHigh[index]++;
-            else if (sev === 'MEDIUM') dataMedium[index]++;
-            else if (sev === 'LOW') dataLow[index]++;
-            else dataInfo[index]++;
-          }
+        // oldest first, one per slice (rule levels: critical 12+, high 8-11, medium 4-7, low 0-3)
+        (r?.buckets || []).slice(-numBuckets).forEach((b, i) => {
+          dataHigh[i] = b.critical + b.high;
+          dataMedium[i] = b.medium;
+          dataLow[i] = b.low;
         });
 
         this.threatLandscapeChart.setOption({

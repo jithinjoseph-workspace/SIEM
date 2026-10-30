@@ -10,6 +10,7 @@ use crate::synthesizer::RuleSynthesizer;
 use crate::verifier::PurpleLoopVerifier;
 use chrono::Utc;
 use siem_core::{Alert, RawEvent};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -22,6 +23,8 @@ pub struct RedSwarmService {
     executor: Arc<SwarmExecutor>,
     campaigns: RwLock<Vec<SwarmCampaign>>,
     running: AtomicBool,
+    /// Tenants whose admin engaged their own kill switch (the global one stops every tenant).
+    halted_tenants: RwLock<HashSet<String>>,
 }
 
 impl Default for RedSwarmService {
@@ -47,6 +50,7 @@ impl RedSwarmService {
             interval_seconds: 60,
             roe: RulesOfEngagement::default(),
             owner: "admin".into(),
+            tenant_id: String::new(),
             approved_by: Some("admin".into()),
             approval_expires_at: None,
             last_run_at: None,
@@ -61,7 +65,23 @@ impl RedSwarmService {
             executor,
             campaigns: RwLock::new(vec![default_campaign]),
             running: AtomicBool::new(false),
+            halted_tenants: RwLock::new(HashSet::new()),
         }
+    }
+
+    /// Engage or release one tenant's kill switch.
+    pub fn set_tenant_halted(&self, tenant_id: &str, halted: bool) {
+        let mut set = self.halted_tenants.write().unwrap();
+        if halted {
+            set.insert(tenant_id.to_string());
+        } else {
+            set.remove(tenant_id);
+        }
+    }
+
+    /// Whether Red Swarm is stopped for the tenant (its own kill switch or the global one).
+    pub fn is_tenant_halted(&self, tenant_id: &str) -> bool {
+        SafetyGatekeeper::is_kill_switch_engaged() || self.halted_tenants.read().unwrap().contains(tenant_id)
     }
 
     pub fn safety(&self) -> Arc<SafetyGatekeeper> {
@@ -137,6 +157,19 @@ impl RedSwarmService {
         }
     }
 
+    /// Count a round on the live campaign (not on a copy that may predate a pause or an edit).
+    fn record_campaign_round(&self, id: &str, defended: Option<bool>) {
+        if let Some(c) = self.campaigns.write().unwrap().iter_mut().find(|c| c.id == id) {
+            c.total_executed += 1;
+            c.last_run_at = Some(Utc::now());
+            match defended {
+                Some(true) => c.total_defended += 1,
+                Some(false) => c.total_gaps += 1,
+                None => {}
+            }
+        }
+    }
+
     /// Execute a single controlled technique round on demand
     pub async fn run_single_round<F, C>(
         &self,
@@ -156,15 +189,20 @@ impl RedSwarmService {
         F: FnOnce(&[RawEvent]),
         C: Fn(&str, &CommandPayload) -> Result<String, String>,
     {
+        if self.is_tenant_halted(tenant_id) {
+            return Err("Red Swarm is stopped for this tenant: the kill switch is engaged".into());
+        }
+
         // 1. Resolve technique
         let technique = if let Some(id) = technique_id {
             find_technique(id).ok_or_else(|| format!("Technique {} not found in catalog", id))?
         } else {
-            // Pick random curated technique
+            // A curated technique for the target's OS, varied from one run to the next
             let catalog = get_curated_catalog();
-            catalog
-                .first()
-                .cloned()
+            let fits: Vec<&AttackTechnique> = catalog.iter().filter(|t| t.platforms.iter().any(|p| p.eq_ignore_ascii_case(target_os))).collect();
+            let pool = if fits.is_empty() { catalog.iter().collect() } else { fits };
+            pool.get(Utc::now().timestamp_subsec_nanos() as usize % pool.len().max(1))
+                .map(|t| (*t).clone())
                 .ok_or_else(|| "Technique catalog is empty".to_string())?
         };
 
@@ -203,8 +241,8 @@ impl RedSwarmService {
             ).await;
             record.verification = verification;
 
-            // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval)
-            if record.verification.verdict != DetectionVerdict::Defended {
+            // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval), once per open gap
+            if record.verification.verdict != DetectionVerdict::Defended && !self.audit.drafting_held(tenant_id, &technique.id) {
                 let sample_log = technique
                     .sample_raw_logs
                     .first()
@@ -258,10 +296,20 @@ impl RedSwarmService {
                 let catalog = get_curated_catalog();
                 let fleet = get_agents_fn();
 
-                for mut campaign in campaigns {
-                    if !campaign.enabled || catalog.is_empty() {
+                for campaign in campaigns {
+                    if !campaign.enabled || catalog.is_empty() || !is_due(&campaign, Utc::now()) {
                         continue;
                     }
+
+                    // The campaign's tenants' agents (all, for a platform campaign), less halted tenants
+                    let fleet: Vec<FleetAgentTarget> = fleet
+                        .iter()
+                        .filter(|a| {
+                            let t = target_tenant(a);
+                            (campaign.tenant_id.is_empty() || campaign.tenant_id == t) && !self.is_tenant_halted(t)
+                        })
+                        .cloned()
+                        .collect();
 
                     // Dynamically resolve available endpoints from the active fleet
                     let active_agents: Vec<FleetAgentTarget> = fleet
@@ -270,13 +318,7 @@ impl RedSwarmService {
                         .cloned()
                         .collect();
 
-                    let usable_fleet = if !active_agents.is_empty() {
-                        active_agents
-                    } else if !fleet.is_empty() {
-                        fleet.clone()
-                    } else {
-                        Vec::new()
-                    };
+                    let usable_fleet = if !active_agents.is_empty() { active_agents } else { fleet };
 
                     if usable_fleet.is_empty() {
                         warn!("Red Swarm: No registered or active agents in fleet. Standing by for endpoint connection.");
@@ -309,12 +351,13 @@ impl RedSwarmService {
                     let technique = applicable_techniques[round_counter % applicable_techniques.len()];
                     round_counter += 1;
 
-                    // Dynamically pick an agent that matches this technique's platform
-                    let target_agent = usable_fleet
+                    // An agent of the technique's platform, in turn (every tenant's agents get tested)
+                    let candidates: Vec<&FleetAgentTarget> = usable_fleet
                         .iter()
-                        .find(|a| technique.platforms.iter().any(|p| p.eq_ignore_ascii_case(&a.os_type)))
-                        .or_else(|| usable_fleet.first())
-                        .unwrap();
+                        .filter(|a| technique.platforms.iter().any(|p| p.eq_ignore_ascii_case(&a.os_type)))
+                        .collect();
+                    let target_agent = if candidates.is_empty() { &usable_fleet[0] } else { candidates[round_counter % candidates.len()] };
+                    let tenant = target_tenant(target_agent);
 
                     let target_id = &target_agent.id;
                     let target_name = &target_agent.name;
@@ -335,7 +378,7 @@ impl RedSwarmService {
                         .executor
                         .execute_round(
                             &campaign.id,
-                            "default",
+                            tenant,
                             campaign.mode,
                             technique,
                             target_id,
@@ -349,6 +392,7 @@ impl RedSwarmService {
                         )
                         .await;
 
+                    let mut defended = None;
                     if record.execution_success {
                         let verification = PurpleLoopVerifier::verify_with_retries(
                             technique,
@@ -362,29 +406,79 @@ impl RedSwarmService {
                         record.verification = verification;
 
                         if record.verification.verdict != DetectionVerdict::Defended {
-                            let sample_log = technique
-                                .sample_raw_logs
-                                .first()
-                                .cloned()
-                                .unwrap_or_default();
-                            let draft = RuleSynthesizer::synthesize_draft_rule(
-                                record.id,
-                                technique,
-                                &sample_log,
-                            );
-                            record.draft_rule = Some(draft);
-                            campaign.total_gaps += 1;
-                        } else {
-                            campaign.total_defended += 1;
+                            if !self.audit.drafting_held(tenant, &technique.id) {
+                                let sample_log = technique
+                                    .sample_raw_logs
+                                    .first()
+                                    .cloned()
+                                    .unwrap_or_default();
+                                let draft = RuleSynthesizer::synthesize_draft_rule(
+                                    record.id,
+                                    technique,
+                                    &sample_log,
+                                );
+                                record.draft_rule = Some(draft);
+                            }
                         }
+                        defended = Some(record.verification.verdict == DetectionVerdict::Defended);
                     }
 
-                    campaign.total_executed += 1;
-                    campaign.last_run_at = Some(Utc::now());
-                    self.upsert_campaign(campaign);
+                    self.record_campaign_round(&campaign.id, defended);
                     self.audit.record_execution(record);
                 }
             }
         });
+    }
+}
+
+fn target_tenant(a: &FleetAgentTarget) -> &str {
+    if a.tenant_id.is_empty() { "default" } else { &a.tenant_id }
+}
+
+/// Whether the campaign's interval has passed since its last round (the loop ticks every 60 s).
+fn is_due(c: &SwarmCampaign, now: chrono::DateTime<Utc>) -> bool {
+    c.last_run_at.map_or(true, |t| (now - t).num_seconds() >= c.interval_seconds as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn campaign_waits_for_its_interval() {
+        let svc = RedSwarmService::new();
+        let mut c = svc.get_campaigns().remove(0);
+        let now = Utc::now();
+        assert!(is_due(&c, now)); // never ran
+        c.interval_seconds = 3600;
+        c.last_run_at = Some(now - chrono::Duration::seconds(120));
+        assert!(!is_due(&c, now));
+        c.last_run_at = Some(now - chrono::Duration::seconds(3600));
+        assert!(is_due(&c, now));
+    }
+
+    #[test]
+    fn round_counts_land_on_the_live_campaign() {
+        let svc = RedSwarmService::new();
+        let id = svc.get_campaigns()[0].id.clone();
+        svc.toggle_campaign(&id).unwrap(); // paused while a round runs
+        svc.record_campaign_round(&id, Some(false));
+        let c = &svc.get_campaigns()[0];
+        assert!(!c.enabled, "the pause survives the round");
+        assert_eq!((c.total_executed, c.total_gaps), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn a_tenant_kill_switch_stops_only_that_tenant() {
+        let svc = RedSwarmService::new();
+        svc.set_tenant_halted("acme", true);
+        assert!(svc.is_tenant_halted("acme") && !svc.is_tenant_halted("globex"));
+        let run = |tenant: &'static str| {
+            svc.run_single_round(Some("T1082"), "001", "a", "10.0.0.1", "linux", &[], None, tenant, |_| {}, |_, _| Err(String::new()), Vec::new)
+        };
+        assert!(run("acme").await.is_err());
+        assert!(run("globex").await.is_ok());
+        svc.set_tenant_halted("acme", false);
+        assert!(run("acme").await.is_ok());
     }
 }

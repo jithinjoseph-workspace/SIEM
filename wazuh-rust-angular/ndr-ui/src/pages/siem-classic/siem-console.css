@@ -88,6 +88,7 @@
 .text-cyan { color: var(--accent-cyan); }
 .text-rose { color: var(--accent-rose); }
 .text-emerald { color: var(--accent-emerald); }
+.text-amber { color: #fbbf24; }
 .text-xs { font-size: 12px; }
 
 .conn-pill {
@@ -984,6 +985,23 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.process-tree {
+  background: #020408;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  margin-top: 8px;
+  max-height: 420px;
+  overflow: auto;
+  color: #e2e8f0;
+}
+.pt-row { padding-top: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border-subtle); }
+.pt-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; cursor: pointer; }
+.pt-focal { background: rgba(244, 63, 94, 0.12); border-left: 3px solid var(--accent-rose); }
+.pt-unknown { opacity: 0.7; }
+.pt-cmd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pt-chip { color: var(--accent-cyan); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 0 4px; }
+.pt-detail { margin-top: 4px; white-space: pre-wrap; word-break: break-all; color: #94a3b8; }
 
 .raw-json-box {
   background: #020408;

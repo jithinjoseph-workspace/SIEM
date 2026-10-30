@@ -392,3 +392,8 @@
 .text-purple-500 { color: #8b5cf6; }
 .text-orange-500 { color: #f97316; }
 .text-blue-500 { color: #3b82f6; }
+
+/* phones: the greeting bubble would cover the page; the bot button stays */
+@media (max-width: 639px) {
+  .speech-bubble { display: none !important; }
+}

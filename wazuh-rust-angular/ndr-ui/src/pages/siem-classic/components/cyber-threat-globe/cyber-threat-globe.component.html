@@ -24,12 +24,12 @@
         <span class="val mono text-rose">{{ activeThreatCount() }}</span>
       </div>
       <div class="hud-kpi">
-        <span class="label">INTERCEPT SUCCESS</span>
-        <span class="val mono text-emerald">{{ interceptRate() }}</span>
+        <span class="label">AGENTS ONLINE</span>
+        <span class="val mono text-emerald">{{ agentsOnline() }}</span>
       </div>
       <div class="hud-kpi">
-        <span class="label">PACKETS DEFENDED</span>
-        <span class="val mono text-cyan">{{ packetsScanned() }}</span>
+        <span class="label">ALERTS LOADED</span>
+        <span class="val mono text-cyan">{{ alertsShown() | number }}</span>
       </div>
     </div>
 

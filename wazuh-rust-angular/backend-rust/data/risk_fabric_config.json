@@ -12,6 +12,11 @@
         "*swift*",
         "*pos*",
         "*checkout*",
+        "*linux*",
+        "linux-node-*",
+        "019",
+        "linux-node-8651",
+        "127.0.0.1",
         "192.168.10.15",
         "srv-prod-ubuntu-01"
       ],
@@ -39,7 +44,12 @@
         "*auth*",
         "*ldap*",
         "*vault*",
-        "*kerberos*"
+        "*kerberos*",
+        "*win*",
+        "win-node-*",
+        "042",
+        "win-node-7a5e",
+        "192.168.1.*"
       ],
       "identity_patterns": [
         "administrator",
@@ -144,7 +154,7 @@
       "description": "Authorized patching and vulnerability assessment window; technical alerts de-escalated to reduce alarm fatigue.",
       "multiplier": 0.4,
       "window_type": "recurring_schedule",
-      "active": false,
+      "active": true,
       "target_processes": []
     },
     {

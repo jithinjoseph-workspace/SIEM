@@ -5,7 +5,7 @@ use siem_core::{
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use tracing::info;
 use uuid::Uuid;
 
@@ -48,6 +48,8 @@ pub struct AnalysisEngine {
     pub wazuh_decoders: Arc<Vec<CompiledDecoder>>,
     pub accumulator: Arc<WazuhAccumulator>,
     correlation: Arc<Mutex<CorrelationState>>,
+    /// Rules deployed at runtime (Red Swarm), shared by every clone of the engine.
+    custom_rules: Arc<RwLock<Vec<CompiledWazuhRule>>>,
 }
 
 impl AnalysisEngine {
@@ -67,6 +69,7 @@ impl AnalysisEngine {
             wazuh_decoders: Arc::new(wazuh_decoders),
             accumulator,
             correlation: Arc::new(Mutex::new(CorrelationState::default())),
+            custom_rules: Arc::new(RwLock::new(Vec::new())),
         };
 
         // Automatically discover and load official Wazuh ruleset if directory is present
@@ -153,6 +156,11 @@ impl AnalysisEngine {
         self.wazuh_rules = Arc::new(current);
     }
 
+    /// Replace the runtime-deployed rules (seen at once by every clone of the engine).
+    pub fn set_custom_rules_xml(&self, xml: &str) {
+        *self.custom_rules.write().unwrap() = parse_rules_xml(xml);
+    }
+
     /// Ingest additional Wazuh XML decoders dynamically
     pub fn add_wazuh_decoders_xml(&mut self, xml: &str) {
         let mut current = (*self.wazuh_decoders).clone();
@@ -187,7 +195,8 @@ impl AnalysisEngine {
             event_data.get("dstuser").or_else(|| event_data.get("srcuser")).and_then(|v| v.as_str())
         });
 
-        for w_rule in self.wazuh_rules.iter() {
+        let custom_rules = self.custom_rules.read().unwrap();
+        for w_rule in self.wazuh_rules.iter().chain(custom_rules.iter()) {
             if w_rule.matches(
                 &event.message,
                 &decoded.decoder_name,
@@ -243,8 +252,10 @@ impl AnalysisEngine {
             }
         }
 
-        if let Some(w_alert) = highest_wazuh_alert {
-            return Some(w_alert);
+        drop(custom_rules);
+        // a level-0 match is not a detection (Wazuh never alerts on it): the built-in rules still get a say
+        if highest_wazuh_alert.as_ref().is_some_and(|a| a.rule.level > 0) {
+            return highest_wazuh_alert;
         }
 
         // 3. Fall back to built-in rules
@@ -326,7 +337,7 @@ impl AnalysisEngine {
             }
         }
 
-        None
+        highest_wazuh_alert
     }
 
     /// Run decoders against the raw text to extract key fields

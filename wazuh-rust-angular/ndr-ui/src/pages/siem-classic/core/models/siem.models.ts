@@ -41,6 +41,25 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
+  /** the event's decoded data (Windows: `win.system`, `win.eventdata`) */
+  data?: Record<string, any>;
+}
+
+/** One process of an alert's process tree (GET /api/v1/agents/:id/process-tree). */
+export interface ProcessNode {
+  guid: string;
+  pid: number | null;
+  image: string;
+  command_line: string;
+  user: string;
+  hashes: string;
+  started: number | null;
+  ended: number | null;
+  role: 'ancestor' | 'focal' | 'descendant';
+  depth: number;
+  /** false: only known from its child's start event (started before the window) */
+  known: boolean;
+  activity?: { counts: Record<string, number>; samples: { ts: number; kind: string; detail: string }[] };
 }
 
 export interface Agent {
@@ -144,7 +163,7 @@ export interface AgentInventory {
 export interface ScaCheckResult {
   check_id: number;
   title: string;
-  status: 'Passed' | 'Failed';
+  status: 'Passed' | 'Failed' | 'Not applicable';
   reason?: string;
 }
 
@@ -187,7 +206,8 @@ export interface ComplianceFramework {
   name: string;
   full_name: string;
   version: string;
-  score_percent: number;
+  /** null: no configuration check maps the framework (alerts only) */
+  score_percent: number | null;
   total_requirements: number;
   passed_count: number;
   alert_count: number;

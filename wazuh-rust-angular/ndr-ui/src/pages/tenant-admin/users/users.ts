@@ -475,6 +475,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { key: 'siem-logs',      label: 'SIEM Logs',      description: 'Ingested log stream',         icon: ScrollText,      requiredFeatures: ['siem'] },
     { key: 'siem-sources',   label: 'SIEM Sources',   description: 'Log source management',       icon: Database,        requiredFeatures: ['siem'] },
     { key: 'siem-agents',          label: 'Agent Fleet',      description: 'Endpoint agents & inventory',   icon: Server,      requiredFeatures: ['siem'] },
+    { key: 'siem-agent-deploy',    label: 'Deploy Agents',    description: 'Enroll new endpoint agents',    icon: Server,      requiredFeatures: ['siem'] },
     { key: 'siem-parsers',         label: 'Dynamic Parsers',  description: 'Learned log parsers',           icon: Cpu,         requiredFeatures: ['siem'] },
     { key: 'siem-mitre',           label: 'MITRE ATT&CK',     description: 'Technique coverage matrix',     icon: Shield,      requiredFeatures: ['siem'] },
     { key: 'siem-vulnerabilities', label: 'Vulnerabilities',  description: 'CVE detections per host',       icon: Bug,         requiredFeatures: ['siem'] },
@@ -493,7 +494,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { title: 'SECURITY',   keys: ['intel', 'rules', 'evidence'] },
     { title: 'ENFORCE',    keys: ['honeypots', 'retrospective'] },
     { title: 'OPERATIONS', keys: ['health', 'soar', 'ai-activity', 'ai-report'] },
-    { title: 'SIEM',       keys: ['siem', 'siem-dashboard', 'siem-logs', 'siem-sources', 'siem-agents', 'siem-parsers', 'siem-mitre',
+    { title: 'SIEM',       keys: ['siem', 'siem-dashboard', 'siem-logs', 'siem-sources', 'siem-agents', 'siem-agent-deploy', 'siem-parsers', 'siem-mitre',
                               'siem-vulnerabilities', 'siem-compliance', 'siem-fim', 'siem-active-response', 'siem-logtest',
                               'siem-console', 'siem-alerts', 'siem-rules'] },
   ];
@@ -2125,8 +2126,8 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     const licensed = this.licensedPermissionOptions().map(p => p.key);
     if (role === 'viewer')         return ['dashboard', 'health'].filter(k => licensed.includes(k));
     if (role === 'senior_analyst') return licensed;
-    // analyst: dashboard + everything except enforce pages (honeypots/retrospective)
-    const enforce = new Set(['honeypots', 'retrospective']);
+    // analyst: dashboard + everything except enforce pages (honeypots/retrospective) and deploying agents
+    const enforce = new Set(['honeypots', 'retrospective', 'siem-agent-deploy']);
     return licensed.filter(k => !enforce.has(k));
   }
 

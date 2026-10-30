@@ -1,4 +1,9 @@
-<div class="analyst-layout">
+<div class="analyst-layout" [class.nav-open]="navOpen()">
+  <!-- below 1024px the sidebar slides in from the left -->
+  <button type="button" class="analyst-nav-toggle" [attr.aria-expanded]="navOpen()" aria-label="Open the menu" (click)="navOpen.set(!navOpen())">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="analyst-nav-backdrop" (click)="navOpen.set(false)"></div>
   <app-sidebar></app-sidebar>
   <div class="analyst-content">
     <router-outlet></router-outlet>

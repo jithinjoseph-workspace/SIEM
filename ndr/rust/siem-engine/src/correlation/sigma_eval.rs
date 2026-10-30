@@ -361,9 +361,21 @@ fn compile_field_condition(cond: &FieldCondition) -> String {
 
     let field_sql = field_expr(&cond.field);
 
-    // Multiple values are always OR'd within one field condition
+    // matchers without per-value comparisons (JSONExtractString gives '' for a missing field)
+    let whole = match &cond.matcher {
+        Matcher::Never  => Some("0".to_string()),
+        Matcher::Null   => Some(format!("{} = ''", field_sql)),
+        Matcher::Exists => Some(format!("{} {} ''", field_sql, if cond.values.first().map(String::as_str) == Some("false") { "=" } else { "!=" })),
+        _ => None,
+    };
+    if let Some(expr) = whole {
+        return if cond.negated { format!("NOT ({})", expr) } else { expr };
+    }
+
+    // Multiple values are OR'd within one field condition (AND'd with `|all`)
     let parts: Vec<String> = cond.values.iter().enumerate().map(|(i, v)| {
         match &cond.matcher {
+            Matcher::Null | Matcher::Exists | Matcher::Never => unreachable!(),
             Matcher::Equals     => {
                 if v == "*" { format!("{} IS NOT NULL", field_sql) }
                 else { format!("lower({}) = lower('{}')", field_sql, escape(v)) }
@@ -379,8 +391,9 @@ fn compile_field_condition(cond: &FieldCondition) -> String {
         }
     }).collect();
 
-    let expr = if parts.len() == 1 { parts[0].clone() }
-               else { format!("({})", parts.join(" OR ")) };
+    let expr = if parts.is_empty() { "0".to_string() }
+               else if parts.len() == 1 { parts[0].clone() }
+               else { format!("({})", parts.join(if cond.all { " AND " } else { " OR " })) };
     if cond.negated { format!("NOT ({})", expr) } else { expr }
 }
 

@@ -213,7 +213,8 @@ export class AuthService implements OnDestroy {
 
     // Same rule as siem-api (AuthCtx::has_permission): the page itself, the 'siem' suite, or 'all'
     if (perms.includes('all')) return true;
-    if (permission.startsWith('siem') && perms.includes('siem')) return true;
+    // deploying agents is granted on its own, never by the SIEM suite
+    if (permission.startsWith('siem') && permission !== 'siem-agent-deploy' && perms.includes('siem')) return true;
     if (permission === 'dashboard' && (perms.includes('dashboard') || user.role === 'analyst')) return true;
 
     return perms.includes(permission);

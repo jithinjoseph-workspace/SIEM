@@ -95,7 +95,7 @@ pub async fn fetch_and_save(ch: &Client, rules_dir: &str) -> anyhow::Result<usiz
     }
 
     let existing_ids = get_community_rule_ids(ch).await.unwrap_or_default();
-    let mut saved = 0usize;
+    let mut new_rules: Vec<(String, String, String)> = Vec::new();
 
     for (filename, url) in &all_urls {
         let content = match client.get(url).send().await {
@@ -110,13 +110,19 @@ pub async fn fetch_and_save(ch: &Client, rules_dir: &str) -> anyhow::Result<usiz
 
         if GLOBAL_RULE_BLOCKLIST.contains(&rule.id.as_str()) { continue; }
         if existing_ids.contains(&rule.id) { continue; }
+        if new_rules.iter().any(|(id, _, _)| id == &rule.id) { continue; }
 
         let dest = format!("{}/community_{}", rules_dir, filename);
         let _ = std::fs::write(&dest, &content);
+        new_rules.push((rule.id, rule.title, content));
+    }
 
-        match save_community_rule(ch, &rule.id, &rule.title, &content).await {
-            Ok(_)  => saved += 1,
-            Err(e) => warn!("sigma_sync: CH insert failed for {} — {}", filename, e),
+    // one INSERT per 500 rules: one part each, not one per rule (thousands of rules)
+    let mut saved = 0usize;
+    for chunk in new_rules.chunks(500) {
+        match insert_community_rules(ch, chunk).await {
+            Ok(())  => saved += chunk.len(),
+            Err(e) => warn!("sigma_sync: CH insert failed for {} rules — {}", chunk.len(), e),
         }
     }
 
@@ -137,45 +143,20 @@ async fn get_community_rule_ids(ch: &Client) -> anyhow::Result<HashSet<String>> 
     Ok(rows.into_iter().map(|r| r.id).collect())
 }
 
-async fn save_community_rule(
-    ch:      &Client,
-    id:      &str,
-    title:   &str,
-    content: &str,
-) -> anyhow::Result<()> {
-    // Check if already exists; if so update, else insert
-    #[derive(serde::Deserialize, clickhouse::Row)]
-    struct Exists { cnt: u64 }
-    let e: Exists = ch
-        .query("SELECT count() AS cnt FROM ndr.sigma_rules FINAL WHERE id = ?")
-        .bind(id)
-        .fetch_one()
-        .await?;
-
-    if e.cnt > 0 {
-        // Update (ReplacingMergeTree — insert a new version)
-        ch.query(
-            "INSERT INTO ndr.sigma_rules (id, name, content, tenant_id, source, enabled, updated_at) \
-             SELECT id, ?, ?, tenant_id, source, enabled, now() \
-             FROM ndr.sigma_rules FINAL WHERE id = ?"
-        )
-        .bind(title)
-        .bind(content)
-        .bind(id)
-        .execute()
-        .await?;
-    } else {
-        ch.query(
-            "INSERT INTO ndr.sigma_rules \
-             (id, name, content, tenant_id, source, enabled, created_at, updated_at) \
-             VALUES (?, ?, ?, '*', 'community', 1, now(), now())"
-        )
-        .bind(id)
-        .bind(title)
-        .bind(content)
-        .execute()
-        .await?;
+async fn insert_community_rules(ch: &Client, rules: &[(String, String, String)]) -> anyhow::Result<()> {
+    #[derive(serde::Serialize, clickhouse::Row)]
+    struct NewRule {
+        id: String, name: String, content: String, tenant_id: String, source: String, enabled: u8, created_at: u32, updated_at: u32,
     }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
+    let mut ins = ch.insert("ndr.sigma_rules")?;
+    for (id, name, content) in rules {
+        ins.write(&NewRule {
+            id: id.clone(), name: name.clone(), content: content.clone(), tenant_id: "*".into(),
+            source: "community".into(), enabled: 1, created_at: now, updated_at: now,
+        }).await?;
+    }
+    ins.end().await?;
     Ok(())
 }
 

@@ -1,8 +1,10 @@
 //! The AI-learned log parsers (siem-parser-gen) in ClickHouse
-//! (`ndr.learned_parsers`, one row per parser) instead of
+//! (`<tenant db>.learned_parsers`, one row per parser) instead of
 //! `data/learned_parsers.json`. The file of older installs is imported once.
+//! Each tenant has its own parsers: they hold sample lines of its logs.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 use std::time::Duration;
 
 use clickhouse::Row;
@@ -11,7 +13,8 @@ use siem_parser_gen::{DynamicParser, DynamicParserRegistry};
 use tracing::{info, warn};
 
 use crate::db::ClickHouseDb;
-use crate::tenancy::DEFAULT_DB;
+use crate::tenancy::{self, DEFAULT_DB};
+use crate::AppState;
 
 pub const LEGACY_FILE: &str = "data/learned_parsers.json";
 
@@ -27,9 +30,9 @@ fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
 }
 
-async fn ensure_table(db: &ClickHouseDb) -> bool {
+async fn ensure_table(db: &ClickHouseDb, database: &str) -> bool {
     let q = format!(
-        "CREATE TABLE IF NOT EXISTS `{DEFAULT_DB}`.learned_parsers (
+        "CREATE TABLE IF NOT EXISTS `{database}`.learned_parsers (
             id String,
             parser String,
             deleted UInt8,
@@ -48,13 +51,13 @@ async fn ensure_table(db: &ClickHouseDb) -> bool {
 
 /// Loads the stored parsers into the registry (importing the legacy file
 /// when the table is empty); returns the ids stored in ClickHouse.
-pub async fn load(db: &ClickHouseDb, registry: &DynamicParserRegistry) -> Option<BTreeSet<String>> {
-    if !db.is_connected() || !ensure_table(db).await {
+pub async fn load(db: &ClickHouseDb, registry: &DynamicParserRegistry, database: &str) -> Option<BTreeSet<String>> {
+    if !db.is_connected() || !ensure_table(db, database).await {
         return None;
     }
     let rows = match db
         .root()
-        .query(&format!("SELECT ?fields FROM `{DEFAULT_DB}`.learned_parsers FINAL WHERE deleted = 0"))
+        .query(&format!("SELECT ?fields FROM `{database}`.learned_parsers FINAL WHERE deleted = 0"))
         .fetch_all::<ParserRow>()
         .await
     {
@@ -68,7 +71,8 @@ pub async fn load(db: &ClickHouseDb, registry: &DynamicParserRegistry) -> Option
     let parsers: Vec<DynamicParser> = rows.iter().filter_map(|r| serde_json::from_str(&r.parser).ok()).collect();
     if !parsers.is_empty() {
         info!("Loaded {} learned parsers from ClickHouse", registry.load_parsers(parsers));
-    } else if let Ok(bytes) = std::fs::read(LEGACY_FILE) {
+    } else if database == DEFAULT_DB {
+        let Ok(bytes) = std::fs::read(LEGACY_FILE) else { return Some(ids) };
         if let Ok(parsers) = serde_json::from_slice::<Vec<DynamicParser>>(&bytes) {
             info!("Imported {} learned parsers from {LEGACY_FILE}", registry.load_parsers(parsers));
             // written to ClickHouse by the first sync; the file is kept, renamed
@@ -79,7 +83,7 @@ pub async fn load(db: &ClickHouseDb, registry: &DynamicParserRegistry) -> Option
 }
 
 /// Writes the registry when it changed: every parser, and a tombstone for removed ones.
-async fn save(db: &ClickHouseDb, registry: &DynamicParserRegistry, stored: &mut BTreeSet<String>) -> bool {
+async fn save(db: &ClickHouseDb, registry: &DynamicParserRegistry, stored: &mut BTreeSet<String>, database: &str) -> bool {
     let at = now_ms();
     let parsers = registry.list_parsers();
     let current: BTreeSet<String> = parsers.iter().map(|p| p.id.to_string()).collect();
@@ -88,7 +92,7 @@ async fn save(db: &ClickHouseDb, registry: &DynamicParserRegistry, stored: &mut 
         .map(|p| ParserRow { id: p.id.to_string(), parser: serde_json::to_string(p).unwrap_or_default(), deleted: 0, updated_at: at })
         .collect();
     rows.extend(stored.difference(&current).map(|id| ParserRow { id: id.clone(), parser: String::new(), deleted: 1, updated_at: at }));
-    let c = db.root().clone().with_database(DEFAULT_DB);
+    let c = db.root().clone().with_database(database);
     let mut ins = match c.insert("learned_parsers") {
         Ok(i) => i,
         Err(e) => {
@@ -111,15 +115,40 @@ async fn save(db: &ClickHouseDb, registry: &DynamicParserRegistry, stored: &mut 
 }
 
 /// Saves the parsers every 30 s when they changed (and once at start, for imports and defaults).
-pub fn spawn_sync(db: ClickHouseDb, registry: std::sync::Arc<DynamicParserRegistry>, mut stored: BTreeSet<String>) {
+pub fn spawn_sync(db: ClickHouseDb, registry: Arc<DynamicParserRegistry>, mut stored: BTreeSet<String>, database: String) {
     tokio::spawn(async move {
         let mut saved_version = None;
         loop {
             let v = registry.version();
-            if saved_version != Some(v) && save(&db, &registry, &mut stored).await {
+            if saved_version != Some(v) && save(&db, &registry, &mut stored, &database).await {
                 saved_version = Some(v);
             }
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });
+}
+
+/// The tenant's parser registry: the default tenant's is `state.parser_registry`; another
+/// tenant's is made on first use and filled from its database in the background.
+pub fn for_tenant(state: &AppState, tenant: &str) -> Arc<DynamicParserRegistry> {
+    let t = tenancy::normalize_tenant(tenant);
+    if t == tenancy::DEFAULT_TENANT {
+        return state.parser_registry.clone();
+    }
+    if let Some(r) = state.parser_tenants.read().unwrap().get(&t) {
+        return r.clone();
+    }
+    let mut all = state.parser_tenants.write().unwrap();
+    all.entry(t.clone())
+        .or_insert_with(|| {
+            let r = Arc::new(DynamicParserRegistry::new(""));
+            let (db, reg, database) = (state.db.clone(), r.clone(), tenancy::tenant_db_name(&t));
+            tokio::spawn(async move {
+                if let Some(ids) = load(&db, &reg, &database).await {
+                    spawn_sync(db, reg, ids, database);
+                }
+            });
+            r
+        })
+        .clone()
 }

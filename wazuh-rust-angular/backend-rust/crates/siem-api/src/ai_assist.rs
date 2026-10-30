@@ -49,7 +49,7 @@ pub async fn providers(state: &AppState, use_case: &str) -> Vec<Provider> {
             .await
             .unwrap_or_default()
             .into_iter()
-            .map(|r| Provider { name: r.name, provider_type: r.provider_type, api_key: r.api_key, model: r.model, base_url: r.base_url, endpoint_path: r.endpoint_path, priority: r.priority })
+            .map(|r| Provider { name: r.name, provider_type: r.provider_type, api_key: crate::secrets::open(&r.api_key), model: r.model, base_url: r.base_url, endpoint_path: r.endpoint_path, priority: r.priority })
             .collect()
     } else {
         Vec::new()
@@ -80,26 +80,14 @@ When you use the tenant summary below, say so; do not invent alerts, hosts or nu
 
 /// A read-only summary of the caller's tenant (last 24 h, ClickHouse), for the chat.
 async fn tenant_summary(state: &AppState, ctx: &AuthCtx) -> String {
-    let alerts = crate::history::alerts(state, ctx, 24).await;
+    let (c, top) = tokio::join!(crate::history::counts(state, ctx, 24), crate::history::top_rules(state, ctx, 24, 8));
     let agents = crate::scoped_agent_map(state, ctx);
-    let (mut crit, mut high, mut med, mut low) = (0, 0, 0, 0);
-    let mut rules: HashMap<(u32, String), u32> = HashMap::new();
-    for a in &alerts {
-        match a.rule.level {
-            12.. => crit += 1,
-            8..=11 => high += 1,
-            4..=7 => med += 1,
-            _ => low += 1,
-        }
-        *rules.entry((a.rule.id, a.rule.description.clone())).or_default() += 1;
-    }
-    let mut top: Vec<_> = rules.into_iter().collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
-    let top: Vec<String> = top.into_iter().take(8).map(|((id, d), n)| format!("rule {id} x{n}: {}", d.chars().take(120).collect::<String>())).collect();
+    let (crit, high, med, low) = (c.critical(), c.high(), c.medium(), c.low());
+    let top: Vec<String> = top.into_iter().map(|(id, d, n)| format!("rule {id} x{n}: {}", d.chars().take(120).collect::<String>())).collect();
     format!(
         "Tenant summary (last 24 h): {} agents; {} alerts (critical {crit}, high {high}, medium {med}, low {low}).\nMost frequent rules:\n{}",
         agents.len(),
-        alerts.len(),
+        c.alerts(),
         siem_ai::untrusted(&top.join("\n"), 2000)
     )
 }
@@ -143,7 +131,7 @@ pub async fn analyze(State(state): State<AppState>, Extension(ctx): Extension<Au
     let mut location = req.location.clone().unwrap_or_default();
     let mut text = String::new();
     if let Some(eid) = &req.event_id {
-        if let Some(ev) = crate::history::events(&state, &ctx, crate::history::DEFAULT_HOURS).await.into_iter().find(|e| &e.id.to_string() == eid) {
+        if let Some(ev) = crate::history::event(&state, &ctx, eid).await {
             host = ev.agent_id.clone();
             source = format!("{:?}", ev.source);
             location = ev.location.clone();
@@ -217,5 +205,202 @@ mod tests {
         let b = parse_analysis("It looks fine.", "m".into());
         assert_eq!((b.confidence_score, b.summary.as_str()), (0, "It looks fine."));
         assert!(b.mitre_attack.is_none(), "no invented MITRE mapping");
+    }
+}
+
+// ───────────────────────── provider settings (platform admins) ─────────────────────────
+
+/// After a change the next AI call reads the providers again.
+fn forget_providers() {
+    *PROVIDERS.lock().unwrap() = None;
+}
+
+fn platform_admin(ctx: &AuthCtx) -> Option<axum::response::Response> {
+    use axum::response::IntoResponse;
+    (!ctx.is_super()).then(|| (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "error": "Only platform admins manage AI providers" }))).into_response())
+}
+
+#[derive(clickhouse::Row, Deserialize)]
+struct ProviderListRow {
+    name: String,
+    provider_type: String,
+    api_key: String,
+    model: String,
+    base_url: String,
+    endpoint_path: String,
+    msg_format: String,
+    use_case: String,
+    priority: u8,
+    enabled: u8,
+}
+
+/// `GET /api/settings/ai/providers` (the keys are never returned)
+pub async fn list_providers(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(r) = platform_admin(&ctx) {
+        return r;
+    }
+    let rows = state
+        .db
+        .root()
+        .query("SELECT name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled FROM ndr.ai_providers FINAL ORDER BY priority, name")
+        .fetch_all::<ProviderListRow>()
+        .await;
+    match rows {
+        Ok(rows) => Json(serde_json::json!({
+            "providers": rows.iter().map(|r| serde_json::json!({
+                "name": r.name, "provider_type": r.provider_type, "model": r.model, "base_url": r.base_url, "endpoint_path": r.endpoint_path,
+                "msg_format": r.msg_format, "use_case": r.use_case, "priority": r.priority, "enabled": r.enabled == 1, "key_set": !r.api_key.is_empty(),
+            })).collect::<Vec<_>>()
+        }))
+        .into_response(),
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "error": e.to_string() }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ProviderReq {
+    pub name: String,
+    #[serde(default)]
+    pub provider_type: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub endpoint_path: String,
+    #[serde(default)]
+    pub msg_format: String,
+    #[serde(default)]
+    pub use_case: String,
+    #[serde(default)]
+    pub priority: Option<u8>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+impl ProviderReq {
+    /// The provider as the AI client calls it; an empty key is the stored one.
+    async fn provider(&self, state: &AppState) -> Provider {
+        let key = if self.api_key.trim().is_empty() { stored_key(state, self.name.trim()).await } else { self.api_key.trim().to_string() };
+        Provider {
+            name: self.name.trim().into(),
+            provider_type: if self.provider_type.is_empty() { "openai".into() } else { self.provider_type.clone() },
+            api_key: key,
+            model: self.model.trim().into(),
+            base_url: self.base_url.trim().trim_end_matches('/').into(),
+            endpoint_path: if self.endpoint_path.trim().is_empty() { "/v1/chat/completions".into() } else { self.endpoint_path.trim().into() },
+            priority: self.priority.unwrap_or(10),
+        }
+    }
+}
+
+async fn stored_key(state: &AppState, name: &str) -> String {
+    let k = state.db.root().query("SELECT api_key FROM ndr.ai_providers FINAL WHERE name = ? LIMIT 1").bind(name).fetch_optional::<String>().await.ok().flatten().unwrap_or_default();
+    crate::secrets::open(&k)
+}
+
+/// Provider keys still stored in plain text, written again sealed; how many.
+pub async fn reseal_provider_keys(state: &AppState) -> usize {
+    let rows = state
+        .db
+        .root()
+        .query("SELECT name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled FROM ndr.ai_providers FINAL WHERE api_key != '' AND NOT startsWith(api_key, 'enc:v1:')")
+        .fetch_all::<ProviderListRow>()
+        .await
+        .unwrap_or_default();
+    for r in &rows {
+        let _ = state
+            .db
+            .root()
+            .query("INSERT INTO ndr.ai_providers (name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())")
+            .bind(&r.name)
+            .bind(&r.provider_type)
+            .bind(crate::secrets::seal(&r.api_key))
+            .bind(&r.model)
+            .bind(&r.base_url)
+            .bind(&r.endpoint_path)
+            .bind(&r.msg_format)
+            .bind(&r.use_case)
+            .bind(r.priority)
+            .bind(r.enabled)
+            .execute()
+            .await;
+    }
+    if !rows.is_empty() {
+        let _ = state.db.root().query("OPTIMIZE TABLE ndr.ai_providers FINAL").execute().await;
+        forget_providers();
+    }
+    rows.len()
+}
+
+/// `POST /api/settings/ai/providers`: add, or replace the one of that name.
+pub async fn save_provider(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(r): Json<ProviderReq>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(x) = platform_admin(&ctx) {
+        return x;
+    }
+    let bad = |m: &str| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "error": m }))).into_response();
+    if r.name.trim().is_empty() || r.name.len() > 80 {
+        return bad("A name is required");
+    }
+    if !(r.base_url.starts_with("https://") || r.base_url.starts_with("http://")) {
+        return bad("The base URL must start with https:// or http://");
+    }
+    let use_case = if r.use_case.is_empty() { "all".to_string() } else { r.use_case.clone() };
+    if !matches!(use_case.as_str(), "all" | "chat" | "threat") {
+        return bad("use_case is all, chat or threat");
+    }
+    let p = r.provider(&state).await;
+    // created_at (the version) makes each save a new row: the replicated table drops a repeated identical insert
+    let saved = state
+        .db
+        .root()
+        .query("INSERT INTO ndr.ai_providers (name, provider_type, api_key, model, base_url, endpoint_path, msg_format, use_case, priority, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())")
+        .bind(&p.name)
+        .bind(&p.provider_type)
+        .bind(crate::secrets::seal(&p.api_key))
+        .bind(&p.model)
+        .bind(&p.base_url)
+        .bind(&p.endpoint_path)
+        .bind(if r.msg_format.is_empty() { "openai" } else { r.msg_format.as_str() })
+        .bind(&use_case)
+        .bind(p.priority)
+        .bind(u8::from(r.enabled.unwrap_or(true)))
+        .execute()
+        .await;
+    forget_providers();
+    match saved {
+        Ok(()) => Json(serde_json::json!({ "status": "ok" })).into_response(),
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "error": e.to_string() }))).into_response(),
+    }
+}
+
+/// `DELETE /api/settings/ai/providers/:name`
+pub async fn delete_provider(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, axum::extract::Path(name): axum::extract::Path<String>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(x) = platform_admin(&ctx) {
+        return x;
+    }
+    let r = state.db.root().query("ALTER TABLE ndr.ai_providers DELETE WHERE name = ? SETTINGS mutations_sync = 2").bind(&name).execute().await;
+    forget_providers();
+    match r {
+        Ok(()) => Json(serde_json::json!({ "status": "ok" })).into_response(),
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "error": e.to_string() }))).into_response(),
+    }
+}
+
+/// `POST /api/settings/ai/providers/test`: one short request to the provider.
+pub async fn test_provider(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(r): Json<ProviderReq>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(x) = platform_admin(&ctx) {
+        return x;
+    }
+    let p = r.provider(&state).await;
+    match siem_ai::generate(&[p], "You are a connectivity check.", "Reply with the single word OK.").await {
+        Ok(reply) => Json(serde_json::json!({ "status": "ok", "response": reply.text, "model": reply.model })).into_response(),
+        Err(e) => Json(serde_json::json!({ "status": "error", "error": e })).into_response(),
     }
 }

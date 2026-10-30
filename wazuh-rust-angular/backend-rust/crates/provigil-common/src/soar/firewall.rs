@@ -35,9 +35,9 @@ pub async fn push_block(
     let api_key = config["api_key"].as_str().unwrap_or("");
 
     match fw_type {
-        "pfsense"  => pfsense_block(host, api_key, src_ip, duration_hours).await,
+        "pfsense"  => pfsense_block(host, api_key, config, src_ip, duration_hours).await,
         "fortinet" => fortinet_block(host, api_key, config, src_ip).await,
-        "panos"    => panos_block(host, api_key, src_ip).await,
+        "panos"    => panos_block(host, api_key, config, src_ip).await,
         "opnsense" => opnsense_block(host, api_key, config, src_ip).await,
         "rest"     => generic_rest_block(host, api_key, src_ip, duration_hours).await,
         _          => FirewallResult::err(fw_type, "unsupported firewall type"),
@@ -54,9 +54,9 @@ pub async fn revoke_block(
     let api_key = config["api_key"].as_str().unwrap_or("");
 
     match fw_type {
-        "pfsense"  => pfsense_revoke(host, api_key, rule_id).await,
+        "pfsense"  => pfsense_revoke(host, api_key, config, rule_id).await,
         "fortinet" => fortinet_revoke(host, api_key, config, src_ip).await,
-        "panos"    => panos_revoke(host, api_key, src_ip).await,
+        "panos"    => panos_revoke(host, api_key, config, src_ip).await,
         "opnsense" => opnsense_revoke(host, api_key, config, src_ip).await,
         "rest"     => generic_rest_revoke(host, api_key, src_ip, rule_id).await,
         _          => false,
@@ -66,9 +66,9 @@ pub async fn revoke_block(
 // ── pfSense (REST API v2) ──────────────────────────────────────────────────
 // Adds src_ip to the NDR_BLOCK alias. API key goes in X-API-Key header.
 
-async fn pfsense_block(host: &str, api_key: &str, src_ip: &str, _duration_hours: u64) -> FirewallResult {
+async fn pfsense_block(host: &str, api_key: &str, config: &Value, src_ip: &str, _duration_hours: u64) -> FirewallResult {
     let fw = "pfsense";
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
 
     // Ensure NDR_BLOCK alias exists (idempotent)
     let alias_url = format!("https://{}/api/v2/firewall/alias", host);
@@ -103,13 +103,13 @@ async fn pfsense_block(host: &str, api_key: &str, src_ip: &str, _duration_hours:
     }
 }
 
-async fn pfsense_revoke(host: &str, api_key: &str, rule_id: &str) -> bool {
+async fn pfsense_revoke(host: &str, api_key: &str, config: &Value, rule_id: &str) -> bool {
     // rule_id format: "pfsense:NDR_BLOCK:<ip>"
     let parts: Vec<&str> = rule_id.split(':').collect();
     let ip = parts.get(2).copied().unwrap_or("");
     if ip.is_empty() { return false; }
 
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
     let url    = format!("https://{}/api/v2/firewall/alias/entry", host);
     match client
         .delete(&url)
@@ -134,7 +134,7 @@ async fn fortinet_block(host: &str, api_key: &str, config: &Value, src_ip: &str)
     let fw   = "fortinet";
     let vdom = config["vdom"].as_str().unwrap_or("root");
     let name = format!("NDR_BLOCK_{}", src_ip.replace('.', "_").replace(':', "_"));
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
 
     let url = format!("https://{}/api/v2/cmdb/firewall/address?vdom={}", host, vdom);
     let body = json!({
@@ -166,7 +166,7 @@ async fn fortinet_block(host: &str, api_key: &str, config: &Value, src_ip: &str)
 async fn fortinet_revoke(host: &str, api_key: &str, config: &Value, src_ip: &str) -> bool {
     let vdom = config["vdom"].as_str().unwrap_or("root");
     let name = format!("NDR_BLOCK_{}", src_ip.replace('.', "_").replace(':', "_"));
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
 
     let url = format!("https://{}/api/v2/cmdb/firewall/address/{}?vdom={}", host, name, vdom);
     client.delete(&url)
@@ -179,9 +179,9 @@ async fn fortinet_revoke(host: &str, api_key: &str, config: &Value, src_ip: &str
 // ── Palo Alto PAN-OS (XML API) ────────────────────────────────────────────
 // Adds IP to a dynamic address group tag "NDR_BLOCK". API key in X-API-Key.
 
-async fn panos_block(host: &str, api_key: &str, src_ip: &str) -> FirewallResult {
+async fn panos_block(host: &str, api_key: &str, config: &Value, src_ip: &str) -> FirewallResult {
     let fw     = "panos";
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
     let cmd    = format!(
         "<request><user-id><payload><register><entry ip=\"{}\"><tag><member>NDR_BLOCK</member></tag></entry></register></payload></user-id></request>",
         src_ip
@@ -203,8 +203,8 @@ async fn panos_block(host: &str, api_key: &str, src_ip: &str) -> FirewallResult 
     }
 }
 
-async fn panos_revoke(host: &str, api_key: &str, src_ip: &str) -> bool {
-    let client = insecure_client();
+async fn panos_revoke(host: &str, api_key: &str, config: &Value, src_ip: &str) -> bool {
+    let client = device_client(config, Duration::from_secs(10));
     let cmd = format!(
         "<request><user-id><payload><unregister><entry ip=\"{}\"><tag><member>NDR_BLOCK</member></tag></entry></unregister></payload></user-id></request>",
         src_ip
@@ -222,7 +222,7 @@ async fn opnsense_block(host: &str, api_key: &str, config: &Value, src_ip: &str)
     let fw    = "opnsense";
     let alias = config["alias"].as_str().unwrap_or("NDR_BLOCK");
     let (key, secret) = api_key.split_once(':').unwrap_or((api_key, ""));
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
 
     let url  = format!("https://{}/api/firewall/alias/addHost/{}", host, alias);
     let body = json!({"address": src_ip});
@@ -246,7 +246,7 @@ async fn opnsense_block(host: &str, api_key: &str, config: &Value, src_ip: &str)
 async fn opnsense_revoke(host: &str, api_key: &str, config: &Value, src_ip: &str) -> bool {
     let alias = config["alias"].as_str().unwrap_or("NDR_BLOCK");
     let (key, secret) = api_key.split_once(':').unwrap_or((api_key, ""));
-    let client = insecure_client();
+    let client = device_client(config, Duration::from_secs(10));
 
     let url = format!("https://{}/api/firewall/alias/delHost/{}", host, alias);
     let ok = client.post(&url)
@@ -548,10 +548,21 @@ async fn gcp_vpc_revoke(config: &Value, rule_name: &str) -> bool {
 
 // ── Helper ─────────────────────────────────────────────────────────────────
 
-fn insecure_client() -> Client {
-    Client::builder()
-        .danger_accept_invalid_certs(true)  // firewalls often use self-signed certs
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_default()
+/// The HTTPS client of a firewall / switch integration. Certificates are verified: against the
+/// system roots, plus `ca_cert` (the device's own CA or self-signed certificate, PEM) when given.
+/// `tls_insecure: true` turns verification off, for a lab device only. A `ca_cert` that is not a
+/// PEM certificate is ignored with a warning: the connection then fails verification (fail closed).
+pub fn device_client(config: &Value, timeout: Duration) -> Client {
+    let mut b = Client::builder().timeout(timeout);
+    let insecure = config["tls_insecure"].as_bool() == Some(true) || config["tls_insecure"].as_str() == Some("true");
+    if insecure {
+        warn!("[TLS] certificate verification is off for this integration (tls_insecure)");
+        b = b.danger_accept_invalid_certs(true);
+    } else if let Some(pem) = config["ca_cert"].as_str().filter(|p| !p.trim().is_empty()) {
+        match reqwest::Certificate::from_pem(pem.as_bytes()) {
+            Ok(c) => b = b.add_root_certificate(c),
+            Err(e) => warn!("[TLS] ca_cert is not a PEM certificate ({e}); only the system roots are trusted"),
+        }
+    }
+    b.build().unwrap_or_default()
 }

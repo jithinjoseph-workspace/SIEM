@@ -84,7 +84,8 @@ impl AuthCtx {
     pub fn has_permission(&self, perm: &str) -> bool {
         self.is_super()
             || self.is_tenant_admin()
-            || self.permissions.iter().any(|p| p == perm || p == "all" || (p == "siem" && perm.starts_with("siem")))
+            // deploying agents is granted on its own, never by the SIEM suite
+            || self.permissions.iter().any(|p| p == perm || p == "all" || (p == "siem" && perm.starts_with("siem") && perm != "siem-agent-deploy"))
     }
 
     /// Whether the caller administers `tenant`.
@@ -227,6 +228,28 @@ pub async fn init_valkey() -> Result<(), String> {
     let cm = redis::aio::ConnectionManager::new(client).await.map_err(|e| format!("Valkey {url}: {e}"))?;
     let _ = VALKEY.set(cm);
     Ok(())
+}
+
+/// Whether the session store answers (the platform health page).
+pub async fn valkey_ok() -> bool {
+    let Some(cm) = VALKEY.get() else { return false };
+    let mut c = cm.clone();
+    redis::cmd("PING").query_async::<_, String>(&mut c).await.is_ok()
+}
+
+/// Takes a platform-wide lock in Valkey (`SET key 1 NX EX ttl`), shared by every
+/// siem-api; false when another holds it or Valkey does not answer.
+pub async fn valkey_lock(key: &str, ttl_secs: u64) -> bool {
+    let Some(cm) = VALKEY.get() else { return false };
+    let mut c = cm.clone();
+    redis::cmd("SET").arg(key).arg("1").arg("NX").arg("EX").arg(ttl_secs).query_async::<_, Option<String>>(&mut c).await.ok().flatten().is_some()
+}
+
+pub async fn valkey_unlock(key: &str) {
+    if let Some(cm) = VALKEY.get() {
+        let mut c = cm.clone();
+        let _ = redis::cmd("DEL").arg(key).query_async::<_, i64>(&mut c).await;
+    }
 }
 
 /// Whether auth-service still has this session (logout / force-logout
@@ -433,9 +456,15 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
         Some("siem-parsers")
     } else if starts("/api/siem/sources") || starts("/api/sources") {
         Some("siem-sources")
-    } else if starts("/api/soar") {
+    } else if starts("/api/soar") || starts("/api/blocks") || starts("/api/isolat") || starts("/api/unisolate") {
         Some("soar")
-    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") {
+    } else if starts("/api/v1/siem/sigma") || ((starts("/api/rules") || starts("/api/v1/rules")) && method != Method::GET) {
+        // creating, changing and deleting rules
+        Some("siem-rules")
+    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") {
+        Some("siem-alerts")
+    } else if agent_sub("process-tree") {
+        // investigating an alert
         Some("siem-alerts")
     } else if starts("/api/v1/siem/predictions") {
         Some("siem-mitre")
@@ -454,7 +483,7 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
 fn agent_id_in_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("/api/v1/agents/").or_else(|| path.strip_prefix("/api/agents/"))?;
     let id = rest.split('/').next().filter(|s| !s.is_empty())?;
-    (id != "enroll" && id != "deactivated").then_some(id)
+    (id != "enroll" && id != "deactivated" && id != "telemetry").then_some(id)
 }
 
 // ───────────────────────── tenant registry sync ─────────────────────────
@@ -578,6 +607,9 @@ mod tests {
         assert!(c.has_permission("siem-agents") && !c.has_permission("siem-fim"));
         c.permissions = vec!["siem".into()];
         assert!(c.has_permission("siem-fim") && !c.has_permission("dashboard"));
+        assert!(!c.has_permission("siem-agent-deploy"), "deploying agents is granted on its own");
+        c.permissions = vec!["siem".into(), "siem-agent-deploy".into()];
+        assert!(c.has_permission("siem-agent-deploy"));
         c.permissions = vec!["all".into()];
         assert!(c.has_permission("dashboard"));
     }

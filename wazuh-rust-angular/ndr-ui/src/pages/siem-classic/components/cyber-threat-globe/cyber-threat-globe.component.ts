@@ -71,8 +71,9 @@ export class CyberThreatGlobeComponent implements OnInit, OnDestroy, OnChanges {
 
   // Live Threat Feed Ticker
   activeThreatCount = signal<number>(4);
-  interceptRate = signal<string>('99.4%');
-  packetsScanned = signal<string>('184,920/s');
+  /** Agents online / enrolled, and the alerts drawn (real inputs, no sample figures). */
+  agentsOnline(): string { return `${this.agents.filter(a => a.status === 'active').length} / ${this.agents.length}`; }
+  alertsShown(): number { return this.alerts.length; }
   latestInterceptLog = signal<string>('LIVE: Intercepted SSH Brute Force from 185.220.101.5 -> srv-prod-ubuntu-01 (Netsh Blocked)');
 
   private scene!: THREE.Scene;
@@ -360,12 +361,7 @@ export class CyberThreatGlobeComponent implements OnInit, OnDestroy, OnChanges {
     this.endpointBeacons = [];
 
     const radius = 7.0;
-    const agentList: Agent[] = (this.agents && this.agents.length > 0) ? this.agents : [
-      { id: '002', name: 'win-ad-dc01', ip: '192.168.10.20', os: 'Windows Server 2022', version: 'v4.14.7-rust', status: 'active', last_keepalive: new Date().toISOString(), os_type: 'windows' },
-      { id: '001', name: 'srv-prod-ubuntu-01', ip: '192.168.10.15', os: 'Ubuntu 24.04 LTS', version: 'v4.14.7-rust', status: 'active', last_keepalive: new Date().toISOString(), os_type: 'linux' },
-      { id: '003', name: 'sec-analyst-macbook', ip: '192.168.10.105', os: 'macOS Sonoma 14.5', version: 'v4.14.7-rust', status: 'active', last_keepalive: new Date().toISOString(), os_type: 'macos' },
-      { id: '004', name: 'dmz-web-nginx', ip: '192.168.1.50', os: 'Debian 12', version: 'v4.14.7-rust', status: 'disconnected', last_keepalive: new Date().toISOString(), os_type: 'linux' }
-    ];
+    const agentList: Agent[] = this.agents ?? [];
 
     agentList.forEach(ag => {
       const coords = this.getAgentCoordinates(ag);
@@ -457,45 +453,8 @@ export class CyberThreatGlobeComponent implements OnInit, OnDestroy, OnChanges {
 
     const radius = 7.0;
 
-    // Use live alerts if available, otherwise fall back to realistic seed attacks
-    const alertsToMap = (this.alerts && this.alerts.length > 0) ? this.alerts.slice(0, 8) : [
-      {
-        id: 'sim-1',
-        timestamp: new Date().toISOString(),
-        rule: { id: 5712, level: 10, description: 'sshd: Multiple failed login attempts (Brute-Force)', groups: ['sshd'] },
-        agent: { id: '001', name: 'srv-prod-ubuntu-01', ip: '192.168.10.15' },
-        full_log: 'Failed password for root from 185.220.101.5 port 42812 ssh2',
-        decoded: { decoder_name: 'sshd', src_ip: '185.220.101.5' },
-        location: '/var/log/auth.log'
-      },
-      {
-        id: 'sim-2',
-        timestamp: new Date().toISOString(),
-        rule: { id: 60100, level: 14, description: 'powershell: Suspicious base64-encoded execution (Mimikatz)', groups: ['windows'] },
-        agent: { id: '002', name: 'win-ad-dc01', ip: '192.168.10.20' },
-        full_log: 'powershell.exe -w hidden -enc c2VrdXJsc2E6OmxvZ29ucGFzc3dvcmRz from 194.26.29.11',
-        decoded: { decoder_name: 'windows', src_ip: '194.26.29.11' },
-        location: 'Security-EventLog'
-      },
-      {
-        id: 'sim-3',
-        timestamp: new Date().toISOString(),
-        rule: { id: 5503, level: 12, description: 'syscheck: Critical security configuration file modified (/etc/shadow)', groups: ['syscheck'] },
-        agent: { id: '001', name: 'srv-prod-ubuntu-01', ip: '192.168.10.15' },
-        full_log: 'File /etc/shadow modified by remote session from 218.92.0.12',
-        decoded: { decoder_name: 'syscheck', src_ip: '218.92.0.12' },
-        location: 'syscheck'
-      },
-      {
-        id: 'sim-4',
-        timestamp: new Date().toISOString(),
-        rule: { id: 70010, level: 15, description: 'ransomware: Suspicious file encryption activity detected', groups: ['malware'] },
-        agent: { id: '003', name: 'sec-analyst-macbook', ip: '192.168.10.105' },
-        full_log: 'Phishing payload execution from 198.51.100.44',
-        decoded: { decoder_name: 'edr', src_ip: '198.51.100.44' },
-        location: 'Endpoint-EDR'
-      }
-    ];
+    // The tenant's live alerts only (no sample attacks)
+    const alertsToMap = (this.alerts ?? []).slice(0, 8);
 
     this.activeThreatCount.set(alertsToMap.length);
 

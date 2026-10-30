@@ -41,6 +41,7 @@ export interface Alert {
   full_log: string;
   decoded: DecodedFields;
   location: string;
+  data?: Record<string, any>;
   risk_fabric?: RiskFabricScore;
 }
 
@@ -145,8 +146,11 @@ export interface AgentInventory {
 export interface ScaCheckResult {
   check_id: number;
   title: string;
-  status: 'Passed' | 'Failed';
+  status: 'Passed' | 'Failed' | 'Not applicable';
   reason?: string;
+  description?: string;
+  rationale?: string;
+  remediation?: string;
 }
 
 export type AgentDetailTab = 'specs' | 'network_ports' | 'users_services' | 'sca' | 'fim' | 'actions';
@@ -170,33 +174,84 @@ export interface MitreTacticColumn {
 export interface MitreMatrixResponse {
   matrix: MitreTacticColumn[];
   total_tactics: number;
+  /** Techniques of the full ATT&CK Enterprise catalog (the manager's mitre.db). */
+  total_techniques?: number;
   total_mitre_alerts: number;
+  /** Technique ids in alerts that the catalog does not have (revoked, or a rule's typo). */
+  unmapped?: { id: string; alert_count: number; max_level: number }[];
   last_updated: string;
 }
 
 // --- Regulatory Compliance ---
+/** One CIS / SCA check a requirement maps (the agent's own text and results). */
+export interface ComplianceCheck {
+  check_id: string;
+  title: string;
+  failed_agents: number;
+  passed_agents: number;
+  failing_on: string[];
+  remediation: string;
+  rationale: string;
+}
+
 export interface ComplianceRequirement {
   id: string;
+  /** its most failing check's title (or its top alert's): no hand-written text */
   title: string;
   description: string;
+  /** failed: a mapped check fails; warning: alerts only; passed: its checks pass */
   status: 'passed' | 'warning' | 'failed';
+  source: 'configuration' | 'alerts' | 'both';
   alerts_count: number;
+  max_level: number;
   rule_ids: number[];
+  alerts: { rule_id: number; description: string }[];
+  checks_passed: number;
+  checks_failed: number;
+  checks: ComplianceCheck[];
 }
 
 export interface ComplianceFramework {
   name: string;
   full_name: string;
   version: string;
-  score_percent: number;
+  /** passed share of its configuration check results; null when no check maps it (GDPR) */
+  score_percent: number | null;
   total_requirements: number;
   passed_count: number;
   alert_count: number;
+  checks_passed: number;
+  checks_failed: number;
   requirements: ComplianceRequirement[];
+}
+
+/** A failing check and the requirements it breaks, with the agent's fix. */
+export interface ComplianceRemediation {
+  check_id: string;
+  title: string;
+  remediation: string;
+  rationale: string;
+  failed_agents: number;
+  requirements: string[];
+}
+
+/** A recent alert whose Wazuh rule carries compliance groups. */
+export interface ComplianceEvidence {
+  timestamp: number;
+  agent_id: string;
+  agent_name: string;
+  rule_id: number;
+  level: number;
+  description: string;
+  requirements: string[];
 }
 
 export interface ComplianceResponse {
   frameworks: ComplianceFramework[];
+  remediations: ComplianceRemediation[];
+  evidence: ComplianceEvidence[];
+  window_hours: number;
+  agents: number;
   total_alerts_evaluated: number;
   last_updated: string;
 }
@@ -640,5 +695,89 @@ export interface SimulationIntentRequest {
 export interface ExecuteActionRequest {
   action_id: string;
   dry_run?: boolean;
+}
+
+// Feature 9: Deception-as-Code & Adaptive Honeynet
+export type DeceptionAssetType =
+  | 'canary_file'
+  | 'honeytoken_credential'
+  | 'decoy_network_service'
+  | 'canary_registry_key'
+  | 'active_directory_decoy';
+
+export type AssetDeploymentStatus = 'armed' | 'triggered' | 'decommissioned' | 'pending_deploy';
+
+export interface DeceptionAsset {
+  id: string;
+  name: string;
+  asset_type: DeceptionAssetType;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_path_or_port: string;
+  decoy_payload_preview: string;
+  status: AssetDeploymentStatus;
+  tripped_count: number;
+  last_tripped_at?: string;
+  created_at: string;
+  tags: string[];
+  risk_reduction_score: number;
+}
+
+export interface TripwireEvent {
+  id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_type: DeceptionAssetType;
+  agent_id: string;
+  agent_name: string;
+  attacker_ip: string;
+  attacker_user: string;
+  process_name: string;
+  mitre_technique: string;
+  raw_evidence: string;
+  severity: string;
+  timestamp: string;
+}
+
+export interface DeceptionBlueprint {
+  template_id: string;
+  title: string;
+  description: string;
+  asset_type: DeceptionAssetType;
+  category: string;
+  recommended_target: string;
+  default_path: string;
+  default_payload: string;
+  threat_mitigation: string;
+}
+
+export interface DeceptionSummary {
+  total_assets: number;
+  armed_assets: number;
+  triggered_assets: number;
+  decommissioned_assets: number;
+  total_trips: number;
+  high_fidelity_alerts: number;
+  recent_triggers: TripwireEvent[];
+  fleet_coverage_percentage: number;
+}
+
+export interface CreateAssetRequest {
+  name: string;
+  asset_type: DeceptionAssetType;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_path_or_port: string;
+  decoy_payload_preview?: string;
+  tags?: string[];
+}
+
+export interface SimulateTripwireRequest {
+  asset_id: string;
+  attacker_ip?: string;
+  attacker_user?: string;
+  process_name?: string;
+  mitre_technique?: string;
+  notes?: string;
 }
 

@@ -9,6 +9,12 @@ siem-cjson = { path = "../siem-cjson" }
 siem-log = { path = "../siem-log" }
 siem-ipc = { path = "../siem-ipc" }
 chrono = "0.4"
+sha2 = "0.10"
+# YARA (pure Rust); the pe / dotnet / hash modules the YARA Forge rules use
+boreal = { version = "1.4", features = ["object", "hash"] }
+# the rules travel compressed + base64 (antivirus reads plain YARA strings as malware)
+flate2 = "1"
+base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -31,3 +37,20 @@ path = "src/bin/firewall_drop.rs"
 [[bin]]
 name = "route-null"
 path = "src/bin/route_null.rs"
+
+# EDR responses (not in Wazuh 4.14.7), Windows
+[[bin]]
+name = "kill-process"
+path = "src/bin/kill_process.rs"
+
+[[bin]]
+name = "quarantine-file"
+path = "src/bin/quarantine_file.rs"
+
+[[bin]]
+name = "isolate-host"
+path = "src/bin/isolate_host.rs"
+
+[[bin]]
+name = "yara-scan"
+path = "src/bin/yara_scan.rs"

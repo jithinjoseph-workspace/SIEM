@@ -1,7 +1,8 @@
+import { SiemService } from '../../../services/siem/siem.service';
 import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Api } from '../../../services/api/api';
 import { ArkimeService } from '../../../services/arkime/arkime';
@@ -17,10 +18,16 @@ import { AuthService } from '../../../services/auth/auth';
 
 
 import { reportRxjsError } from '../../../services/error-reporter/error-reporter';
+/** HTTPS devices: their certificate is verified (provigil-common device_client); a device's own CA can be given. */
+const TLS_FIELDS = [
+    { key: 'ca_cert', label: 'CA certificate (PEM, optional: the device\'s own CA or self-signed certificate)', placeholder: '-----BEGIN CERTIFICATE-----', type: 'textarea' },
+    { key: 'tls_insecure', label: 'Skip TLS certificate check (lab devices only)', placeholder: '', type: 'select', options: ['false', 'true'] },
+];
+
 @Component({
     selector: 'app-soar',
     standalone: true,
-    imports: [CommonModule, LucideAngularModule, FormsModule],
+    imports: [CommonModule, RouterLink, LucideAngularModule, FormsModule],
     templateUrl: './soar.html',
     styleUrl: './soar.css',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -228,13 +235,14 @@ export class Soar implements OnInit {
         { type: 'pagerduty', name: 'PagerDuty',  abbr: 'PDY', group: 'notify',   fields: [{ key: 'routing_key', label: 'Routing Key', placeholder: 'abc123...', type: 'password' }] },
         { type: 'telegram',  name: 'Telegram',   abbr: 'TGM', group: 'notify',   fields: [{ key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...', type: 'password' }, { key: 'chat_id', label: 'Chat ID', placeholder: '-1001234567890', type: 'text' }] },
         { type: 'smtp',      name: 'Email',      abbr: 'EML', group: 'notify',   fields: [{ key: 'smtp_host', label: 'SMTP Host', placeholder: 'smtp.gmail.com', type: 'text' }, { key: 'smtp_port', label: 'SMTP Port', placeholder: '587', type: 'text' }, { key: 'smtp_user', label: 'Username', placeholder: 'user@domain.com', type: 'text' }, { key: 'smtp_pass', label: 'Password', placeholder: '••••••••', type: 'password' }, { key: 'from_addr', label: 'From Address', placeholder: 'alerts@domain.com', type: 'text' }, { key: 'to_addr', label: 'Recipient', placeholder: 'soc@domain.com', type: 'text' }] },
-        { type: 'pfsense',   name: 'pfSense',    abbr: 'PFS', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }] },
-        { type: 'fortinet',  name: 'FortiGate',  abbr: 'FGT', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }, { key: 'vdom', label: 'VDOM', placeholder: 'root', type: 'text' }] },
-        { type: 'panos',     name: 'PAN-OS',     abbr: 'PAN', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }] },
-        { type: 'opnsense',  name: 'OPNsense',   abbr: 'OPN', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'Key:Secret', placeholder: 'key:secret', type: 'password' }] },
-        { type: 'unifi',     name: 'UniFi',      abbr: 'UFI', group: 'switch',   fields: [{ key: 'host', label: 'Controller URL', placeholder: 'https://192.168.1.1:8443', type: 'text' }, { key: 'username', label: 'Username', placeholder: 'admin', type: 'text' }, { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' }, { key: 'site', label: 'Site', placeholder: 'default', type: 'text' }] },
+        { type: 'pfsense',   name: 'pfSense',    abbr: 'PFS', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }, ...TLS_FIELDS] },
+        { type: 'fortinet',  name: 'FortiGate',  abbr: 'FGT', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }, { key: 'vdom', label: 'VDOM', placeholder: 'root', type: 'text' }, ...TLS_FIELDS] },
+        { type: 'panos',     name: 'PAN-OS',     abbr: 'PAN', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'API Key', placeholder: '...', type: 'password' }, ...TLS_FIELDS] },
+        { type: 'opnsense',  name: 'OPNsense',   abbr: 'OPN', group: 'firewall', fields: [{ key: 'host', label: 'Host', placeholder: '192.168.1.1', type: 'text' }, { key: 'api_key', label: 'Key:Secret', placeholder: 'key:secret', type: 'password' }, ...TLS_FIELDS] },
+        { type: 'rest',      name: 'REST Firewall', abbr: 'RST', group: 'firewall', fields: [{ key: 'host', label: 'Block URL (POST {action, ip, duration_hours})', placeholder: 'https://fw.example.com/api/block', type: 'text' }, { key: 'api_key', label: 'API Key (X-API-Key)', placeholder: '...', type: 'password' }] },
+        { type: 'unifi',     name: 'UniFi',      abbr: 'UFI', group: 'switch',   fields: [{ key: 'host', label: 'Controller URL', placeholder: 'https://192.168.1.1:8443', type: 'text' }, { key: 'username', label: 'Username', placeholder: 'admin', type: 'text' }, { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' }, { key: 'site', label: 'Site', placeholder: 'default', type: 'text' }, ...TLS_FIELDS] },
         { type: 'cisco',     name: 'Cisco SNMP', abbr: 'CSC', group: 'switch',   fields: [{ key: 'host', label: 'Switch IP', placeholder: '192.168.1.2', type: 'text' }, { key: 'community', label: 'Write Community', placeholder: 'private', type: 'password' }, { key: 'port_ifindex', label: 'Port ifIndex', placeholder: '1', type: 'text' }] },
-        { type: 'aruba',     name: 'Aruba CX',   abbr: 'ARB', group: 'switch',   fields: [{ key: 'host', label: 'Switch URL', placeholder: 'https://192.168.1.3', type: 'text' }, { key: 'username', label: 'Username', placeholder: 'admin', type: 'text' }, { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' }, { key: 'port', label: 'Port (e.g. 1/1/5)', placeholder: '1/1/5', type: 'text' }] },
+        { type: 'aruba',     name: 'Aruba CX',   abbr: 'ARB', group: 'switch',   fields: [{ key: 'host', label: 'Switch URL', placeholder: 'https://192.168.1.3', type: 'text' }, { key: 'username', label: 'Username', placeholder: 'admin', type: 'text' }, { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' }, { key: 'port', label: 'Port (e.g. 1/1/5)', placeholder: '1/1/5', type: 'text' }, ...TLS_FIELDS] },
         { type: 'snmp',      name: 'Generic SNMP', abbr: 'SNM', group: 'switch', fields: [{ key: 'host', label: 'Switch IP', placeholder: '192.168.1.4', type: 'text' }, { key: 'community', label: 'Write Community', placeholder: 'private', type: 'password' }, { key: 'port_ifindex', label: 'Port ifIndex', placeholder: '1', type: 'text' }] },
         { type: 'aws_sg',    name: 'AWS SG',     abbr: 'AWS', group: 'cloud',    fields: [{ key: 'sg_id', label: 'Security Group ID', placeholder: 'sg-0123456789abcdef', type: 'text' }, { key: 'region', label: 'Region', placeholder: 'us-east-1', type: 'text' }, { key: 'aws_access_key_id', label: 'Access Key ID', placeholder: 'AKIA...', type: 'text' }, { key: 'aws_secret_access_key', label: 'Secret Access Key', placeholder: '...', type: 'password' }] },
         { type: 'azure_nsg', name: 'Azure NSG',  abbr: 'AZR', group: 'cloud',    fields: [{ key: 'resource_group', label: 'Resource Group', placeholder: 'my-rg', type: 'text' }, { key: 'nsg_name', label: 'NSG Name', placeholder: 'my-nsg', type: 'text' }, { key: 'subscription_id', label: 'Subscription ID (optional)', placeholder: '...', type: 'text' }] },
@@ -259,7 +267,44 @@ export class Soar implements OnInit {
         'Evidence Collected': ['In Progress', 'Resolved', 'Closed', 'False Positive'],
     };
 
-    constructor(private api: Api, private arkime: ArkimeService, private auth: AuthService, private router: Router, private sanitizer: DomSanitizer) {}
+    /** The outcome of "add the attacker to threat intel" when a case is closed. */
+    intelAddResult = signal<string | null>(null);
+
+    /** The open case's investigation (evidence, login pattern, verdict by AI or rules). */
+    caseInvestigation = signal<any>(null);
+    investigating = signal(false);
+    investigationError = signal<string | null>(null);
+
+    loadInvestigation(caseId: string, tries = 0) {
+        this.siem.getCaseInvestigation(caseId).subscribe({
+            next: (r: any) => {
+                if (this.selectedCase()?.id !== caseId) return;
+                if (r.status === 'ok') this.caseInvestigation.set(r.investigation);
+                // a new case is investigated a few seconds after it opens
+                else if (tries < 4) setTimeout(() => this.loadInvestigation(caseId, tries + 1), 4000);
+            },
+            error: () => {}
+        });
+    }
+
+    reinvestigate() {
+        const c = this.selectedCase();
+        if (!c) return;
+        this.investigating.set(true);
+        this.investigationError.set(null);
+        this.siem.runCaseInvestigation(c.id).subscribe({
+            next: (r: any) => { this.investigating.set(false); this.caseInvestigation.set(r.investigation); this.api.getSoarCaseComments(c.id).subscribe({ next: (x: any) => x.status === 'success' && this.caseComments.set(x.data) }); },
+            error: (e: any) => { this.investigating.set(false); this.investigationError.set(e?.error?.message || 'The investigation failed.'); }
+        });
+    }
+
+    verdictClass(label: string): string {
+        return ({ compromised: 'text-rose-300 border-rose-700 bg-rose-950/50', malicious: 'text-rose-300 border-rose-700 bg-rose-950/50',
+                  attack_attempt: 'text-amber-300 border-amber-700 bg-amber-950/40', likely_benign: 'text-emerald-300 border-emerald-700 bg-emerald-950/40' } as Record<string, string>)[label]
+            ?? 'text-slate-300 border-slate-600 bg-slate-900';
+    }
+
+    constructor(private api: Api, private arkime: ArkimeService, private auth: AuthService, private router: Router, private sanitizer: DomSanitizer, private siem: SiemService) {}
 
     // ── Evidence overlay ──────────────────────────────────────────────────────
     viewEvidence(cid: string) {
@@ -1143,6 +1188,10 @@ export class Soar implements OnInit {
         this.expandedPktIdx.set(new Set());
         this.incidentReport.set(null);
         this.showCloseForm.set(false);
+        this.intelAddResult.set(null);
+        this.caseInvestigation.set(null);
+        this.investigationError.set(null);
+        this.loadInvestigation(c.id);
 
         this.api.getSoarCaseComments(c.id).subscribe({
             next: (res: any) => {
@@ -1155,7 +1204,8 @@ export class Soar implements OnInit {
         this.dismissedSessionIds.set(new Set());
         const hasPair = c.src_ip && c.dst_ip;
         const hasCid  = !!c.community_id;
-        if (hasPair || hasCid) {
+        // PCAP sessions and flow events come from an NDR sensor (Arkime); a SIEM case has none
+        if ((hasPair || hasCid) && this.auth.hasFeature('ndr')) {
             this.evidenceLoading.set(true);
             const pcapParams = hasPair
                 ? { src_ip: c.src_ip, dst_ip: c.dst_ip, limit: 50 }
@@ -1267,7 +1317,10 @@ export class Soar implements OnInit {
         if (!c) return;
         this._doUpdateStatus(this.pendingStatus());
         if (this.addToIntel && c.src_ip) {
-            this.api.addManualIoc('ip', c.src_ip, this.intelGroup).subscribe();
+            this.siem.addWatched(c.src_ip, this.intelGroup).subscribe({
+                next: () => this.intelAddResult.set(`${c.src_ip} added to the threat intel watchlist`),
+                error: (e: any) => this.intelAddResult.set(e?.status === 409 ? `${c.src_ip} is already on the watchlist` : (e?.error?.message || `Could not add ${c.src_ip} to the watchlist`))
+            });
         }
         this.incidentReport.set({
             case_number:  c.case_number,

@@ -197,6 +197,9 @@ pub struct SwarmCampaign {
     pub roe: RulesOfEngagement,
     #[serde(default = "default_campaign_owner")]
     pub owner: String,
+    /// The tenant whose agents it tests; empty: a platform campaign over every tenant.
+    #[serde(default)]
+    pub tenant_id: String,
     pub approved_by: Option<String>,
     pub approval_expires_at: Option<DateTime<Utc>>,
     pub last_run_at: Option<DateTime<Utc>>,
@@ -233,4 +236,7 @@ pub struct FleetAgentTarget {
     pub os_type: String, // "windows" | "linux" | "macos"
     pub status: String,  // "active" | "disconnected" | "pending"
     pub tags: Vec<String>,
+    /// The tenant the agent belongs to: the round's records and alerts are its.
+    #[serde(default)]
+    pub tenant_id: String,
 }

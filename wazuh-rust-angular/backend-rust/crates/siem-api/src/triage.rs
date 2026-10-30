@@ -103,11 +103,14 @@ pub async fn run_for_tenant(state: &AppState, tenant: &str, use_ai: bool) -> Res
             let system = siem_triage::system_prompt();
             for g in ask.into_iter().take(allowed) {
                 st.ai.note_call(hour);
-                match siem_ai::generate(&providers, &system, &siem_triage::build_prompt(g)).await.ok().and_then(|r| siem_triage::decision_from_reply(&r.text)) {
-                    Some(d) => {
-                        decisions.insert(g.key.clone(), d);
-                    }
-                    None => tracing::warn!("triage: no usable AI answer for tenant '{tenant}' group '{}'", g.key),
+                match siem_ai::generate(&providers, &system, &siem_triage::build_prompt(g)).await {
+                    Ok(r) => match siem_triage::decision_from_reply(&r.text) {
+                        Some(d) => {
+                            decisions.insert(g.key.clone(), d);
+                        }
+                        None => tracing::warn!("triage: unusable AI answer for tenant '{tenant}' group '{}' ({}): {}", g.key, r.model, r.text.chars().take(300).collect::<String>()),
+                    },
+                    Err(e) => tracing::warn!("triage: no AI answer for tenant '{tenant}' group '{}': {e}", g.key),
                 }
             }
         }
@@ -237,20 +240,18 @@ pub struct ApplyBody {
 /// agent (and source IP) for `hours` (default 24, at most 168).
 pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>, body: Option<Json<ApplyBody>>) -> Json<Value> {
     let t = ctx.scope();
-    let mut st = load(&state, &t).await;
+    let st = load(&state, &t).await;
     let Some(rec) = st.recs.iter().find(|r| r.id == id).cloned() else { return err("Recommendation not found") };
     if rec.status != "pending" {
         return err("Already handled");
     }
-    if rec.verdict == Verdict::Suspicious {
-        return err("Suspicious groups can't be suppressed from triage - review the alerts instead.");
-    }
+    // a suspicious group is refused by guardrail G5 (decisions.rs), which records the refusal
     // trust calibration: an analyst relying on the AI too much looks at the alerts first
     if crate::insights::calibration(&state, &t, &ctx.username).await.is_some_and(|c| c.require_inspect) && !crate::insights::inspected(&state, &t, &ctx.username, &rec.id).await {
         return err("Open this group's alerts (View alerts) before hiding it.");
     }
     let hours = body.and_then(|b| b.0.hours).unwrap_or(24);
-    let req = siem_suppression::Request {
+    let mut req = siem_suppression::Request {
         rule_id: Some(rec.rule_id),
         rule_name: rec.rule_description.clone(),
         agent_id: Some(rec.agent_id.clone()),
@@ -259,18 +260,36 @@ pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<Auth
         hours: Some(hours),
         reason: format!("Applied from alert triage ({} verdict, {}%): {}", if rec.source == Source::Ai { "AI" } else { "rule" }, rec.confidence, rec.reason),
     };
-    if let Err(e) = crate::suppressions::create(&state, &t, req, "triage", rec.confidence, &ctx.username).await {
+    // hiding alerts on an AI verdict is a high-impact decision: the policy decides first
+    let decision = match crate::decisions::gate_suppress(&state, &t, &ctx.username, &rec, &req).await {
+        Ok(d) => d,
+        Err(e) => return err(e),
+    };
+    req.reason = format!("{} (decision {decision})", req.reason);
+    if let Err(e) = apply_approved(&state, &t, &req, &rec.id, rec.confidence, &ctx.username).await {
         return err(e);
     }
+    let st = load(&state, &t).await;
+    page(&state, &t, &ctx.username, &st, json!({ "applied_hours": hours.clamp(siem_suppression::MIN_HOURS, siem_suppression::MAX_HOURS), "also_covered_groups": 0 })).await
+}
+
+/// Creates the suppression and marks the recommendation applied (when it still exists):
+/// on apply, or when a tenant admin approves a held one (decisions.rs).
+pub async fn apply_approved(state: &AppState, t: &str, req: &siem_suppression::Request, rec_id: &str, confidence: u8, by: &str) -> Result<String, String> {
+    let s = crate::suppressions::create(state, t, req.clone(), "triage", confidence, by).await?;
+    let mut st = load(state, t).await;
     let n = now();
-    if let Some(r) = st.recs.iter_mut().find(|r| r.id == id) {
+    let rec = st.recs.iter_mut().find(|r| r.id == rec_id && r.status == "pending").map(|r| {
         r.status = "applied".into();
         r.updated_at = n;
+        r.clone()
+    });
+    if let Some(rec) = rec {
+        let _ = save(state, t, &st).await;
+        crate::insights::log(state, t, by, "apply", Some(&rec)).await;
+        crate::org_memory::record(state, t, &crate::org_memory::from_triage(state, t, &rec, "applied", by).await).await;
     }
-    let _ = save(&state, &t, &st).await;
-    crate::insights::log(&state, &t, &ctx.username, "apply", Some(&rec)).await;
-    crate::org_memory::record(&state, &t, &crate::org_memory::from_triage(&state, &t, &rec, "applied", &ctx.username).await).await;
-    page(&state, &t, &ctx.username, &st, json!({ "applied_hours": hours.clamp(siem_suppression::MIN_HOURS, siem_suppression::MAX_HOURS), "also_covered_groups": 0 })).await
+    Ok(format!("suppression {} created", s.id))
 }
 
 /// `POST /api/v1/siem/triage/:id/dismiss`: keep showing these, stop recommending.

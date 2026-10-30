@@ -57,7 +57,8 @@ async fn ensure_tables(state: &AppState) -> bool {
     true
 }
 
-async fn fetch<T: for<'de> Deserialize<'de>>(state: &AppState, table: &str) -> Vec<T> {
+/// None when ClickHouse could not be read (not the same as an empty table).
+async fn fetch<T: for<'de> Deserialize<'de>>(state: &AppState, table: &str) -> Option<Vec<T>> {
     let rows = match state
         .db
         .root()
@@ -68,12 +69,12 @@ async fn fetch<T: for<'de> Deserialize<'de>>(state: &AppState, table: &str) -> V
         Ok(r) => r,
         Err(e) => {
             warn!("redswarm_store: {e}");
-            return Vec::new();
+            return None;
         }
     };
-    rows.iter()
+    Some(rows.iter()
         .filter_map(|r| serde_json::from_str::<T>(&r.json).map_err(|e| warn!("redswarm_store: bad row {}: {e}", r.id)).ok())
-        .collect()
+        .collect())
 }
 
 /// Load the persisted audit trail into the in-memory store. No-op when ClickHouse is down.
@@ -81,8 +82,8 @@ pub async fn load(state: &AppState) {
     if !state.db.is_connected() || !ensure_tables(state).await {
         return;
     }
-    let records: Vec<ExecutionRecord> = fetch(state, "redswarm_executions").await;
-    let drafts: Vec<SynthesizedRuleDraft> = fetch(state, "redswarm_drafts").await;
+    let records: Vec<ExecutionRecord> = fetch(state, "redswarm_executions").await.unwrap_or_default();
+    let drafts: Vec<SynthesizedRuleDraft> = fetch(state, "redswarm_drafts").await.unwrap_or_default();
     info!("Loaded {} Red Swarm execution records and {} rule drafts from ClickHouse", records.len(), drafts.len());
     state.redswarm.audit().restore(records, drafts);
 }
@@ -162,9 +163,11 @@ pub fn spawn_sync(state: AppState) {
             }
 
             // Re-read drafts: picks up status changes from this and any other instance.
-            let fresh: Vec<SynthesizedRuleDraft> = fetch(&state, "redswarm_drafts").await;
-            persisted_drafts.extend(fresh.iter().map(|d| d.id.to_string()));
-            audit.set_drafts(fresh);
+            // Skipped when the read fails, so a ClickHouse hiccup never empties the drafts.
+            if let Some(fresh) = fetch::<SynthesizedRuleDraft>(&state, "redswarm_drafts").await {
+                persisted_drafts.extend(fresh.iter().map(|d| d.id.to_string()));
+                audit.merge_drafts(fresh);
+            }
         }
     });
 }

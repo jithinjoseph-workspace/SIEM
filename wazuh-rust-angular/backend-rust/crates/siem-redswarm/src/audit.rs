@@ -51,6 +51,29 @@ impl AuditStore {
     }
 
     /// Get all open detection gaps with pending draft rules
+    /// Whether a new round should draft no rule for the technique in the tenant: a draft
+    /// still waits for approval (no second draft for the same gap), or the analyst rejected it.
+    pub fn drafting_held(&self, tenant_id: &str, technique_id: &str) -> bool {
+        let drafts = self.draft_rules.read().unwrap();
+        let records = self.records.read().unwrap();
+        drafts
+            .iter()
+            .filter(|d| matches!(d.status, DraftRuleStatus::PendingApproval | DraftRuleStatus::Rejected) && d.technique_id == technique_id)
+            .any(|d| records.iter().any(|r| r.id == d.execution_id && r.tenant_id == tenant_id))
+    }
+
+    /// Every draft, pending or decided.
+    pub fn drafts(&self) -> Vec<SynthesizedRuleDraft> {
+        self.draft_rules.read().unwrap().clone()
+    }
+
+    /// The XML a draft was deployed with (its rule id is the one given when deployed).
+    pub fn set_rule_xml(&self, draft_id: Uuid, xml: &str) {
+        if let Some(d) = self.draft_rules.write().unwrap().iter_mut().find(|d| d.id == draft_id) {
+            d.rule_xml = xml.to_string();
+        }
+    }
+
     pub fn get_pending_gaps(&self) -> Vec<SynthesizedRuleDraft> {
         let drafts = self.draft_rules.read().unwrap();
         drafts
@@ -127,9 +150,13 @@ impl AuditStore {
         self.draft_rules.read().unwrap().clone()
     }
 
-    /// Replace the in-memory drafts from the persisted copy (ClickHouse is the source of truth).
-    pub fn set_drafts(&self, drafts: Vec<SynthesizedRuleDraft>) {
-        *self.draft_rules.write().unwrap() = drafts;
+    /// Take the persisted copy of the drafts (ClickHouse is the source of truth), keeping
+    /// drafts made since that are not persisted yet (drafts are never deleted).
+    pub fn merge_drafts(&self, mut persisted: Vec<SynthesizedRuleDraft>) {
+        let mut drafts = self.draft_rules.write().unwrap();
+        let known: std::collections::HashSet<Uuid> = persisted.iter().map(|d| d.id).collect();
+        persisted.extend(drafts.drain(..).filter(|d| !known.contains(&d.id)));
+        *drafts = persisted;
     }
 
     /// Repopulate the store from persisted state at startup (before the swarm loop runs).

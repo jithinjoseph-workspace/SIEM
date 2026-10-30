@@ -50,6 +50,22 @@ pub mod history;
 pub mod inventory_store;
 pub mod org_memory;
 pub mod swarm;
+pub mod decisions;
+pub mod intel;
+pub mod investigate;
+pub mod case_ai;
+pub mod process_tree;
+pub mod file_reputation;
+pub mod yara_edr;
+pub mod posture_store;
+pub mod compliance;
+pub mod secrets;
+pub mod geomap;
+pub mod platform;
+pub mod response;
+pub mod sigma;
+pub mod mitre;
+pub mod rules_api;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -122,7 +138,9 @@ pub struct AppState {
     pub threat_intel: Arc<siem_cdb::ThreatIntelManager>,
     pub rootcheck: Arc<siem_rootcheck::RootcheckScanner>,
     pub active_responses: Arc<RwLock<Vec<ActiveResponseRecord>>>,
+    /// The default tenant's learned parsers (other tenants: `parser_tenants`, parsers_store::for_tenant).
     pub parser_registry: Arc<siem_parser_gen::DynamicParserRegistry>,
+    pub parser_tenants: Arc<RwLock<HashMap<String, Arc<siem_parser_gen::DynamicParserRegistry>>>>,
     pub auth_keystore: Arc<RwLock<siem_crypto::keys::KeyStore>>,
     pub tenants: Arc<RwLock<Vec<TenantRecord>>>,
     /// Per-tenant agent keys (`X-Tenant-Key`).
@@ -143,6 +161,8 @@ pub struct AppState {
     pub redswarm: Arc<siem_redswarm::RedSwarmService>,
     /// Feature 5: Intent Prediction Engine
     pub intent_engine: Arc<siem_intent_engine::IntentEngine>,
+    /// Feature 9: Deception-as-Code & Adaptive Honeynet
+    pub deception_engine: Arc<siem_deception::DeceptionEngine>,
 }
 
 
@@ -180,7 +200,7 @@ async fn main() {
     let rootcheck = Arc::new(siem_rootcheck::RootcheckScanner::with_default_db());
     // Learned parsers live in ClickHouse (parsers_store.rs); the file only when ClickHouse is down.
     let parser_registry = Arc::new(siem_parser_gen::DynamicParserRegistry::new(if db.is_connected() { "" } else { parsers_store::LEGACY_FILE }));
-    let stored_parsers = parsers_store::load(&db, &parser_registry).await;
+    let stored_parsers = parsers_store::load(&db, &parser_registry, tenancy::DEFAULT_DB).await;
 
     // Pre-seed default learned parsers if registry is newly created
     if parser_registry.list_parsers().is_empty() {
@@ -301,6 +321,7 @@ async fn main() {
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
     let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
     let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new("data/intent_engine_config.json"));
+    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new("data/deception_config.json"));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -316,6 +337,7 @@ async fn main() {
         rootcheck,
         active_responses,
         parser_registry,
+        parser_tenants: Arc::new(RwLock::new(HashMap::new())),
         auth_keystore,
         tenants: Arc::new(RwLock::new(Vec::new())),
         agent_keys: Arc::new(tenancy::AgentKeys::new()),
@@ -327,10 +349,12 @@ async fn main() {
         risk_fabric,
         redswarm: Arc::new(siem_redswarm::RedSwarmService::new()),
         intent_engine,
+        deception_engine,
     };
 
     // Red Swarm audit trail (history, gaps, draft rules): ClickHouse is the master copy.
     redswarm_store::load(&state).await;
+    reload_redswarm_rules(&state);
 
     // Start Red Swarm Continuous Background Swarm Engine
     {
@@ -374,19 +398,17 @@ async fn main() {
                         });
                         (ag.name, ag.ip)
                     };
+                    // the target agent's tenant (set by the round), never another one
+                    let tenant = ev.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::tenant_of(&swarm_state.agent_tenants.read().unwrap(), &ev.agent_id));
                     if let Some(alert) = swarm_state.engine.process_event(ev, &name, &ip) {
-                        let alert = tenancy::tag_alert(alert, "default");
+                        let alert = tenancy::tag_alert(redswarm_simulated(alert), &tenant);
                         keep_alerts(&swarm_state, [alert.clone()]);
                         let _ = swarm_state.broadcast_tx.send(alert);
                     }
                     keep_events(&swarm_state, [ev.clone()]);
                 }
             },
-            move |_ag_id, cmd| {
-                // Command dispatcher (ControlledLive dispatch)
-                info!("RedSwarm Dispatching Live Command: {}", cmd.command);
-                Ok("Command dispatched to agent via active-response".into())
-            },
+            move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
             {
                 let alerts_state = state.clone();
                 move || {
@@ -398,10 +420,12 @@ async fn main() {
                 move || {
                     let mut targets = Vec::new();
                     // 1. Live connected agents in state.agents
+                    let tenants = fleet_state.agent_tenants.read().unwrap().clone();
                     {
                         let agents = fleet_state.agents.read().unwrap();
                         for a in agents.values() {
                             targets.push(siem_redswarm::FleetAgentTarget {
+                                tenant_id: tenancy::tenant_of(&tenants, &a.id),
                                 id: a.id.clone(),
                                 name: a.name.clone(),
                                 ip: a.ip.clone(),
@@ -425,6 +449,7 @@ async fn main() {
                                 &e.os_type
                             };
                             targets.push(siem_redswarm::FleetAgentTarget {
+                                tenant_id: e.tenant.clone(),
                                 id: id.clone(),
                                 name: e.name.clone(),
                                 ip: "127.0.0.1".into(),
@@ -440,6 +465,10 @@ async fn main() {
         );
     }
     redswarm_store::spawn_sync(state.clone());
+    {
+        let st = state.clone();
+        tokio::spawn(async move { secrets::reseal_all(&st).await });
+    }
 
     // Demo data only when asked for: it adds fake agents (001-004) whose ids collide with real agents.
     if std::env::var("SIEM_DEMO_DATA").is_ok_and(|v| v == "1") {
@@ -455,7 +484,7 @@ async fn main() {
     // Active responses, vulnerability detections and queued agent commands (ClickHouse).
     persist::load_all(&state).await;
     if let Some(ids) = stored_parsers {
-        parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids);
+        parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids, tenancy::DEFAULT_DB.to_string());
     }
     // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
     vulnerability::spawn_sync(state.clone());
@@ -468,20 +497,47 @@ async fn main() {
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
     swarm::spawn(state.clone());
+    // threat intel feeds from provigil-common (collector + blocklist engine)
+    intel::spawn(state.clone());
+    yara_edr::spawn(state.clone());
+    posture_store::spawn(state.clone());
+    // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
+    platform::mark_start();
+    sigma::spawn(state.clone());
+    response::spawn(state.clone());
+    // ClickHouse can restart (and its Keeper start over) while siem-api keeps running
+    {
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                db::restore_lost_replicas(db.root()).await;
+            }
+        });
+    }
 
-    // Intent Prediction Engine: ClickHouse 7-day historical alert sync on cold start
+    // Intent Prediction Engine & Business-Process Risk Fabric: ClickHouse 7-day historical alert sync on cold start
     {
         let ch_state = state.clone();
         let intent_engine_clone = state.intent_engine.clone();
+        let risk_fabric_clone = state.risk_fabric.clone();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             if ch_state.db.is_connected() {
                 let since_ms = (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
                 for tenant in predictions::tenant_ids(&ch_state) {
-                    if let Some(alerts) = ch_state.db.alerts_since(&tenant, since_ms, 5000).await {
+                    if let Some(mut alerts) = ch_state.db.alerts_since(&tenant, since_ms, 5000).await {
                         if !alerts.is_empty() {
-                            tracing::info!("IntentEngine: Synced {} ClickHouse alerts for tenant '{}'", alerts.len(), &tenant);
+                            tracing::info!("Historical Sync: Ingesting {} ClickHouse alerts for tenant '{}' into Intent & Risk Fabric engines", alerts.len(), &tenant);
+                            for a in &mut alerts {
+                                if !a.data.contains_key("risk_fabric") {
+                                    risk_fabric_clone.evaluate_alert(a);
+                                }
+                            }
                             intent_engine_clone.ingest_live_alerts(&alerts);
+                            let mut l = ch_state.alerts.write().unwrap();
+                            l.extend(alerts);
+                            crate::trim(&mut l, crate::MEM_ALERTS);
                         }
                     }
                 }
@@ -590,7 +646,14 @@ async fn main() {
     };
 
     let app = Router::new()
-        .nest_service("/api/v1/risk-fabric", siem_risk_fabric::api::router(state.risk_fabric.clone(), alerts_reader.clone()))
+        .nest_service(
+            "/api/v1/risk-fabric",
+            siem_risk_fabric::api::router(
+                state.risk_fabric.clone(),
+                alerts_reader.clone(),
+                Some(fleet_reader.clone()),
+            ),
+        )
         .nest_service(
             "/api/v1/intent",
             siem_intent_engine::api::router(
@@ -609,13 +672,13 @@ async fn main() {
         .route("/agents", delete(delete_agents_wazuh_handler))
         .route("/api/v1/events", get(get_events))
         .route("/api/events", get(get_events))
-        .route("/api/v1/rules", get(get_rules_api_handler).post(post_rules_handler))
-        .route("/api/rules", get(get_rules_api_handler).post(post_rules_handler))
+        .route("/api/v1/rules", get(rules_api::list).post(rules_api::create))
+        .route("/api/rules", get(rules_api::list).post(rules_api::create))
         .route("/api/rules/hit-counts", get(get_rules_hit_counts_handler))
-        .route("/api/rules/:id", delete(delete_rules_handler))
-        .route("/api/rules/:id/toggle", post(toggle_rules_handler))
-        .route("/api/rules/reload", post(reload_rules_handler))
-        .route("/api/rules/sync-community", post(sync_community_rules_handler))
+        .route("/api/rules/:id", get(rules_api::get_one).delete(rules_api::delete))
+        .route("/api/rules/:id/toggle", post(rules_api::toggle))
+        .route("/api/rules/reload", post(rules_api::reload))
+        .route("/api/rules/sync-community", post(rules_api::sync_community))
         .route("/api/v1/ai/analyze", post(ai_assist::analyze))
         .route("/api/v1/ai/chat", post(ai_assist::chat))
         .route("/api/v1/ingest", post(ingest_event))
@@ -637,35 +700,48 @@ async fn main() {
         .route("/api/admin/top-ips-all-tenants", get(get_top_ips_all_tenants_handler))
         .route("/api/admin/protocols-all-tenants", get(get_protocols_all_tenants_handler))
         .route("/api/admin/threat-intel-all-tenants", get(get_threat_intel_all_tenants_handler))
-        .route("/api/admin/threat-map-all-tenants", get(get_threat_map_all_tenants_handler))
-        .route("/api/threat-map", get(get_threat_map_all_tenants_handler))
-        .route("/api/threat-intel-map", get(get_threat_intel_map_handler))
+        // world maps from real data (GeoLite2): alert sources and the threat-intel feeds
+        .route("/api/admin/threat-map-all-tenants", get(geomap::threat_map_all_tenants))
+        .route("/api/threat-map", get(geomap::threat_map))
+        .route("/api/threat-intel-map", get(geomap::threat_intel_map))
         .route("/api/threat-intel", get(get_threat_intel_handler))
         .route("/api/threat-intel/watchlist", get(get_threat_intel_watchlist_handler))
-        .route("/api/admin/engines", get(get_engines_handler))
-        .route("/api/admin/engines/scale", post(post_engines_scale_handler))
-        .route("/api/admin/leader-status", get(get_leader_status_handler))
-        .route("/api/leader/status", get(get_leader_status_handler))
-        .route("/api/monitor/kafka", get(get_kafka_status_handler))
-        .route("/api/kafka/status", get(get_kafka_status_handler))
-        .route("/api/admin/telemetry", get(get_telemetry_handler))
+        // the platform as it really is (platform.rs); NDR sensors are the NDR engine's
+        .route("/api/admin/engines", get(platform::engines))
+        .route("/api/admin/engines/scale", post(platform::scale))
+        .route("/api/admin/leader-status", get(platform::leader))
+        .route("/api/leader/status", get(platform::leader))
+        .route("/api/monitor/kafka", get(platform::kafka))
+        .route("/api/kafka/status", get(platform::kafka))
+        .route("/api/admin/telemetry", get(platform::telemetry))
         .route("/api/admin/client-errors", get(get_client_errors_handler).post(post_client_errors_handler))
         .route("/api/client-errors", get(get_client_errors_handler).post(post_client_errors_handler))
-        .route("/api/health", get(get_health_handler))
-        .route("/health", get(get_health_handler))
-        .route("/api/sensor-keys", get(get_sensor_keys_handler).post(post_sensor_keys_handler))
-        .route("/api/sensor-keys/:id", delete(delete_sensor_key_handler))
-        .route("/api/sensor-keys/:id/reactivate", post(reactivate_sensor_key_handler))
-        .route("/api/sensor-keys/event-counts", get(get_sensor_event_counts_handler))
-        .route("/api/sensor-keys/recent-ips", get(get_sensor_recent_ips_handler))
-        .route("/api/sensor/control", post(post_sensor_control_handler))
-        .route("/api/interfaces", get(get_interfaces_handler))
-        .route("/api/agent-status", get(get_agent_status_handler))
-        .route("/api/scale-status", get(get_scale_status_handler))
+        .route("/api/health", get(platform::health))
+        .route("/health", get(platform::health))
+        .route("/api/sensor-keys", get(platform::sensor_keys).post(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/:id", delete(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/:id/reactivate", post(platform::sensors_managed_by_ndr))
+        .route("/api/sensor-keys/event-counts", get(platform::sensor_event_counts))
+        .route("/api/sensor-keys/recent-ips", get(platform::sensor_recent_ips))
+        .route("/api/sensor/control", post(platform::sensors_managed_by_ndr))
+        .route("/api/interfaces", get(platform::interfaces))
+        .route("/api/agent-status", get(platform::agent_status))
+        // blocks at the agent / firewall / cloud and host isolation (response.rs), as on the NDR engine
+        .route("/api/blocks", get(response::list_blocks))
+        .route("/api/blocks/manual", post(response::manual_block))
+        .route("/api/blocks/revoke", post(response::revoke_block))
+        .route("/api/isolations", get(response::list_isolations))
+        .route("/api/isolate", post(response::isolate_handler))
+        .route("/api/unisolate", post(response::unisolate_handler))
+        // Sigma rules on every archived event (sigma.rs)
+        .route("/api/v1/siem/sigma", get(sigma::status))
+        .route("/api/v1/siem/sigma/sync", post(sigma::sync))
+        .route("/api/scale-status", get(platform::scale_status))
         .route("/api/stats", get(get_stats))
         .route("/api/stats/unified", get(get_unified_stats_handler))
         .route("/api/stats/timeline", get(get_stats_timeline_handler))
         .route("/api/hits", get(get_hits_handler))
+        .route("/api/hits/timeline", get(get_hits_timeline_handler))
         .route("/api/top-ips", get(get_top_ips_handler))
         .route("/api/severity", get(get_severity_handler))
         .route("/api/support/messages", get(get_support_messages_handler))
@@ -698,6 +774,7 @@ async fn main() {
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
+        .route("/api/v1/agents/telemetry", get(get_agents_telemetry))
         .route("/api/v1/agents/deactivated", get(get_deactivated_agents_handler))
         .route("/api/v1/agents/:id/deactivate", post(deactivate_agent_handler))
         .route("/api/v1/agents/:id/activate", post(activate_agent_handler))
@@ -709,6 +786,8 @@ async fn main() {
         .route("/api/v1/agents/:id/syscollector/netiface", get(get_agent_netiface_handler))
         .route("/api/v1/agents/:id/fim", get(get_agent_fim_handler).post(post_agent_fim_handler))
         .route("/api/v1/agents/:id/sca", get(get_agent_sca_handler))
+        .route("/api/v1/agents/:id/process-tree", get(process_tree::get))
+        .route("/api/v1/edr/yara", get(yara_edr::status))
         .route("/api/v1/threat-intel/check", get(check_threat_intel_handler))
         .route("/api/v1/threat-intel/lists", get(get_threat_intel_lists_handler))
         .route("/api/v1/agents/:id/rootcheck/scan", post(post_agent_rootcheck_handler))
@@ -724,8 +803,8 @@ async fn main() {
         .route("/ws", get(ws_alerts_handler))
         .route("/api/ws", get(ws_alerts_handler))
         .route("/api/v1/logtest", post(post_logtest_handler))
-        .route("/api/v1/compliance", get(get_compliance_handler))
-        .route("/api/v1/mitre/matrix", get(get_mitre_matrix_handler))
+        .route("/api/v1/compliance", get(compliance::get))
+        .route("/api/v1/mitre/matrix", get(mitre::matrix))
         .route("/api/v1/fim/summary", get(get_fim_summary_handler))
         .route("/api/v1/active-response/actions", get(get_active_response_actions).post(post_active_response_block))
         .route("/api/v1/active-response/unblock", post(post_active_response_unblock))
@@ -761,6 +840,21 @@ async fn main() {
         .route("/api/v1/swarm/members", post(swarm::add_member))
         .route("/api/v1/swarm/members/:id", delete(swarm::remove_member))
         .route("/api/v1/swarm/sync", post(swarm::sync_now))
+        // neurosymbolic decisions: the reasoning record of every high-impact action, guardrails, approvals
+        .route("/api/v1/siem/decisions", get(decisions::list))
+        .route("/api/v1/siem/decisions/verify", get(decisions::verify))
+        .route("/api/v1/siem/decisions/export", get(decisions::export))
+        .route("/api/v1/siem/decisions/policy", get(decisions::get_policy).put(decisions::put_policy))
+        .route("/api/v1/siem/decisions/:id", get(decisions::get_one))
+        .route("/api/v1/siem/decisions/:id/approve", post(decisions::approve))
+        .route("/api/v1/siem/decisions/:id/reject", post(decisions::reject))
+        // threat intel (provigil-common feeds) and the investigation of one IP / host / user / hash / domain
+        .route("/api/v1/siem/intel/status", get(intel::status))
+        .route("/api/v1/siem/intel/lookup", get(intel::lookup_handler))
+        .route("/api/v1/siem/intel/watchlist", get(intel::watchlist).post(intel::add_watched))
+        .route("/api/v1/siem/intel/watchlist/:id", axum::routing::delete(intel::remove_watched))
+        .route("/api/v1/siem/intel/matches", get(intel::matches))
+        .route("/api/v1/siem/investigate", get(investigate::investigate))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))
@@ -789,6 +883,10 @@ async fn main() {
         .route("/api/soar/cases/:id", put(soar::update_case))
         .route("/api/soar/cases/:id/status", put(soar::update_case_status))
         .route("/api/soar/cases/:id/comments", get(soar::get_case_comments).post(soar::add_case_comment))
+        .route("/api/soar/cases/:id/investigation", get(case_ai::get).post(case_ai::run))
+        .route("/api/settings/ai/providers", get(ai_assist::list_providers).post(ai_assist::save_provider))
+        .route("/api/settings/ai/providers/test", post(ai_assist::test_provider))
+        .route("/api/settings/ai/providers/:name", axum::routing::delete(ai_assist::delete_provider))
         .route("/api/v1/groups", get(groups::list_groups).post(groups::create_group))
         .route("/api/v1/groups/:name", axum::routing::delete(groups::delete_group))
         .route("/api/v1/groups/:name/agent.conf", get(groups::get_agent_conf).put(groups::put_agent_conf))
@@ -801,6 +899,7 @@ async fn main() {
         .route("/api/v1/redswarm/history", get(get_redswarm_history_handler))
         .route("/api/v1/redswarm/gaps", get(get_redswarm_gaps_handler))
         .route("/api/v1/redswarm/gaps/:id/apply-rule", post(post_redswarm_apply_rule_handler))
+        .route("/api/v1/redswarm/gaps/:id/reject", post(post_redswarm_reject_rule_handler))
         .route("/api/v1/redswarm/rules/:id/rollback", post(post_redswarm_rollback_rule_handler))
         .route("/api/v1/redswarm/kill-switch", post(post_redswarm_kill_switch_handler))
         .route("/api/v1/redswarm/heatmap", get(get_redswarm_heatmap_handler))
@@ -1032,7 +1131,8 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
-            if !a.data.contains_key("risk_fabric") {
+            // a Red Swarm simulation must not raise the real agent's risk
+            if !a.data.contains_key("risk_fabric") && !a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
                 state.risk_fabric.evaluate_alert(&mut a);
             }
             a
@@ -1465,8 +1565,10 @@ async fn ingest_event(
         // Persist agent heartbeat/status into ClickHouse database
         state.db.insert_or_update_agent(&tenant, &ag_clone).await;
 
-        // Method 2: Dynamic Parser Engine Hot-Path Execution (< 5 microseconds, 0ms AI delay)
-        let _maybe_dynamic_parsed = state.parser_registry.execute(&event.message);
+        // The tenant's learned parsers (< 5 microseconds); their fields are stored with the event
+        if let Some(p) = parsers_store::for_tenant(&state, &tenant).execute(&event.message) {
+            add_parsed_fields(&mut event.metadata, p);
+        }
 
         let maybe_alert = state.engine.process_event(&event, &agent_name, &agent_ip);
 
@@ -1781,7 +1883,10 @@ async fn simulate_attack(
             (ag.name, ag.ip)
         };
 
-        if let Some(alert) = state.engine.process_event(&ev, &name, &ip) {
+        if let Some(mut alert) = state.engine.process_event(&ev, &name, &ip) {
+            // the live view shows it among real alerts: it must say it is a simulation
+            alert.rule.description = format!("[Simulation] {}", alert.rule.description);
+            alert.rule.groups.push("simulation".into());
             let alert = tenancy::tag_alert(alert, &tenant);
             keep_alerts(&state, [alert.clone()]);
             let _ = state.broadcast_tx.send(alert.clone());
@@ -1860,6 +1965,10 @@ async fn download_windows_file(
         let manager = q.get("manager").map(|s| s.trim().to_string()).unwrap_or_default();
         let conf = wazuh_manager::windows_agent_conf(&manager).ok_or(StatusCode::BAD_REQUEST)?;
         return Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], conf).into_response());
+    }
+    if file == "sysmon.xml" {
+        // the Sysmon configuration the deploy script installs (EDR process telemetry)
+        return Ok(([(header::CONTENT_TYPE, "application/xml; charset=utf-8")], include_str!("sysmon.xml")).into_response());
     }
     Ok(download_windows_binary(file).await?.into_response())
 }
@@ -2048,6 +2157,10 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             }
             let duration = payload.get("duration_seconds").and_then(|v| v.as_u64()).unwrap_or(3600);
             let method = payload.get("method").and_then(|v| v.as_str());
+            let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
+            if let Err(m) = decisions::gate_manual(state, ctx, &tenant, "manual_block", &target, serde_json::json!({ "agent_id": agent_id, "ip": target, "seconds": duration })).await {
+                return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
+            }
             return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block", method).await;
         }
         "unblock_ip" => {
@@ -2056,6 +2169,7 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
         "sca_scan" | "syscollector_scan" => {
             return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
         }
+        "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" | "yara_scan" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
         _ => return bad("Unknown action"),
     };
     match r {
@@ -2064,6 +2178,98 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             Json(serde_json::json!({ "status": "sent", "message": m })).into_response()
         }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
+}
+
+/// EDR actions on a Windows Wazuh agent (siem-active-response's kill-process,
+/// quarantine-file, isolate-host). Each passes the decision gate on the agent's
+/// address (recorded; a protected host is refused), except lifting an isolation.
+/// The agent logs the outcome to active-responses.log, which comes back as events.
+async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, action: &str, payload: &serde_json::Value) -> axum::response::Response {
+    let reply = |code: StatusCode, m: String| (code, Json(serde_json::json!({ "status": if code.is_success() { "sent" } else { "error" }, "message": m }))).into_response();
+    if !agent_is_windows(state, agent_id) {
+        return reply(StatusCode::BAD_REQUEST, "Endpoint response (kill, quarantine, isolate) runs on Windows agents for now".into());
+    }
+    let str_of = |k: &str| payload.get(k).and_then(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
+    let ip = state.agents.read().unwrap().get(agent_id).map(|a| a.ip.clone()).unwrap_or_default();
+    let gate = |name: &'static str, params: serde_json::Value| {
+        let ip = ip.clone();
+        let tenant = tenant.clone();
+        async move { decisions::gate_manual(state, ctx, &tenant, name, &ip, params).await }
+    };
+    let r: Result<String, String> = match action {
+        "kill_process" => {
+            let Some(pid) = payload.get("pid").and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))).filter(|p| *p > 4 && *p <= u32::MAX as u64) else {
+                return reply(StatusCode::BAD_REQUEST, "A process id (pid) is required".into());
+            };
+            let image = str_of("image");
+            if let Err(m) = gate("manual_kill_process", serde_json::json!({ "agent_id": agent_id, "pid": pid, "image": image })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::kill_process(agent_id, pid as u32, image.as_deref()).await.map(|_| format!("Kill of process {pid} sent to the agent"))
+        }
+        "quarantine_file" => {
+            let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
+                return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
+            };
+            if let Err(m) = gate("manual_quarantine_file", serde_json::json!({ "agent_id": agent_id, "path": path })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::quarantine_file(agent_id, &path).await.map(|_| format!("Quarantine of {path} sent to the agent"))
+        }
+        "restore_file" => {
+            let Some(id) = str_of("quarantine_id").filter(|i| i.len() <= 64 && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) else {
+                return reply(StatusCode::BAD_REQUEST, "The quarantine id (from the agent's quarantine event) is required".into());
+            };
+            if let Err(m) = gate("manual_restore_file", serde_json::json!({ "agent_id": agent_id, "quarantine_id": id })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            wazuh_manager::restore_file(agent_id, &id).await.map(|_| format!("Restore of quarantined file {id} sent to the agent"))
+        }
+        // through response.rs, so it is listed and lifted with the other isolations
+        "isolate_host" => {
+            let target = if ip.parse::<std::net::IpAddr>().is_ok() { ip.clone() } else { "0.0.0.0".to_string() };
+            if let Err(m) = gate("manual_isolate", serde_json::json!({ "agent_id": agent_id, "enforcement": "agent" })).await {
+                return reply(StatusCode::FORBIDDEN, m);
+            }
+            let reason = str_of("reason").unwrap_or_else(|| format!("Isolated by {}", ctx.username));
+            response::isolate(state, &tenant, &target, Some("agent"), None, "", &ctx.username, &reason, Some(agent_id))
+                .await
+                .map(|(i, _)| format!("Isolation sent to the agent (record {}); only the manager stays reachable, for at most 24 h", i.id))
+        }
+        "release_host" => {
+            let recs = response::active_agent_isolations(state, &tenant, agent_id).await;
+            let mut notes = Vec::new();
+            for id in &recs {
+                if let Err(e) = response::unisolate(state, &tenant, id).await {
+                    notes.push(e);
+                }
+            }
+            // also with no record (an isolation from before a restart): the release is harmless
+            if recs.is_empty() {
+                wazuh_manager::release_agent(agent_id).await.map(|_| "Release sent to the agent".to_string())
+            } else if notes.is_empty() {
+                Ok("Release sent to the agent".to_string())
+            } else {
+                Err(notes.join("; "))
+            }
+        }
+        "yara_scan" => {
+            // read-only on the endpoint: no decision gate
+            let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
+                return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
+            };
+            wazuh_manager::yara_scan(agent_id, &path).await.map(|_| format!("YARA scan of {path} sent to the agent; a match becomes an alert"))
+        }
+        _ => return reply(StatusCode::BAD_REQUEST, "Unknown action".into()),
+    };
+    match r {
+        Ok(m) => {
+            info!("Wazuh agent {agent_id}: {action} by {} ({m})", ctx.username);
+            reply(StatusCode::OK, m)
+        }
+        Err(e) => reply(StatusCode::SERVICE_UNAVAILABLE, e),
     }
 }
 
@@ -2222,143 +2428,39 @@ async fn get_tenant_features_handler() -> impl IntoResponse {
     }))
 }
 
-#[derive(Deserialize, Default)]
-struct RulesQuery {
-    limit: Option<usize>,
-    offset: Option<usize>,
-    q: Option<String>,
-    #[allow(dead_code)]
-    order: Option<String>,
-}
-
-async fn get_rules_api_handler(
-    State(state): State<AppState>,
-    Query(query): Query<RulesQuery>,
-) -> impl IntoResponse {
-    let raw_rules = state.engine.list_rules();
-    let _total_count = raw_rules.len();
-    let active_count = raw_rules.len();
-
-    let mut mapped: Vec<serde_json::Value> = raw_rules
-        .into_iter()
-        .map(|r| {
-            let sev = match r.level {
-                12..=15 => "critical",
-                8..=11 => "high",
-                4..=7 => "medium",
-                _ => "low",
-            };
-            serde_json::json!({
-                "id": r.id.to_string(),
-                "title": r.description.clone(),
-                "description": r.description,
-                "level": r.level,
-                "severity": sev,
-                "enabled": true,
-                "groups": r.groups.clone(),
-                "tags": r.groups,
-                "conditions": 1,
-                "mitre": r.mitre,
-            })
-        })
-        .collect();
-
-    if let Some(ref q) = query.q {
-        let q_lower = q.to_lowercase();
-        mapped.retain(|r| {
-            r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-                || r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-        });
-    }
-
-    let filtered_total = mapped.len();
-    let offset = query.offset.unwrap_or(0);
-    let paged: Vec<serde_json::Value> = if let Some(limit) = query.limit {
-        mapped.into_iter().skip(offset).take(limit).collect()
-    } else {
-        mapped
-    };
-
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert("X-Total-Count", filtered_total.to_string().parse().unwrap());
-    headers.insert("X-Active-Count", active_count.to_string().parse().unwrap());
-
-    (StatusCode::OK, headers, Json(paged))
-}
-
 async fn get_rules_hit_counts_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for alert in alerts.iter() {
-        *counts.entry(alert.rule.description.clone()).or_insert(0) += 1;
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for (_, desc, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        // a Sigma alert is "Sigma: <title>": the rules pages look custom rules up by their title
+        if let Some(title) = desc.strip_prefix("Sigma: ") {
+            *counts.entry(title.to_string()).or_insert(0) += n;
+        }
+        *counts.entry(desc).or_insert(0) += n;
     }
     Json(counts)
 }
 
-async fn post_rules_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Rule created successfully", "rule": payload }))
-}
-
-async fn delete_rules_handler(Path(rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": format!("Rule {} deleted", rule_id) }))
-}
-
-async fn toggle_rules_handler(Path(_rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "enabled": true }))
-}
-
-async fn reload_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Detection rules successfully reloaded" }))
-}
-
-async fn sync_community_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Community rules synchronized", "count": 1250 }))
-}
 
 async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events_guard = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let alerts_guard = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-
-    let events_total = events_guard.len() as u64;
-    let hits_total = alerts_guard.len() as u64;
-
-    let events_1h = events_guard.iter().filter(|e| e.timestamp >= one_hour_ago).count() as u64;
-    let hits_1h = alerts_guard.iter().filter(|a| a.timestamp >= one_hour_ago).count() as u64;
-
-    let agent_z_events = events_guard.iter().filter(|e| {
-        let src_str = serde_json::to_string(&e.source).unwrap_or_default();
-        src_str.contains("network") || e.location.contains("flow") || e.location.contains("zeek")
-    }).count() as u64;
-    let agent_s_events = events_total.saturating_sub(agent_z_events);
+    let (c, (_, agent_z_events)) = tokio::join!(
+        history::admin_counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true)
+    );
+    let agent_s_events = c.events.saturating_sub(agent_z_events);
 
     Json(serde_json::json!({
-        "events_total": events_total,
-        "hits_total": hits_total,
-        "events_1h": events_1h,
-        "hits_1h": hits_1h,
+        "events_total": c.events,
+        "hits_total": c.alerts(),
+        "events_1h": c.events_1h,
+        "hits_1h": c.alerts_1h,
         "agent_z_events": agent_z_events,
         "agent_s_events": agent_s_events
     }))
 }
 
 async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut critical = 0u64;
-    let mut high = 0u64;
-    let mut medium = 0u64;
-    let mut low = 0u64;
-
-    for alert in alerts.iter() {
-        match alert.rule.level {
-            l if l >= 12 => critical += 1,
-            l if l >= 8 => high += 1,
-            l if l >= 4 => medium += 1,
-            _ => low += 1,
-        }
-    }
+    let c = history::admin_counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (critical, high, medium, low) = (c.critical(), c.high(), c.medium(), c.low());
 
     let tenants_count = state.tenants.read().unwrap().len() as u64;
     let t_total = if tenants_count == 0 { 1 } else { tenants_count };
@@ -2374,67 +2476,23 @@ async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extensi
 }
 
 async fn get_top_ips_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut src_map: HashMap<String, u64> = HashMap::new();
-    let mut dst_map: HashMap<String, u64> = HashMap::new();
+    Json(top_ips_json(&state, &ctx, true).await)
+}
 
-    for alert in alerts.iter() {
-        if let Some(ref ip) = alert.decoded.src_ip {
-            if !ip.is_empty() {
-                *src_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-        if let Some(ref ip) = alert.decoded.dst_ip {
-            if !ip.is_empty() {
-                *dst_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-    }
-
-    let mut top_src: Vec<(&String, &u64)> = src_map.iter().collect();
-    top_src.sort_by(|a, b| b.1.cmp(a.1));
-    let top_src_ips: Vec<serde_json::Value> = top_src.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    let mut top_dst: Vec<(&String, &u64)> = dst_map.iter().collect();
-    top_dst.sort_by(|a, b| b.1.cmp(a.1));
-    let top_dst_ips: Vec<serde_json::Value> = top_dst.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    Json(serde_json::json!({
-        "top_src_ips": top_src_ips,
-        "top_dst_ips": top_dst_ips
-    }))
+/// The 10 source and destination IPs with the most alerts of the history window.
+async fn top_ips_json(state: &AppState, ctx: &AuthCtx, all_tenants: bool) -> serde_json::Value {
+    let (src, dst) = tokio::join!(
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 10, all_tenants),
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::DstIp, 10, all_tenants)
+    );
+    let pairs = |v: Vec<(String, u64)>| v.into_iter().map(|(ip, n)| serde_json::json!([ip, n])).collect::<Vec<_>>();
+    serde_json::json!({ "top_src_ips": pairs(src), "top_dst_ips": pairs(dst) })
 }
 
 async fn get_protocols_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut proto_map: HashMap<String, u64> = HashMap::new();
-
-    for ev in events.iter() {
-        let proto = if ev.location.to_lowercase().contains("ssh") || ev.message.to_lowercase().contains("ssh") {
-            "SSH"
-        } else if ev.location.to_lowercase().contains("http") || ev.message.to_lowercase().contains("http") {
-            "HTTP"
-        } else if ev.location.to_lowercase().contains("tls") || ev.location.to_lowercase().contains("ssl") || ev.message.to_lowercase().contains("tls") {
-            "TLS"
-        } else if ev.location.to_lowercase().contains("dns") || ev.message.to_lowercase().contains("dns") {
-            "DNS"
-        } else if ev.location.to_lowercase().contains("smb") || ev.message.to_lowercase().contains("smb") {
-            "SMB"
-        } else if ev.location.to_lowercase().contains("syslog") {
-            "SYSLOG"
-        } else {
-            "TCP/IP"
-        };
-        *proto_map.entry(proto.to_string()).or_insert(0) += 1;
-    }
-
-    let mut proto_list: Vec<(&String, &u64)> = proto_map.iter().collect();
-    proto_list.sort_by(|a, b| b.1.cmp(a.1));
-    let protocols: Vec<serde_json::Value> = proto_list.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
-
-    Json(serde_json::json!({
-        "protocols": protocols
-    }))
+    let (protocols, _) = history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true).await;
+    let protocols: Vec<serde_json::Value> = protocols.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
+    Json(serde_json::json!({ "protocols": protocols }))
 }
 
 async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
@@ -2442,10 +2500,13 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     let unique_hashes = state.threat_intel.get_list("malicious_hashes").map(|l| l.total_entries()).unwrap_or(0);
     let unique_domains = state.threat_intel.get_list("malicious_domains").map(|l| l.total_entries()).unwrap_or(0);
 
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let detected_in_network = alerts.iter().filter(|a| {
-        a.decoded.src_ip.as_ref().map(|ip| state.threat_intel.check_ip(ip).is_some()).unwrap_or(false)
-    }).count();
+    // alerts whose source IP is on a threat list: ClickHouse sends one row per IP
+    let detected_in_network: u64 = history::top_values(&state, &ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 1_000_000, true)
+        .await
+        .into_iter()
+        .filter(|(ip, _)| state.threat_intel.check_ip(ip).is_some())
+        .map(|(_, n)| n)
+        .sum();
 
     Json(serde_json::json!({
         "status": "ok",
@@ -2457,28 +2518,6 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     }))
 }
 
-async fn get_threat_map_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let items: Vec<serde_json::Value> = alerts.iter()
-        .filter(|a| a.decoded.src_ip.is_some())
-        .take(50)
-        .map(|a| {
-            let src = a.decoded.src_ip.clone().unwrap_or_default();
-            let dst = a.decoded.dst_ip.clone().unwrap_or_else(|| a.agent.ip.clone());
-            let sev = if a.rule.level >= 12 { "CRITICAL" } else if a.rule.level >= 8 { "HIGH" } else { "MEDIUM" };
-            serde_json::json!({
-                "src_ip": src,
-                "country": "US",
-                "dst_ip": dst,
-                "type": a.rule.description,
-                "severity": sev,
-                "timestamp": a.timestamp.to_rfc3339()
-            })
-        })
-        .collect();
-
-    Json(items)
-}
 
 fn spawn_threat_intel_feed_scheduler(state: AppState) {
     tokio::spawn(async move {
@@ -2500,11 +2539,9 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
                         for e in entries {
                             let ip = e.ioc_value.split(':').next().unwrap_or(&e.ioc_value);
                             state.threat_intel.insert_entry("malicious_ips", ip, &e.description);
-                            if state.db.is_connected() {
-                                state.db.insert_threat_intel_entry(&e).await;
-                            }
                         }
-                        info!("Feodo Tracker feed synced: {} botnet C2 IPs stored in threat table and ClickHouse", count);
+                        // ClickHouse gets them from the batched collector (intel.rs)
+                        info!("Feodo Tracker feed synced: {} botnet C2 IPs in the threat table", count);
                     }
                 }
                 Err(err) => {
@@ -2522,11 +2559,8 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
                             if e.ioc_type == "domain" {
                                 state.threat_intel.insert_entry("malicious_domains", &e.ioc_value, &e.description);
                             }
-                            if state.db.is_connected() {
-                                state.db.insert_threat_intel_entry(&e).await;
-                            }
                         }
-                        info!("URLhaus feed synced: {} malicious indicators stored in threat table and ClickHouse", count);
+                        info!("URLhaus feed synced: {} malicious indicators in the threat table", count);
                     }
                 }
                 Err(err) => {
@@ -2539,105 +2573,6 @@ fn spawn_threat_intel_feed_scheduler(state: AppState) {
     });
 }
 
-async fn get_threat_intel_map_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let mut countries = vec![
-        serde_json::json!({
-            "country": "United States", "country_name": "United States", "code": "US", "country_code": "US",
-            "lat": 37.0902, "lon": -95.7129, "lng": -95.7129, "count": 142, "hit_count": 142, "threat_count": 142,
-            "ip_count": 5, "ips": ["45.33.32.156", "198.51.100.42", "192.241.220.11", "104.244.42.1", "64.225.100.8"],
-            "attacks": ["Port Scan", "Credential Stuffing", "SSH Brute Force"]
-        }),
-        serde_json::json!({
-            "country": "Russia", "country_name": "Russia", "code": "RU", "country_code": "RU",
-            "lat": 61.524, "lon": 105.3188, "lng": 105.3188, "count": 189, "hit_count": 189, "threat_count": 189,
-            "ip_count": 5, "ips": ["185.220.101.5", "194.26.29.112", "91.240.118.234", "185.156.73.55", "45.154.255.89"],
-            "attacks": ["Ransomware C2", "Brute Force", "SQL Injection"]
-        }),
-        serde_json::json!({
-            "country": "China", "country_name": "China", "code": "CN", "country_code": "CN",
-            "lat": 35.8617, "lon": 104.1954, "lng": 104.1954, "count": 164, "hit_count": 164, "threat_count": 164,
-            "ip_count": 5, "ips": ["218.92.0.187", "117.50.81.99", "124.223.70.15", "221.181.185.150", "42.193.18.22"],
-            "attacks": ["APT Scanning", "Web Exploit", "Zero-day Probe"]
-        }),
-        serde_json::json!({
-            "country": "Germany", "country_name": "Germany", "code": "DE", "country_code": "DE",
-            "lat": 51.1657, "lon": 10.4515, "lng": 10.4515, "count": 58, "hit_count": 58, "threat_count": 58,
-            "ip_count": 4, "ips": ["144.76.136.153", "88.198.53.12", "159.69.194.33", "116.203.45.67"],
-            "attacks": ["Tor Exit Node", "Cryptomining Relay"]
-        }),
-        serde_json::json!({
-            "country": "Netherlands", "country_name": "Netherlands", "code": "NL", "country_code": "NL",
-            "lat": 52.1326, "lon": 5.2913, "lng": 5.2913, "count": 72, "hit_count": 72, "threat_count": 72,
-            "ip_count": 4, "ips": ["185.107.56.231", "194.36.191.10", "45.133.1.80", "193.142.146.35"],
-            "attacks": ["Bulletproof Hosting", "Malware Drop Site"]
-        }),
-        serde_json::json!({
-            "country": "United Kingdom", "country_name": "United Kingdom", "code": "GB", "country_code": "GB",
-            "lat": 55.3781, "lon": -3.436, "lng": -3.436, "count": 41, "hit_count": 41, "threat_count": 41,
-            "ip_count": 3, "ips": ["51.89.150.11", "185.246.128.9", "178.62.80.201"],
-            "attacks": ["Phishing Gateway", "Command & Control"]
-        }),
-        serde_json::json!({
-            "country": "India", "country_name": "India", "code": "IN", "country_code": "IN",
-            "lat": 20.5937, "lon": 78.9629, "lng": 78.9629, "count": 95, "hit_count": 95, "threat_count": 95,
-            "ip_count": 4, "ips": ["103.251.167.20", "115.240.90.14", "103.78.243.60", "49.207.180.32"],
-            "attacks": ["DDoS Reflection", "Reconnaissance Scan"]
-        }),
-        serde_json::json!({
-            "country": "Japan", "country_name": "Japan", "code": "JP", "country_code": "JP",
-            "lat": 36.2048, "lon": 138.2529, "lng": 138.2529, "count": 34, "hit_count": 34, "threat_count": 34,
-            "ip_count": 3, "ips": ["133.242.180.12", "160.16.200.45", "150.95.140.23"],
-            "attacks": ["Botnet Telemetry", "Proxy Abuse"]
-        }),
-        serde_json::json!({
-            "country": "Brazil", "country_name": "Brazil", "code": "BR", "country_code": "BR",
-            "lat": -14.235, "lon": -51.9253, "lng": -51.9253, "count": 63, "hit_count": 63, "threat_count": 63,
-            "ip_count": 4, "ips": ["177.105.40.12", "179.180.21.90", "186.250.70.15", "191.232.190.88"],
-            "attacks": ["Banking Trojan", "Credential Dumping"]
-        }),
-        serde_json::json!({
-            "country": "Iran", "country_name": "Iran", "code": "IR", "country_code": "IR",
-            "lat": 32.4279, "lon": 53.688, "lng": 53.688, "count": 81, "hit_count": 81, "threat_count": 81,
-            "ip_count": 4, "ips": ["185.143.233.10", "5.160.200.12", "91.99.100.45", "178.131.20.90"],
-            "attacks": ["Wiper Activity", "Targeted Spearphishing"]
-        }),
-        serde_json::json!({
-            "country": "United Arab Emirates", "country_name": "United Arab Emirates", "code": "AE", "country_code": "AE",
-            "lat": 23.4241, "lon": 53.8478, "lng": 53.8478, "count": 29, "hit_count": 29, "threat_count": 29,
-            "ip_count": 3, "ips": ["94.200.50.12", "185.120.80.45", "86.96.120.30"],
-            "attacks": ["VPN Scanning", "Exploit Kit Gateway"]
-        }),
-        serde_json::json!({
-            "country": "South Africa", "country_name": "South Africa", "code": "ZA", "country_code": "ZA",
-            "lat": -30.5595, "lon": 22.9375, "lng": 22.9375, "count": 37, "hit_count": 37, "threat_count": 37,
-            "ip_count": 3, "ips": ["197.242.150.10", "102.130.45.89", "41.13.120.55"],
-            "attacks": ["Spam Relay", "Brute Force RDP"]
-        }),
-    ];
-
-    // Dynamically augment with live ingested IPs from state.threat_intel and state.alerts
-    let live_entries = state.threat_intel.get_table_entries("malicious_ips");
-    for (ip, _desc) in live_entries.into_iter().take(50) {
-        if let Some(first_country) = countries.first_mut() {
-            if let Some(arr) = first_country.get_mut("ips").and_then(|v| v.as_array_mut()) {
-                let ip_val = serde_json::Value::String(ip);
-                if !arr.contains(&ip_val) {
-                    arr.push(ip_val);
-                    if let Some(cnt) = first_country.get_mut("hit_count").and_then(|v| v.as_u64()) {
-                        first_country["hit_count"] = serde_json::json!(cnt + 1);
-                        first_country["threat_count"] = serde_json::json!(cnt + 1);
-                        first_country["count"] = serde_json::json!(cnt + 1);
-                    }
-                }
-            }
-        }
-    }
-
-    Json(serde_json::json!({
-        "status": "ok",
-        "countries": countries
-    }))
-}
 
 async fn get_threat_intel_handler(State(state): State<AppState>) -> impl IntoResponse {
     let ips = state.threat_intel.get_list("malicious_ips").map(|l| l.total_entries()).unwrap_or(0);
@@ -2655,63 +2590,17 @@ async fn get_threat_intel_watchlist_handler() -> impl IntoResponse {
     Json(serde_json::json!([]))
 }
 
-async fn get_engines_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "engines": [
-            { "name": "provigil-siem-core-01", "status": "running", "mode": "primary", "version": "v4.14.7-rust", "cpu": 12.4, "memory_mb": 420, "eps": 1450, "uptime": "4d 18h", "active": true },
-            { "name": "provigil-ndr-worker-01", "status": "running", "mode": "worker", "version": "v4.14.7-rust", "cpu": 18.2, "memory_mb": 512, "eps": 2890, "uptime": "4d 18h", "active": true },
-            { "name": "provigil-ai-copilot-01", "status": "running", "mode": "assistant", "version": "v4.14.7-rust", "cpu": 5.1, "memory_mb": 310, "eps": 0, "uptime": "4d 18h", "active": true }
-        ]
-    }))
-}
 
-async fn post_engines_scale_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Cluster scaling acknowledged" }))
-}
 
-async fn get_leader_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "is_leader": true,
-        "term": 4,
-        "leader_id": "provigil-siem-core-01",
-        "active_nodes": 3,
-        "cluster_size": 3,
-        "election_state": "Leader"
-    }))
-}
 
-async fn get_kafka_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "connected": true,
-        "brokers_online": 3,
-        "total_brokers": 3,
-        "lag": 0,
-        "topics": ["siem.events", "siem.alerts", "siem.vulnerabilities", "siem.fim"]
-    }))
-}
 
-async fn get_telemetry_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "cpu_usage": 14.8,
-        "memory_usage": 28.4,
-        "disk_usage": 32.1,
-        "uptime_seconds": 412580,
-        "heap_used_mb": 428,
-        "heap_total_mb": 1024,
-        "active_threads": 32,
-        "open_file_descriptors": 148,
-        "network_rx_mb": 1420.5,
-        "network_tx_mb": 840.2
-    }))
-}
 
 async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let critical_count = alerts.iter().filter(|a| a.rule.level >= 12).count();
-    let high_count = alerts.iter().filter(|a| a.rule.level >= 8 && a.rule.level < 12).count();
+    // polled by the ARIA bot every 30 s: counts and the newest alert only
+    let (counts, latest) = tokio::join!(history::counts(&state, &ctx, history::DEFAULT_HOURS), history::latest_alert(&state, &ctx, history::DEFAULT_HOURS));
+    let (critical_count, high_count) = (counts.critical(), counts.high());
 
-    let latest_alert = alerts.last();
+    let latest_alert = latest.as_ref();
     let latest_sev = latest_alert.map(|a| if a.rule.level >= 12 { "CRITICAL" } else if a.rule.level >= 8 { "HIGH" } else { "MEDIUM" }).unwrap_or("");
     let latest_src = latest_alert.and_then(|a| a.decoded.src_ip.clone()).unwrap_or_default();
     let latest_dst = latest_alert.and_then(|a| a.decoded.dst_ip.clone()).unwrap_or_default();
@@ -2735,8 +2624,8 @@ async fn post_aria_chat_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let msg = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    let alerts_count = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.len();
-    let events_count = history::events(&state, &ctx, history::DEFAULT_HOURS).await.len();
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (alerts_count, events_count) = (c.alerts(), c.events);
 
     let reply = format!(
         "ARIA AI Security Copilot: Telemetry monitoring is active with {} ingested events and {} alerts. In response to: \"{}\", all active correlation pipelines are operational.",
@@ -2776,198 +2665,81 @@ async fn get_server_info_handler() -> impl IntoResponse {
     }))
 }
 
-async fn get_health_handler(State(state): State<AppState>, ctx: Option<Extension<AuthCtx>>) -> impl IntoResponse {
-    let (events, alerts) = match ctx {
-        Some(Extension(ref c)) => (history::events(&state, c, history::DEFAULT_HOURS).await, history::alerts(&state, c, history::DEFAULT_HOURS).await),
-        None => (Vec::new(), Vec::new()),
+
+
+
+
+
+
+
+
+
+
+
+/// The tenant's last 24 h for the analyst dashboard's KPI strip (network-sensor events are the "NDR" ones).
+async fn get_unified_stats_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let (day, (_, ndr_day), (_, ndr_hour)) = tokio::join!(
+        history::counts(&state, &ctx, 24),
+        history::event_breakdown(&state, &ctx, 24, false),
+        history::event_breakdown(&state, &ctx, 1, false)
+    );
+    Json(serde_json::json!({
+        "ndr_events_today": ndr_day,
+        "ndr_events_1h": ndr_hour,
+        "siem_logs_today": day.events,
+        "siem_logs_1h": day.events_1h,
+        "siem_eps": (day.events_1h as f64 / 3600.0 * 10.0).round() / 10.0,
+        "correlation_hits_1h": day.alerts_1h,
+        "critical_alerts": day.critical(),
+        "high_alerts": day.high(),
+        "medium_alerts": day.medium()
+    }))
+}
+
+/// The tenant's events per minute over the last 60 minutes, oldest first.
+async fn get_stats_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "points": history::event_buckets(&state, &ctx, 60_000, 60).await }))
+}
+
+#[derive(Deserialize)]
+struct HitsQuery {
+    src_ip: Option<String>,
+    limit: Option<usize>,
+}
+
+/// The tenant's newest alerts (500 by default, at most 5000); `src_ip`: only those from or to that IP.
+async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsQuery>) -> impl IntoResponse {
+    let ip = q.src_ip.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    Json(history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, q.limit.unwrap_or(500).clamp(1, 5000), ip).await)
+}
+
+#[derive(Deserialize)]
+struct HitsTimelineQuery {
+    /// "24h" (hourly), "7d" or "30d" (daily)
+    range: Option<String>,
+}
+
+/// The tenant's alerts per time slice and severity (Assets page's threat landscape).
+async fn get_hits_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsTimelineQuery>) -> impl IntoResponse {
+    let (bucket_ms, buckets) = match q.range.as_deref() {
+        Some("7d") => (86_400_000, 7),
+        Some("30d") => (86_400_000, 30),
+        _ => (3_600_000, 24),
     };
-    let events_total = events.len() as u64;
-    let hits_total = alerts.len() as u64;
-
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-    let events_1h = events.iter().filter(|e| e.timestamp >= one_hour_ago).count() as u64;
-
-    let clickhouse_status = if state.db.is_connected() { "running" } else { "running" };
-
+    let rows = history::alert_buckets(&state, &ctx, bucket_ms, buckets).await;
     Json(serde_json::json!({
-        "status": "ok",
-        "events_total": events_total,
-        "hits_total": hits_total,
-        "events_1h": events_1h,
-        "sessions": 85,
-        "sigma_rules": 1435,
-        "services": {
-            "kafka": "running",
-            "engine": "running",
-            "clickhouse": clickhouse_status
-        }
+        "bucket_ms": bucket_ms,
+        "buckets": rows.iter().map(|[c, h, m, l]| serde_json::json!({ "critical": c, "high": h, "medium": m, "low": l })).collect::<Vec<_>>()
     }))
 }
 
-async fn get_sensor_keys_handler() -> impl IntoResponse {
-    Json(serde_json::json!([
-        {
-            "id": "sk-001",
-            "key_prefix": "sensor-srv-prod",
-            "name": "Production Ubuntu Cluster Sensor",
-            "tenant_id": "global",
-            "hostname": "srv-prod-ubuntu-01",
-            "interface": "eth0",
-            "os": "linux",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "active",
-            "active": true,
-            "created_at": "2026-10-01T00:00:00Z",
-            "last_seen": "Just now"
-        },
-        {
-            "id": "sk-002",
-            "key_prefix": "sensor-win-ad",
-            "name": "Active Directory Domain Controller",
-            "tenant_id": "tenant-acme",
-            "hostname": "win-ad-dc01",
-            "interface": "Ethernet0",
-            "os": "windows",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "idle",
-            "active": true,
-            "created_at": "2026-10-02T00:00:00Z",
-            "last_seen": "1m ago"
-        },
-        {
-            "id": "sk-003",
-            "key_prefix": "sensor-dmz-nginx",
-            "name": "DMZ Web Edge Ingress",
-            "tenant_id": "tenant-cybersec",
-            "hostname": "dmz-web-nginx",
-            "interface": "eth1",
-            "os": "linux",
-            "agent-z": "active",
-            "agent-s": "active",
-            "vector": "active",
-            "arkime": "active",
-            "active": true,
-            "created_at": "2026-10-03T00:00:00Z",
-            "last_seen": "Just now"
-        }
-    ]))
+async fn get_top_ips_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(top_ips_json(&state, &ctx, false).await)
 }
 
-async fn get_sensor_event_counts_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "counts": {
-            "sensor-srv-prod": 14200,
-            "sensor-win-ad": 8500,
-            "sensor-dmz-nginx": 12400
-        }
-    }))
-}
-
-async fn get_sensor_recent_ips_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "ips": {
-            "sensor-srv-prod": "192.168.10.15",
-            "sensor-win-ad": "192.168.10.20",
-            "sensor-dmz-nginx": "192.168.10.105"
-        }
-    }))
-}
-
-async fn post_sensor_keys_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
-    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("New Sensor").to_string();
-    let tenant_id = payload.get("tenant_id").and_then(|v| v.as_str()).unwrap_or("global").to_string();
-    let new_key = serde_json::json!({
-        "id": format!("sk-{}", uuid::Uuid::new_v4().to_string().chars().take(6).collect::<String>()),
-        "key_prefix": format!("sensor-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()),
-        "name": name,
-        "tenant_id": tenant_id,
-        "active": true,
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "last_seen": "Just now"
-    });
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key created", "key": new_key }))
-}
-
-async fn delete_sensor_key_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key revoked" }))
-}
-
-async fn reactivate_sensor_key_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Sensor key reactivated" }))
-}
-
-async fn post_sensor_control_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Command dispatched to sensor" }))
-}
-
-async fn get_interfaces_handler() -> impl IntoResponse {
-    Json(vec!["eth0".to_string(), "eth1".to_string(), "Ethernet0".to_string(), "lo".to_string()])
-}
-
-async fn get_agent_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "running": true, "connected": true, "agents_count": 4, "active_count": 4 }))
-}
-
-async fn get_scale_status_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "nominal", "nodes": 3, "capacity_percent": 34 }))
-}
-
-async fn get_unified_stats_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "ndr_events_today": 458920,
-        "ndr_events_1h": 14500,
-        "siem_logs_today": 320400,
-        "siem_logs_1h": 11200,
-        "siem_eps": 1450,
-        "correlation_hits_1h": 42,
-        "critical_alerts": 12,
-        "high_alerts": 34,
-        "medium_alerts": 65
-    }))
-}
-
-async fn get_stats_timeline_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "points": [120, 145, 132, 180, 210, 195, 230, 240, 220, 260, 280, 310, 290, 320, 340, 310, 305, 330, 360, 380]
-    }))
-}
-
-async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    Json(alerts.clone())
-}
-
-async fn get_top_ips_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "top_src_ips": [
-            ["192.168.10.105", 1420],
-            ["192.168.10.15", 980],
-            ["45.33.32.156", 740],
-            ["185.220.101.5", 520]
-        ],
-        "top_dst_ips": [
-            ["192.168.10.20", 2100],
-            ["192.168.10.15", 1850],
-            ["1.1.1.1", 940]
-        ]
-    }))
-}
-
-async fn get_severity_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "critical": 12,
-        "high": 34,
-        "medium": 65,
-        "low": 89
-    }))
+async fn get_severity_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    Json(serde_json::json!({ "critical": c.critical(), "high": c.high(), "medium": c.medium(), "low": c.low() }))
 }
 
 async fn get_announcements_handler() -> impl IntoResponse {
@@ -3032,7 +2804,7 @@ async fn post_honeypots_handler() -> impl IntoResponse {
 
 #[derive(Serialize)]
 struct SiemDashboardStats {
-    eps_current: usize,
+    eps_current: f64,
     logs_today: usize,
     logs_last_hour: usize,
     parse_errors: usize,
@@ -3066,7 +2838,60 @@ struct SiemSourceHealth {
     source_type: String,
     status: String,
     last_seen_at: String,
-    eps: usize,
+    /// events per second over the last 5 minutes
+    eps: f64,
+}
+
+/// Per agent: events in the last 5 minutes, the last hour and since midnight (UTC), from ClickHouse.
+async fn event_rates(state: &AppState, tenant: &str) -> HashMap<String, (u64, u64, u64)> {
+    let now = Utc::now();
+    let ms = |t: chrono::DateTime<Utc>| t.timestamp_millis().max(0) as u64;
+    let (t5, t60) = (ms(now - chrono::Duration::minutes(5)), ms(now - chrono::Duration::hours(1)));
+    let tday = ms(now.date_naive().and_hms_opt(0, 0, 0).unwrap_or_default().and_utc());
+    state
+        .db
+        .tenant_client(tenant)
+        .query("SELECT agent_id, countIf(timestamp >= ?), countIf(timestamp >= ?), countIf(timestamp >= ?) FROM siem_events WHERE timestamp >= ? GROUP BY agent_id")
+        .bind(t5)
+        .bind(t60)
+        .bind(tday)
+        .bind(t60.min(tday))
+        .fetch_all::<(String, u64, u64, u64)>()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(a, x, y, z)| (a, (x, y, z)))
+        .collect()
+}
+
+/// `GET /api/v1/agents/telemetry`: per agent of the caller's tenant, the Sysmon events of the
+/// last 24 hours and when the last one came (EDR process telemetry coverage). Read from the
+/// events ClickHouse already keeps: what is shown is what the SIEM really received.
+async fn get_agents_telemetry(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    let since = (Utc::now() - chrono::Duration::hours(24)).timestamp_millis().max(0) as u64;
+    let rows = state
+        .db
+        .tenant_client(&ctx.scope())
+        .query("SELECT agent_id, count(), max(timestamp) FROM siem_events WHERE timestamp >= ? AND location = 'EventChannel' AND position(raw_metadata, 'Microsoft-Windows-Sysmon/Operational') > 0 AND JSONExtractString(JSONExtractString(raw_metadata, 'data_json'), 'win', 'system', 'channel') = 'Microsoft-Windows-Sysmon/Operational' GROUP BY agent_id")
+        .bind(since)
+        .fetch_all::<(String, u64, u64)>()
+        .await;
+    match rows {
+        Ok(rows) => {
+            let sysmon: serde_json::Map<String, serde_json::Value> =
+                rows.into_iter().map(|(a, n, last)| (a, serde_json::json!({ "events_24h": n, "last": last }))).collect();
+            Json(serde_json::json!({ "sysmon": sysmon })).into_response()
+        }
+        // not "no Sysmon": the UI shows the coverage as unknown
+        Err(e) => {
+            tracing::warn!("agent telemetry query failed: {e}");
+            (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": "Telemetry is not available right now" }))).into_response()
+        }
+    }
+}
+
+fn per_second(events_5m: u64) -> f64 {
+    (events_5m as f64 / 300.0 * 10.0).round() / 10.0
 }
 
 #[derive(Serialize)]
@@ -3080,32 +2905,22 @@ struct SiemDashboardResponse {
 async fn get_siem_dashboard(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemDashboardResponse> {
-    let events = history::events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (counts, recent) = tokio::join!(
+        history::counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, 20, None)
+    );
     let agents = scoped_agent_map(&state, &ctx);
 
-    let total_events = events.len();
-    let total_alerts = alerts.len();
-
-    let mut critical = 0;
-    let mut high = 0;
-    let mut medium = 0;
+    // this page's bands: critical 10+, high 7-9, medium 4-6 (of the whole window)
+    let total_alerts = counts.alerts() as usize;
+    let (critical, high, medium) = (counts.band(10, 16) as usize, counts.band(7, 9) as usize, counts.band(4, 6) as usize);
 
     let mut recent_alerts = Vec::new();
-    for a in alerts.iter().rev().take(20) {
+    for a in recent.iter() {
         let sev_str = match a.rule.level {
-            10..=15 => {
-                critical += 1;
-                "CRITICAL"
-            }
-            7..=9 => {
-                high += 1;
-                "HIGH"
-            }
-            4..=6 => {
-                medium += 1;
-                "MEDIUM"
-            }
+            10.. => "CRITICAL",
+            7..=9 => "HIGH",
+            4..=6 => "MEDIUM",
             _ => "LOW",
         };
         recent_alerts.push(SiemRecentAlert {
@@ -3118,6 +2933,7 @@ async fn get_siem_dashboard(
         });
     }
 
+    let rates = event_rates(&state, &ctx.scope()).await;
     let mut sources = Vec::new();
     let mut active_count = 0;
     for ag in agents.values() {
@@ -3134,14 +2950,15 @@ async fn get_siem_dashboard(
                 _ => "active".into(),
             },
             last_seen_at: ag.last_keepalive.to_rfc3339(),
-            eps: 12,
+            eps: per_second(rates.get(&ag.id).map_or(0, |r| r.0)),
         });
     }
 
+    let sum = |f: fn(&(u64, u64, u64)) -> u64| rates.values().map(f).sum::<u64>() as usize;
     let stats = SiemDashboardStats {
-        eps_current: (total_events / 60).max(1),
-        logs_today: total_events,
-        logs_last_hour: (total_events / 2).max(1),
+        eps_current: per_second(sum(|r| r.0) as u64),
+        logs_today: sum(|r| r.2),
+        logs_last_hour: sum(|r| r.1),
         parse_errors: 0,
         active_sources: active_count,
         total_sources: agents.len(),
@@ -3172,6 +2989,7 @@ async fn get_siem_sources(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemSourcesResponse> {
     let agents = scoped_agent_map(&state, &ctx);
+    let rates = event_rates(&state, &ctx.scope()).await;
     let sources = agents.values().map(|ag| SiemSourceHealth {
         source_id: ag.id.clone(),
         name: ag.name.clone(),
@@ -3181,54 +2999,19 @@ async fn get_siem_sources(
             _ => "paused".into(),
         },
         last_seen_at: ag.last_keepalive.to_rfc3339(),
-        eps: 12,
+        eps: per_second(rates.get(&ag.id).map_or(0, |r| r.0)),
     }).collect();
 
     Json(SiemSourcesResponse { sources })
 }
 
-#[derive(Deserialize)]
-struct PostSourcePayload {
-    name: String,
-    source_type: String,
-}
-
-#[derive(Serialize)]
-struct PostSourceResponse {
-    source_id: String,
-    ingest_key: String,
-}
-
-async fn post_siem_sources(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(payload): Json<PostSourcePayload>,
-) -> Json<PostSourceResponse> {
-    // A free id across every tenant (ids are global), bound to the caller's tenant.
-    let new_id = {
-        next_free_agent_id(&state)
-    };
-    state.agent_tenants.write().unwrap().insert(new_id.clone(), ctx.scope());
-    persist_registry(&state, &new_id, &ctx.scope(), None, false);
-    let ingest_key = format!("wazuh_key_{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
-
-    let agent = Agent {
-        id: new_id.clone(),
-        name: payload.name,
-        ip: "0.0.0.0".into(),
-        os: format!("Collector ({})", payload.source_type),
-        version: "v4.14.7-rust".into(),
-        status: AgentStatus::Active,
-        last_keepalive: Utc::now(),
-        os_type: payload.source_type,
-    };
-
-    state.agents.write().unwrap().insert(new_id.clone(), agent);
-
-    Json(PostSourceResponse {
-        source_id: new_id,
-        ingest_key,
-    })
+/// `POST /api/siem/sources`: sources are Wazuh agents and syslog devices, added where they enroll.
+async fn post_siem_sources() -> axum::response::Response {
+    (
+        StatusCode::GONE,
+        Json(serde_json::json!({ "status": "error", "message": "Add a source by deploying a Wazuh agent (Agent Fleet > Deploy) or registering a syslog device (Tenant admin > Syslog Devices)" })),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -3420,6 +3203,11 @@ async fn get_agent_fim_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        // kept in ClickHouse; brought up to date first (two cheap queries when nothing changed)
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::fim(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
         let r = wazuh_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
         return Json(r).into_response();
     }
@@ -3446,6 +3234,12 @@ async fn get_agent_fim_handler(
 async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(agent_id): Path<String>) -> axum::response::Response {
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::rootcheck(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
     }
     let r = wazuh_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
     Json(r).into_response()
@@ -3527,8 +3321,20 @@ async fn post_agent_fim_handler(
 
 async fn get_agent_sca_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
+    }
+    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+        posture_store::sync_agent(&state, &agent_id).await;
+        if let Some(r) = posture_store::sca(&state, &agent_id).await {
+            return Json(r).into_response();
+        }
+        let r = wazuh_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
+        return Json(r).into_response();
+    }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let policy_opt = db
@@ -3545,7 +3351,7 @@ async fn get_agent_sca_handler(
                 "passed": policy.passed_count(),
                 "failed": policy.failed_count(),
                 "checks": checks
-            }))
+            })).into_response()
         } else {
             Json(serde_json::json!({
                 "agent_id": agent_id,
@@ -3553,7 +3359,7 @@ async fn get_agent_sca_handler(
                 "passed": 0,
                 "failed": 0,
                 "checks": []
-            }))
+            })).into_response()
         }
     } else {
         Json(serde_json::json!({
@@ -3562,7 +3368,7 @@ async fn get_agent_sca_handler(
             "passed": 0,
             "failed": 0,
             "checks": []
-        }))
+        })).into_response()
     }
 }
 
@@ -3795,424 +3601,6 @@ async fn post_logtest_handler(
     }))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComplianceRequirement {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub status: String,
-    pub alerts_count: usize,
-    pub rule_ids: Vec<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComplianceFramework {
-    pub name: String,
-    pub full_name: String,
-    pub version: String,
-    pub score_percent: f64,
-    pub total_requirements: usize,
-    pub passed_count: usize,
-    pub alert_count: usize,
-    pub requirements: Vec<ComplianceRequirement>,
-}
-
-async fn get_compliance_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let count_alerts_for_rules = |rule_ids: &[u32]| -> usize {
-        alerts.iter().filter(|a| rule_ids.contains(&a.rule.id)).count()
-    };
-
-    let pci_reqs = vec![
-        ComplianceRequirement {
-            id: "10.2".to_string(),
-            title: "Audit Trails & Event Logging".to_string(),
-            description: "Implement automated audit trails for all system components to reconstruct user and system events.".to_string(),
-            status: if count_alerts_for_rules(&[5500, 5710, 5715, 5716]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5500, 5710, 5715, 5716]),
-            rule_ids: vec![5500, 5710, 5715, 5716],
-        },
-        ComplianceRequirement {
-            id: "10.6".to_string(),
-            title: "Log Review & Threat Monitoring".to_string(),
-            description: "Review logs and security events for all system components to identify anomalies or suspicious activity.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![1002, 1003],
-        },
-        ComplianceRequirement {
-            id: "11.5".to_string(),
-            title: "File Integrity Monitoring (FIM)".to_string(),
-            description: "Deploy a change-detection mechanism to alert personnel to unauthorized modification of critical system files.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-        ComplianceRequirement {
-            id: "8.3".to_string(),
-            title: "Strong Authentication & MFA".to_string(),
-            description: "Establish strong identification and authentication controls for all user accounts accessing systems.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5712, 5760]) > 2 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5712, 5760]),
-            rule_ids: vec![5710, 5712, 5760],
-        },
-        ComplianceRequirement {
-            id: "11.2".to_string(),
-            title: "Vulnerability Management".to_string(),
-            description: "Run automated internal and external network vulnerability scans periodically.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![20100, 20101],
-        },
-    ];
-
-    let pci_alerts: usize = pci_reqs.iter().map(|r| r.alerts_count).sum();
-    let pci_passed = pci_reqs.iter().filter(|r| r.status == "passed").count();
-    let pci_score = ((pci_passed as f64 / pci_reqs.len() as f64) * 100.0).round();
-
-    let hipaa_reqs = vec![
-        ComplianceRequirement {
-            id: "164.312(a)(1)".to_string(),
-            title: "Access Control".to_string(),
-            description: "Implement technical policies and procedures for electronic information systems to allow access only to authorized personnel.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-        ComplianceRequirement {
-            id: "164.312(b)".to_string(),
-            title: "Audit Controls".to_string(),
-            description: "Implement hardware, software, and procedural mechanisms that record and examine activity in information systems.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 5715],
-        },
-        ComplianceRequirement {
-            id: "164.312(c)(1)".to_string(),
-            title: "Integrity Controls".to_string(),
-            description: "Implement policies and procedures to protect electronic protected health information from improper alteration or destruction.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-        ComplianceRequirement {
-            id: "164.312(e)(1)".to_string(),
-            title: "Transmission Security".to_string(),
-            description: "Implement technical security measures to guard against unauthorized access to electronic health information in transit.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![31101],
-        },
-    ];
-
-    let hipaa_alerts: usize = hipaa_reqs.iter().map(|r| r.alerts_count).sum();
-    let hipaa_passed = hipaa_reqs.iter().filter(|r| r.status == "passed").count();
-    let hipaa_score = ((hipaa_passed as f64 / hipaa_reqs.len() as f64) * 100.0).round();
-
-    let nist_reqs = vec![
-        ComplianceRequirement {
-            id: "AC-2".to_string(),
-            title: "Account Management".to_string(),
-            description: "Manage system accounts, establish conditions for group membership, and monitor account authorizations.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5712]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5712]),
-            rule_ids: vec![5710, 5712],
-        },
-        ComplianceRequirement {
-            id: "AU-2".to_string(),
-            title: "Event Logging".to_string(),
-            description: "Identify types of events that the system is capable of logging in support of auditing requirements.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 1002],
-        },
-        ComplianceRequirement {
-            id: "AU-6".to_string(),
-            title: "Audit Record Review & Analysis".to_string(),
-            description: "Review and analyze system audit records for indications of unusual or suspicious activity.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![1002, 1003],
-        },
-        ComplianceRequirement {
-            id: "SI-4".to_string(),
-            title: "System Monitoring".to_string(),
-            description: "Monitor the system to detect attacks and indicators of potential compromise.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 31101, 510]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 31101, 510]),
-            rule_ids: vec![5710, 31101, 510],
-        },
-        ComplianceRequirement {
-            id: "SI-7".to_string(),
-            title: "Software & Information Integrity".to_string(),
-            description: "Employ integrity verification tools to detect unauthorized changes to software and information.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553]),
-            rule_ids: vec![550, 554, 553],
-        },
-    ];
-
-    let nist_alerts: usize = nist_reqs.iter().map(|r| r.alerts_count).sum();
-    let nist_passed = nist_reqs.iter().filter(|r| r.status == "passed").count();
-    let nist_score = ((nist_passed as f64 / nist_reqs.len() as f64) * 100.0).round();
-
-    let gdpr_reqs = vec![
-        ComplianceRequirement {
-            id: "Art. 32(1)(b)".to_string(),
-            title: "Ongoing Confidentiality & Integrity".to_string(),
-            description: "Ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services.".to_string(),
-            status: if count_alerts_for_rules(&[550, 554, 553, 5710]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[550, 554, 553, 5710]),
-            rule_ids: vec![550, 554, 553, 5710],
-        },
-        ComplianceRequirement {
-            id: "Art. 32(1)(d)".to_string(),
-            title: "Security Effectiveness Testing".to_string(),
-            description: "A process for regularly testing, assessing and evaluating the effectiveness of security measures.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![20100],
-        },
-        ComplianceRequirement {
-            id: "Art. 33".to_string(),
-            title: "Breach Detection & Notification".to_string(),
-            description: "Detect personal data breaches without undue delay to notify relevant supervisory authority within 72 hours.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-    ];
-
-    let gdpr_alerts: usize = gdpr_reqs.iter().map(|r| r.alerts_count).sum();
-    let gdpr_passed = gdpr_reqs.iter().filter(|r| r.status == "passed").count();
-    let gdpr_score = ((gdpr_passed as f64 / gdpr_reqs.len() as f64) * 100.0).round();
-
-    let tsc_reqs = vec![
-        ComplianceRequirement {
-            id: "CC6.1".to_string(),
-            title: "Logical Access Controls".to_string(),
-            description: "Implement logical access security software, infrastructure, and architectures over protected information assets.".to_string(),
-            status: if count_alerts_for_rules(&[5710, 5760]) > 0 { "warning".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[5710, 5760]),
-            rule_ids: vec![5710, 5760],
-        },
-        ComplianceRequirement {
-            id: "CC6.8".to_string(),
-            title: "Malicious Software Prevention".to_string(),
-            description: "Controls are implemented to prevent or detect and act upon the introduction of unauthorized or malicious software.".to_string(),
-            status: if count_alerts_for_rules(&[510]) > 0 { "failed".to_string() } else { "passed".to_string() },
-            alerts_count: count_alerts_for_rules(&[510]),
-            rule_ids: vec![510],
-        },
-        ComplianceRequirement {
-            id: "CC7.2".to_string(),
-            title: "Anomaly & Incident Monitoring".to_string(),
-            description: "The entity monitors system components and the operation of those components for anomalies that are indicative of malicious acts.".to_string(),
-            status: "passed".to_string(),
-            alerts_count: 0,
-            rule_ids: vec![5500, 1002],
-        },
-    ];
-
-    let tsc_alerts: usize = tsc_reqs.iter().map(|r| r.alerts_count).sum();
-    let tsc_passed = tsc_reqs.iter().filter(|r| r.status == "passed").count();
-    let tsc_score = ((tsc_passed as f64 / tsc_reqs.len() as f64) * 100.0).round();
-
-    let frameworks = vec![
-        ComplianceFramework {
-            name: "PCI_DSS".to_string(),
-            full_name: "Payment Card Industry Data Security Standard".to_string(),
-            version: "v4.0".to_string(),
-            score_percent: pci_score,
-            total_requirements: pci_reqs.len(),
-            passed_count: pci_passed,
-            alert_count: pci_alerts,
-            requirements: pci_reqs,
-        },
-        ComplianceFramework {
-            name: "HIPAA".to_string(),
-            full_name: "Health Insurance Portability and Accountability Act".to_string(),
-            version: "Security Rule §164.312".to_string(),
-            score_percent: hipaa_score,
-            total_requirements: hipaa_reqs.len(),
-            passed_count: hipaa_passed,
-            alert_count: hipaa_alerts,
-            requirements: hipaa_reqs,
-        },
-        ComplianceFramework {
-            name: "NIST_800_53".to_string(),
-            full_name: "NIST SP 800-53 Security and Privacy Controls".to_string(),
-            version: "Rev. 5".to_string(),
-            score_percent: nist_score,
-            total_requirements: nist_reqs.len(),
-            passed_count: nist_passed,
-            alert_count: nist_alerts,
-            requirements: nist_reqs,
-        },
-        ComplianceFramework {
-            name: "GDPR".to_string(),
-            full_name: "General Data Protection Regulation".to_string(),
-            version: "Art. 32 & 33".to_string(),
-            score_percent: gdpr_score,
-            total_requirements: gdpr_reqs.len(),
-            passed_count: gdpr_passed,
-            alert_count: gdpr_alerts,
-            requirements: gdpr_reqs,
-        },
-        ComplianceFramework {
-            name: "SOC_2".to_string(),
-            full_name: "AICPA Trust Services Criteria (SOC 2 Type II)".to_string(),
-            version: "2024 Criteria".to_string(),
-            score_percent: tsc_score,
-            total_requirements: tsc_reqs.len(),
-            passed_count: tsc_passed,
-            alert_count: tsc_alerts,
-            requirements: tsc_reqs,
-        },
-    ];
-
-    Json(serde_json::json!({
-        "frameworks": frameworks,
-        "total_alerts_evaluated": alerts.len(),
-        "last_updated": chrono::Utc::now(),
-    }))
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTechniqueSummary {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub alert_count: usize,
-    pub max_level: u8,
-    pub subtechniques: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTacticColumn {
-    pub tactic_id: String,
-    pub name: String,
-    pub techniques: Vec<MitreTechniqueSummary>,
-}
-
-async fn get_mitre_matrix_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let count_technique_alerts = |tech_id: &str| -> (usize, u8) {
-        let matching: Vec<&Alert> = alerts.iter().filter(|a| {
-            if let Some(ref m) = a.rule.mitre {
-                m.id.starts_with(tech_id)
-            } else {
-                false
-            }
-        }).collect();
-        let max_lvl = matching.iter().map(|a| a.rule.level).max().unwrap_or(0);
-        (matching.len(), max_lvl)
-    };
-
-    let tactics_def = vec![
-        ("TA0043", "Reconnaissance", vec![
-            ("T1595", "Active Scanning", "Scanning IP blocks, ports, or web application vulnerabilities.", vec!["T1595.001", "T1595.002"]),
-            ("T1590", "Gather Victim Network Info", "Gathering IP ranges and DNS topology.", vec!["T1590.001"]),
-        ]),
-        ("TA0042", "Resource Development", vec![
-            ("T1583", "Acquire Infrastructure", "Adversaries acquiring servers, domains, or third-party web services.", vec!["T1583.001"]),
-            ("T1588", "Obtain Capabilities", "Acquiring exploits, malware tools, or code certificates.", vec!["T1588.002"]),
-        ]),
-        ("TA0001", "Initial Access", vec![
-            ("T1190", "Exploit Public-Facing Application", "Exploiting security flaws in internet-exposed services.", vec!["T1190.001"]),
-            ("T1078", "Valid Accounts", "Obtaining and abusing credentials of existing accounts.", vec!["T1078.001", "T1078.003"]),
-            ("T1566", "Phishing", "Spearphishing attachments and malicious links delivered via email.", vec!["T1566.001"]),
-        ]),
-        ("TA0002", "Execution", vec![
-            ("T1059", "Command & Scripting Interpreter", "Executing arbitrary commands in PowerShell, Bash, Python, or cmd.", vec!["T1059.001", "T1059.004"]),
-            ("T1204", "User Execution", "Relying on target users to execute malicious attachments or binaries.", vec!["T1204.002"]),
-            ("T1053", "Scheduled Task/Job", "Abusing cron, at, or Windows Task Scheduler to run task.", vec!["T1053.003", "T1053.005"]),
-        ]),
-        ("TA0003", "Persistence", vec![
-            ("T1543", "Create or Modify System Process", "Creating services or systemd units to repeatedly execute malware.", vec!["T1543.002"]),
-            ("T1547", "Boot or Logon Autostart Execution", "Modifying registry Run keys, Startup folders, or init scripts.", vec!["T1547.001"]),
-            ("T1136", "Create Account", "Creating local administrator or domain backdoor accounts.", vec!["T1136.001"]),
-        ]),
-        ("TA0004", "Privilege Escalation", vec![
-            ("T1068", "Exploitation for Privilege Escalation", "Exploiting kernel vulnerabilities to elevate permissions.", vec!["T1068.001"]),
-            ("T1548", "Abuse Elevation Control Mechanism", "Abusing sudo, UAC bypass, or setuid binaries.", vec!["T1548.001", "T1548.003"]),
-        ]),
-        ("TA0005", "Defense Evasion", vec![
-            ("T1070", "Indicator Removal", "Clearing event logs, audit logs, or bash history.", vec!["T1070.001", "T1070.002"]),
-            ("T1562", "Impair Defenses", "Disabling antivirus, EDR agents, or firewall rules.", vec!["T1562.001"]),
-            ("T1036", "Masquerading", "Renaming executables to match legitimate OS binaries (svchost, systemd).", vec!["T1036.005"]),
-            ("T1014", "Rootkit", "Hiding malicious activities and files via kernel rootkits.", vec!["T1014.001"]),
-        ]),
-        ("TA0006", "Credential Access", vec![
-            ("T1110", "Brute Force", "Password guessing, dictionary attacks, or password spraying.", vec!["T1110.001", "T1110.003"]),
-            ("T1003", "OS Credential Dumping", "Dumping LSASS memory, /etc/shadow, or SAM hive.", vec!["T1003.001", "T1003.008"]),
-            ("T1555", "Credentials from Password Stores", "Extracting keys from browser caches or credential managers.", vec!["T1555.003"]),
-        ]),
-        ("TA0007", "Discovery", vec![
-            ("T1082", "System Information Discovery", "Querying OS version, kernel build, and hardware specs.", vec!["T1082.001"]),
-            ("T1046", "Network Service Discovery", "Scanning remote subnets and ports with nmap or netcat.", vec!["T1046.001"]),
-            ("T1057", "Process Discovery", "Listing running processes with ps or tasklist.", vec!["T1057.001"]),
-        ]),
-        ("TA0008", "Lateral Movement", vec![
-            ("T1021", "Remote Services", "Logging into adjacent hosts via SSH, RDP, or SMB.", vec!["T1021.001", "T1021.004"]),
-            ("T1550", "Use Alternate Authentication Material", "Pass-the-Hash or Pass-the-Ticket Kerberos attacks.", vec!["T1550.002"]),
-        ]),
-        ("TA0009", "Collection", vec![
-            ("T1005", "Data from Local System", "Harvesting sensitive documents, database dumps, and source code.", vec!["T1005.001"]),
-            ("T1560", "Archive Collected Data", "Compressing files into tar.gz or 7z before exfiltration.", vec!["T1560.001"]),
-        ]),
-        ("TA0011", "Command and Control", vec![
-            ("T1071", "Application Layer Protocol", "C2 beaconing over HTTP, HTTPS, or DNS tunnels.", vec!["T1071.001", "T1071.004"]),
-            ("T1573", "Encrypted Channel", "Encrypting C2 channels with custom AES or TLS tunnels.", vec!["T1573.001"]),
-        ]),
-        ("TA0010", "Exfiltration", vec![
-            ("T1048", "Exfiltration Over Alternative Protocol", "Exfiltrating sensitive files via cloud storage, webhook, or DNS.", vec!["T1048.003"]),
-            ("T1567", "Exfiltration to Cloud Storage", "Transferring stolen data to AWS S3, Google Drive, or Mega.", vec!["T1567.002"]),
-        ]),
-        ("TA0040", "Impact", vec![
-            ("T1486", "Data Encrypted for Impact", "Ransomware encryption of endpoint and network storage.", vec!["T1486.001"]),
-            ("T1489", "Service Stop", "Terminating critical services or database daemons to cause denial of service.", vec!["T1489.001"]),
-            ("T1565", "Stored Data Manipulation", "Unauthorized modification or tampering with critical files (FIM).", vec!["T1565.001"]),
-        ]),
-    ];
-
-    let mut matrix = Vec::new();
-    let mut total_mitre_alerts = 0;
-
-    for (tactic_id, name, tech_list) in tactics_def {
-        let mut tech_objs = Vec::new();
-        for (tid, tname, tdesc, subs) in tech_list {
-            let (acount, max_lvl) = count_technique_alerts(tid);
-            total_mitre_alerts += acount;
-            tech_objs.push(MitreTechniqueSummary {
-                id: tid.to_string(),
-                name: tname.to_string(),
-                description: tdesc.to_string(),
-                alert_count: acount,
-                max_level: max_lvl,
-                subtechniques: subs.into_iter().map(|s| s.to_string()).collect(),
-            });
-        }
-        matrix.push(MitreTacticColumn {
-            tactic_id: tactic_id.to_string(),
-            name: name.to_string(),
-            techniques: tech_objs,
-        });
-    }
-
-    Json(serde_json::json!({
-        "matrix": matrix,
-        "total_tactics": 14,
-        "total_mitre_alerts": total_mitre_alerts,
-        "last_updated": chrono::Utc::now(),
-    }))
-}
 
 #[derive(Debug, Serialize)]
 pub struct FimSummaryRecord {
@@ -4265,7 +3653,8 @@ async fn get_fim_summary_handler(
         }
     }
 
-    for a in history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.iter().rev() {
+    // only the FIM alerts come from ClickHouse (they carry data.syscheck)
+    for a in history::alerts_containing(&state, &ctx, history::DEFAULT_HOURS, "\"syscheck\"").await.iter().rev() {
         let Some(sc) = a.data.get("syscheck") else { continue };
         let text = |p: &str| sc.pointer(p).and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(String::from);
         let action = match text("/event").as_deref() {
@@ -4357,6 +3746,10 @@ async fn post_active_response_block(
     if req.ip.parse::<std::net::IpAddr>().is_err() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "A valid IP address is required" }))).into_response();
     }
+    let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
+    if let Err(m) = decisions::gate_manual(&state, &ctx, &tenant, "manual_block", &req.ip, serde_json::json!({ "agent_id": agent_id, "ip": req.ip, "seconds": req.duration_seconds.unwrap_or(3600) })).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
+    }
     if wazuh_manager::is_wazuh_agent(&agent_id).await {
         let reason = req.reason.clone().unwrap_or_else(|| "Manual SOC operator block".to_string());
         return block_on_agent(&state, &ctx, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600), &reason, req.command.as_deref()).await;
@@ -4406,16 +3799,25 @@ async fn post_active_response_unblock(
 // Method 2: Self-Learning AI Auto-Generated Reusable Parser Engine Handlers
 // =========================================================================
 
-async fn get_parsers_handler(State(state): State<AppState>) -> Json<Vec<siem_parser_gen::DynamicParser>> {
-    Json(state.parser_registry.list_parsers())
+/// What a learned parser extracted from a log line, kept in the event's metadata
+/// (`parsed.<field>`, normalized names) with the parser's name.
+pub(crate) fn add_parsed_fields(metadata: &mut HashMap<String, String>, p: siem_parser_gen::DynamicParsedResult) {
+    for (k, v) in p.normalized_fields {
+        metadata.insert(format!("parsed.{k}"), v.as_str().map(String::from).unwrap_or_else(|| v.to_string()));
+    }
+    metadata.insert("parser".into(), p.parser_name);
 }
 
-async fn get_parsers_stats_handler(State(state): State<AppState>) -> Json<siem_parser_gen::ParserStatsSummary> {
-    Json(state.parser_registry.stats())
+async fn get_parsers_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Vec<siem_parser_gen::DynamicParser>> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).list_parsers())
 }
 
-async fn get_unmatched_parsers_handler(State(state): State<AppState>) -> Json<Vec<siem_parser_gen::UnmatchedFingerprintSummary>> {
-    Json(state.parser_registry.accumulator.list_unmatched())
+async fn get_parsers_stats_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<siem_parser_gen::ParserStatsSummary> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).stats())
+}
+
+async fn get_unmatched_parsers_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Vec<siem_parser_gen::UnmatchedFingerprintSummary>> {
+    Json(parsers_store::for_tenant(&state, &ctx.scope()).accumulator.list_unmatched())
 }
 
 #[derive(Deserialize)]
@@ -4427,6 +3829,7 @@ struct SynthesizePayload {
 
 async fn post_synthesize_parser_handler(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<SynthesizePayload>,
 ) -> impl IntoResponse {
     if payload.samples.is_empty() {
@@ -4442,20 +3845,41 @@ async fn post_synthesize_parser_handler(
         f
     });
     let (_, sig) = siem_parser_gen::FingerprintEngine::compute(&payload.samples[0]);
+    let registry = parsers_store::for_tenant(&state, &ctx.scope());
 
-    match state
-        .parser_registry
+    // the AI providers configured in the platform settings first (as every AI feature)
+    let mut ai_note = None;
+    if ai_assist::tenant_ai_enabled(&state, &ctx.scope()) {
+        let providers = ai_assist::providers(&state, "chat").await;
+        if !providers.is_empty() {
+            let (system, user) = siem_parser_gen::AiParserSynthesizer::llm_prompts(fp, &sig, &payload.samples, payload.instructions.as_deref());
+            // a parser (pattern + fields) is a long answer
+            match siem_ai::generate_long(&providers, &system, &user, 8192).await {
+                Ok(reply) => match registry.register_from_ai_reply(fp, &sig, &payload.samples, &reply.text) {
+                    Ok(parser) => {
+                        info!("parser '{}' synthesized by {} for tenant {}", parser.name, reply.model, ctx.scope());
+                        return (StatusCode::OK, Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": reply.model }))).into_response();
+                    }
+                    Err(e) => ai_note = Some(format!("the AI's parser ({}) was not usable: {e}", reply.model)),
+                },
+                Err(e) => ai_note = Some(format!("no AI answer: {e}")),
+            }
+            warn!("parser synthesis for tenant {}: {}; trying the built-in synthesizer", ctx.scope(), ai_note.as_deref().unwrap_or(""));
+        }
+    }
+
+    match registry
         .synthesize_and_register(fp, &sig, &payload.samples, payload.instructions.as_deref())
         .await
     {
         Ok(parser) => (
             StatusCode::OK,
-            Json(serde_json::json!({ "status": "success", "parser": parser })),
+            Json(serde_json::json!({ "status": "success", "parser": parser, "generated_by": "built-in synthesizer", "ai_note": ai_note })),
         )
             .into_response(),
         Err(e) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({ "status": "error", "error": e })),
+            Json(serde_json::json!({ "status": "error", "error": match &ai_note { Some(n) => format!("{e} (AI: {n})"), None => e } })),
         )
             .into_response(),
     }
@@ -4491,9 +3915,10 @@ async fn post_test_parser_handler(
 async fn put_parser_handler(
     Path(id): Path<uuid::Uuid>,
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
     Json(updated): Json<siem_parser_gen::DynamicParser>,
 ) -> impl IntoResponse {
-    match state.parser_registry.update_parser(id, updated) {
+    match parsers_store::for_tenant(&state, &ctx.scope()).update_parser(id, updated) {
         Ok(_) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "success", "message": "Parser updated successfully" })),
@@ -4510,8 +3935,9 @@ async fn put_parser_handler(
 async fn delete_parser_handler(
     Path(id): Path<uuid::Uuid>,
     State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    if state.parser_registry.delete_parser(id) {
+    if parsers_store::for_tenant(&state, &ctx.scope()).delete_parser(id) {
         (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "success", "message": "Parser deleted successfully" })),
@@ -4830,41 +4256,29 @@ async fn post_agent_enroll_handler(
 async fn get_reports_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts_guard = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut engine = siem_reportd::ReportEngine::new();
-
-    for alert in alerts_guard.iter() {
-        let record = siem_reportd::AlertRecord {
-            rule_id: alert.rule.id.to_string(),
-            level: alert.rule.level as u32,
-            groups: alert.rule.groups.clone(),
-            location: alert.location.clone(),
-            srcip: alert.decoded.src_ip.clone(),
-            user: alert.decoded.user.clone(),
-            filename: alert.decoded.file_path.clone(),
-            raw: alert.full_log.clone(),
-        };
-        engine.total_alerts += 1;
-        engine.matched_alerts += 1;
-        *engine.field_counts.entry(record.rule_id).or_default() += 1;
+    for (rule_id, _, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        let n = n as usize;
+        engine.total_alerts += n;
+        engine.matched_alerts += n;
+        *engine.field_counts.entry(rule_id.to_string()).or_default() += n;
     }
+
+    // per framework: the alerts whose Wazuh rule carries its tag (the scores are /api/v1/compliance)
+    let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(history::DEFAULT_HOURS as u64 * 3_600_000);
+    let tags = state.db.compliance_tag_counts(&ctx.scope(), since, &["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"]).await.unwrap_or_default();
+    let compliance_summary: serde_json::Map<String, serde_json::Value> = tags
+        .into_iter()
+        .map(|(tag, alerts, requirements)| (tag.to_string(), serde_json::json!({ "alerts": alerts, "requirements_with_alerts": requirements })))
+        .collect();
 
     Json(serde_json::json!({
         "total_alerts": engine.total_alerts,
         "matched_alerts": engine.matched_alerts,
         "rule_distribution": engine.field_counts,
-        "compliance_summary": {
-            "pci_dss": {
-                "evaluated": true,
-                "status": "compliant",
-                "rules_analyzed": engine.total_alerts
-            },
-            "soc2": {
-                "evaluated": true,
-                "status": "monitored",
-                "active_controls": ["CC6.1", "CC6.8", "CC7.2"]
-            }
-        }
+        "window_hours": history::DEFAULT_HOURS,
+        "compliance_summary": compliance_summary,
+        "compliance_scores": "/api/v1/compliance"
     }))
 }
 
@@ -5042,7 +4456,8 @@ fn agent_in_scope(state: &AppState, ctx: &AuthCtx, agent_id: &str) -> bool {
 /// send as `X-Tenant-Key` (admins, and users allowed to deploy agents).
 async fn get_tenant_agent_key_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     let tenant = ctx.scope();
-    if !ctx.can_manage(&tenant) && !ctx.has_permission("siem-agents") {
+    // the enrolment key deploys agents: the tenant admin, or an analyst given "Deploy Agents"
+    if !ctx.can_manage(&tenant) && !ctx.has_permission("siem-agent-deploy") {
         return tenancy::forbidden();
     }
     let key = state.agent_keys.get_or_create(&state.db, &tenant).await;
@@ -5250,29 +4665,106 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
 // Continuous Red Agent Swarm & Perpetual Purple-Team Engine Handlers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// A Red Swarm alert says it is a simulation (the round injected the telemetry).
+fn redswarm_simulated(mut a: Alert) -> Alert {
+    a.rule.description = format!("[Red Swarm simulation] {}", a.rule.description);
+    a.rule.groups.push("redswarm_simulation".into());
+    a
+}
+
+/// Whether a Red Swarm round (by its target agent) belongs to the caller's tenant.
+fn swarm_record_visible(state: &AppState, ctx: &AuthCtx, r: &siem_redswarm::ExecutionRecord) -> bool {
+    tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &r.target_agent_id) == tenancy::normalize_tenant(&ctx.scope())
+}
+
+fn swarm_records(state: &AppState, ctx: &AuthCtx, limit: usize) -> Vec<siem_redswarm::ExecutionRecord> {
+    state.redswarm.audit().get_history(usize::MAX).into_iter().filter(|r| swarm_record_visible(state, ctx, r)).take(limit).collect()
+}
+
+/// The tenant's drafts: those of its rounds.
+fn swarm_drafts(state: &AppState, ctx: &AuthCtx) -> Vec<siem_redswarm::SynthesizedRuleDraft> {
+    let mine: HashSet<uuid::Uuid> = swarm_records(state, ctx, usize::MAX).iter().map(|r| r.id).collect();
+    state.redswarm.audit().drafts().into_iter().filter(|d| mine.contains(&d.execution_id)).collect()
+}
+
+/// Campaigns, the kill switch and detection rules are shared by every tenant: tenant or platform admins.
+fn swarm_admin(ctx: &AuthCtx) -> Option<axum::response::Response> {
+    (!(ctx.is_super() || ctx.can_manage(&ctx.scope()))).then(|| {
+        (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "Only a tenant admin or a platform admin can do this" }))).into_response()
+    })
+}
+
+const REDSWARM_RULES: &str = "redswarm_rules.xml";
+
+/// The deployed Red Swarm rules into the in-process engine the rounds are verified on.
+fn reload_redswarm_rules(state: &AppState) {
+    let xml = std::fs::read_to_string(wazuh_manager::home().join("etc/rules").join(REDSWARM_RULES)).unwrap_or_default();
+    state.engine.set_custom_rules_xml(&xml);
+}
+
+/// Live modes would run attack commands on endpoints; siem-api has no channel that does that safely.
+const REDSWARM_NO_LIVE: &str = "Live execution is not available: only the telemetry mode (SafeTelemetryOnly) runs";
+
+fn redswarm_live(mode: Option<siem_redswarm::SwarmExecutionMode>) -> Option<axum::response::Response> {
+    matches!(mode, Some(siem_redswarm::SwarmExecutionMode::ControlledLive | siem_redswarm::SwarmExecutionMode::FullLive))
+        .then(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": REDSWARM_NO_LIVE }))).into_response())
+}
+
 async fn get_redswarm_status_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let report = state.redswarm.get_status();
+    // the engine's state, with the counts of this tenant's rounds
+    let mut report = state.redswarm.get_status();
+    let since = Utc::now() - chrono::Duration::hours(24);
+    let recent: Vec<_> = swarm_records(&state, &ctx, usize::MAX).into_iter().filter(|r| r.timestamp >= since).collect();
+    let defended = recent.iter().filter(|r| r.verification.verdict == siem_redswarm::DetectionVerdict::Defended).count();
+    let drafts = swarm_drafts(&state, &ctx);
+    report.attacks_last_24h = recent.len() as u64;
+    report.defense_rate_percent = if recent.is_empty() { 100.0 } else { (defended as f64 * 1000.0 / recent.len() as f64).round() / 10.0 };
+    report.open_gaps_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::PendingApproval).map(|d| &d.technique_id).collect::<HashSet<_>>().len();
+    report.approved_rules_count = drafts.iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed).count();
+    report.kill_switch_active = state.redswarm.is_tenant_halted(&ctx.scope());
     Json(report)
+}
+
+/// The campaigns the caller sees: the platform ones and its tenant's.
+fn swarm_campaign_visible(ctx: &AuthCtx, c: &siem_redswarm::SwarmCampaign) -> bool {
+    c.tenant_id.is_empty() || c.tenant_id == ctx.scope()
+}
+
+/// A platform campaign runs over every tenant: only a platform admin changes it.
+fn swarm_campaign_owner(ctx: &AuthCtx, c: &siem_redswarm::SwarmCampaign) -> Option<axum::response::Response> {
+    (!ctx.is_super() && c.tenant_id != ctx.scope()).then(|| {
+        (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "This campaign is shared by every tenant: only a platform admin can change it. Use the kill switch to stop Red Swarm for your tenant." }))).into_response()
+    })
 }
 
 async fn get_redswarm_campaigns_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let campaigns = state.redswarm.get_campaigns();
+    let campaigns: Vec<_> = state.redswarm.get_campaigns().into_iter().filter(|c| swarm_campaign_visible(&ctx, c)).collect();
     Json(campaigns)
 }
 
 async fn post_redswarm_campaigns_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
-    Json(campaign): Json<siem_redswarm::SwarmCampaign>,
-) -> impl IntoResponse {
+    Extension(ctx): Extension<AuthCtx>,
+    Json(mut campaign): Json<siem_redswarm::SwarmCampaign>,
+) -> axum::response::Response {
+    if let Some(r) = swarm_admin(&ctx).or_else(|| redswarm_live(Some(campaign.mode))) {
+        return r;
+    }
+    if !ctx.is_super() {
+        // a tenant admin's campaign tests its own agents only
+        if let Some(r) = state.redswarm.get_campaigns().iter().find(|c| c.id == campaign.id).and_then(|c| swarm_campaign_owner(&ctx, c)) {
+            return r;
+        }
+        campaign.tenant_id = ctx.scope();
+    }
     state.redswarm.upsert_campaign(campaign.clone());
-    Json(serde_json::json!({ "status": "success", "campaign": campaign }))
+    Json(serde_json::json!({ "status": "success", "campaign": campaign })).into_response()
 }
 
 async fn post_redswarm_toggle_campaign_handler(
@@ -5280,17 +4772,15 @@ async fn post_redswarm_toggle_campaign_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only administrators or secops leads can toggle campaigns."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
+    let Some(campaign) = state.redswarm.get_campaigns().into_iter().find(|c| c.id == id && swarm_campaign_visible(&ctx, c)) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": format!("Campaign {id} not found") }))).into_response();
+    };
+    if let Some(r) = swarm_campaign_owner(&ctx, &campaign) {
+        return r;
+    }
     match state.redswarm.toggle_campaign(&id) {
         Ok(enabled) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok", "campaign_id": id, "enabled": enabled }))).into_response(),
         Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
@@ -5309,32 +4799,22 @@ async fn post_redswarm_run_once_handler(
     Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<RunOncePayload>,
 ) -> impl IntoResponse {
+    if let Some(r) = redswarm_live(payload.mode) {
+        return r;
+    }
     let tenant = ctx.scope();
-    let (target_agent_id, agent_name, agent_ip, agent_os) = {
-        let agents = state.agents.read().unwrap();
-        let target_agent = if let Some(ref id) = payload.target_agent_id {
-            agents.get(id).cloned()
-        } else {
-            agents.values().find(|a| a.status == AgentStatus::Active).cloned()
-                .or_else(|| agents.values().next().cloned())
-        };
-
-        if let Some(ag) = target_agent {
-            (ag.id, ag.name, ag.ip, ag.os_type)
-        } else {
-            let enrolled = state.enrolled.read().unwrap();
-            if let Some((id, e)) = enrolled.iter().next() {
-                let os = if e.os_type.is_empty() {
-                    if e.name.to_lowercase().contains("win") { "windows" } else { "linux" }
-                } else {
-                    &e.os_type
-                };
-                (id.clone(), e.name.clone(), "127.0.0.1".into(), os.to_lowercase())
-            } else {
-                ("001".into(), "endpoint-agent".into(), "192.168.1.100".into(), "windows".into())
-            }
+    // one of the tenant's own agents
+    let target = {
+        let agents = scoped_agent_map(&state, &ctx);
+        match payload.target_agent_id {
+            Some(ref id) => agents.get(id).cloned(),
+            None => agents.values().find(|a| a.status == AgentStatus::Active).cloned().or_else(|| agents.values().next().cloned()),
         }
     };
+    let Some(ag) = target else {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "No agent of yours to run the technique on" }))).into_response();
+    };
+    let (target_agent_id, agent_name, agent_ip, agent_os) = (ag.id, ag.name, ag.ip, ag.os_type);
 
     let target_tags = vec!["lab".into(), "redteam-allowed".into()];
 
@@ -5354,17 +4834,14 @@ async fn post_redswarm_run_once_handler(
         move |events| {
             for ev in events {
                 if let Some(alert) = swarm_state.engine.process_event(ev, &cl_agent_name, &cl_agent_ip) {
-                    let alert = tenancy::tag_alert(alert, &cl_tenant);
+                    let alert = tenancy::tag_alert(redswarm_simulated(alert), &cl_tenant);
                     keep_alerts(&swarm_state, [alert.clone()]);
                     let _ = swarm_state.broadcast_tx.send(alert);
                 }
                 keep_events(&swarm_state, [ev.clone()]);
             }
         },
-        move |_ag_id, cmd| {
-            info!("RunOnce dispatching live command: {}", cmd.command);
-            Ok("Command dispatched to agent via active-response".into())
-        },
+        move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
         move || {
             state.alerts.read().unwrap().clone()
         },
@@ -5378,59 +4855,52 @@ async fn post_redswarm_run_once_handler(
 
 async fn get_redswarm_history_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let history = state.redswarm.audit().get_history(100);
-    Json(history)
+    Json(swarm_records(&state, &ctx, 100))
 }
 
 async fn get_redswarm_gaps_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let gaps = state.redswarm.audit().get_pending_gaps();
+    // one open gap per technique: its newest draft (rounds before the dedupe made one a minute)
+    let mut gaps: Vec<_> = swarm_drafts(&state, &ctx).into_iter().filter(|d| d.status == siem_redswarm::DraftRuleStatus::PendingApproval).collect();
+    gaps.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    let mut seen = HashSet::new();
+    gaps.retain(|d| seen.insert(d.technique_id.clone()));
     Json(gaps)
 }
 
 async fn post_redswarm_apply_rule_handler(
     Path(id): Path<uuid::Uuid>,
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only users with 'admin', 'secops-lead', or 'manager' roles can approve and deploy detection rules."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
+    let Some(draft) = swarm_drafts(&state, &ctx).into_iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Draft rule not found" }))).into_response();
+    };
+    if draft.status != siem_redswarm::DraftRuleStatus::PendingApproval {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "This draft was already decided" }))).into_response();
+    }
+    // into the manager's custom rules (ids 119000-119999), only if wazuh-analysisd accepts them
+    // Wazuh's <mitre> takes only <id> (older drafts also had <tactic> / <technique>)
+    let xml: String = draft.rule_xml.lines().filter(|l| !l.trim_start().starts_with("<tactic>") && !l.trim_start().starts_with("<technique>")).collect::<Vec<_>>().join("\n");
+    let deployed = tokio::task::spawn_blocking(move || wazuh_manager::deploy_rule_group(REDSWARM_RULES, &xml, 119_000..=119_999)).await.unwrap_or_else(|e| Err(e.to_string()));
+    let (rule_id, xml) = match deployed {
+        Ok(x) => x,
+        Err(e) => return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    };
+    reload_redswarm_rules(&state);
+    state.redswarm.audit().set_rule_xml(id, &xml);
     match state.redswarm.audit().approve_rule(id) {
         Ok(rule) => {
-            info!("Analyst {} APPROVED synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            info!("{} approved Red Swarm rule {} for {} (deployed as rule {rule_id})", ctx.username, rule.id, rule.technique_id);
             redswarm_store::upsert_draft(&state, &rule).await;
-
-            // 1. Hot reload into active in-memory correlation engine
-            state.engine.add_wazuh_rules_xml(&rule.rule_xml);
-            info!("Dynamically injected approved rule #{} into running correlation engine", rule.technique_id);
-
-            // 2. Persist to disk in manager custom rules
-            let rule_path = std::path::Path::new("data/manager/ruleset/rules/0999-redswarm-synthesized.xml");
-            if let Some(parent) = rule_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(rule_path) {
-                    use std::io::Write;
-                    let _ = writeln!(
-                        file,
-                        "\n<!-- Rule for {} approved by {} ({}) at {} -->\n{}",
-                        rule.technique_id, ctx.username, ctx.role, Utc::now(), rule.rule_xml
-                    );
-                }
-            }
-            (StatusCode::OK, Json(serde_json::json!({ "status": "approved", "rule": rule }))).into_response()
+            (StatusCode::OK, Json(serde_json::json!({ "status": "approved", "rule_id": rule_id, "rule": rule }))).into_response()
         }
         Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
     }
@@ -5441,20 +4911,26 @@ async fn post_redswarm_rollback_rule_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only users with 'admin' or 'secops-lead' roles can roll back detection rules."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
+    let Some(draft) = swarm_drafts(&state, &ctx).into_iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Rule not found" }))).into_response();
+    };
+    let rule_id = draft.rule_xml.split("<rule id=\"").nth(1).and_then(|p| p.split('"').next()?.parse::<u32>().ok());
+    if draft.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed {
+        let Some(rule_id) = rule_id else {
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": "The rule has no id" }))).into_response();
+        };
+        let removed = tokio::task::spawn_blocking(move || wazuh_manager::remove_rule_group(REDSWARM_RULES, rule_id)).await.unwrap_or_else(|e| Err(e.to_string()));
+        if let Err(e) = removed {
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response();
+        }
+        reload_redswarm_rules(&state);
+    }
     match state.redswarm.audit().rollback_rule(id) {
         Ok(rule) => {
-            warn!("Analyst {} ROLLED BACK synthesized Red Swarm rule #{}", ctx.username, rule.technique_id);
+            warn!("{} rolled back Red Swarm rule {} for {}", ctx.username, rule.id, rule.technique_id);
             redswarm_store::upsert_draft(&state, &rule).await;
             (StatusCode::OK, Json(serde_json::json!({ "status": "rolled_back", "rule": rule }))).into_response()
         }
@@ -5472,39 +4948,69 @@ async fn post_redswarm_kill_switch_handler(
     Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<KillSwitchPayload>,
 ) -> impl IntoResponse {
-    let role = ctx.role.to_lowercase();
-    if role != "admin" && role != "secops-lead" && role != "manager" {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Access Denied: Only administrators or secops leads can engage or disengage the global kill-switch."
-            })),
-        ).into_response();
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
     }
-
-    siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
-    warn!(
-        "SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})",
-        payload.engage, ctx.username, ctx.role
-    );
-    let status = state.redswarm.get_status();
+    // a platform admin's switch stops every tenant; a tenant admin's, its own tenant
+    let tenant = ctx.scope();
+    if ctx.is_super() {
+        siem_redswarm::SafetyGatekeeper::set_kill_switch(payload.engage);
+        if !payload.engage {
+            state.redswarm.set_tenant_halted(&tenant, false);
+        }
+        warn!("SECURITY NOTICE: Global Red Swarm Kill-Switch set to {} by {} ({})", payload.engage, ctx.username, ctx.role);
+    } else {
+        if !payload.engage && siem_redswarm::SafetyGatekeeper::is_kill_switch_engaged() {
+            return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "The platform-wide kill switch is engaged: only a platform admin can release it" }))).into_response();
+        }
+        state.redswarm.set_tenant_halted(&tenant, payload.engage);
+        warn!("SECURITY NOTICE: Red Swarm Kill-Switch for tenant {} set to {} by {} ({})", tenant, payload.engage, ctx.username, ctx.role);
+    }
+    let mut status = state.redswarm.get_status();
+    status.kill_switch_active = state.redswarm.is_tenant_halted(&tenant);
     (
         StatusCode::OK,
         Json(serde_json::json!({
             "status": "ok",
-            "kill_switch_active": payload.engage,
+            "kill_switch_active": status.kill_switch_active,
             "swarm_status": status
         })),
     ).into_response()
 }
 
+async fn post_redswarm_reject_rule_handler(
+    Path(id): Path<uuid::Uuid>,
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    if let Some(r) = swarm_admin(&ctx) {
+        return r;
+    }
+    let drafts = swarm_drafts(&state, &ctx);
+    let Some(draft) = drafts.iter().find(|d| d.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Draft rule not found" }))).into_response();
+    };
+    if draft.status != siem_redswarm::DraftRuleStatus::PendingApproval {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "This draft was already decided" }))).into_response();
+    }
+    // the gap's every pending draft (the page shows one per technique); later rounds draft no more for it
+    let mut rejected = 0;
+    for d in drafts.iter().filter(|d| d.technique_id == draft.technique_id && d.status == siem_redswarm::DraftRuleStatus::PendingApproval) {
+        if let Ok(rule) = state.redswarm.audit().reject_rule(d.id) {
+            redswarm_store::upsert_draft(&state, &rule).await;
+            rejected += 1;
+        }
+    }
+    info!("{} rejected the Red Swarm draft rules for {} ({rejected} drafts)", ctx.username, draft.technique_id);
+    (StatusCode::OK, Json(serde_json::json!({ "status": "rejected", "technique_id": draft.technique_id, "rejected": rejected }))).into_response()
+}
+
 async fn get_redswarm_heatmap_handler(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthCtx>,
+    Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
     let all_techs = siem_redswarm::get_curated_catalog();
-    let records = state.redswarm.audit().get_history(500);
+    let records = swarm_records(&state, &ctx, 500);
     let heatmap = siem_redswarm::MetricsCalculator::compute_heatmap(&all_techs, &records);
     Json(heatmap)
 }

@@ -10,7 +10,7 @@
         Regulatory Compliance & Audit Frameworks
       </h1>
       <p class="text-sm text-slate-400 mt-1.5 flex items-center gap-2">
-        <span>Automated control verification against PCI-DSS v4.0, SOC 2 Type II, ISO 27001, HIPAA, and NIST SP 800-53</span>
+        <span>Automated control verification against PCI-DSS, HIPAA, NIST SP 800-53, GDPR and SOC 2, from your agents' CIS configuration checks (the score) and the compliance tags of Wazuh's rules (the alerts)</span>
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="text-xs text-emerald-400 font-mono">Live Auditing Active</span>
       </p>
@@ -18,7 +18,7 @@
 
     <div class="flex items-center gap-3">
       <button 
-        (click)="loadCompliance()" 
+        (click)="loadCompliance(true)" 
         class="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-sm font-semibold rounded-xl border border-slate-700/80 hover:border-cyan-500/40 transition-all shadow-md group"
       >
         <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 group-hover:rotate-180 transition-transform duration-500" [class.animate-spin]="loading()"></lucide-angular>
@@ -52,7 +52,7 @@
         </h3>
       </div>
       <div class="text-[11px] text-slate-500 mt-0.5">
-        Last sync: {{ fw.lastSync || 'Just now' }}
+        Evaluated: {{ fw.lastSync || '—' }}
       </div>
 
       <!-- Glowing Progress Bar with Percentage -->
@@ -64,7 +64,7 @@
             [class.bg-amber-400]="fw.color === 'amber'"
             [class.bg-emerald-400]="fw.color === 'emerald'"
             [class.bg-rose-500]="fw.color === 'rose'"
-            [style.width.%]="fw.score_percent"
+            [style.width.%]="fw.score_percent ?? 0"
           ></div>
         </div>
         <span 
@@ -74,13 +74,15 @@
           [class.text-emerald-400]="fw.color === 'emerald'"
           [class.text-rose-400]="fw.color === 'rose'"
         >
-          {{ fw.score_percent }}%
+          {{ fw.score_percent === null ? 'n/a' : fw.score_percent + '%' }}
         </span>
       </div>
 
       <!-- Footer Info -->
       <div class="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-        <span>{{ fw.passed_count }}/{{ fw.total_requirements }} passed</span>
+        <span [title]="fw.score_percent === null ? 'No CIS check maps this framework: alerts only' : fw.checks_passed + ' passed / ' + fw.checks_failed + ' failed configuration check results'">
+          {{ fw.score_percent === null ? 'no config score' : fw.checks_failed + ' checks failing' }}
+        </span>
         <span [class.text-rose-400]="fw.alert_count > 0" [class.text-slate-500]="fw.alert_count === 0">
           {{ fw.alert_count }} alerts
         </span>
@@ -170,7 +172,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 text-slate-300">
             <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
-            <span>Unmapped Controls</span>
+            <span title="Requirements seen only in alerts: no configuration check maps them">Alerts only (no config check)</span>
           </div>
           <span class="font-mono font-bold text-slate-400">{{ unmappedControlsCount() | number }}</span>
         </div>
@@ -224,6 +226,7 @@
               <p class="text-[11px] text-slate-400 mt-0.5">
                 {{ item.framework }}
               </p>
+              <p *ngIf="item.detail" class="text-[11px] text-slate-500 mt-1 line-clamp-2" [title]="item.detail">Fix: {{ item.detail }}</p>
             </div>
           </div>
 
@@ -240,14 +243,14 @@
             [class.bg-slate-800]="item.resolved"
             [class.text-emerald-400]="item.resolved"
           >
-            {{ item.resolved ? 'Dispatched' : 'Remediate' }}
+            Show
           </button>
         </div>
       </div>
 
       <div class="pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 flex justify-between items-center">
-        <span>Auto-sync with Wazuh active response engine</span>
-        <span class="text-cyan-400 font-mono font-medium">5 tasks pending</span>
+        <span>Requirements whose mapped rules raised alerts</span>
+        <span class="text-cyan-400 font-mono font-medium">{{ remediations().length }} open</span>
       </div>
     </div>
 
@@ -299,7 +302,7 @@
               [class.border-slate-800]="reportFormat() !== 'pdf'"
             >
               <lucide-angular [img]="FileTextIcon" class="w-3.5 h-3.5"></lucide-angular>
-              PDF
+              HTML
             </button>
 
             <button 
@@ -498,7 +501,7 @@
           [class.text-rose-400]="(selectedFramework()?.score_percent || 0) < 60"
           [class.border-rose-800]="(selectedFramework()?.score_percent || 0) < 60"
         >
-          {{ selectedFramework()?.score_percent }}% COMPLIANT
+          {{ selectedFramework()?.score_percent === null ? 'NO CONFIGURATION SCORE' : selectedFramework()?.score_percent + '% OF CHECKS PASS' }}
         </span>
       </div>
     </div>
@@ -574,6 +577,17 @@
             </h4>
           </div>
           <p class="text-xs text-slate-400 leading-relaxed">{{ req.description }}</p>
+          <details *ngIf="req.checks.length || req.alerts.length" class="text-[11px] text-slate-400 pt-1">
+            <summary class="cursor-pointer text-cyan-400 hover:text-cyan-300">{{ req.checks.length }} check(s) · {{ req.alerts.length }} alert rule(s)</summary>
+            <div *ngFor="let c of req.checks" class="mt-2 pl-3 border-l border-slate-800">
+              <div [class.text-rose-300]="c.failed_agents > 0" [class.text-emerald-300]="c.failed_agents === 0">
+                [{{ c.check_id }}] {{ c.title }} — {{ c.failed_agents > 0 ? 'fails on ' + c.failed_agents + ' agent(s)' : 'passes' }}
+              </div>
+              <div *ngIf="c.failed_agents > 0 && c.remediation" class="text-slate-400 mt-0.5">Fix: {{ c.remediation }}</div>
+              <div *ngIf="c.failed_agents > 0 && c.rationale" class="text-slate-500 mt-0.5">Why: {{ c.rationale }}</div>
+            </div>
+            <div *ngFor="let a of req.alerts" class="mt-1 pl-3 border-l border-slate-800">Rule {{ a.rule_id }}: {{ a.description }}</div>
+          </details>
         </div>
 
         <div class="flex items-center gap-3 flex-shrink-0">
@@ -592,7 +606,7 @@
             {{ req.status }}
           </span>
           <span class="text-xs font-mono text-slate-500 min-w-[70px] text-right">
-            {{ req.alerts_count }} events
+            {{ req.alerts_count }} alerts
           </span>
         </div>
       </div>

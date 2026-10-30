@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem Shared settings for auth-service (:3001) and siem-api (:8088), read from
+rem Shared settings for auth-service (:3011, LISTEN_ADDR) and siem-api (:8088), read from
 rem wazuh-rust-angular\.env (git-ignored; template: .env.example).
 rem Both must use the same JWT_SECRET and the same Valkey session store:
 rem auth-service issues the tokens, siem-api validates them.

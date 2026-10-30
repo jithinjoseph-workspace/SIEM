@@ -274,6 +274,7 @@
           </div>
 
           <!-- ── Incident Report (generated on close/resolve) ───────── -->
+          <div *ngIf="intelAddResult()" role="status" class="detail-section text-xs text-amber-300">{{ intelAddResult() }}</div>
           <div *ngIf="incidentReport()" class="detail-section incident-report-section">
             <div class="section-label">INCIDENT REPORT</div>
             <div class="incident-report">
@@ -895,6 +896,37 @@
               </ng-template>
             </div>
           </ng-container>
+
+          <!-- Investigation: evidence and verdict (case_ai.rs) -->
+          <div class="detail-section">
+            <div class="flex items-center justify-between mb-1">
+              <div class="section-label">INVESTIGATION</div>
+              <button (click)="reinvestigate()" [disabled]="investigating()" class="text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 text-cyan-300 hover:border-cyan-400/60 disabled:opacity-40">{{ investigating() ? 'Investigating…' : (caseInvestigation() ? 'Investigate again' : 'Investigate now') }}</button>
+            </div>
+            <div *ngIf="investigationError()" role="alert" class="text-xs text-rose-300 mb-1">{{ investigationError() }}</div>
+            <div *ngIf="!caseInvestigation() && !investigating()" class="text-xs text-on-surface-variant">Not investigated yet (a new case is investigated a few seconds after it opens).</div>
+            <ng-container *ngIf="caseInvestigation() as inv">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <span class="px-2 py-0.5 rounded border text-xs font-bold uppercase" [ngClass]="verdictClass(inv.verdict.label)">{{ inv.verdict.label.replace('_', ' ') }}</span>
+                <span class="text-xs text-on-surface-variant">{{ inv.verdict.confidence }}% · by {{ inv.verdict_source === 'ai' ? 'AI (' + inv.ai?.model + ')' : 'rules' }} · {{ formatDateShort(inv.investigated_at) }}</span>
+              </div>
+              <p class="text-xs text-white mb-1">{{ inv.verdict.summary }}</p>
+              <ul class="text-xs text-on-surface-variant list-disc pl-4 mb-1"><li *ngFor="let r of inv.verdict.reasons">{{ r }}</li></ul>
+              <div *ngIf="inv.verdict.next_steps?.length" class="text-xs text-on-surface-variant mb-1"><span class="text-white">Next steps:</span> {{ inv.verdict.next_steps.join(' · ') }}</div>
+              <div class="text-[11px] text-on-surface-variant">
+                Logins from the source: {{ inv.facts.failed_logins }} failed, {{ inv.facts.successful_logins }} succeeded{{ inv.facts.success_after_failures ? ' (a success AFTER the failures)' : '' }}
+                · {{ inv.facts.alerts }} alerts, max level {{ inv.facts.max_level }}
+                <span *ngIf="inv.geo?.country"> · {{ inv.geo.country }}{{ inv.geo.org ? ' / ' + inv.geo.org : '' }}</span>
+                <span *ngIf="inv.facts.intel_hits"> · threat intel: {{ inv.facts.intel_hits }} hit(s)</span>
+                <span *ngIf="inv.facts.critical_vulns"> · host critical CVEs: {{ inv.facts.critical_vulns }}</span>
+              </div>
+              <div *ngIf="inv.verdict_source === 'ai' && inv.rule_verdict?.label !== inv.verdict.label" class="text-[11px] text-amber-300">The rules alone say: {{ inv.rule_verdict.label.replace('_', ' ') }}</div>
+              <div *ngIf="inv.ai_note" class="text-[11px] text-on-surface-variant">AI not used: {{ inv.ai_note }}</div>
+              <div class="text-[11px] mt-1">
+                <a *ngFor="let s of inv.subjects" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: s.value }" class="text-cyan-300 hover:underline mr-3">Full evidence: {{ s.role }} {{ s.value }}</a>
+              </div>
+            </ng-container>
+          </div>
 
           <!-- Case Notes / Timeline -->
           <div class="detail-section">
@@ -1774,7 +1806,8 @@
               <option value="discord">Send Discord Notification</option>
               <option value="email">Send Email Alert</option>
               <option value="webhook">Call Custom Webhook</option>
-              <option value="block_ip">Block Source IP (RST + Firewall; SIEM: active response on the agent)</option>
+              <option value="block_ip">Block Source IP (RST + Firewall; SIEM: the agent + firewall / cloud)</option>
+              <option value="isolate_host">Isolate the Alert's Host (switch quarantine VLAN or cloud deny; SIEM)</option>
               <option value="syslog">Forward to Syslog / SIEM</option>
               <option value="pagerduty">Trigger PagerDuty Incident</option>
               <option value="shuffle">Send to Shuffle</option>
@@ -1817,6 +1850,28 @@
                 class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-primary/50 transition-colors"/>
             </div>
             <p class="text-[10px] text-on-surface-variant/50">Blocks will appear in the Active Blocks tab and can be revoked at any time.</p>
+          </div>
+          <div *ngIf="pbActionType === 'isolate_host'" class="space-y-2">
+            <div>
+              <label for="pb-iso-method" class="block text-[10px] text-on-surface-variant/70 mb-1">Isolate with</label>
+              <select id="pb-iso-method" [(ngModel)]="pbActionConfig['enforcement']"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors">
+                <option value="">The first enabled switch, else cloud integration</option>
+                <option value="unifi">UniFi</option>
+                <option value="cisco">Cisco SNMP</option>
+                <option value="aruba">Aruba CX</option>
+                <option value="snmp">Generic SNMP</option>
+                <option value="aws_sg">AWS Security Group</option>
+                <option value="azure_nsg">Azure NSG</option>
+                <option value="gcp_vpc">GCP VPC</option>
+              </select>
+            </div>
+            <div>
+              <label for="pb-iso-vlan" class="block text-[10px] text-on-surface-variant/70 mb-1">Quarantine VLAN (switches)</label>
+              <input id="pb-iso-vlan" type="number" [(ngModel)]="pbActionConfig['quarantine_vlan']" placeholder="999" min="1" max="4094"
+                class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-primary/50 transition-colors"/>
+            </div>
+            <p class="text-[10px] text-on-surface-variant/50">The host that raised the alert is isolated. It passes the AI guardrails first (protected assets, isolations per hour, evidence) and shows in the Device Isolation tab.</p>
           </div>
         </div>
 
@@ -1897,10 +1952,13 @@
           <label class="block text-[10px] uppercase tracking-[0.12em] font-bold text-on-surface-variant mb-1.5">{{ field.label }}</label>
           <select *ngIf="field.type === 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
             class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 transition-colors">
-            <option *ngFor="let o of field.options" [value]="o">{{ o }}</option>
+            <option *ngFor="let o of $any(field).options" [value]="o">{{ o }}</option>
           </select>
           <!-- a saved secret is not sent back: leaving it empty keeps it -->
-          <input *ngIf="field.type !== 'select'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
+          <textarea *ngIf="field.type === 'textarea'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label" [placeholder]="field.placeholder" rows="4"
+            class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-xs font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"></textarea>
+          <div *ngIf="field.key === 'tls_insecure' && intConfig[field.key] === 'true'" class="text-[11px] text-amber-300 mt-1">The device's identity is not checked: anyone on the path could read its API key.</div>
+          <input *ngIf="field.type !== 'select' && field.type !== 'textarea'" [(ngModel)]="intConfig[field.key]" [attr.aria-label]="field.label"
             [placeholder]="intConfig[field.key + '_set'] ? '•••••••• saved (leave empty to keep)' : field.placeholder" [type]="field.type || 'text'"
             class="w-full bg-surface-container border border-outline/15 rounded-lg px-3 py-2.5 text-sm font-mono text-white outline-none focus:border-primary/50 placeholder:text-on-surface-variant/40 transition-colors"/>
         </div>

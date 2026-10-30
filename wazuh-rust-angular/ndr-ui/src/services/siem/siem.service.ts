@@ -35,7 +35,13 @@ import {
   EntityIntentDossier,
   SimulationIntentRequest,
   PreemptiveAction,
-  ExecuteActionRequest
+  ExecuteActionRequest,
+  DeceptionAsset,
+  TripwireEvent,
+  DeceptionBlueprint,
+  DeceptionSummary,
+  CreateAssetRequest,
+  SimulateTripwireRequest
 } from './siem.models';
 
 @Injectable({
@@ -104,6 +110,12 @@ export class SiemService {
 
   getAlerts(limit: number = 50, minLevel: number = 0): Observable<Alert[]> {
     return this.http.get<Alert[]>(`${this.apiUrl}/api/v1/alerts?limit=${limit}&min_level=${minLevel}`).pipe(
+      map(alerts => alerts.map(a => {
+        if (!a.risk_fabric && a.data && a.data['risk_fabric']) {
+          a.risk_fabric = a.data['risk_fabric'];
+        }
+        return a;
+      })),
       catchError(() => of([]))
     );
   }
@@ -142,6 +154,12 @@ export class SiemService {
       ...(durationSeconds ? { duration_seconds: durationSeconds } : {}),
       ...(method ? { method } : {}),
     });
+  }
+
+  /** EDR action on a Windows agent: kill_process {pid, image?}, quarantine_file {path},
+   *  restore_file {quarantine_id}, isolate_host, release_host. */
+  sendEdrAction(agentId: string, action: string, params: Record<string, string | number> = {}): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, { command_id: 'cmd-' + Date.now(), agent_id: agentId, action, ...params });
   }
 
   /** FIM entries of an agent (wazuh-db fim_entry). */
@@ -233,6 +251,13 @@ export class SiemService {
   }
 
   /** SCA policy results stored for an agent. */
+  /** Per agent, the Sysmon events of the last 24 h (`last` in ms); null when it cannot be read. */
+  getAgentsTelemetry(): Observable<{ sysmon: Record<string, { events_24h: number; last: number }> } | null> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/agents/telemetry`).pipe(
+      catchError(() => of(null))
+    );
+  }
+
   getAgentSca(agentId: string): Observable<{ policy_id?: string; score?: number; passed?: number; failed?: number; checks?: any[] } | null> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/sca`).pipe(
       catchError(() => of(null))
@@ -248,8 +273,9 @@ export class SiemService {
     return this.http.post<LogtestResponse>(`${this.apiUrl}/api/v1/logtest`, { log });
   }
 
-  getCompliance(): Observable<ComplianceResponse> {
-    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance`);
+  /** `refresh`: the agents' latest SCA results are copied first (Re-evaluate). */
+  getCompliance(refresh = false): Observable<ComplianceResponse> {
+    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance${refresh ? '?refresh=1' : ''}`);
   }
 
   getMitreMatrix(): Observable<MitreMatrixResponse> {
@@ -418,6 +444,10 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/apply-rule`, {});
   }
 
+  rejectRedSwarmRule(draftId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/reject`, {});
+  }
+
   rollbackRedSwarmRule(ruleId: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/rules/${ruleId}/rollback`, {});
   }
@@ -473,6 +503,32 @@ export class SiemService {
   addSwarmMember(name: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/swarm/members`, { name }); }
   removeSwarmMember(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/swarm/members/${encodeURIComponent(id)}`); }
   syncSwarm(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/swarm/sync`, {}); }
+
+  // ── Neurosymbolic decisions: reasoning records, guardrails, approvals ──
+  getDecisions(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions`); }
+  getDecision(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}`); }
+  verifyDecisions(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/verify`); }
+  exportDecisions(): Observable<Blob> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/export`, { responseType: 'blob' }); }
+  getDecisionPolicy(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/decisions/policy`); }
+  putDecisionPolicy(settings: any): Observable<any> { return this.http.put(`${this.apiUrl}/api/v1/siem/decisions/policy`, settings); }
+  // ── Threat intel (provigil-common feeds) and investigation ──
+  getIntelStatus(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/status`); }
+  lookupIntel(q: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/lookup`, { params: { q } }); }
+  /** The tenant's own indicators (IP, hash, domain) that count as threat intel. */
+  getWatchlist(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/watchlist`); }
+  addWatched(value: string, group = ''): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/intel/watchlist`, { value, group }); }
+  /** The SOAR case's investigation (evidence and verdict); POST runs it again. */
+  getCaseInvestigation(caseId: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`); }
+  runCaseInvestigation(caseId: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`, {}); }
+  removeWatched(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/siem/intel/watchlist/${encodeURIComponent(id)}`); }
+  getIntelMatches(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/matches`); }
+  getSigma(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/sigma`); }
+  syncSigma(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/sigma/sync`, {}); }
+  investigate(q: string, days: number): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params: { q, days } }); }
+
+  reviewDecision(id: string, approve: boolean): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {});
+  }
 
   /** The caller's own workload and AI-trust calibration. */
   getMyInsights(): Observable<any> {
@@ -555,6 +611,35 @@ export class SiemService {
 
   getIntentCatalog(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/intent/catalog`);
+  }
+
+  // Feature 9: Deception-as-Code & Adaptive Honeynet
+  getDeceptionSummary(): Observable<DeceptionSummary> {
+    return this.http.get<DeceptionSummary>(`${this.apiUrl}/api/v1/deception/summary`);
+  }
+
+  getDeceptionAssets(): Observable<DeceptionAsset[]> {
+    return this.http.get<DeceptionAsset[]>(`${this.apiUrl}/api/v1/deception/assets`);
+  }
+
+  createDeceptionAsset(req: CreateAssetRequest): Observable<DeceptionAsset> {
+    return this.http.post<DeceptionAsset>(`${this.apiUrl}/api/v1/deception/assets`, req);
+  }
+
+  deleteDeceptionAsset(id: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/deception/assets/${encodeURIComponent(id)}`);
+  }
+
+  getDeceptionTriggers(): Observable<TripwireEvent[]> {
+    return this.http.get<TripwireEvent[]>(`${this.apiUrl}/api/v1/deception/triggers`);
+  }
+
+  simulateDeceptionTripwire(req: SimulateTripwireRequest): Observable<TripwireEvent> {
+    return this.http.post<TripwireEvent>(`${this.apiUrl}/api/v1/deception/test-trigger`, req);
+  }
+
+  getDeceptionTemplates(): Observable<DeceptionBlueprint[]> {
+    return this.http.get<DeceptionBlueprint[]>(`${this.apiUrl}/api/v1/deception/templates`);
   }
 }
 

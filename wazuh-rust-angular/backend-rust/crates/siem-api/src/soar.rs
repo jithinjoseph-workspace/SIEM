@@ -19,7 +19,7 @@ use crate::tenancy::AuthCtx;
 use crate::AppState;
 
 /// Config keys that are secrets: returned empty, kept when a save leaves them empty.
-const SECRET_KEYS: [&str; 9] = ["api_key", "routing_key", "smtp_pass", "bot_token", "password", "token", "community", "aws_secret_access_key", "secret"];
+pub(crate) const SECRET_KEYS: [&str; 9] = ["api_key", "routing_key", "smtp_pass", "bot_token", "password", "token", "community", "aws_secret_access_key", "secret"];
 /// Runs of one playbook per minute; more matching alerts in that minute are not acted on.
 const MAX_RUNS_PER_MINUTE: u32 = 30;
 const CACHE_TTL: Duration = Duration::from_secs(30);
@@ -79,7 +79,11 @@ impl Store {
         let rows = self.db(tenant).query("SELECT id, name, type, config, enabled FROM soar_integrations FINAL ORDER BY created_at").fetch_all::<(String, String, String, String, u8)>().await?;
         Ok(rows
             .into_iter()
-            .map(|r| json!({ "id": r.0, "name": r.1, "type": r.2, "config": serde_json::from_str::<Value>(&r.3).unwrap_or(json!({})), "enabled": r.4 == 1 }))
+            .map(|r| {
+                // secrets are stored sealed (secrets.rs); `raw_config` is what the row holds
+                let raw = serde_json::from_str::<Value>(&r.3).unwrap_or(json!({}));
+                json!({ "id": r.0, "name": r.1, "type": r.2, "config": crate::secrets::open_config(&raw, &SECRET_KEYS), "raw_config": raw, "enabled": r.4 == 1 })
+            })
             .collect())
     }
 
@@ -94,7 +98,7 @@ impl Store {
             .bind(id)
             .bind(name)
             .bind(kind)
-            .bind(config.to_string())
+            .bind(crate::secrets::seal_config(config, &SECRET_KEYS).to_string())
             .bind(enabled as u8)
             .bind(tenant)
             .execute()
@@ -302,6 +306,10 @@ impl SoarStore for Store {
             .bind(tenant_id)
             .execute()
             .await?;
+        // every new case is investigated (evidence, login pattern, verdict), as playbooks open them
+        if let Some(s) = &self.state {
+            crate::case_ai::spawn_for_new_case(s.clone(), tenant_id.to_string(), id.to_string());
+        }
         Ok(())
     }
 
@@ -366,9 +374,23 @@ impl SoarStore for Store {
                 Some(c) => send_syslog(&c, alert).await,
                 None => Err("No enabled syslog integration".into()),
             },
+            // the agent (Wazuh active response) and the perimeter firewall / cloud (response.rs)
             "block_ip" => match &self.state {
-                Some(s) => block_on_agent(s, pb, config, ctx).await,
+                Some(s) => {
+                    let agent = alert["agent"]["id"].as_str();
+                    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
+                    crate::response::block(s, tenant, &ctx.src_ip, hours, config["enforcement"].as_str().unwrap_or("both"), agent, &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name)).await.map(|(_, d)| d)
+                }
                 None => Err("active response unavailable".into()),
+            },
+            // the alert's host into a quarantine VLAN on its switch, or denied in the cloud
+            "isolate_host" => match &self.state {
+                Some(s) => {
+                    let ip = alert["agent"]["ip"].as_str().unwrap_or("");
+                    let vlan = config["quarantine_vlan"].as_u64().or_else(|| config["quarantine_vlan"].as_str().and_then(|v| v.parse().ok())).map(|v| v as u16);
+                    crate::response::isolate(s, tenant, ip, config["enforcement"].as_str().filter(|e| !e.is_empty()), vlan, "", &format!("soar:{}", pb.name), &format!("Playbook: {}", pb.name), alert["agent"]["id"].as_str()).await.map(|(_, d)| d)
+                }
+                None => Err("isolation unavailable".into()),
             },
             // teams, discord, email, create_case, collect_evidence: the shared actions
             _ => return None,
@@ -509,18 +531,15 @@ pub fn alert_data(a: &Value) -> siem_maild::alert::AlertData {
     }
 }
 
-/// `block_ip` on a SIEM alert: Wazuh active response (firewall-drop / netsh)
-/// on the agent that raised it, for the alert's source IP.
-async fn block_on_agent(state: &AppState, pb: &SoarNativePlaybook, config: &Value, ctx: &SoarContext) -> Result<String, String> {
-    let agent_id = ctx.alert.as_ref().and_then(|a| a["agent"]["id"].as_str()).unwrap_or("").to_string();
-    let ip = ctx.src_ip.clone();
+/// Blocks `ip` on the agent for `hours` (also run when a held block is approved).
+pub async fn block_now(state: &AppState, agent_id: &str, ip: &str, hours: u64, reason: &str) -> Result<String, String> {
+    let (agent_id, ip) = (agent_id.to_string(), ip.to_string());
     if ip.parse::<std::net::IpAddr>().map_or(true, |a| !ps::is_public(a)) {
         return Err(format!("block_ip skipped: source '{ip}' is not a public address"));
     }
     if agent_id.is_empty() || agent_id == "000" || !crate::wazuh_manager::is_wazuh_agent(&agent_id).await {
         return Err(format!("block_ip skipped: agent '{agent_id}' cannot run active responses"));
     }
-    let hours = config["duration_hours"].as_u64().or_else(|| config["duration_hours"].as_str().and_then(|h| h.parse().ok())).unwrap_or(24);
     let command = crate::wazuh_manager::block_ip(&agent_id, crate::agent_is_windows(state, &agent_id), &ip, hours * 3600, None).await?;
     let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(hours * 3600);
     let rec = crate::ActiveResponseRecord {
@@ -528,7 +547,7 @@ async fn block_on_agent(state: &AppState, pb: &SoarNativePlaybook, config: &Valu
         command: command.clone(),
         target_ip: ip.clone(),
         agent_id: agent_id.clone(),
-        reason: format!("Playbook: {}", pb.name),
+        reason: reason.to_string(),
         triggered_at: chrono::Utc::now(),
         duration_seconds: timeout,
         status: "Active".into(),
@@ -562,9 +581,12 @@ pub fn context(alert: &Value, tenant: &str) -> SoarContext {
             _ => "LOW",
         }
         .into(),
-        // threat intel: the alert's own groups, or other organisations saw it too (swarm)
-        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1")) || crate::swarm::known(tenant, alert),
-        src_country: String::new(),
+        // threat intel: the alert's own groups, the feeds (intel.rs), or other organisations saw it too (swarm)
+        is_malicious: tags.iter().any(|t| t == "threat_intel" || t == "malware" || t == "virustotal" && alert["data"]["virustotal"]["malicious"].as_str() == Some("1"))
+            || !crate::intel::alert_hits(alert).is_empty()
+            || crate::swarm::known(tenant, alert),
+        // GeoLite2 (geomap.rs): the playbook condition "src_country"
+        src_country: crate::geomap::country_code(&s(&data["srcip"])),
         tags,
         src_ip: s(&data["srcip"]),
         dst_ip: s(&data["dstip"]),
@@ -628,9 +650,27 @@ pub async fn run_playbooks(store: &Store, alerts: Vec<(Value, String)>) {
         }
         let ctx = context(&alert, &tenant);
         for pb in pbs.iter().filter(|pb| ps::conditions::evaluate_condition(pb, &ctx)) {
-            if allow_run(pb) {
-                ps::actions::execute_action(store, pb, &ctx).await;
+            if !allow_run(pb) {
+                continue;
             }
+            // blocks and isolations are high-impact actions: the policy decides first (decisions.rs)
+            if let (true, Some(state)) = (matches!(pb.action_type.as_str(), "block_ip" | "isolate_host"), &store.state) {
+                if let Err((status, detail)) = crate::decisions::gate_network(state, pb, &ctx).await {
+                    let run = SoarPlaybookRun {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        playbook_id: pb.id.clone(),
+                        playbook_name: pb.name.clone(),
+                        hit_id: ctx.community_id.clone(),
+                        status,
+                        detail,
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        tenant_id: tenant.clone(),
+                    };
+                    let _ = store.soar_insert_run(&run).await;
+                    continue;
+                }
+            }
+            ps::actions::execute_action(store, pb, &ctx).await;
         }
     }
 }
@@ -645,11 +685,14 @@ fn err(e: impl std::fmt::Display) -> Json<Value> {
     Json(json!({ "status": "error", "message": e.to_string() }))
 }
 
-fn store(state: &AppState) -> Store {
+pub(crate) fn store(state: &AppState) -> Store {
     Store { db: state.db.clone(), state: Some(state.clone()) }
 }
 
 fn mask(mut i: Value) -> Value {
+    if let Some(o) = i.as_object_mut() {
+        o.remove("raw_config");
+    }
     if let Some(c) = i["config"].as_object_mut() {
         for k in SECRET_KEYS {
             if c.get(k).and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) {

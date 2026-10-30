@@ -4,7 +4,7 @@
 
 Write-Host "Stopping all Provigil SIEM & EDR services..." -ForegroundColor Yellow
 
-$Ports = @(3001, 8088, 4200)
+$Ports = @(3011, 8088, 4200)
 foreach ($Port in $Ports) {
     $Conns = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
     if ($Conns) {

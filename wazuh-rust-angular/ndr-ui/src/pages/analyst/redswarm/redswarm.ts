@@ -61,6 +61,8 @@ export class RedswarmComponent implements OnInit {
   // Rule detail modal
   selectedRuleDraft = signal<SynthesizedRuleDraft | null>(null);
   ruleDeployMessage = signal<string | null>(null);
+  /** A failed kill-switch / campaign change, shown on the page. */
+  actionError = signal<string | null>(null);
 
   ngOnInit() {
     this.refreshAll();
@@ -100,17 +102,21 @@ export class RedswarmComponent implements OnInit {
   toggleKillSwitch() {
     const currentState = this.status()?.kill_switch_active ?? false;
     const nextState = !currentState;
+    this.actionError.set(null);
     this.siem.toggleRedSwarmKillSwitch(nextState).subscribe({
       next: (res) => {
         this.status.set(res.swarm_status);
         this.refreshAll();
-      }
+      },
+      error: (err) => this.actionError.set(err?.error?.message || 'The kill switch could not be changed.')
     });
   }
 
   toggleCampaign(campaignId: string) {
+    this.actionError.set(null);
     this.siem.toggleRedSwarmCampaign(campaignId).subscribe({
-      next: () => this.refreshAll()
+      next: () => this.refreshAll(),
+      error: (err) => this.actionError.set(err?.error?.message || 'The campaign could not be changed.')
     });
   }
 
@@ -119,8 +125,8 @@ export class RedswarmComponent implements OnInit {
     this.manualResult.set(null);
     this.siem.runRedSwarmSingleRound({
       technique_id: this.manualTechniqueId(),
-      mode: this.manualMode(),
-      target_agent_id: '001'
+      // the server picks one of the tenant's own agents
+      mode: this.manualMode()
     }).subscribe({
       next: (res) => {
         this.isExecutingManual.set(false);
@@ -144,14 +150,26 @@ export class RedswarmComponent implements OnInit {
     this.ruleDeployMessage.set(null);
   }
 
+  rejectRule(draftId: string) {
+    if (!confirm('Reject this draft rule? Red Swarm stops drafting rules for this technique.')) return;
+    this.actionError.set(null);
+    this.siem.rejectRedSwarmRule(draftId).subscribe({
+      next: () => {
+        this.closeRuleModal();
+        this.refreshAll();
+      },
+      error: (err) => this.actionError.set(err?.error?.message || 'The draft could not be rejected.')
+    });
+  }
+
   approveAndDeployRule(draftId: string) {
     this.siem.approveAndDeployRule(draftId).subscribe({
-      next: () => {
-        this.ruleDeployMessage.set('✓ Rule successfully approved, written to ruleset/0999-redswarm-synthesized.xml and staged!');
+      next: (res: any) => {
+        this.ruleDeployMessage.set(`✓ Deployed as rule ${res?.rule_id} (etc/rules/redswarm_rules.xml); wazuh-analysisd checked the ruleset and reloaded it.`);
         this.refreshAll();
       },
       error: (err) => {
-        this.ruleDeployMessage.set(`Failed to stage rule: ${err?.error?.message || err.message}`);
+        this.ruleDeployMessage.set(`Not deployed: ${err?.error?.message || err.message}`);
       }
     });
   }

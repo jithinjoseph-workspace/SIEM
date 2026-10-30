@@ -22,7 +22,15 @@ pub struct LogSource {
 }
 
 #[derive(Debug, Clone)]
-pub enum Matcher { Equals, Contains, StartsWith, EndsWith, Regex, Cidr }
+pub enum Matcher {
+    Equals, Contains, StartsWith, EndsWith, Regex, Cidr,
+    /// `Field: null`: the field is absent or empty.
+    Null,
+    /// `Field|exists: true/false`.
+    Exists,
+    /// A modifier this engine does not implement: never matches (no false positives).
+    Never,
+}
 
 #[derive(Debug, Clone)]
 pub struct FieldCondition {
@@ -31,6 +39,8 @@ pub struct FieldCondition {
     pub values:         Vec<String>,
     pub compiled_regex: Vec<Option<Arc<Regex>>>,
     pub negated:        bool,
+    /// `|all`: every value must match (else any one).
+    pub all:            bool,
 }
 
 impl FieldCondition {
@@ -41,25 +51,34 @@ impl FieldCondition {
             return if self.negated { !hit } else { hit };
         }
 
-        let field_val = match event.get_field(&self.field) {
-            Some(v) => v.to_lowercase(),
-            None    => return self.negated,
-        };
-        let hit = self.values.iter().enumerate().any(|(i, val)| {
-            let v = val.to_lowercase();
-            match &self.matcher {
-                Matcher::Equals     => field_val == v,
-                Matcher::Contains   => field_val.contains(&v),
-                Matcher::StartsWith => field_val.starts_with(&v),
-                Matcher::EndsWith   => field_val.ends_with(&v),
-                Matcher::Cidr       => ip_in_cidr(&field_val, val),
-                Matcher::Regex      => self.compiled_regex
-                    .get(i)
-                    .and_then(|o| o.as_ref())
-                    .map(|r| r.is_match(&field_val))
-                    .unwrap_or_else(|| Regex::new(val).map(|r| r.is_match(&field_val)).unwrap_or(false)),
+        let raw_val = event.get_field(&self.field);
+        let hit = match self.matcher {
+            Matcher::Never  => false,
+            Matcher::Null   => raw_val.as_deref().is_none_or(str::is_empty),
+            Matcher::Exists => raw_val.as_deref().is_some_and(|v| !v.is_empty()) == (self.values.first().map(String::as_str) != Some("false")),
+            _ => {
+                let field_val = match raw_val {
+                    Some(v) => v.to_lowercase(),
+                    None    => return self.negated,
+                };
+                let one = |(i, val): (usize, &String)| {
+                    let v = val.to_lowercase();
+                    match &self.matcher {
+                        Matcher::Equals     => field_val == v,
+                        Matcher::Contains   => field_val.contains(&v),
+                        Matcher::StartsWith => field_val.starts_with(&v),
+                        Matcher::EndsWith   => field_val.ends_with(&v),
+                        Matcher::Cidr       => ip_in_cidr(&field_val, val),
+                        Matcher::Regex      => self.compiled_regex
+                            .get(i)
+                            .and_then(|o| o.as_ref())
+                            .is_some_and(|r| r.is_match(&field_val)),
+                        Matcher::Null | Matcher::Exists | Matcher::Never => false,
+                    }
+                };
+                if self.all { self.values.iter().enumerate().all(one) } else { self.values.iter().enumerate().any(one) }
             }
-        });
+        };
         if self.negated { !hit } else { hit }
     }
 }
@@ -75,8 +94,9 @@ pub struct SelectionGroup {
 }
 
 impl SelectionGroup {
+    /// An alternative without any condition (nothing could be parsed) matches nothing.
     pub fn matches(&self, event: &NormalizedEvent) -> bool {
-        self.alternatives.iter().any(|alt| alt.iter().all(|c| c.matches(event)))
+        self.alternatives.iter().any(|alt| !alt.is_empty() && alt.iter().all(|c| c.matches(event)))
     }
 }
 
@@ -266,16 +286,23 @@ fn parse_atom(tokens: &[String], pos: usize) -> (ConditionExpr, usize) {
 fn parse_selection_group(val: &serde_yaml::Value) -> SelectionGroup {
     match val {
         serde_yaml::Value::Sequence(seq) => {
+            // a list of mappings (alternatives) or of keywords (each matched anywhere)
             let alternatives = seq.iter()
-                .filter_map(|item| item.as_mapping().map(|map| {
-                    let mut alt = Vec::new();
-                    for (fk, fv) in map {
-                        if let Some(fk_str) = fk.as_str() {
-                            parse_field_condition(fk_str, fv, &mut alt);
+                .filter_map(|item| match item {
+                    serde_yaml::Value::Mapping(map) => {
+                        let mut alt = Vec::new();
+                        for (fk, fv) in map {
+                            if let Some(fk_str) = fk.as_str() {
+                                parse_field_condition(fk_str, fv, &mut alt);
+                            }
                         }
+                        Some(alt)
                     }
-                    alt
-                }))
+                    other => scalar(other).map(|k| vec![FieldCondition {
+                        field: "*".to_string(), matcher: Matcher::Contains, values: vec![k],
+                        compiled_regex: vec![], negated: false, all: false,
+                    }]),
+                })
                 .collect();
             SelectionGroup { alternatives }
         }
@@ -295,6 +322,7 @@ fn parse_selection_group(val: &serde_yaml::Value) -> SelectionGroup {
                 values:         vec![s.clone()],
                 compiled_regex: vec![],
                 negated:        false,
+                all:            false,
             };
             SelectionGroup { alternatives: vec![vec![cond]] }
         }
@@ -395,37 +423,116 @@ pub fn parse_rule_content(content: &str) -> anyhow::Result<SigmaRule> {
     })
 }
 
+/// A YAML scalar as Sigma compares it (numbers and booleans as text).
+fn scalar(v: &serde_yaml::Value) -> Option<String> {
+    match v {
+        serde_yaml::Value::String(s) => Some(s.clone()),
+        serde_yaml::Value::Number(n) => Some(n.to_string()),
+        serde_yaml::Value::Bool(b)   => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// Whether a Sigma value has an unescaped `*` or `?` wildcard.
+fn has_wildcard(v: &str) -> bool {
+    let mut chars = v.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => { chars.next(); }
+            '*' | '?' => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// A Sigma wildcard value as a case-insensitive regex, anchored as the modifier says.
+/// `\*`, `\?` and `\\` are literal; any other backslash is a literal backslash (Windows paths).
+fn wildcard_regex(v: &str, matcher: &Matcher) -> String {
+    let mut out = String::from("(?i)");
+    if matches!(matcher, Matcher::Equals | Matcher::StartsWith) { out.push('^'); }
+    let chars: Vec<char> = v.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' if i + 1 < chars.len() && matches!(chars[i + 1], '*' | '?' | '\\') => {
+                out.push_str(&regex::escape(&chars[i + 1].to_string()));
+                i += 1;
+            }
+            '*' => out.push_str(".*"),
+            '?' => out.push('.'),
+            c => out.push_str(&regex::escape(&c.to_string())),
+        }
+        i += 1;
+    }
+    if matches!(matcher, Matcher::Equals | Matcher::EndsWith) { out.push('$'); }
+    out
+}
+
 fn parse_field_condition(field_modifier: &str, value: &serde_yaml::Value, out: &mut Vec<FieldCondition>) {
-    let parts: Vec<&str> = field_modifier.splitn(2, '|').collect();
-    let field    = parts[0].to_string();
-    let modifier = parts.get(1).copied().unwrap_or("equals");
-    let negated  = modifier.ends_with("not");
-
-    let matcher = match modifier.trim_end_matches("|not") {
-        "contains"   => Matcher::Contains,
-        "startswith" => Matcher::StartsWith,
-        "endswith"   => Matcher::EndsWith,
-        "re"         => Matcher::Regex,
-        "cidr"       => Matcher::Cidr,
-        _            => Matcher::Equals,
-    };
-
-    let values: Vec<String> = match value {
-        serde_yaml::Value::String(s)   => vec![s.clone()],
-        serde_yaml::Value::Number(n)   => vec![n.to_string()],
-        serde_yaml::Value::Sequence(s) =>
-            s.iter().filter_map(|v| v.as_str()).map(String::from).collect(),
-        _ => return,
-    };
-
-    if !values.is_empty() {
-        let compiled_regex = if matches!(matcher, Matcher::Regex) {
-            values.iter().map(|v| Regex::new(v).ok().map(Arc::new)).collect()
+    let mut parts = field_modifier.split('|');
+    let field = parts.next().unwrap_or("").to_string();
+    let (mut matcher, mut all, mut windash, mut exists, mut unsupported) = (Matcher::Equals, false, false, false, false);
+    for m in parts {
+        match m {
+            "contains"   => matcher = Matcher::Contains,
+            "startswith" => matcher = Matcher::StartsWith,
+            "endswith"   => matcher = Matcher::EndsWith,
+            "re"         => matcher = Matcher::Regex,
+            "cidr"       => matcher = Matcher::Cidr,
+            "all"        => all = true,
+            "windash"    => windash = true,
+            "exists"     => exists = true,
+            // matching is case-insensitive anyway; regex flags are applied below
+            "cased" | "i" | "m" | "s" => {}
+            // base64 / utf16 / fieldref / numeric comparisons...: not implemented
+            _ => unsupported = true,
+        }
+    }
+    let cond = |matcher: Matcher, values: Vec<String>, all: bool| FieldCondition {
+        field: field.clone(),
+        compiled_regex: if matches!(matcher, Matcher::Regex) {
+            values.iter().map(|v| Regex::new(&if v.starts_with("(?i)") { v.clone() } else { format!("(?i){v}") }).ok().map(Arc::new)).collect()
         } else {
             vec![]
-        };
-        out.push(FieldCondition { field, matcher, values, compiled_regex, negated });
+        },
+        matcher, values, negated: false, all,
+    };
+    if unsupported {
+        out.push(cond(Matcher::Never, vec![], false));
+        return;
     }
+    if exists {
+        out.push(cond(Matcher::Exists, vec![scalar(value).unwrap_or_else(|| "true".into())], false));
+        return;
+    }
+    let mut values: Vec<String> = match value {
+        serde_yaml::Value::Null => {
+            out.push(cond(Matcher::Null, vec![], false));
+            return;
+        }
+        serde_yaml::Value::Sequence(s) => s.iter().filter_map(scalar).collect(),
+        v => scalar(v).into_iter().collect(),
+    };
+    if values.is_empty() {
+        // nothing comparable: this condition can never hold (fail closed)
+        out.push(cond(Matcher::Never, vec![], false));
+        return;
+    }
+    if windash {
+        values = values.iter().flat_map(|v| {
+            let mut vs = vec![v.clone()];
+            if v.contains('-') {
+                vs.extend(['/', '\u{2013}', '\u{2014}', '\u{2015}'].iter().map(|d| v.replace('-', &d.to_string())));
+            }
+            vs
+        }).collect();
+    }
+    if !matches!(matcher, Matcher::Regex | Matcher::Cidr) && values.iter().any(|v| has_wildcard(v)) {
+        values = values.iter().map(|v| wildcard_regex(v, &matcher)).collect();
+        matcher = Matcher::Regex;
+    }
+    out.push(cond(matcher, values, all));
 }
 
 // ── CIDR helper ──────────────────────────────────────────────────────────
@@ -473,6 +580,40 @@ fn ip_in_cidr(ip_str: &str, cidr_str: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rule_matches(yaml: &str, fields: &[(&str, &str)]) -> bool {
+        let r = parse_rule_content(yaml).unwrap();
+        r.condition_expr.eval(&r.selections, &make_event(fields))
+    }
+
+    #[test]
+    fn numbers_compare_exactly_and_unparsed_selections_match_nothing() {
+        let y = "title: t\ndetection:\n  selection:\n    EventID:\n      - 19\n      - 20\n  condition: selection\n";
+        assert!(rule_matches(y, &[("EventID", "20")]));
+        assert!(!rule_matches(y, &[("EventID", "4798")]), "a numeric list once matched every event");
+        let empty = "title: t\ndetection:\n  selection:\n    EventID: {}\n  condition: selection\n";
+        assert!(!rule_matches(empty, &[("EventID", "1")]));
+    }
+
+    #[test]
+    fn modifiers_wildcards_null_keywords() {
+        let all = "title: t\ndetection:\n  s:\n    CommandLine|contains|all:\n      - ' -enc '\n      - 'hidden'\n  condition: s\n";
+        assert!(rule_matches(all, &[("CommandLine", "powershell -w hidden -enc AAA")]));
+        assert!(!rule_matches(all, &[("CommandLine", "powershell -enc AAA")]), "|all needs every value");
+        let wd = "title: t\ndetection:\n  s:\n    CommandLine|contains|windash: ' -enc '\n  condition: s\n";
+        assert!(rule_matches(wd, &[("CommandLine", "powershell /enc AAA")]), "windash: / for -");
+        let wc = "title: t\ndetection:\n  s:\n    Image: 'C:\\Windows\\\\*\\cmd.exe'\n  condition: s\n";
+        assert!(rule_matches(wc, &[("Image", "c:\\windows\\system32\\cmd.exe")]), "wildcard in a plain value");
+        assert!(!rule_matches(wc, &[("Image", "c:\\temp\\cmd.exe")]));
+        let null = "title: t\ndetection:\n  s:\n    Image|endswith: '.exe'\n    OriginalFileName: null\n  condition: s\n";
+        assert!(rule_matches(null, &[("Image", "a.exe")]));
+        assert!(!rule_matches(null, &[("Image", "a.exe"), ("OriginalFileName", "b.exe")]));
+        let unsupported = "title: t\ndetection:\n  s:\n    CommandLine|base64offset|contains: 'IEX'\n  condition: s\n";
+        assert!(!rule_matches(unsupported, &[("CommandLine", "IEX")]), "an unknown modifier never matches");
+        let kw = "title: t\ndetection:\n  keywords:\n    - 'mimikatz'\n    - 'sekurlsa'\n  condition: keywords\n";
+        assert!(rule_matches(kw, &[("message", "running sekurlsa::logonpasswords")]));
+        assert!(!rule_matches(kw, &[("message", "hello")]));
+    }
     use std::collections::HashMap;
     use crate::normalizer::EventSource;
 
@@ -730,6 +871,7 @@ logsource:
             values:         vec![value.to_string()],
             compiled_regex: vec![],
             negated:        false,
+            all:            false,
         };
         SelectionGroup { alternatives: vec![vec![cond]] }
     }

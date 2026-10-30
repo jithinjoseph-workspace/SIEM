@@ -9,7 +9,7 @@ import {
   AlertOctagon, SlidersHorizontal, Search
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
-import { ComplianceFramework, ComplianceRequirement } from '../../../services/siem/siem.models';
+import { ComplianceFramework, ComplianceResponse } from '../../../services/siem/siem.models';
 import { downloadText } from '../../../services/siem/agent-deploy';
 
 export interface AuditLogItem {
@@ -31,6 +31,10 @@ export interface RemediationItem {
   priority: 'critical' | 'warning' | 'medium';
   iconType: 'key' | 'policy' | 'audit' | 'db' | 'shield';
   resolved?: boolean;
+  fw: string;
+  reqId: string;
+  /** the agent's remediation text for the failing check */
+  detail?: string;
 }
 
 export interface ExtendedFramework extends ComplianceFramework {
@@ -91,134 +95,21 @@ export class Compliance implements OnInit {
   generatingReport = signal<boolean>(false);
   reportFeedback = signal<string | null>(null);
 
-  // Remediation Queue State
-  remediations = signal<RemediationItem[]>([
-    {
-      id: 'rem-1',
-      title: 'Rotate Root API Keys',
-      framework: 'Affects PCI-DSS CC 3.4.1 • Access Control',
-      category: 'Access Control',
-      priority: 'critical',
-      iconType: 'key'
-    },
-    {
-      id: 'rem-2',
-      title: 'Update Password Entropy Policy',
-      framework: 'Affects ISO 27001 A.9.4.3 • IAM',
-      category: 'IAM',
-      priority: 'warning',
-      iconType: 'policy'
-    },
-    {
-      id: 'rem-3',
-      title: 'Q3 Access Review Audit',
-      framework: 'Affects SOC 2 CC 6.1 • Review Procedures',
-      category: 'Review Procedures',
-      priority: 'warning',
-      iconType: 'audit'
-    },
-    {
-      id: 'rem-4',
-      title: 'Decommission Staging-04 DB',
-      framework: 'Data Minimization • Internal Policy',
-      category: 'Internal Policy',
-      priority: 'medium',
-      iconType: 'db'
-    },
-    {
-      id: 'rem-5',
-      title: 'Enforce Wazuh Agent TLS 1.3 Strict Mode',
-      framework: 'Affects NIST 800-53 SC-8 • Transmission Integrity',
-      category: 'Data Protection',
-      priority: 'critical',
-      iconType: 'shield'
-    }
-  ]);
+  /** The failing configuration checks, the ones breaking the most requirements first, with the agent's fix. */
+  remediations = signal<RemediationItem[]>([]);
   remediationFeedback = signal<string | null>(null);
 
-  // Audit Logs State
-  auditLogs = signal<AuditLogItem[]>([
-    {
-      id: 'log-1',
-      timestamp: '2026-10-20 14:22:09',
-      actor: 'system.auth.engine',
-      actorInitial: 'SE',
-      action: 'IAM Policy Validation',
-      resource: 'aws:iam::user/svc_prod_1',
-      risk: 'Informational',
-      status: 'Pass'
-    },
-    {
-      id: 'log-2',
-      timestamp: '2026-10-20 14:18:33',
-      actor: 'sarah.k@fortify360.io',
-      actorInitial: 'SK',
-      action: 'Manual Control Override',
-      resource: 'control:soc2:cc-6.1',
-      risk: 'Medium',
-      status: 'Review Needed'
-    },
-    {
-      id: 'log-3',
-      timestamp: '2026-10-20 14:10:45',
-      actor: 'wazuh.remoted.daemon',
-      actorInitial: 'WR',
-      action: 'TLS Cipher Suite Verification',
-      resource: 'listener:0.0.0.0:1514',
-      risk: 'Informational',
-      status: 'Pass'
-    },
-    {
-      id: 'log-4',
-      timestamp: '2026-10-20 13:55:12',
-      actor: 'compliance.auditor.svc',
-      actorInitial: 'CA',
-      action: 'PCI-DSS v4.0 Requirement 10.2 Sweep',
-      resource: 'audit:trail:reconstruction',
-      risk: 'Low',
-      status: 'Pass'
-    },
-    {
-      id: 'log-5',
-      timestamp: '2026-10-20 13:42:01',
-      actor: 'fim.syscheck.001',
-      actorInitial: 'FS',
-      action: 'Root Integrity Hash Mismatch',
-      resource: '/etc/pam.d/common-auth',
-      risk: 'High',
-      status: 'Fail'
-    },
-    {
-      id: 'log-6',
-      timestamp: '2026-10-20 13:30:19',
-      actor: 'admin.secops',
-      actorInitial: 'AS',
-      action: 'Valkey / Redis Encryption at Rest Check',
-      resource: 'storage:cluster:valkey',
-      risk: 'Informational',
-      status: 'Pass'
-    },
-    {
-      id: 'log-7',
-      timestamp: '2026-10-20 13:15:00',
-      actor: 'auto.scanner.sca',
-      actorInitial: 'SC',
-      action: 'CIS Benchmark Debian CIS Level 2 Sweep',
-      resource: 'agent:001:endpoint',
-      risk: 'Low',
-      status: 'Pass'
-    }
-  ]);
+  /** The tenant's recent alerts whose rule a requirement maps (the evidence behind the scores). */
+  auditLogs = signal<AuditLogItem[]>([]);
 
   auditSearch = signal<string>('');
   auditStatusFilter = signal<'all' | 'pass' | 'fail' | 'review'>('all');
 
-  // Computed metrics
+  // Computed metrics: the average of the frameworks that have a configuration score
   overallMappedPercent = computed(() => {
-    const list = this.frameworks();
-    if (list.length === 0) return 84;
-    const avg = list.reduce((acc, f) => acc + f.score_percent, 0) / list.length;
-    return Math.round(avg);
+    const scored = this.frameworks().map(f => f.score_percent).filter((p): p is number => p !== null);
+    if (scored.length === 0) return 0;
+    return Math.round(scored.reduce((acc, p) => acc + p, 0) / scored.length);
   });
 
   // Circular gauge SVG parameters (radius = 54, circumference ~ 339.292)
@@ -228,12 +119,14 @@ export class Compliance implements OnInit {
     return this.circleCircumference * (1 - pct / 100);
   });
 
-  passingControlsCount = computed(() => 1248);
-  failingControlsCount = computed(() => 212);
-  unmappedControlsCount = computed(() => 186);
+  private requirements = computed(() => this.frameworks().flatMap(f => f.requirements));
+  passingControlsCount = computed(() => this.requirements().filter(r => r.status === 'passed').length);
+  failingControlsCount = computed(() => this.requirements().filter(r => r.status !== 'passed').length);
+  /** requirements seen only in alerts: no configuration check maps them */
+  unmappedControlsCount = computed(() => this.requirements().filter(r => r.source === 'alerts').length);
 
-  passAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Pass').length + 38);
-  failAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Fail').length + 2);
+  passAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Pass').length);
+  failAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Fail').length);
 
   filteredAuditLogs = computed(() => {
     const q = this.auditSearch().toLowerCase().trim();
@@ -271,89 +164,110 @@ export class Compliance implements OnInit {
     this.loadCompliance();
   }
 
-  loadCompliance() {
+  /** `refresh` (Re-evaluate): the agents' latest scan results are fetched first. */
+  loadCompliance(refresh = false) {
     this.loading.set(true);
-    this.siem.getCompliance().subscribe({
+    this.siem.getCompliance(refresh).subscribe({
       next: (res) => {
-        const enriched: ExtendedFramework[] = (res.frameworks || []).map((f, idx) => {
-          let syncTimes = ['2h ago', '10m ago', '1d ago', '5m ago', '3h ago', '12m ago'];
-          let colors: ('cyan' | 'amber' | 'emerald' | 'rose' | 'indigo')[] = [
-            'cyan', 'amber', 'emerald', 'rose', 'indigo'
-          ];
-          let color: 'cyan' | 'amber' | 'emerald' | 'rose' | 'indigo' = 'cyan';
-          if (f.score_percent >= 90) color = 'emerald';
-          else if (f.score_percent >= 75) color = 'cyan';
-          else if (f.score_percent >= 60) color = 'amber';
-          else color = 'rose';
-
-          return {
-            ...f,
-            lastSync: syncTimes[idx % syncTimes.length],
-            color
-          };
+        const synced = res.last_updated ? this.ago(res.last_updated) : undefined;
+        const enriched: ExtendedFramework[] = (res.frameworks || []).map(f => {
+          const p = f.score_percent;
+          const color: ExtendedFramework['color'] = p === null ? 'indigo' : p >= 90 ? 'emerald' : p >= 75 ? 'cyan' : p >= 60 ? 'amber' : 'rose';
+          return { ...f, lastSync: synced, color };
         });
-
-        // Ensure we also have standard industry frameworks if not all present
-        const hasIso = enriched.some(f => f.name.includes('ISO') || f.name.includes('27001'));
-        if (!hasIso) {
-          enriched.splice(1, 0, {
-            name: 'ISO 27001',
-            full_name: 'Information Security Management System (ISO/IEC 27001:2022)',
-            version: '2022',
-            score_percent: 78,
-            total_requirements: 8,
-            passed_count: 6,
-            alert_count: 4,
-            lastSync: '10m ago',
-            color: 'amber',
-            requirements: [
-              {
-                id: 'A.9.4.3',
-                title: 'Password Management System',
-                description: 'Enforce strong password complexity, rotation intervals, and multi-factor authentication.',
-                status: 'warning',
-                alerts_count: 2,
-                rule_ids: [5710, 5712]
-              },
-              {
-                id: 'A.12.4.1',
-                title: 'Event Logging & Audit Generation',
-                description: 'Event logs recording user activities, exceptions, faults, and security events shall be produced and kept.',
-                status: 'passed',
-                alerts_count: 0,
-                rule_ids: [5500, 5715]
-              },
-              {
-                id: 'A.12.6.1',
-                title: 'Management of Technical Vulnerabilities',
-                description: 'Timely information about technical vulnerabilities of information systems being used shall be obtained.',
-                status: 'passed',
-                alerts_count: 0,
-                rule_ids: [20100]
-              }
-            ]
-          });
-        }
 
         this.frameworks.set(enriched);
         if (enriched.length > 0 && !this.selectedFramework()) {
           this.selectedFramework.set(enriched[0]);
         }
         this.loading.set(false);
+        this.setRemediations(res);
+        this.setEvidence(res);
       },
       error: () => this.loading.set(false)
     });
+  }
+
+  private setRemediations(res: ComplianceResponse) {
+    this.remediations.set((res.remediations ?? []).map(r => {
+      const [fw, reqId] = (r.requirements[0] ?? '').split(' ');
+      return {
+        id: r.check_id,
+        title: r.title,
+        framework: `Check ${r.check_id} • fails on ${r.failed_agents} agent(s) • ${r.requirements.join(', ')}`,
+        category: fw ?? '',
+        priority: r.requirements.length >= 3 ? 'critical' : 'warning',
+        iconType: 'shield',
+        fw: fw ?? '',
+        reqId: reqId ?? '',
+        detail: r.remediation,
+      } as RemediationItem;
+    }));
+  }
+
+  /** The recent alerts whose Wazuh rule carries compliance groups (the evidence behind the alert counts). */
+  private setEvidence(res: ComplianceResponse) {
+    this.auditLogs.set((res.evidence ?? []).map((e, i) => {
+      const actor = e.agent_name || e.agent_id || 'manager';
+      return {
+        id: `${e.timestamp}-${i}`,
+        timestamp: new Date(e.timestamp).toLocaleString(),
+        actor,
+        actorInitial: actor.slice(0, 2).toUpperCase(),
+        action: e.description || `Rule ${e.rule_id}`,
+        resource: e.requirements.join(', '),
+        risk: e.level >= 12 ? 'High' : e.level >= 7 ? 'Medium' : e.level >= 4 ? 'Low' : 'Informational',
+        // an alert is a finding to review; level 7 and up (Wazuh's "high importance") a failure
+        status: e.level >= 7 ? 'Fail' : 'Review Needed',
+      } as AuditLogItem;
+    }));
+  }
+
+  /** The recent alerts behind the requirements: each mapped rule that fired. */
+  private loadEvidence(frameworks: ExtendedFramework[]) {
+    const byRule = new Map<number, string>();
+    for (const fw of frameworks) for (const r of fw.requirements) for (const id of r.rule_ids ?? []) if (!byRule.has(id)) byRule.set(id, `${fw.name} ${r.id}`);
+    this.siem.getAlerts(5000).subscribe({
+      next: alerts => this.auditLogs.set((alerts ?? [])
+        .filter(a => byRule.has(Number(a.rule?.id)))
+        .slice(0, 100)
+        .map((a, i) => {
+          const level = a.rule?.level ?? 0;
+          const actor = a.agent?.name || a.agent?.id || 'manager';
+          return {
+            id: `${a.id ?? i}`,
+            timestamp: new Date(a.timestamp).toLocaleString(),
+            actor,
+            actorInitial: actor.slice(0, 2).toUpperCase(),
+            action: a.rule?.description ?? `Rule ${a.rule?.id}`,
+            resource: byRule.get(Number(a.rule?.id)) ?? '',
+            risk: level >= 12 ? 'High' : level >= 7 ? 'Medium' : level >= 4 ? 'Low' : 'Informational',
+            status: level >= 7 ? 'Fail' : 'Review Needed',
+          } as AuditLogItem;
+        })),
+      error: () => this.auditLogs.set([])
+    });
+  }
+
+  private ago(iso: string): string {
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
   }
 
   selectFramework(fw: ExtendedFramework) {
     this.selectedFramework.set(fw);
   }
 
+  /** Shows the requirement behind a queue item (its framework, filtered to it). */
   resolveRemediation(item: RemediationItem) {
-    this.remediations.update(list =>
-      list.map(i => i.id === item.id ? { ...i, resolved: true } : i)
-    );
-    this.remediationFeedback.set(`Remediation workflow dispatched for "${item.title}"`);
+    const fw = this.frameworks().find(f => f.name === item.fw);
+    if (fw) this.selectedFramework.set(fw);
+    this.controlStatusFilter.set('all');
+    this.controlSearch.set(item.reqId);
+    this.remediationFeedback.set(`Showing ${item.fw} ${item.reqId} in the requirements below`);
     setTimeout(() => this.remediationFeedback.set(null), 3500);
   }
 
@@ -368,10 +282,10 @@ export class Compliance implements OnInit {
 
       if (format === 'csv') {
         const rows: string[] = [];
-        rows.push('Framework,Requirement ID,Title,Status,Alerts Count');
+        rows.push('Framework,Requirement ID,Status,Source,Failing check results,Passing check results,Alerts,Title');
         for (const fw of this.frameworks()) {
           for (const req of fw.requirements) {
-            rows.push(`"${fw.name}","${req.id}","${req.title.replace(/"/g, '""')}","${req.status}",${req.alerts_count}`);
+            rows.push(`"${fw.name}","${req.id}","${req.status}","${req.source}",${req.checks_failed},${req.checks_passed},${req.alerts_count},"${req.title.replace(/"/g, '""')}"`);
           }
         }
         downloadText(`Compliance_${type.replace(/\s+/g, '_')}_${dateStr}.csv`, rows.join('\n'), 'text/csv');
@@ -406,10 +320,10 @@ export class Compliance implements OnInit {
   <h2>Framework Summaries</h2>
   <table>
     <thead>
-      <tr><th>Framework</th><th>Version</th><th>Score</th><th>Passed</th><th>Alerts</th></tr>
+      <tr><th>Framework</th><th>Mapping</th><th>Configuration score</th><th>Requirements passed</th><th>Alerts (24 h)</th></tr>
     </thead>
     <tbody>
-      ${this.frameworks().map(f => `<tr><td>${f.name}</td><td>${f.version}</td><td>${f.score_percent}%</td><td>${f.passed_count}/${f.total_requirements}</td><td>${f.alert_count}</td></tr>`).join('')}
+      ${this.frameworks().map(f => `<tr><td>${f.name}</td><td>${f.version}</td><td>${f.score_percent === null ? 'no configuration score' : f.score_percent + '%'}</td><td>${f.passed_count}/${f.total_requirements}</td><td>${f.alert_count}</td></tr>`).join('')}
     </tbody>
   </table>
   <p style="margin-top: 30px; font-size: 11px; color: #64748b;">This document is generated automatically by ProVigil SIEM Security & Regulatory Compliance Engine.</p>

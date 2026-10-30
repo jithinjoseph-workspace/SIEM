@@ -218,6 +218,11 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "netsh.exe",
     "restart-wazuh.exe",
     "route-null.exe",
+    // EDR responses (siem-active-response, not in Wazuh)
+    "kill-process.exe",
+    "quarantine-file.exe",
+    "isolate-host.exe",
+    "yara-scan.exe",
     "internal_options.conf",
     "local_internal_options.conf",
     "vista_sec.txt",
@@ -414,6 +419,11 @@ fn read_state_file(path: &Path) -> serde_json::Value {
 
 /// What the manager is doing: running daemons and the remoted / analysisd counters
 /// (queues, events received, discarded and dropped).
+/// The daemons siem-api starts and keeps running.
+pub fn daemons() -> &'static [&'static str] {
+    &DAEMONS
+}
+
 /// The daemons running now.
 pub fn running() -> Vec<String> {
     CHILDREN.lock().unwrap().iter().map(|(n, _)| n.clone()).collect()
@@ -519,6 +529,147 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
             }
         }
         std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+/// Every `<rule id="N"` of the ruleset (`ruleset/rules`, `etc/rules`).
+fn used_rule_ids(home: &Path) -> std::collections::HashSet<u32> {
+    let mut ids = std::collections::HashSet::new();
+    for dir in ["ruleset/rules", "etc/rules"] {
+        for e in std::fs::read_dir(home.join(dir)).into_iter().flatten().flatten() {
+            if let Ok(t) = std::fs::read_to_string(e.path()) {
+                ids.extend(t.split("<rule id=\"").skip(1).filter_map(|p| p.split('"').next()?.parse::<u32>().ok()));
+            }
+        }
+    }
+    ids
+}
+
+static RULES_LOCK: Mutex<()> = Mutex::new(());
+
+/// Writes (or removes) `etc/rules/<file>` once `wazuh-analysisd -t` accepts the whole ruleset
+/// with the change, then restarts analysisd so it loads the rules. The check runs on a staged
+/// copy (`etc/rules.staging` and its own ossec.conf), so the running or restarting analysisd
+/// never reads a file that has not passed it; any ERROR, CRITICAL or duplicate rule id fails it.
+fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<(), String> {
+    let rules = home.join("etc/rules");
+    let staging = home.join("etc/rules.staging");
+    let conf = home.join("etc/ossec.staging.conf");
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&staging);
+        let _ = std::fs::remove_file(&conf);
+    };
+    cleanup();
+    let staged = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(&staging)?;
+        for e in std::fs::read_dir(&rules)?.flatten() {
+            if e.file_name() != std::ffi::OsStr::new(file) && e.path().is_file() {
+                std::fs::copy(e.path(), staging.join(e.file_name()))?;
+            }
+        }
+        if let Some(c) = content {
+            std::fs::write(staging.join(file), c)?;
+        }
+        Ok(())
+    })();
+    let main_conf = std::fs::read_to_string(home.join("etc/ossec.conf")).unwrap_or_default();
+    const RULE_DIR: &str = "<rule_dir>etc/rules</rule_dir>";
+    if staged.is_err() || main_conf.matches(RULE_DIR).count() != 1 || std::fs::write(&conf, main_conf.replace(RULE_DIR, "<rule_dir>etc/rules.staging</rule_dir>")).is_err() {
+        cleanup();
+        return Err(format!("Could not stage the rules for checking ({})", staged.err().map(|e| e.to_string()).unwrap_or_else(|| "ossec.conf".into())));
+    }
+    let mut c = Command::new(home.join("bin").join(exe_name("wazuh-analysisd")));
+    c.arg("-t").arg("-c").arg("etc/ossec.staging.conf").arg("-D").arg(home).current_dir(home).stdin(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    let checked = c.output();
+    cleanup();
+    let (ok, log) = match checked {
+        Ok(o) => {
+            let log = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+            let bad = log.lines().any(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"));
+            (o.status.success() && !bad, log)
+        }
+        Err(e) => (false, format!("wazuh-analysisd -t: {e}")),
+    };
+    if !ok {
+        let why = log.lines().find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)")).unwrap_or(log.trim()).to_string();
+        return Err(format!("wazuh-analysisd rejected the rules: {why}"));
+    }
+    let path = rules.join(file);
+    match content {
+        Some(c) => std::fs::write(&path, c),
+        None => std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
+    }
+    .map_err(|e| format!("{}: {e}", path.display()))?;
+    restart_daemons(&["wazuh-analysisd"]);
+    Ok(())
+}
+
+/// Adds a rule group to `etc/rules/<file>`, its `<rule id>` set to a free id of `ids`;
+/// returns the id and the XML as deployed.
+pub fn deploy_rule_group(file: &str, xml: &str, ids: std::ops::RangeInclusive<u32>) -> Result<(u32, String), String> {
+    if !enabled() {
+        return Err("The Wazuh manager is not running".into());
+    }
+    let _g = RULES_LOCK.lock().unwrap();
+    let home = home();
+    let used = used_rule_ids(&home);
+    let id = ids.into_iter().find(|i| !used.contains(i)).ok_or("No free rule id left in the Red Swarm range")?;
+    let start = xml.find("<rule id=\"").ok_or("The rule has no <rule id>")? + "<rule id=\"".len();
+    let end = start + xml[start..].find('"').ok_or("Malformed <rule id>")?;
+    let xml = format!("{}{id}{}", &xml[..start], &xml[end..]);
+    let cur = std::fs::read_to_string(home.join("etc/rules").join(file)).unwrap_or_default();
+    replace_rules_file(&home, file, Some(&format!("{cur}{xml}\n")))?;
+    Ok((id, xml))
+}
+
+/// Removes the rule group holding `<rule id="id">` from `etc/rules/<file>`.
+pub fn remove_rule_group(file: &str, id: u32) -> Result<(), String> {
+    if !enabled() {
+        return Err("The Wazuh manager is not running".into());
+    }
+    let _g = RULES_LOCK.lock().unwrap();
+    let home = home();
+    let cur = std::fs::read_to_string(home.join("etc/rules").join(file)).map_err(|_| "No rule of this kind is deployed".to_string())?;
+    let rest = without_group(&cur, id)?;
+    replace_rules_file(&home, file, (!rest.trim().is_empty()).then_some(rest.as_str()))
+}
+
+/// A rules file without the `<group name=…>` holding `<rule id="id">`.
+fn without_group(cur: &str, id: u32) -> Result<String, String> {
+    let at = cur.find(&format!("<rule id=\"{id}\"")).ok_or("The rule is no longer deployed")?;
+    // the group around the rule (the rule has a <group> element of its own inside)
+    let start = cur[..at].rfind("<group name=").ok_or("Malformed rules file")?;
+    let after_rule = at + cur[at..].find("</rule>").ok_or("Malformed rules file")?;
+    let end = after_rule + cur[after_rule..].find("</group>").ok_or("Malformed rules file")? + "</group>".len();
+    Ok(format!("{}{}", &cur[..start], cur[end..].trim_start_matches(['\r', '\n'])))
+}
+
+#[cfg(test)]
+mod rule_file_tests {
+    #[test]
+    fn removes_the_whole_group_of_a_rule() {
+        let g = |id: u32| format!("<group name=\"rs,m\">\n  <!-- c -->\n  <rule id=\"{id}\" level=\"8\">\n    <match>x</match>\n    <group>attack,purple_team</group>\n  </rule>\n</group>\n");
+        let file = format!("{}{}", g(119000), g(119001));
+        assert_eq!(super::without_group(&file, 119000).unwrap(), g(119001));
+        assert_eq!(super::without_group(&file, 119001).unwrap(), g(119000));
+        assert!(super::without_group(&g(119000), 119000).unwrap().trim().is_empty());
+        assert!(super::without_group(&file, 5).is_err());
+    }
+
+    /// One-shot EDR commands get one `<active-response>` without a timeout (ar.conf
+    /// `kill-process0`, what the console sends); isolation gets the three timeouts.
+    #[test]
+    fn edr_commands_in_ossec_conf() {
+        let k = super::ar_conf_section("kill-process", "kill-process.exe", false);
+        assert!(k.contains("<timeout_allowed>no</timeout_allowed>") && !k.contains("<timeout>") && k.matches("<active-response>").count() == 1, "{k}");
+        let i = super::ar_conf_section("isolate-host", "isolate-host.exe", true);
+        assert_eq!(i.matches("<timeout>").count(), super::AR_TIMEOUTS.len());
+        assert!(super::AR_COMMANDS.iter().filter(|c| c.1 == "isolate-host.exe").count() == 2, "isolate and release");
     }
 }
 
@@ -766,16 +917,97 @@ pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64, met
     Ok(command)
 }
 
-/// The active responses the console can send: (command name, agent executable).
-/// `route-null` is Windows only (the Linux port has firewall-drop).
-const AR_COMMANDS: [(&str, &str); 3] = [("firewall-drop", "firewall-drop"), ("netsh", "netsh.exe"), ("route-null", "route-null.exe")];
+/// One EDR command to a Windows agent (`extra_args` as `key=value` items, see
+/// siem-active-response's edr.rs).
+async fn send_edr(agent_id: &str, command: &str, extra_args: &[String]) -> Result<(), String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let m = serde_json::json!({
+        "version": 1,
+        "origin": { "name": serde_json::Value::Null, "module": "api" },
+        "command": command,
+        "parameters": { "extra_args": extra_args, "alert": {} },
+    });
+    send_ar_queue(&format!("(msg_to_agent) [] NNS {id} {m}")).await
+}
+
+/// EDR: ends process `pid` on the agent (with `image`, only while the PID still runs it).
+pub async fn kill_process(agent_id: &str, pid: u32, image: Option<&str>) -> Result<(), String> {
+    let mut args = vec![format!("pid={pid}")];
+    args.extend(image.map(|i| format!("image={i}")));
+    send_edr(agent_id, "kill-process0", &args).await
+}
+
+/// EDR: scans `path` with the YARA rules the agent has (`yara_edr.rs`).
+pub async fn yara_scan(agent_id: &str, path: &str) -> Result<(), String> {
+    send_edr(agent_id, "yara-scan0", &[format!("path={path}")]).await
+}
+
+/// EDR: moves `path` into the agent's quarantine folder.
+pub async fn quarantine_file(agent_id: &str, path: &str) -> Result<(), String> {
+    send_edr(agent_id, "quarantine-file0", &[format!("path={path}")]).await
+}
+
+/// EDR: puts quarantined file `id` back (the id is in the agent's quarantine log line).
+pub async fn restore_file(agent_id: &str, id: &str) -> Result<(), String> {
+    send_edr(agent_id, "quarantine-file0", &[format!("restore={id}")]).await
+}
+
+/// The manager addresses an isolated host keeps reaching: `SIEM_LAN_IP` (else
+/// `MANAGER_IP`) and `EDR_ISOLATION_ALLOW` (comma-separated, e.g. a NAT address).
+pub fn isolation_allow() -> Vec<std::net::Ipv4Addr> {
+    let own = std::env::var("SIEM_LAN_IP").or_else(|_| std::env::var("MANAGER_IP")).unwrap_or_default();
+    let extra = std::env::var("EDR_ISOLATION_ALLOW").unwrap_or_default();
+    let mut v: Vec<std::net::Ipv4Addr> = own.split(',').chain(extra.split(',')).filter_map(|a| a.trim().parse().ok()).collect();
+    v.dedup();
+    v
+}
+
+/// EDR: isolates the agent's host for `timeout` s (its execd lifts it then, even
+/// with no manager); the isolation id and its timeout.
+pub async fn isolate_agent(agent_id: &str, timeout: u64) -> Result<(String, u64), String> {
+    let allow = isolation_allow();
+    if allow.is_empty() {
+        return Err("Set SIEM_LAN_IP (the manager address the agents connect to) first: an isolated host must keep reaching the manager".into());
+    }
+    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
+    let iso = uuid::Uuid::new_v4().simple().to_string();
+    let allow = allow.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",");
+    send_edr(agent_id, &format!("isolate-host{timeout}"), &[format!("id={iso}"), format!("allow={allow}")]).await?;
+    Ok((iso, timeout))
+}
+
+/// EDR: lifts the isolation of the agent's host.
+pub async fn release_agent(agent_id: &str) -> Result<(), String> {
+    send_edr(agent_id, "release-host0", &["release".to_string()]).await
+}
+
+/// The active responses the console can send: (command name, agent executable, takes
+/// a timeout). `route-null` and the EDR ones are Windows only; `release-host` is
+/// isolate-host run with `release`.
+const AR_COMMANDS: [(&str, &str, bool); 8] = [
+    ("firewall-drop", "firewall-drop", true),
+    ("netsh", "netsh.exe", true),
+    ("route-null", "route-null.exe", true),
+    ("kill-process", "kill-process.exe", false),
+    ("quarantine-file", "quarantine-file.exe", false),
+    ("isolate-host", "isolate-host.exe", true),
+    ("release-host", "isolate-host.exe", false),
+    ("yara-scan", "yara-scan.exe", false),
+];
 
 /// The `<command>` and `<active-response>` blocks of one console command in the
-/// manager's ossec.conf, at level 20 so no rule triggers them.
-fn ar_conf_section(name: &str, exe: &str) -> String {
-    let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>yes</timeout_allowed>\n  </command>\n");
-    for t in AR_TIMEOUTS {
-        s.push_str(&format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n    <timeout>{t}</timeout>\n  </active-response>\n"));
+/// manager's ossec.conf, at level 20 so no rule triggers them (`<name><timeout>` in
+/// ar.conf, `<name>0` without one).
+fn ar_conf_section(name: &str, exe: &str, timed: bool) -> String {
+    let allowed = if timed { "yes" } else { "no" };
+    let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>{allowed}</timeout_allowed>\n  </command>\n");
+    let ar = |t: &str| format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n{t}  </active-response>\n");
+    if timed {
+        for t in AR_TIMEOUTS {
+            s.push_str(&ar(&format!("    <timeout>{t}</timeout>\n")));
+        }
+    } else {
+        s.push_str(&ar(""));
     }
     s
 }
@@ -785,8 +1017,8 @@ fn ensure_ar_commands(conf: &Path) {
     let Ok(t) = std::fs::read_to_string(conf) else { return };
     let missing: String = AR_COMMANDS
         .iter()
-        .filter(|(name, _)| !t.contains(&format!("<name>{name}</name>")))
-        .map(|(name, exe)| ar_conf_section(name, exe))
+        .filter(|(name, _, _)| !t.contains(&format!("<name>{name}</name>")))
+        .map(|(name, exe, timed)| ar_conf_section(name, exe, *timed))
         .collect();
     if missing.is_empty() {
         return;
@@ -807,19 +1039,77 @@ fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
 
 /// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
 pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
+    agent_fim_upto(agent_id, 1000).await
+}
+
+/// The agent's FIM entries, the `max` most recently changed (`total`: all of them).
+pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
-    let rows = agent_sql(&id, "SELECT full_path, type, date, changes, arch, value_name, size, perm, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC LIMIT 1000;").await?;
-    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await.and_then(|r| r.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64())).unwrap_or(rows.len() as u64);
+    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await?.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()).unwrap_or(0);
+    let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", max).await;
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|mut r| {
             let (d, m) = (ts(r.get("date")), ts(r.get("mtime")));
             r["date"] = d;
             r["mtime"] = m;
+            // registry entries are keyed by a hash; `file` is the key path (and `value_name` the value)
+            let path = match (r["file"].as_str().unwrap_or(""), r["value_name"].as_str().unwrap_or("")) {
+                ("", _) => None,
+                (f, "") => Some(f.to_string()),
+                (f, v) => Some(format!("{f}\\{v}")),
+            };
+            if let Some(p) = path {
+                r["key"] = r["full_path"].take();
+                r["full_path"] = serde_json::Value::String(p);
+            }
             r
         })
         .collect();
     Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "wazuh-db" }))
+}
+
+/// The latest SCA scan of a Wazuh agent (`sca_scan_info` / `sca_check` in its wazuh-db database).
+pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
+    let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
+    let scan = agent_sql(&id, "SELECT policy_id, pass, fail, invalid, score, end_scan FROM sca_scan_info ORDER BY end_scan DESC LIMIT 1;").await?.into_iter().next()?;
+    let policy = scan.get("policy_id")?.as_str()?.to_string();
+    let q = policy.replace('\'', "''");
+    let name = agent_sql(&id, &format!("SELECT name FROM sca_policy WHERE id = '{q}';")).await.and_then(|r| r.first().and_then(|x| x["name"].as_str().map(String::from)));
+    // each check's frameworks as the agent sent them (`sca_check_compliance`: one row per
+    // framework, its requirement ids comma-separated)
+    let mut compliance: HashMap<String, serde_json::Map<String, serde_json::Value>> = HashMap::new();
+    for r in crate::inventory_store::paged(&id, "SELECT id_check, key, value FROM sca_check_compliance ORDER BY id_check", 50_000).await {
+        let check = match &r["id_check"] {
+            serde_json::Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        let (Some(key), Some(value)) = (r["key"].as_str(), r["value"].as_str()) else { continue };
+        let ids: Vec<serde_json::Value> = value.split(',').map(str::trim).filter(|v| !v.is_empty()).map(|v| serde_json::Value::String(v.into())).collect();
+        compliance.entry(check).or_default().insert(key.to_string(), serde_json::Value::Array(ids));
+    }
+    let checks: Vec<serde_json::Value> = crate::inventory_store::paged(&id, &format!("SELECT id, title, result, reason, description, rationale, remediation FROM sca_check WHERE policy_id = '{q}' ORDER BY id"), 5000)
+        .await
+        .into_iter()
+        .map(|r| {
+            let status = match r["result"].as_str().unwrap_or("") {
+                "passed" => "Passed",
+                "failed" => "Failed",
+                _ => "Not applicable",
+            };
+            let cid = match &r["id"] {
+                serde_json::Value::String(s) => s.clone(),
+                v => v.to_string(),
+            };
+            serde_json::json!({ "check_id": r["id"], "title": r["title"], "status": status, "reason": r["reason"],
+                "description": r["description"], "rationale": r["rationale"], "remediation": r["remediation"],
+                "compliance": compliance.remove(&cid).map(serde_json::Value::Object).unwrap_or_else(|| serde_json::json!({})) })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "agent_id": agent_id, "policy_id": policy, "policy_name": name, "score": scan["score"], "passed": scan["pass"], "failed": scan["fail"],
+        "not_applicable": scan["invalid"], "scanned_at": ts(scan.get("end_scan")), "checks": checks, "source": "wazuh-db",
+    }))
 }
 
 /// The rootcheck findings of a Wazuh agent (`pm_event` in its wazuh-db database).
@@ -1081,6 +1371,14 @@ fn flat(data: &serde_json::Value) -> HashMap<String, String> {
 }
 
 /// One `alerts.json` line as a platform alert of the agent's tenant.
+/// The user of a Windows event: the account logged on / failed / changed, else who acted
+/// ("-" is Windows for none; Wazuh doubles the backslash of DOMAIN\user).
+fn windows_user(v: &serde_json::Value) -> Option<String> {
+    ["targetUserName", "subjectUserName"].iter().find_map(|k| {
+        v.pointer(&format!("/data/win/eventdata/{k}")).and_then(|x| x.as_str()).map(|u| u.replace("\\\\", "\\")).filter(|u| !u.is_empty() && u != "-")
+    })
+}
+
 fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     let data = v.get("data").cloned().unwrap_or(serde_json::Value::Null);
     let first = |path: &[&str]| -> String {
@@ -1139,7 +1437,7 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
             dst_ip: opt("dstip"),
             src_port: sport("srcport"),
             dst_port: sport("dstport"),
-            user: opt("dstuser").or_else(|| opt("srcuser")),
+            user: opt("dstuser").or_else(|| opt("srcuser")).or_else(|| windows_user(v)),
             program_name: Some(s(v, &["predecoder", "program_name"])).filter(|x| !x.is_empty()),
             process_id: None,
             file_path: Some(s(v, &["syscheck", "path"])).filter(|x| !x.is_empty()),
@@ -1161,6 +1459,12 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
             tenancy::tag_alert(alert, &tenant)
         })
         .collect();
+    deliver(&state, alerts, vs).await;
+}
+
+/// Stores tenant-tagged alerts, then shows them and runs SOAR on them unless suppressed;
+/// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original Wazuh alert).
+pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
     let mut pending: Vec<&Alert> = alerts.iter().collect();
     let mut wait = RETRY_MIN;
@@ -1181,8 +1485,8 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
     let tenants: Vec<String> = alerts.iter().map(|a| a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT).to_string()).collect();
     let mut shown = Vec::with_capacity(alerts.len());
     let mut soar = Vec::with_capacity(alerts.len());
-    for ((a, v), t) in alerts.into_iter().zip(vs).zip(tenants) {
-        if crate::suppressions::is_suppressed(&state, &t, &a).await {
+    for ((a, v), t) in alerts.into_iter().zip(soar_json).zip(tenants) {
+        if crate::suppressions::is_suppressed(state, &t, &a).await {
             continue;
         }
         let _ = state.broadcast_tx.send(a.clone());
@@ -1190,8 +1494,8 @@ async fn on_alerts(state: AppState, vs: Vec<serde_json::Value>) {
         soar.push((v, t));
     }
     // each tenant's SOAR playbooks, on the original Wazuh alert
-    crate::soar::on_alerts(&state, soar);
-    crate::keep_alerts(&state, shown);
+    crate::soar::on_alerts(state, soar);
+    crate::keep_alerts(state, shown);
 }
 
 /// Backoff of the ClickHouse retries (the alerts/archives files hold the data meanwhile).
@@ -1228,6 +1532,34 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         });
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
+    }
+    // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
+    // besides the Wazuh ruleset
+    let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
+    let (matched, scans) = tokio::task::spawn_blocking(move || {
+        let mut m = crate::sigma::check(&tagged);
+        m.extend(crate::file_reputation::check(&tagged));
+        let (yara_alerts, scans) = crate::yara_edr::check(&tagged);
+        m.extend(yara_alerts);
+        (m, scans)
+    })
+    .await
+    .unwrap_or_default();
+    for (_, agent, path) in scans {
+        if let Err(e) = yara_scan(&agent, &path).await {
+            warn!("YARA scan of {path} on agent {agent}: {e}");
+        }
+    }
+    if !matched.is_empty() {
+        let (alerts, json): (Vec<Alert>, Vec<serde_json::Value>) = matched
+            .into_iter()
+            .map(|(a, t)| {
+                let a = tenancy::tag_alert(a, &t);
+                let j = serde_json::to_value(&a).unwrap_or_default();
+                (a, j)
+            })
+            .unzip();
+        deliver(&state, alerts, json).await;
     }
     // the in-memory copy is a recent window; ClickHouse keeps everything
     crate::keep_events(&state, events);
@@ -1335,6 +1667,23 @@ async fn agent_status_loop(state: AppState) {
                 last_saved.insert(id, (status, ka));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod windows_user_tests {
+    use super::windows_user;
+    use serde_json::json;
+
+    #[test]
+    fn windows_events_give_their_user() {
+        let ev = |ed: serde_json::Value| json!({ "data": { "win": { "eventdata": ed } } });
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "alice", "subjectUserName": "SYSTEM" }))).as_deref(), Some("alice"));
+        // 4625 at the lock screen: no target name, the subject acted
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "", "subjectUserName": "EVOFOX$" }))).as_deref(), Some("EVOFOX$"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "LAB\\\\bob" }))).as_deref(), Some("LAB\\bob"));
+        assert_eq!(windows_user(&ev(json!({ "targetUserName": "-", "subjectUserName": "-" }))), None);
+        assert_eq!(windows_user(&json!({ "data": { "srcip": "1.2.3.4" } })), None);
     }
 }
 

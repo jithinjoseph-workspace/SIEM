@@ -185,6 +185,10 @@ async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: 
     metadata.insert("source_ip".to_string(), peer_ip.to_string());
     metadata.insert("collector".to_string(), "syslog".to_string());
     metadata.insert("tenant_id".to_string(), tenant.clone());
+    // the tenant's learned parsers; their fields are stored with the event
+    if let Some(p) = crate::parsers_store::for_tenant(state, &tenant).execute(line) {
+        crate::add_parsed_fields(&mut metadata, p);
+    }
 
     let raw_event = RawEvent {
         id: uuid::Uuid::new_v4(),
@@ -196,8 +200,6 @@ async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: 
         metadata,
     };
 
-    // Method 2: Dynamic Parser Engine Hot-Path Execution (< 5 microseconds)
-    let _maybe_dynamic = state.parser_registry.execute(line);
 
     // Evaluate against high-performance Wazuh XML rules & sliding-window accumulator
     let maybe_alert = state.engine.process_event(&raw_event, &agent_name, peer_ip);

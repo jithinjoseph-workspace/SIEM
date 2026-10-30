@@ -1,4 +1,5 @@
 <div class="redswarm-page p-6 w-full max-w-[1780px] mx-auto space-y-6">
+  <div *ngIf="actionError()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ actionError() }}</div>
 
   <!-- Header with Swarm Status & Emergency Controls -->
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800/80 pb-5">
@@ -95,7 +96,7 @@
         <span class="text-xs text-cyan-400 font-mono">{{ status()?.attacks_last_24h || 0 }} rounds</span>
       </div>
       <div class="text-3xl font-extrabold font-mono text-white mt-2">{{ status()?.attacks_last_24h || 0 }}</div>
-      <div class="text-[11px] text-slate-400 mt-1">100% audited with zero false alarms</div>
+      <div class="text-[11px] text-slate-400 mt-1">Mode: {{ status()?.default_mode || "—" }}</div>
     </div>
 
     <!-- Open Detection Gaps -->
@@ -131,7 +132,7 @@
 
       <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
         <option value="safe_telemetry_only">SafeTelemetryOnly (Zero Endpoint Risk)</option>
-        <option value="controlled_live">ControlledLive (Lab Agents + Auto Cleanup)</option>
+        <option value="controlled_live" disabled>ControlledLive (not available: no safe command channel to agents)</option>
       </select>
     </div>
 
@@ -253,13 +254,22 @@
           <span class="text-xs font-mono text-amber-400 font-bold px-2 py-0.5 rounded bg-amber-950 border border-amber-800">DETECTION GAP</span>
           <h3 class="text-base font-bold text-white mt-1.5">{{ g.technique_name }} ({{ g.technique_id }})</h3>
         </div>
-        <button 
-          (click)="approveAndDeployRule(g.id)" 
-          class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg shadow-md transition"
-        >
-          <lucide-angular [img]="CheckIcon" class="w-3.5 h-3.5"></lucide-angular>
-          Approve &amp; Deploy Rule to Manager
-        </button>
+        <div class="flex flex-wrap gap-2">
+          <button
+            (click)="rejectRule(g.id)"
+            class="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-700 hover:border-red-700 text-slate-300 hover:text-red-300 text-xs font-bold rounded-lg transition"
+          >
+            <lucide-angular [img]="XCircleIcon" class="w-3.5 h-3.5"></lucide-angular>
+            Reject
+          </button>
+          <button
+            (click)="approveAndDeployRule(g.id)"
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg shadow-md transition"
+          >
+            <lucide-angular [img]="CheckIcon" class="w-3.5 h-3.5"></lucide-angular>
+            Approve &amp; Deploy Rule to Manager
+          </button>
+        </div>
       </div>
 
       <p class="text-xs text-slate-300">{{ g.hardening_recommendation }}</p>
@@ -344,6 +354,7 @@
       </div>
       <div class="px-6 py-4 border-t border-slate-800 bg-slate-950 flex justify-end gap-3">
         <button (click)="closeRuleModal()" class="px-4 py-2 border border-slate-700 text-slate-300 rounded text-xs">Close</button>
+        <button *ngIf="selectedRuleDraft()?.status === 'pending_approval'" (click)="rejectRule(selectedRuleDraft()!.id)" class="px-4 py-2 border border-red-800 hover:bg-red-950 text-red-300 rounded text-xs font-bold">Reject</button>
         <button (click)="approveAndDeployRule(selectedRuleDraft()!.id)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold">
           Approve &amp; Deploy Rule
         </button>

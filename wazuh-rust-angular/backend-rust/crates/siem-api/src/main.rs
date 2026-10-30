@@ -581,9 +581,13 @@ async fn main() {
         let fleet_state = state.clone();
         Arc::new(move || {
             let mut fleet = Vec::new();
+            let deleted = fleet_state.deleted_agents.read().unwrap();
             {
                 let agents = fleet_state.agents.read().unwrap();
                 for a in agents.values() {
+                    if deleted.contains(&a.id) {
+                        continue;
+                    }
                     let os = if !a.os_type.is_empty() {
                         Some(a.os_type.clone())
                     } else if a.name.to_lowercase().contains("win") {
@@ -597,6 +601,9 @@ async fn main() {
             if fleet.is_empty() {
                 let enrolled = fleet_state.enrolled.read().unwrap();
                 for (id, e) in enrolled.iter() {
+                    if deleted.contains(id) {
+                        continue;
+                    }
                     let os = if !e.os_type.is_empty() {
                         Some(e.os_type.clone())
                     } else if e.name.to_lowercase().contains("win") {

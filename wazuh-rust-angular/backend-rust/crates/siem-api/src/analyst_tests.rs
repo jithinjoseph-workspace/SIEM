@@ -336,7 +336,7 @@ async fn history_and_inventory_from_clickhouse() {
         assert_eq!((req["alerts_count"].as_u64(), req["status"].as_str(), req["source"].as_str()), (Some(1), Some("warning"), Some("alerts")));
         assert!(pci["score_percent"].is_null(), "no configuration checks in this tenant: no score");
         assert_eq!(comp["evidence"].as_array().unwrap().len(), 1, "tenant B's alert is not evidence for A");
-        let mitre = body(crate::get_mitre_matrix_handler(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
+        let mitre = body(crate::mitre::matrix(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
         assert!(mitre.contains("T1110"), "MITRE from ClickHouse: {}", &mitre[..mitre.len().min(400)]);
 
         // inventory of a siem-agent: stored in ClickHouse, read back by the endpoint

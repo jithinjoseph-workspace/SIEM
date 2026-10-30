@@ -64,6 +64,8 @@ pub mod geomap;
 pub mod platform;
 pub mod response;
 pub mod sigma;
+pub mod mitre;
+pub mod rules_api;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -670,13 +672,13 @@ async fn main() {
         .route("/agents", delete(delete_agents_wazuh_handler))
         .route("/api/v1/events", get(get_events))
         .route("/api/events", get(get_events))
-        .route("/api/v1/rules", get(get_rules_api_handler).post(post_rules_handler))
-        .route("/api/rules", get(get_rules_api_handler).post(post_rules_handler))
+        .route("/api/v1/rules", get(rules_api::list).post(rules_api::create))
+        .route("/api/rules", get(rules_api::list).post(rules_api::create))
         .route("/api/rules/hit-counts", get(get_rules_hit_counts_handler))
-        .route("/api/rules/:id", delete(delete_rules_handler))
-        .route("/api/rules/:id/toggle", post(toggle_rules_handler))
-        .route("/api/rules/reload", post(reload_rules_handler))
-        .route("/api/rules/sync-community", post(sync_community_rules_handler))
+        .route("/api/rules/:id", get(rules_api::get_one).delete(rules_api::delete))
+        .route("/api/rules/:id/toggle", post(rules_api::toggle))
+        .route("/api/rules/reload", post(rules_api::reload))
+        .route("/api/rules/sync-community", post(rules_api::sync_community))
         .route("/api/v1/ai/analyze", post(ai_assist::analyze))
         .route("/api/v1/ai/chat", post(ai_assist::chat))
         .route("/api/v1/ingest", post(ingest_event))
@@ -802,7 +804,7 @@ async fn main() {
         .route("/api/ws", get(ws_alerts_handler))
         .route("/api/v1/logtest", post(post_logtest_handler))
         .route("/api/v1/compliance", get(compliance::get))
-        .route("/api/v1/mitre/matrix", get(get_mitre_matrix_handler))
+        .route("/api/v1/mitre/matrix", get(mitre::matrix))
         .route("/api/v1/fim/summary", get(get_fim_summary_handler))
         .route("/api/v1/active-response/actions", get(get_active_response_actions).post(post_active_response_block))
         .route("/api/v1/active-response/unblock", post(post_active_response_unblock))
@@ -2426,97 +2428,18 @@ async fn get_tenant_features_handler() -> impl IntoResponse {
     }))
 }
 
-#[derive(Deserialize, Default)]
-struct RulesQuery {
-    limit: Option<usize>,
-    offset: Option<usize>,
-    q: Option<String>,
-    #[allow(dead_code)]
-    order: Option<String>,
-}
-
-async fn get_rules_api_handler(
-    State(state): State<AppState>,
-    Query(query): Query<RulesQuery>,
-) -> impl IntoResponse {
-    let raw_rules = state.engine.list_rules();
-    let _total_count = raw_rules.len();
-    let active_count = raw_rules.len();
-
-    let mut mapped: Vec<serde_json::Value> = raw_rules
-        .into_iter()
-        .map(|r| {
-            let sev = match r.level {
-                12..=15 => "critical",
-                8..=11 => "high",
-                4..=7 => "medium",
-                _ => "low",
-            };
-            serde_json::json!({
-                "id": r.id.to_string(),
-                "title": r.description.clone(),
-                "description": r.description,
-                "level": r.level,
-                "severity": sev,
-                "enabled": true,
-                "groups": r.groups.clone(),
-                "tags": r.groups,
-                "conditions": 1,
-                "mitre": r.mitre,
-            })
-        })
-        .collect();
-
-    if let Some(ref q) = query.q {
-        let q_lower = q.to_lowercase();
-        mapped.retain(|r| {
-            r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-                || r.get("id").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&q_lower)
-        });
-    }
-
-    let filtered_total = mapped.len();
-    let offset = query.offset.unwrap_or(0);
-    let paged: Vec<serde_json::Value> = if let Some(limit) = query.limit {
-        mapped.into_iter().skip(offset).take(limit).collect()
-    } else {
-        mapped
-    };
-
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert("X-Total-Count", filtered_total.to_string().parse().unwrap());
-    headers.insert("X-Active-Count", active_count.to_string().parse().unwrap());
-
-    (StatusCode::OK, headers, Json(paged))
-}
-
 async fn get_rules_hit_counts_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
     let mut counts: HashMap<String, u64> = HashMap::new();
     for (_, desc, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        // a Sigma alert is "Sigma: <title>": the rules pages look custom rules up by their title
+        if let Some(title) = desc.strip_prefix("Sigma: ") {
+            *counts.entry(title.to_string()).or_insert(0) += n;
+        }
         *counts.entry(desc).or_insert(0) += n;
     }
     Json(counts)
 }
 
-async fn post_rules_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Rule created successfully", "rule": payload }))
-}
-
-async fn delete_rules_handler(Path(rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": format!("Rule {} deleted", rule_id) }))
-}
-
-async fn toggle_rules_handler(Path(_rule_id): Path<String>) -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "enabled": true }))
-}
-
-async fn reload_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Detection rules successfully reloaded" }))
-}
-
-async fn sync_community_rules_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "message": "Community rules synchronized", "count": 1250 }))
-}
 
 async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
     let (c, (_, agent_z_events)) = tokio::join!(
@@ -3679,131 +3602,6 @@ async fn post_logtest_handler(
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTechniqueSummary {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub alert_count: usize,
-    pub max_level: u8,
-    pub subtechniques: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MitreTacticColumn {
-    pub tactic_id: String,
-    pub name: String,
-    pub techniques: Vec<MitreTechniqueSummary>,
-}
-
-async fn get_mitre_matrix_handler(
-    State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
-) -> impl IntoResponse {
-    // alerts per technique id from ClickHouse; a technique counts its sub-techniques
-    let by_id = history::mitre_counts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let count_technique_alerts = |tech_id: &str| -> (usize, u8) {
-        by_id.iter().filter(|(id, _, _)| id.starts_with(tech_id)).fold((0, 0), |(n, l), (_, c, max)| (n + *c as usize, l.max(*max)))
-    };
-
-    let tactics_def = vec![
-        ("TA0043", "Reconnaissance", vec![
-            ("T1595", "Active Scanning", "Scanning IP blocks, ports, or web application vulnerabilities.", vec!["T1595.001", "T1595.002"]),
-            ("T1590", "Gather Victim Network Info", "Gathering IP ranges and DNS topology.", vec!["T1590.001"]),
-        ]),
-        ("TA0042", "Resource Development", vec![
-            ("T1583", "Acquire Infrastructure", "Adversaries acquiring servers, domains, or third-party web services.", vec!["T1583.001"]),
-            ("T1588", "Obtain Capabilities", "Acquiring exploits, malware tools, or code certificates.", vec!["T1588.002"]),
-        ]),
-        ("TA0001", "Initial Access", vec![
-            ("T1190", "Exploit Public-Facing Application", "Exploiting security flaws in internet-exposed services.", vec!["T1190.001"]),
-            ("T1078", "Valid Accounts", "Obtaining and abusing credentials of existing accounts.", vec!["T1078.001", "T1078.003"]),
-            ("T1566", "Phishing", "Spearphishing attachments and malicious links delivered via email.", vec!["T1566.001"]),
-        ]),
-        ("TA0002", "Execution", vec![
-            ("T1059", "Command & Scripting Interpreter", "Executing arbitrary commands in PowerShell, Bash, Python, or cmd.", vec!["T1059.001", "T1059.004"]),
-            ("T1204", "User Execution", "Relying on target users to execute malicious attachments or binaries.", vec!["T1204.002"]),
-            ("T1053", "Scheduled Task/Job", "Abusing cron, at, or Windows Task Scheduler to run task.", vec!["T1053.003", "T1053.005"]),
-        ]),
-        ("TA0003", "Persistence", vec![
-            ("T1543", "Create or Modify System Process", "Creating services or systemd units to repeatedly execute malware.", vec!["T1543.002"]),
-            ("T1547", "Boot or Logon Autostart Execution", "Modifying registry Run keys, Startup folders, or init scripts.", vec!["T1547.001"]),
-            ("T1136", "Create Account", "Creating local administrator or domain backdoor accounts.", vec!["T1136.001"]),
-        ]),
-        ("TA0004", "Privilege Escalation", vec![
-            ("T1068", "Exploitation for Privilege Escalation", "Exploiting kernel vulnerabilities to elevate permissions.", vec!["T1068.001"]),
-            ("T1548", "Abuse Elevation Control Mechanism", "Abusing sudo, UAC bypass, or setuid binaries.", vec!["T1548.001", "T1548.003"]),
-        ]),
-        ("TA0005", "Defense Evasion", vec![
-            ("T1070", "Indicator Removal", "Clearing event logs, audit logs, or bash history.", vec!["T1070.001", "T1070.002"]),
-            ("T1562", "Impair Defenses", "Disabling antivirus, EDR agents, or firewall rules.", vec!["T1562.001"]),
-            ("T1036", "Masquerading", "Renaming executables to match legitimate OS binaries (svchost, systemd).", vec!["T1036.005"]),
-            ("T1014", "Rootkit", "Hiding malicious activities and files via kernel rootkits.", vec!["T1014.001"]),
-        ]),
-        ("TA0006", "Credential Access", vec![
-            ("T1110", "Brute Force", "Password guessing, dictionary attacks, or password spraying.", vec!["T1110.001", "T1110.003"]),
-            ("T1003", "OS Credential Dumping", "Dumping LSASS memory, /etc/shadow, or SAM hive.", vec!["T1003.001", "T1003.008"]),
-            ("T1555", "Credentials from Password Stores", "Extracting keys from browser caches or credential managers.", vec!["T1555.003"]),
-        ]),
-        ("TA0007", "Discovery", vec![
-            ("T1082", "System Information Discovery", "Querying OS version, kernel build, and hardware specs.", vec!["T1082.001"]),
-            ("T1046", "Network Service Discovery", "Scanning remote subnets and ports with nmap or netcat.", vec!["T1046.001"]),
-            ("T1057", "Process Discovery", "Listing running processes with ps or tasklist.", vec!["T1057.001"]),
-        ]),
-        ("TA0008", "Lateral Movement", vec![
-            ("T1021", "Remote Services", "Logging into adjacent hosts via SSH, RDP, or SMB.", vec!["T1021.001", "T1021.004"]),
-            ("T1550", "Use Alternate Authentication Material", "Pass-the-Hash or Pass-the-Ticket Kerberos attacks.", vec!["T1550.002"]),
-        ]),
-        ("TA0009", "Collection", vec![
-            ("T1005", "Data from Local System", "Harvesting sensitive documents, database dumps, and source code.", vec!["T1005.001"]),
-            ("T1560", "Archive Collected Data", "Compressing files into tar.gz or 7z before exfiltration.", vec!["T1560.001"]),
-        ]),
-        ("TA0011", "Command and Control", vec![
-            ("T1071", "Application Layer Protocol", "C2 beaconing over HTTP, HTTPS, or DNS tunnels.", vec!["T1071.001", "T1071.004"]),
-            ("T1573", "Encrypted Channel", "Encrypting C2 channels with custom AES or TLS tunnels.", vec!["T1573.001"]),
-        ]),
-        ("TA0010", "Exfiltration", vec![
-            ("T1048", "Exfiltration Over Alternative Protocol", "Exfiltrating sensitive files via cloud storage, webhook, or DNS.", vec!["T1048.003"]),
-            ("T1567", "Exfiltration to Cloud Storage", "Transferring stolen data to AWS S3, Google Drive, or Mega.", vec!["T1567.002"]),
-        ]),
-        ("TA0040", "Impact", vec![
-            ("T1486", "Data Encrypted for Impact", "Ransomware encryption of endpoint and network storage.", vec!["T1486.001"]),
-            ("T1489", "Service Stop", "Terminating critical services or database daemons to cause denial of service.", vec!["T1489.001"]),
-            ("T1565", "Stored Data Manipulation", "Unauthorized modification or tampering with critical files (FIM).", vec!["T1565.001"]),
-        ]),
-    ];
-
-    let mut matrix = Vec::new();
-    let mut total_mitre_alerts = 0;
-
-    for (tactic_id, name, tech_list) in tactics_def {
-        let mut tech_objs = Vec::new();
-        for (tid, tname, tdesc, subs) in tech_list {
-            let (acount, max_lvl) = count_technique_alerts(tid);
-            total_mitre_alerts += acount;
-            tech_objs.push(MitreTechniqueSummary {
-                id: tid.to_string(),
-                name: tname.to_string(),
-                description: tdesc.to_string(),
-                alert_count: acount,
-                max_level: max_lvl,
-                subtechniques: subs.into_iter().map(|s| s.to_string()).collect(),
-            });
-        }
-        matrix.push(MitreTacticColumn {
-            tactic_id: tactic_id.to_string(),
-            name: name.to_string(),
-            techniques: tech_objs,
-        });
-    }
-
-    Json(serde_json::json!({
-        "matrix": matrix,
-        "total_tactics": 14,
-        "total_mitre_alerts": total_mitre_alerts,
-        "last_updated": chrono::Utc::now(),
-    }))
-}
-
 #[derive(Debug, Serialize)]
 pub struct FimSummaryRecord {
     pub timestamp: chrono::DateTime<chrono::Utc>,
@@ -4466,22 +4264,21 @@ async fn get_reports_summary_handler(
         *engine.field_counts.entry(rule_id.to_string()).or_default() += n;
     }
 
+    // per framework: the alerts whose Wazuh rule carries its tag (the scores are /api/v1/compliance)
+    let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(history::DEFAULT_HOURS as u64 * 3_600_000);
+    let tags = state.db.compliance_tag_counts(&ctx.scope(), since, &["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"]).await.unwrap_or_default();
+    let compliance_summary: serde_json::Map<String, serde_json::Value> = tags
+        .into_iter()
+        .map(|(tag, alerts, requirements)| (tag.to_string(), serde_json::json!({ "alerts": alerts, "requirements_with_alerts": requirements })))
+        .collect();
+
     Json(serde_json::json!({
         "total_alerts": engine.total_alerts,
         "matched_alerts": engine.matched_alerts,
         "rule_distribution": engine.field_counts,
-        "compliance_summary": {
-            "pci_dss": {
-                "evaluated": true,
-                "status": "compliant",
-                "rules_analyzed": engine.total_alerts
-            },
-            "soc2": {
-                "evaluated": true,
-                "status": "monitored",
-                "active_controls": ["CC6.1", "CC6.8", "CC7.2"]
-            }
-        }
+        "window_hours": history::DEFAULT_HOURS,
+        "compliance_summary": compliance_summary,
+        "compliance_scores": "/api/v1/compliance"
     }))
 }
 

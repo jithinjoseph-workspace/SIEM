@@ -174,7 +174,11 @@ export interface MitreTacticColumn {
 export interface MitreMatrixResponse {
   matrix: MitreTacticColumn[];
   total_tactics: number;
+  /** Techniques of the full ATT&CK Enterprise catalog (the manager's mitre.db). */
+  total_techniques?: number;
   total_mitre_alerts: number;
+  /** Technique ids in alerts that the catalog does not have (revoked, or a rule's typo). */
+  unmapped?: { id: string; alert_count: number; max_level: number }[];
   last_updated: string;
 }
 

@@ -207,9 +207,9 @@ export abstract class RulesBase {
         }
         this.cdr.detectChanges();
       },
-      error: () => {
+      error: (err: any) => {
         this.saving = false;
-        this.showMessage('Failed to save rule', 'error');
+        this.showMessage(err?.error?.message || 'Failed to save rule', 'error');
         this.cdr.detectChanges();
       },
     });
@@ -229,7 +229,7 @@ export abstract class RulesBase {
           this.cdr.detectChanges();
         },
       }),
-      error: () => this.showMessage('Failed to delete rule', 'error'),
+      error: (err: any) => this.showMessage(err?.error?.message || 'Failed to delete rule', 'error'),
     });
   }
 
@@ -241,7 +241,7 @@ export abstract class RulesBase {
         this.showMessage(`Rule "${rule.name}" ${enable ? 'enabled' : 'disabled'} — ${data.active_rules} active`, 'success');
         this.cdr.detectChanges();
       },
-      error: () => this.showMessage('Failed to toggle rule', 'error'),
+      error: (err: any) => this.showMessage(err?.error?.message || 'Failed to toggle rule', 'error'),
     });
   }
 

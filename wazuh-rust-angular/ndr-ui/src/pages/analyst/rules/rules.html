@@ -395,7 +395,7 @@
             </span>
           </div>
           <!-- Agent-S rules are managed by the sensor — no edit/delete actions -->
-          <div class="rule-btns" *ngIf="rule.type !== 'Agent-S'">
+          <div class="rule-btns" *ngIf="rule.editable">
             <button (click)="openEditForm(rule)" title="Edit rule" class="icon-btn" type="button">
               <lucide-icon [name]="EditIcon" class="w-4 h-4"></lucide-icon>
             </button>

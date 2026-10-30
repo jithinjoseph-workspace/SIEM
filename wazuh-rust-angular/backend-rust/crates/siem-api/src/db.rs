@@ -1145,6 +1145,37 @@ impl ClickHouseDb {
             .map(|rows| rows.iter().map(|r| r.to_alert()).collect())
     }
 
+    /// Per compliance tag of the Wazuh rules (`pci_dss`, `hipaa`, ...): the alerts since
+    /// `since_ms` that carry it and how many distinct requirements they name.
+    pub async fn compliance_tag_counts(&self, tenant_id: &str, since_ms: u64, tags: &[&'static str]) -> Option<Vec<(&'static str, u64, u64)>> {
+        if !self.is_connected() {
+            return None;
+        }
+        let mut out = Vec::new();
+        for &tag in tags {
+            #[derive(clickhouse::Row, serde::Deserialize)]
+            struct R {
+                alerts: u64,
+                requirements: u64,
+            }
+            let r = self
+                .tenant_client(tenant_id)
+                .query(
+                    "SELECT count() AS alerts, uniqExactArray(JSONExtract(alert_json, 'data', 'wazuh_rule', ?, 'Array(String)')) AS requirements \
+                     FROM siem_alerts WHERE timestamp >= ? AND JSONHas(alert_json, 'data', 'wazuh_rule', ?)",
+                )
+                .bind(tag)
+                .bind(since_ms)
+                .bind(tag)
+                .fetch_one::<R>()
+                .await
+                .map_err(|e| warn!("Failed to count {tag} alerts in ClickHouse: {}", e))
+                .ok()?;
+            out.push((tag, r.alerts, r.requirements));
+        }
+        Some(out)
+    }
+
     /// One event of the tenant by id.
     pub async fn event_by_id(&self, tenant_id: &str, id: &str) -> Option<siem_core::RawEvent> {
         if !self.is_connected() {

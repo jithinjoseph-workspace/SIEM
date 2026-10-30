@@ -89,10 +89,6 @@ export class SiemService {
     return this.getWsConnected();
   }
 
-  /** Runs a simulation scenario on the manager (POST /api/v1/simulate). */
-  simulateAttack(scenario: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/api/v1/simulate`, { scenario });
-  }
 
   /** AI analysis of an event or alert (POST /api/v1/ai/analyze, needs GROQ_API_KEY on the manager). */
   analyzeEvent(req: any): Observable<any> {

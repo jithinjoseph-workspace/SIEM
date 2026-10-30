@@ -66,6 +66,7 @@ pub mod response;
 pub mod sigma;
 pub mod mitre;
 pub mod rules_api;
+pub mod copilot;
 #[cfg(test)]
 mod analyst_tests;
 use db::ClickHouseDb;
@@ -770,7 +771,6 @@ async fn main() {
         .route("/api/sources", get(get_siem_sources).post(post_siem_sources))
         .route("/syscheck", put(put_syscheck_handler))
         .route("/api/v1/syscheck", put(put_syscheck_handler))
-        .route("/api/v1/simulate", post(simulate_attack))
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
@@ -855,6 +855,11 @@ async fn main() {
         .route("/api/v1/siem/intel/watchlist/:id", axum::routing::delete(intel::remove_watched))
         .route("/api/v1/siem/intel/matches", get(intel::matches))
         .route("/api/v1/siem/investigate", get(investigate::investigate))
+        .route("/api/v1/siem/copilot", post(copilot::ask))
+        .route("/api/v1/siem/copilot/status", get(copilot::status))
+        .route("/api/v1/siem/copilot/conversations", get(copilot::conversations))
+        .route("/api/v1/siem/copilot/conversations/:id", get(copilot::conversation).delete(copilot::delete_conversation))
+        .route("/api/v1/siem/copilot/reports/:id", get(copilot::report))
         // analyst workload & AI-trust calibration: own numbers; the team for the tenant admin
         .route("/api/v1/siem/insights/me", get(insights::me))
         .route("/api/v1/siem/insights/team", get(insights::team))
@@ -1767,140 +1772,6 @@ async fn ingest_event(
     Ok(Json(last_alert))
 }
 
-#[derive(Deserialize)]
-struct SimulateRequest {
-    scenario: String,
-}
-
-#[derive(Serialize)]
-struct SimulateResponse {
-    scenario: String,
-    triggered_alerts: Vec<Alert>,
-}
-
-async fn simulate_attack(
-    State(state): State<AppState>,
-    Extension(ctx): Extension<AuthCtx>,
-    Json(req): Json<SimulateRequest>,
-) -> Json<SimulateResponse> {
-    let mut generated_events = Vec::new();
-
-    match req.scenario.as_str() {
-        "ssh_brute_force" => {
-            for i in 1..=5 {
-                generated_events.push(RawEvent::new(
-                    "001",
-                    EventSource::Auth,
-                    "/var/log/auth.log",
-                    format!("sshd[{}]: Failed password for root from 198.51.100.44 port {} ssh2", 3000 + i, 45000 + i),
-                ));
-            }
-        }
-        "fim_tamper" => {
-            generated_events.push(RawEvent::new(
-                "001",
-                EventSource::Fim,
-                "syscheck",
-                "ossec: File '/etc/shadow' modified (checksum changed from a93f... to d21b...)",
-            ));
-        }
-        "mimikatz" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::WindowsEvent,
-                "Security-EventLog",
-                "powershell.exe -w hidden -EncodedCommand c2VrdXJsc2E6OmxvZ29ucGFzc3dvcmRz (Mimikatz memory dump attempt)",
-            ));
-        }
-        "win_event_4625" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::WindowsEvent,
-                "Security",
-                "Windows-Event [Security] EventID:4625 - An account failed to log on. Subject: User: Administrator, Failure Reason: Unknown user name or bad password.",
-            ));
-        }
-        "win_registry_tamper" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::Registry,
-                r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
-                r"Registry 'HKLM\Software\Microsoft\Windows\CurrentVersion\Run' modified: Value 'BackdoorService' added = 'C:\Users\Public\svchost_fake.exe'",
-            ));
-        }
-        "win_sca_fail" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::Sca,
-                "sca/windows_baseline",
-                "SCA [FAIL]: (Check #1001) Ensure User Account Control (UAC) - EnableLUA is enabled (Current: 0x0, Expected: 0x1)",
-            ));
-        }
-        "win_service_7045" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::WindowsEvent,
-                "System",
-                "Windows-Event [System] EventID:7045 - A service was installed in the system. Service Name: RansomPayloadService, File Name: C:\\Temp\\encrypt.exe",
-            ));
-        }
-        "ransomware" => {
-            generated_events.push(RawEvent::new(
-                "002",
-                EventSource::Fim,
-                "syscheck",
-                "ossec: Mass file rename detected: 'C:\\Users\\Finance\\Documents\\ledger.xlsx.locked'",
-            ));
-        }
-        _ => {
-            generated_events.push(RawEvent::new(
-                "001",
-                EventSource::Syslog,
-                "/var/log/syslog",
-                "sudo: guest : COMMAND=/usr/bin/su root",
-            ));
-        }
-    }
-
-    // Simulated activity belongs to the caller's tenant.
-    let tenant = ctx.scope();
-    let mut triggered_alerts = Vec::new();
-    for mut ev in generated_events {
-        ev.metadata.insert("tenant_id".into(), tenant.clone());
-        let (name, ip) = {
-            let agents = state.agents.read().unwrap();
-            let own = if agent_in_scope(&state, &ctx, &ev.agent_id) { agents.get(&ev.agent_id).cloned() } else { None };
-            let ag = own.unwrap_or(Agent {
-                id: ev.agent_id.clone(),
-                name: "agent-sim".into(),
-                ip: "10.0.0.50".into(),
-                os: "Linux".into(),
-                version: "v4.14.7".into(),
-                status: AgentStatus::Active,
-                last_keepalive: Utc::now(),
-                os_type: "linux".into(),
-            });
-            (ag.name, ag.ip)
-        };
-
-        if let Some(mut alert) = state.engine.process_event(&ev, &name, &ip) {
-            // the live view shows it among real alerts: it must say it is a simulation
-            alert.rule.description = format!("[Simulation] {}", alert.rule.description);
-            alert.rule.groups.push("simulation".into());
-            let alert = tenancy::tag_alert(alert, &tenant);
-            keep_alerts(&state, [alert.clone()]);
-            let _ = state.broadcast_tx.send(alert.clone());
-            triggered_alerts.push(alert);
-        }
-        keep_events(&state, [ev]);
-    }
-
-    Json(SimulateResponse {
-        scenario: req.scenario,
-        triggered_alerts,
-    })
-}
-
 async fn ws_alerts_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -2605,6 +2476,12 @@ async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): 
     let latest_src = latest_alert.and_then(|a| a.decoded.src_ip.clone()).unwrap_or_default();
     let latest_dst = latest_alert.and_then(|a| a.decoded.dst_ip.clone()).unwrap_or_default();
     let latest_cid = latest_alert.map(|a| a.id.to_string()).unwrap_or_default();
+    // the model the AI Copilot (ARIA's chat) uses, when the tenant has AI
+    let models: Vec<String> = if ai_assist::tenant_ai_enabled(&state, &ctx.scope()) {
+        ai_assist::providers(&state, "chat").await.into_iter().map(|p| p.model).take(1).collect()
+    } else {
+        Vec::new()
+    };
 
     Json(serde_json::json!({
         "status": "ok",
@@ -2614,7 +2491,9 @@ async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): 
         "latest_src_ip": latest_src,
         "latest_dst_ip": latest_dst,
         "latest_community_id": latest_cid,
-        "active_models": ["llama-3.3-70b-versatile", "qwen-2.5-coder"],
+        "latest_description": latest_alert.map(|a| a.rule.description.clone()).unwrap_or_default(),
+        "latest_agent": latest_alert.map(|a| a.agent.name.clone()).unwrap_or_default(),
+        "active_models": models,
         "pipeline": "online"
     }))
 }
@@ -3646,12 +3525,22 @@ async fn get_fim_summary_handler(
     let mut recent_changes = Vec::new();
 
     // entries monitored by the older siem-agent agents (their own FIM store)
+    let agent_ids: Vec<String> = scoped_agent_map(&state, &ctx).keys().cloned().collect();
     let mut total_files = 0usize;
-    for ag_id in scoped_agent_map(&state, &ctx).keys() {
+    for ag_id in &agent_ids {
         if let Some(agent_db) = state.wdb.get(ag_id) {
             total_files += agent_db.read().unwrap().fim.list().len();
         }
     }
+    // and the Wazuh agents' files and registry values (posture_store.rs copies them to ClickHouse)
+    total_files += state
+        .db
+        .tenant_client(&ctx.scope())
+        .query("SELECT count() FROM siem_fim_files FINAL WHERE agent_id IN ?")
+        .bind(&agent_ids)
+        .fetch_one::<u64>()
+        .await
+        .unwrap_or(0) as usize;
 
     // only the FIM alerts come from ClickHouse (they carry data.syscheck)
     for a in history::alerts_containing(&state, &ctx, history::DEFAULT_HOURS, "\"syscheck\"").await.iter().rev() {

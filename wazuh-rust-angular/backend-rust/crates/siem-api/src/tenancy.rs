@@ -245,6 +245,17 @@ pub async fn valkey_lock(key: &str, ttl_secs: u64) -> bool {
     redis::cmd("SET").arg(key).arg("1").arg("NX").arg("EX").arg(ttl_secs).query_async::<_, Option<String>>(&mut c).await.ok().flatten().is_some()
 }
 
+/// Adds 1 to a Valkey counter that expires `ttl_secs` after its first use; the new
+/// value, or None when Valkey does not answer.
+pub async fn valkey_incr(key: &str, ttl_secs: u64) -> Option<u64> {
+    let mut c = VALKEY.get()?.clone();
+    let n: u64 = redis::cmd("INCR").arg(key).query_async(&mut c).await.ok()?;
+    if n == 1 {
+        let _ = redis::cmd("EXPIRE").arg(key).arg(ttl_secs).query_async::<_, i64>(&mut c).await;
+    }
+    Some(n)
+}
+
 pub async fn valkey_unlock(key: &str) {
     if let Some(cm) = VALKEY.get() {
         let mut c = cm.clone();
@@ -461,7 +472,7 @@ fn required_permission(method: &Method, path: &str) -> Option<&'static str> {
     } else if starts("/api/v1/siem/sigma") || ((starts("/api/rules") || starts("/api/v1/rules")) && method != Method::GET) {
         // creating, changing and deleting rules
         Some("siem-rules")
-    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") {
+    } else if starts("/api/v1/siem/triage") || starts("/api/v1/siem/ai-activity") || starts("/api/v1/siem/suppressions") || starts("/api/v1/siem/memory") || starts("/api/v1/swarm/matches") || starts("/api/v1/siem/decisions") || starts("/api/v1/siem/intel") || starts("/api/v1/siem/investigate") || starts("/api/v1/siem/copilot") {
         Some("siem-alerts")
     } else if agent_sub("process-tree") {
         // investigating an alert

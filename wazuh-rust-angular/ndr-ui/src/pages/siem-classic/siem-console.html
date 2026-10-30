@@ -48,14 +48,6 @@
       Detection Rules
       <span class="nav-pill pill-subtle">{{ rules().length }}</span>
     </button>
-    <button class="nav-item nav-simulator" [class.active]="activeTab() === 'simulator'" (click)="switchTab('simulator')">
-      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      Simulator
-    </button>
-    <button class="nav-item nav-copilot" [class.active]="activeTab() === 'copilot'" (click)="switchTab('copilot')">
-      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-      AI Copilot
-    </button>
   </nav>
 
   <!-- Main View Container -->
@@ -281,9 +273,11 @@
                   <div class="mono text-dim text-xs">{{ a.agent.ip }}</div>
                 </td>
                 <td>
-                  <div class="flex gap-1">
+                  <div class="flex flex-wrap gap-1">
                     <button class="btn btn-outline text-xs" (click)="openAlertDetails(a); $event.stopPropagation()">Inspect</button>
                     <button class="btn btn-ai text-xs" (click)="triggerAiAnalyzeForAlert(a); $event.stopPropagation()">AI Triage</button>
+                    <button class="btn btn-outline text-xs" title="Everything about this host or source IP" (click)="investigateAlert(a); $event.stopPropagation()">Investigate</button>
+                    <button class="btn btn-outline text-xs" title="Open a SOAR case with this alert as evidence (AI Copilot)" (click)="openCaseForAlert(a); $event.stopPropagation()">Open case</button>
                   </div>
                 </td>
               </tr>
@@ -411,204 +405,6 @@
       </div>
     </section>
 
-    <!-- ==================== TAB 5: ATTACK SIMULATOR ==================== -->
-    <section *ngIf="activeTab() === 'simulator'" class="tab-content">
-      <div class="card simulator-banner">
-        <div class="sim-header-text">
-          <h2>Interactive Threat Simulation Console</h2>
-          <p class="text-muted">
-            Trigger real-world attack vectors against the SIEM. The Rust backend decodes the incoming telemetry,
-            evaluates detection rules in sub-millisecond time, and broadcasts live alerts over WebSockets to this dashboard!
-          </p>
-        </div>
-      </div>
-
-      <div class="sim-buttons-grid">
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-rose">AUTH-01</div>
-          <div class="sim-content">
-            <h3>SSH Brute-Force Attack</h3>
-            <p class="text-muted text-xs">Fires 5 rapid failed login attempts from external IP 198.51.100.44 to trigger stateful correlation Rule 5712 (Level 10).</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('ssh_brute_force')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-amber">FIM-02</div>
-          <div class="sim-content">
-            <h3>FIM /etc/shadow Tampering</h3>
-            <p class="text-muted text-xs">Simulates unauthorized modification of critical Linux security authentication files, triggering Level 12 FIM Alert.</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('fim_tamper')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-cyan">EXEC-03</div>
-          <div class="sim-content">
-            <h3>PowerShell Mimikatz Execution</h3>
-            <p class="text-muted text-xs">Generates encoded command execution simulating LSASS memory dump & credential harvesting on Windows Domain Controller.</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('mimikatz')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-rose">RANSOM-04</div>
-          <div class="sim-content">
-            <h3>Ransomware File Encryption</h3>
-            <p class="text-muted text-xs">Simulates high-velocity mass file renaming to .locked extensions, triggering Rule 70010 (Level 15 Critical).</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('ransomware')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-cyan">LOGON-05</div>
-          <div class="sim-content">
-            <h3>Windows Event 4625 (Logon Failure)</h3>
-            <p class="text-muted text-xs">Simulates repeated bad password authentication attempts captured by the Windows EventChannel collector.</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_event_4625')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-amber">REG-06</div>
-          <div class="sim-content">
-            <h3>Registry Run Key Tampering</h3>
-            <p class="text-muted text-xs">Simulates unauthorized persistence modification to HKLM Run/RunOnce key detected by the Registry Monitor.</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_registry_tamper')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-emerald">CIS-07</div>
-          <div class="sim-content">
-            <h3>Windows SCA Compliance Failure</h3>
-            <p class="text-muted text-xs">Simulates Security Configuration Assessment failure for disabled User Account Control (UAC EnableLUA).</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_sca_fail')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-
-        <div class="card sim-card">
-          <div class="sim-icon font-mono text-xs font-bold text-cyan">SVC-08</div>
-          <div class="sim-content">
-            <h3>Windows Event 7045 (Service Installed)</h3>
-            <p class="text-muted text-xs">Simulates rogue Windows Service installation for persistence and privilege escalation.</p>
-            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_service_7045')">
-              Execute Attack Vector
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card sim-console mt-4" *ngIf="lastSimResult()">
-        <div class="console-header">
-          <span class="mono text-xs text-muted">SIMULATION TELEMETRY OUTPUT</span>
-        </div>
-        <div class="console-body mono text-cyan text-xs">
-          {{ lastSimResult() }}
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================== TAB 6: AI SOC COPILOT ==================== -->
-    <section *ngIf="activeTab() === 'copilot'" class="tab-content copilot-section">
-      <div class="copilot-container card">
-        <!-- Copilot Header -->
-        <div class="copilot-header">
-          <div class="copilot-title-group">
-            <div class="ai-avatar-badge font-mono font-bold">AI</div>
-            <div>
-              <h2 class="copilot-title">Wazuh AI SOC Copilot & Threat Hunter</h2>
-              <p class="text-muted text-xs">Powered by Groq High-Speed Inference Engine &bull; Real-time analysis for endpoint EVOFOX</p>
-            </div>
-          </div>
-
-          <div class="copilot-controls">
-            <label class="text-xs text-muted mr-2">Groq Model:</label>
-            <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
-              <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
-            </select>
-            <span class="copilot-status-badge">
-              <span class="pulse-dot online"></span> ACTIVE
-            </span>
-          </div>
-        </div>
-
-        <!-- Quick Action Prompt Chips -->
-        <div class="copilot-prompts">
-          <span class="text-xs text-muted">QUICK INVESTIGATIONS:</span>
-          <button class="prompt-chip" (click)="sendCopilotMessage('Audit the security posture of laptop EVOFOX based on Defender, Firewall, and SCA checks.')">
-            Audit EVOFOX Posture
-          </button>
-          <button class="prompt-chip" (click)="sendCopilotMessage('Explain Windows EventID 5382 (Credential Vault read) and how to detect credential theft.')">
-            Explain EventID 5382
-          </button>
-          <button class="prompt-chip" (click)="sendCopilotMessage('Generate a PowerShell script to harden Windows Defender and block credential dumping.')">
-            Defender Hardening Script
-          </button>
-          <button class="prompt-chip" (click)="sendCopilotMessage('What are the most critical MITRE ATT&CK techniques observed in Windows endpoint logs?')">
-            MITRE Threat Matrix
-          </button>
-        </div>
-
-        <!-- Chat Stream Window -->
-        <div class="copilot-chat-window">
-          <div *ngFor="let msg of aiCopilotMessages()" class="chat-row" [class.user-row]="msg.sender === 'user'" [class.ai-row]="msg.sender === 'ai'">
-            <div class="chat-avatar font-mono text-xs font-bold" *ngIf="msg.sender === 'ai'">AI</div>
-            <div class="chat-bubble" [class.user-bubble]="msg.sender === 'user'" [class.ai-bubble]="msg.sender === 'ai'">
-              <div class="chat-meta">
-                <span class="chat-sender">{{ msg.sender === 'user' ? 'SOC ANALYST' : 'AI COPILOT' }}</span>
-                <span class="chat-model" *ngIf="msg.model">[{{ msg.model }}]</span>
-                <span class="chat-time">{{ msg.time }}</span>
-              </div>
-              <div class="chat-content">
-                <pre class="chat-text">{{ msg.text }}</pre>
-              </div>
-            </div>
-            <div class="chat-avatar user-avatar font-mono text-xs font-bold" *ngIf="msg.sender === 'user'">SOC</div>
-          </div>
-
-          <!-- Thinking Spinner -->
-          <div *ngIf="isCopilotThinking()" class="chat-row ai-row">
-            <div class="chat-avatar font-mono text-xs font-bold">AI</div>
-            <div class="chat-bubble ai-bubble thinking-bubble">
-              <div class="ai-pulse-dots">
-                <span></span><span></span><span></span>
-              </div>
-              <span class="text-xs text-cyan mono">Groq AI is analyzing telemetry & formulating response...</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Copilot Input Bar -->
-        <div class="copilot-input-bar">
-          <input
-            type="text"
-            class="copilot-input"
-            [(ngModel)]="aiCopilotInput"
-            (keyup.enter)="sendCopilotMessage()"
-            placeholder="Ask AI Copilot anything about your endpoints, logs, MITRE techniques, or incident playbooks..."
-            [disabled]="isCopilotThinking()"
-          />
-          <button class="btn btn-ai" [disabled]="!aiCopilotInput().trim() || isCopilotThinking()" (click)="sendCopilotMessage()">
-            Send Prompt
-          </button>
-        </div>
-      </div>
-    </section>
 
   </main>
 

@@ -261,7 +261,10 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 18] = [
+pub const ANALYST_DDL: [&str; 20] = [
+    // the AI Copilot's conversations and incident reports (copilot.rs)
+    crate::copilot::DDL[0],
+    crate::copilot::DDL[1],
     crate::decisions::DDL,
     crate::case_ai::DDL,
     crate::intel::WATCHLIST_DDL,

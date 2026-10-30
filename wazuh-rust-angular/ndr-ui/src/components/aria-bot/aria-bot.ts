@@ -22,7 +22,9 @@ interface AlertCard {
   severity: string;
   src_ip: string;
   dst_ip: string;
+  /** the alert id */
   community_id: string;
+  agent?: string;
   rule_name?: string;
   score?: number;
 }
@@ -114,23 +116,22 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
   private speechTimer: any;
   private proactiveSub?: any;
 
+  // what ARIA really can do (it talks to the AI Copilot)
   private proactiveMessages = [
-    "Anything look suspicious? Ask me!",
-    "Got pending alerts to review — click me!",
-    "Want me to scan for lateral movement?",
-    "Network summary ready — tap to see!",
-    "I'm watching all traffic. Everything okay?",
-    "Quick check — any IPs you want me to look up?",
+    "Ask me about your latest alerts!",
+    "Want the latest critical alert?",
+    "I can investigate a host, IP or user for you.",
+    "Need a case and a report? Just ask.",
   ];
+  /** The AI Copilot conversation ARIA continues. */
+  private copilotConversation: string | null = null;
   private proactiveIndex = 0;
 
   quickReplies = [
-    { text: 'Check alerts', icon: 'shield-alert' },
-    { text: 'System status', icon: 'activity' },
-    { text: 'Lateral movement?', icon: 'network' },
-    { text: 'Any critical alerts?', icon: 'triangle-alert' },
-    { text: 'Show latest evidence', icon: 'file-text' },
-    { text: 'Top talkers', icon: 'users' },
+    { text: 'Latest critical alert', icon: 'triangle-alert' },
+    { text: 'Alerts today by severity', icon: 'activity' },
+    { text: 'Which rules fire most?', icon: 'shield-alert' },
+    { text: 'Open a case for the latest critical alert and tell me why', icon: 'file-text' },
   ];
 
   constructor(
@@ -150,12 +151,13 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     this.routerSub = this.router.events.subscribe((e: any) => {
       const url = e.urlAfterRedirects || e.url;
       if (url) {
-        this.isVisible = !url.includes('/admin');
+        // the AI Copilot page has its own chat
+        this.isVisible = !url.includes('/admin') && !url.includes('/siem-copilot');
         this.cdr.detectChanges();
       }
     });
     const initUrl = this.router.url;
-    this.isVisible = !initUrl.includes('/admin');
+    this.isVisible = !initUrl.includes('/admin') && !initUrl.includes('/siem-copilot');
 
     this.fetchStatus();
     this.pollSub = interval(30000).pipe(
@@ -261,10 +263,10 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
 
   bootGreeting() {
     this.setEmotion('wave');
-    this.showSpeechBubble("Hi! I'm ARIA. I'm watching your network right now!");
+    this.showSpeechBubble("Hi! I'm ARIA. Ask me about your alerts.");
     // Message added immediately so chat panel is never empty on first open
     this.addBotMessage(
-      "👋 Hey! I'm ARIA, your NDR Security Assistant. I monitor your network 24/7 and alert you the moment anything suspicious happens. Ask me anything!",
+      "Hi! I'm ARIA, connected to the SIEM's AI Copilot. Ask me about alerts, hosts, IPs or users. I open cases and write reports only when you ask.",
       'idle',
       []
     );
@@ -294,6 +296,8 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
         src_ip: s.latest_src_ip || '',
         dst_ip: s.latest_dst_ip || '',
         community_id: newCid,
+        rule_name: s.latest_description || '',
+        agent: s.latest_agent || '',
       };
       this.onNewAlert(this.latestAlert);
     }
@@ -328,17 +332,14 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     this.setEmotion('alert');
     this.unreadCount++;
     this.showAlertBanner = true;
-    this.showSpeechBubble(
-      `${alert.severity} alert! ${alert.src_ip} is doing something suspicious! Click me!`
-    );
+    this.showSpeechBubble(`New ${alert.severity.toLowerCase()} alert on ${alert.agent || alert.src_ip || 'a host'}. Click me!`);
     this.addBotMessage(
-      `Hey! I just detected a ${alert.severity} alert! ${alert.src_ip} → ${alert.dst_ip} in a suspicious pattern. Do you want me to help investigate?`,
+      `New ${alert.severity} alert${alert.agent ? ' on ' + alert.agent : ''}: ${alert.rule_name || 'see the details'}. Want me to investigate it?`,
       'alert',
       [
-        { label: 'Yes, show me!', icon: '', action: 'investigate', data: alert },
-        { label: 'Get evidence bundle', icon: '', action: 'evidence', data: alert },
-        { label: 'View attack timeline', icon: '', action: 'timeline', data: alert },
-        { label: 'Block this IP', icon: '', action: 'block', data: alert },
+        { label: 'Why did it happen?', icon: '', action: 'chat', data: `Show alert ${alert.community_id} and explain why it fired` },
+        { label: 'Investigate the host', icon: '', action: 'investigate', data: alert },
+        { label: 'Open a case', icon: '', action: 'case', data: alert },
       ],
       alert
     );
@@ -359,19 +360,23 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     this.setEmotion('think');
     this.scrollToBottom();
 
-    this.httpPost('/api/aria/chat', { message: msg, history: this.history }).subscribe({
+    // the AI Copilot answers (siem-api copilot.rs), in one conversation
+    this.httpPost('/api/v1/siem/copilot', { message: msg, conversation_id: this.copilotConversation }).subscribe({
       next: (data: any) => {
         this.isTyping = false;
-        const reply = data.reply || 'I had trouble processing that.';
-        const emotion = data.emotion || 'idle';
-        this.addBotMessage(reply, emotion);
-        this.history.push({ role: 'assistant', content: reply });
+        this.copilotConversation = data?.conversation_id || this.copilotConversation;
+        const answer = String(data?.turn?.answer || 'I had trouble answering that.')
+          .replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+        const made = data?.turn?.artifacts || {};
+        const actions: ChatAction[] = [{ label: made.report || made.case ? 'Open the case and report in Copilot' : 'Open in Copilot', icon: '', action: 'copilot', data: this.copilotConversation }];
+        this.addBotMessage(answer, 'idle', actions);
+        this.history.push({ role: 'assistant', content: answer });
         if (this.history.length > 20) this.history = this.history.slice(-20);
         this.cdr.detectChanges();
       },
-      error: () => {
+      error: (e: any) => {
         this.isTyping = false;
-        this.addBotMessage("I'm having trouble connecting. Check if the NDR engine is running.", 'sad');
+        this.addBotMessage(e?.error?.message || 'The AI Copilot is not reachable right now. Try again in a moment.', 'sad');
         this.cdr.detectChanges();
       }
     });
@@ -394,30 +399,17 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
         break;
 
       case 'investigate':
-        this.setEmotion('wave');
-        this.addBotMessage("Sure! Taking you to the alerts page now.", 'wave');
-        setTimeout(() => {
-          this.router.navigate(['/alerts'], { queryParams: { cid: action.data?.community_id || '' } });
-        }, 1200);
+        // everything about the alert's host (or source IP)
+        this.router.navigate(['/analyst/siem-investigate'], { queryParams: { q: action.data?.agent || action.data?.src_ip || '', days: 7 } });
         break;
 
-      case 'evidence':
-        const cid = action.data?.community_id;
-        if (cid) {
-          window.open(`/api/evidence/${encodeURIComponent(cid)}`, '_blank');
-        } else {
-          this.router.navigate(['/evidence']);
-        }
-        this.addBotMessage("Downloading the evidence bundle! It has 15 files including PCAP, Agent-Z logs, DNS queries, and the attack narrative.", 'cheer');
+      case 'case':
+        // the Copilot opens the case with the alert as evidence, and says why
+        this.router.navigate(['/analyst/siem-copilot'], { queryParams: { ask: `Open a case for alert ${action.data?.community_id}, collect the evidence and tell me why it happened` } });
         break;
 
-      case 'timeline':
-        this.router.navigate(['/evidence'], { queryParams: { cid: action.data?.community_id || '' } });
-        this.addBotMessage("Opening the attack timeline! You'll see the full sequence from DNS lookup to C2 beacon.", 'wave');
-        break;
-
-      case 'block':
-        this.sendMessage(`Block IP ${action.data?.dst_ip || ''}`);
+      case 'copilot':
+        this.router.navigate(['/analyst/siem-copilot'], { queryParams: action.data ? { c: action.data } : {} });
         break;
 
       case 'navigate':
@@ -432,11 +424,12 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
   handleAlertCardClick(alert: AlertCard) {
     this.setEmotion('alert');
     this.addBotMessage(
-      `This is a ${alert.severity} alert! ${alert.src_ip} → ${alert.dst_ip}. Want me to take you to the details page?`,
+      `${alert.severity} alert${alert.agent ? ' on ' + alert.agent : ''}: ${alert.rule_name || ''}. What should I do?`,
       'alert',
       [
-        { label: 'Take me there', icon: '', action: 'navigate', data: '/alerts' },
-        { label: 'Get evidence', icon: '', action: 'evidence', data: alert },
+        { label: 'Why did it happen?', icon: '', action: 'chat', data: `Show alert ${alert.community_id} and explain why it fired` },
+        { label: 'Investigate the host', icon: '', action: 'investigate', data: alert },
+        { label: 'Open a case', icon: '', action: 'case', data: alert },
       ]
     );
   }
@@ -464,7 +457,7 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
 
   goToAlerts() {
     this.showAlertBanner = false;
-    this.router.navigate(['/alerts']);
+    this.router.navigate(['/analyst/siem-classic/console/alerts']);
   }
 
   // ── UI HELPERS ──

@@ -1,5 +1,5 @@
 #default
-!555 ar.conf
+!570 ar.conf
 restart-ossec0 - restart-ossec.sh - 0
 restart-ossec0 - restart-ossec.cmd - 0
 restart-wazuh0 - restart-ossec.sh - 0

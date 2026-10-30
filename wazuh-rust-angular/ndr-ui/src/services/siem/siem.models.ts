@@ -659,6 +659,7 @@ export interface EntityIntentDossier {
   entity_id: string;
   entity_name: string;
   entity_ip: string;
+  os_type?: string;
   primary_intent: string;
   primary_probability: number;
   confidence_score: number;

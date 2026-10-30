@@ -581,7 +581,7 @@
   <!-- Threat Intent Simulation Sandbox Modal -->
   @if (showSimModal()) {
     <div class="modal-backdrop" (click)="closeSimulationModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+      <div class="modal-dialog sim-modal-wide" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div class="modal-title-group">
             <lucide-icon [img]="PlayIcon" class="icon-md text-cyan"></lucide-icon>
@@ -595,34 +595,60 @@
             Inject hypothetical MITRE ATT&CK techniques observed on a target host to evaluate how Bayesian intent probabilities shift and what preemptive micro-containment actions will be triggered.
           </p>
 
+          <!-- Preset Scenarios -->
+          <div class="scenario-chips-row">
+            <span class="scenario-label">Quick Scenarios:</span>
+            <button type="button" class="chip-btn" (click)="loadScenario('ransomware')">
+              <lucide-icon [img]="LockIcon" class="icon-xs text-orange"></lucide-icon>
+              Ransomware Extortion
+            </button>
+            <button type="button" class="chip-btn" (click)="loadScenario('exfil')">
+              <lucide-icon [img]="RadioIcon" class="icon-xs text-purple"></lucide-icon>
+              Data Exfiltration
+            </button>
+            <button type="button" class="chip-btn" (click)="loadScenario('ad_takeover')">
+              <lucide-icon [img]="ShieldAlertIcon" class="icon-xs text-cyan"></lucide-icon>
+              AD Domain Takeover
+            </button>
+            <button type="button" class="chip-btn" (click)="loadScenario('wiper')">
+              <lucide-icon [img]="ZapIcon" class="icon-xs text-crimson"></lucide-icon>
+              Disk Wiper / Sabotage
+            </button>
+          </div>
+
           <div class="form-group">
             <label>Select Target Enrolled Host</label>
             <select class="form-input" [ngModel]="selectedSimAgentId()" (change)="onSelectSimAgent($event)">
               @for (agent of availableAgents(); track agent.entity_id) {
                 <option [value]="agent.entity_id">
-                  {{ agent.entity_name }} (ID: {{ agent.entity_id }}) - {{ agent.entity_ip }}
+                  {{ agent.entity_name }} (ID: {{ agent.entity_id }}) - {{ agent.entity_ip }} [{{ agent.os_type || 'host' }}]
                 </option>
               }
               <option value="custom">+ Custom / New Simulated Endpoint</option>
             </select>
           </div>
 
-          <div class="form-group">
-            <label>Target Host Name</label>
-            <input type="text" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event)" class="form-input" placeholder="e.g. srv-prod-db-01" />
-          </div>
-
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group col-7">
+              <label>Target Host Name</label>
+              <input type="text" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event)" class="form-input" placeholder="e.g. win-node-7a5e" />
+            </div>
+            <div class="form-group col-5">
               <label>Host ID</label>
               <input type="text" [ngModel]="simAgentId()" (ngModelChange)="simAgentId.set($event)" class="form-input" placeholder="e.g. 042" />
             </div>
-            <div class="form-group">
-              <label>Host IP</label>
-              <input type="text" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event)" class="form-input" placeholder="e.g. 192.168.1.50" />
-            </div>
           </div>
 
+          <div class="form-row">
+            <div class="form-group col-7">
+              <label>Host IP</label>
+              <input type="text" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event)" class="form-input" placeholder="e.g. 192.168.1.142" />
+            </div>
+            <div class="form-group col-5">
+              <label>Observed Account</label>
+              <input type="text" [ngModel]="simUser()" (ngModelChange)="simUser.set($event)" class="form-input" placeholder="e.g. administrator" />
+            </div>
+          </div>
 
           <div class="form-group">
             <label>Observed MITRE Techniques (Comma-separated)</label>
@@ -637,32 +663,104 @@
           </div>
 
           <div class="form-group">
-            <label>Compromised Context / Observed Account</label>
-            <input type="text" [ngModel]="simUser()" (ngModelChange)="simUser.set($event)" class="form-input" />
-          </div>
-
-          <div class="form-group">
             <label>Analyst Observation Notes</label>
             <textarea
-              rows="3"
+              rows="2"
               [ngModel]="simContext()"
               (ngModelChange)="simContext.set($event)"
               class="form-input"
             ></textarea>
           </div>
+
+          <!-- Understandable Multi-Stage Simulation Progress Stepper -->
+          @if (simEvaluating() || simCompleted()) {
+            <div class="sim-stepper-box">
+              <div class="stepper-header">
+                <span class="stepper-title">Bayesian Intent Engine Calculation Progress</span>
+                <span class="stepper-pct">{{ simProgress() }}%</span>
+              </div>
+
+              <!-- Animated Progress Bar -->
+              <div class="stepper-bar-track">
+                <div class="stepper-bar-fill" [style.width.%]="simProgress()"></div>
+              </div>
+
+              <!-- Current Stage Description -->
+              <div class="stepper-stage-text">
+                <lucide-icon [img]="RefreshIcon" class="icon-xs spin text-cyan" *ngIf="simEvaluating()"></lucide-icon>
+                <lucide-icon [img]="CheckIcon" class="icon-xs text-emerald" *ngIf="simCompleted()"></lucide-icon>
+                <span>{{ simCurrentStageText() }}</span>
+              </div>
+
+              <!-- 4-Stage Visual Milestones -->
+              <div class="stepper-milestones-grid">
+                <div class="step-milestone" [class.step-active]="simStageNumber() >= 1" [class.step-done]="simStageNumber() > 1 || simCompleted()">
+                  <div class="step-dot">1</div>
+                  <span class="step-label">Kill-Chain Map</span>
+                </div>
+                <div class="step-milestone" [class.step-active]="simStageNumber() >= 2" [class.step-done]="simStageNumber() > 2 || simCompleted()">
+                  <div class="step-dot">2</div>
+                  <span class="step-label">Velocity & Pivot</span>
+                </div>
+                <div class="step-milestone" [class.step-active]="simStageNumber() >= 3" [class.step-done]="simStageNumber() > 3 || simCompleted()">
+                  <div class="step-dot">3</div>
+                  <span class="step-label">Bayesian Likelihood</span>
+                </div>
+                <div class="step-milestone" [class.step-active]="simStageNumber() >= 4" [class.step-done]="simCompleted()">
+                  <div class="step-dot">4</div>
+                  <span class="step-label">Containment Playbook</span>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Simulation Result Preview Card when complete -->
+          @if (simCompleted() && simResultPreview(); as res) {
+            <div class="sim-result-card">
+              <div class="result-card-header">
+                <div>
+                  <span class="result-badge-label">Predicted Adversary Goal:</span>
+                  <h4 class="result-intent-title" [ngClass]="getIntentClass(res.primary_intent)">
+                    {{ res.primary_intent }}
+                  </h4>
+                </div>
+                <div class="result-stats">
+                  <div class="result-stat-pill">
+                    <span class="stat-lbl">Confidence</span>
+                    <span class="stat-val text-cyan">{{ (res.confidence_score * 100).toFixed(0) }}%</span>
+                  </div>
+                  <div class="result-stat-pill">
+                    <span class="stat-lbl">Kill-Chain</span>
+                    <span class="stat-val text-amber">{{ res.progression_percent }}%</span>
+                  </div>
+                </div>
+              </div>
+              <p class="result-summary-sub">
+                Target <strong>{{ res.entity_name }}</strong> ({{ res.entity_ip }} - {{ res.os_type || 'host' }}). Generated <strong>{{ res.recommended_actions.length }}</strong> preemptive micro-containment actions.
+              </p>
+            </div>
+          }
         </div>
 
         <div class="modal-footer">
           <button class="btn btn-secondary" (click)="closeSimulationModal()">Cancel</button>
-          <button class="btn btn-primary" (click)="submitSimulation()" [disabled]="simEvaluating()">
-            @if (simEvaluating()) {
-              <lucide-icon [img]="RefreshIcon" class="icon-sm spin"></lucide-icon>
-              <span>Calculating Hypotheses...</span>
-            } @else {
-              <lucide-icon [img]="CrosshairIcon" class="icon-sm"></lucide-icon>
-              <span>Run Intent Simulation</span>
-            }
-          </button>
+
+          @if (!simCompleted()) {
+            <button class="btn btn-primary" (click)="submitSimulation()" [disabled]="simEvaluating()">
+              @if (simEvaluating()) {
+                <lucide-icon [img]="RefreshIcon" class="icon-sm spin"></lucide-icon>
+                <span>Evaluating Stages...</span>
+              } @else {
+                <lucide-icon [img]="CrosshairIcon" class="icon-sm"></lucide-icon>
+                <span>Run Intent Simulation</span>
+              }
+            </button>
+          } @else {
+            <button class="btn btn-primary btn-apply" (click)="applySimulationResult()">
+              <lucide-icon [img]="CheckIcon" class="icon-sm"></lucide-icon>
+              <span>Apply & View Projected Dossier</span>
+            </button>
+          }
         </div>
       </div>
     </div>

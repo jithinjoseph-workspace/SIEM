@@ -482,9 +482,19 @@ impl IntentEngine {
         let now = Utc::now();
         let mut changed = false;
 
+        // Collect all active enrolled agent IDs from the fleet
+        let active_ids: std::collections::HashSet<&str> = fleet.iter().map(|(id, _, _, _)| id.as_str()).collect();
+
+        // Remove stale/orphan mock dossiers that are neither in active fleet nor flagged as simulated
+        let len_before = list.len();
+        list.retain(|d| active_ids.contains(d.entity_id.as_str()) || d.entity_id.starts_with("sim-") || d.entity_name.starts_with("sim-"));
+        if list.len() != len_before {
+            changed = true;
+        }
+
         for (agent_id, agent_name, agent_ip, os_type) in fleet {
             if let Some(existing) = list.iter_mut().find(|d| d.entity_id == *agent_id) {
-                if existing.entity_name != *agent_name || existing.entity_ip != *agent_ip {
+                if existing.entity_name != *agent_name || existing.entity_ip != *agent_ip || existing.os_type != *os_type {
                     existing.entity_name = agent_name.clone();
                     existing.entity_ip = agent_ip.clone();
                     existing.os_type = os_type.clone();

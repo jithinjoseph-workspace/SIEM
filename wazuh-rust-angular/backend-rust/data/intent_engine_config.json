@@ -1,7 +1,7 @@
 {
   "dossiers": [
     {
-      "id": "dossier-4f22f4dc-d646-411b-b280-8c67b142dd07",
+      "id": "dossier-a739c731-945b-4069-b002-631cd7c74cf9",
       "entity_id": "019",
       "entity_name": "linux-node-8651",
       "entity_ip": "127.0.0.1",
@@ -104,7 +104,7 @@
           "observed_techniques": [
             "T1110"
           ],
-          "first_observed_at": "2026-10-30T04:54:03.099564500Z"
+          "first_observed_at": "2026-10-30T04:49:02.993562700Z"
         },
         {
           "stage_index": 6,
@@ -134,7 +134,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-9eebe8ae-927c-47d3-bdd4-8af1fea53541",
+          "id": "act-d3c1b334-7c9f-4737-8bbc-aea8a2a91129",
           "title": "Terminate Suspect Script Process Tree on 'linux-node-8651'",
           "action_type": "process_termination",
           "target_agent_id": "019",
@@ -145,11 +145,11 @@
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
           "status": "pending_approval",
-          "created_at": "2026-10-30T04:54:03.099686100Z"
+          "created_at": "2026-10-30T04:49:02.993731800Z"
         }
       ],
       "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-30T04:54:03.099686100Z"
+      "last_updated_at": "2026-10-30T04:49:02.993731800Z"
     },
     {
       "id": "dossier-6222222e-e0ff-48d1-8676-3c0c8e585d99",
@@ -804,7 +804,7 @@
       "last_updated_at": "2026-10-27T11:29:54.167642100Z"
     },
     {
-      "id": "dossier-61164e5a-73a9-49b6-8337-069d2cfde592",
+      "id": "dossier-14a64986-d5c1-4bf8-ac71-32c720536ba2",
       "entity_id": "044",
       "entity_name": "win-node-7a5e",
       "entity_ip": "any",
@@ -942,7 +942,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-a3e703c6-025b-4213-b1cc-38078a14c62e",
+          "id": "act-739f6175-b9a1-4170-87c1-4f5bc9379de5",
           "title": "Terminate Suspect Script Process Tree on 'win-node-7a5e'",
           "action_type": "process_termination",
           "target_agent_id": "044",
@@ -953,11 +953,11 @@
           "description": "Terminate active PowerShell and command shell parent process trees.",
           "execution_command": "powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"",
           "status": "pending_approval",
-          "created_at": "2026-10-30T04:53:07.575169600Z"
+          "created_at": "2026-10-30T04:40:11.064577400Z"
         }
       ],
       "alerts_analyzed": 3,
-      "last_updated_at": "2026-10-30T04:53:07.575169600Z"
+      "last_updated_at": "2026-10-30T04:40:11.064577400Z"
     },
     {
       "id": "dossier-5f306521-4361-4578-9981-861f311c7879",

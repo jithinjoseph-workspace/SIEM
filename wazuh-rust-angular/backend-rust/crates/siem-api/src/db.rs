@@ -40,6 +40,102 @@ pub struct ClickHouseAlertRow {
     pub alert_json: String,
 }
 
+/// Counts of a time window: events (and of its last hour), alerts per rule level (and of the last hour).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct WindowCounts {
+    pub events: u64,
+    pub events_1h: u64,
+    pub alerts_1h: u64,
+    /// Alerts per rule level (0..=16).
+    pub levels: [u64; 17],
+}
+
+impl WindowCounts {
+    pub fn alerts(&self) -> u64 {
+        self.levels.iter().sum()
+    }
+    /// Alerts with a level in `lo..=hi`.
+    pub fn band(&self, lo: u8, hi: u8) -> u64 {
+        self.levels[lo.min(16) as usize..=hi.min(16) as usize].iter().sum()
+    }
+    pub fn critical(&self) -> u64 {
+        self.band(12, 16)
+    }
+    pub fn high(&self) -> u64 {
+        self.band(8, 11)
+    }
+    pub fn medium(&self) -> u64 {
+        self.band(4, 7)
+    }
+    pub fn low(&self) -> u64 {
+        self.band(0, 3)
+    }
+    pub fn add_alert(&mut self, level: u8, last_hour: bool) {
+        self.levels[level.min(16) as usize] += 1;
+        self.alerts_1h += last_hour as u64;
+    }
+    pub fn merge(&mut self, o: &WindowCounts) {
+        self.events += o.events;
+        self.events_1h += o.events_1h;
+        self.alerts_1h += o.alerts_1h;
+        for (a, b) in self.levels.iter_mut().zip(o.levels) {
+            *a += b;
+        }
+    }
+}
+
+/// An alert column the history pages group by (a fixed column name, never caller input).
+#[derive(Debug, Clone, Copy)]
+pub enum AlertField {
+    SrcIp,
+    DstIp,
+}
+
+impl AlertField {
+    fn column(self) -> &'static str {
+        match self {
+            Self::SrcIp => "src_ip",
+            Self::DstIp => "dst_ip",
+        }
+    }
+}
+
+/// The protocol an event is counted under (dashboard protocol chart), as ClickHouse
+/// computes it; [`event_protocol`] is the same for the in-memory window.
+const PROTOCOL_SQL: &str = "multiIf(\
+    positionCaseInsensitive(location, 'ssh') > 0 OR positionCaseInsensitive(message, 'ssh') > 0, 'SSH', \
+    positionCaseInsensitive(location, 'http') > 0 OR positionCaseInsensitive(message, 'http') > 0, 'HTTP', \
+    positionCaseInsensitive(location, 'tls') > 0 OR positionCaseInsensitive(location, 'ssl') > 0 OR positionCaseInsensitive(message, 'tls') > 0, 'TLS', \
+    positionCaseInsensitive(location, 'dns') > 0 OR positionCaseInsensitive(message, 'dns') > 0, 'DNS', \
+    positionCaseInsensitive(location, 'smb') > 0 OR positionCaseInsensitive(message, 'smb') > 0, 'SMB', \
+    positionCaseInsensitive(location, 'syslog') > 0, 'SYSLOG', 'TCP/IP')";
+/// Events from network sensors (flows, Zeek).
+const NETWORK_SQL: &str = "position(source, 'network') > 0 OR position(location, 'flow') > 0 OR position(location, 'zeek') > 0";
+
+pub fn event_protocol(location: &str, message: &str) -> &'static str {
+    let (l, m) = (location.to_lowercase(), message.to_lowercase());
+    let any = |w: &str| l.contains(w) || m.contains(w);
+    if any("ssh") {
+        "SSH"
+    } else if any("http") {
+        "HTTP"
+    } else if l.contains("tls") || l.contains("ssl") || m.contains("tls") {
+        "TLS"
+    } else if any("dns") {
+        "DNS"
+    } else if any("smb") {
+        "SMB"
+    } else if l.contains("syslog") {
+        "SYSLOG"
+    } else {
+        "TCP/IP"
+    }
+}
+
+pub fn event_is_network(source: &str, location: &str) -> bool {
+    source.contains("network") || location.contains("flow") || location.contains("zeek")
+}
+
 /// Columns added to an existing table (every tenant database, at start and provisioning).
 pub const ALERT_COLUMNS: [&str; 1] = ["ALTER TABLE siem_alerts ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''"];
 
@@ -805,6 +901,256 @@ impl ClickHouseDb {
                 None
             }
         }
+    }
+
+    /// A tenant's alerts since `since_ms` whose stored alert contains `needle` (ClickHouse
+    /// filters them, so only those rows are sent), newest first, at most `limit`.
+    pub async fn alerts_since_containing(&self, tenant_id: &str, since_ms: u64, limit: usize, needle: &str) -> Option<Vec<Alert>> {
+        if !self.is_connected() {
+            return None;
+        }
+        self.tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_alerts WHERE timestamp >= ? AND position(alert_json, ?) > 0 ORDER BY timestamp DESC LIMIT ?")
+            .bind(since_ms)
+            .bind(needle)
+            .bind(limit as u64)
+            .fetch_all::<ClickHouseAlertRow>()
+            .await
+            .map_err(|e| warn!("Failed to query alerts from ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.iter().map(|r| r.to_alert()).collect())
+    }
+
+    /// Counts of a tenant's window, computed by ClickHouse (no rows are sent).
+    pub async fn window_counts(&self, tenant_id: &str, since_ms: u64, hour_ago_ms: u64) -> Option<WindowCounts> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct Ev {
+            events: u64,
+            events_1h: u64,
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct Level {
+            level: u8,
+            n: u64,
+            n_1h: u64,
+        }
+        let c = self.tenant_client(tenant_id);
+        let ev = c
+            .query("SELECT count() AS events, countIf(timestamp >= ?) AS events_1h FROM siem_events WHERE timestamp >= ?")
+            .bind(hour_ago_ms)
+            .bind(since_ms)
+            .fetch_one::<Ev>();
+        let al = c
+            .query("SELECT rule_level AS level, count() AS n, countIf(timestamp >= ?) AS n_1h FROM siem_alerts WHERE timestamp >= ? GROUP BY rule_level")
+            .bind(hour_ago_ms)
+            .bind(since_ms)
+            .fetch_all::<Level>();
+        match tokio::join!(ev, al) {
+            (Ok(e), Ok(levels)) => {
+                let mut w = WindowCounts { events: e.events, events_1h: e.events_1h, ..Default::default() };
+                for l in levels {
+                    w.levels[l.level.min(16) as usize] += l.n;
+                    w.alerts_1h += l.n_1h;
+                }
+                Some(w)
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                warn!("Failed to count events/alerts in ClickHouse: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Alerts per (rule id, description) since `since_ms`, most frequent first.
+    pub async fn top_rules(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<(u32, String, u64)>> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            rule_id: u32,
+            rule_description: String,
+            n: u64,
+        }
+        self.tenant_client(tenant_id)
+            .query("SELECT rule_id, rule_description, count() AS n FROM siem_alerts WHERE timestamp >= ? GROUP BY rule_id, rule_description ORDER BY n DESC LIMIT ?")
+            .bind(since_ms)
+            .bind(limit as u64)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to group alerts by rule in ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.into_iter().map(|r| (r.rule_id, r.rule_description, r.n)).collect())
+    }
+
+    /// Alerts per non-empty value of `field` since `since_ms`, most frequent first.
+    pub async fn top_values(&self, tenant_id: &str, since_ms: u64, field: AlertField, limit: usize) -> Option<Vec<(String, u64)>> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            v: String,
+            n: u64,
+        }
+        let c = field.column();
+        self.tenant_client(tenant_id)
+            .query(&format!("SELECT {c} AS v, count() AS n FROM siem_alerts WHERE timestamp >= ? AND {c} != '' GROUP BY v ORDER BY n DESC LIMIT ?"))
+            .bind(since_ms)
+            .bind(limit as u64)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to group alerts by {c} in ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.into_iter().map(|r| (r.v, r.n)).collect())
+    }
+
+    /// Alerts per MITRE technique id since `since_ms`: (id, alerts, highest level).
+    pub async fn mitre_counts(&self, tenant_id: &str, since_ms: u64) -> Option<Vec<(String, u64, u8)>> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            mitre_id: String,
+            n: u64,
+            max_level: u8,
+        }
+        self.tenant_client(tenant_id)
+            .query("SELECT mitre_id, count() AS n, max(rule_level) AS max_level FROM siem_alerts WHERE timestamp >= ? AND mitre_id != '' GROUP BY mitre_id")
+            .bind(since_ms)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to group alerts by MITRE technique in ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.into_iter().map(|r| (r.mitre_id, r.n, r.max_level)).collect())
+    }
+
+    /// Events since `since_ms` per protocol (most frequent first), and how many came from network sensors.
+    pub async fn event_breakdown(&self, tenant_id: &str, since_ms: u64) -> Option<(Vec<(String, u64)>, u64)> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            proto: String,
+            n: u64,
+            network: u64,
+        }
+        let q = format!("SELECT {PROTOCOL_SQL} AS proto, count() AS n, countIf({NETWORK_SQL}) AS network FROM siem_events WHERE timestamp >= ? GROUP BY proto ORDER BY n DESC");
+        self.tenant_client(tenant_id)
+            .query(&q)
+            .bind(since_ms)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to group events by protocol in ClickHouse: {}", e))
+            .ok()
+            .map(|rows| {
+                let network = rows.iter().map(|r| r.network).sum();
+                (rows.into_iter().map(|r| (r.proto, r.n)).collect(), network)
+            })
+    }
+
+    /// Alerts in `buckets` time slices of `bucket_ms` ending at `now_ms`, oldest first:
+    /// [critical 12+, high 8-11, medium 4-7, low 0-3] per slice.
+    pub async fn alert_buckets(&self, tenant_id: &str, now_ms: u64, bucket_ms: u64, buckets: usize) -> Option<Vec<[u64; 4]>> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            ago: u64,
+            critical: u64,
+            high: u64,
+            medium: u64,
+            low: u64,
+        }
+        let since = now_ms.saturating_sub(bucket_ms * buckets as u64);
+        let rows = self
+            .tenant_client(tenant_id)
+            .query(
+                "SELECT intDiv(? - timestamp, ?) AS ago, countIf(rule_level >= 12) AS critical, countIf(rule_level BETWEEN 8 AND 11) AS high, \
+                 countIf(rule_level BETWEEN 4 AND 7) AS medium, countIf(rule_level <= 3) AS low \
+                 FROM siem_alerts WHERE timestamp > ? AND timestamp <= ? GROUP BY ago",
+            )
+            .bind(now_ms)
+            .bind(bucket_ms.max(1))
+            .bind(since)
+            .bind(now_ms)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to bucket alerts in ClickHouse: {}", e))
+            .ok()?;
+        let mut out = vec![[0u64; 4]; buckets];
+        for r in rows {
+            if let Some(slot) = (r.ago as usize).checked_add(1).and_then(|a| buckets.checked_sub(a)) {
+                out[slot] = [r.critical, r.high, r.medium, r.low];
+            }
+        }
+        Some(out)
+    }
+
+    /// Events in `buckets` time slices of `bucket_ms` ending at `now_ms`, oldest first.
+    pub async fn event_buckets(&self, tenant_id: &str, now_ms: u64, bucket_ms: u64, buckets: usize) -> Option<Vec<u64>> {
+        if !self.is_connected() {
+            return None;
+        }
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct R {
+            ago: u64,
+            n: u64,
+        }
+        let since = now_ms.saturating_sub(bucket_ms * buckets as u64);
+        let rows = self
+            .tenant_client(tenant_id)
+            .query("SELECT intDiv(? - timestamp, ?) AS ago, count() AS n FROM siem_events WHERE timestamp > ? AND timestamp <= ? GROUP BY ago")
+            .bind(now_ms)
+            .bind(bucket_ms.max(1))
+            .bind(since)
+            .bind(now_ms)
+            .fetch_all::<R>()
+            .await
+            .map_err(|e| warn!("Failed to bucket events in ClickHouse: {}", e))
+            .ok()?;
+        let mut out = vec![0u64; buckets];
+        for r in rows {
+            if let Some(slot) = (r.ago as usize).checked_add(1).and_then(|a| buckets.checked_sub(a)) {
+                out[slot] = r.n;
+            }
+        }
+        Some(out)
+    }
+
+    /// The newest alerts since `since_ms` (newest first, at most `limit`); with `ip`, only
+    /// those whose source or destination is that IP.
+    pub async fn recent_alerts(&self, tenant_id: &str, since_ms: u64, limit: usize, ip: Option<&str>) -> Option<Vec<Alert>> {
+        if !self.is_connected() {
+            return None;
+        }
+        let ip = ip.unwrap_or("");
+        self.tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_alerts WHERE timestamp >= ? AND (? = '' OR src_ip = ? OR dst_ip = ?) ORDER BY timestamp DESC LIMIT ?")
+            .bind(since_ms)
+            .bind(ip)
+            .bind(ip)
+            .bind(ip)
+            .bind(limit as u64)
+            .fetch_all::<ClickHouseAlertRow>()
+            .await
+            .map_err(|e| warn!("Failed to query alerts from ClickHouse: {}", e))
+            .ok()
+            .map(|rows| rows.iter().map(|r| r.to_alert()).collect())
+    }
+
+    /// One event of the tenant by id.
+    pub async fn event_by_id(&self, tenant_id: &str, id: &str) -> Option<siem_core::RawEvent> {
+        if !self.is_connected() {
+            return None;
+        }
+        self.tenant_client(tenant_id).query("SELECT ?fields FROM siem_events WHERE id = ? LIMIT 1").bind(id).fetch_all::<ClickHouseEventRow>().await.ok()?.first().map(|r| r.to_raw_event())
     }
 
     /// One alert of the tenant by id.

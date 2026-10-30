@@ -46,21 +46,17 @@ fn agents_in_scope(state: &AppState, ctx: &AuthCtx) -> (usize, usize) {
 
 /// `GET /api/health`
 pub async fn health(State(state): State<AppState>, ctx: Option<Extension<AuthCtx>>) -> Json<Value> {
-    let (events, alerts, active) = match &ctx {
-        Some(Extension(c)) => (
-            crate::history::events(&state, c, crate::history::DEFAULT_HOURS).await,
-            crate::history::alerts(&state, c, crate::history::DEFAULT_HOURS).await,
-            agents_in_scope(&state, c).1,
-        ),
-        None => (Vec::new(), Vec::new(), 0),
+    // polled by every open page (navbar, every 10 s): counts only, never the rows
+    let (counts, active) = match &ctx {
+        Some(Extension(c)) => (crate::history::counts(&state, c, crate::history::DEFAULT_HOURS).await, agents_in_scope(&state, c).1),
+        None => (Default::default(), 0),
     };
-    let hour_ago = chrono::Utc::now() - chrono::Duration::hours(1);
     let ch = state.db.is_connected() && state.db.root().query("SELECT 1").fetch_one::<u8>().await.is_ok();
     Json(json!({
         "status": "ok",
-        "events_total": events.len(),
-        "hits_total": alerts.len(),
-        "events_1h": events.iter().filter(|e| e.timestamp >= hour_ago).count(),
+        "events_total": counts.events,
+        "hits_total": counts.alerts(),
+        "events_1h": counts.events_1h,
         // the SIEM's sessions are its connected agents
         "sessions": active,
         "sigma_rules": crate::sigma::rule_count(),

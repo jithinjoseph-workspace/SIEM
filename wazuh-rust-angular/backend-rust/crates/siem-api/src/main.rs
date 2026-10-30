@@ -739,6 +739,7 @@ async fn main() {
         .route("/api/stats/unified", get(get_unified_stats_handler))
         .route("/api/stats/timeline", get(get_stats_timeline_handler))
         .route("/api/hits", get(get_hits_handler))
+        .route("/api/hits/timeline", get(get_hits_timeline_handler))
         .route("/api/top-ips", get(get_top_ips_handler))
         .route("/api/severity", get(get_severity_handler))
         .route("/api/support/messages", get(get_support_messages_handler))
@@ -2490,10 +2491,9 @@ async fn get_rules_api_handler(
 }
 
 async fn get_rules_hit_counts_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for alert in alerts.iter() {
-        *counts.entry(alert.rule.description.clone()).or_insert(0) += 1;
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for (_, desc, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        *counts.entry(desc).or_insert(0) += n;
     }
     Json(counts)
 }
@@ -2519,49 +2519,25 @@ async fn sync_community_rules_handler() -> impl IntoResponse {
 }
 
 async fn get_stats_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events_guard = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let alerts_guard = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-
-    let events_total = events_guard.len() as u64;
-    let hits_total = alerts_guard.len() as u64;
-
-    let events_1h = events_guard.iter().filter(|e| e.timestamp >= one_hour_ago).count() as u64;
-    let hits_1h = alerts_guard.iter().filter(|a| a.timestamp >= one_hour_ago).count() as u64;
-
-    let agent_z_events = events_guard.iter().filter(|e| {
-        let src_str = serde_json::to_string(&e.source).unwrap_or_default();
-        src_str.contains("network") || e.location.contains("flow") || e.location.contains("zeek")
-    }).count() as u64;
-    let agent_s_events = events_total.saturating_sub(agent_z_events);
+    let (c, (_, agent_z_events)) = tokio::join!(
+        history::admin_counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true)
+    );
+    let agent_s_events = c.events.saturating_sub(agent_z_events);
 
     Json(serde_json::json!({
-        "events_total": events_total,
-        "hits_total": hits_total,
-        "events_1h": events_1h,
-        "hits_1h": hits_1h,
+        "events_total": c.events,
+        "hits_total": c.alerts(),
+        "events_1h": c.events_1h,
+        "hits_1h": c.alerts_1h,
         "agent_z_events": agent_z_events,
         "agent_s_events": agent_s_events
     }))
 }
 
 async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut critical = 0u64;
-    let mut high = 0u64;
-    let mut medium = 0u64;
-    let mut low = 0u64;
-
-    for alert in alerts.iter() {
-        match alert.rule.level {
-            l if l >= 12 => critical += 1,
-            l if l >= 8 => high += 1,
-            l if l >= 4 => medium += 1,
-            _ => low += 1,
-        }
-    }
+    let c = history::admin_counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (critical, high, medium, low) = (c.critical(), c.high(), c.medium(), c.low());
 
     let tenants_count = state.tenants.read().unwrap().len() as u64;
     let t_total = if tenants_count == 0 { 1 } else { tenants_count };
@@ -2577,67 +2553,23 @@ async fn get_severity_all_tenants_handler(State(state): State<AppState>, Extensi
 }
 
 async fn get_top_ips_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut src_map: HashMap<String, u64> = HashMap::new();
-    let mut dst_map: HashMap<String, u64> = HashMap::new();
+    Json(top_ips_json(&state, &ctx, true).await)
+}
 
-    for alert in alerts.iter() {
-        if let Some(ref ip) = alert.decoded.src_ip {
-            if !ip.is_empty() {
-                *src_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-        if let Some(ref ip) = alert.decoded.dst_ip {
-            if !ip.is_empty() {
-                *dst_map.entry(ip.clone()).or_insert(0) += 1;
-            }
-        }
-    }
-
-    let mut top_src: Vec<(&String, &u64)> = src_map.iter().collect();
-    top_src.sort_by(|a, b| b.1.cmp(a.1));
-    let top_src_ips: Vec<serde_json::Value> = top_src.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    let mut top_dst: Vec<(&String, &u64)> = dst_map.iter().collect();
-    top_dst.sort_by(|a, b| b.1.cmp(a.1));
-    let top_dst_ips: Vec<serde_json::Value> = top_dst.into_iter().take(10).map(|(ip, count)| serde_json::json!([ip, count])).collect();
-
-    Json(serde_json::json!({
-        "top_src_ips": top_src_ips,
-        "top_dst_ips": top_dst_ips
-    }))
+/// The 10 source and destination IPs with the most alerts of the history window.
+async fn top_ips_json(state: &AppState, ctx: &AuthCtx, all_tenants: bool) -> serde_json::Value {
+    let (src, dst) = tokio::join!(
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 10, all_tenants),
+        history::top_values(state, ctx, history::DEFAULT_HOURS, db::AlertField::DstIp, 10, all_tenants)
+    );
+    let pairs = |v: Vec<(String, u64)>| v.into_iter().map(|(ip, n)| serde_json::json!([ip, n])).collect::<Vec<_>>();
+    serde_json::json!({ "top_src_ips": pairs(src), "top_dst_ips": pairs(dst) })
 }
 
 async fn get_protocols_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let events = history::admin_events(&state, &ctx, history::DEFAULT_HOURS).await;
-    let mut proto_map: HashMap<String, u64> = HashMap::new();
-
-    for ev in events.iter() {
-        let proto = if ev.location.to_lowercase().contains("ssh") || ev.message.to_lowercase().contains("ssh") {
-            "SSH"
-        } else if ev.location.to_lowercase().contains("http") || ev.message.to_lowercase().contains("http") {
-            "HTTP"
-        } else if ev.location.to_lowercase().contains("tls") || ev.location.to_lowercase().contains("ssl") || ev.message.to_lowercase().contains("tls") {
-            "TLS"
-        } else if ev.location.to_lowercase().contains("dns") || ev.message.to_lowercase().contains("dns") {
-            "DNS"
-        } else if ev.location.to_lowercase().contains("smb") || ev.message.to_lowercase().contains("smb") {
-            "SMB"
-        } else if ev.location.to_lowercase().contains("syslog") {
-            "SYSLOG"
-        } else {
-            "TCP/IP"
-        };
-        *proto_map.entry(proto.to_string()).or_insert(0) += 1;
-    }
-
-    let mut proto_list: Vec<(&String, &u64)> = proto_map.iter().collect();
-    proto_list.sort_by(|a, b| b.1.cmp(a.1));
-    let protocols: Vec<serde_json::Value> = proto_list.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
-
-    Json(serde_json::json!({
-        "protocols": protocols
-    }))
+    let (protocols, _) = history::event_breakdown(&state, &ctx, history::DEFAULT_HOURS, true).await;
+    let protocols: Vec<serde_json::Value> = protocols.into_iter().take(8).map(|(p, c)| serde_json::json!([p, c])).collect();
+    Json(serde_json::json!({ "protocols": protocols }))
 }
 
 async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
@@ -2645,10 +2577,13 @@ async fn get_threat_intel_all_tenants_handler(State(state): State<AppState>, Ext
     let unique_hashes = state.threat_intel.get_list("malicious_hashes").map(|l| l.total_entries()).unwrap_or(0);
     let unique_domains = state.threat_intel.get_list("malicious_domains").map(|l| l.total_entries()).unwrap_or(0);
 
-    let alerts = history::admin_alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let detected_in_network = alerts.iter().filter(|a| {
-        a.decoded.src_ip.as_ref().map(|ip| state.threat_intel.check_ip(ip).is_some()).unwrap_or(false)
-    }).count();
+    // alerts whose source IP is on a threat list: ClickHouse sends one row per IP
+    let detected_in_network: u64 = history::top_values(&state, &ctx, history::DEFAULT_HOURS, db::AlertField::SrcIp, 1_000_000, true)
+        .await
+        .into_iter()
+        .filter(|(ip, _)| state.threat_intel.check_ip(ip).is_some())
+        .map(|(_, n)| n)
+        .sum();
 
     Json(serde_json::json!({
         "status": "ok",
@@ -2738,11 +2673,11 @@ async fn get_threat_intel_watchlist_handler() -> impl IntoResponse {
 
 
 async fn get_aria_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let critical_count = alerts.iter().filter(|a| a.rule.level >= 12).count();
-    let high_count = alerts.iter().filter(|a| a.rule.level >= 8 && a.rule.level < 12).count();
+    // polled by the ARIA bot every 30 s: counts and the newest alert only
+    let (counts, latest) = tokio::join!(history::counts(&state, &ctx, history::DEFAULT_HOURS), history::latest_alert(&state, &ctx, history::DEFAULT_HOURS));
+    let (critical_count, high_count) = (counts.critical(), counts.high());
 
-    let latest_alert = alerts.last();
+    let latest_alert = latest.as_ref();
     let latest_sev = latest_alert.map(|a| if a.rule.level >= 12 { "CRITICAL" } else if a.rule.level >= 8 { "HIGH" } else { "MEDIUM" }).unwrap_or("");
     let latest_src = latest_alert.and_then(|a| a.decoded.src_ip.clone()).unwrap_or_default();
     let latest_dst = latest_alert.and_then(|a| a.decoded.dst_ip.clone()).unwrap_or_default();
@@ -2766,8 +2701,8 @@ async fn post_aria_chat_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let msg = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    let alerts_count = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.len();
-    let events_count = history::events(&state, &ctx, history::DEFAULT_HOURS).await.len();
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (alerts_count, events_count) = (c.alerts(), c.events);
 
     let reply = format!(
         "ARIA AI Security Copilot: Telemetry monitoring is active with {} ingested events and {} alerts. In response to: \"{}\", all active correlation pipelines are operational.",
@@ -2818,55 +2753,70 @@ async fn get_server_info_handler() -> impl IntoResponse {
 
 
 
-async fn get_unified_stats_handler() -> impl IntoResponse {
+/// The tenant's last 24 h for the analyst dashboard's KPI strip (network-sensor events are the "NDR" ones).
+async fn get_unified_stats_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let (day, (_, ndr_day), (_, ndr_hour)) = tokio::join!(
+        history::counts(&state, &ctx, 24),
+        history::event_breakdown(&state, &ctx, 24, false),
+        history::event_breakdown(&state, &ctx, 1, false)
+    );
     Json(serde_json::json!({
-        "ndr_events_today": 458920,
-        "ndr_events_1h": 14500,
-        "siem_logs_today": 320400,
-        "siem_logs_1h": 11200,
-        "siem_eps": 1450,
-        "correlation_hits_1h": 42,
-        "critical_alerts": 12,
-        "high_alerts": 34,
-        "medium_alerts": 65
+        "ndr_events_today": ndr_day,
+        "ndr_events_1h": ndr_hour,
+        "siem_logs_today": day.events,
+        "siem_logs_1h": day.events_1h,
+        "siem_eps": (day.events_1h as f64 / 3600.0 * 10.0).round() / 10.0,
+        "correlation_hits_1h": day.alerts_1h,
+        "critical_alerts": day.critical(),
+        "high_alerts": day.high(),
+        "medium_alerts": day.medium()
     }))
 }
 
-async fn get_stats_timeline_handler() -> impl IntoResponse {
+/// The tenant's events per minute over the last 60 minutes, oldest first.
+async fn get_stats_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok", "points": history::event_buckets(&state, &ctx, 60_000, 60).await }))
+}
+
+#[derive(Deserialize)]
+struct HitsQuery {
+    src_ip: Option<String>,
+    limit: Option<usize>,
+}
+
+/// The tenant's newest alerts (500 by default, at most 5000); `src_ip`: only those from or to that IP.
+async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsQuery>) -> impl IntoResponse {
+    let ip = q.src_ip.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    Json(history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, q.limit.unwrap_or(500).clamp(1, 5000), ip).await)
+}
+
+#[derive(Deserialize)]
+struct HitsTimelineQuery {
+    /// "24h" (hourly), "7d" or "30d" (daily)
+    range: Option<String>,
+}
+
+/// The tenant's alerts per time slice and severity (Assets page's threat landscape).
+async fn get_hits_timeline_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<HitsTimelineQuery>) -> impl IntoResponse {
+    let (bucket_ms, buckets) = match q.range.as_deref() {
+        Some("7d") => (86_400_000, 7),
+        Some("30d") => (86_400_000, 30),
+        _ => (3_600_000, 24),
+    };
+    let rows = history::alert_buckets(&state, &ctx, bucket_ms, buckets).await;
     Json(serde_json::json!({
-        "status": "ok",
-        "points": [120, 145, 132, 180, 210, 195, 230, 240, 220, 260, 280, 310, 290, 320, 340, 310, 305, 330, 360, 380]
+        "bucket_ms": bucket_ms,
+        "buckets": rows.iter().map(|[c, h, m, l]| serde_json::json!({ "critical": c, "high": h, "medium": m, "low": l })).collect::<Vec<_>>()
     }))
 }
 
-async fn get_hits_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-    Json(alerts.clone())
+async fn get_top_ips_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    Json(top_ips_json(&state, &ctx, false).await)
 }
 
-async fn get_top_ips_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "top_src_ips": [
-            ["192.168.10.105", 1420],
-            ["192.168.10.15", 980],
-            ["45.33.32.156", 740],
-            ["185.220.101.5", 520]
-        ],
-        "top_dst_ips": [
-            ["192.168.10.20", 2100],
-            ["192.168.10.15", 1850],
-            ["1.1.1.1", 940]
-        ]
-    }))
-}
-
-async fn get_severity_handler() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "critical": 12,
-        "high": 34,
-        "medium": 65,
-        "low": 89
-    }))
+async fn get_severity_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
+    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
+    Json(serde_json::json!({ "critical": c.critical(), "high": c.high(), "medium": c.medium(), "low": c.low() }))
 }
 
 async fn get_announcements_handler() -> impl IntoResponse {
@@ -3032,30 +2982,22 @@ struct SiemDashboardResponse {
 async fn get_siem_dashboard(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> Json<SiemDashboardResponse> {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
+    let (counts, recent) = tokio::join!(
+        history::counts(&state, &ctx, history::DEFAULT_HOURS),
+        history::recent_alerts(&state, &ctx, history::DEFAULT_HOURS, 20, None)
+    );
     let agents = scoped_agent_map(&state, &ctx);
 
-    let total_alerts = alerts.len();
-
-    let mut critical = 0;
-    let mut high = 0;
-    let mut medium = 0;
+    // this page's bands: critical 10+, high 7-9, medium 4-6 (of the whole window)
+    let total_alerts = counts.alerts() as usize;
+    let (critical, high, medium) = (counts.band(10, 16) as usize, counts.band(7, 9) as usize, counts.band(4, 6) as usize);
 
     let mut recent_alerts = Vec::new();
-    for a in alerts.iter().rev().take(20) {
+    for a in recent.iter() {
         let sev_str = match a.rule.level {
-            10..=15 => {
-                critical += 1;
-                "CRITICAL"
-            }
-            7..=9 => {
-                high += 1;
-                "HIGH"
-            }
-            4..=6 => {
-                medium += 1;
-                "MEDIUM"
-            }
+            10.. => "CRITICAL",
+            7..=9 => "HIGH",
+            4..=6 => "MEDIUM",
             _ => "LOW",
         };
         recent_alerts.push(SiemRecentAlert {
@@ -3757,18 +3699,10 @@ pub struct MitreTacticColumn {
 async fn get_mitre_matrix_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
-
+    // alerts per technique id from ClickHouse; a technique counts its sub-techniques
+    let by_id = history::mitre_counts(&state, &ctx, history::DEFAULT_HOURS).await;
     let count_technique_alerts = |tech_id: &str| -> (usize, u8) {
-        let matching: Vec<&Alert> = alerts.iter().filter(|a| {
-            if let Some(ref m) = a.rule.mitre {
-                m.id.starts_with(tech_id)
-            } else {
-                false
-            }
-        }).collect();
-        let max_lvl = matching.iter().map(|a| a.rule.level).max().unwrap_or(0);
-        (matching.len(), max_lvl)
+        by_id.iter().filter(|(id, _, _)| id.starts_with(tech_id)).fold((0, 0), |(n, l), (_, c, max)| (n + *c as usize, l.max(*max)))
     };
 
     let tactics_def = vec![
@@ -3921,7 +3855,8 @@ async fn get_fim_summary_handler(
         }
     }
 
-    for a in history::alerts(&state, &ctx, history::DEFAULT_HOURS).await.iter().rev() {
+    // only the FIM alerts come from ClickHouse (they carry data.syscheck)
+    for a in history::alerts_containing(&state, &ctx, history::DEFAULT_HOURS, "\"syscheck\"").await.iter().rev() {
         let Some(sc) = a.data.get("syscheck") else { continue };
         let text = |p: &str| sc.pointer(p).and_then(|v| v.as_str()).filter(|v| !v.is_empty()).map(String::from);
         let action = match text("/event").as_deref() {
@@ -4523,23 +4458,12 @@ async fn post_agent_enroll_handler(
 async fn get_reports_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    let alerts_guard = history::alerts(&state, &ctx, history::DEFAULT_HOURS).await;
     let mut engine = siem_reportd::ReportEngine::new();
-
-    for alert in alerts_guard.iter() {
-        let record = siem_reportd::AlertRecord {
-            rule_id: alert.rule.id.to_string(),
-            level: alert.rule.level as u32,
-            groups: alert.rule.groups.clone(),
-            location: alert.location.clone(),
-            srcip: alert.decoded.src_ip.clone(),
-            user: alert.decoded.user.clone(),
-            filename: alert.decoded.file_path.clone(),
-            raw: alert.full_log.clone(),
-        };
-        engine.total_alerts += 1;
-        engine.matched_alerts += 1;
-        *engine.field_counts.entry(record.rule_id).or_default() += 1;
+    for (rule_id, _, n) in history::top_rules(&state, &ctx, history::DEFAULT_HOURS, 100_000).await {
+        let n = n as usize;
+        engine.total_alerts += n;
+        engine.matched_alerts += n;
+        *engine.field_counts.entry(rule_id.to_string()).or_default() += n;
     }
 
     Json(serde_json::json!({

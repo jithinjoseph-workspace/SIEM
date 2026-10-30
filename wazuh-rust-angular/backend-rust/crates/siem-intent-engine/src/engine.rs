@@ -278,6 +278,8 @@ impl IntentEngine {
             agent_name.to_string()
         };
 
+        let compromised_user = user.unwrap_or(if is_windows { "administrator" } else { "root" });
+
         let mut actions = Vec::new();
 
         if primary.intent_type == "ransomware_extortion" {
@@ -321,7 +323,7 @@ impl IntentEngine {
                     urgency: "Immediate".into(),
                     risk_reduction_percent: 94,
                     description: "Drop all lateral east-west network interfaces to prevent mass encryption while maintaining management C2 telemetry.".into(),
-                    execution_command: Some(format!("iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP")),
+                    execution_command: Some("iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP".into()),
                     status: "pending_approval".into(),
                     created_at: now,
                 });
@@ -356,6 +358,20 @@ impl IntentEngine {
                     status: "pending_approval".into(),
                     created_at: now,
                 });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Quarantine Archive Staging Buffers on '{}'", agent_name),
+                    action_type: "quarantine_files".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: "C:\\ProgramData\\Staging\\".into(),
+                    urgency: "Elevated".into(),
+                    risk_reduction_percent: 81,
+                    description: "Lock and isolate temporary RAR/ZIP/7z archive dumps prepared for covert data exfiltration.".into(),
+                    execution_command: Some("powershell.exe -Command \"Get-ChildItem -Path $env:TEMP,C:\\ProgramData -Include *.zip,*.7z,*.rar -Recurse | Rename-Item -NewName { $_.Name + '.quarantined' }\"".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
             } else {
                 actions.push(PreemptiveAction {
                     id: format!("act-{}", Uuid::new_v4()),
@@ -371,35 +387,170 @@ impl IntentEngine {
                     status: "pending_approval".into(),
                     created_at: now,
                 });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Quarantine Archive Staging Buffers on '{}'", agent_name),
+                    action_type: "quarantine_files".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: "/tmp/staging/".into(),
+                    urgency: "Elevated".into(),
+                    risk_reduction_percent: 81,
+                    description: "Isolate temporary tar/gzip archives in /tmp or /var/tmp staged for transmission.".into(),
+                    execution_command: Some("chmod 000 /tmp/*.tar.gz /tmp/*.zip /var/tmp/*.tar.gz 2>/dev/null || true".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
             }
-        } else {
+        } else if primary.intent_type == "apt_espionage" {
             if is_windows {
                 actions.push(PreemptiveAction {
                     id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Terminate Suspect Script Process Tree on '{}'", agent_name),
+                    title: format!("Invalidate Active Logon Sessions & Lock Account '{}'", compromised_user),
+                    action_type: "account_lockout".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: compromised_user.into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 91,
+                    description: format!("Sever active Kerberos / NTLM tickets and lock compromised account '{}' to thwart lateral persistence.", compromised_user),
+                    execution_command: Some(format!("powershell.exe -Command \"Revoke-ADUserSession -Identity '{user}' -ErrorAction SilentlyContinue; Disable-LocalUser -Name '{user}' -ErrorAction SilentlyContinue\"", user = compromised_user)),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Purge LSA Credentials & Kill Living-Off-The-Land Processes on '{}'", agent_name),
                     action_type: "process_termination".into(),
                     target_agent_id: agent_id.into(),
                     target_agent_name: agent_name.into(),
                     target_entity: agent_name.into(),
                     urgency: "Elevated".into(),
-                    risk_reduction_percent: 82,
-                    description: "Terminate active PowerShell and command shell parent process trees.".into(),
-                    execution_command: Some("powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"".into()),
+                    risk_reduction_percent: 85,
+                    description: "Force termination of suspicious LOLBin instances (rundll32, powershell, wmic, regsvr32) and purge LSASS memory handles.".into(),
+                    execution_command: Some("powershell.exe -Command \"Stop-Process -Name wmic,rundll32,regsvr32,powershell -Force -ErrorAction SilentlyContinue\"".into()),
                     status: "pending_approval".into(),
                     created_at: now,
                 });
             } else {
                 actions.push(PreemptiveAction {
                     id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Terminate Suspect Script Process Tree on '{}'", agent_name),
+                    title: format!("Lock Account '{}' & Revoke Open SSH Sessions", compromised_user),
+                    action_type: "account_lockout".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: compromised_user.into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 91,
+                    description: format!("Lock account '{}' and terminate all active interactive SSH/TTY sessions.", compromised_user),
+                    execution_command: Some(format!("passwd -l {user} ; pkill -9 -u {user}", user = compromised_user)),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Audit & Invalidate Staged SSH Authorized Keys on '{}'", agent_name),
+                    action_type: "ssh_key_revocation".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: format!("/home/{}/.ssh/authorized_keys", compromised_user),
+                    urgency: "Elevated".into(),
+                    risk_reduction_percent: 85,
+                    description: "Invalidate backdoor SSH public keys implanted for stealth persistence.".into(),
+                    execution_command: Some(format!("chmod 000 /home/{user}/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true", user = compromised_user)),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+            }
+        } else if primary.intent_type == "destructive_sabotage" {
+            if is_windows {
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Emergency Read-Only Disk Lock on '{}'", agent_name),
+                    action_type: "disk_lock".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: "Disk0".into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 96,
+                    description: "Set partition attributes to Read-Only to prevent wiper routines from corrupting Master Boot Record or destroying volumes.".into(),
+                    execution_command: Some("powershell.exe -Command \"Set-Disk -Number 0 -IsReadOnly $true -ErrorAction SilentlyContinue\"".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Instant Host Quarantine on '{}'", agent_name),
+                    action_type: "host_isolation".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: agent_name.into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 92,
+                    description: "Isolate network adapters immediately to prevent coordinated multi-endpoint wiping commands.".into(),
+                    execution_command: Some("powershell.exe -Command \"Get-NetAdapter | Disable-NetAdapter -Confirm:$false\"".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+            } else {
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Remount Filesystem Read-Only on '{}'", agent_name),
+                    action_type: "disk_lock".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: "/".into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 96,
+                    description: "Instantly remount root and data filesystems as Read-Only to block wiper payloads.".into(),
+                    execution_command: Some("mount -o remount,ro /".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Instant Host Quarantine on '{}'", agent_name),
+                    action_type: "host_isolation".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: agent_name.into(),
+                    urgency: "Immediate".into(),
+                    risk_reduction_percent: 92,
+                    description: "Sever all incoming and outgoing network traffic via iptables drop rule.".into(),
+                    execution_command: Some("iptables -P INPUT DROP ; iptables -P OUTPUT DROP".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+            }
+        } else {
+            // General / Resource Hijacking / Cryptomining
+            if is_windows {
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Throttle Anomalous High-Compute Processes on '{}'", agent_name),
                     action_type: "process_termination".into(),
                     target_agent_id: agent_id.into(),
                     target_agent_name: agent_name.into(),
                     target_entity: agent_name.into(),
                     urgency: "Elevated".into(),
-                    risk_reduction_percent: 82,
-                    description: "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.".into(),
-                    execution_command: Some("pkill -9 -f 'bash|sh|python'".into()),
+                    risk_reduction_percent: 78,
+                    description: "Identify and terminate unauthorized CPU/GPU-intensive miner or scanner binaries.".into(),
+                    execution_command: Some("powershell.exe -Command \"Get-Process | Where-Object { $_.CPU -gt 70 -and $_.Name -notmatch 'system|idle|siem' } | Stop-Process -Force\"".into()),
+                    status: "pending_approval".into(),
+                    created_at: now,
+                });
+            } else {
+                actions.push(PreemptiveAction {
+                    id: format!("act-{}", Uuid::new_v4()),
+                    title: format!("Kill High-CPU Resource Abusing Processes on '{}'", agent_name),
+                    action_type: "process_termination".into(),
+                    target_agent_id: agent_id.into(),
+                    target_agent_name: agent_name.into(),
+                    target_entity: agent_name.into(),
+                    urgency: "Elevated".into(),
+                    risk_reduction_percent: 78,
+                    description: "Terminate rogue processes consuming abnormal CPU/memory in /tmp or user space.".into(),
+                    execution_command: Some("pkill -9 -f 'xmrig|miner|stratum'".into()),
                     status: "pending_approval".into(),
                     created_at: now,
                 });

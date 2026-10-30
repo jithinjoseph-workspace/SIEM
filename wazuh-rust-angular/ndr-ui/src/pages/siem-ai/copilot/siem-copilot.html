@@ -104,7 +104,22 @@
             @if (t.artifacts['alerts']; as al) {
               @if (al.alerts?.length) {
                 <div class="card overflow-hidden">
-                  <div class="px-3 py-2 text-xs text-slate-400 border-b border-slate-800">{{ al.matching | number }} matching in {{ al.hours }} h · newest {{ al.shown }}</div>
+                  <div class="px-3 py-2 text-xs text-slate-400 border-b border-slate-800 flex flex-wrap gap-x-3 gap-y-1">
+                    <span><b class="text-white">{{ al.matching | number }}</b> matching in {{ al.period || (al.hours + ' h') }}</span>
+                    @if (al.summary; as sm) {
+                      <span class="sev sev-critical">{{ sm.critical | number }} critical</span>
+                      <span class="sev sev-high">{{ sm.high | number }} high</span>
+                      <span class="sev sev-medium">{{ sm.medium | number }} medium</span>
+                      <span class="sev sev-low">{{ sm.low | number }} low</span>
+                      @if (sm.time?.first) { <span>{{ sm.time.first | date:'MMM d, HH:mm' }} → {{ sm.time.last | date:'MMM d, HH:mm' }}</span> }
+                    }
+                    <span class="ml-auto">{{ al.order || 'newest' }} {{ al.shown }} shown</span>
+                  </div>
+                  @if (al.summary?.top_rules?.length > 1) {
+                    <div class="px-3 py-2 text-[11px] text-slate-400 border-b border-slate-800">
+                      Most frequent: @for (r of al.summary.top_rules; track r.rule_id; let last = $last) { <span class="text-slate-300">{{ r.description }}</span> ×{{ r.alerts | number }}@if (!last) { · } }
+                    </div>
+                  }
                   <div class="overflow-x-auto">
                     <table class="w-full text-xs min-w-[600px]">
                       <tbody>
@@ -126,6 +141,50 @@
                   </div>
                 </div>
               }
+            }
+
+            @if (t.artifacts['events']; as evs) {
+              @if (evs.events?.length) {
+                <div class="card overflow-hidden">
+                  <div class="px-3 py-2 text-xs text-slate-400 border-b border-slate-800 flex flex-wrap gap-x-3 gap-y-1">
+                    <span><b class="text-white">{{ evs.matching | number }}</b> log events in {{ evs.period }}</span>
+                    @if (evs.summary?.time?.first) { <span>{{ evs.summary.time.first | date:'MMM d, HH:mm:ss' }} → {{ evs.summary.time.last | date:'MMM d, HH:mm:ss' }}</span> }
+                    <span class="ml-auto">{{ evs.order }} {{ evs.shown }} shown</span>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-xs min-w-[640px]">
+                      <tbody>
+                        @for (e of evs.events; track e.id) {
+                          <tr class="border-t border-slate-800/70 first:border-t-0 align-top">
+                            <td class="px-3 py-2 font-mono text-slate-400 whitespace-nowrap">{{ e.time | date:'MMM d, HH:mm:ss' }}</td>
+                            <td class="px-2 py-2 font-mono text-slate-400 whitespace-nowrap">{{ e.agent_id }}</td>
+                            <td class="px-2 py-2 text-slate-400 whitespace-nowrap">{{ e.source }}@if (e.event_id) { · {{ e.event_id }} }</td>
+                            <td class="px-2 py-2 text-slate-300 w-full max-w-0"><div class="line-clamp-2 break-all" [title]="e.text">{{ e.text }}</div></td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
+            }
+
+            @if (t.artifacts['agents']; as ags) {
+              <div class="card overflow-x-auto">
+                <table class="w-full text-xs min-w-[640px]">
+                  <thead class="text-slate-500"><tr><th class="text-left px-3 py-2">Agent</th><th class="text-left px-2 py-2">Status</th><th class="text-left px-2 py-2">Logs</th><th class="text-left px-2 py-2">Alerts</th></tr></thead>
+                  <tbody>
+                    @for (a of ags.agents; track a.id) {
+                      <tr class="border-t border-slate-800/70">
+                        <td class="px-3 py-2"><span class="text-white">{{ a.name || '—' }}</span> <span class="font-mono text-slate-500">{{ a.id }}</span><div class="text-slate-500">{{ a.os || '' }}</div></td>
+                        <td class="px-2 py-2 whitespace-nowrap" [class.text-emerald-300]="a.status === 'active'" [class.text-slate-500]="a.status !== 'active'">{{ a.status }}</td>
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-300">{{ a.events | number }}@if (a.events_time?.first) {<div class="text-slate-500">{{ a.events_time.first | date:'MMM d, HH:mm' }} → {{ a.events_time.last | date:'MMM d, HH:mm' }}</div>}</td>
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-300">{{ a.alerts | number }}@if (a.alerts_time?.first) {<div class="text-slate-500">{{ a.alerts_time.first | date:'MMM d, HH:mm' }} → {{ a.alerts_time.last | date:'MMM d, HH:mm' }}</div>}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
             }
 
             @if (t.artifacts['alert']; as a) {

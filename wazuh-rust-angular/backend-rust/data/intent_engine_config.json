@@ -147,7 +147,7 @@
           "risk_reduction_percent": 82,
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
-          "status": "pending_approval",
+          "status": "executed",
           "created_at": "2026-10-27T05:46:47.874365500Z"
         }
       ],
@@ -308,7 +308,7 @@
           "risk_reduction_percent": 94,
           "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
           "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
-          "status": "pending_approval",
+          "status": "executed",
           "created_at": "2026-10-27T05:36:53.852790500Z"
         },
         {
@@ -322,7 +322,7 @@
           "risk_reduction_percent": 86,
           "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
           "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
-          "status": "pending_approval",
+          "status": "executed",
           "created_at": "2026-10-27T05:36:53.852790500Z"
         }
       ],
@@ -4680,7 +4680,7 @@
       "last_updated_at": "2026-10-29T07:50:19.496481800Z"
     },
     {
-      "id": "dossier-43359750-95be-4de2-9c2c-8d73f2aac3f2",
+      "id": "dossier-9248d99f-3f86-409e-a036-12a5a88c6292",
       "entity_id": "044",
       "entity_name": "linux-node-dfd2",
       "entity_ip": "any",
@@ -4783,7 +4783,7 @@
           "observed_techniques": [
             "T1110"
           ],
-          "first_observed_at": "2026-10-29T06:39:12.725836300Z"
+          "first_observed_at": "2026-10-29T13:35:11.536950900Z"
         },
         {
           "stage_index": 6,
@@ -4813,7 +4813,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-710e9c96-bc42-4f86-9254-8c18a41dc8f5",
+          "id": "act-76943670-8fb0-4a0f-8f65-e7004ff4fcfd",
           "title": "Terminate Suspect Script Process Tree on 'linux-node-dfd2'",
           "action_type": "process_termination",
           "target_agent_id": "044",
@@ -4824,18 +4824,18 @@
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
           "status": "pending_approval",
-          "created_at": "2026-10-29T06:39:12.725970500Z"
+          "created_at": "2026-10-29T13:35:11.537126500Z"
         }
       ],
       "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-29T06:39:12.725970500Z"
+      "last_updated_at": "2026-10-29T13:35:11.537126500Z"
     },
     {
       "id": "dossier-a115b98f-db1e-4b87-8c1c-64bd6c4e2e5a",
       "entity_id": "021",
       "entity_name": "paste-test-01",
-      "entity_ip": "127.0.0.1",
-      "os_type": "linux",
+      "entity_ip": "any",
+      "os_type": "windows",
       "primary_intent": "Long-Term APT & Identity Dominance",
       "primary_probability": 0.3,
       "confidence_score": 0.58,
@@ -5442,7 +5442,7 @@
       "last_updated_at": "2026-10-29T06:34:20.648293100Z"
     },
     {
-      "id": "dossier-7245bb36-16be-41d6-b01e-6dfb41079158",
+      "id": "dossier-980c5482-a56d-40e6-b090-01f5b1ea434f",
       "entity_id": "047",
       "entity_name": "win-node-e296",
       "entity_ip": "192.168.1.70",
@@ -5584,7 +5584,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-4bab1198-7e45-4697-bb20-ce7663725747",
+          "id": "act-5cc540de-f720-4653-ba1b-5f77697453be",
           "title": "Preemptively Isolate Windows Host 'win-node-e296'",
           "action_type": "host_isolation",
           "target_agent_id": "047",
@@ -5595,10 +5595,10 @@
           "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
           "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:54:07.236308100Z"
+          "created_at": "2026-10-30T05:21:26.256932600Z"
         },
         {
-          "id": "act-07378ab6-10b5-4c7d-80b9-4b0146366945",
+          "id": "act-99ae9f1e-fd32-4ea6-85f1-b9f75f195dcf",
           "title": "Deploy Canary Decoy Tripwire on Windows Shares",
           "action_type": "canary_tripwire",
           "target_agent_id": "047",
@@ -5609,11 +5609,11 @@
           "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
           "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:54:07.236308100Z"
+          "created_at": "2026-10-30T05:21:26.256932600Z"
         }
       ],
       "alerts_analyzed": 4,
-      "last_updated_at": "2026-10-29T09:54:07.236308100Z"
+      "last_updated_at": "2026-10-30T05:21:26.256932600Z"
     },
     {
       "id": "dossier-798f17c9-7279-45b1-b689-d228bb27a731",
@@ -5762,7 +5762,7 @@
           "risk_reduction_percent": 82,
           "description": "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
           "execution_command": "pkill -9 -f 'bash|sh|python'",
-          "status": "pending_approval",
+          "status": "executed",
           "created_at": "2026-10-29T06:42:13.033139500Z"
         }
       ],
@@ -5770,7 +5770,7 @@
       "last_updated_at": "2026-10-29T06:42:13.033139500Z"
     },
     {
-      "id": "dossier-c53d7c42-5dc0-4faf-a25c-1307dcc7e20e",
+      "id": "dossier-58637f56-b089-4835-b1ed-e1e28d6fec27",
       "entity_id": "048",
       "entity_name": "win-node-e296",
       "entity_ip": "",
@@ -5903,7 +5903,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-a4c52719-43fa-4aef-b2af-240767a936c4",
+          "id": "act-1c7a6c2b-001f-4348-8154-d7cd206552f2",
           "title": "Preemptively Isolate Windows Host 'win-node-e296'",
           "action_type": "host_isolation",
           "target_agent_id": "048",
@@ -5914,10 +5914,10 @@
           "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
           "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:54:07.308431400Z"
+          "created_at": "2026-10-30T05:21:26.276124100Z"
         },
         {
-          "id": "act-49b9dcc2-c4dd-4361-8d49-1ca3ba663731",
+          "id": "act-a5b0fa8e-4f36-4570-87b5-c2a406770951",
           "title": "Deploy Canary Decoy Tripwire on Windows Shares",
           "action_type": "canary_tripwire",
           "target_agent_id": "048",
@@ -5928,14 +5928,14 @@
           "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
           "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:54:07.308431400Z"
+          "created_at": "2026-10-30T05:21:26.276124100Z"
         }
       ],
       "alerts_analyzed": 3,
-      "last_updated_at": "2026-10-29T09:54:07.308431400Z"
+      "last_updated_at": "2026-10-30T05:21:26.276124100Z"
     },
     {
-      "id": "dossier-bb6f6ab7-3040-473e-883d-0d8cf990daa0",
+      "id": "dossier-0b0cc1d0-f34b-4568-a923-1519b3275f9f",
       "entity_id": "049",
       "entity_name": "win-node-e296",
       "entity_ip": "192.168.1.70",
@@ -5953,7 +5953,7 @@
           "confidence": 0.58,
           "impact_severity": "Critical",
           "key_indicators": [
-            "Observed activity in 'Execution' stage (T1006)"
+            "Observed activity in 'Execution' stage (T1105)"
           ],
           "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
         },
@@ -5964,7 +5964,7 @@
           "confidence": 0.58,
           "impact_severity": "High",
           "key_indicators": [
-            "Observed activity in 'Execution' stage (T1006)"
+            "Observed activity in 'Execution' stage (T1105)"
           ],
           "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
         },
@@ -5975,7 +5975,7 @@
           "confidence": 0.58,
           "impact_severity": "Critical",
           "key_indicators": [
-            "Observed activity in 'Execution' stage (T1006)"
+            "Observed activity in 'Execution' stage (T1105)"
           ],
           "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
         },
@@ -6010,9 +6010,9 @@
           "stage_name": "Execution",
           "status": "current",
           "observed_techniques": [
-            "T1006"
+            "T1105"
           ],
-          "first_observed_at": "2026-10-29T09:57:46.653Z"
+          "first_observed_at": "2026-10-30T05:52:30.432Z"
         },
         {
           "stage_index": 2,
@@ -6066,7 +6066,7 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-9738e08b-bb0e-4c76-8886-43189a790fce",
+          "id": "act-955f43c1-4b7c-4d1c-b8bc-de2664829a53",
           "title": "Preemptively Isolate Windows Host 'win-node-e296'",
           "action_type": "host_isolation",
           "target_agent_id": "049",
@@ -6077,10 +6077,10 @@
           "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
           "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:57:47.699818500Z"
+          "created_at": "2026-10-30T05:52:31.718830200Z"
         },
         {
-          "id": "act-fc30f22e-ac82-46fc-9f5d-925a2a4234e5",
+          "id": "act-096662bf-7cec-4fc9-8855-3ceb69e4c34c",
           "title": "Deploy Canary Decoy Tripwire on Windows Shares",
           "action_type": "canary_tripwire",
           "target_agent_id": "049",
@@ -6091,11 +6091,11 @@
           "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
           "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
           "status": "pending_approval",
-          "created_at": "2026-10-29T09:57:47.699818500Z"
+          "created_at": "2026-10-30T05:52:31.718830200Z"
         }
       ],
       "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-29T09:57:47.699818500Z"
+      "last_updated_at": "2026-10-30T05:52:31.718830200Z"
     },
     {
       "id": "dossier-7e5f823e-79a5-4d09-8402-fe1e39b2a20a",
@@ -6113,9 +6113,180 @@
       "recommended_actions": [],
       "alerts_analyzed": 0,
       "last_updated_at": "2026-10-29T09:46:26.763493300Z"
+    },
+    {
+      "id": "dossier-7b6f36f2-b9b9-46c3-b158-88337c46b79c",
+      "entity_id": "017",
+      "entity_name": "win-node-dc10",
+      "entity_ip": "any",
+      "os_type": "windows",
+      "primary_intent": "Ransomware & Double Extortion",
+      "primary_probability": 0.24,
+      "confidence_score": 0.58,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 20,
+      "hypotheses": [
+        {
+          "intent_type": "ransomware_extortion",
+          "display_name": "Ransomware & Double Extortion",
+          "probability": 0.24,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]"
+          ],
+          "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
+        },
+        {
+          "intent_type": "data_exfiltration",
+          "display_name": "Data Theft & Exfiltration",
+          "probability": 0.24,
+          "confidence": 0.58,
+          "impact_severity": "High",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]"
+          ],
+          "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
+        },
+        {
+          "intent_type": "apt_espionage",
+          "display_name": "Long-Term APT & Identity Dominance",
+          "probability": 0.24,
+          "confidence": 0.58,
+          "impact_severity": "Critical",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.2]"
+          ],
+          "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
+        },
+        {
+          "intent_type": "destructive_sabotage",
+          "display_name": "Destructive Wiper / Sabotage",
+          "probability": 0.22,
+          "confidence": 0.58,
+          "impact_severity": "Catastrophic",
+          "key_indicators": [
+            "Technique T1059.001 detected [Affinity +2.0]"
+          ],
+          "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
+        },
+        {
+          "intent_type": "cryptojacking",
+          "display_name": "Cryptojacking & Resource Hijacking",
+          "probability": 0.07,
+          "confidence": 0.58,
+          "impact_severity": "Medium",
+          "key_indicators": [],
+          "projected_impact": "Unauthorized consumption of system compute and GPU resources."
+        }
+      ],
+      "milestones": [
+        {
+          "stage_index": 0,
+          "stage_name": "Initial Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 1,
+          "stage_name": "Execution",
+          "status": "current",
+          "observed_techniques": [
+            "T1059.001"
+          ],
+          "first_observed_at": "2026-10-29T13:36:11.916945100Z"
+        },
+        {
+          "stage_index": 2,
+          "stage_name": "Persistence",
+          "status": "predicted_next",
+          "observed_techniques": [],
+          "prediction_reason": "Adversary likely to pivot to Persistence next based on Ransomware & Double Extortion trajectory."
+        },
+        {
+          "stage_index": 3,
+          "stage_name": "Privilege Escalation",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 4,
+          "stage_name": "Defense Evasion",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 5,
+          "stage_name": "Credential Access",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 6,
+          "stage_name": "Discovery",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 7,
+          "stage_name": "Lateral Movement",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 8,
+          "stage_name": "Collection & Staging",
+          "status": "unreached",
+          "observed_techniques": []
+        },
+        {
+          "stage_index": 9,
+          "stage_name": "Impact & Exfiltration",
+          "status": "unreached",
+          "observed_techniques": []
+        }
+      ],
+      "recommended_actions": [
+        {
+          "id": "act-ac67c601-5351-44fe-9659-f5b1f836468b",
+          "title": "Preemptively Isolate Windows Host 'win-node-dc10'",
+          "action_type": "host_isolation",
+          "target_agent_id": "017",
+          "target_agent_name": "win-node-dc10",
+          "target_entity": "win-node-dc10",
+          "urgency": "Immediate",
+          "risk_reduction_percent": 94,
+          "description": "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
+          "execution_command": "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T13:36:11.917492Z"
+        },
+        {
+          "id": "act-8b9ecd3a-131c-4e4d-bcf5-78048771d4f1",
+          "title": "Deploy Canary Decoy Tripwire on Windows Shares",
+          "action_type": "canary_tripwire",
+          "target_agent_id": "017",
+          "target_agent_name": "win-node-dc10",
+          "target_entity": "C:\\Shares\\Confidential\\",
+          "urgency": "Elevated",
+          "risk_reduction_percent": 86,
+          "description": "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
+          "execution_command": "powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"",
+          "status": "pending_approval",
+          "created_at": "2026-10-29T13:36:11.917492Z"
+        }
+      ],
+      "alerts_analyzed": 1,
+      "last_updated_at": "2026-10-29T13:36:11.917492Z"
     }
   ],
   "executed_actions": [
-    "act-bbf455e7-5e7c-4cc4-b77a-dd12e99fc873"
+    "act-bbf455e7-5e7c-4cc4-b77a-dd12e99fc873",
+    "act-93efb28d-35d1-4d49-9f2f-e9d6740a9b85",
+    "act-973be225-8c55-4d3e-be01-00b459baba9e",
+    "act-f319e36f-fc00-40f9-934e-fae716d6d333",
+    "act-edaf3238-5a9b-41c0-a147-d6fec0e726d3",
+    "act-b5fcc90b-d16a-4920-82f7-99f0c4f45793",
+    "act-d360389e-ece3-43f2-870a-81f9afc3c4ee"
   ]
-}                     
+}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  

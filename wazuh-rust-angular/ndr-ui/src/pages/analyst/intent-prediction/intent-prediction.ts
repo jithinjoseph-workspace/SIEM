@@ -106,9 +106,9 @@ export class IntentPrediction implements OnInit {
   simResultPreview = signal<EntityIntentDossier | null>(null);
 
   selectedSimAgentId = signal<string>('custom');
-  simAgentId = signal<string>('042');
-  simAgentName = signal<string>('win-node-7a5e');
-  simAgentIp = signal<string>('192.168.1.142');
+  simAgentId = signal<string>('sim-001');
+  simAgentName = signal<string>('sim-workstation-node');
+  simAgentIp = signal<string>('10.0.4.150');
   simTechniquesInput = signal<string>('T1190, T1059.001, T1003, T1490, T1486');
   simUser = signal<string>('administrator');
   simContext = signal<string>('Active ransomware staging indicators observed');
@@ -319,9 +319,9 @@ export class IntentPrediction implements OnInit {
         this.simUser.set(isWin ? 'administrator' : 'root');
       } else {
         this.selectedSimAgentId.set('custom');
-        this.simAgentId.set('042');
-        this.simAgentName.set('win-node-7a5e');
-        this.simAgentIp.set('192.168.1.142');
+        this.simAgentId.set('sim-001');
+        this.simAgentName.set('sim-workstation-node');
+        this.simAgentIp.set('10.0.4.150');
         this.simUser.set('administrator');
       }
     }

@@ -534,7 +534,10 @@ async fn main() {
                                     risk_fabric_clone.evaluate_alert(a);
                                 }
                             }
-                            intent_engine_clone.ingest_live_alerts(&alerts);
+                            let deleted = ch_state.deleted_agents.read().unwrap();
+                            let active_alerts: Vec<_> = alerts.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+                            drop(deleted);
+                            intent_engine_clone.ingest_live_alerts(&active_alerts);
                             let mut l = ch_state.alerts.write().unwrap();
                             l.extend(alerts);
                             crate::trim(&mut l, crate::MEM_ALERTS);
@@ -573,8 +576,12 @@ async fn main() {
         ]);
 
     let alerts_reader = {
-        let alerts = state.alerts.clone();
-        Arc::new(move || alerts.read().unwrap().clone())
+        let alerts_state = state.clone();
+        Arc::new(move || {
+            let deleted = alerts_state.deleted_agents.read().unwrap();
+            let alerts = alerts_state.alerts.read().unwrap();
+            alerts.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect()
+        })
     };
 
     let fleet_reader = {
@@ -617,6 +624,12 @@ async fn main() {
             fleet
         })
     };
+
+    // Synchronize enrolled fleet into Intent Engine immediately on startup
+    {
+        let initial_fleet = (fleet_reader)();
+        state.intent_engine.sync_enrolled_fleet(&initial_fleet);
+    }
 
     let active_response_dispatcher = {
         let ar_state = state.clone();
@@ -1145,7 +1158,10 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
             a
         })
         .collect();
-    state.intent_engine.ingest_live_alerts(&evaluated);
+    let deleted = state.deleted_agents.read().unwrap();
+    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+    drop(deleted);
+    state.intent_engine.ingest_live_alerts(&active_alerts);
     let mut l = state.alerts.write().unwrap();
     l.extend(evaluated);
     trim(&mut l, MEM_ALERTS);
@@ -1283,7 +1299,7 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
                 }
                 let last_ka = chrono::DateTime::from_timestamp_millis(r.last_keepalive)
                     .unwrap_or_else(chrono::Utc::now);
-                let status = if (now - last_ka).num_seconds() > 60 {
+                let status = if (now - last_ka).num_seconds() > 180 {
                     AgentStatus::Disconnected
                 } else {
                     match r.status.as_str() {
@@ -1345,8 +1361,8 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         let mut agents_guard = state.agents.write().unwrap();
         let now = Utc::now();
         for agent in agents_guard.values_mut() {
-            // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 60s
-            if (now - agent.last_keepalive).num_seconds() > 60 {
+            // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 180s
+            if (now - agent.last_keepalive).num_seconds() > 180 {
                 agent.status = AgentStatus::Disconnected;
             }
         }
@@ -1382,6 +1398,10 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         let t_clone = tenant.clone();
         let id_clone = id.to_string();
         tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
+
+        // Instantly purge intent engine and risk fabric state for this deleted agent
+        state.intent_engine.remove_dossier_by_agent_id(id);
+
         let enrolled_placeholder;
         let e_ref = match e.as_ref() {
             Some(entry) => Some(entry),
@@ -2094,6 +2114,15 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 async fn deliver_commands(state: &AppState, agent_id: &str, headers: &axum::http::HeaderMap) -> axum::response::Response {
     if !agent_key_ok(state, agent_id, headers) {
         return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "status": "error", "message": "invalid agent key" }))).into_response();
+    }
+    {
+        let mut agents = state.agents.write().unwrap();
+        if let Some(agent) = agents.get_mut(agent_id) {
+            agent.last_keepalive = Utc::now();
+            if agent.status != AgentStatus::Active {
+                agent.status = AgentStatus::Active;
+            }
+        }
     }
     let commands = state.pending_commands.write().unwrap().remove(agent_id).unwrap_or_default();
     persist::save_commands(state, agent_id, &commands, true).await;
@@ -4663,6 +4692,15 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
     } else if is_deactivated(&state, &q.agent_id) {
         "deactivated"
     } else {
+        if !q.agent_id.is_empty() {
+            let mut agents = state.agents.write().unwrap();
+            if let Some(agent) = agents.get_mut(&q.agent_id) {
+                agent.last_keepalive = Utc::now();
+                if agent.status != AgentStatus::Active {
+                    agent.status = AgentStatus::Active;
+                }
+            }
+        }
         "active"
     };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()

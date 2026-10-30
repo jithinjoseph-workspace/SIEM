@@ -71,7 +71,7 @@ impl ClientAgent {
         // 2. Check official Wazuh ossec.conf XML configuration
         let ossec_conf = siem_core::OssecConfig::find_and_load();
         let ossec_addr = ossec_conf.get_manager_address();
-        if ossec_addr != "http://127.0.0.1:8088" || ossec_conf.client.is_some() {
+        if (ossec_addr != "http://127.0.0.1:8088" || ossec_conf.client.is_some()) && !ossec_addr.ends_with(":1514") {
             cfg.manager_url = ossec_addr;
             info!("ClientAgent: Loaded manager address from ossec.conf: {}", cfg.manager_url);
         }

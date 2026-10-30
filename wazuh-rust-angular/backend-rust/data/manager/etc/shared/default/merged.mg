@@ -1,5 +1,5 @@
 #default
-!854 ar.conf
+!832 ar.conf
 restart-ossec0 - restart-ossec.sh - 0
 restart-ossec0 - restart-ossec.cmd - 0
 restart-wazuh0 - restart-ossec.sh - 0
@@ -46,7 +46,7 @@ yara-scan0 - yara-scan.exe - 0
     <query>Event/System[EventID=400 or EventID=600 or EventID=800]</query>
   </localfile>
 </agent_config>
-!2371011 siem-yara.rules
+!2340612 siem-yara.rules
 SIEM-YARA-RULES-1
 7L17f9y2mTb8986n4OPdfWo3oo0jCWafbFYaSYm3Pq3lJO02/fkHkqA9tTSjnRnZVtt89/e6AfA0
 M5Ll2K3jzds69pAEQRDEfbruA+79dpL8NvnD/tP99HixfOH8z+TpxalLntjqlX3h6PrL9fp89eW9

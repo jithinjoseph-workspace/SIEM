@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
@@ -29,6 +29,7 @@ pub struct IntentEngine {
     dossiers: Arc<RwLock<Vec<EntityIntentDossier>>>,
     executed_actions: Arc<RwLock<Vec<String>>>,
     config_path: PathBuf,
+    active_fleet_ids: Arc<RwLock<HashSet<String>>>,
 }
 
 impl IntentEngine {
@@ -41,6 +42,7 @@ impl IntentEngine {
             dossiers: Arc::new(RwLock::new(store.dossiers)),
             executed_actions: Arc::new(RwLock::new(store.executed_actions)),
             config_path: path,
+            active_fleet_ids: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -626,17 +628,18 @@ impl IntentEngine {
 
     /// Synchronizes enrolled fleet agents with optional OS detection
     pub fn sync_enrolled_fleet(&self, fleet: &[(String, String, String, Option<String>)]) {
-        if fleet.is_empty() {
-            return;
-        }
         let mut list = self.dossiers.write().unwrap();
         let now = Utc::now();
         let mut changed = false;
 
         // Collect all active enrolled agent IDs from the fleet
         let active_ids: std::collections::HashSet<&str> = fleet.iter().map(|(id, _, _, _)| id.as_str()).collect();
+        {
+            let mut fleet_set = self.active_fleet_ids.write().unwrap();
+            *fleet_set = fleet.iter().map(|(id, _, _, _)| id.clone()).collect();
+        }
 
-        // Remove stale/orphan mock dossiers that are neither in active fleet nor flagged as simulated
+        // Always purge dossiers for agents not in active fleet (preserving purely manual sim- agents)
         let len_before = list.len();
         list.retain(|d| active_ids.contains(d.entity_id.as_str()) || d.entity_id.starts_with("sim-") || d.entity_name.starts_with("sim-"));
         if list.len() != len_before {
@@ -718,7 +721,12 @@ impl IntentEngine {
             }
         }
 
+        let active_ids = self.active_fleet_ids.read().unwrap();
         for (agent_id, (agent_name, agent_ip, os_type, evidence, user)) in agent_groups {
+            // Never resurrect or evaluate deleted / non-enrolled agents
+            if !active_ids.is_empty() && !active_ids.contains(&agent_id) && !agent_id.starts_with("sim-") {
+                continue;
+            }
             if !evidence.is_empty() {
                 let mut dossier = self.evaluate_evidence(
                     &agent_id,
@@ -843,7 +851,26 @@ impl IntentEngine {
         self.dossiers.read().unwrap().iter().find(|d| d.id == id || d.entity_id == id).cloned()
     }
 
+    pub fn remove_dossier_by_agent_id(&self, agent_id: &str) -> bool {
+        self.active_fleet_ids.write().unwrap().remove(agent_id);
+        let mut list = self.dossiers.write().unwrap();
+        let len_before = list.len();
+        list.retain(|d| d.entity_id != agent_id);
+        let removed = list.len() < len_before;
+        drop(list);
+        if removed {
+            self.save();
+        }
+        removed
+    }
+
     pub fn upsert_dossier(&self, dossier: EntityIntentDossier) {
+        let active_ids = self.active_fleet_ids.read().unwrap();
+        if !active_ids.is_empty() && !active_ids.contains(&dossier.entity_id) && !dossier.entity_id.starts_with("sim-") && !dossier.entity_name.starts_with("sim-") {
+            return;
+        }
+        drop(active_ids);
+
         let mut list = self.dossiers.write().unwrap();
         if let Some(pos) = list.iter().position(|d| d.id == dossier.id || d.entity_id == dossier.entity_id) {
             list[pos] = dossier;

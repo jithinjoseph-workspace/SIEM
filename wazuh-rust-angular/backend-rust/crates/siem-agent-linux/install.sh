@@ -15,6 +15,20 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# 1.1 Stop any previous or zombie agent daemons (both C wazuh-agent and Rust agent)
+echo "[+] Stopping previous agent daemons..."
+systemctl stop wazuh-agent 2>/dev/null || true
+systemctl stop wazuh-rust-agent 2>/dev/null || true
+if [ -x "/var/ossec/bin/wazuh-control" ]; then
+    /var/ossec/bin/wazuh-control stop 2>/dev/null || true
+fi
+pkill -9 -f "wazuh-agentd" 2>/dev/null || true
+pkill -9 -f "wazuh-modulesd" 2>/dev/null || true
+pkill -9 -f "wazuh-logcollector" 2>/dev/null || true
+pkill -9 -f "wazuh-syscheckd" 2>/dev/null || true
+pkill -9 -f "siem-agent-linux" 2>/dev/null || true
+
+
 # 2. Distribution & OS Version Detection (Mirroring Wazuh dist-detect.sh)
 DIST_NAME="linux"
 DIST_VER="unknown"
@@ -69,6 +83,11 @@ case "${MANAGER_URL}" in
     *) MANAGER_URL="http://${MANAGER_URL}:${WAZUH_MANAGER_PORT:-8088}" ;;
 esac
 MANAGER_URL="${MANAGER_URL%/}"
+MANAGER_HOST=$(echo "${MANAGER_URL}" | sed -e 's|^[^/]*//||' -e 's|:.*||' -e 's|/.*||')
+MANAGER_PORT=$(echo "${MANAGER_URL}" | sed -e 's|^.*:||' -e 's|/.*||')
+if [ -z "${MANAGER_PORT}" ] || [ "${MANAGER_PORT}" = "${MANAGER_URL}" ] || [ "${MANAGER_PORT}" = "${MANAGER_HOST}" ]; then
+    MANAGER_PORT="8088"
+fi
 AGENT_NAME=${SIEM_AGENT_NAME:-${WAZUH_AGENT_NAME:-$(hostname)}}
 AGENT_GROUP=${SIEM_AGENT_GROUP:-${WAZUH_AGENT_GROUP:-"default"}}
 TENANT_KEY=${SIEM_TENANT_KEY:-${WAZUH_TENANT_KEY:-""}}
@@ -77,6 +96,7 @@ USER="wazuh"
 GROUP="wazuh"
 
 echo "[+] SIEM Manager Endpoint:       ${MANAGER_URL}"
+echo "[+] SIEM Remoted Host:           ${MANAGER_HOST}:1514"
 echo "[+] Agent Name:                  ${AGENT_NAME}"
 echo "[+] Agent Group:                 ${AGENT_GROUP}"
 if [ -n "${TENANT_KEY}" ]; then
@@ -200,8 +220,8 @@ cat <<EOF > "${INSTALL_DIR}/etc/ossec.conf"
 <ossec_config>
   <client>
     <server>
-      <address>${MANAGER_URL}</address>
-      <port>8088</port>
+      <address>${MANAGER_HOST}</address>
+      <port>${MANAGER_PORT}</port>
       <protocol>tcp</protocol>
     </server>
     <config-profile>${DIST_NAME}</config-profile>
@@ -255,32 +275,28 @@ cat <<EOF > "${INSTALL_DIR}/etc/ossec.conf"
 EOF
 
 # Enrollment: the manager assigns an agent id that is unique across tenants.
-# A re-install keeps an existing enrollment (client.keys from a previous run).
+# On deployment, enroll with the manager (force: true) to ensure client.keys has a valid active key.
 KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
-if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
-    echo "[+] Keeping existing enrollment: $(cut -d' ' -f1,2 "${KEYS_FILE}" | head -1)"
+rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
+BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
+RESP=""
+if command -v curl > /dev/null 2>&1; then
+    RESP=$(curl -fsS -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
+        -H "Content-Type: application/json" ${TENANT_KEY:+-H "X-Tenant-Key: ${TENANT_KEY}"} \
+        -d "${BODY}" 2>/dev/null || true)
 else
-    rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
-    BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
-    RESP=""
-    if command -v curl > /dev/null 2>&1; then
-        RESP=$(curl -fsS -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
-            -H "Content-Type: application/json" ${TENANT_KEY:+-H "X-Tenant-Key: ${TENANT_KEY}"} \
-            -d "${BODY}" 2>/dev/null || true)
-    else
-        RESP=$(wget -qO- --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
-            --post-data="${BODY}" "${MANAGER_URL}/api/v1/agents/enroll" 2>/dev/null || true)
-    fi
-    NEW_ID=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_id":"\([^"]*\)".*/\1/p')
-    NEW_NAME=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_name":"\([^"]*\)".*/\1/p')
-    NEW_KEY=$(printf '%s' "${RESP}" | sed -n 's/.*"raw_key":"\([^"]*\)".*/\1/p')
-    NEW_TENANT=$(printf '%s' "${RESP}" | sed -n 's/.*"tenant_id":"\([^"]*\)".*/\1/p')
-    if [ -n "${NEW_ID}" ] && [ -n "${NEW_KEY}" ]; then
-        echo "${NEW_ID} ${NEW_NAME:-${AGENT_NAME}} any ${NEW_KEY}" > "${KEYS_FILE}"
-        echo "[✓] Enrolled as agent ${NEW_ID} (${NEW_NAME:-${AGENT_NAME}}) in tenant '${NEW_TENANT}'"
-    else
-        echo "[!] Enrollment with ${MANAGER_URL} failed; the agent will enroll itself when it starts."
-    fi
+    RESP=$(wget -qO- --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
+        --post-data="${BODY}" "${MANAGER_URL}/api/v1/agents/enroll" 2>/dev/null || true)
+fi
+NEW_ID=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_id"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_NAME=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_name"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_KEY=$(printf '%s' "${RESP}" | sed -n 's/.*"raw_key"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_TENANT=$(printf '%s' "${RESP}" | sed -n 's/.*"tenant_id"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+if [ -n "${NEW_ID}" ] && [ -n "${NEW_KEY}" ]; then
+    echo "${NEW_ID} ${NEW_NAME:-${AGENT_NAME}} any ${NEW_KEY}" > "${KEYS_FILE}"
+    echo "[✓] Enrolled as agent ${NEW_ID} (${NEW_NAME:-${AGENT_NAME}}) in tenant '${NEW_TENANT}'"
+else
+    echo "[-] Enrollment failed or did not return a valid key. Response: ${RESP}"
 fi
 
 cat <<EOF > "${INSTALL_DIR}/etc/agent-config.json"
@@ -293,12 +309,15 @@ cat <<EOF > "${INSTALL_DIR}/etc/agent-config.json"
   "events_per_second": 500
 }
 EOF
+cp -f "${INSTALL_DIR}/etc/agent-config.json" "${INSTALL_DIR}/agent-config.json" 2>/dev/null || true
+mkdir -p /etc/wazuh-agent 2>/dev/null || true
+cp -f "${INSTALL_DIR}/etc/agent-config.json" /etc/wazuh-agent/agent-config.json 2>/dev/null || true
 
 cat <<EOF > "${INSTALL_DIR}/etc/agent.env"
-SIEM_MANAGER_URL="${MANAGER_URL}"
-SIEM_AGENT_NAME="${AGENT_NAME}"
-SIEM_AGENT_GROUP="${AGENT_GROUP}"
-SIEM_TENANT_KEY="${TENANT_KEY}"
+SIEM_MANAGER_URL=${MANAGER_URL}
+SIEM_AGENT_NAME=${AGENT_NAME}
+SIEM_AGENT_GROUP=${AGENT_GROUP}
+SIEM_TENANT_KEY=${TENANT_KEY}
 EOF
 
 # 7. Apply hardened file permissions
@@ -362,6 +381,8 @@ EOF
     systemctl daemon-reload
     systemctl enable wazuh-rust-agent.service
     systemctl restart wazuh-rust-agent.service
+    systemctl stop wazuh-agent 2>/dev/null || true
+    systemctl disable wazuh-agent 2>/dev/null || true
     echo "[✓] Service status: ACTIVE & ENABLED"
 else
     echo "[i] systemd is not running: starting the agent in the background."

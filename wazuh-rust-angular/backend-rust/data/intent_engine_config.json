@@ -1,38 +1,44 @@
 {
   "dossiers": [
     {
-      "id": "dossier-24017311-d6d5-4d2e-a9eb-c510cf843d0f",
-      "entity_id": "047",
-      "entity_name": "linux-node-1cd3",
-      "entity_ip": "any",
+      "id": "dossier-4637df7d-ed66-46ff-9d6b-e622d737d00c",
+      "entity_id": "048",
+      "entity_name": "linux-node-bcd8",
+      "entity_ip": "10.0.2.15",
       "os_type": "linux",
+      "is_simulated": false,
       "primary_intent": "Long-Term APT & Identity Dominance",
-      "primary_probability": 0.4,
-      "confidence_score": 0.58,
-      "kill_chain_velocity": "Steady",
+      "primary_probability": 0.47,
+      "confidence_score": 0.96,
+      "kill_chain_velocity": "Accelerating",
       "progression_percent": 60,
       "hypotheses": [
         {
           "intent_type": "apt_espionage",
           "display_name": "Long-Term APT & Identity Dominance",
-          "probability": 0.4,
-          "confidence": 0.58,
+          "probability": 0.47,
+          "confidence": 0.96,
           "impact_severity": "Critical",
           "key_indicators": [
             "Technique T1110 detected [Affinity +3.5]",
-            "Observed MITRE tactic 'Credential Access' (T1110)"
+            "Observed MITRE tactic 'Credential Access' (T1110)",
+            "Technique T1098 detected [Affinity +4.5]",
+            "Observed MITRE tactic 'Persistence' (T1098)",
+            "Privileged credential activity observed for user 'root'"
           ],
           "projected_impact": "Covert identity manipulation, long-term persistence, and credential dumping."
         },
         {
           "intent_type": "data_exfiltration",
           "display_name": "Data Theft & Exfiltration",
-          "probability": 0.32,
-          "confidence": 0.58,
+          "probability": 0.33,
+          "confidence": 0.96,
           "impact_severity": "High",
           "key_indicators": [
             "Technique T1110 detected [Affinity +2.5]",
-            "Observed MITRE tactic 'Credential Access' (T1110)"
+            "Observed MITRE tactic 'Credential Access' (T1110)",
+            "Technique T1098 detected [Affinity +2.8]",
+            "Observed MITRE tactic 'Persistence' (T1098)"
           ],
           "projected_impact": "Imminent outbound leakage of sensitive proprietary records or credentials."
         },
@@ -40,27 +46,31 @@
           "intent_type": "ransomware_extortion",
           "display_name": "Ransomware & Double Extortion",
           "probability": 0.17,
-          "confidence": 0.58,
+          "confidence": 0.96,
           "impact_severity": "Critical",
           "key_indicators": [
-            "Observed MITRE tactic 'Credential Access' (T1110)"
+            "Observed MITRE tactic 'Credential Access' (T1110)",
+            "Technique T1098 detected [Affinity +2.2]",
+            "Observed MITRE tactic 'Persistence' (T1098)"
           ],
           "projected_impact": "Immediate risk of volume encryption across critical datastores with secondary extortion."
         },
         {
           "intent_type": "destructive_sabotage",
           "display_name": "Destructive Wiper / Sabotage",
-          "probability": 0.05,
-          "confidence": 0.58,
+          "probability": 0.02,
+          "confidence": 0.96,
           "impact_severity": "Catastrophic",
-          "key_indicators": [],
+          "key_indicators": [
+            "Observed MITRE tactic 'Persistence' (T1098)"
+          ],
           "projected_impact": "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
         },
         {
           "intent_type": "cryptojacking",
           "display_name": "Cryptojacking & Resource Hijacking",
-          "probability": 0.05,
-          "confidence": 0.58,
+          "probability": 0.01,
+          "confidence": 0.96,
           "impact_severity": "Medium",
           "key_indicators": [],
           "projected_impact": "Unauthorized consumption of system compute and GPU resources."
@@ -82,8 +92,11 @@
         {
           "stage_index": 2,
           "stage_name": "Persistence",
-          "status": "unreached",
-          "observed_techniques": []
+          "status": "observed",
+          "observed_techniques": [
+            "T1098"
+          ],
+          "first_observed_at": "2026-11-01T06:17:45.601685200Z"
         },
         {
           "stage_index": 3,
@@ -102,9 +115,14 @@
           "stage_name": "Credential Access",
           "status": "current",
           "observed_techniques": [
+            "T1110",
+            "T1110",
+            "T1110",
+            "T1110",
+            "T1110",
             "T1110"
           ],
-          "first_observed_at": "2026-10-30T09:50:55.901492900Z"
+          "first_observed_at": "2026-11-01T06:15:45.525953900Z"
         },
         {
           "stage_index": 6,
@@ -134,40 +152,98 @@
       ],
       "recommended_actions": [
         {
-          "id": "act-94d93b42-612e-4223-a113-5ec2b20a2231",
-          "title": "Lock Account 'test' & Revoke Open SSH Sessions",
+          "id": "act-0fce8c6289db119a",
+          "title": "Lock Account 'root' & Revoke Open SSH Sessions",
           "action_type": "account_lockout",
-          "target_agent_id": "047",
-          "target_agent_name": "linux-node-1cd3",
-          "target_entity": "test",
+          "target_agent_id": "048",
+          "target_agent_name": "linux-node-bcd8",
+          "target_entity": "root",
           "urgency": "Immediate",
           "risk_reduction_percent": 91,
-          "description": "Lock account 'test' and terminate all active interactive SSH/TTY sessions.",
-          "execution_command": "passwd -l test ; pkill -9 -u test",
+          "description": "Lock account 'root' and terminate all active interactive SSH/TTY sessions.",
+          "execution_command": "passwd -l root ; pkill -9 -u root",
           "status": "pending_approval",
-          "created_at": "2026-10-30T09:50:55.901651Z"
+          "created_at": "2026-11-01T06:21:20.404467300Z"
         },
         {
-          "id": "act-1b6b9527-c911-4521-bbda-e5de775d80d9",
-          "title": "Audit & Invalidate Staged SSH Authorized Keys on 'linux-node-1cd3'",
+          "id": "act-d2086198bda58604",
+          "title": "Audit & Invalidate Staged SSH Authorized Keys on 'linux-node-bcd8'",
           "action_type": "ssh_key_revocation",
-          "target_agent_id": "047",
-          "target_agent_name": "linux-node-1cd3",
-          "target_entity": "/home/test/.ssh/authorized_keys",
+          "target_agent_id": "048",
+          "target_agent_name": "linux-node-bcd8",
+          "target_entity": "/home/root/.ssh/authorized_keys",
           "urgency": "Elevated",
           "risk_reduction_percent": 85,
           "description": "Invalidate backdoor SSH public keys implanted for stealth persistence.",
-          "execution_command": "chmod 000 /home/test/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true",
+          "execution_command": "chmod 000 /home/root/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true",
           "status": "pending_approval",
-          "created_at": "2026-10-30T09:50:55.901651Z"
+          "created_at": "2026-11-01T06:21:20.404467300Z"
         }
       ],
-      "alerts_analyzed": 1,
-      "last_updated_at": "2026-10-30T09:50:55.901651Z"
+      "alerts_analyzed": 7,
+      "last_updated_at": "2026-11-01T06:21:20.404467300Z"
+    },
+    {
+      "id": "dossier-b4412d01-b7f3-4540-80e0-14491f584231",
+      "entity_id": "047",
+      "entity_name": "linux-node-1cd3",
+      "entity_ip": "127.0.0.1",
+      "os_type": "linux",
+      "is_simulated": false,
+      "primary_intent": "Baseline Activity (Normal)",
+      "primary_probability": 0.0,
+      "confidence_score": 0.95,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 0,
+      "hypotheses": [],
+      "milestones": [],
+      "recommended_actions": [],
+      "alerts_analyzed": 0,
+      "last_updated_at": "2026-11-01T06:21:20.398760900Z"
+    },
+    {
+      "id": "dossier-fca05555-3735-4962-aca8-3964005f78e9",
+      "entity_id": "019",
+      "entity_name": "linux-node-8651",
+      "entity_ip": "127.0.0.1",
+      "os_type": "linux",
+      "is_simulated": false,
+      "primary_intent": "Baseline Activity (Normal)",
+      "primary_probability": 0.0,
+      "confidence_score": 0.95,
+      "kill_chain_velocity": "Steady",
+      "progression_percent": 0,
+      "hypotheses": [],
+      "milestones": [],
+      "recommended_actions": [],
+      "alerts_analyzed": 0,
+      "last_updated_at": "2026-11-01T06:21:20.398760900Z"
     }
   ],
   "executed_actions": [
     "act-bbf455e7-5e7c-4cc4-b77a-dd12e99fc873",
-    "act-6db166df-4df4-4867-9d98-dd6536c92d71"
-  ]
+    "act-6db166df-4df4-4867-9d98-dd6536c92d71",
+    "act-4a6a5e33-9d70-4bc9-9a1b-16fa6ed32454",
+    "act-84f30d80-25e9-4945-a2ee-fffcb5c5fb19",
+    "act-ec2535b6-b6f1-4f91-8455-3e1213a8b538",
+    "act-a1d1b7e78f693ebc"
+  ],
+  "action_audit": [
+    {
+      "id": "audit-d315414e-df12-4567-a1d9-b0b568134039",
+      "action_id": "act-a1d1b7e78f693ebc",
+      "command_id": "cmd-6ef2c737-fc12-4a33-8507-2f3fea81d367",
+      "action_type": "host_isolation",
+      "target_agent_id": "048",
+      "target_agent_name": "linux-node-bcd8",
+      "target_entity": "127.0.0.1",
+      "command": "iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP",
+      "status": "Executed & Enforced",
+      "exit_code": 0,
+      "output": "[2026-11-01T05:52:36.103022+00:00] Host containment initiated for agent '048' (127.0.0.1)\nCommand: iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP\nStatus: Active Response queued and dispatched to agent daemon.\nVerification: Host security enforcement policy verified active on endpoint.",
+      "executed_at": "2026-11-01T05:52:36.103027Z",
+      "dry_run": false
+    }
+  ],
+  "simulation_overrides": {}
 }

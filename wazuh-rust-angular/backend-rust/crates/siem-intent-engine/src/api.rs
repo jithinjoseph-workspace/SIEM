@@ -1,17 +1,16 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::Json,
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use std::sync::Arc;
 
 use crate::catalog::KILL_CHAIN_STAGES;
 use crate::engine::IntentEngine;
 use crate::models::{
-    EntityIntentDossier, ExecuteActionRequest, IntentSummaryReport, PreemptiveAction,
-    SimulationIntentRequest,
+    ActionAuditRecord, EntityIntentDossier, ExecuteActionRequest, IntentSummaryReport,
+    PreemptiveAction, SimulationIntentRequest,
 };
 
 #[derive(Clone)]
@@ -41,6 +40,8 @@ pub fn router(
         .route("/hypotheses/:id", get(get_hypothesis_by_id_handler))
         .route("/evaluate", post(post_evaluate_handler))
         .route("/actions/execute", post(post_execute_action_handler))
+        .route("/actions/audit", get(get_actions_audit_handler))
+        .route("/revert/:id", post(post_revert_simulation_handler))
         .route("/catalog", get(get_catalog_handler))
         .with_state(state)
 }
@@ -108,6 +109,35 @@ async fn post_execute_action_handler(
             Json(serde_json::json!({
                 "status": "error",
                 "message": err
+            })),
+        )),
+    }
+}
+
+async fn get_actions_audit_handler(
+    State(state): State<IntentApiState>,
+) -> Json<Vec<ActionAuditRecord>> {
+    Json(state.engine.get_action_audit())
+}
+
+async fn post_revert_simulation_handler(
+    State(state): State<IntentApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<EntityIntentDossier>, (StatusCode, Json<serde_json::Value>)> {
+    match state.engine.revert_simulation(&id) {
+        Some(dossier) => {
+            if let Some(reader) = &state.get_alerts {
+                let alerts = reader();
+                state.engine.ingest_live_alerts(&alerts);
+            }
+            let final_dossier = state.engine.get_dossier(&id).unwrap_or(dossier);
+            Ok(Json(final_dossier))
+        }
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": format!("Target '{}' not found", id)
             })),
         )),
     }

@@ -659,8 +659,22 @@ async fn main() {
 
             let save_state = ar_state.clone();
             let aid = agent_id.to_string();
+            let cmd_clone = cmd.clone();
+            let rec = ActiveResponseRecord {
+                id: format!("ar-{}", &cmd_id[..8]),
+                command: action_name.to_string(),
+                target_ip: target.to_string(),
+                agent_id: agent_id.to_string(),
+                reason: format!("Intent Preemptive Countermeasure: {}", action_type),
+                triggered_at: chrono::Utc::now(),
+                duration_seconds: 3600,
+                status: "Active (Dispatched to Host)".to_string(),
+            };
+            ar_state.active_responses.write().unwrap().insert(0, rec.clone());
+
             tokio::spawn(async move {
-                persist::save_commands(&save_state, &aid, &[cmd], false).await;
+                persist::save_commands(&save_state, &aid, &[cmd_clone], false).await;
+                persist::save_active_response(&save_state, &rec).await;
             });
         })
     };
@@ -1502,9 +1516,14 @@ async fn get_events(
 ) -> Json<Vec<RawEvent>> {
     let limit = params.limit.unwrap_or(200);
     let scope = ctx.scope();
+    let is_all_source = params
+        .source
+        .as_deref()
+        .map(|s| s.is_empty() || s.eq_ignore_ascii_case("all"))
+        .unwrap_or(true);
 
     // Persisted events come from the tenant's own ClickHouse database.
-    if state.db.is_connected() && params.source.is_none() {
+    if state.db.is_connected() && is_all_source {
         if let Some(ch_rows) = state.db.fetch_events(&scope, limit).await {
             if !ch_rows.is_empty() {
                 let events: Vec<RawEvent> = ch_rows.into_iter().map(|r| r.to_raw_event()).collect();
@@ -1515,9 +1534,14 @@ async fn get_events(
 
     let mut list: Vec<RawEvent> = scoped_events(&state, &ctx)
         .into_iter()
-        .filter(|e| match params.source {
-            Some(ref src) => format!("{:?}", e.source).to_lowercase().contains(&src.to_lowercase()),
-            None => true,
+        .filter(|e| {
+            if is_all_source {
+                true
+            } else if let Some(ref src) = params.source {
+                format!("{:?}", e.source).to_lowercase().contains(&src.to_lowercase())
+            } else {
+                true
+            }
         })
         .collect();
 
@@ -1591,6 +1615,7 @@ async fn ingest_event(
 
         // Persist agent heartbeat/status into ClickHouse database
         state.db.insert_or_update_agent(&tenant, &ag_clone).await;
+        wazuh_manager::update_agent_keepalive(&event.agent_id, "active").await;
 
         // The tenant's learned parsers (< 5 microseconds); their fields are stored with the event
         if let Some(p) = parsers_store::for_tenant(&state, &tenant).execute(&event.message) {
@@ -1939,6 +1964,7 @@ async fn ws_alerts_handler(
 /// Live alerts of the caller's tenant only.
 async fn handle_ws_socket(mut socket: WebSocket, state: AppState, ctx: AuthCtx) {
     let mut rx = state.broadcast_tx.subscribe();
+    let is_super = ctx.is_super() && ctx.requested_tenant.is_none();
     let scope = ctx.scope();
 
     loop {
@@ -1948,7 +1974,7 @@ async fn handle_ws_socket(mut socket: WebSocket, state: AppState, ctx: AuthCtx) 
             Err(_) => break,
         };
         let tenant = tenancy::alert_tenant(&alert, &state.agent_tenants.read().unwrap());
-        if tenant != scope {
+        if !is_super && tenant != scope {
             continue;
         }
         if let Ok(json_str) = serde_json::to_string(&alert) {
@@ -2124,6 +2150,7 @@ async fn deliver_commands(state: &AppState, agent_id: &str, headers: &axum::http
             }
         }
     }
+    wazuh_manager::update_agent_keepalive(agent_id, "active").await;
     let commands = state.pending_commands.write().unwrap().remove(agent_id).unwrap_or_default();
     persist::save_commands(state, agent_id, &commands, true).await;
     Json(commands).into_response()
@@ -2343,9 +2370,18 @@ async fn get_agent_commands_by_path(
 }
 
 async fn ack_agent_command(
+    State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     info!("Active Response ACK received from agent: {:?}", payload);
+    if let Some(cmd_id) = payload.get("command_id").and_then(|v| v.as_str()) {
+        let mut ar = state.active_responses.write().unwrap();
+        for r in ar.iter_mut() {
+            if r.id.contains(cmd_id) || cmd_id.contains(&r.id) {
+                r.status = "Executed & Verified on Host".to_string();
+            }
+        }
+    }
     Json(serde_json::json!({ "status": "acknowledged" }))
 }
 

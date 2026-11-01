@@ -277,7 +277,7 @@ EOF
 # Enrollment: the manager assigns an agent id that is unique across tenants.
 # On deployment, enroll with the manager (force: true) to ensure client.keys has a valid active key.
 KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
-rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
+rm -f "${KEYS_FILE}" "${INSTALL_DIR}/.decommissioned" "${INSTALL_DIR}/client.keys.deleted" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted" /etc/wazuh-agent/.decommissioned /etc/wazuh-agent/client.keys.deleted
 BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
 RESP=""
 if command -v curl > /dev/null 2>&1; then

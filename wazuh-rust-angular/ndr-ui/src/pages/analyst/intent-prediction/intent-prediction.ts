@@ -27,7 +27,9 @@ import {
   Sliders,
   ExternalLink,
   ChevronRight,
-  Info
+  Info,
+  Terminal,
+  FileText
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import {
@@ -38,7 +40,8 @@ import {
   ExecuteActionRequest,
   IntentHypothesisScore,
   KillChainMilestone,
-  Agent
+  Agent,
+  ActionAuditRecord
 } from '../../../services/siem/siem.models';
 
 @Component({
@@ -78,6 +81,8 @@ export class IntentPrediction implements OnInit {
   ExternalLinkIcon = ExternalLink;
   ChevronRightIcon = ChevronRight;
   InfoIcon = Info;
+  TerminalIcon = Terminal;
+  FileTextIcon = FileText;
 
   // State Signals
   loading = signal<boolean>(true);
@@ -89,6 +94,9 @@ export class IntentPrediction implements OnInit {
   selectedDossier = signal<EntityIntentDossier | null>(null);
   catalog = signal<any | null>(null);
   fleetAgents = signal<Agent[]>([]);
+  actionAuditLogs = signal<ActionAuditRecord[]>([]);
+  selectedLogAction = signal<any | null>(null);
+  showLogModal = signal<boolean>(false);
 
   // Filters & Tabs
   activeTab = signal<'dossier' | 'actions' | 'radar'>('dossier');
@@ -99,6 +107,7 @@ export class IntentPrediction implements OnInit {
   // Simulation Modal Signals
   showSimModal = signal<boolean>(false);
   simEvaluating = signal<boolean>(false);
+  revertingSimulation = signal<boolean>(false);
   simProgress = signal<number>(0);
   simStageNumber = signal<number>(1);
   simCurrentStageText = signal<string>('');
@@ -217,6 +226,25 @@ export class IntentPrediction implements OnInit {
       next: (cat) => this.catalog.set(cat),
       error: (err) => console.warn('Catalog load issue', err)
     });
+
+    this.loadAuditLogs();
+  }
+
+  loadAuditLogs() {
+    this.siem.getIntentActionAudit().subscribe({
+      next: (logs) => this.actionAuditLogs.set(logs || []),
+      error: (err) => console.warn('Could not load intent audit logs', err)
+    });
+  }
+
+  viewExecutionLog(action: any) {
+    this.selectedLogAction.set(action);
+    this.showLogModal.set(true);
+  }
+
+  closeLogModal() {
+    this.showLogModal.set(false);
+    this.selectedLogAction.set(null);
   }
 
   selectDossier(d: EntityIntentDossier) {
@@ -264,6 +292,7 @@ export class IntentPrediction implements OnInit {
           };
         });
         this.dossiers.set(updatedDossiers);
+        this.loadAuditLogs();
       },
       error: (err) => {
         console.error('Failed to execute countermeasure', err);
@@ -450,6 +479,23 @@ export class IntentPrediction implements OnInit {
       queryParamsHandling: 'merge'
     });
     this.activeTab.set('dossier');
+  }
+
+  revertSimulation(agentId: string) {
+    this.revertingSimulation.set(true);
+    this.siem.revertIntentSimulation(agentId).subscribe({
+      next: (updatedDossier) => {
+        this.revertingSimulation.set(false);
+        this.triggerToast(`Reverted ${updatedDossier.entity_name} to live database telemetry.`);
+        this.selectedDossier.set(updatedDossier);
+        this.refreshAll();
+      },
+      error: (err) => {
+        console.error('Failed to revert simulation', err);
+        this.revertingSimulation.set(false);
+        this.errorMessage.set(`Failed to revert simulation: ${err.message || 'Unknown error'}`);
+      }
+    });
   }
 
   private triggerToast(msg: string) {

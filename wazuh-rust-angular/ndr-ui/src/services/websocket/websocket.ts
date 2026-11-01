@@ -76,7 +76,12 @@ export class Websocket {
 
     try {
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${location.host}/ws`;
+      let token = '';
+      try {
+        token = localStorage.getItem('ndr_token') || JSON.parse(localStorage.getItem('ndr_user') || '{}')?.token || '';
+      } catch {}
+      const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+      const wsUrl = `${wsProtocol}//${location.host}/ws${tokenQuery}`;
 
       this.socket = new WebSocket(wsUrl);
 

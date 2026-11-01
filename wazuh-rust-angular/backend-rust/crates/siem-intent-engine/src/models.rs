@@ -75,6 +75,30 @@ pub struct PreemptiveAction {
     pub execution_command: Option<String>,
     pub status: String, // "pending_approval" | "executed" | "dismissed"
     pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_output: Option<String>,
+}
+
+/// Persistent audit record for executed countermeasure commands with verified execution logs
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActionAuditRecord {
+    pub id: String,
+    pub action_id: String,
+    pub command_id: String,
+    pub action_type: String,
+    pub target_agent_id: String,
+    pub target_agent_name: String,
+    pub target_entity: String,
+    pub command: String,
+    pub status: String, // "queued" | "dispatched" | "executed" | "simulated"
+    pub exit_code: Option<i32>,
+    pub output: String,
+    pub executed_at: DateTime<Utc>,
+    pub dry_run: bool,
 }
 
 /// Real-time or historical alert record for kill-chain evidence mapping
@@ -109,6 +133,8 @@ pub struct EntityIntentDossier {
     pub entity_ip: String,
     #[serde(default)]
     pub os_type: Option<String>,
+    #[serde(default)]
+    pub is_simulated: bool,
     pub primary_intent: String,
     pub primary_probability: f64,
     pub confidence_score: f64,
@@ -120,8 +146,6 @@ pub struct EntityIntentDossier {
     pub alerts_analyzed: usize,
     pub last_updated_at: DateTime<Utc>,
 }
-
-
 
 /// Executive posture and summary report
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -133,8 +133,9 @@ impl AgentBuffer {
 fn tenant_headers() -> reqwest::header::HeaderMap {
     let mut h = reqwest::header::HeaderMap::new();
     if let Ok(k) = std::env::var("SIEM_TENANT_KEY") {
-        if let Ok(v) = reqwest::header::HeaderValue::from_str(k.trim()) {
-            if !k.trim().is_empty() {
+        let cleaned = k.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+        if !cleaned.is_empty() {
+            if let Ok(v) = reqwest::header::HeaderValue::from_str(cleaned) {
                 h.insert("x-tenant-key", v);
             }
         }

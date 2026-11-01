@@ -36,6 +36,7 @@ import {
   SimulationIntentRequest,
   PreemptiveAction,
   ExecuteActionRequest,
+  ActionAuditRecord,
   DeceptionAsset,
   TripwireEvent,
   DeceptionBlueprint,
@@ -62,7 +63,12 @@ export class SiemService {
   private initWebSocket() {
     if (typeof window === 'undefined') return;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/alerts`;
+    let token = '';
+    try {
+      token = localStorage.getItem('ndr_token') || JSON.parse(localStorage.getItem('ndr_user') || '{}')?.token || '';
+    } catch {}
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const wsUrl = `${protocol}//${window.location.host}/ws/alerts${tokenQuery}`;
     try {
       this.ws = new WebSocket(wsUrl);
       this.ws.onopen = () => {
@@ -120,7 +126,7 @@ export class SiemService {
   }
 
   getRawEvents(limit: number = 200, source?: string): Observable<RawEvent[]> {
-    const url = source ? `${this.apiUrl}/api/v1/events?limit=${limit}&source=${source}` : `${this.apiUrl}/api/v1/events?limit=${limit}`;
+    const url = (source && source !== 'all') ? `${this.apiUrl}/api/v1/events?limit=${limit}&source=${source}` : `${this.apiUrl}/api/v1/events?limit=${limit}`;
     return this.http.get<RawEvent[]>(url).pipe(
       catchError(() => of([]))
     );
@@ -653,8 +659,16 @@ export class SiemService {
     return this.http.post<EntityIntentDossier>(`${this.apiUrl}/api/v1/intent/evaluate`, req);
   }
 
+  revertIntentSimulation(agentId: string): Observable<EntityIntentDossier> {
+    return this.http.post<EntityIntentDossier>(`${this.apiUrl}/api/v1/intent/revert/${encodeURIComponent(agentId)}`, {});
+  }
+
   executePreemptiveAction(req: ExecuteActionRequest): Observable<PreemptiveAction> {
     return this.http.post<PreemptiveAction>(`${this.apiUrl}/api/v1/intent/actions/execute`, req);
+  }
+
+  getIntentActionAudit(): Observable<ActionAuditRecord[]> {
+    return this.http.get<ActionAuditRecord[]>(`${this.apiUrl}/api/v1/intent/actions/audit`);
   }
 
   getIntentCatalog(): Observable<any> {

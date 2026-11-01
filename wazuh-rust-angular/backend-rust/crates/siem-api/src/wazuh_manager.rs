@@ -859,6 +859,16 @@ pub async fn remove_agent(id: &str) {
     }
 }
 
+/// Updates an agent's connection status and keepalive in wazuh-db global.db.
+pub async fn update_agent_keepalive(id: &str, status: &str) {
+    if !enabled() {
+        return;
+    }
+    let Ok(n) = id.parse::<i64>() else { return };
+    let q = format!("global update-keepalive {{\"id\":{n},\"connection_status\":\"{status}\",\"sync_status\":\"synced\"}}");
+    let _ = wdb().query(&q).await;
+}
+
 /// `agent <id> sql <query>`: the rows, or None (no agent DB, not running).
 pub(crate) async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
     let r = wdb().query(&format!("agent {id} sql {sql}")).await.ok()?;
@@ -1670,7 +1680,28 @@ async fn agent_status_loop(state: AppState) {
                 _ => "linux",
             };
             let ip = Some(s(&r, &["ip"])).filter(|x| !x.is_empty()).unwrap_or_else(|| s(&r, &["register_ip"]));
-            let last_keepalive = chrono::DateTime::from_timestamp(ka, 0).unwrap_or_else(Utc::now);
+            let wdb_keepalive = chrono::DateTime::from_timestamp(ka, 0).unwrap_or_else(Utc::now);
+
+            // If the in-memory agent has a newer keepalive (e.g. from HTTP API events or heartbeats),
+            // preserve the in-memory keepalive and status if it hasn't timed out (180s).
+            let (final_status, final_keepalive) = {
+                let agents = state.agents.read().unwrap();
+                if let Some(existing) = agents.get(&id) {
+                    if existing.last_keepalive > wdb_keepalive {
+                        let age = (Utc::now() - existing.last_keepalive).num_seconds();
+                        if age < 180 {
+                            (AgentStatus::Active, existing.last_keepalive)
+                        } else {
+                            (AgentStatus::Disconnected, existing.last_keepalive)
+                        }
+                    } else {
+                        (status, wdb_keepalive)
+                    }
+                } else {
+                    (status, wdb_keepalive)
+                }
+            };
+
             let agent = {
                 let mut agents = state.agents.write().unwrap();
                 let a = agents.entry(id.clone()).or_insert_with(|| Agent {
@@ -1679,8 +1710,8 @@ async fn agent_status_loop(state: AppState) {
                     ip: ip.clone(),
                     os: os.clone(),
                     version: s(&r, &["version"]),
-                    status: status.clone(),
-                    last_keepalive,
+                    status: final_status.clone(),
+                    last_keepalive: final_keepalive,
                     os_type: os_type.to_string(),
                 });
                 if !os.is_empty() {
@@ -1696,15 +1727,21 @@ async fn agent_status_loop(state: AppState) {
                 if !ip.is_empty() && ip != "any" {
                     a.ip = ip.clone();
                 }
-                a.status = status.clone();
-                a.last_keepalive = last_keepalive;
+                a.status = final_status.clone();
+                a.last_keepalive = final_keepalive;
                 a.clone()
             };
-            let changed = last_saved.get(&id).map(|(st, k)| *st != status || *k != ka).unwrap_or(true);
+            let final_ka_ts = final_keepalive.timestamp();
+            let changed = last_saved.get(&id).map(|(st, k)| *st != final_status || *k != final_ka_ts).unwrap_or(true);
             if changed {
                 let tenant = tenant_of(&state, &id);
                 state.db.insert_or_update_agent(&tenant, &agent).await;
-                last_saved.insert(id, (status, ka));
+                last_saved.insert(id.clone(), (final_status.clone(), final_ka_ts));
+                if final_status == AgentStatus::Active && ka < final_ka_ts {
+                    if let Ok(n) = id.parse::<i64>() {
+                        let _ = wdb.query(&format!("global update-keepalive {{\"id\":{n},\"connection_status\":\"active\",\"sync_status\":\"synced\"}}")).await;
+                    }
+                }
             }
         }
     }

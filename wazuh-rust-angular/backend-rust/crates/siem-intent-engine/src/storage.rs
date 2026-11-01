@@ -1,11 +1,16 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use crate::models::EntityIntentDossier;
+use crate::models::{ActionAuditRecord, EntityIntentDossier, SimulationIntentRequest};
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct IntentEngineStorage {
     pub dossiers: Vec<EntityIntentDossier>,
     pub executed_actions: Vec<String>,
+    #[serde(default)]
+    pub action_audit: Vec<ActionAuditRecord>,
+    #[serde(default)]
+    pub simulation_overrides: HashMap<String, SimulationIntentRequest>,
 }
 
 pub fn load_storage(path: &Path) -> Option<IntentEngineStorage> {
@@ -32,6 +37,7 @@ pub fn default_storage() -> IntentEngineStorage {
     IntentEngineStorage {
         dossiers: Vec::new(),
         executed_actions: Vec::new(),
+        action_audit: Vec::new(),
+        simulation_overrides: HashMap::new(),
     }
 }
-

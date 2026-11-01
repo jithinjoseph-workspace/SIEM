@@ -690,6 +690,25 @@ export interface PreemptiveAction {
   execution_command?: string;
   status: 'pending_approval' | 'executed' | 'dismissed' | 'simulated' | string;
   created_at: string;
+  executed_at?: string;
+  command_id?: string;
+  execution_output?: string;
+}
+
+export interface ActionAuditRecord {
+  id: string;
+  action_id: string;
+  command_id: string;
+  action_type: string;
+  target_agent_id: string;
+  target_agent_name: string;
+  target_entity: string;
+  command: string;
+  status: string;
+  exit_code?: number;
+  output: string;
+  executed_at: string;
+  dry_run: boolean;
 }
 
 export interface EntityIntentDossier {
@@ -697,6 +716,8 @@ export interface EntityIntentDossier {
   entity_id: string;
   entity_name: string;
   entity_ip: string;
+  os_type?: string;
+  is_simulated?: boolean;
   primary_intent: string;
   primary_probability: number;
   confidence_score: number;

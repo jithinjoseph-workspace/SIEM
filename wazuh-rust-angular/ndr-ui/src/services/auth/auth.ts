@@ -59,7 +59,9 @@ export class AuthService implements OnDestroy {
     }).pipe(
       tap((res: any) => {
         if (res.user) {
-          // Token stays only in the httpOnly cookie — never in localStorage.
+          if (res.user.token) {
+            localStorage.setItem('ndr_token', res.user.token);
+          }
           localStorage.setItem(this.USER_KEY, JSON.stringify({
             ...res.user,
             permissions: this.normalizePermissions(res.user?.permissions),
@@ -92,6 +94,7 @@ export class AuthService implements OnDestroy {
     this.stopSessionPoll();
     this.ws.disconnect();
     localStorage.removeItem(this.USER_KEY);
+    localStorage.removeItem('ndr_token');
     sessionStorage.clear();
     // Tell the backend to expire the httpOnly cookie (fire-and-forget;
     // navigation happens regardless of whether the request succeeds).

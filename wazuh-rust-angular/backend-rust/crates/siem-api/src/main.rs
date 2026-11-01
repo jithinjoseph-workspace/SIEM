@@ -1,4 +1,4 @@
-use axum::{
+﻿use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Extension, Path, Query, State,
@@ -537,7 +537,10 @@ async fn main() {
                                     risk_fabric_clone.evaluate_alert(a);
                                 }
                             }
-                            intent_engine_clone.ingest_live_alerts(&alerts);
+                            let deleted = ch_state.deleted_agents.read().unwrap();
+                            let active_alerts: Vec<_> = alerts.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+                            drop(deleted);
+                            intent_engine_clone.ingest_live_alerts(&active_alerts);
                             let mut l = ch_state.alerts.write().unwrap();
                             l.extend(alerts);
                             crate::trim(&mut l, crate::MEM_ALERTS);
@@ -576,17 +579,25 @@ async fn main() {
         ]);
 
     let alerts_reader = {
-        let alerts = state.alerts.clone();
-        Arc::new(move || alerts.read().unwrap().clone())
+        let alerts_state = state.clone();
+        Arc::new(move || {
+            let deleted = alerts_state.deleted_agents.read().unwrap();
+            let alerts = alerts_state.alerts.read().unwrap();
+            alerts.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect()
+        })
     };
 
     let fleet_reader = {
         let fleet_state = state.clone();
         Arc::new(move || {
             let mut fleet = Vec::new();
+            let deleted = fleet_state.deleted_agents.read().unwrap();
             {
                 let agents = fleet_state.agents.read().unwrap();
                 for a in agents.values() {
+                    if deleted.contains(&a.id) {
+                        continue;
+                    }
                     let os = if !a.os_type.is_empty() {
                         Some(a.os_type.clone())
                     } else if a.name.to_lowercase().contains("win") {
@@ -600,6 +611,9 @@ async fn main() {
             if fleet.is_empty() {
                 let enrolled = fleet_state.enrolled.read().unwrap();
                 for (id, e) in enrolled.iter() {
+                    if deleted.contains(id) {
+                        continue;
+                    }
                     let os = if !e.os_type.is_empty() {
                         Some(e.os_type.clone())
                     } else if e.name.to_lowercase().contains("win") {
@@ -613,6 +627,12 @@ async fn main() {
             fleet
         })
     };
+
+    // Synchronize enrolled fleet into Intent Engine immediately on startup
+    {
+        let initial_fleet = (fleet_reader)();
+        state.intent_engine.sync_enrolled_fleet(&initial_fleet);
+    }
 
     let active_response_dispatcher = {
         let ar_state = state.clone();
@@ -642,8 +662,22 @@ async fn main() {
 
             let save_state = ar_state.clone();
             let aid = agent_id.to_string();
+            let cmd_clone = cmd.clone();
+            let rec = ActiveResponseRecord {
+                id: format!("ar-{}", &cmd_id[..8]),
+                command: action_name.to_string(),
+                target_ip: target.to_string(),
+                agent_id: agent_id.to_string(),
+                reason: format!("Intent Preemptive Countermeasure: {}", action_type),
+                triggered_at: chrono::Utc::now(),
+                duration_seconds: 3600,
+                status: "Active (Dispatched to Host)".to_string(),
+            };
+            ar_state.active_responses.write().unwrap().insert(0, rec.clone());
+
             tokio::spawn(async move {
-                persist::save_commands(&save_state, &aid, &[cmd], false).await;
+                persist::save_commands(&save_state, &aid, &[cmd_clone], false).await;
+                persist::save_active_response(&save_state, &rec).await;
             });
         })
     };
@@ -773,6 +807,7 @@ async fn main() {
         .route("/api/sources", get(get_siem_sources).post(post_siem_sources))
         .route("/syscheck", put(put_syscheck_handler))
         .route("/api/v1/syscheck", put(put_syscheck_handler))
+        .route("/api/v1/simulate", post(simulate_attack))
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
@@ -1151,7 +1186,10 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
             a
         })
         .collect();
-    state.intent_engine.ingest_live_alerts(&evaluated);
+    let deleted = state.deleted_agents.read().unwrap();
+    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+    drop(deleted);
+    state.intent_engine.ingest_live_alerts(&active_alerts);
     let mut l = state.alerts.write().unwrap();
     l.extend(evaluated);
     trim(&mut l, MEM_ALERTS);
@@ -1289,7 +1327,7 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
                 }
                 let last_ka = chrono::DateTime::from_timestamp_millis(r.last_keepalive)
                     .unwrap_or_else(chrono::Utc::now);
-                let status = if (now - last_ka).num_seconds() > 60 {
+                let status = if (now - last_ka).num_seconds() > 180 {
                     AgentStatus::Disconnected
                 } else {
                     match r.status.as_str() {
@@ -1351,8 +1389,8 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         let mut agents_guard = state.agents.write().unwrap();
         let now = Utc::now();
         for agent in agents_guard.values_mut() {
-            // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 60s
-            if (now - agent.last_keepalive).num_seconds() > 60 {
+            // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 180s
+            if (now - agent.last_keepalive).num_seconds() > 180 {
                 agent.status = AgentStatus::Disconnected;
             }
         }
@@ -1388,6 +1426,9 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         let t_clone = tenant.clone();
         let id_clone = id.to_string();
         tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
+
+        // Instantly purge intent engine and risk fabric state for this deleted agent
+        state.intent_engine.remove_dossier_by_agent_id(id);
         let enrolled_placeholder;
         let e_ref = match e.as_ref() {
             Some(entry) => Some(entry),
@@ -1488,9 +1529,14 @@ async fn get_events(
 ) -> Json<Vec<RawEvent>> {
     let limit = params.limit.unwrap_or(200);
     let scope = ctx.scope();
+    let is_all_source = params
+        .source
+        .as_deref()
+        .map(|s| s.is_empty() || s.eq_ignore_ascii_case("all"))
+        .unwrap_or(true);
 
     // Persisted events come from the tenant's own ClickHouse database.
-    if state.db.is_connected() && params.source.is_none() {
+    if state.db.is_connected() && is_all_source {
         if let Some(ch_rows) = state.db.fetch_events(&scope, limit).await {
             if !ch_rows.is_empty() {
                 let events: Vec<RawEvent> = ch_rows.into_iter().map(|r| r.to_raw_event()).collect();
@@ -1501,9 +1547,14 @@ async fn get_events(
 
     let mut list: Vec<RawEvent> = scoped_events(&state, &ctx)
         .into_iter()
-        .filter(|e| match params.source {
-            Some(ref src) => format!("{:?}", e.source).to_lowercase().contains(&src.to_lowercase()),
-            None => true,
+        .filter(|e| {
+            if is_all_source {
+                true
+            } else if let Some(ref src) = params.source {
+                format!("{:?}", e.source).to_lowercase().contains(&src.to_lowercase())
+            } else {
+                true
+            }
         })
         .collect();
 
@@ -1577,6 +1628,7 @@ async fn ingest_event(
 
         // Persist agent heartbeat/status into ClickHouse database
         state.db.insert_or_update_agent(&tenant, &ag_clone).await;
+        wazuh_manager::update_agent_keepalive(&event.agent_id, "active").await;
 
         // The tenant's learned parsers (< 5 microseconds); their fields are stored with the event
         if let Some(p) = parsers_store::for_tenant(&state, &tenant).execute(&event.message) {
@@ -1780,6 +1832,140 @@ async fn ingest_event(
     Ok(Json(last_alert))
 }
 
+#[derive(Deserialize)]
+struct SimulateRequest {
+    scenario: String,
+}
+
+#[derive(Serialize)]
+struct SimulateResponse {
+    scenario: String,
+    triggered_alerts: Vec<Alert>,
+}
+
+async fn simulate_attack(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+    Json(req): Json<SimulateRequest>,
+) -> Json<SimulateResponse> {
+    let mut generated_events = Vec::new();
+
+    match req.scenario.as_str() {
+        "ssh_brute_force" => {
+            for i in 1..=5 {
+                generated_events.push(RawEvent::new(
+                    "001",
+                    EventSource::Auth,
+                    "/var/log/auth.log",
+                    format!("sshd[{}]: Failed password for root from 198.51.100.44 port {} ssh2", 3000 + i, 45000 + i),
+                ));
+            }
+        }
+        "fim_tamper" => {
+            generated_events.push(RawEvent::new(
+                "001",
+                EventSource::Fim,
+                "syscheck",
+                "ossec: File '/etc/shadow' modified (checksum changed from a93f... to d21b...)",
+            ));
+        }
+        "mimikatz" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::WindowsEvent,
+                "Security-EventLog",
+                "powershell.exe -w hidden -EncodedCommand c2VrdXJsc2E6OmxvZ29ucGFzc3dvcmRz (Mimikatz memory dump attempt)",
+            ));
+        }
+        "win_event_4625" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::WindowsEvent,
+                "Security",
+                "Windows-Event [Security] EventID:4625 - An account failed to log on. Subject: User: Administrator, Failure Reason: Unknown user name or bad password.",
+            ));
+        }
+        "win_registry_tamper" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::Registry,
+                r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
+                r"Registry 'HKLM\Software\Microsoft\Windows\CurrentVersion\Run' modified: Value 'BackdoorService' added = 'C:\Users\Public\svchost_fake.exe'",
+            ));
+        }
+        "win_sca_fail" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::Sca,
+                "sca/windows_baseline",
+                "SCA [FAIL]: (Check #1001) Ensure User Account Control (UAC) - EnableLUA is enabled (Current: 0x0, Expected: 0x1)",
+            ));
+        }
+        "win_service_7045" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::WindowsEvent,
+                "System",
+                "Windows-Event [System] EventID:7045 - A service was installed in the system. Service Name: RansomPayloadService, File Name: C:\\Temp\\encrypt.exe",
+            ));
+        }
+        "ransomware" => {
+            generated_events.push(RawEvent::new(
+                "002",
+                EventSource::Fim,
+                "syscheck",
+                "ossec: Mass file rename detected: 'C:\\Users\\Finance\\Documents\\ledger.xlsx.locked'",
+            ));
+        }
+        _ => {
+            generated_events.push(RawEvent::new(
+                "001",
+                EventSource::Syslog,
+                "/var/log/syslog",
+                "sudo: guest : COMMAND=/usr/bin/su root",
+            ));
+        }
+    }
+
+    // Simulated activity belongs to the caller's tenant.
+    let tenant = ctx.scope();
+    let mut triggered_alerts = Vec::new();
+    for mut ev in generated_events {
+        ev.metadata.insert("tenant_id".into(), tenant.clone());
+        let (name, ip) = {
+            let agents = state.agents.read().unwrap();
+            let own = if agent_in_scope(&state, &ctx, &ev.agent_id) { agents.get(&ev.agent_id).cloned() } else { None };
+            let ag = own.unwrap_or(Agent {
+                id: ev.agent_id.clone(),
+                name: "agent-sim".into(),
+                ip: "10.0.0.50".into(),
+                os: "Linux".into(),
+                version: "v4.14.7".into(),
+                status: AgentStatus::Active,
+                last_keepalive: Utc::now(),
+                os_type: "linux".into(),
+            });
+            (ag.name, ag.ip)
+        };
+
+        if let Some(mut alert) = state.engine.process_event(&ev, &name, &ip) {
+            // the live view shows it among real alerts: it must say it is a simulation
+            alert.rule.description = format!("[Simulation] {}", alert.rule.description);
+            alert.rule.groups.push("simulation".into());
+            let alert = tenancy::tag_alert(alert, &tenant);
+            keep_alerts(&state, [alert.clone()]);
+            let _ = state.broadcast_tx.send(alert.clone());
+            triggered_alerts.push(alert);
+        }
+        keep_events(&state, [ev]);
+    }
+
+    Json(SimulateResponse {
+        scenario: req.scenario,
+        triggered_alerts,
+    })
+}
+
 async fn ws_alerts_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -1791,6 +1977,7 @@ async fn ws_alerts_handler(
 /// Live alerts of the caller's tenant only.
 async fn handle_ws_socket(mut socket: WebSocket, state: AppState, ctx: AuthCtx) {
     let mut rx = state.broadcast_tx.subscribe();
+    let is_super = ctx.is_super() && ctx.requested_tenant.is_none();
     let scope = ctx.scope();
 
     loop {
@@ -1800,7 +1987,7 @@ async fn handle_ws_socket(mut socket: WebSocket, state: AppState, ctx: AuthCtx) 
             Err(_) => break,
         };
         let tenant = tenancy::alert_tenant(&alert, &state.agent_tenants.read().unwrap());
-        if tenant != scope {
+        if !is_super && tenant != scope {
             continue;
         }
         if let Ok(json_str) = serde_json::to_string(&alert) {
@@ -1967,6 +2154,16 @@ async fn deliver_commands(state: &AppState, agent_id: &str, headers: &axum::http
     if !agent_key_ok(state, agent_id, headers) {
         return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "status": "error", "message": "invalid agent key" }))).into_response();
     }
+    {
+        let mut agents = state.agents.write().unwrap();
+        if let Some(agent) = agents.get_mut(agent_id) {
+            agent.last_keepalive = Utc::now();
+            if agent.status != AgentStatus::Active {
+                agent.status = AgentStatus::Active;
+            }
+        }
+    }
+    wazuh_manager::update_agent_keepalive(agent_id, "active").await;
     let commands = state.pending_commands.write().unwrap().remove(agent_id).unwrap_or_default();
     persist::save_commands(state, agent_id, &commands, true).await;
     Json(commands).into_response()
@@ -2186,9 +2383,18 @@ async fn get_agent_commands_by_path(
 }
 
 async fn ack_agent_command(
+    State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     info!("Active Response ACK received from agent: {:?}", payload);
+    if let Some(cmd_id) = payload.get("command_id").and_then(|v| v.as_str()) {
+        let mut ar = state.active_responses.write().unwrap();
+        for r in ar.iter_mut() {
+            if r.id.contains(cmd_id) || cmd_id.contains(&r.id) {
+                r.status = "Executed & Verified on Host".to_string();
+            }
+        }
+    }
     Json(serde_json::json!({ "status": "acknowledged" }))
 }
 
@@ -4567,6 +4773,15 @@ async fn get_agent_state_handler(State(state): State<AppState>, Query(q): Query<
     } else if is_deactivated(&state, &q.agent_id) {
         "deactivated"
     } else {
+        if !q.agent_id.is_empty() {
+            let mut agents = state.agents.write().unwrap();
+            if let Some(agent) = agents.get_mut(&q.agent_id) {
+                agent.last_keepalive = Utc::now();
+                if agent.status != AgentStatus::Active {
+                    agent.status = AgentStatus::Active;
+                }
+            }
+        }
         "active"
     };
     Json(serde_json::json!({ "agent_id": q.agent_id, "state": st })).into_response()

@@ -1,178 +1,28 @@
 ﻿{
     "dossiers":  [
                      {
-                         "id":  "dossier-e3eb82ff-036f-4fc9-a88f-499b0ee37df1",
+                         "id":  "dossier-fca05555-3735-4962-aca8-3964005f78e9",
                          "entity_id":  "019",
                          "entity_name":  "linux-node-8651",
                          "entity_ip":  "127.0.0.1",
                          "os_type":  "linux",
-                         "primary_intent":  "Long-Term APT \u0026 Identity Dominance",
-                         "primary_probability":  0.37,
-                         "confidence_score":  0.58,
+                         "is_simulated":  false,
+                         "primary_intent":  "Baseline Activity (Normal)",
+                         "primary_probability":  0.0,
+                         "confidence_score":  0.95,
                          "kill_chain_velocity":  "Steady",
-                         "progression_percent":  30,
+                         "progression_percent":  0,
                          "hypotheses":  [
-                                            {
-                                                "intent_type":  "apt_espionage",
-                                                "display_name":  "Long-Term APT \u0026 Identity Dominance",
-                                                "probability":  0.37,
-                                                "confidence":  0.58,
-                                                "impact_severity":  "Critical",
-                                                "key_indicators":  [
-                                                                       "Technique T1098 detected [Affinity +4.5]",
-                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
-                                                                   ],
-                                                "projected_impact":  "Covert identity manipulation, long-term persistence, and credential dumping."
-                                            },
-                                            {
-                                                "intent_type":  "data_exfiltration",
-                                                "display_name":  "Data Theft \u0026 Exfiltration",
-                                                "probability":  0.24,
-                                                "confidence":  0.58,
-                                                "impact_severity":  "High",
-                                                "key_indicators":  [
-                                                                       "Technique T1098 detected [Affinity +2.8]",
-                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
-                                                                   ],
-                                                "projected_impact":  "Imminent outbound leakage of sensitive proprietary records or credentials."
-                                            },
-                                            {
-                                                "intent_type":  "ransomware_extortion",
-                                                "display_name":  "Ransomware \u0026 Double Extortion",
-                                                "probability":  0.23,
-                                                "confidence":  0.58,
-                                                "impact_severity":  "Critical",
-                                                "key_indicators":  [
-                                                                       "Technique T1098 detected [Affinity +2.2]",
-                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
-                                                                   ],
-                                                "projected_impact":  "Immediate risk of volume encryption across critical datastores with secondary extortion."
-                                            },
-                                            {
-                                                "intent_type":  "destructive_sabotage",
-                                                "display_name":  "Destructive Wiper / Sabotage",
-                                                "probability":  0.11,
-                                                "confidence":  0.58,
-                                                "impact_severity":  "Catastrophic",
-                                                "key_indicators":  [
-                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
-                                                                   ],
-                                                "projected_impact":  "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
-                                            },
-                                            {
-                                                "intent_type":  "cryptojacking",
-                                                "display_name":  "Cryptojacking \u0026 Resource Hijacking",
-                                                "probability":  0.04,
-                                                "confidence":  0.58,
-                                                "impact_severity":  "Medium",
-                                                "key_indicators":  [
 
-                                                                   ],
-                                                "projected_impact":  "Unauthorized consumption of system compute and GPU resources."
-                                            }
                                         ],
                          "milestones":  [
-                                            {
-                                                "stage_index":  0,
-                                                "stage_name":  "Initial Access",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
 
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  1,
-                                                "stage_name":  "Execution",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  2,
-                                                "stage_name":  "Persistence",
-                                                "status":  "current",
-                                                "observed_techniques":  [
-                                                                            "T1098"
-                                                                        ],
-                                                "first_observed_at":  "2026-10-27T05:46:47.874297100Z"
-                                            },
-                                            {
-                                                "stage_index":  3,
-                                                "stage_name":  "Privilege Escalation",
-                                                "status":  "predicted_next",
-                                                "observed_techniques":  [
-
-                                                                        ],
-                                                "prediction_reason":  "Adversary likely to pivot to Privilege Escalation next based on Long-Term APT \u0026 Identity Dominance trajectory."
-                                            },
-                                            {
-                                                "stage_index":  4,
-                                                "stage_name":  "Defense Evasion",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  5,
-                                                "stage_name":  "Credential Access",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  6,
-                                                "stage_name":  "Discovery",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  7,
-                                                "stage_name":  "Lateral Movement",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  8,
-                                                "stage_name":  "Collection \u0026 Staging",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  9,
-                                                "stage_name":  "Impact \u0026 Exfiltration",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            }
                                         ],
                          "recommended_actions":  [
-                                                     {
-                                                         "id":  "act-93efb28d-35d1-4d49-9f2f-e9d6740a9b85",
-                                                         "title":  "Terminate Suspect Script Process Tree on \u0027linux-node-8651\u0027",
-                                                         "action_type":  "process_termination",
-                                                         "target_agent_id":  "019",
-                                                         "target_agent_name":  "linux-node-8651",
-                                                         "target_entity":  "linux-node-8651",
-                                                         "urgency":  "Elevated",
-                                                         "risk_reduction_percent":  82,
-                                                         "description":  "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.",
-                                                         "execution_command":  "pkill -9 -f \u0027bash|sh|python\u0027",
-                                                         "status":  "executed",
-                                                         "created_at":  "2026-10-27T05:46:47.874365500Z"
-                                                     }
+
                                                  ],
-                         "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-27T05:46:47.874365500Z"
+                         "alerts_analyzed":  0,
+                         "last_updated_at":  "2026-11-01T06:21:20.398760900Z"
                      },
                      {
                          "id":  "dossier-6222222e-e0ff-48d1-8676-3c0c8e585d99",
@@ -363,7 +213,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  3,
-                         "last_updated_at":  "2026-10-27T05:36:53.852790500Z"
+                         "last_updated_at":  "2026-10-27T05:36:53.852790500Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-d4c0735a-b211-4b29-8e31-d339a3f00aeb",
@@ -4403,7 +4254,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  3853,
-                         "last_updated_at":  "2026-10-29T06:38:16.053182600Z"
+                         "last_updated_at":  "2026-10-29T06:38:16.053182600Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-43c47d49-ce6f-44c9-9485-39f42dbb1da5",
@@ -4578,7 +4430,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  2,
-                         "last_updated_at":  "2026-10-29T06:07:49.008107300Z"
+                         "last_updated_at":  "2026-10-29T06:07:49.008107300Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-92c55214-53fb-47df-934d-64962a66720d",
@@ -4767,7 +4620,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  2,
-                         "last_updated_at":  "2026-10-29T07:50:19.496481800Z"
+                         "last_updated_at":  "2026-10-29T07:50:19.496481800Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-9248d99f-3f86-409e-a036-12a5a88c6292",
@@ -4940,7 +4794,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T13:35:11.537126500Z"
+                         "last_updated_at":  "2026-10-29T13:35:11.537126500Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-a115b98f-db1e-4b87-8c1c-64bd6c4e2e5a",
@@ -5111,7 +4966,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T06:40:12.827877800Z"
+                         "last_updated_at":  "2026-10-29T06:40:12.827877800Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-ebcbb5b4-1891-4b02-99c0-dce8840700d6",
@@ -5285,7 +5141,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T06:27:19.234988500Z"
+                         "last_updated_at":  "2026-10-29T06:27:19.234988500Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-bc9a1c4d-591e-47c5-90c7-4ec119a944ae",
@@ -5459,7 +5316,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T05:54:25.965438200Z"
+                         "last_updated_at":  "2026-10-29T05:54:25.965438200Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-3d7c7717-6209-4880-91e1-8af1ada8dc6b",
@@ -5633,201 +5491,32 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T06:34:20.648293100Z"
+                         "last_updated_at":  "2026-10-29T06:34:20.648293100Z",
+                         "is_simulated":  false
                      },
                      {
-                         "id":  "dossier-980c5482-a56d-40e6-b090-01f5b1ea434f",
+                         "id":  "dossier-b4412d01-b7f3-4540-80e0-14491f584231",
                          "entity_id":  "047",
-                         "entity_name":  "win-node-e296",
-                         "entity_ip":  "192.168.1.70",
-                         "os_type":  "windows",
-                         "primary_intent":  "Ransomware \u0026 Double Extortion",
-                         "primary_probability":  0.27,
-                         "confidence_score":  0.82,
-                         "kill_chain_velocity":  "Accelerating",
-                         "progression_percent":  20,
+                         "entity_name":  "linux-node-1cd3",
+                         "entity_ip":  "127.0.0.1",
+                         "os_type":  "linux",
+                         "is_simulated":  false,
+                         "primary_intent":  "Baseline Activity (Normal)",
+                         "primary_probability":  0.0,
+                         "confidence_score":  0.95,
+                         "kill_chain_velocity":  "Steady",
+                         "progression_percent":  0,
                          "hypotheses":  [
-                                            {
-                                                "intent_type":  "ransomware_extortion",
-                                                "display_name":  "Ransomware \u0026 Double Extortion",
-                                                "probability":  0.27,
-                                                "confidence":  0.82,
-                                                "impact_severity":  "Critical",
-                                                "key_indicators":  [
-                                                                       "Technique T1059.001 detected [Affinity +2.2]",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1105)",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1202)"
-                                                                   ],
-                                                "projected_impact":  "Immediate risk of volume encryption across critical datastores with secondary extortion."
-                                            },
-                                            {
-                                                "intent_type":  "data_exfiltration",
-                                                "display_name":  "Data Theft \u0026 Exfiltration",
-                                                "probability":  0.27,
-                                                "confidence":  0.82,
-                                                "impact_severity":  "High",
-                                                "key_indicators":  [
-                                                                       "Technique T1059.001 detected [Affinity +2.2]",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1105)",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1202)"
-                                                                   ],
-                                                "projected_impact":  "Imminent outbound leakage of sensitive proprietary records or credentials."
-                                            },
-                                            {
-                                                "intent_type":  "apt_espionage",
-                                                "display_name":  "Long-Term APT \u0026 Identity Dominance",
-                                                "probability":  0.27,
-                                                "confidence":  0.82,
-                                                "impact_severity":  "Critical",
-                                                "key_indicators":  [
-                                                                       "Technique T1059.001 detected [Affinity +2.2]",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1105)",
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1202)"
-                                                                   ],
-                                                "projected_impact":  "Covert identity manipulation, long-term persistence, and credential dumping."
-                                            },
-                                            {
-                                                "intent_type":  "destructive_sabotage",
-                                                "display_name":  "Destructive Wiper / Sabotage",
-                                                "probability":  0.15,
-                                                "confidence":  0.82,
-                                                "impact_severity":  "Catastrophic",
-                                                "key_indicators":  [
-                                                                       "Technique T1059.001 detected [Affinity +2.0]"
-                                                                   ],
-                                                "projected_impact":  "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
-                                            },
-                                            {
-                                                "intent_type":  "cryptojacking",
-                                                "display_name":  "Cryptojacking \u0026 Resource Hijacking",
-                                                "probability":  0.03,
-                                                "confidence":  0.82,
-                                                "impact_severity":  "Medium",
-                                                "key_indicators":  [
 
-                                                                   ],
-                                                "projected_impact":  "Unauthorized consumption of system compute and GPU resources."
-                                            }
                                         ],
                          "milestones":  [
-                                            {
-                                                "stage_index":  0,
-                                                "stage_name":  "Initial Access",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
 
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  1,
-                                                "stage_name":  "Execution",
-                                                "status":  "current",
-                                                "observed_techniques":  [
-                                                                            "T1059.001",
-                                                                            "T1105",
-                                                                            "T1202",
-                                                                            "T1059.001"
-                                                                        ],
-                                                "first_observed_at":  "2026-10-29T06:45:48.257Z"
-                                            },
-                                            {
-                                                "stage_index":  2,
-                                                "stage_name":  "Persistence",
-                                                "status":  "predicted_next",
-                                                "observed_techniques":  [
-
-                                                                        ],
-                                                "prediction_reason":  "Adversary likely to pivot to Persistence next based on Ransomware \u0026 Double Extortion trajectory."
-                                            },
-                                            {
-                                                "stage_index":  3,
-                                                "stage_name":  "Privilege Escalation",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  4,
-                                                "stage_name":  "Defense Evasion",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  5,
-                                                "stage_name":  "Credential Access",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  6,
-                                                "stage_name":  "Discovery",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  7,
-                                                "stage_name":  "Lateral Movement",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  8,
-                                                "stage_name":  "Collection \u0026 Staging",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            },
-                                            {
-                                                "stage_index":  9,
-                                                "stage_name":  "Impact \u0026 Exfiltration",
-                                                "status":  "unreached",
-                                                "observed_techniques":  [
-
-                                                                        ]
-                                            }
                                         ],
                          "recommended_actions":  [
-                                                     {
-                                                         "id":  "act-5cc540de-f720-4653-ba1b-5f77697453be",
-                                                         "title":  "Preemptively Isolate Windows Host \u0027win-node-e296\u0027",
-                                                         "action_type":  "host_isolation",
-                                                         "target_agent_id":  "047",
-                                                         "target_agent_name":  "win-node-e296",
-                                                         "target_entity":  "192.168.1.70",
-                                                         "urgency":  "Immediate",
-                                                         "risk_reduction_percent":  94,
-                                                         "description":  "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
-                                                         "execution_command":  "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq \u0027Up\u0027 } | Disable-NetAdapter -Confirm:$false\"",
-                                                         "status":  "pending_approval",
-                                                         "created_at":  "2026-10-30T05:21:26.256932600Z"
-                                                     },
-                                                     {
-                                                         "id":  "act-99ae9f1e-fd32-4ea6-85f1-b9f75f195dcf",
-                                                         "title":  "Deploy Canary Decoy Tripwire on Windows Shares",
-                                                         "action_type":  "canary_tripwire",
-                                                         "target_agent_id":  "047",
-                                                         "target_agent_name":  "win-node-e296",
-                                                         "target_entity":  "C:\\Shares\\Confidential\\",
-                                                         "urgency":  "Elevated",
-                                                         "risk_reduction_percent":  86,
-                                                         "description":  "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
-                                                         "execution_command":  "powershell.exe -Command \"New-Item -Path \u0027C:\\Shares\\Confidential\\.vault_canary.docx\u0027 -ItemType File -Force\"",
-                                                         "status":  "pending_approval",
-                                                         "created_at":  "2026-10-30T05:21:26.256932600Z"
-                                                     }
+
                                                  ],
-                         "alerts_analyzed":  4,
-                         "last_updated_at":  "2026-10-30T05:21:26.256932600Z"
+                         "alerts_analyzed":  0,
+                         "last_updated_at":  "2026-11-01T06:21:20.398760900Z"
                      },
                      {
                          "id":  "dossier-798f17c9-7279-45b1-b689-d228bb27a731",
@@ -6001,69 +5690,80 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T06:42:13.033139500Z"
+                         "last_updated_at":  "2026-10-29T06:42:13.033139500Z",
+                         "is_simulated":  false
                      },
                      {
-                         "id":  "dossier-58637f56-b089-4835-b1ed-e1e28d6fec27",
+                         "id":  "dossier-4637df7d-ed66-46ff-9d6b-e622d737d00c",
                          "entity_id":  "048",
-                         "entity_name":  "win-node-e296",
-                         "entity_ip":  "",
-                         "os_type":  "windows",
-                         "primary_intent":  "Ransomware \u0026 Double Extortion",
-                         "primary_probability":  0.3,
-                         "confidence_score":  0.74,
-                         "kill_chain_velocity":  "Steady",
-                         "progression_percent":  20,
+                         "entity_name":  "linux-node-bcd8",
+                         "entity_ip":  "10.0.2.15",
+                         "os_type":  "linux",
+                         "is_simulated":  false,
+                         "primary_intent":  "Long-Term APT \u0026 Identity Dominance",
+                         "primary_probability":  0.47,
+                         "confidence_score":  0.96,
+                         "kill_chain_velocity":  "Accelerating",
+                         "progression_percent":  60,
                          "hypotheses":  [
-                                            {
-                                                "intent_type":  "ransomware_extortion",
-                                                "display_name":  "Ransomware \u0026 Double Extortion",
-                                                "probability":  0.3,
-                                                "confidence":  0.74,
-                                                "impact_severity":  "Critical",
-                                                "key_indicators":  [
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1006)"
-                                                                   ],
-                                                "projected_impact":  "Immediate risk of volume encryption across critical datastores with secondary extortion."
-                                            },
-                                            {
-                                                "intent_type":  "data_exfiltration",
-                                                "display_name":  "Data Theft \u0026 Exfiltration",
-                                                "probability":  0.3,
-                                                "confidence":  0.74,
-                                                "impact_severity":  "High",
-                                                "key_indicators":  [
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1006)"
-                                                                   ],
-                                                "projected_impact":  "Imminent outbound leakage of sensitive proprietary records or credentials."
-                                            },
                                             {
                                                 "intent_type":  "apt_espionage",
                                                 "display_name":  "Long-Term APT \u0026 Identity Dominance",
-                                                "probability":  0.3,
-                                                "confidence":  0.74,
+                                                "probability":  0.47,
+                                                "confidence":  0.96,
                                                 "impact_severity":  "Critical",
                                                 "key_indicators":  [
-                                                                       "Observed activity in \u0027Execution\u0027 stage (T1006)"
+                                                                       "Technique T1110 detected [Affinity +3.5]",
+                                                                       "Observed MITRE tactic \u0027Credential Access\u0027 (T1110)",
+                                                                       "Technique T1098 detected [Affinity +4.5]",
+                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)",
+                                                                       "Privileged credential activity observed for user \u0027root\u0027"
                                                                    ],
                                                 "projected_impact":  "Covert identity manipulation, long-term persistence, and credential dumping."
                                             },
                                             {
+                                                "intent_type":  "data_exfiltration",
+                                                "display_name":  "Data Theft \u0026 Exfiltration",
+                                                "probability":  0.33,
+                                                "confidence":  0.96,
+                                                "impact_severity":  "High",
+                                                "key_indicators":  [
+                                                                       "Technique T1110 detected [Affinity +2.5]",
+                                                                       "Observed MITRE tactic \u0027Credential Access\u0027 (T1110)",
+                                                                       "Technique T1098 detected [Affinity +2.8]",
+                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
+                                                                   ],
+                                                "projected_impact":  "Imminent outbound leakage of sensitive proprietary records or credentials."
+                                            },
+                                            {
+                                                "intent_type":  "ransomware_extortion",
+                                                "display_name":  "Ransomware \u0026 Double Extortion",
+                                                "probability":  0.17,
+                                                "confidence":  0.96,
+                                                "impact_severity":  "Critical",
+                                                "key_indicators":  [
+                                                                       "Observed MITRE tactic \u0027Credential Access\u0027 (T1110)",
+                                                                       "Technique T1098 detected [Affinity +2.2]",
+                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
+                                                                   ],
+                                                "projected_impact":  "Immediate risk of volume encryption across critical datastores with secondary extortion."
+                                            },
+                                            {
                                                 "intent_type":  "destructive_sabotage",
                                                 "display_name":  "Destructive Wiper / Sabotage",
-                                                "probability":  0.04,
-                                                "confidence":  0.74,
+                                                "probability":  0.02,
+                                                "confidence":  0.96,
                                                 "impact_severity":  "Catastrophic",
                                                 "key_indicators":  [
-
+                                                                       "Observed MITRE tactic \u0027Persistence\u0027 (T1098)"
                                                                    ],
                                                 "projected_impact":  "Catastrophic partition wiping, irreversible data destruction or boot record corruption."
                                             },
                                             {
                                                 "intent_type":  "cryptojacking",
                                                 "display_name":  "Cryptojacking \u0026 Resource Hijacking",
-                                                "probability":  0.04,
-                                                "confidence":  0.74,
+                                                "probability":  0.01,
+                                                "confidence":  0.96,
                                                 "impact_severity":  "Medium",
                                                 "key_indicators":  [
 
@@ -6083,22 +5783,19 @@
                                             {
                                                 "stage_index":  1,
                                                 "stage_name":  "Execution",
-                                                "status":  "current",
+                                                "status":  "unreached",
                                                 "observed_techniques":  [
-                                                                            "T1006",
-                                                                            "T1006",
-                                                                            "T1006"
-                                                                        ],
-                                                "first_observed_at":  "2026-10-29T07:08:04.308Z"
+
+                                                                        ]
                                             },
                                             {
                                                 "stage_index":  2,
                                                 "stage_name":  "Persistence",
-                                                "status":  "predicted_next",
+                                                "status":  "observed",
                                                 "observed_techniques":  [
-
+                                                                            "T1098"
                                                                         ],
-                                                "prediction_reason":  "Adversary likely to pivot to Persistence next based on Ransomware \u0026 Double Extortion trajectory."
+                                                "first_observed_at":  "2026-11-01T06:17:45.601685200Z"
                                             },
                                             {
                                                 "stage_index":  3,
@@ -6119,18 +5816,25 @@
                                             {
                                                 "stage_index":  5,
                                                 "stage_name":  "Credential Access",
-                                                "status":  "unreached",
+                                                "status":  "current",
                                                 "observed_techniques":  [
-
-                                                                        ]
+                                                                            "T1110",
+                                                                            "T1110",
+                                                                            "T1110",
+                                                                            "T1110",
+                                                                            "T1110",
+                                                                            "T1110"
+                                                                        ],
+                                                "first_observed_at":  "2026-11-01T06:15:45.525953900Z"
                                             },
                                             {
                                                 "stage_index":  6,
                                                 "stage_name":  "Discovery",
-                                                "status":  "unreached",
+                                                "status":  "predicted_next",
                                                 "observed_techniques":  [
 
-                                                                        ]
+                                                                        ],
+                                                "prediction_reason":  "Adversary likely to pivot to Discovery next based on Long-Term APT \u0026 Identity Dominance trajectory."
                                             },
                                             {
                                                 "stage_index":  7,
@@ -6159,36 +5863,36 @@
                                         ],
                          "recommended_actions":  [
                                                      {
-                                                         "id":  "act-1c7a6c2b-001f-4348-8154-d7cd206552f2",
-                                                         "title":  "Preemptively Isolate Windows Host \u0027win-node-e296\u0027",
-                                                         "action_type":  "host_isolation",
+                                                         "id":  "act-0fce8c6289db119a",
+                                                         "title":  "Lock Account \u0027root\u0027 \u0026 Revoke Open SSH Sessions",
+                                                         "action_type":  "account_lockout",
                                                          "target_agent_id":  "048",
-                                                         "target_agent_name":  "win-node-e296",
-                                                         "target_entity":  "win-node-e296",
+                                                         "target_agent_name":  "linux-node-bcd8",
+                                                         "target_entity":  "root",
                                                          "urgency":  "Immediate",
-                                                         "risk_reduction_percent":  94,
-                                                         "description":  "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.",
-                                                         "execution_command":  "powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq \u0027Up\u0027 } | Disable-NetAdapter -Confirm:$false\"",
+                                                         "risk_reduction_percent":  91,
+                                                         "description":  "Lock account \u0027root\u0027 and terminate all active interactive SSH/TTY sessions.",
+                                                         "execution_command":  "passwd -l root ; pkill -9 -u root",
                                                          "status":  "pending_approval",
-                                                         "created_at":  "2026-10-30T05:21:26.276124100Z"
+                                                         "created_at":  "2026-11-01T06:21:20.404467300Z"
                                                      },
                                                      {
-                                                         "id":  "act-a5b0fa8e-4f36-4570-87b5-c2a406770951",
-                                                         "title":  "Deploy Canary Decoy Tripwire on Windows Shares",
-                                                         "action_type":  "canary_tripwire",
+                                                         "id":  "act-d2086198bda58604",
+                                                         "title":  "Audit \u0026 Invalidate Staged SSH Authorized Keys on \u0027linux-node-bcd8\u0027",
+                                                         "action_type":  "ssh_key_revocation",
                                                          "target_agent_id":  "048",
-                                                         "target_agent_name":  "win-node-e296",
-                                                         "target_entity":  "C:\\Shares\\Confidential\\",
+                                                         "target_agent_name":  "linux-node-bcd8",
+                                                         "target_entity":  "/home/root/.ssh/authorized_keys",
                                                          "urgency":  "Elevated",
-                                                         "risk_reduction_percent":  86,
-                                                         "description":  "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.",
-                                                         "execution_command":  "powershell.exe -Command \"New-Item -Path \u0027C:\\Shares\\Confidential\\.vault_canary.docx\u0027 -ItemType File -Force\"",
+                                                         "risk_reduction_percent":  85,
+                                                         "description":  "Invalidate backdoor SSH public keys implanted for stealth persistence.",
+                                                         "execution_command":  "chmod 000 /home/root/.ssh/authorized_keys /root/.ssh/authorized_keys 2\u003e/dev/null || true",
                                                          "status":  "pending_approval",
-                                                         "created_at":  "2026-10-30T05:21:26.276124100Z"
+                                                         "created_at":  "2026-11-01T06:21:20.404467300Z"
                                                      }
                                                  ],
-                         "alerts_analyzed":  3,
-                         "last_updated_at":  "2026-10-30T05:21:26.276124100Z"
+                         "alerts_analyzed":  7,
+                         "last_updated_at":  "2026-11-01T06:21:20.404467300Z"
                      },
                      {
                          "id":  "dossier-0b0cc1d0-f34b-4568-a923-1519b3275f9f",
@@ -6373,7 +6077,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-30T05:52:31.718830200Z"
+                         "last_updated_at":  "2026-10-30T05:52:31.718830200Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-7e5f823e-79a5-4d09-8402-fe1e39b2a20a",
@@ -6396,7 +6101,8 @@
 
                                                  ],
                          "alerts_analyzed":  0,
-                         "last_updated_at":  "2026-10-29T09:46:26.763493300Z"
+                         "last_updated_at":  "2026-10-29T09:46:26.763493300Z",
+                         "is_simulated":  false
                      },
                      {
                          "id":  "dossier-7b6f36f2-b9b9-46c3-b158-88337c46b79c",
@@ -6581,7 +6287,8 @@
                                                      }
                                                  ],
                          "alerts_analyzed":  1,
-                         "last_updated_at":  "2026-10-29T13:36:11.917492Z"
+                         "last_updated_at":  "2026-10-29T13:36:11.917492Z",
+                         "is_simulated":  false
                      }
                  ],
     "executed_actions":  [
@@ -6592,6 +6299,28 @@
                              "act-f319e36f-fc00-40f9-934e-fae716d6d333",
                              "act-edaf3238-5a9b-41c0-a147-d6fec0e726d3",
                              "act-b5fcc90b-d16a-4920-82f7-99f0c4f45793",
-                             "act-d360389e-ece3-43f2-870a-81f9afc3c4ee"
-                         ]
+                             "act-d360389e-ece3-43f2-870a-81f9afc3c4ee",
+                             "act-4a6a5e33-9d70-4bc9-9a1b-16fa6ed32454",
+                             "act-84f30d80-25e9-4945-a2ee-fffcb5c5fb19",
+                             "act-ec2535b6-b6f1-4f91-8455-3e1213a8b538",
+                             "act-a1d1b7e78f693ebc"
+                         ],
+    "action_audit":  {
+                         "id":  "audit-d315414e-df12-4567-a1d9-b0b568134039",
+                         "action_id":  "act-a1d1b7e78f693ebc",
+                         "command_id":  "cmd-6ef2c737-fc12-4a33-8507-2f3fea81d367",
+                         "action_type":  "host_isolation",
+                         "target_agent_id":  "048",
+                         "target_agent_name":  "linux-node-bcd8",
+                         "target_entity":  "127.0.0.1",
+                         "command":  "iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP",
+                         "status":  "Executed \u0026 Enforced",
+                         "exit_code":  0,
+                         "output":  "[2026-11-01T05:52:36.103022+00:00] Host containment initiated for agent \u0027048\u0027 (127.0.0.1)\nCommand: iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP\nStatus: Active Response queued and dispatched to agent daemon.\nVerification: Host security enforcement policy verified active on endpoint.",
+                         "executed_at":  "2026-11-01T05:52:36.103027Z",
+                         "dry_run":  false
+                     },
+    "simulation_overrides":  {
+
+                             }
 }

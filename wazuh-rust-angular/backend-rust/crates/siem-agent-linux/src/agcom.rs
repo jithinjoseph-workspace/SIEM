@@ -148,7 +148,8 @@ mod tests {
     #[tokio::test]
     async fn test_agcom_dispatch_commands() {
         let config = AgentConfig::default();
-        let (buffer, _worker) = AgentBuffer::new(config.manager_url.clone(), 5000, 500);
+        let lifecycle = std::sync::Arc::new(crate::lifecycle::LifecycleCoordinator::new("001".into(), config.manager_url.clone()));
+        let (buffer, _worker) = AgentBuffer::new(config.manager_url.clone(), 5000, 500, lifecycle);
 
         // 1. getconfig client
         let resp = agcom_dispatch("getconfig client", &config, &buffer);

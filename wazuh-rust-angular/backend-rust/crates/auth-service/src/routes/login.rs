@@ -461,9 +461,15 @@ pub async fn issue_full_token(
     }
 
     let expires_at = chrono::Utc::now().timestamp() as u64 + state.token_ttl as u64;
+    let is_https = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|p| p.eq_ignore_ascii_case("https"))
+        .unwrap_or(false);
+    let secure_flag = if is_https { "; Secure" } else { "" };
     let cookie = format!(
-        "ndr_token={}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={}",
-        token, state.token_ttl
+        "ndr_token={}; HttpOnly{}; SameSite=Lax; Path=/; Max-Age={}",
+        token, secure_flag, state.token_ttl
     );
 
     tracing::info!("Login SUCCESS: username='{}' role='{}'", username, role);

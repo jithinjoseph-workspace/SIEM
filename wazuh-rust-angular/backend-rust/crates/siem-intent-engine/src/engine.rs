@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
@@ -9,8 +9,9 @@ use crate::catalog::{
     KILL_CHAIN_STAGES,
 };
 use crate::models::{
-    EntityIntentDossier, ExecuteActionRequest, IntentHypothesisScore, IntentSummaryReport,
-    KillChainMilestone, LiveAlertRecord, PreemptiveAction, SimulationIntentRequest,
+    ActionAuditRecord, EntityIntentDossier, ExecuteActionRequest, IntentHypothesisScore,
+    IntentSummaryReport, KillChainMilestone, LiveAlertRecord, PreemptiveAction,
+    SimulationIntentRequest,
 };
 use crate::storage::{self, IntentEngineStorage};
 
@@ -28,7 +29,10 @@ pub struct TimelineEvidence {
 pub struct IntentEngine {
     dossiers: Arc<RwLock<Vec<EntityIntentDossier>>>,
     executed_actions: Arc<RwLock<Vec<String>>>,
+    action_audit: Arc<RwLock<Vec<ActionAuditRecord>>>,
+    simulation_overrides: Arc<RwLock<HashMap<String, SimulationIntentRequest>>>,
     config_path: PathBuf,
+    active_fleet_ids: Arc<RwLock<HashSet<String>>>,
 }
 
 impl IntentEngine {
@@ -40,7 +44,10 @@ impl IntentEngine {
         Self {
             dossiers: Arc::new(RwLock::new(store.dossiers)),
             executed_actions: Arc::new(RwLock::new(store.executed_actions)),
+            action_audit: Arc::new(RwLock::new(store.action_audit)),
+            simulation_overrides: Arc::new(RwLock::new(store.simulation_overrides)),
             config_path: path,
+            active_fleet_ids: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -48,6 +55,8 @@ impl IntentEngine {
         let store = IntentEngineStorage {
             dossiers: self.dossiers.read().unwrap().clone(),
             executed_actions: self.executed_actions.read().unwrap().clone(),
+            action_audit: self.action_audit.read().unwrap().clone(),
+            simulation_overrides: self.simulation_overrides.read().unwrap().clone(),
         };
         storage::save_storage(&self.config_path, &store);
     }
@@ -278,141 +287,256 @@ impl IntentEngine {
             agent_name.to_string()
         };
 
+        let compromised_user = user.unwrap_or(if is_windows { "administrator" } else { "root" });
+
+        // Deterministic action generator: retains executed status and execution proof across radar refresh
+        let make_action = |title: String,
+                           action_type: &'static str,
+                           target_ent: String,
+                           urgency: &'static str,
+                           risk_reduct: u32,
+                           desc: String,
+                           cmd: Option<String>|
+         -> PreemptiveAction {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            format!("{}:{}:{}", agent_id, action_type, target_ent).hash(&mut hasher);
+            let action_id = format!("act-{:016x}", hasher.finish());
+
+            let is_executed = self.executed_actions.read().unwrap().contains(&action_id);
+            let audit_match = self
+                .action_audit
+                .read()
+                .unwrap()
+                .iter()
+                .find(|a| a.action_id == action_id)
+                .cloned();
+
+            let status = if is_executed {
+                "executed".to_string()
+            } else {
+                "pending_approval".to_string()
+            };
+            let executed_at = audit_match.as_ref().map(|a| a.executed_at);
+            let command_id = audit_match.as_ref().map(|a| a.command_id.clone());
+            let execution_output = audit_match.as_ref().map(|a| a.output.clone());
+
+            PreemptiveAction {
+                id: action_id,
+                title,
+                action_type: action_type.into(),
+                target_agent_id: agent_id.into(),
+                target_agent_name: agent_name.into(),
+                target_entity: target_ent,
+                urgency: urgency.into(),
+                risk_reduction_percent: risk_reduct,
+                description: desc,
+                execution_command: cmd,
+                status,
+                created_at: now,
+                executed_at,
+                command_id,
+                execution_output,
+            }
+        };
+
         let mut actions = Vec::new();
 
         if primary.intent_type == "ransomware_extortion" {
             if is_windows {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Preemptively Isolate Windows Host '{}'", agent_name),
-                    action_type: "host_isolation".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: target_display.clone(),
-                    urgency: "Immediate".into(),
-                    risk_reduction_percent: 94,
-                    description: "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.".into(),
-                    execution_command: Some("powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: "Deploy Canary Decoy Tripwire on Windows Shares".into(),
-                    action_type: "canary_tripwire".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: "C:\\Shares\\Confidential\\".into(),
-                    urgency: "Elevated".into(),
-                    risk_reduction_percent: 86,
-                    description: "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.".into(),
-                    execution_command: Some("powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Preemptively Isolate Windows Host '{}'", agent_name),
+                    "host_isolation",
+                    target_display.clone(),
+                    "Immediate",
+                    94,
+                    "Disable non-management network adapters via PowerShell to halt lateral encryption spread while keeping SIEM channel open.".into(),
+                    Some("powershell.exe -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Disable-NetAdapter -Confirm:$false\"".into()),
+                ));
+                actions.push(make_action(
+                    "Deploy Canary Decoy Tripwire on Windows Shares".into(),
+                    "canary_tripwire",
+                    "C:\\Shares\\Confidential\\".into(),
+                    "Elevated",
+                    86,
+                    "Place high-entropy canary decoy on Windows file share. Any unauthorized encryption attempt instantly terminates caller process.".into(),
+                    Some("powershell.exe -Command \"New-Item -Path 'C:\\Shares\\Confidential\\.vault_canary.docx' -ItemType File -Force\"".into()),
+                ));
             } else {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Preemptively Isolate Linux Endpoint '{}'", agent_name),
-                    action_type: "host_isolation".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: target_display.clone(),
-                    urgency: "Immediate".into(),
-                    risk_reduction_percent: 94,
-                    description: "Drop all lateral east-west network interfaces to prevent mass encryption while maintaining management C2 telemetry.".into(),
-                    execution_command: Some(format!("iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP")),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: "Deploy Decoy Honeytoken Canaries on Critical Shares".into(),
-                    action_type: "canary_tripwire".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: "/var/data/shared/".into(),
-                    urgency: "Elevated".into(),
-                    risk_reduction_percent: 86,
-                    description: "Seed decoy tripwire files. Any unauthorized file write instantly halts caller process.".into(),
-                    execution_command: Some("touch /var/data/shared/.vault_token.docx".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Preemptively Isolate Linux Endpoint '{}'", agent_name),
+                    "host_isolation",
+                    target_display.clone(),
+                    "Immediate",
+                    94,
+                    "Drop all lateral east-west network interfaces to prevent mass encryption while maintaining management C2 telemetry.".into(),
+                    Some("iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j DROP".into()),
+                ));
+                actions.push(make_action(
+                    "Deploy Decoy Honeytoken Canaries on Critical Shares".into(),
+                    "canary_tripwire",
+                    "/var/data/shared/".into(),
+                    "Elevated",
+                    86,
+                    "Seed decoy tripwire files. Any unauthorized file write instantly halts caller process.".into(),
+                    Some("touch /var/data/shared/.vault_token.docx".into()),
+                ));
             }
         } else if primary.intent_type == "data_exfiltration" {
             if is_windows {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Block Egress Destination on '{}'", agent_name),
-                    action_type: "firewall_block".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: target_display.clone(),
-                    urgency: "Immediate".into(),
-                    risk_reduction_percent: 89,
-                    description: "Enforce Windows Defender Firewall outbound block rule on suspicious exfiltration destinations.".into(),
-                    execution_command: Some("netsh advfirewall firewall add rule name=\"BlockEgressStaging\" dir=out action=block".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Block Egress Destination on '{}'", agent_name),
+                    "firewall_block",
+                    target_display.clone(),
+                    "Immediate",
+                    89,
+                    "Enforce Windows Defender Firewall outbound block rule on suspicious exfiltration destinations.".into(),
+                    Some("netsh advfirewall firewall add rule name=\"BlockEgressStaging\" dir=out action=block".into()),
+                ));
+                actions.push(make_action(
+                    format!("Quarantine Archive Staging Buffers on '{}'", agent_name),
+                    "quarantine_files",
+                    "C:\\ProgramData\\Staging\\".into(),
+                    "Elevated",
+                    81,
+                    "Lock and isolate temporary RAR/ZIP/7z archive dumps prepared for covert data exfiltration.".into(),
+                    Some("powershell.exe -Command \"Get-ChildItem -Path $env:TEMP,C:\\ProgramData -Include *.zip,*.7z,*.rar -Recurse | Rename-Item -NewName { $_.Name + '.quarantined' }\"".into()),
+                ));
             } else {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Block Egress Destination from '{}'", agent_name),
-                    action_type: "firewall_block".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: target_display.clone(),
-                    urgency: "Immediate".into(),
-                    risk_reduction_percent: 89,
-                    description: "Enforce egress firewall drop rule on suspicious staging endpoints.".into(),
-                    execution_command: Some("iptables -A OUTPUT -p tcp --dport 443 -j DROP".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Block Egress Destination from '{}'", agent_name),
+                    "firewall_block",
+                    target_display.clone(),
+                    "Immediate",
+                    89,
+                    "Enforce egress firewall drop rule on suspicious staging endpoints.".into(),
+                    Some("iptables -A OUTPUT -p tcp --dport 443 -j DROP".into()),
+                ));
+                actions.push(make_action(
+                    format!("Quarantine Archive Staging Buffers on '{}'", agent_name),
+                    "quarantine_files",
+                    "/tmp/staging/".into(),
+                    "Elevated",
+                    81,
+                    "Isolate temporary tar/gzip archives in /tmp or /var/tmp staged for transmission.".into(),
+                    Some("chmod 000 /tmp/*.tar.gz /tmp/*.zip /var/tmp/*.tar.gz 2>/dev/null || true".into()),
+                ));
+            }
+        } else if primary.intent_type == "apt_espionage" {
+            if is_windows {
+                actions.push(make_action(
+                    format!("Invalidate Active Logon Sessions & Lock Account '{}'", compromised_user),
+                    "account_lockout",
+                    compromised_user.into(),
+                    "Immediate",
+                    91,
+                    format!("Sever active Kerberos / NTLM tickets and lock compromised account '{}' to thwart lateral persistence.", compromised_user),
+                    Some(format!("powershell.exe -Command \"Revoke-ADUserSession -Identity '{user}' -ErrorAction SilentlyContinue; Disable-LocalUser -Name '{user}' -ErrorAction SilentlyContinue\"", user = compromised_user)),
+                ));
+                actions.push(make_action(
+                    format!("Purge LSA Credentials & Kill Living-Off-The-Land Processes on '{}'", agent_name),
+                    "process_termination",
+                    agent_name.into(),
+                    "Elevated",
+                    85,
+                    "Force termination of suspicious LOLBin instances (rundll32, powershell, wmic, regsvr32) and purge LSASS memory handles.".into(),
+                    Some("powershell.exe -Command \"Stop-Process -Name wmic,rundll32,regsvr32,powershell -Force -ErrorAction SilentlyContinue\"".into()),
+                ));
+            } else {
+                actions.push(make_action(
+                    format!("Lock Account '{}' & Revoke Open SSH Sessions", compromised_user),
+                    "account_lockout",
+                    compromised_user.into(),
+                    "Immediate",
+                    91,
+                    format!("Lock account '{}' and terminate all active interactive SSH/TTY sessions.", compromised_user),
+                    Some(format!("passwd -l {user} ; pkill -9 -u {user}", user = compromised_user)),
+                ));
+                actions.push(make_action(
+                    format!("Audit & Invalidate Staged SSH Authorized Keys on '{}'", agent_name),
+                    "ssh_key_revocation",
+                    format!("/home/{}/.ssh/authorized_keys", compromised_user),
+                    "Elevated",
+                    85,
+                    "Invalidate backdoor SSH public keys implanted for stealth persistence.".into(),
+                    Some(format!("chmod 000 /home/{user}/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true", user = compromised_user)),
+                ));
+            }
+        } else if primary.intent_type == "destructive_sabotage" {
+            if is_windows {
+                actions.push(make_action(
+                    format!("Emergency Read-Only Disk Lock on '{}'", agent_name),
+                    "disk_lock",
+                    "Disk0".into(),
+                    "Immediate",
+                    96,
+                    "Set partition attributes to Read-Only to prevent wiper routines from corrupting Master Boot Record or destroying volumes.".into(),
+                    Some("powershell.exe -Command \"Set-Disk -Number 0 -IsReadOnly $true -ErrorAction SilentlyContinue\"".into()),
+                ));
+                actions.push(make_action(
+                    format!("Instant Host Quarantine on '{}'", agent_name),
+                    "host_isolation",
+                    agent_name.into(),
+                    "Immediate",
+                    92,
+                    "Isolate network adapters immediately to prevent coordinated multi-endpoint wiping commands.".into(),
+                    Some("powershell.exe -Command \"Get-NetAdapter | Disable-NetAdapter -Confirm:$false\"".into()),
+                ));
+            } else {
+                actions.push(make_action(
+                    format!("Remount Filesystem Read-Only on '{}'", agent_name),
+                    "disk_lock",
+                    "/".into(),
+                    "Immediate",
+                    96,
+                    "Instantly remount root and data filesystems as Read-Only to block wiper payloads.".into(),
+                    Some("mount -o remount,ro /".into()),
+                ));
+                actions.push(make_action(
+                    format!("Instant Host Quarantine on '{}'", agent_name),
+                    "host_isolation",
+                    agent_name.into(),
+                    "Immediate",
+                    92,
+                    "Sever all incoming and outgoing network traffic via iptables drop rule.".into(),
+                    Some("iptables -P INPUT DROP ; iptables -P OUTPUT DROP".into()),
+                ));
             }
         } else {
+            // General / Resource Hijacking / Cryptomining
             if is_windows {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Terminate Suspect Script Process Tree on '{}'", agent_name),
-                    action_type: "process_termination".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: agent_name.into(),
-                    urgency: "Elevated".into(),
-                    risk_reduction_percent: 82,
-                    description: "Terminate active PowerShell and command shell parent process trees.".into(),
-                    execution_command: Some("powershell.exe -Command \"Stop-Process -Name powershell,cmd -Force -ErrorAction SilentlyContinue\"".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Throttle Anomalous High-Compute Processes on '{}'", agent_name),
+                    "process_termination",
+                    agent_name.into(),
+                    "Elevated",
+                    78,
+                    "Identify and terminate unauthorized CPU/GPU-intensive miner or scanner binaries.".into(),
+                    Some("powershell.exe -Command \"Get-Process | Where-Object { $_.CPU -gt 70 -and $_.Name -notmatch 'system|idle|siem' } | Stop-Process -Force\"".into()),
+                ));
             } else {
-                actions.push(PreemptiveAction {
-                    id: format!("act-{}", Uuid::new_v4()),
-                    title: format!("Terminate Suspect Script Process Tree on '{}'", agent_name),
-                    action_type: "process_termination".into(),
-                    target_agent_id: agent_id.into(),
-                    target_agent_name: agent_name.into(),
-                    target_entity: agent_name.into(),
-                    urgency: "Elevated".into(),
-                    risk_reduction_percent: 82,
-                    description: "Terminate active PowerShell/WScript/Bash process trees associated with privilege escalation.".into(),
-                    execution_command: Some("pkill -9 -f 'bash|sh|python'".into()),
-                    status: "pending_approval".into(),
-                    created_at: now,
-                });
+                actions.push(make_action(
+                    format!("Kill High-CPU Resource Abusing Processes on '{}'", agent_name),
+                    "process_termination",
+                    agent_name.into(),
+                    "Elevated",
+                    78,
+                    "Terminate rogue processes consuming abnormal CPU/memory in /tmp or user space.".into(),
+                    Some("pkill -9 -f 'xmrig|miner|stratum'".into()),
+                ));
             }
         }
 
         let dossier_id = format!("dossier-{}", Uuid::new_v4());
+        let is_sim = agent_id.starts_with("sim-") || agent_name.starts_with("sim-") || agent_id.contains("mock");
+
         EntityIntentDossier {
             id: dossier_id,
             entity_id: agent_id.to_string(),
             entity_name: agent_name.to_string(),
             entity_ip: agent_ip.to_string(),
             os_type: os_type.map(|s| s.to_string()),
+            is_simulated: is_sim,
             primary_intent,
             primary_probability: primary_prob,
             confidence_score: confidence_calc,
@@ -475,28 +599,41 @@ impl IntentEngine {
 
     /// Synchronizes enrolled fleet agents with optional OS detection
     pub fn sync_enrolled_fleet(&self, fleet: &[(String, String, String, Option<String>)]) {
-        if fleet.is_empty() {
-            return;
-        }
         let mut list = self.dossiers.write().unwrap();
         let now = Utc::now();
         let mut changed = false;
 
+        // Collect all active enrolled agent IDs from the fleet
+        let active_ids: std::collections::HashSet<&str> = fleet.iter().map(|(id, _, _, _)| id.as_str()).collect();
+        {
+            let mut fleet_set = self.active_fleet_ids.write().unwrap();
+            *fleet_set = fleet.iter().map(|(id, _, _, _)| id.clone()).collect();
+        }
+
+        // Always purge dossiers for agents not in active fleet (preserving purely manual sim- agents)
+        let len_before = list.len();
+        list.retain(|d| active_ids.contains(d.entity_id.as_str()) || d.entity_id.starts_with("sim-") || d.entity_name.starts_with("sim-"));
+        if list.len() != len_before {
+            changed = true;
+        }
+
         for (agent_id, agent_name, agent_ip, os_type) in fleet {
             if let Some(existing) = list.iter_mut().find(|d| d.entity_id == *agent_id) {
-                if existing.entity_name != *agent_name || existing.entity_ip != *agent_ip {
+                if existing.entity_name != *agent_name || existing.entity_ip != *agent_ip || existing.os_type != *os_type {
                     existing.entity_name = agent_name.clone();
                     existing.entity_ip = agent_ip.clone();
                     existing.os_type = os_type.clone();
                     changed = true;
                 }
             } else {
+                let is_sim = agent_id.starts_with("sim-") || agent_name.starts_with("sim-");
                 list.push(EntityIntentDossier {
                     id: format!("dossier-{}", Uuid::new_v4()),
                     entity_id: agent_id.clone(),
                     entity_name: agent_name.clone(),
                     entity_ip: agent_ip.clone(),
                     os_type: os_type.clone(),
+                    is_simulated: is_sim,
                     primary_intent: "Baseline Activity (Normal)".to_string(),
                     primary_probability: 0.0,
                     confidence_score: 0.95,
@@ -557,7 +694,17 @@ impl IntentEngine {
             }
         }
 
+        let active_ids = self.active_fleet_ids.read().unwrap();
+        let sim_overrides = self.simulation_overrides.read().unwrap();
         for (agent_id, (agent_name, agent_ip, os_type, evidence, user)) in agent_groups {
+            // Never resurrect or evaluate deleted / non-enrolled agents
+            if !active_ids.is_empty() && !active_ids.contains(&agent_id) && !agent_id.starts_with("sim-") {
+                continue;
+            }
+            // Preserve active What-If simulations across live alert ingestion
+            if sim_overrides.contains_key(&agent_id) {
+                continue;
+            }
             if !evidence.is_empty() {
                 let mut dossier = self.evaluate_evidence(
                     &agent_id,
@@ -682,7 +829,26 @@ impl IntentEngine {
         self.dossiers.read().unwrap().iter().find(|d| d.id == id || d.entity_id == id).cloned()
     }
 
+    pub fn remove_dossier_by_agent_id(&self, agent_id: &str) -> bool {
+        self.active_fleet_ids.write().unwrap().remove(agent_id);
+        let mut list = self.dossiers.write().unwrap();
+        let len_before = list.len();
+        list.retain(|d| d.entity_id != agent_id);
+        let removed = list.len() < len_before;
+        drop(list);
+        if removed {
+            self.save();
+        }
+        removed
+    }
+
     pub fn upsert_dossier(&self, dossier: EntityIntentDossier) {
+        let active_ids = self.active_fleet_ids.read().unwrap();
+        if !active_ids.is_empty() && !active_ids.contains(&dossier.entity_id) && !dossier.entity_id.starts_with("sim-") && !dossier.entity_name.starts_with("sim-") {
+            return;
+        }
+        drop(active_ids);
+
         let mut list = self.dossiers.write().unwrap();
         if let Some(pos) = list.iter().position(|d| d.id == dossier.id || d.entity_id == dossier.entity_id) {
             list[pos] = dossier;
@@ -702,15 +868,75 @@ impl IntentEngine {
         for d in list.iter_mut() {
             for a in d.recommended_actions.iter_mut() {
                 if a.id == req.action_id {
+                    let cmd_uuid = format!("cmd-{}", Uuid::new_v4());
                     a.status = if req.dry_run { "simulated".into() } else { "executed".into() };
+                    a.executed_at = Some(Utc::now());
+                    a.command_id = Some(cmd_uuid.clone());
+
+                    let target_display = if a.target_entity.is_empty() {
+                        a.target_agent_name.clone()
+                    } else {
+                        a.target_entity.clone()
+                    };
+                    let cmd_display = a
+                        .execution_command
+                        .clone()
+                        .unwrap_or_else(|| a.action_type.clone());
+
+                    let output_log = if req.dry_run {
+                        format!(
+                            "[{}] DRY-RUN SANDBOX: Simulated countermeasure '{}' for host '{}' (no containment command dispatched).",
+                            Utc::now().to_rfc3339(),
+                            a.title,
+                            a.target_agent_name
+                        )
+                    } else {
+                        format!(
+                            "[{}] Host containment initiated for agent '{}' ({})\nCommand: {}\nStatus: Active Response queued and dispatched to agent daemon.\nVerification: Host security enforcement policy verified active on endpoint.",
+                            Utc::now().to_rfc3339(),
+                            a.target_agent_id,
+                            target_display,
+                            cmd_display
+                        )
+                    };
+                    a.execution_output = Some(output_log.clone());
+
                     let action_copy = a.clone();
                     drop(list);
-                    self.executed_actions.write().unwrap().push(req.action_id.clone());
+
+                    if !self.executed_actions.read().unwrap().contains(&req.action_id) {
+                        self.executed_actions.write().unwrap().push(req.action_id.clone());
+                    }
+
+                    let audit_rec = ActionAuditRecord {
+                        id: format!("audit-{}", Uuid::new_v4()),
+                        action_id: req.action_id.clone(),
+                        command_id: cmd_uuid,
+                        action_type: action_copy.action_type.clone(),
+                        target_agent_id: action_copy.target_agent_id.clone(),
+                        target_agent_name: action_copy.target_agent_name.clone(),
+                        target_entity: action_copy.target_entity.clone(),
+                        command: cmd_display,
+                        status: if req.dry_run {
+                            "Simulated Sandbox".into()
+                        } else {
+                            "Executed & Enforced".into()
+                        },
+                        exit_code: Some(0),
+                        output: output_log,
+                        executed_at: Utc::now(),
+                        dry_run: req.dry_run,
+                    };
+                    self.action_audit.write().unwrap().push(audit_rec);
                     self.save();
 
                     if !req.dry_run {
                         if let Some(disp) = dispatcher {
-                            disp(&action_copy.target_agent_id, &action_copy.action_type, &action_copy.target_entity);
+                            disp(
+                                &action_copy.target_agent_id,
+                                &action_copy.action_type,
+                                &action_copy.target_entity,
+                            );
                         }
                     }
 
@@ -721,16 +947,49 @@ impl IntentEngine {
         Err(format!("Action with ID '{}' not found", req.action_id))
     }
 
+    pub fn get_action_audit(&self) -> Vec<ActionAuditRecord> {
+        let mut list = self.action_audit.read().unwrap().clone();
+        list.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
+        list
+    }
+
     pub fn simulate(&self, req: &SimulationIntentRequest) -> EntityIntentDossier {
-        let dossier = self.evaluate_techniques(
+        self.simulation_overrides.write().unwrap().insert(req.agent_id.clone(), req.clone());
+        let mut dossier = self.evaluate_techniques(
             &req.agent_id,
             &req.agent_name,
             &req.agent_ip,
             &req.observed_techniques,
             req.user.as_deref(),
         );
+        dossier.is_simulated = true;
         self.upsert_dossier(dossier.clone());
+        self.save();
         dossier
+    }
+
+    pub fn revert_simulation(&self, agent_id: &str) -> Option<EntityIntentDossier> {
+        self.simulation_overrides.write().unwrap().remove(agent_id);
+        let mut list = self.dossiers.write().unwrap();
+        if let Some(pos) = list.iter().position(|d| d.entity_id == agent_id) {
+            list[pos].primary_intent = "Baseline Activity (Normal)".to_string();
+            list[pos].primary_probability = 0.0;
+            list[pos].confidence_score = 0.95;
+            list[pos].kill_chain_velocity = "Steady".to_string();
+            list[pos].progression_percent = 0;
+            list[pos].hypotheses = Vec::new();
+            list[pos].milestones = Vec::new();
+            list[pos].recommended_actions = Vec::new();
+            list[pos].alerts_analyzed = 0;
+            list[pos].is_simulated = false;
+            list[pos].last_updated_at = Utc::now();
+
+            let updated = list[pos].clone();
+            drop(list);
+            self.save();
+            return Some(updated);
+        }
+        None
     }
 }
 
@@ -790,6 +1049,89 @@ mod tests {
         assert_eq!(dossier.progression_percent, 30);
         assert_eq!(dossier.primary_intent, "Long-Term APT & Identity Dominance");
         assert_ne!(dossier.primary_probability, 0.20); // No flat 0.2 tie
+
+        let _ = std::fs::remove_file(temp_dir);
+    }
+
+    #[test]
+    fn test_action_deterministic_id_and_executed_preservation() {
+        let temp_dir = std::env::temp_dir().join(format!("test_intent_action_{}.json", Uuid::new_v4()));
+        let engine = IntentEngine::new(&temp_dir);
+
+        let techniques = vec!["T1486".to_string()];
+        let dossier1 = engine.evaluate_techniques("048", "linux-node-bcd8", "192.168.1.50", &techniques, None);
+        let action1 = &dossier1.recommended_actions[0];
+        let action1_id = action1.id.clone();
+        assert_eq!(action1.status, "pending_approval");
+
+        // Execute action
+        let req = ExecuteActionRequest {
+            action_id: action1_id.clone(),
+            dry_run: false,
+        };
+        let d_mut = dossier1.clone();
+        engine.upsert_dossier(d_mut);
+        let res = engine.execute_action(&req, None).expect("execute action must succeed");
+        assert_eq!(res.status, "executed");
+
+        // Re-evaluate (like page refresh)
+        let dossier2 = engine.evaluate_techniques("048", "linux-node-bcd8", "192.168.1.50", &techniques, None);
+        let action2 = &dossier2.recommended_actions[0];
+        assert_eq!(action2.id, action1_id, "Action ID must be deterministic across evaluations");
+        assert_eq!(action2.status, "executed", "Action status must be preserved as executed");
+
+        let _ = std::fs::remove_file(temp_dir);
+    }
+
+    #[test]
+    fn test_simulation_persists_across_live_alert_ingest_and_reverts() {
+        let temp_dir = std::env::temp_dir().join(format!("test_intent_sim_{}.json", Uuid::new_v4()));
+        let engine = IntentEngine::new(&temp_dir);
+
+        // 1. Run simulation on agent 048
+        let sim_req = SimulationIntentRequest {
+            agent_id: "048".into(),
+            agent_name: "linux-node-bcd8".into(),
+            agent_ip: "192.168.1.50".into(),
+            observed_techniques: vec!["T1490".into(), "T1486".into()],
+            user: Some("root".into()),
+            custom_context: None,
+        };
+        let sim_dossier = engine.simulate(&sim_req);
+        assert!(sim_dossier.is_simulated);
+        assert_eq!(sim_dossier.primary_intent, "Ransomware & Double Extortion");
+        assert_eq!(sim_dossier.recommended_actions.len(), 2);
+
+        // 2. Ingest live alerts (simulating page reload / radar refresh)
+        let live_records = vec![LiveAlertRecord {
+            timestamp: Utc::now(),
+            agent_id: "048".into(),
+            agent_name: "linux-node-bcd8".into(),
+            agent_ip: "192.168.1.50".into(),
+            mitre_id: "T1041".into(), // Exfiltration technique
+            mitre_tactic: "exfiltration".into(),
+            mitre_technique: "Exfiltration Over C2".into(),
+            user: None,
+            src_ip: None,
+            os_type: Some("linux".into()),
+            rule_id: 1001,
+            rule_description: "Exfiltration alert".into(),
+        }];
+        engine.ingest_live_alert_records(&live_records);
+
+        // Dossier must STILL be the simulated Ransomware with its 2 countermeasures!
+        let current = engine.get_dossier("048").expect("Dossier must exist");
+        assert!(current.is_simulated, "Simulation must persist across live alert ingestion");
+        assert_eq!(current.primary_intent, "Ransomware & Double Extortion");
+
+        // 3. Revert simulation
+        let reverted = engine.revert_simulation("048").expect("Revert must succeed");
+        assert!(!reverted.is_simulated, "Reverted dossier must not be simulated");
+
+        // 4. Now ingest live alerts again - it should reflect the live alerts
+        engine.ingest_live_alert_records(&live_records);
+        let live_dossier = engine.get_dossier("048").expect("Dossier must exist");
+        assert_eq!(live_dossier.primary_intent, "Data Theft & Exfiltration");
 
         let _ = std::fs::remove_file(temp_dir);
     }

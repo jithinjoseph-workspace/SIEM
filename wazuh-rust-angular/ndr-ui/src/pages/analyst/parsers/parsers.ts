@@ -179,7 +179,7 @@ export class Parsers implements OnInit {
         if (res.parser) {
           this.selectedParser.set(res.parser);
           this.studioPattern.set(res.parser.pattern);
-          this.studioMessage.set(`✓ Synthesized parser "${res.parser.name}" with ${(res.parser.confidence * 100).toFixed(0)}% confidence!`);
+          this.studioMessage.set(`✓ Synthesized parser "${res.parser.name}" with ${(res.parser.confidence * 100).toFixed(0)}% confidence${res.generated_by ? ` (by ${res.generated_by})` : ''}!`);
           this.loadParsers();
           if (res.parser.sample_logs && res.parser.sample_logs.length > 0) {
             this.studioTestLog.set(res.parser.sample_logs[0]);

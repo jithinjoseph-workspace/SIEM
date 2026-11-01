@@ -14,14 +14,28 @@
   <CheckRevocation>false</CheckRevocation>
   <EventFiltering>
 
-    <!-- 1: every process start; the process tree is built from these -->
+    <!-- 1: every process start (the process tree is built from these), except two that only
+         repeat their parent's start: the console host each console program gets (at medium
+         integrity; high / system ones stay, a Sigma rule looks for them) and Git for
+         Windows' launcher starting the real git with the same arguments -->
     <RuleGroup name="" groupRelation="or">
-      <ProcessCreate onmatch="exclude" />
+      <ProcessCreate onmatch="exclude">
+        <Rule groupRelation="and">
+          <CommandLine condition="is">\??\C:\WINDOWS\system32\conhost.exe 0xffffffff -ForceV1</CommandLine>
+          <IntegrityLevel condition="is">Medium</IntegrityLevel>
+        </Rule>
+        <Rule groupRelation="and">
+          <ParentImage condition="is">C:\Program Files\Git\cmd\git.exe</ParentImage>
+          <Image condition="is">C:\Program Files\Git\mingw64\bin\git.exe</Image>
+        </Rule>
+      </ProcessCreate>
     </RuleGroup>
 
-    <!-- 5: process ends (lets the process tree close a node) -->
+    <!-- 5: process ends (lets the process tree close a node), but the console hosts' -->
     <RuleGroup name="" groupRelation="or">
-      <ProcessTerminate onmatch="exclude" />
+      <ProcessTerminate onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+      </ProcessTerminate>
     </RuleGroup>
 
     <!-- 2: file times changed (timestomping), except by the installers and updaters that do it all day -->
@@ -107,7 +121,6 @@
         <ImageLoaded condition="begin with">C:\Users\Public\</ImageLoaded>
         <ImageLoaded condition="begin with">C:\ProgramData\</ImageLoaded>
         <ImageLoaded condition="begin with">C:\PerfLogs\</ImageLoaded>
-        <Signed condition="is">false</Signed>
       </ImageLoad>
     </RuleGroup>
 
@@ -116,9 +129,16 @@
       <CreateRemoteThread onmatch="exclude" />
     </RuleGroup>
 
-    <!-- 9: raw disk reads (copying locked files such as NTDS.dit or SAM) -->
+    <!-- 9: raw disk reads (copying locked files such as NTDS.dit or SAM), except the kernel's
+         and the console host's own, which read every volume all day -->
     <RuleGroup name="" groupRelation="or">
-      <RawAccessRead onmatch="exclude" />
+      <RawAccessRead onmatch="exclude">
+        <Image condition="is">System</Image>
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+        <Image condition="begin with">C:\Program Files\Git\</Image>
+        <Image condition="end with">\Sysmon64.exe</Image>
+        <Image condition="end with">\Sysmon.exe</Image>
+      </RawAccessRead>
     </RuleGroup>
 
     <!-- 10: handles to LSASS (credential dumping), except the system's own readers -->
@@ -181,6 +201,11 @@
         <TargetFilename condition="begin with">C:\Windows\WinSxS\</TargetFilename>
         <TargetFilename condition="begin with">C:\Windows\assembly\NativeImages_</TargetFilename>
         <TargetFilename condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Definition Updates\</TargetFilename>
+        <!-- the AppLocker policy test file PowerShell writes to Temp at every start -->
+        <Rule groupRelation="and">
+          <TargetFilename condition="contains">\__PSScriptPolicyTest_</TargetFilename>
+          <Image condition="contains any">\WindowsPowerShell\v1.0\powershell.exe;\PowerShell\7\pwsh.exe</Image>
+        </Rule>
       </FileCreate>
     </RuleGroup>
 
@@ -222,6 +247,9 @@
         <Image condition="is">C:\Windows\system32\services.exe</Image>
         <Image condition="is">C:\Windows\system32\svchost.exe</Image>
         <TargetObject condition="contains">\Microsoft\Windows Defender\Signature Updates\</TargetObject>
+        <!-- Windows writes these on every program start / network lookup -->
+        <TargetObject condition="contains">\Services\bam\State\UserSettings\</TargetObject>
+        <TargetObject condition="end with">\Services\Tcpip\Parameters</TargetObject>
       </RegistryEvent>
     </RuleGroup>
 
@@ -250,7 +278,10 @@
         <PipeName condition="is">\lsass</PipeName>
         <PipeName condition="is">\winreg</PipeName>
         <PipeName condition="is">\spoolss</PipeName>
-        <PipeName condition="contains">\Anonymous Pipe</PipeName>
+        <PipeName condition="is">&lt;Anonymous Pipe&gt;</PipeName>
+        <!-- libuv (Node.js, Electron apps, uv) and Docker Desktop -->
+        <PipeName condition="begin with">\uv\</PipeName>
+        <PipeName condition="begin with">\docker</PipeName>
         <PipeName condition="begin with">\mojo.</PipeName>
         <PipeName condition="begin with">\crashpad_</PipeName>
         <PipeName condition="begin with">\chrome.</PipeName>

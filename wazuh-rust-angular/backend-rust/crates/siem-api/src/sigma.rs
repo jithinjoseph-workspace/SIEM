@@ -177,7 +177,8 @@ pub fn normalize(v: &Value) -> Option<NormalizedEvent> {
     Some(ev)
 }
 
-fn level(severity: &str) -> u8 {
+/// The Wazuh alert level of a Sigma severity.
+pub fn level(severity: &str) -> u8 {
     match severity.to_lowercase().as_str() {
         "critical" => 13,
         "high" => 10,
@@ -307,13 +308,17 @@ pub async fn sync(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     if !ctx.is_super() {
         return (StatusCode::FORBIDDEN, Json(json!({ "status": "error", "message": "Platform admins only" }))).into_response();
     }
-    let saved = provigil_common::sigma_sync::sync_now(&common_config().build_client(), &rules_dir()).await;
-    let loaded = reload(&state).await;
-    match (saved, loaded) {
-        (Ok(s), Ok(l)) => Json(json!({ "status": "ok", "saved": s, "loaded": l })).into_response(),
-        (Err(e), _) => Json(json!({ "status": "error", "message": format!("SigmaHQ sync failed: {e}") })).into_response(),
-        (_, Err(e)) => Json(json!({ "status": "error", "message": format!("rules not reloaded: {e}") })).into_response(),
+    match sync_community(&state).await {
+        Ok((s, l)) => Json(json!({ "status": "ok", "saved": s, "loaded": l })).into_response(),
+        Err(e) => Json(json!({ "status": "error", "message": e })).into_response(),
     }
+}
+
+/// New SigmaHQ rules into `ndr.sigma_rules`, then the engine reloaded: (saved, loaded).
+pub async fn sync_community(state: &AppState) -> Result<(usize, usize), String> {
+    let saved = provigil_common::sigma_sync::sync_now(&common_config().build_client(), &rules_dir()).await.map_err(|e| format!("SigmaHQ sync failed: {e}"))?;
+    let loaded = reload(state).await.map_err(|e| format!("rules not reloaded: {e}"))?;
+    Ok((saved, loaded))
 }
 
 #[cfg(test)]

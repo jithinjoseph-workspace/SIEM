@@ -2366,3 +2366,17 @@
 .siem-layout.embedded .siem-main {
   padding: 16px 4px;
 }
+
+/* the raw log under an alert: two wrapped lines, so the row keeps its action buttons on screen */
+.siem-table .desc-text,
+.siem-table .raw-preview {
+  max-width: 620px;
+}
+.siem-table .raw-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-all;
+}

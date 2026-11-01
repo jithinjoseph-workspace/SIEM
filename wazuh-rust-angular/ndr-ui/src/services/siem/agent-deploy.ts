@@ -27,7 +27,19 @@ export interface DeployParams {
   winSysmon?: boolean;
   /** Windows: turn on PowerShell script block (4104) and module (4103) logging. */
   winPsLogging?: boolean;
+  /** Windows: the audit policy the detections need (logons, lockouts, account changes, process starts with command line). */
+  winAuditPolicy?: boolean;
 }
+
+/** Audit subcategories by GUID (their names are translated in non-English Windows): [GUID, what, success, failure]. */
+const AUDIT_SUBCATEGORIES: [string, string, boolean, boolean][] = [
+  ['{0CCE923F-69AE-11D9-BED3-505054503030}', 'Credential Validation', true, true],
+  ['{0CCE9215-69AE-11D9-BED3-505054503030}', 'Logon', true, true],
+  ['{0CCE9217-69AE-11D9-BED3-505054503030}', 'Account Lockout', false, true],
+  ['{0CCE9235-69AE-11D9-BED3-505054503030}', 'User Account Management', true, true],
+  ['{0CCE9237-69AE-11D9-BED3-505054503030}', 'Security Group Management', true, false],
+  ['{0CCE922B-69AE-11D9-BED3-505054503030}', 'Process Creation', true, false],
+];
 
 /**
  * The optional Windows logging steps; they run after the agent is installed and started,
@@ -45,6 +57,19 @@ function windowsLoggingSteps(p: DeployParams): string[] {
       `catch { Write-Warning "PowerShell logging not changed: $_" }`,
     );
   }
+  if (p.winAuditPolicy) {
+    // subcategory settings override the legacy category ones (CIS 26013), else they may not apply
+    const sets = AUDIT_SUBCATEGORIES.map(([guid, , ok, fail]) =>
+      `& auditpol /set /subcategory:"${guid}"${ok ? ' /success:enable' : ''}${fail ? ' /failure:enable' : ''} | Out-Null; if ($LASTEXITCODE -ne 0) { throw "auditpol ${guid} exited with $LASTEXITCODE" }; `).join('');
+    steps.push(
+      `try { Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name SCENoApplyLegacyAuditPolicy -Value 1 -Type DWord; ` +
+      sets +
+      `$k = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit'; New-Item -Path $k -Force | Out-Null; ` +
+      `Set-ItemProperty -Path $k -Name ProcessCreationIncludeCmdLine_Enabled -Value 1 -Type DWord; ` +
+      `Write-Host 'Windows audit policy set: ${AUDIT_SUBCATEGORIES.map(a => a[1]).join(', ')} (with command lines)' } ` +
+      `catch { Write-Warning "Audit policy not changed: $_" }`,
+    );
+  }
   if (p.winSysmon) {
     // Sysmon only from Microsoft over HTTPS, run only if Microsoft signed it; an installed
     // Sysmon gets the configuration (-c), so re-running the command updates the fleet's
@@ -57,7 +82,11 @@ function windowsLoggingSteps(p: DeployParams): string[] {
       `$exe = Join-Path $t $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'Sysmon64a.exe' } elseif ([Environment]::Is64BitOperatingSystem) { 'Sysmon64.exe' } else { 'Sysmon.exe' }); $op = '-i' }; ` +
       `$sig = Get-AuthenticodeSignature $exe; ` +
       `if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,' -or $sig.SignerCertificate.Issuer -notmatch 'O=Microsoft Corporation,') { throw "$exe is not signed by Microsoft ($($sig.Status))" }; ` +
-      `& $exe -accepteula $op "$t\\sysmon.xml" | Out-Null; if ($LASTEXITCODE -ne 0) { throw "Sysmon $op exited with $LASTEXITCODE (Sysmon 15 or later is needed)" }; ` +
+      // Sysmon writes UTF-16 to stderr (an error under 'Stop'): drop the NULs, keep its last
+      // lines as the reason of a failure
+      `$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; ` +
+      `$o = (& $exe -accepteula $op "$t\\sysmon.xml" 2>&1 | Out-String) -replace [char]0, ''; $ErrorActionPreference = $eap; ` +
+      `if ($LASTEXITCODE -ne 0) { throw "Sysmon $op exited with $($LASTEXITCODE): $((($o -split '\\r?\\n') | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' / ')" }; ` +
       `Write-Host $(if ($op -eq '-c') { 'Sysmon configuration updated' } else { 'Sysmon installed with the SIEM configuration' }) ` +
       `} finally { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue } } ` +
       `catch { Write-Warning "Sysmon not installed: $_" }`,
@@ -144,7 +173,7 @@ export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
 const WINDOWS_AGENT_FILES = ['wazuh-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
 
 /** The active-response programs installed in active-response\bin. */
-const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe'];
+const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe', 'yara-scan.exe', 'live-response.exe', 'tamper-protect.exe'];
 
 /** The directories the MSI creates under the install directory. */
 const WINDOWS_AGENT_DIRS = [

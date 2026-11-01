@@ -102,9 +102,15 @@ export class Api {
     return this.http.get(`${this.baseUrl}/health`);
   }
 
+  /** The newest alerts (500); with an IP, those from or to it (filtered by the server). */
   getAlerts(srcIp?: string): Observable<any[]> {
     const params = srcIp ? { params: { src_ip: srcIp } } : {};
     return this.http.get<any[]>(`${this.baseUrl}/hits`, params);
+  }
+
+  /** Alerts per time slice and severity: 24h (hourly), 7d or 30d (daily), oldest first. */
+  getHitsTimeline(range: string): Observable<any> {
+    return this.http.get(`${this.baseUrl}/hits/timeline`, { params: { range } });
   }
 
   getInterfaces(): Observable<string[]> {

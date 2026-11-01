@@ -9,7 +9,7 @@ import {
   AlertOctagon, SlidersHorizontal, Search
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
-import { ComplianceFramework, ComplianceRequirement } from '../../../services/siem/siem.models';
+import { ComplianceFramework, ComplianceProfileCheck, ComplianceProfileResponse, ComplianceResponse } from '../../../services/siem/siem.models';
 import { downloadText } from '../../../services/siem/agent-deploy';
 
 export interface AuditLogItem {
@@ -33,6 +33,8 @@ export interface RemediationItem {
   resolved?: boolean;
   fw: string;
   reqId: string;
+  /** the agent's remediation text for the failing check */
+  detail?: string;
 }
 
 export interface ExtendedFramework extends ComplianceFramework {
@@ -93,22 +95,8 @@ export class Compliance implements OnInit {
   generatingReport = signal<boolean>(false);
   reportFeedback = signal<string | null>(null);
 
-  /** The requirements that fail or need review, worst first (from the compliance evaluation). */
-  remediations = computed<RemediationItem[]>(() =>
-    this.frameworks()
-      .flatMap(fw => fw.requirements
-        .filter(r => r.status !== 'passed')
-        .map(r => ({
-          id: `${fw.name}-${r.id}`,
-          title: r.title,
-          framework: `${fw.name} ${r.id} • ${r.alerts_count} alert(s)`,
-          category: fw.name,
-          priority: (r.status === 'failed' ? 'critical' : 'warning') as RemediationItem['priority'],
-          iconType: 'shield' as const,
-          fw: fw.name,
-          reqId: r.id,
-        })))
-      .sort((a, b) => (a.priority === 'critical' ? 0 : 1) - (b.priority === 'critical' ? 0 : 1)));
+  /** The failing configuration checks, the ones breaking the most requirements first, with the agent's fix. */
+  remediations = signal<RemediationItem[]>([]);
   remediationFeedback = signal<string | null>(null);
 
   /** The tenant's recent alerts whose rule a requirement maps (the evidence behind the scores). */
@@ -117,12 +105,46 @@ export class Compliance implements OnInit {
   auditSearch = signal<string>('');
   auditStatusFilter = signal<'all' | 'pass' | 'fail' | 'review'>('all');
 
-  // Computed metrics
+  /** checks marked not needed, and who last changed the audit settings */
+  excludedCount = signal(0);
+  settingsUpdatedBy = signal('');
+
+  // Audit settings: frameworks reported on, their agent-group scope, checks not needed
+  settingsOpen = signal(false);
+  settings = signal<ComplianceProfileResponse | null>(null);
+  settingsLoading = signal(false);
+  savingSettings = signal(false);
+  settingsMsg = signal<{ ok: boolean; text: string } | null>(null);
+  draftFrameworks = signal<Set<string>>(new Set());
+  draftScope = signal<Record<string, string[]>>({});
+  draftExcluded = signal<Set<string>>(new Set());
+  checkSearch = signal('');
+  checkPolicy = signal('');
+  checkFramework = signal('');
+  checkView = signal<'all' | 'required' | 'not_needed'>('all');
+  checkLimit = signal(200);
+
+  policies = computed(() => {
+    const m = new Map<string, string>();
+    for (const c of this.settings()?.checks ?? []) m.set(c.policy_id, c.policy);
+    return [...m].map(([id, name]) => ({ id, name }));
+  });
+  filteredChecks = computed(() => {
+    const q = this.checkSearch().toLowerCase().trim(), pol = this.checkPolicy(), fw = this.checkFramework(), view = this.checkView();
+    const ex = this.draftExcluded();
+    return (this.settings()?.checks ?? []).filter(c =>
+      (!pol || c.policy_id === pol) && (!fw || c.frameworks.includes(fw))
+      && (view === 'all' || (view === 'required') === !ex.has(c.check_id))
+      && (!q || c.check_id.includes(q) || c.title.toLowerCase().includes(q)));
+  });
+  shownChecks = computed(() => this.filteredChecks().slice(0, this.checkLimit()));
+  requiredCount = computed(() => (this.settings()?.checks ?? []).filter(c => !this.draftExcluded().has(c.check_id)).length);
+
+  // Computed metrics: the average of the frameworks that have a configuration score
   overallMappedPercent = computed(() => {
-    const list = this.frameworks();
-    if (list.length === 0) return 0;
-    const avg = list.reduce((acc, f) => acc + f.score_percent, 0) / list.length;
-    return Math.round(avg);
+    const scored = this.frameworks().map(f => f.score_percent).filter((p): p is number => p !== null);
+    if (scored.length === 0) return 0;
+    return Math.round(scored.reduce((acc, p) => acc + p, 0) / scored.length);
   });
 
   // Circular gauge SVG parameters (radius = 54, circumference ~ 339.292)
@@ -135,7 +157,8 @@ export class Compliance implements OnInit {
   private requirements = computed(() => this.frameworks().flatMap(f => f.requirements));
   passingControlsCount = computed(() => this.requirements().filter(r => r.status === 'passed').length);
   failingControlsCount = computed(() => this.requirements().filter(r => r.status !== 'passed').length);
-  unmappedControlsCount = computed(() => this.requirements().filter(r => !r.rule_ids?.length).length);
+  /** requirements seen only in alerts: no configuration check maps them */
+  unmappedControlsCount = computed(() => this.requirements().filter(r => r.source === 'alerts').length);
 
   passAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Pass').length);
   failAuditCount = computed(() => this.auditLogs().filter(l => l.status === 'Fail').length);
@@ -176,29 +199,65 @@ export class Compliance implements OnInit {
     this.loadCompliance();
   }
 
-  loadCompliance() {
+  /** `refresh` (Re-evaluate): the agents' latest scan results are fetched first. */
+  loadCompliance(refresh = false) {
     this.loading.set(true);
-    this.siem.getCompliance().subscribe({
+    this.siem.getCompliance(refresh).subscribe({
       next: (res) => {
         const synced = res.last_updated ? this.ago(res.last_updated) : undefined;
         const enriched: ExtendedFramework[] = (res.frameworks || []).map(f => {
-          let color: 'cyan' | 'amber' | 'emerald' | 'rose' | 'indigo' = 'cyan';
-          if (f.score_percent >= 90) color = 'emerald';
-          else if (f.score_percent >= 75) color = 'cyan';
-          else if (f.score_percent >= 60) color = 'amber';
-          else color = 'rose';
+          const p = f.score_percent;
+          const color: ExtendedFramework['color'] = p === null ? 'indigo' : p >= 90 ? 'emerald' : p >= 75 ? 'cyan' : p >= 60 ? 'amber' : 'rose';
           return { ...f, lastSync: synced, color };
         });
 
         this.frameworks.set(enriched);
-        if (enriched.length > 0 && !this.selectedFramework()) {
-          this.selectedFramework.set(enriched[0]);
-        }
+        this.excludedCount.set(res.excluded_checks ?? 0);
+        this.settingsUpdatedBy.set(res.profile_updated_by ?? '');
+        // keep the selection only while that framework is still reported on
+        const sel = this.selectedFramework();
+        this.selectedFramework.set(enriched.find(f => f.name === sel?.name) ?? enriched[0] ?? null);
         this.loading.set(false);
-        this.loadEvidence(enriched);
+        this.setRemediations(res);
+        this.setEvidence(res);
       },
       error: () => this.loading.set(false)
     });
+  }
+
+  private setRemediations(res: ComplianceResponse) {
+    this.remediations.set((res.remediations ?? []).map(r => {
+      const [fw, reqId] = (r.requirements[0] ?? '').split(' ');
+      return {
+        id: r.check_id,
+        title: r.title,
+        framework: `Check ${r.check_id} • fails on ${r.failed_agents} agent(s) • ${r.requirements.join(', ')}`,
+        category: fw ?? '',
+        priority: r.requirements.length >= 3 ? 'critical' : 'warning',
+        iconType: 'shield',
+        fw: fw ?? '',
+        reqId: reqId ?? '',
+        detail: r.remediation,
+      } as RemediationItem;
+    }));
+  }
+
+  /** The recent alerts whose Wazuh rule carries compliance groups (the evidence behind the alert counts). */
+  private setEvidence(res: ComplianceResponse) {
+    this.auditLogs.set((res.evidence ?? []).map((e, i) => {
+      const actor = e.agent_name || e.agent_id || 'manager';
+      return {
+        id: `${e.timestamp}-${i}`,
+        timestamp: new Date(e.timestamp).toLocaleString(),
+        actor,
+        actorInitial: actor.slice(0, 2).toUpperCase(),
+        action: e.description || `Rule ${e.rule_id}`,
+        resource: e.requirements.join(', '),
+        risk: e.level >= 12 ? 'High' : e.level >= 7 ? 'Medium' : e.level >= 4 ? 'Low' : 'Informational',
+        // an alert is a finding to review; level 7 and up (Wazuh's "high importance") a failure
+        status: e.level >= 7 ? 'Fail' : 'Review Needed',
+      } as AuditLogItem;
+    }));
   }
 
   /** The recent alerts behind the requirements: each mapped rule that fired. */
@@ -235,6 +294,95 @@ export class Compliance implements OnInit {
     return `${Math.floor(s / 86400)}d ago`;
   }
 
+  /** Opens the audit settings with the saved profile as the draft. */
+  openSettings() {
+    this.settingsOpen.set(true);
+    this.settingsMsg.set(null);
+    this.settingsLoading.set(true);
+    this.siem.getComplianceProfile().subscribe({
+      next: (res) => {
+        const all = res.frameworks.map(f => f.name);
+        this.settings.set(res);
+        this.draftFrameworks.set(new Set(res.profile.frameworks.length ? res.profile.frameworks : all));
+        this.draftScope.set({ ...res.profile.scope });
+        this.draftExcluded.set(new Set(res.profile.excluded_checks));
+        this.settingsLoading.set(false);
+      },
+      error: (e) => {
+        this.settingsLoading.set(false);
+        this.settingsMsg.set({ ok: false, text: e?.error?.message || 'The audit settings could not be loaded.' });
+      }
+    });
+  }
+
+  toggleFramework(name: string) {
+    const s = new Set(this.draftFrameworks());
+    s.has(name) ? s.delete(name) : s.add(name);
+    this.draftFrameworks.set(s);
+  }
+
+  inScope(fw: string, group: string): boolean {
+    return (this.draftScope()[fw] ?? []).includes(group);
+  }
+
+  toggleScope(fw: string, group: string) {
+    const cur = this.draftScope()[fw] ?? [];
+    const next = cur.includes(group) ? cur.filter(g => g !== group) : [...cur, group];
+    this.draftScope.set({ ...this.draftScope(), [fw]: next });
+  }
+
+  scopeAgents(fw: string): number | null {
+    const groups = this.draftScope()[fw] ?? [];
+    if (!groups.length) return null;
+    return (this.settings()?.groups ?? []).filter(g => groups.includes(g.name)).reduce((n, g) => n + g.agents, 0);
+  }
+
+  isRequired(c: ComplianceProfileCheck): boolean {
+    return !this.draftExcluded().has(c.check_id);
+  }
+
+  setRequired(ids: string[], required: boolean) {
+    const s = new Set(this.draftExcluded());
+    for (const id of ids) required ? s.delete(id) : s.add(id);
+    this.draftExcluded.set(s);
+  }
+
+  /** Every check the filters show (not only the rows rendered so far). */
+  setShownRequired(required: boolean) {
+    this.setRequired(this.filteredChecks().map(c => c.check_id), required);
+  }
+
+  saveSettings() {
+    const res = this.settings();
+    if (!res) return;
+    const chosen = res.frameworks.map(f => f.name).filter(n => this.draftFrameworks().has(n));
+    if (!chosen.length) {
+      this.settingsMsg.set({ ok: false, text: 'Choose at least one framework to report on.' });
+      return;
+    }
+    const scope: Record<string, string[]> = {};
+    for (const n of chosen) if (this.draftScope()[n]?.length) scope[n] = this.draftScope()[n];
+    this.savingSettings.set(true);
+    this.siem.saveComplianceProfile({
+      // every framework chosen: saved as "all", so new frameworks show up too
+      frameworks: chosen.length === res.frameworks.length ? [] : chosen,
+      scope,
+      excluded_checks: [...this.draftExcluded()],
+    }).subscribe({
+      next: () => {
+        this.savingSettings.set(false);
+        this.settingsOpen.set(false);
+        this.remediationFeedback.set('Audit settings saved. Scores now use them.');
+        setTimeout(() => this.remediationFeedback.set(null), 4000);
+        this.loadCompliance();
+      },
+      error: (e) => {
+        this.savingSettings.set(false);
+        this.settingsMsg.set({ ok: false, text: e?.status === 403 ? 'Only a tenant admin can change the audit settings.' : (e?.error?.message || 'The audit settings were not saved.') });
+      }
+    });
+  }
+
   selectFramework(fw: ExtendedFramework) {
     this.selectedFramework.set(fw);
   }
@@ -260,10 +408,10 @@ export class Compliance implements OnInit {
 
       if (format === 'csv') {
         const rows: string[] = [];
-        rows.push('Framework,Requirement ID,Title,Status,Alerts Count');
+        rows.push('Framework,Requirement ID,Status,Source,Failing check results,Passing check results,Alerts,Title');
         for (const fw of this.frameworks()) {
           for (const req of fw.requirements) {
-            rows.push(`"${fw.name}","${req.id}","${req.title.replace(/"/g, '""')}","${req.status}",${req.alerts_count}`);
+            rows.push(`"${fw.name}","${req.id}","${req.status}","${req.source}",${req.checks_failed},${req.checks_passed},${req.alerts_count},"${req.title.replace(/"/g, '""')}"`);
           }
         }
         downloadText(`Compliance_${type.replace(/\s+/g, '_')}_${dateStr}.csv`, rows.join('\n'), 'text/csv');
@@ -298,10 +446,10 @@ export class Compliance implements OnInit {
   <h2>Framework Summaries</h2>
   <table>
     <thead>
-      <tr><th>Framework</th><th>Version</th><th>Score</th><th>Passed</th><th>Alerts</th></tr>
+      <tr><th>Framework</th><th>Mapping</th><th>Configuration score</th><th>Requirements passed</th><th>Alerts (24 h)</th></tr>
     </thead>
     <tbody>
-      ${this.frameworks().map(f => `<tr><td>${f.name}</td><td>${f.version}</td><td>${f.score_percent}%</td><td>${f.passed_count}/${f.total_requirements}</td><td>${f.alert_count}</td></tr>`).join('')}
+      ${this.frameworks().map(f => `<tr><td>${f.name}</td><td>${f.version}</td><td>${f.score_percent === null ? 'no configuration score' : f.score_percent + '%'}</td><td>${f.passed_count}/${f.total_requirements}</td><td>${f.alert_count}</td></tr>`).join('')}
     </tbody>
   </table>
   <p style="margin-top: 30px; font-size: 11px; color: #64748b;">This document is generated automatically by ProVigil SIEM Security & Regulatory Compliance Engine.</p>

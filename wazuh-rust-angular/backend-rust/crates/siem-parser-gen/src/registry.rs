@@ -156,6 +156,16 @@ impl DynamicParserRegistry {
         }
     }
 
+    /// Registers the parser an AI reply describes (validated on the samples); the error says
+    /// why it was not usable, for the caller to fall back to `synthesize_and_register`.
+    pub fn register_from_ai_reply(&self, fingerprint: u64, signature: &str, samples: &[String], reply: &str) -> Result<DynamicParser, String> {
+        let parser = AiParserSynthesizer::parser_from_llm_reply(fingerprint, signature, samples, reply)?;
+        self.register_parser(parser.clone())?;
+        self.accumulator.remove(fingerprint);
+        let _ = self.save_to_disk();
+        Ok(parser)
+    }
+
     /// Register a verified parser into memory
     pub fn register_parser(&self, parser: DynamicParser) -> Result<(), String> {
         let re = RegexBuilder::new(&parser.pattern)

@@ -6,8 +6,8 @@
     <div class="ab-content">
       <div class="ab-dot"></div>
       <div>
-        <div class="ab-sev" [class.ab-crit]="latestAlert.severity === 'Critical'">{{ latestAlert.severity }}</div>
-        <div class="ab-ips">{{ latestAlert.src_ip }} → {{ latestAlert.dst_ip }}</div>
+        <div class="ab-sev" [class.ab-crit]="latestAlert.severity.toUpperCase() === 'CRITICAL'">{{ latestAlert.severity }}</div>
+        <div class="ab-ips">{{ latestAlert.rule_name || 'Security alert' }}{{ latestAlert.agent ? ' · ' + latestAlert.agent : '' }}</div>
       </div>
     </div>
     <div class="ab-actions">
@@ -28,7 +28,7 @@
         </div>
         <div class="aria-header-text">
           <div class="aria-name">ARIA <span class="sparkle">✨</span></div>
-          <div class="aria-sub">NDR Security Assistant</div>
+          <div class="aria-sub">AI Copilot assistant</div>
           <div class="aria-status">
             <span class="status-dot"></span> Online
           </div>
@@ -92,17 +92,18 @@
             <!-- Custom alert preview -->
             <div *ngIf="msg.alertCard" class="alert-card" (click)="handleAlertCardClick(msg.alertCard)">
               <div class="ac-header">
-                <div class="ac-sev" [class.ac-crit]="msg.alertCard.severity === 'Critical'"
-                  [class.ac-high]="msg.alertCard.severity === 'High'">
+                <div class="ac-sev" [class.ac-crit]="msg.alertCard.severity.toUpperCase() === 'CRITICAL'"
+                  [class.ac-high]="msg.alertCard.severity.toUpperCase() === 'HIGH'">
                   {{ msg.alertCard.severity }}
                 </div>
                 <div class="ac-tag">{{ sanitizeRuleName(msg.alertCard.rule_name || 'Security Alert') }}</div>
               </div>
-              <div class="ac-ips">
+              <div class="ac-ips" *ngIf="msg.alertCard.src_ip || msg.alertCard.dst_ip">
                 <span class="ac-ip src">{{ msg.alertCard.src_ip }}</span>
                 <span class="ac-arrow">→</span>
                 <span class="ac-ip dst">{{ msg.alertCard.dst_ip }}</span>
               </div>
+              <div class="ac-cid" *ngIf="msg.alertCard.agent">Host: {{ msg.alertCard.agent }}</div>
               <div class="ac-cid">ID: {{ msg.alertCard.community_id || 'N/A' }}</div>
               <div class="ac-tap">View details &nbsp;›</div>
             </div>

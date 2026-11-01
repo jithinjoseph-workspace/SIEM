@@ -267,10 +267,11 @@ impl ThreatIntel {
         tokio::join!(
             self.refresh_feodo(),
             self.refresh_urlhaus(),
-            self.refresh_malware_bazaar(),
             self.refresh_ja3_blocklist(),
             self.refresh_spamhaus(),
         );
+        // after them: they swap whole snapshots, which would drop hashes added meanwhile
+        self.refresh_malware_bazaar().await;
         self.stamp_refreshed();
         info!(
             "Threat intel refresh complete — {} IPs, {} hashes, {} domains, {} JA3, {} CIDRs",
@@ -342,26 +343,50 @@ impl ThreatIntel {
         info!("Feodo: {} malicious IPs loaded", loaded);
     }
 
+    /// The export lists are gone (HTTP 410). The API gives the samples of the last hour and
+    /// needs the free abuse.ch Auth-Key, so each hourly refresh adds them to the ones known.
     async fn refresh_malware_bazaar(&self) {
-        let url = "https://bazaar.abuse.ch/export/txt/sha256/recent/";
-        let Ok(resp) = reqwest::get(url).await else { warn!("MalwareBazaar fetch error"); return; };
-        let Ok(text) = resp.text().await         else { warn!("MalwareBazaar body error");  return; };
-
-        let mut new_hashes: Vec<String> = Vec::new();
-        let mut loaded = 0usize;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.starts_with('#') || line.is_empty() { continue; }
-            if line.len() == 64 && line.chars().all(|c| c.is_ascii_hexdigit()) {
-                new_hashes.push(line.to_lowercase());
-                loaded += 1;
+        const MAX_HASHES: usize = 200_000;
+        let Some(key) = std::env::var("ABUSECH_AUTH_KEY").ok().filter(|k| !k.trim().is_empty()) else {
+            warn!("MalwareBazaar: skipped, it needs a free abuse.ch Auth-Key in ABUSECH_AUTH_KEY");
+            return;
+        };
+        let resp = reqwest::Client::new()
+            .post("https://mb-api.abuse.ch/api/v1/")
+            .header("Auth-Key", key.trim())
+            .form(&[("query", "get_recent"), ("selector", "time")])
+            .timeout(std::time::Duration::from_secs(60))
+            .send()
+            .await;
+        let body: serde_json::Value = match resp {
+            Ok(r) if r.status().is_success() => match r.json().await {
+                Ok(v) => v,
+                Err(e) => { warn!("MalwareBazaar body error: {e}"); return; }
+            },
+            Ok(r) => { warn!("MalwareBazaar: HTTP {}", r.status().as_u16()); return; }
+            Err(e) => { warn!("MalwareBazaar fetch error: {e}"); return; }
+        };
+        // "no_results": nothing new in the hour
+        match body["query_status"].as_str() {
+            Some("ok") | Some("no_results") => {}
+            s => { warn!("MalwareBazaar: {}", s.unwrap_or("unexpected answer")); return; }
+        }
+        let samples = body["data"].as_array().cloned().unwrap_or_default();
+        if self.malicious_hashes.len() + samples.len() * 3 > MAX_HASHES {
+            // shortcut: a full set starts again from this hour's samples (~20 MB at the cap);
+            // keep MalwareBazaar in ClickHouse like ThreatFox if older samples must stay
+            self.malicious_hashes.clear();
+        }
+        let mut added = 0usize;
+        for s in &samples {
+            for k in ["sha256_hash", "md5_hash", "sha1_hash"] {
+                let Some(h) = s[k].as_str().filter(|h| matches!(h.len(), 32 | 40 | 64) && h.chars().all(|c| c.is_ascii_hexdigit())) else { continue };
+                if self.malicious_hashes.insert(h.to_lowercase()) {
+                    added += 1;
+                }
             }
         }
-
-        let mut snap = self.snapshot();
-        snap.malicious_hashes = new_hashes;
-        self.replace_snapshot(snap);
-        info!("MalwareBazaar: {} malicious hashes loaded", loaded);
+        info!("MalwareBazaar: {} samples of the last hour, {} hashes added, {} known", samples.len(), added, self.malicious_hashes.len());
     }
 
     async fn refresh_ja3_blocklist(&self) {

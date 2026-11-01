@@ -74,11 +74,12 @@ export class TenantStatusService {
 
         this.api.getDashboardStats().subscribe({
           next: (data: any) => {
-            const services = data?.services || {};
+            const services: Record<string, unknown> = data?.services || {};
+            // every reported service runs, except the ones this deployment does not have
+            // ('not used': the SIEM has no Kafka); ClickHouse is always required
             const platformHealthy =
-              this.isRunning(services.kafka) &&
-              this.isRunning(services.clickhouse) &&
-              this.isRunning(services.engine || 'running');
+              Object.values(services).every(s => String(s).toLowerCase() === 'not used' || this.isRunning(s)) &&
+              this.isRunning(services['clickhouse']);
             this.status.set(healthyPipeline && platformHealthy ? 'OPERATIONAL' : 'DEGRADED');
           },
           error: () => this.status.set('DEGRADED'),

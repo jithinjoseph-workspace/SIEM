@@ -41,8 +41,7 @@ import {
   DeceptionBlueprint,
   DeceptionSummary,
   CreateAssetRequest,
-  SimulateTripwireRequest
-} from './siem.models';
+  SimulateTripwireRequest, ComplianceProfile, ComplianceProfileResponse, LiveResponseRequest, TamperStatus } from './siem.models';
 
 @Injectable({
   providedIn: 'root'
@@ -162,6 +161,39 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/agent/commands`, { command_id: 'cmd-' + Date.now(), agent_id: agentId, action, ...params });
   }
 
+  /** EDR live response on a Windows agent: processes | connections | services | dir {path} | file {path}. */
+  startLiveResponse(agentId: string, action: string, path?: string): Observable<{ status: string; message: string; request: LiveResponseRequest }> {
+    return this.http.post<{ status: string; message: string; request: LiveResponseRequest }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response`, { action, path });
+  }
+
+  getLiveResponses(agentId: string): Observable<{ requests: LiveResponseRequest[] }> {
+    return this.http.get<{ requests: LiveResponseRequest[] }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response`);
+  }
+
+  /** The request and, for a finished listing, its result. */
+  getLiveResponse(agentId: string, id: string): Observable<{ request: LiveResponseRequest; result?: any; error?: string }> {
+    return this.http.get<{ request: LiveResponseRequest; result?: any; error?: string }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response/${id}`);
+  }
+
+  /** A collected file's bytes. */
+  downloadLiveResponseFile(agentId: string, id: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/live-response/${id}/download`, { responseType: 'blob' });
+  }
+
+  /** EDR tamper protection: the tenant's setting and each Windows agent's lock state. */
+  getTamper(): Observable<TamperStatus> {
+    return this.http.get<TamperStatus>(`${this.apiUrl}/api/v1/edr/tamper`);
+  }
+
+  setTamper(enabled: boolean): Observable<{ status: string; message: string }> {
+    return this.http.put<{ status: string; message: string }>(`${this.apiUrl}/api/v1/edr/tamper`, { enabled });
+  }
+
+  /** lock | maintenance {minutes: 10 | 60 | 1440, reason} */
+  tamperAgent(agentId: string, action: 'lock' | 'maintenance', minutes?: number, reason?: string): Observable<{ status: string; message: string }> {
+    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/tamper`, { action, minutes, reason });
+  }
+
   /** FIM entries of an agent (wazuh-db fim_entry). */
   getAgentFim(agentId: string): Observable<{ total: number; entries: any[] }> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/fim`).pipe(
@@ -264,17 +296,23 @@ export class SiemService {
     );
   }
 
-  /** Runs a simulation scenario on the manager (POST /api/v1/simulate). */
-  simulateAttack(scenario: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/api/v1/simulate`, { scenario });
-  }
 
   runLogtest(log: string): Observable<LogtestResponse> {
     return this.http.post<LogtestResponse>(`${this.apiUrl}/api/v1/logtest`, { log });
   }
 
-  getCompliance(): Observable<ComplianceResponse> {
-    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance`);
+  /** `refresh`: the agents' latest SCA results are copied first (Re-evaluate). */
+  getCompliance(refresh = false): Observable<ComplianceResponse> {
+    return this.http.get<ComplianceResponse>(`${this.apiUrl}/api/v1/compliance${refresh ? '?refresh=1' : ''}`);
+  }
+
+  /** What the tenant's compliance audits count: frameworks, their agent-group scope, checks not needed. */
+  getComplianceProfile(): Observable<ComplianceProfileResponse> {
+    return this.http.get<ComplianceProfileResponse>(`${this.apiUrl}/api/v1/compliance/profile`);
+  }
+
+  saveComplianceProfile(profile: ComplianceProfile): Observable<{ status: string; profile: ComplianceProfile }> {
+    return this.http.put<{ status: string; profile: ComplianceProfile }>(`${this.apiUrl}/api/v1/compliance/profile`, profile);
   }
 
   getMitreMatrix(): Observable<MitreMatrixResponse> {
@@ -524,6 +562,17 @@ export class SiemService {
   getSigma(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/sigma`); }
   syncSigma(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/sigma/sync`, {}); }
   investigate(q: string, days: number): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params: { q, days } }); }
+
+  // AI Copilot (siem-api copilot.rs): plain-language requests run with the SIEM's tools
+  copilotAsk(message: string, conversationId?: string | null): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/siem/copilot`, { message, conversation_id: conversationId || null });
+  }
+  copilotStatus(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/status`); }
+  copilotConversations(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/conversations`); }
+  copilotConversation(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/copilot/conversations/${encodeURIComponent(id)}`); }
+  copilotDeleteConversation(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/siem/copilot/conversations/${encodeURIComponent(id)}`); }
+  /** The report page (same origin; the session cookie authorizes it). */
+  copilotReportUrl(id: string): string { return `${this.apiUrl}/api/v1/siem/copilot/reports/${encodeURIComponent(id)}`; }
 
   reviewDecision(id: string, approve: boolean): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/decisions/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {});

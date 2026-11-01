@@ -26,7 +26,7 @@
         class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-amber-500/20 transition"
       >
         <lucide-angular [img]="PlayIcon" class="w-4 h-4" [class.animate-spin]="isScanning()"></lucide-angular>
-        {{ isScanning() ? 'Reading results...' : 'Refresh Scan Results' }}
+        {{ isScanning() ? 'Scanning...' : 'Re-scan now' }}
       </button>
 
     </div>

@@ -7,7 +7,7 @@
         MITRE ATT&CK Enterprise Matrix
       </h1>
       <p class="text-sm text-slate-400 mt-1">
-        14 Enterprise tactics, active adversary coverage, and live rule mapping from Rust analysis engine
+        Full ATT&CK Enterprise catalog ({{ totalTechniques() }} techniques), {{ detectedCount() }} detected by this tenant's alerts in 7 days ({{ totalAlerts() | number }} alerts)
       </p>
     </div>
 
@@ -21,6 +21,11 @@
         />
       </div>
 
+      <label class="inline-flex items-center gap-2 px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 cursor-pointer whitespace-nowrap">
+        <input type="checkbox" [ngModel]="onlyDetected()" (ngModelChange)="onlyDetected.set($event)" class="accent-red-500" />
+        Only detected
+      </label>
+
       <button 
         (click)="loadMatrix()" 
         class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
@@ -29,6 +34,12 @@
         Refresh
       </button>
     </div>
+  </div>
+
+  <!-- Technique ids in alerts that the ATT&CK catalog does not have -->
+  <div *ngIf="unmapped().length" class="p-3 rounded-xl border border-amber-800/60 bg-amber-950/20 text-xs text-amber-200">
+    Alerts name technique ids that are not in the current ATT&CK catalog (revoked or renumbered by MITRE):
+    <span *ngFor="let u of unmapped()" class="inline-block font-mono ml-2">{{ u.id }} ({{ u.alert_count }})</span>
   </div>
 
   <!-- Matrix Horizontal Grid -->
@@ -102,6 +113,11 @@
             <span class="text-lg font-bold text-amber-400">Level {{ selectedTechnique()?.max_level }}</span>
           </div>
         </div>
+
+        <a [href]="'https://attack.mitre.org/techniques/' + selectedTechnique()?.id" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 text-xs text-cyan-300 hover:underline">
+          <lucide-angular [img]="ExternalIcon" class="w-3.5 h-3.5"></lucide-angular> Open on attack.mitre.org
+        </a>
 
         <div *ngIf="selectedTechnique()?.subtechniques?.length" class="space-y-1.5">
           <span class="text-xs font-semibold text-slate-400 uppercase block">Subtechniques</span>

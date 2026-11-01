@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, ListFilter, RefreshCw, EyeOff, Eye, X, Bot, Gavel, Gauge } from 'lucide-angular';
@@ -30,7 +31,7 @@ interface Rec {
 @Component({
   selector: 'app-siem-triage',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterModule, LucideAngularModule],
   templateUrl: './siem-triage.html',
 })
 export class SiemTriage implements OnInit {
@@ -76,6 +77,11 @@ export class SiemTriage implements OnInit {
 
   mustLook(r: Rec): boolean {
     return !!this.cal()?.require_inspect && !this.looked().has(r.id);
+  }
+
+  /** The AI Copilot opens a case for the group's newest alert, with its evidence and why. */
+  caseAsk(r: Rec): string {
+    return `Open a case for the latest alert of rule ${r.rule_id} on ${r.agent_name || r.agent_id}, collect the evidence and tell me why it happened`;
   }
 
   view(r: Rec) {

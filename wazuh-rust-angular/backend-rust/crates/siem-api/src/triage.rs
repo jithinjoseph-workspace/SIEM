@@ -103,11 +103,14 @@ pub async fn run_for_tenant(state: &AppState, tenant: &str, use_ai: bool) -> Res
             let system = siem_triage::system_prompt();
             for g in ask.into_iter().take(allowed) {
                 st.ai.note_call(hour);
-                match siem_ai::generate(&providers, &system, &siem_triage::build_prompt(g)).await.ok().and_then(|r| siem_triage::decision_from_reply(&r.text)) {
-                    Some(d) => {
-                        decisions.insert(g.key.clone(), d);
-                    }
-                    None => tracing::warn!("triage: no usable AI answer for tenant '{tenant}' group '{}'", g.key),
+                match siem_ai::generate(&providers, &system, &siem_triage::build_prompt(g)).await {
+                    Ok(r) => match siem_triage::decision_from_reply(&r.text) {
+                        Some(d) => {
+                            decisions.insert(g.key.clone(), d);
+                        }
+                        None => tracing::warn!("triage: unusable AI answer for tenant '{tenant}' group '{}' ({}): {}", g.key, r.model, r.text.chars().take(300).collect::<String>()),
+                    },
+                    Err(e) => tracing::warn!("triage: no AI answer for tenant '{tenant}' group '{}': {e}", g.key),
                 }
             }
         }

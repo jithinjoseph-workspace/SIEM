@@ -16,6 +16,25 @@ pub use validator::*;
 mod tests {
     use super::*;
 
+    #[test]
+    fn ai_reply_becomes_a_validated_parser() {
+        let samples: Vec<String> = [
+            "2026-10-29 16:45:10 INFO  [main] com.example.app.Server - Starting application version 2.4.1...",
+            "2026-10-29 16:46:15 ERROR [http-nio-8080-exec-4] com.example.app.Payment - Timeout connecting to payment gateway API (retry 1/3)",
+        ]
+        .map(String::from)
+        .to_vec();
+        let good = r#"Here it is:
+```json
+{"parser_name": "java_app", "description": "Java app log", "pattern": "^(?P<timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\\s+(?P<level>[A-Z]+)\\s+\\[(?P<thread>[^\\]]+)\\]\\s+(?P<logger>\\S+)\\s+-\\s+(?P<message>.*)$", "fields": [{"name": "level", "field_type": "string", "example": "INFO"}, {"name": "srcip", "field_type": "ip", "example": "1.2.3.4"}], "confidence": 0.9}
+```"#;
+        let p = AiParserSynthesizer::parser_from_llm_reply(1, "sig", &samples, good).unwrap();
+        assert_eq!((p.name.as_str(), p.fields.len()), ("java_app", 1), "srcip is listed but not captured: dropped");
+        let narrow = r#"{"parser_name": "x", "pattern": "^2026-10-29 16:45:10 INFO .*$"}"#;
+        assert!(AiParserSynthesizer::parser_from_llm_reply(1, "sig", &samples, narrow).is_err(), "matches 1 of 2 samples: refused");
+        assert!(AiParserSynthesizer::parser_from_llm_reply(1, "sig", &samples, "no json here").is_err());
+    }
+
     #[tokio::test]
     async fn test_end_to_end_synthesis_and_parsing() {
         let temp_dir = std::env::temp_dir().join(format!("siem_test_{}", uuid::Uuid::new_v4()));

@@ -297,7 +297,7 @@ SOAR notifications (Slack, e-mail…) are not gated: low impact.
 - Not done: Sigma rules for Linux syslog / auditd are only lightly gated by logsource (0 false
   hits on this data); a Sysmon-equipped Windows host would give the Windows rules most to see.
 
-## 1h. EDR — step 1 (endpoint response) built 2026-10-29
+## 1h. EDR — steps 1–4 built 2026-10-29, steps 5 (live response) and 6 (tamper protection) 2026-10-30
 
 Gaps found 2026-10-27, in the order agreed: (1) response actions on the endpoint,
 (2) process telemetry without Sysmon (ETW), (3) process tree per alert, (4) YARA / hash
@@ -361,6 +361,83 @@ Step 3, process tree per alert — built 2026-10-29 (`siem-api/src/process_tree.
 - Verified live on seeded events (tree, activity, other agent / tenant, bad GUID, permission).
 - Open: Security 4688 alerts (no GUIDs) have no tree; big tenants: see the shortcut in
   process_tree.rs (Sysmon events in their own table ordered by agent).
+
+Step 4, file scanning — built 2026-10-29:
+- 4a `file_reputation.rs`: every hash in the stream (Sysmon 1/6/7/15/23/26/29, FIM) against
+  threat intel (ThreatFox ~5.5k hashes in ClickHouse, MalwareBazaar via its API hourly —
+  its export list is gone, HTTP 410 —, the tenant watchlist): 940100 ran (L14), 940101
+  written / loaded / deleted (L12); once per agent, file and kind an hour.
+- 4b `yara_edr.rs` + `yara-scan.exe` (boreal): YARA Forge core (5,128 rules) daily, only a
+  set that compiles, + test rule `SIEM_EDR_YARA_Test_File` (marker
+  `SIEM-EDR-YARA-TEST-FILE-7c1e5b2a`); shipped as `shared/siem-yara.rules`, deflate +
+  base64 — NEVER plain: Defender removed merged.mg (all agents' agent.conf) when it held
+  plain rules (Trojan:Python/RemoteShellExec). Auto scans: new executables / scripts /
+  programs started from user-writable folders, once per SHA-256 and rule version, ≤ 20 per
+  agent / 10 min; match = 940102 (L13). Manual: YARA Scan in the alert drawer and Agents >
+  Actions. Compile 0.5 s + ~17 ms/MB per scan, below-normal priority, ≤ 64 MB files.
+- Open: agents deployed before 4b lack yara-scan.exe (copy it to active-response\bin or
+  redeploy); boreal 1.4's scanner serialization fails ("CompilerProfile: 25"), so each
+  scan compiles the rules (0.5 s).
+
+Step 5, live response — built 2026-10-30 (read-only questions to a Windows endpoint):
+- Agent: `live-response.exe` (siem-active-response `src/live.rs` + `bin/live_response.rs`),
+  `id=`, `action=processes|connections|services|dir|file`, `path=` (full path, no `..`).
+  Processes / connections / services come from siem-sysinfo (the syscollector's own
+  collectors, so as SYSTEM it sees every process); a folder lists ≤ 5,000 entries (links
+  not followed); a file is ≤ 25 MB, with its SHA-256. Nothing on the endpoint changes.
+- Transport: the agent's own channel, so an isolated host still answers. The payload is
+  gzip + base64 in 32 KB chunks, one active-responses.log line each, then a "done" line with
+  the chunk count and the SHA-256 of the compressed payload (`live::result_lines`).
+- Manager: `wazuh_manager::on_events` takes these lines out of the archive stream and
+  `on_alerts` out of the alerts; `live_response::ingest` writes the chunks to the agent's
+  tenant `siem_live_response_chunks` (TTL 30 days) and the outcome to `siem_live_response`
+  (requests kept: who asked for what). A line counts only for a request made to the agent
+  that sent it; results are put together when read, checked against the SHA-256, and
+  inflated at most 64 MB.
+- API (`siem-agents`, agent tenant checked): `POST|GET /api/v1/agents/:id/live-response`,
+  `GET .../:rid`, `GET .../:rid/download` (`<name>.collected`, `X-File-SHA256`). Collecting a
+  file passes the decision gate (`manual_collect_file`); listings do not. A request with no
+  answer in 15 min shows as "no answer".
+- UI: Agents → Actions → Endpoint response → Live response (buttons, folder browsing with
+  Open / Collect, filterable result tables, history).
+- Verified 2026-10-30: the program on Windows (all five actions, refusals); the API with the
+  program's real output stored as the intake stores it (read back, tampered result refused,
+  file download byte-identical, permission and other-tenant refusals); unit tests both ends.
+- Open: the full agent → manager path was not run (installing live-response.exe in
+  Program Files needs admin; redeploy or copy it to active-response\bin); collected
+  files are served as-is (a password-protected "infected" archive would keep browser
+  antivirus from deleting samples).
+
+Step 6, agent tamper protection — built 2026-10-30 (Windows agents):
+- Agent: `tamper-protect.exe` (siem-active-response `src/tamper.rs` + `bin/tamper_protect.rs`)
+  sets the WazuhSvc service descriptor to `tamper::LOCKED_SDDL` with sc.exe: SYSTEM keeps
+  everything (the agent's own upgrades and restarts), Administrators may query and start
+  but not stop, pause, reconfigure, delete or change the permissions; recovery restarts a
+  killed agent (5 s, 10 s, then every minute). The descriptor found before the first lock is
+  kept in `active-response\tamper.state`, so `off` restores it exactly. `window=<id>` with a
+  timeout (600 / 3600 / 86400 s, `tamper-unlock<t>`) opens a maintenance window; execd's
+  "delete" at its end locks again unless a newer window replaced it.
+- Manager (`siem-api/src/tamper.rs`, tenant table `siem_tamper`): the tenant admin turns it on
+  or off (`PUT /api/v1/edr/tamper`, sent to every Windows agent at once); each "Agent started"
+  is answered with a lock unless a window is open; the agents' result lines give each
+  agent's state. Maintenance windows (`POST /api/v1/agents/:id/tamper`): the tenant admin,
+  recorded as a decision (`manual_tamper_maintenance`), 10 min / 1 h / 24 h.
+- Alerts (MITRE T1562.001): 940110 a command that stops / deletes / reconfigures the
+  service or kills the agent (sc, net, PowerShell *-Service, taskkill, wmic, msiexec /x,
+  reg add|delete; Sysmon 1 or Security 4688; our own tamper-protect / agent are not
+  counted), 940111 start type changed (System 7040), 940112 the service killed (7031 / 7034),
+  940113 its registry key written by anything but the service manager (Sysmon 12-14).
+- UI: Agents page header "Tamper protection: on/off" (tenant admin); Agents → Actions →
+  Endpoint response → Tamper protection (state, Lock now, maintenance window with reason).
+- Verified 2026-10-30: the locked descriptor parses on Windows with exactly those rights; the
+  API (permissions: analysts read and lock, only the tenant admin turns it on/off and opens
+  windows; window lengths; state); a real unprivileged `sc stop WazuhSvc` on agent 049 →
+  "Access is denied" and alert 940110 within seconds. Unit tests both ends.
+- Open: the lock itself was not run on an agent (tamper-protect.exe must be installed with
+  admin rights, then turn it on). Limits, by design of Windows: an administrator can still
+  take ownership of the service or edit its registry key, and can kill the process (it
+  restarts) — this makes tampering slow and visible, not impossible. The agent's install
+  folder and its files are not locked beyond Windows' default ACLs.
 
 ## 2. Per-tenant alert e-mails
 

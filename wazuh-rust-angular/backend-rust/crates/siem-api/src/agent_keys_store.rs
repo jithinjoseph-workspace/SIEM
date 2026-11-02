@@ -18,8 +18,10 @@ use tracing::{info, warn};
 use crate::tenancy::DEFAULT_DB;
 use crate::AppState;
 
-/// Bumped by `wazuh_manager::save_keys`: the sync writes the keystore when it moves.
+/// Bumped by `provigil_manager::save_keys`: the sync writes the keystore when it moves.
 pub static VERSION: AtomicU64 = AtomicU64::new(0);
+/// Wakes the sync as soon as a key is added or removed (not on its next 5 s check).
+pub static CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
 #[derive(Row, Serialize, Deserialize)]
 struct KeyRow {
@@ -156,7 +158,8 @@ async fn save(state: &AppState, c: &LessSafeKey, stored: &mut BTreeSet<String>) 
     true
 }
 
-/// Writes the keystore to ClickHouse when it changed (checked every 5 s, and once at start).
+/// Writes the keystore to ClickHouse when it changed: right away (`CHANGED`), checked every
+/// 5 s too (a failed write is retried), and once at start.
 pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
     let Some(c) = cipher() else { return };
     tokio::spawn(async move {
@@ -173,7 +176,7 @@ pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
                 // ClickHouse has every key now: an old etc/client.keys is not needed any more
                 crate::provigil_manager::forget_keys_file();
             }
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            let _ = tokio::time::timeout(Duration::from_secs(5), CHANGED.notified()).await;
         }
     });
 }

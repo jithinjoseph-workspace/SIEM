@@ -81,6 +81,11 @@ pub fn run_up(d: Arc<Wdbd>) {
         let Some(dot) = name.find('.') else {
             continue;
         };
+        // Not in the C: a database removed since the listing (a removed agent's, or
+        // modulesd's dangling-file cleanup) is not re-created empty from the template.
+        if !d.path(&format!("{db_folder}/{name}")).exists() {
+            continue;
+        }
         if let Some(wdb) = d.open_agent2(super::atoi(name[..dot].as_bytes())) {
             d.leave(wdb);
         }

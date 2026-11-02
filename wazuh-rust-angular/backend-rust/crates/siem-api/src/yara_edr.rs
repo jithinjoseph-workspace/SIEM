@@ -48,18 +48,16 @@ pub fn version_of(text: &str) -> String {
     Sha256::digest(text.as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The rule set is kept in ClickHouse (`siem_yara_rules`, encoded); this file is the
-/// manager's cache of it, used when ClickHouse is not reachable at start.
+/// The rule set is kept in ClickHouse (`siem_yara_rules`, encoded); when ClickHouse is not
+/// reachable at start, the default group's copy (what the agents download) is used.
 fn store() -> PathBuf {
-    crate::data_file_path("yara").join("current.rules")
+    crate::provigil_manager::home().join("etc").join("shared").join("default").join(SHARED_NAME)
 }
 
 /// Writes the rules where remoted sends them from: every group's shared folder (only when
 /// the content changed, so agents download it once per version).
 fn install(text: &str) -> Result<(), String> {
     let stored = siem_active_response::yara::encode_rules(text);
-    let _ = std::fs::create_dir_all(store().parent().unwrap_or(std::path::Path::new(".")));
-    std::fs::write(store(), &stored).map_err(|e| format!("{}: {e}", store().display()))?;
     let shared = crate::provigil_manager::home().join("etc").join("shared");
     for d in std::fs::read_dir(&shared).map_err(|e| format!("{}: {e}", shared.display()))?.flatten() {
         if !d.path().is_dir() {
@@ -114,7 +112,7 @@ async fn save(state: &crate::AppState, text: &str) -> bool {
     }
 }
 
-/// The stored rule set (ClickHouse, else the cache file) and whether ClickHouse had it.
+/// The stored rule set (ClickHouse, else the default group's copy) and whether ClickHouse had it.
 async fn load(state: &crate::AppState) -> Option<(String, bool)> {
     let doc = state.db.doc(crate::tenancy::DEFAULT_TENANT, crate::db::DocTable::YaraRules, "current").await.ok().flatten();
     let from_db = doc.and_then(|d| serde_json::from_str::<Value>(&d).ok()).and_then(|v| v["rules"].as_str().map(String::from));

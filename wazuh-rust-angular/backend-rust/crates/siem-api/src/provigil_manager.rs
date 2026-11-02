@@ -417,12 +417,16 @@ fn kill_stale(home: &Path) {
     let f = home.join("var/run/siem-api-children.pids");
     if let Ok(s) = std::fs::read_to_string(&f) {
         for pid in s.split_whitespace().filter_map(|p| p.parse::<u32>().ok()) {
+            // after a reboot the pid may belong to another program: only the manager's
+            // programs (their names before and after the ProVigil rename)
             #[cfg(windows)]
-            let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string(), "/FI", "IMAGENAME eq wazuh-*"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+            for image in ["provigil-*", "wazuh-*"] {
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string(), "/FI", &format!("IMAGENAME eq {image}")])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
             // after a reboot the pid may belong to another program
             #[cfg(unix)]
             if std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.starts_with("wazuh-") || c.starts_with("provigil-")) {
@@ -431,6 +435,19 @@ fn kill_stale(home: &Path) {
         }
     }
     let _ = std::fs::remove_file(f);
+    // the daemons' pid files (`<daemon>-<pid>.pid`): none of them runs now, so every one is
+    // left over (a daemon stopped by force does not remove its own)
+    let run = home.join("var/run");
+    let mut n = 0;
+    for e in std::fs::read_dir(&run).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".pid") && name.contains('-') && std::fs::remove_file(e.path()).is_ok() {
+            n += 1;
+        }
+    }
+    if n > 0 {
+        info!("ProVigil manager: {n} stale pid file(s) removed from {}", run.display());
+    }
 }
 
 static CHILDREN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
@@ -889,15 +906,68 @@ pub async fn sync_group(name: &str, exists: bool) -> bool {
     }
 }
 
-/// `wdb_remove_agent`
-pub async fn remove_agent(id: &str) {
+/// `wdb_remove_agent`, then the agent's own database (`queue/db/<id>.db`: inventory,
+/// FIM, SCA, rootcheck), as the Wazuh API's agent removal does (`wazuhdb remove`). With
+/// its `global.db` row gone wazuh-db never opens (so never re-creates) that database.
+pub async fn remove_agent(id: &str) -> bool {
     if !enabled() {
+        return false;
+    }
+    let Ok(n) = id.parse::<u32>() else { return false };
+    if n == 0 {
+        return false; // the manager itself
+    }
+    let row = wdb().query(&format!("global delete-agent {n}")).await;
+    let file = wdb().query(&format!("wazuhdb remove {n:03}")).await;
+    // OS_RemoveCounter (only a well-formed id names a file under queue/rids)
+    let _ = std::fs::remove_file(home().join("queue/rids").join(format!("{n:03}")));
+    let ok = row.as_deref().is_ok_and(|r| r.starts_with("ok")) && file.as_deref().is_ok_and(|r| r.starts_with("ok"));
+    if !ok {
+        warn!("ProVigil manager: agent {n:03} not fully removed from wazuh-db: {row:?} / {file:?}");
+    }
+    ok
+}
+
+/// Agents removed from the platform that wazuh-db still holds (a `global.db` row or a
+/// database file, e.g. removed while the manager was down): removed once wazuh-db answers.
+pub async fn purge_removed(ids: Vec<String>) {
+    if !enabled() || ids.is_empty() {
         return;
     }
-    if let Ok(n) = id.parse::<i64>() {
-        let _ = wdb().query(&format!("global delete-agent {n}")).await;
-        // OS_RemoveCounter (only a well-formed id names a file under queue/rids)
-        let _ = std::fs::remove_file(home().join("queue/rids").join(format!("{n:03}")));
+    for _ in 0..60 {
+        if is_provigil_agent("0").await {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+    let file = |k: u32| home().join("queue/db").join(format!("{k:03}.db"));
+    let ids: Vec<u32> = ids.iter().filter_map(|i| i.parse::<u32>().ok()).filter(|k| *k > 0).collect();
+    let mut removed = std::collections::BTreeSet::new();
+    // checked again, and removed again, every 30 s, at least 3 times: a file another
+    // process still has open is only gone once it closes it (Windows), and a manager
+    // starting up may still be opening the databases it listed
+    for pass in 0..20 {
+        let mut left = Vec::new();
+        for &k in &ids {
+            if file(k).exists() || is_provigil_agent(&k.to_string()).await {
+                left.push(k);
+            }
+        }
+        if left.is_empty() && pass >= 2 {
+            break;
+        }
+        for k in left {
+            remove_agent(&k.to_string()).await;
+            removed.insert(k);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    }
+    let still: Vec<String> = removed.iter().filter(|k| file(**k).exists()).map(|k| format!("{k:03}")).collect();
+    if !removed.is_empty() {
+        info!("ProVigil manager: {} removed agent(s) also removed from wazuh-db (row and database file)", removed.len() - still.len());
+    }
+    if !still.is_empty() {
+        warn!("ProVigil manager: database file of removed agent(s) {} still in queue/db (in use by another program)", still.join(", "));
     }
 }
 
@@ -1302,6 +1372,7 @@ pub fn forget_keys_file() {
 pub fn save_keys(state: &AppState) {
     // the ClickHouse copy (agent_keys_store) follows
     crate::agent_keys_store::VERSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    crate::agent_keys_store::CHANGED.notify_one();
     if !enabled() {
         return;
     }

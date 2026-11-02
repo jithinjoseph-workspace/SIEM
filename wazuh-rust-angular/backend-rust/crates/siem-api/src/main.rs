@@ -547,6 +547,8 @@ async fn main() {
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
     // with the keys in ClickHouse the daemons read them from siem-api: no etc/client.keys
     provigil_manager::start(state.clone(), stored_keys.is_some());
+    // agents removed from the platform but still in wazuh-db (removed while it was down)
+    tokio::spawn(provigil_manager::purge_removed(state.deleted_agents.read().unwrap().iter().cloned().collect()));
     if let Some(ids) = stored_keys {
         agent_keys_store::spawn_sync(state.clone(), ids);
     }
@@ -1382,7 +1384,8 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         let _ = state.auth_keystore.write().unwrap().delete_key(id);
         provigil_manager::save_keys(state);
         let wid = id.to_string();
-        tokio::spawn(async move { provigil_manager::remove_agent(&wid).await });
+        // its global.db row and database file, checked until the file is gone
+        tokio::spawn(provigil_manager::purge_removed(vec![wid]));
         let st = state.clone();
         let t_clone = tenant.clone();
         let id_clone = id.to_string();
@@ -1420,7 +1423,6 @@ async fn delete_agent_handler(
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
     let scope = ctx.scope();
-    state.db.delete_agent(&scope, &id).await;
     if remove_scoped_agent(&state, &ctx, &id) {
         info!("Removed agent '{}' from SIEM registry (tenant {})", id, scope);
         (
@@ -1451,12 +1453,10 @@ async fn delete_agents_provigil_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> axum::response::Response {
-    let scope = ctx.scope();
     let mut removed = Vec::new();
     if let Some(list) = params.agents_list {
         for id in list.split(',') {
             let id = id.trim();
-            state.db.delete_agent(&scope, id).await;
             if remove_scoped_agent(&state, &ctx, id) {
                 removed.push(id.to_string());
             }

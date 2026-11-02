@@ -542,6 +542,39 @@ every record linked to its agent and tenant. One home per kind of data:
 - **Across agents without a copy:** the FIM summary counts `fim_entry` in each of the
   tenant's agents' databases, 8 at a time; the investigation's host view counts packages,
   ports and processes in the agent's database (`inventory_store::host`).
+- **Enrolling an agent:** registry row (`ndr.agent_registry`, its tenant) and its key
+  (`ndr.agent_keys`, encrypted, written the moment it changes, `agent_keys_store::CHANGED`)
+  in ClickHouse; its row in SQLite `global.db` (remoted and analysisd need it). No file.
+- **Removing an agent** (`remove_scoped_agent`, only the agent's own tenant): its `global.db`
+  row and its database file `queue/db/<id>.db` (`wazuhdb remove`, as the Wazuh API does;
+  `purge_removed` checks every 30 s until the file is gone); in ClickHouse its key (marked
+  deleted), fleet row, vulnerabilities, tamper state and SCA rows. The registry keeps the id
+  marked deleted so it is never issued again. Alerts, events, cases and live response results
+  stay as the tenant's history until their retention ends. At start, agents removed while
+  the manager was down are removed from wazuh-db the same way. wazuh-db's start-up pass
+  (`run_up`, siem-wdb threads.rs) no longer re-creates a database file deleted after it
+  listed the folder (it did, from the template, for modulesd's dangling-file cleanup).
+  Checked 2026-11-02 (18/18 live, a throwaway agent): enrolled → registry, key, row, file;
+  another tenant's delete refused on both routes; deleted → row, file, key, fleet row,
+  vulnerabilities, tamper, SCA gone; a later request does not re-create the file. Agents
+  027, 028, 029, 047 and 048 (removed earlier) were removed from wazuh-db at start.
+- **Cleaned up 2026-11-02 (owner's OK):** agents 013, 016, 040, 042 (old test agents in
+  `global.db` with a database file and an active key, no registry row, never connected)
+  removed from SQLite and ClickHouse; `global.db` now holds exactly the registry's agents
+  (017, 021, 044, 049) and the manager. Deleted from disk: the old `logs/alerts` and
+  `logs/archives` files (9.2 GB, already in ClickHouse), the scanner's old `queue/indexer`
+  file, the old YARA cache `data/yara/current.rules` (the fallback is now the default
+  group's `siem-yara.rules`), and the pre-rename `bin/wazuh-*.exe` programs.
+- **Pid files:** at start, siem-api stops the previous run's daemons (named `provigil-*`
+  since the rename; before, only `wazuh-*` were matched, so leftovers survived) and removes
+  every `var/run/<daemon>-<pid>.pid` left behind (598 had piled up).
+- **Files still written, by design:** configuration (`ossec.conf`, `ar.conf`, rules, group
+  files); daemon logs (`logs/ossec.log`, `logs/*.out`); pid and `.state` files (`var/run`,
+  runtime status); the agents' message counters (`queue/rids`, protocol anti-replay);
+  the vulnerability scanner's own stores (`queue/vd`, `queue/vd_updater`); the decision
+  log's tamper-evidence anchor (`decision_anchors.json`, outside the database on purpose).
+  Libin's crates still keep their state in `data/deception_config.json`,
+  `data/intent_engine_config.json`, `data/risk_fabric_config.json` (his to move).
 - **Removed:** the inventory, FIM and rootcheck copies and their 5-second loop, the
   router subscription (`follow_router`, `siem_router::set_home`), the siem-router
   dependency of siem-api, the DDL of `siem_agent_inventory` / `siem_fim_files` /

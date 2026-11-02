@@ -1449,11 +1449,19 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return;
         }
-        let sql = format!(
-            "ALTER TABLE siem_agents DELETE WHERE id = '{}'",
-            agent_id.replace('\'', "''")
-        );
-        let _ = self.tenant_client(tenant_id).query(&sql).execute().await;
+        let c = self.tenant_client(tenant_id);
+        // the agent's state: its fleet row, vulnerabilities, tamper protection state (its
+        // SCA rows: posture_store::forget); alerts, events, cases and live response results
+        // stay as the tenant's history until their retention ends
+        for (sql, id) in [
+            ("ALTER TABLE siem_agents DELETE WHERE id = ?", agent_id.to_string()),
+            ("DELETE FROM siem_vulnerability_state WHERE agent_id = ?", agent_id.to_string()),
+            ("DELETE FROM siem_tamper WHERE id = ?", format!("agent:{agent_id}")),
+        ] {
+            if let Err(e) = c.query(sql).bind(id).execute().await {
+                tracing::warn!("removed agent {agent_id}: {sql}: {e}");
+            }
+        }
     }
 
     pub async fn save_tenant_agent_key(&self, tenant_id: &str, key: &str) {

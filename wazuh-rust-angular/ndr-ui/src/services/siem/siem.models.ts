@@ -492,6 +492,7 @@ export interface BusinessProcessDefinition {
   identity_weight: number;
   asset_patterns: string[];
   identity_patterns: string[];
+  group_patterns?: string[];
   impact_template: string;
   enabled: boolean;
 }
@@ -534,6 +535,7 @@ export interface RiskEvaluationRequest {
   agent_name: string;
   agent_ip: string;
   user?: string;
+  os_type?: string;
 }
 
 // ── Red Swarm & Purple Team Console Models ──

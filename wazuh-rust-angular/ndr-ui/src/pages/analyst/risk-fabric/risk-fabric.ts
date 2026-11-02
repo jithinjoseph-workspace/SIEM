@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -26,6 +26,7 @@ import {
   Target
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
+import { Subscription } from 'rxjs';
 import {
   BusinessProcessDefinition,
   BusinessTimeWindow,
@@ -45,7 +46,8 @@ type RiskFabricTab = 'overview' | 'simulator' | 'processes' | 'windows' | 'live_
   templateUrl: './risk-fabric.html',
   styleUrl: './risk-fabric.css',
 })
-export class RiskFabric implements OnInit {
+export class RiskFabric implements OnInit, OnDestroy {
+  private alertSub?: Subscription;
   private siem = inject(SiemService);
 
   // Icons
@@ -98,6 +100,7 @@ export class RiskFabric implements OnInit {
   selectedSimAgentId = signal<string>('custom');
   simAgentName = signal<string>('win-node-7a5e');
   simAgentIp = signal<string>('192.168.1.142');
+  simAgentOs = signal<string>('windows');
   simUser = signal<string>('administrator');
   simRuleLevel = signal<number>(10);
   simRuleId = signal<number>(100101);
@@ -114,6 +117,7 @@ export class RiskFabric implements OnInit {
   procFormAssetWeight = signal<number>(2.0);
   procFormIdentityWeight = signal<number>(1.5);
   procFormAssetPatterns = signal<string>('');
+  procFormGroupPatterns = signal<string>('');
   procFormIdentityPatterns = signal<string>('');
   procFormImpactTemplate = signal<string>('');
   procFormEnabled = signal<boolean>(true);
@@ -131,6 +135,19 @@ export class RiskFabric implements OnInit {
   ngOnInit() {
     this.loadAllData();
     this.runSimulation();
+    this.alertSub = this.siem.getAlertStream().subscribe({
+      next: (incomingAlert) => {
+        this.alerts.update((list) => [incomingAlert, ...list.slice(0, 99)]);
+        this.siem.getRiskFabricSummary().subscribe({
+          next: (sum) => this.summary.set(sum),
+          error: () => {},
+        });
+      },
+    });
+  }
+
+  ngOnDestroy() {
+    this.alertSub?.unsubscribe();
   }
 
   loadAllData() {
@@ -165,6 +182,7 @@ export class RiskFabric implements OnInit {
           this.simAgentName.set(first.name);
           this.simAgentIp.set(first.ip);
           const isWin = first.os_type === 'windows' || first.name.toLowerCase().includes('win');
+          this.simAgentOs.set(isWin ? 'windows' : 'linux');
           this.simUser.set(isWin ? 'administrator' : 'root');
           this.runSimulation();
         }
@@ -194,6 +212,7 @@ export class RiskFabric implements OnInit {
         this.simAgentName.set(match.name);
         this.simAgentIp.set(match.ip);
         const isWin = match.os_type === 'windows' || match.name.toLowerCase().includes('win');
+        this.simAgentOs.set(isWin ? 'windows' : 'linux');
         this.simUser.set(isWin ? 'administrator' : 'root');
       }
     }
@@ -209,6 +228,7 @@ export class RiskFabric implements OnInit {
       agent_name: this.simAgentName(),
       agent_ip: this.simAgentIp(),
       user: this.simUser() || undefined,
+      os_type: this.simAgentOs() || undefined,
     };
 
     this.siem.evaluateRisk(req).subscribe({
@@ -233,6 +253,7 @@ export class RiskFabric implements OnInit {
       this.selectedSimAgentId.set(target ? target.id : 'custom');
       this.simAgentName.set(target ? target.name : 'linux-node-8651');
       this.simAgentIp.set(target ? target.ip : '127.0.0.1');
+      this.simAgentOs.set('linux');
       this.simUser.set('cashier_svc');
       this.simRuleLevel.set(12);
       this.simRuleId.set(100104);
@@ -242,6 +263,7 @@ export class RiskFabric implements OnInit {
       this.selectedSimAgentId.set(target ? target.id : 'custom');
       this.simAgentName.set(target ? target.name : 'win-node-7a5e');
       this.simAgentIp.set(target ? target.ip : '192.168.1.142');
+      this.simAgentOs.set('windows');
       this.simUser.set('administrator');
       this.simRuleLevel.set(10);
       this.simRuleId.set(100105);
@@ -251,6 +273,7 @@ export class RiskFabric implements OnInit {
       this.selectedSimAgentId.set(target ? target.id : 'custom');
       this.simAgentName.set(target ? target.name : 'linux-node-8651');
       this.simAgentIp.set(target ? target.ip : '127.0.0.1');
+      this.simAgentOs.set('linux');
       this.simUser.set('intern_qa');
       this.simRuleLevel.set(8);
       this.simRuleId.set(100101);
@@ -260,6 +283,7 @@ export class RiskFabric implements OnInit {
       this.selectedSimAgentId.set(target ? target.id : 'custom');
       this.simAgentName.set(target ? target.name : 'dmz-web-nginx');
       this.simAgentIp.set(target ? target.ip : '172.16.0.10');
+      this.simAgentOs.set('linux');
       this.simUser.set('www-data');
       this.simRuleLevel.set(9);
       this.simRuleId.set(100107);
@@ -276,6 +300,7 @@ export class RiskFabric implements OnInit {
     this.procFormAssetWeight.set(2.0);
     this.procFormIdentityWeight.set(1.5);
     this.procFormAssetPatterns.set('*pay*, *swift*, 192.168.10.*');
+    this.procFormGroupPatterns.set('pci-dss, domain-controllers');
     this.procFormIdentityPatterns.set('admin*, *cashier*, svc_*');
     this.procFormImpactTemplate.set('Critical asset or privileged identity compromised; immediate containment mandatory.');
     this.procFormEnabled.set(true);
@@ -290,6 +315,7 @@ export class RiskFabric implements OnInit {
     this.procFormAssetWeight.set(p.asset_weight);
     this.procFormIdentityWeight.set(p.identity_weight);
     this.procFormAssetPatterns.set(p.asset_patterns.join(', '));
+    this.procFormGroupPatterns.set((p.group_patterns || []).join(', '));
     this.procFormIdentityPatterns.set(p.identity_patterns.join(', '));
     this.procFormImpactTemplate.set(p.impact_template);
     this.procFormEnabled.set(p.enabled);
@@ -306,6 +332,10 @@ export class RiskFabric implements OnInit {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
+    const groupPatterns = this.procFormGroupPatterns()
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
     const proc: BusinessProcessDefinition = {
       id,
@@ -316,6 +346,7 @@ export class RiskFabric implements OnInit {
       identity_weight: Number(this.procFormIdentityWeight()),
       asset_patterns: assetPatterns,
       identity_patterns: identityPatterns,
+      group_patterns: groupPatterns,
       impact_template: this.procFormImpactTemplate(),
       enabled: this.procFormEnabled(),
     };

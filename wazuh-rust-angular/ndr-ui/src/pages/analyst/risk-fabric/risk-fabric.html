@@ -245,6 +245,15 @@
               <span class="form-hint">Matches asset pattern (e.g. *pay*, *win*, *linux*)</span>
             </div>
 
+                        <div class="form-group">
+              <label>Target OS Platform</label>
+              <select class="form-control" [ngModel]="simAgentOs()" (ngModelChange)="simAgentOs.set($event); runSimulation()">
+                <option value="windows">Windows Server / Workstation</option>
+                <option value="linux">Linux Server / Container</option>
+                <option value="macos">macOS Endpoint</option>
+              </select>
+              <span class="form-hint">Used for cross-platform user identity mapping and policy enforcement</span>
+            </div>
             <div class="form-group">
               <label>Host IP Address</label>
               <input type="text" class="form-control" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event); runSimulation()" />
@@ -625,6 +634,10 @@
           <div class="form-group">
             <label>Asset Matching Patterns (comma-separated)</label>
             <input type="text" class="form-control" [ngModel]="procFormAssetPatterns()" (ngModelChange)="procFormAssetPatterns.set($event)" placeholder="*pay*, 192.168.10.*, srv-prod-*" />
+          </div>
+                    <div class="form-group">
+            <label>Fleet Group Patterns (comma-separated, e.g. pci-dss, domain-controllers)</label>
+            <input type="text" class="form-control" [ngModel]="procFormGroupPatterns()" (ngModelChange)="procFormGroupPatterns.set($event)" placeholder="pci-dss, domain-controllers, webservers" />
           </div>
           <div class="form-group">
             <label>Identity Matching Patterns (comma-separated)</label>

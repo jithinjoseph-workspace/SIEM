@@ -28,6 +28,8 @@ pub struct BusinessProcessDefinition {
     pub asset_weight: f64,
     pub identity_weight: f64,
     pub asset_patterns: Vec<String>,
+    #[serde(default)]
+    pub group_patterns: Vec<String>,
     pub identity_patterns: Vec<String>,
     pub impact_template: String,
     pub enabled: bool,
@@ -77,6 +79,16 @@ pub struct RiskFabricSummary {
     pub top_critical_processes: Vec<ProcessRiskStat>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FleetAgentMeta {
+    pub id: String,
+    pub name: String,
+    pub ip: String,
+    pub os_type: Option<String>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskEvaluationRequest {
     pub rule_level: u8,
@@ -85,4 +97,6 @@ pub struct RiskEvaluationRequest {
     pub agent_name: String,
     pub agent_ip: String,
     pub user: Option<String>,
+    #[serde(default)]
+    pub os_type: Option<String>,
 }

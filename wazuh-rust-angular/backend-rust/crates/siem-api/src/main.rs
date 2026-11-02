@@ -1,4 +1,4 @@
-use axum::{
+﻿use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Extension, Path, Query, State,
@@ -322,9 +322,9 @@ async fn main() {
     ]));
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
-    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
-    let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new("data/intent_engine_config.json"));
-    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new("data/deception_config.json"));
+    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new(data_file_path("risk_fabric_config.json")));
+    let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new(data_file_path("intent_engine_config.json")));
+    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new(data_file_path("deception_config.json")));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -628,10 +628,84 @@ async fn main() {
         })
     };
 
+    let rich_fleet_reader = {
+        let fleet_state = state.clone();
+        Arc::new(move || {
+            let mut fleet = Vec::new();
+            let deleted = fleet_state.deleted_agents.read().unwrap();
+            let enrolled = fleet_state.enrolled.read().unwrap();
+            {
+                let agents = fleet_state.agents.read().unwrap();
+                for a in agents.values() {
+                    if deleted.contains(&a.id) {
+                        continue;
+                    }
+                    let os = if !a.os_type.is_empty() {
+                        Some(a.os_type.clone())
+                    } else if a.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    let groups: Vec<String> = enrolled
+                        .get(&a.id)
+                        .map(|e| {
+                            e.groups
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    fleet.push(siem_risk_fabric::FleetAgentMeta {
+                        id: a.id.clone(),
+                        name: a.name.clone(),
+                        ip: a.ip.clone(),
+                        os_type: os,
+                        groups,
+                    });
+                }
+            }
+            if fleet.is_empty() {
+                for (id, e) in enrolled.iter() {
+                    if deleted.contains(id) || e.disabled {
+                        continue;
+                    }
+                    let os = if !e.os_type.is_empty() {
+                        Some(e.os_type.clone())
+                    } else if e.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    let groups: Vec<String> = e
+                        .groups
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    fleet.push(siem_risk_fabric::FleetAgentMeta {
+                        id: id.clone(),
+                        name: e.name.clone(),
+                        ip: "127.0.0.1".to_string(),
+                        os_type: os,
+                        groups,
+                    });
+                }
+            }
+            fleet
+        })
+    };
+
     // Synchronize enrolled fleet into Intent Engine immediately on startup
     {
         let initial_fleet = (fleet_reader)();
         state.intent_engine.sync_enrolled_fleet(&initial_fleet);
+        state.risk_fabric.sync_fleet(&initial_fleet);
+        let rich_fleet = (rich_fleet_reader)();
+        state.risk_fabric.sync_fleet_meta(&rich_fleet);
     }
 
     let active_response_dispatcher = {
@@ -685,10 +759,10 @@ async fn main() {
     let app = Router::new()
         .nest_service(
             "/api/v1/risk-fabric",
-            siem_risk_fabric::api::router(
+            siem_risk_fabric::api::router_with_meta(
                 state.risk_fabric.clone(),
                 alerts_reader.clone(),
-                Some(fleet_reader.clone()),
+                Some(rich_fleet_reader.clone()),
             ),
         )
         .nest_service(

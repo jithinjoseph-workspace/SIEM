@@ -184,8 +184,8 @@ export class Rules extends RulesBase implements OnInit {
   private mapAgentZRule(r: any): any {
     return {
       name: r.title || 'Unknown',
-      // custom rules (the tenant's, stored in ClickHouse) can be edited; Wazuh's ruleset is read-only
-      type: r.source === 'custom' ? 'Custom' : 'Wazuh',
+      // custom rules (the tenant's, stored in ClickHouse) can be edited; ProVigil's ruleset is read-only
+      type: r.source === 'custom' ? 'Custom' : 'ProVigil',
       editable: !!r.editable,
       severity: (r.severity || 'medium').toUpperCase(),
       status: r.enabled ? 'ACTIVE' : 'INACTIVE',

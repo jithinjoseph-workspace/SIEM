@@ -15,7 +15,7 @@ pub use authd::{AuthdConfig, AuthdError, AuthdService};
 pub use config::{ConnectionType, NetProtocol, RemoteSection};
 pub use crypto::{decrypt_aes256_cbc, encrypt_aes256_cbc, CryptoError};
 pub use keys::{AgentKey, KeyError, KeysDatabase};
-pub use protocol::{ProtocolError, RemotedMessage, WazuhSubsystem};
+pub use protocol::{ProtocolError, RemotedMessage, ProVigilSubsystem};
 pub use remcom::{RemcomHandler, RemcomRequest, RemcomResponse};
 pub use server::{RemotedConfig, RemotedServer, ServerError};
 pub use shared_download::{SharedConfigManager, SharedFile};
@@ -62,7 +62,7 @@ mod tests {
 
         assert_eq!(msg.agent_id, "001");
         assert_eq!(msg.counter, 1);
-        assert_eq!(msg.subsystem, WazuhSubsystem::Fim);
+        assert_eq!(msg.subsystem, ProVigilSubsystem::Fim);
         assert_eq!(msg.payload, fim_payload);
 
         // 4. Replay attack verification: attacker tries to replay exact same packet
@@ -79,7 +79,7 @@ mod tests {
             .process_agent_packet("10.0.1.55", &packet2)
             .expect("New packet with higher counter must succeed");
         assert_eq!(msg2.counter, 2);
-        assert_eq!(msg2.subsystem, WazuhSubsystem::Keepalive);
+        assert_eq!(msg2.subsystem, ProVigilSubsystem::Keepalive);
     }
 
     #[test]

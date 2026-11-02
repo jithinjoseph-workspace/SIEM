@@ -485,7 +485,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { key: 'siem-logtest',         label: 'Logtest Console',  description: 'Rule & decoder testing',        icon: Terminal,    requiredFeatures: ['siem'] },
     { key: 'siem-console',         label: 'SIEM Console',     description: 'Full SIEM console, simulator, copilot, 3D XDR', icon: Layers, requiredFeatures: ['siem'] },
     { key: 'siem-alerts',          label: 'SIEM Alerts',      description: 'Host alert stream',             icon: Bell,        requiredFeatures: ['siem'] },
-    { key: 'siem-rules',           label: 'SIEM Rules',       description: 'Wazuh detection rules',         icon: Gem,         requiredFeatures: ['siem'] },
+    { key: 'siem-rules',           label: 'SIEM Rules',       description: 'ProVigil detection rules',         icon: Gem,         requiredFeatures: ['siem'] },
   ];
 
   private readonly allPermissionCategories = [

@@ -30,7 +30,7 @@ pub use net::{
     encode_cluster_message, encode_secure_tcp, get_ip_from_resolved_hostname, is_valid_ip,
     os_get_host, recv_secure_tcp, resolve_hostname, send_secure_tcp, wnet_order, wnet_order_big,
     ClusterFrame, IpcListener, IpcSocket, IpcStream, NetError, CLUSTER_COMMAND_SIZE,
-    MAX_CLUSTER_PAYLOAD_SIZE, WAZUH_IPC_TIMEOUT,
+    MAX_CLUSTER_PAYLOAD_SIZE, PROVIGIL_IPC_TIMEOUT,
 };
 pub use regex::{
     is_valid_hostname_char, os_match, os_match2, os_regex, os_str_break,
@@ -54,7 +54,7 @@ mod tests {
     use schedule::ScanSchedule;
     use serde_json::json;
     use validate::*;
-    use version::WazuhVersion;
+    use version::ProVigilVersion;
 
     #[test]
     fn test_validation() {
@@ -100,10 +100,10 @@ mod tests {
     }
 
     #[test]
-    fn test_wazuh_version_comparison() {
-        let v_mgr = WazuhVersion::parse("Wazuh v4.14.7").unwrap();
-        let v_agt = WazuhVersion::parse("v4.9.0").unwrap();
-        let v_future = WazuhVersion::parse("v5.0.0").unwrap();
+    fn test_provigil_version_comparison() {
+        let v_mgr = ProVigilVersion::parse("Wazuh v4.14.7").unwrap();
+        let v_agt = ProVigilVersion::parse("v4.9.0").unwrap();
+        let v_future = ProVigilVersion::parse("v5.0.0").unwrap();
 
         assert_eq!(v_mgr.major, 4);
         assert_eq!(v_mgr.minor, 14);

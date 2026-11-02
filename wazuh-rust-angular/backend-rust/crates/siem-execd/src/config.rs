@@ -109,8 +109,8 @@ pub fn get_cluster_config(_ex: &Execd) -> Option<Json> {
 pub fn get_cluster_config(ex: &Execd) -> Option<Json> {
     use siem_ipc::os_net;
     /// `WAZUH_IPC_TIMEOUT`
-    const WAZUH_IPC_TIMEOUT: i64 = 600;
-    let sock = os_net::external_socket_connect(CLUSTER_SOCK, WAZUH_IPC_TIMEOUT);
+    const PROVIGIL_IPC_TIMEOUT: i64 = 600;
+    let sock = os_net::external_socket_connect(CLUSTER_SOCK, PROVIGIL_IPC_TIMEOUT);
     if sock < 0 {
         let e = errno();
         ex.log.error(format!("At getClusterConfig(): Could not connect to socket '{CLUSTER_SOCK}': {} ({e}).", strerror(e)));

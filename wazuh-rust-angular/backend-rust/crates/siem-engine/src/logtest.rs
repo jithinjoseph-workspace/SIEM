@@ -27,7 +27,7 @@ pub struct LogtestResult {
 
 impl LogtestResult {
     /// Formats the result as traditional Wazuh Logtest output
-    pub fn format_wazuh_output(&self) -> String {
+    pub fn format_provigil_output(&self) -> String {
         let mut out = String::new();
 
         out.push_str("\n**Phase 1: Completed pre-decoding.\n");
@@ -190,7 +190,7 @@ mod tests {
         assert!(res.matched_rule_id.is_some());
         assert_eq!(res.matched_rule_id.unwrap(), 5716);
 
-        let output = res.format_wazuh_output();
+        let output = res.format_provigil_output();
         assert!(output.contains("**Phase 1: Completed pre-decoding."));
         assert!(output.contains("**Phase 2: Completed decoding."));
         assert!(output.contains("**Phase 3: Completed filtering (rules)."));

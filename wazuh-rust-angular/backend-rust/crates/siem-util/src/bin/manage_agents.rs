@@ -12,7 +12,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-const WAZUH_VERSION: &str = "v4.14.7";
+const PROVIGIL_VERSION: &str = "v4.14.7";
 const DEFAULT_CLIENT_KEYS: &str = "client.keys";
 
 fn find_keys_path(custom: Option<&str>) -> PathBuf {
@@ -357,7 +357,7 @@ fn interactive_menu(mut keys: ClientKeys, keys_path: PathBuf) {
 }
 
 fn print_help() {
-    println!("Wazuh {} - Manage Agents CLI", WAZUH_VERSION);
+    println!("Wazuh {} - Manage Agents CLI", PROVIGIL_VERSION);
     println!("Usage: manage-agents [options]");
     println!();
     println!("Options:");
@@ -438,7 +438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "-V" => {
-                println!("Wazuh {} - Manage Agents", WAZUH_VERSION);
+                println!("Wazuh {} - Manage Agents", PROVIGIL_VERSION);
                 return Ok(());
             }
             "-h" | "--help" => {

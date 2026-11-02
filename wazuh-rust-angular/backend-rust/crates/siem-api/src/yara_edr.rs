@@ -60,7 +60,7 @@ fn install(text: &str) -> Result<(), String> {
     let stored = siem_active_response::yara::encode_rules(text);
     let _ = std::fs::create_dir_all(store().parent().unwrap_or(std::path::Path::new(".")));
     std::fs::write(store(), &stored).map_err(|e| format!("{}: {e}", store().display()))?;
-    let shared = crate::wazuh_manager::home().join("etc").join("shared");
+    let shared = crate::provigil_manager::home().join("etc").join("shared");
     for d in std::fs::read_dir(&shared).map_err(|e| format!("{}: {e}", shared.display()))?.flatten() {
         if !d.path().is_dir() {
             continue;

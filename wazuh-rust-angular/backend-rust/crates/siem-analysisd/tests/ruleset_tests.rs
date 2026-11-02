@@ -68,7 +68,7 @@ fn ut_of(out: &Json) -> [String; 3] {
 }
 
 #[test]
-fn wazuh_ruleset_ini_tests() {
+fn provigil_ruleset_ini_tests() {
     let (Ok(home), Ok(cases)) = (std::env::var("SIEM_TEST_HOME"), std::env::var("SIEM_TEST_CASES")) else {
         eprintln!("SIEM_TEST_HOME / SIEM_TEST_CASES not set; skipping");
         return;

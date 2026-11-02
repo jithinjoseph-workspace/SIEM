@@ -34,7 +34,7 @@ import { SiemStatsService } from './siem-stats.service';
  * - logsService (ClickHouse raw telemetry & Syslog)
  * - alertsService (security alerts & WebSocket stream)
  * - statsService (KPIs & metrics)
- * - Wazuh parity services (Logtest, Compliance, MITRE, FIM, Vulnerabilities, Active Response)
+ * - Platform services (Logtest, Compliance, MITRE, FIM, Vulnerabilities, Active Response)
  */
 @Injectable({
   providedIn: 'root'
@@ -110,7 +110,7 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/ai/chat`, req);
   }
 
-  // --- Wazuh Parity Modules ---
+  // --- Platform modules ---
 
   runLogtest(log: string): Observable<LogtestResponse> {
     return this.http.post<LogtestResponse>(`${this.apiUrl}/api/v1/logtest`, { log });

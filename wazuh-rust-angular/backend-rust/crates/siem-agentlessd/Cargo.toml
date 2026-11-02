@@ -25,5 +25,5 @@ libc = "0.2"
 tempfile = "3"
 
 [[bin]]
-name = "wazuh-agentlessd"
-path = "src/bin/wazuh-agentlessd.rs"
+name = "provigil-agentlessd"
+path = "src/bin/provigil-agentlessd.rs"

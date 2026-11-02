@@ -20,7 +20,7 @@ interface Scan {
 }
 
 /**
- * SIEM Retrospective: would a Wazuh rule have caught anything in the last hours?
+ * SIEM Retrospective: would a ProVigil rule have caught anything in the last hours?
  * The tenant's stored events go again through the running analysisd (the current
  * ruleset decides), or are searched for a keyword (siem-api
  * /api/v1/siem/retrospective, crate siem-retro).
@@ -81,7 +81,7 @@ export class SiemRetrospective implements OnInit, OnDestroy {
   start() {
     const rule = this.ruleId.trim();
     if (this.mode === 'rule' && !/^\d+$/.test(rule)) {
-      this.error.set('Pick a rule or type a Wazuh rule id (a number).');
+      this.error.set('Pick a rule or type a ProVigil rule id (a number).');
       return;
     }
     if (this.mode === 'keyword' && this.keyword.trim().length < 3) {

@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, inject, signal, computed } from '@angular
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 
-/** GET /api/v1/manager/status: the Wazuh manager's daemons and the remoted / analysisd state files. */
+/** GET /api/v1/manager/status: the ProVigil manager's daemons and the remoted / analysisd state files. */
 interface ManagerStatus {
   enabled: boolean;
   daemons: { name: string; pid: number }[];

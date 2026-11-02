@@ -100,7 +100,7 @@ export class SiemConsole implements OnInit, OnDestroy {
     });
   });
 
-  // --- Wazuh Parity Computed Properties ---
+  // --- Platform computed properties ---
 
   filteredRawEvents = computed(() => {
     const list = this.rawEvents();

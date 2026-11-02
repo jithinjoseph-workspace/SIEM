@@ -202,7 +202,7 @@ pub async fn unblock(state: &AppState, tenant: &str, id: &str, status: &str) -> 
         }
     }
     if !b.agent_id.is_empty() && b.status == "active" && status == "revoked" {
-        notes.push("the agent's block ends at its own timeout (Wazuh agents have no early unblock)".into());
+        notes.push("the agent's block ends at its own timeout (agents have no early unblock)".into());
     }
     b.status = status.into();
     put(state, tenant, DocTable::Blocks, &b.id, &b).await?;
@@ -220,7 +220,7 @@ async fn windows_agent(state: &AppState, tenant: &str, ip: &str, agent_id: Optio
             None => agents.values().find(|a| a.ip == ip && mine(&a.id)).map(|a| a.id.clone()),
         }
     }?;
-    (crate::agent_is_windows(state, &id) && crate::wazuh_manager::is_wazuh_agent(&id).await).then_some(id)
+    (crate::agent_is_windows(state, &id) && crate::provigil_manager::is_provigil_agent(&id).await).then_some(id)
 }
 
 /// How long an agent isolation lasts: the agent lifts it then by itself.
@@ -264,7 +264,7 @@ pub async fn isolate(state: &AppState, tenant: &str, ip: &str, enforcement: Opti
         }
         (kind, json!({ "rule_id": r.rule_id }).to_string(), "cloud_deny")
     } else if let Some(agent) = if want_agent { windows_agent(state, tenant, ip, agent_id).await } else { None } {
-        let (iso, timeout) = crate::wazuh_manager::isolate_agent(&agent, AGENT_ISOLATION_SECONDS).await?;
+        let (iso, timeout) = crate::provigil_manager::isolate_agent(&agent, AGENT_ISOLATION_SECONDS).await?;
         ("agent".to_string(), json!({ "agent_id": agent, "isolation_id": iso, "expires_ts": now() + timeout }).to_string(), "agent_firewall")
     } else {
         return Err(match enforcement {
@@ -311,7 +311,7 @@ pub async fn unisolate(state: &AppState, tenant: &str, id: &str) -> Result<Strin
     }
     let d: Value = serde_json::from_str(&i.enforcement_detail).unwrap_or(json!({}));
     if i.method == "agent_firewall" {
-        crate::wazuh_manager::release_agent(d["agent_id"].as_str().unwrap_or("")).await?;
+        crate::provigil_manager::release_agent(d["agent_id"].as_str().unwrap_or("")).await?;
         i.status = "released".into();
         i.updated_at = iso(now());
         put(state, tenant, DocTable::Isolations, &i.id, &i).await?;

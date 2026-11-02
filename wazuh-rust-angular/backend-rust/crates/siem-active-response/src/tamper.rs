@@ -1,12 +1,12 @@
 //! Agent tamper protection (EDR, not in Wazuh): what `tamper-protect` writes on the
-//! agent service. Locked, the "WazuhSvc" service lets Administrators read and start it
+//! agent service. Locked, the "ProVigilSvc" service lets Administrators read and start it
 //! but not stop, pause, reconfigure, delete it or change who may; SYSTEM (the agent
 //! itself: upgrades, restarts) keeps full control. Its recovery restarts a killed agent.
 //! The descriptor found before the first lock is kept, so unlocking restores it exactly.
 //! An administrator can still take the service over (owner, registry): this makes it
 //! slow and loud, the console's alerts (siem-api tamper.rs) make it visible.
 
-pub const SERVICE: &str = "WazuhSvc";
+pub const SERVICE: &str = "ProVigilSvc";
 /// SYSTEM: everything; Administrators: query, start, interrogate, user control, read;
 /// interactive and service users: query and read (the Windows default for them).
 pub const LOCKED_SDDL: &str = "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCLCSWRPLOCRRC;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)";

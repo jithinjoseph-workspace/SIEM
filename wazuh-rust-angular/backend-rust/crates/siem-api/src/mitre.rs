@@ -134,7 +134,7 @@ pub fn build(catalog: &[CatalogRow], by_id: &[(String, u64, u8)]) -> serde_json:
 
 /// `GET /api/v1/mitre/matrix`
 pub async fn matrix(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> impl IntoResponse {
-    let path = crate::wazuh_manager::home().join("var/db/mitre.db");
+    let path = crate::provigil_manager::home().join("var/db/mitre.db");
     let (catalog, by_id) = tokio::join!(
         tokio::task::spawn_blocking(move || read_catalog(&path)),
         crate::history::mitre_counts(&state, &ctx, crate::history::DEFAULT_HOURS)

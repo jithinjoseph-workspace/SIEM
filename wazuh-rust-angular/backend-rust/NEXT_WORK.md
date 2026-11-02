@@ -159,8 +159,10 @@ endpoints read it (inventory_store.rs; wazuh-db is paged, a reply is at most 64 
 Memory now only feeds the live view and background jobs; the manager's files
 (alerts.json, archives.json, wazuh-db) stay as the backup copy.
 - **Checked:** `history_and_inventory_from_clickhouse` (`--ignored`).
-- **Open:** counts are done in Rust over at most 50,000 rows per window (move to
-  SQL GROUP BY for very busy tenants); no ClickHouse TTL / file retention yet.
+- **Done 2026-10-27:** the counts moved to ClickHouse SQL (`GROUP BY` / `countIf`
+  aggregates in db.rs: window counts, top rules / values, MITRE, buckets); siem-api no
+  longer loads alert or event windows into memory (in memory only when ClickHouse is down).
+- **Done 2026-11-02:** retention of `siem_events` and `siem_alerts` (section 1i).
 
 ## 1d. Organizational security memory — built 2026-10-25
 
@@ -438,6 +440,170 @@ Step 6, agent tamper protection — built 2026-10-30 (Windows agents):
   take ownership of the service or edit its registry key, and can kill the process (it
   restarts) — this makes tampering slow and visible, not impossible. The agent's install
   folder and its files are not locked beyond Windows' default ACLs.
+
+## 1i. Data retention and the agent package — fixed 2026-11-02
+
+Found in a check of the running platform on 2026-11-02:
+- **Retention.** `siem_events` and `siem_alerts` had no expiry and grew for ever (one
+  Windows PC with Sysmon adds 300,000–460,000 events a day). Now each has a ClickHouse
+  TTL on its own `timestamp`: events 90 days (`SIEM_EVENTS_RETENTION_DAYS`), alerts
+  365 days (`SIEM_ALERTS_RETENTION_DAYS`); 0 keeps them for ever. `db::apply_retention`
+  sets it at startup on `ndr` and every `ndr_*` tenant database, only where it differs
+  (a change rewrites the table's parts once, in the background); a new tenant's tables
+  are copies of `ndr`'s and get it too. Other tables already expire (live response
+  results 30 days, analyst actions 30 days, playbook runs 90 days, predictions 90 days)
+  or hold current state only.
+- **Agent package.** The EDR programs (kill-process, quarantine-file, isolate-host,
+  yara-scan, live-response, tamper-protect) were only served from the build folder
+  (`target/release`), never from `data/agent-dist/windows`, so a server without the
+  build would deploy agents without EDR. `prepare_agent_dist` now copies every program
+  of the package (with `wazuh-agent.exe`) from the build output into
+  `data/agent-dist/windows` at startup whenever the build is newer, and a download
+  serves the newest copy (a rebuild while siem-api runs is not shadowed). To ship a
+  server: build, start siem-api once on the build machine, copy `data/agent-dist`.
+- **Still open:** Docker Desktop (ClickHouse, Valkey, Caddy) and siem-api do not start
+  after a reboot of the dev PC (seen 2026-10-30 and 2026-11-02); auto-start needs the
+  owner's OK. Retention is one setting for all tenants (per-tenant retention: later,
+  if a customer needs it).
+
+## 1j. Everything through ClickHouse, no data files — built 2026-11-02
+
+Owner's rule (2026-11-02): data is written straight into ClickHouse and read from
+ClickHouse, with no files and no file copies. Only three things stay files: wazuh-db
+(the manager's per-agent working memory), the vulnerability scanner's CVE feed
+(`queue/vd`, a key-value store it queries per package) and configuration / rules.
+- **Alerts and events** (`siem_ipc::platform_stream`, `wazuh_manager::start_stream`):
+  siem-api opens a loopback listener with a one-time token and gives both to analysisd
+  (`SIEM_STREAM_ADDR`, `SIEM_STREAM_TOKEN`). analysisd then writes no alerts.json /
+  alerts.log / archives.json / archives.log / firewall.log and sends every alert (`A`)
+  and archived event (`E`) to siem-api instead, which runs the same pipeline as before
+  (tenant tagging, Sigma, file reputation, YARA, tamper, live response, SOAR, ClickHouse).
+  analysisd's writer thread holds up to 50,000 lines while siem-api is away or busy;
+  siem-api reads through a bounded channel, so while ClickHouse is down it stops
+  reading and the lines wait in analysisd (then on the agents). Limit by design: no file
+  buffer, so a long ClickHouse outage or a crash during one can lose the newest lines.
+- **Agent keys** (`siem_crypto::keystore::platform_fetch`, `wazuh_manager::start_keys_service`):
+  with the keys in ClickHouse (needs `AGENT_KEYS_SECRET`), remoted and modulesd read
+  them from siem-api over loopback (`SIEM_KEYS_ADDR`, `SIEM_KEYS_TOKEN`) and follow a
+  version number instead of the file's stamp. siem-api stops writing `etc/client.keys`
+  and removes it once ClickHouse holds every key. Without the secret the file stays.
+- **Vulnerability results** (`vulnerability.rs`): the scanner's `Indexer` streams its
+  documents (`V`) instead of writing `queue/indexer/db`; siem-api keeps the current
+  ones in the tenant table `siem_vulnerability_state` (`deleted` marks, ReplacingMergeTree),
+  and the page, API, investigation and Copilot read it. The in-memory list and the
+  `siem_vulnerabilities` snapshots are gone (that table expires by its TTL). The first
+  start with no stored results asks the scanner for a full re-scan; an agent whose
+  results are wiped and stay empty 2 minutes is re-scanned (once an hour at most).
+- **Inventory, FIM, SCA, rootcheck**: replaced the same day by section 1l (read from
+  wazuh-db's SQLite, not copied; only SCA is copied, for compliance).
+- **Syslog registry** (`syslog_tenancy.rs`): devices, sources and the CA in
+  `ndr.siem_syslog_registry`, the CA key encrypted with `AGENT_KEYS_SECRET`; the files of
+  `data/syslog/` were imported once and removed.
+- **Checked 2026-11-02 (14/14 live):** keys served and `client.keys` gone, agent 049 still
+  connected; 1,481 events in 2 minutes into ClickHouse while `alerts.json` stays the same
+  size; registry rows `ca` / `devices` / `sources`, CA key encrypted, no key file; 148
+  vulnerability results streamed and served (6 critical); no scanner result file written.
+  Unit tests for the stream framing, scanner operations, retention; the live
+  investigation test reads vulnerabilities from ClickHouse.
+- **Still open:** the manager-level
+  maild / integratord / csyslogd read alerts.json, so they get no alerts now — the
+  per-tenant SOAR integrations, syslog forwarding and e-mail (fed by the stream) replace
+  them, and per-tenant alert e-mails (section 2) finish that; `wazuh-reportd` reads alert
+  files (the PDF reports of section 3 come from ClickHouse); the old alert / archive files
+  (about 9 GB, already in ClickHouse) and the scanner's old `queue/indexer` file are still
+  on disk until the owner agrees to delete them; siem-agents (the old Linux prototype)
+  still have siem-api's in-memory store as a fallback.
+
+## 1l. Two databases, linked per tenant: SQLite for agent state, ClickHouse for the rest — built 2026-11-02
+
+Owner's decision (2026-11-02): use both databases, no copy of SQLite data into ClickHouse,
+every record linked to its agent and tenant. One home per kind of data:
+
+| Data | Where | Tenant link |
+|---|---|---|
+| Agent list (name, IP, OS, status, groups) | SQLite `queue/db/global.db` | agent id → `ndr.agent_registry` → tenant |
+| Inventory (programs, ports, processes, network, OS, hardware), FIM files, SCA results, rootcheck | SQLite `queue/db/<agent>.db` (one file per agent, wazuh-db) | same |
+| MITRE catalogue, CVE feed | SQLite `var/db/mitre.db`, scanner's `queue/vd` | global |
+| Registry, client keys (encrypted), syslog registry | ClickHouse `ndr` | control data |
+| Events, alerts, vulnerabilities, cases, reports, live response, tamper, compliance settings, audit | ClickHouse `ndr_<tenant>` | the tenant's own database |
+| **SCA results copy** (`siem_sca_checks`) | ClickHouse `ndr_<tenant>` | the agent's tenant's database |
+
+- **Agent pages** (`/api/v1/agents/<id>/syscollector/*`, `/inventory`, `/fim`, `/sca`,
+  `/rootcheck`) read the agent's wazuh-db database live (`inventory_store::part`,
+  `provigil_manager::agent_fim` / `agent_sca` / `agent_rootcheck`). The tenant is checked
+  before any read: the auth middleware answers 404 for another tenant's agent
+  (`tenancy.rs`, `agent_id_in_path`), the handlers check `agent_in_scope` again.
+- **The one copy: SCA** (`posture_store.rs`), because the compliance audit scores every agent of
+  a tenant against every check in one query. Copied when the scan changes (the agent's
+  `sca` event, a cheap `sca_scan_info` marker), 8 agents at a time, every agent once at
+  start; the marker remembers the tenant, so an agent bound to another tenant is copied
+  into that tenant's database and its old rows removed; a failed copy is tried again in
+  5 s; a removed agent's rows are deleted (`posture_store::forget`).
+- **Across agents without a copy:** the FIM summary counts `fim_entry` in each of the
+  tenant's agents' databases, 8 at a time; the investigation's host view counts packages,
+  ports and processes in the agent's database (`inventory_store::host`).
+- **Removed:** the inventory, FIM and rootcheck copies and their 5-second loop, the
+  router subscription (`follow_router`, `siem_router::set_home`), the siem-router
+  dependency of siem-api, the DDL of `siem_agent_inventory` / `siem_fim_files` /
+  `siem_rootcheck_events`. Those three tables are no longer read or written; their old rows
+  stay until the owner agrees to drop them.
+- **Scale:** a page about one agent opens one file, the same with 1 or 1,000 agents;
+  each agent writes only its own file (no lock between agents); wazuh-db keeps at most
+  `wazuh_db.open_db_limit=64` files open (raise to about 256 near 1,000 agents) with
+  `worker_pool_size=8`. About 56 MB per Windows agent with full FIM (agent 049). If a
+  cross-agent search gets slow at hundreds of agents, copy only that list (e.g. program
+  names) next to the SCA copy; beyond one manager's events per second, a second manager.
+- **Checked 2026-11-02 (19/19 live, agent 049, tenant acm):** packages 335, ports 209,
+  network 6, FIM 38,361, rootcheck 5, OS, SCA 482 checks (130 passed / 343 failed / 9 not
+  applicable) — each equal to the agent's SQLite file and served from wazuh-db; another
+  tenant's user gets 404 on every agent page; SCA copy 482 rows in `ndr_acm`; compliance
+  and the FIM summary (38,361 files) work; the old copy tables not written. Pages answer
+  in 0.01–0.04 s. siem-api tests 81/81 (11 live).
+
+## 1k. Renamed to ProVigil — 2026-11-02
+
+Owner's decision (2026-11-02): the product is ProVigil everywhere — console, texts,
+programs, services and code. Three things keep the Wazuh name on purpose:
+1. **Copyright and licence notices** (390 ruleset / SCA files, the ported sources): the
+   GPL v2 requires them. Comments naming the Wazuh source a function was ported from
+   are that attribution too.
+2. **What goes over the wire or is stored**: the agents' version string
+   `Wazuh v4.14.7` (rules, upgrade checks and Wazuh agents depend on it; the console
+   shows `ProVigil v4.14.7`), the `restart-wazuh` active-response command, config keys
+   (`wazuh_modules.*`, `wazuh_db.*` in internal_options), stats fields
+   (`wazuhdb_breakdown`), the daemons' own identity (`wazuh-analysisd` log tags, PID /
+   state files that the status page reads, the C-oracle tests), and alert JSON fields
+   (`data.wazuh_rule`, `data.wazuh_alert_id`, read by compliance and investigation).
+3. **Libin's crates** (Linux agent, Risk Fabric, Intent Engine, Deception, Red Swarm) and the
+   Linux-agent-side programs (agentd, logcollector, authd, control, execd's command list).
+
+What changed:
+- **Console** (ndr-ui): every "Wazuh" in pages, labels and comments; the deploy script
+  installs `provigil-agent.exe` as service `ProVigilSvc` ("ProVigil Agent") in
+  `Program Files (x86)\ProVigil Agent`, and removes a pre-rename `WazuhSvc` (its
+  `client.keys` is copied, so the host keeps its agent id; the old `ossec-agent` folder
+  stays until deleted). With tamper protection on, open a maintenance window first.
+- **Code** (`scratchpad rename_rust.py`, a Rust-aware rename of code tokens only):
+  every type, function, constant and variable with "wazuh" in its name (e.g.
+  `wazuh_manager` → `provigil_manager`, `WazuhSubsystem` → `ProVigilSubsystem`,
+  `compare_wazuh_versions` → `compare_provigil_versions`); 63 files.
+- **siem-api texts**: log lines, API messages, labels ("ProVigil manager", "ProVigil
+  agent"); environment variables `PROVIGIL_MANAGER`, `PROVIGIL_MANAGER_HOME`,
+  `PROVIGIL_SOURCE_DIR` (the `WAZUH_*` names still work as a fallback).
+- **Programs**: the manager daemons and tools build as `provigil-db`, `provigil-analysisd`,
+  `provigil-remoted`, `provigil-modulesd`, `provigil-monitord`, `provigil-maild`,
+  `provigil-integratord`, `provigil-csyslogd`, `provigil-execd`, `provigil-agentlessd`,
+  `provigil-reportd`, `provigil-mitredb`; siem-api maps each daemon's identity to its file
+  (`exe_name` / `program_name`). The Windows agent builds as `provigil-agent.exe`;
+  `/downloads/wazuh-agent.exe` still serves it for old install scripts.
+- **Tamper protection** locks `ProVigilSvc` and alerts on attempts against both
+  `ProVigilSvc` / `provigil-agent.exe` and the pre-rename `WazuhSvc` / `wazuh-agent.exe`.
+- **Checked:** all 444 unit tests of the renamed crates; the Windows agent crates
+  cross-built in WSL (Ubuntu 20.04, `x86_64-pc-windows-gnu`; Perl for OpenSSL is not on the
+  Windows PC); the UI type-checks and its templates compile.
+- **Open:** agents already installed run `wazuh-agent.exe` / `WazuhSvc` until redeployed;
+  the old `bin/wazuh-*.exe` files in the manager home are left over; the database tables
+  and Rust crate names (`siem-*`) carry no Wazuh name already.
 
 ## 2. Per-tenant alert e-mails
 

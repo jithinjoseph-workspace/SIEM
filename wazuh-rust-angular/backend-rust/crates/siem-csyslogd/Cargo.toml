@@ -17,5 +17,5 @@ tokio = { version = "1.40", features = ["full"] }
 chrono = "0.4"
 
 [[bin]]
-name = "wazuh-csyslogd"
-path = "src/bin/wazuh-csyslogd.rs"
+name = "provigil-csyslogd"
+path = "src/bin/provigil-csyslogd.rs"

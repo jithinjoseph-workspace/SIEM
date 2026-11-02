@@ -49,13 +49,13 @@ impl Router for NoRouter {
 /// with the ":router" tagged log and the remote providers
 /// `deltas-syscollector` and `rsync` on wazuh-modulesd's broker.
 #[cfg(any(target_os = "linux", windows))]
-pub struct WazuhRouter {
+pub struct ProVigilRouter {
     syscollector: siem_router::ProviderHandle,
     rsync: siem_router::ProviderHandle,
 }
 
 #[cfg(any(target_os = "linux", windows))]
-impl WazuhRouter {
+impl ProVigilRouter {
     pub fn new() -> Self {
         siem_router::router_initialize(std::sync::Arc::new(|level: &str, msg: &[u8]| {
             let m = String::from_utf8_lossy(msg);
@@ -78,19 +78,19 @@ impl WazuhRouter {
         if rsync == 0 {
             tracing::trace!("Failed to create router handle for 'rsync'.");
         }
-        WazuhRouter { syscollector, rsync }
+        ProVigilRouter { syscollector, rsync }
     }
 }
 
 #[cfg(any(target_os = "linux", windows))]
-impl Default for WazuhRouter {
+impl Default for ProVigilRouter {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[cfg(any(target_os = "linux", windows))]
-impl Router for WazuhRouter {
+impl Router for ProVigilRouter {
     fn provider_available(&self, schema: SchemaType) -> bool {
         match schema {
             SchemaType::SysDeltas => self.syscollector != 0,
@@ -114,7 +114,7 @@ impl Router for WazuhRouter {
 }
 
 #[cfg(any(target_os = "linux", windows))]
-impl Drop for WazuhRouter {
+impl Drop for ProVigilRouter {
     fn drop(&mut self) {
         siem_router::router_provider_destroy(self.syscollector);
         siem_router::router_provider_destroy(self.rsync);

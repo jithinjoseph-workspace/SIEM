@@ -146,7 +146,7 @@ pub async fn put(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
     }
     let (mut ok, mut failed) = (0, Vec::new());
     for a in windows_agents(&state, &ctx) {
-        let r = if b.enabled { crate::wazuh_manager::tamper_lock(&a.id).await } else { crate::wazuh_manager::tamper_off(&a.id).await };
+        let r = if b.enabled { crate::provigil_manager::tamper_lock(&a.id).await } else { crate::provigil_manager::tamper_off(&a.id).await };
         match r {
             Ok(()) => {
                 ok += 1;
@@ -180,7 +180,7 @@ pub async fn agent_action(State(state): State<AppState>, Extension(ctx): Extensi
     let tenant = tenancy::tenant_of(&state.agent_tenants.read().unwrap(), &agent_id);
     let client = state.db.tenant_client(&tenant);
     match b.action.as_str() {
-        "lock" => match crate::wazuh_manager::tamper_lock(&agent_id).await {
+        "lock" => match crate::provigil_manager::tamper_lock(&agent_id).await {
             Ok(()) => {
                 set_state(&client, &sent(&agent_id, &ctx.username, "Lock sent")).await;
                 reply(StatusCode::OK, "Lock sent to the agent")
@@ -201,7 +201,7 @@ pub async fn agent_action(State(state): State<AppState>, Extension(ctx): Extensi
                 return reply(StatusCode::FORBIDDEN, m);
             }
             let window = uuid::Uuid::new_v4().simple().to_string();
-            match crate::wazuh_manager::tamper_window(&agent_id, &window, minutes * 60).await {
+            match crate::provigil_manager::tamper_window(&agent_id, &window, minutes * 60).await {
                 Ok(()) => {
                     let until = (chrono::Utc::now() + chrono::Duration::minutes(minutes as i64)).to_rfc3339();
                     let st = AgentState { agent_id: agent_id.clone(), state: "maintenance".into(), message: format!("Window opened: {reason}"), window, window_until: until.clone(), updated_by: ctx.username.clone(), updated_at: now() };
@@ -233,7 +233,8 @@ fn st(v: &Value, p: &str) -> String {
 /// A command line that stops, removes, reconfigures or kills the agent.
 pub fn is_tamper_command(cmd: &str) -> bool {
     let c = cmd.to_lowercase();
-    let agent = c.contains("wazuhsvc") || c.contains("wazuh-agent") || c.contains("ossec-agent") || c.contains("wazuh agent");
+    // the ProVigil agent, and agents from before the rename
+    let agent = ["provigilsvc", "provigil-agent", "provigil agent", "wazuhsvc", "wazuh-agent", "ossec-agent", "wazuh agent"].iter().any(|n| c.contains(n));
     if !agent {
         return false;
     }
@@ -246,13 +247,13 @@ pub fn is_tamper_command(cmd: &str) -> bool {
         || ["stop-service", "set-service", "remove-service", "suspend-service", "taskkill", "taskkill.exe", "stop-process"].iter().any(|v| has(v))
         || (c.contains("wmic") && ["delete", "stopservice", "terminate", "changestartmode"].iter().any(|v| c.contains(v)))
         || (c.contains("msiexec") && (has("/x") || has("-x") || c.contains("/uninstall")))
-        || ((has("reg") || has("reg.exe")) && (has("add") || has("delete")) && c.contains("\\services\\wazuhsvc"))
+        || ((has("reg") || has("reg.exe")) && (has("add") || has("delete")) && (c.contains("\\services\\provigilsvc") || c.contains("\\services\\wazuhsvc")))
 }
 
 /// Our own processes run sc.exe on the agent service (lock, unlock).
 fn ours(parent: &str) -> bool {
     let p = parent.to_lowercase();
-    ["\\tamper-protect.exe", "\\wazuh-agent.exe", "\\restart-wazuh.exe"].iter().any(|n| p.ends_with(n))
+    ["\\tamper-protect.exe", "\\provigil-agent.exe", "\\wazuh-agent.exe", "\\restart-wazuh.exe"].iter().any(|n| p.ends_with(n))
 }
 
 fn alert(v: &Value, rule: u32, level: u8, description: String, full_log: String) -> siem_core::Alert {
@@ -314,7 +315,7 @@ pub fn check(events: &[(Value, String)]) -> Found {
         let ed = |k: &str| st(v, &format!("/data/win/eventdata/{k}")).replace("\\\\", "\\");
         let id = st(v, "/data/win/system/eventID");
         let provider = st(v, "/data/win/system/providerName");
-        let scm = provider == "Service Control Manager" && ed("param1").eq_ignore_ascii_case("wazuh");
+        let scm = provider == "Service Control Manager" && ["provigil agent", "wazuh"].contains(&ed("param1").to_lowercase().as_str());
         let found = match id.as_str() {
             // a process started (Sysmon 1, Security 4688)
             "1" | "4688" => {
@@ -333,7 +334,7 @@ pub fn check(events: &[(Value, String)]) -> Found {
                 let target = ed("targetObject").to_lowercase();
                 let image = ed("image").to_lowercase();
                 // the service manager writes it for sc.exe changes (seen above as commands)
-                (target.contains("\\services\\wazuhsvc") && !image.ends_with("\\services.exe") && !ours(&image)).then(|| (RULE_REGISTRY, 12, "SIEM agent service registry key changed".to_string(), format!("{} wrote {}", ed("image"), ed("targetObject"))))
+                ((target.contains("\\services\\provigilsvc") || target.contains("\\services\\wazuhsvc")) && !image.ends_with("\\services.exe") && !ours(&image)).then(|| (RULE_REGISTRY, 12, "SIEM agent service registry key changed".to_string(), format!("{} wrote {}", ed("image"), ed("targetObject"))))
             }
             _ => None,
         };
@@ -380,7 +381,7 @@ pub async fn apply(state: &AppState, started: Vec<(String, String)>, results: Ve
             if !crate::agent_is_windows(state, &a) || states.get(&a).is_some_and(AgentState::in_window) {
                 continue;
             }
-            match crate::wazuh_manager::tamper_lock(&a).await {
+            match crate::provigil_manager::tamper_lock(&a).await {
                 Ok(()) => info!("tamper protection: agent {a} started; lock sent"),
                 Err(e) => warn!("tamper protection: agent {a} started; lock not sent: {e}"),
             }
@@ -400,6 +401,9 @@ mod tests {
     fn tamper_commands() {
         for c in [
             "sc stop WazuhSvc",
+            "sc stop ProVigilSvc",
+            "taskkill /F /IM provigil-agent.exe",
+            "sc.exe config ProVigilSvc start= disabled",
             "C:\\Windows\\system32\\sc.exe config WazuhSvc start= disabled",
             "sc.exe delete \"WazuhSvc\"",
             "net stop wazuhsvc",
@@ -411,7 +415,7 @@ mod tests {
         ] {
             assert!(is_tamper_command(c), "{c}");
         }
-        for c in ["sc query WazuhSvc", "Get-Service WazuhSvc", "sc stop Spooler", "Start-Service -Name WazuhSvc", "notepad C:\\Program Files (x86)\\ossec-agent\\ossec.log", "sc sdshow WazuhSvc"] {
+        for c in ["sc query ProVigilSvc", "Get-Service ProVigilSvc", "sc query WazuhSvc", "Get-Service WazuhSvc", "sc stop Spooler", "Start-Service -Name WazuhSvc", "notepad C:\\Program Files (x86)\\ossec-agent\\ossec.log", "sc sdshow WazuhSvc"] {
             assert!(!is_tamper_command(c), "{c}");
         }
     }

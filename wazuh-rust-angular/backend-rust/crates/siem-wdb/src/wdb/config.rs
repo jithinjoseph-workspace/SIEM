@@ -6,7 +6,7 @@ use std::path::Path;
 use siem_config::cluster::{read_cluster, ClusterSettings};
 use siem_config::internal_options::InternalOptions;
 use siem_config::messages::{xml_invattr, xml_invelem, xml_valueerr, xml_valuenull, XML_ELEMNULL};
-use siem_config::modules::{CCLUSTER, WAZUHDB};
+use siem_config::modules::{CCLUSTER, PROVIGILDB};
 use siem_config::util::{atoi, parse_time, str_is_num};
 use siem_config::{read_config, ConfigContext, ConfigError, ConfigHandler, Platform, Section};
 use siem_xml::{OsXml, XmlNode};
@@ -44,7 +44,7 @@ fn eval_bool(s: &str) -> Option<bool> {
 }
 
 /// `Read_WazuhDB`: only the first child of `<wdb>` is looked at.
-pub fn read_wazuh_db(xml: &OsXml, children: &[XmlNode], cfg: &mut WdbConfig) -> siem_config::Result<()> {
+pub fn read_provigil_db(xml: &OsXml, children: &[XmlNode], cfg: &mut WdbConfig) -> siem_config::Result<()> {
     let Some(node) = children.first() else {
         return Err(ConfigError::new(XML_ELEMNULL));
     };
@@ -59,11 +59,11 @@ pub fn read_wazuh_db(xml: &OsXml, children: &[XmlNode], cfg: &mut WdbConfig) -> 
         Some(v) if v == "global" => {}
         v => return Err(ConfigError::new(xml_valueerr(&node.attributes[0], v.map(String::as_str).unwrap_or("")))),
     }
-    read_wazuh_db_backup(xml, node, WDB_GLOBAL_BACKUP, cfg)
+    read_provigil_db_backup(xml, node, WDB_GLOBAL_BACKUP, cfg)
 }
 
 /// `Read_WazuhDB_Backup`
-pub fn read_wazuh_db_backup(xml: &OsXml, node: &XmlNode, backup_node: usize, cfg: &mut WdbConfig) -> siem_config::Result<()> {
+pub fn read_provigil_db_backup(xml: &OsXml, node: &XmlNode, backup_node: usize, cfg: &mut WdbConfig) -> siem_config::Result<()> {
     let Some(chld) = xml.get_elements_by_node(Some(node)) else {
         return Err(ConfigError::new(XML_ELEMNULL));
     };
@@ -115,7 +115,7 @@ impl ConfigHandler for Handler<'_> {
     ) -> siem_config::Result<()> {
         let ch = ch.unwrap_or(&[]);
         match s {
-            Section::WazuhDb => read_wazuh_db(xml, ch, self.wdb),
+            Section::ProVigilDb => read_provigil_db(xml, ch, self.wdb),
             Section::Cluster => read_cluster(ctx, xml, ch, self.cluster),
             _ => Ok(()),
         }
@@ -147,7 +147,7 @@ impl WdbDaemonConfig {
 
         let mut cluster = ClusterSettings::default();
         let mut ctx = ConfigContext::new(Platform::MANAGER);
-        read_config(&mut ctx, WAZUHDB | CCLUSTER, home.join(cfgfile), None, &mut Handler { wdb: &mut wdb, cluster: &mut cluster })
+        read_config(&mut ctx, PROVIGILDB | CCLUSTER, home.join(cfgfile), None, &mut Handler { wdb: &mut wdb, cluster: &mut cluster })
             .map_err(LoadError::Config)?;
         let debug = g("debug", 0, 2)?;
         Ok(WdbDaemonConfig { wdb, nofile, debug, cluster, warnings: ctx.warnings.clone() })

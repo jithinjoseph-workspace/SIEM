@@ -54,7 +54,7 @@ export class ActiveResponse implements OnInit {
     });
   }
 
-  /** Blocks sent to Wazuh agents expire on the agent; they cannot be removed earlier. */
+  /** Blocks sent to ProVigil agents expire on the agent; they cannot be removed earlier. */
   autoExpires(r: ActiveResponseRecord): boolean {
     return /^(firewall-drop|netsh|route-null)\d+$/.test((r as any).command || '');
   }

@@ -11,8 +11,8 @@ use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use cbc::{Decryptor, Encryptor};
 use thiserror::Error;
 
-pub const WAZUH_AES_IV: &[u8; 16] = b"FEDCBA0987654321";
-pub const WAZUH_BLOWFISH_IV: &[u8; 8] = &[0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10];
+pub const PROVIGIL_AES_IV: &[u8; 16] = b"FEDCBA0987654321";
+pub const PROVIGIL_BLOWFISH_IV: &[u8; 8] = &[0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10];
 
 #[derive(Error, Debug)]
 pub enum CipherError {
@@ -65,9 +65,9 @@ pub fn decrypt_aes(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, 
 /// Encrypts or decrypts a string/slice using AES with Wazuh default IV matching `OS_AES_Str`.
 pub fn os_aes_str(input: &[u8], charkey: &str, is_encrypt: bool) -> Result<Vec<u8>, CipherError> {
     if is_encrypt {
-        encrypt_aes(charkey.as_bytes(), WAZUH_AES_IV, input)
+        encrypt_aes(charkey.as_bytes(), PROVIGIL_AES_IV, input)
     } else {
-        decrypt_aes(charkey.as_bytes(), WAZUH_AES_IV, input)
+        decrypt_aes(charkey.as_bytes(), PROVIGIL_AES_IV, input)
     }
 }
 
@@ -120,9 +120,9 @@ pub fn decrypt_blowfish(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, C
 /// Encrypts or decrypts using Blowfish with Wazuh default IV matching `OS_BF_Str`.
 pub fn os_bf_str(input: &[u8], charkey: &str, is_encrypt: bool) -> Result<Vec<u8>, CipherError> {
     if is_encrypt {
-        encrypt_blowfish(charkey.as_bytes(), WAZUH_BLOWFISH_IV, input)
+        encrypt_blowfish(charkey.as_bytes(), PROVIGIL_BLOWFISH_IV, input)
     } else {
-        decrypt_blowfish(charkey.as_bytes(), WAZUH_BLOWFISH_IV, input)
+        decrypt_blowfish(charkey.as_bytes(), PROVIGIL_BLOWFISH_IV, input)
     }
 }
 

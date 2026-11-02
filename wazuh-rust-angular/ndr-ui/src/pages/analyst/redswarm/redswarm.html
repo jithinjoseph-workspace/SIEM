@@ -16,7 +16,7 @@
             </span>
           </h1>
           <p class="text-xs sm:text-sm text-slate-400 mt-1">
-            Autonomous adversarial simulation, continuous gap discovery, and human-in-the-loop Wazuh rule synthesis
+            Autonomous adversarial simulation, continuous gap discovery, and human-in-the-loop ProVigil rule synthesis
           </p>
         </div>
       </div>
@@ -108,7 +108,7 @@
         </span>
       </div>
       <div class="text-3xl font-extrabold font-mono text-amber-400 mt-2">{{ status()?.open_gaps_count || 0 }}</div>
-      <div class="text-[11px] text-slate-400 mt-1">Draft Wazuh XML rules ready for review</div>
+      <div class="text-[11px] text-slate-400 mt-1">Draft ProVigil XML rules ready for review</div>
     </div>
   </div>
 
@@ -233,7 +233,7 @@
 
       <!-- Action buttons if gap discovered -->
       <div *ngIf="rec.draft_rule" class="flex items-center justify-between pt-1">
-        <span class="text-[11px] text-amber-400 font-mono">Draft Wazuh XML rule staged to close this detection gap.</span>
+        <span class="text-[11px] text-amber-400 font-mono">Draft ProVigil XML rule staged to close this detection gap.</span>
         <button (click)="openRuleModal(rec.draft_rule!)" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-800 text-amber-300 text-xs font-bold rounded">
           <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular>
           Review Synthesized Rule
@@ -275,7 +275,7 @@
       <p class="text-xs text-slate-300">{{ g.hardening_recommendation }}</p>
 
       <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-        <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Synthesized Wazuh XML Rule:</span>
+        <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Synthesized ProVigil XML Rule:</span>
         <pre class="text-xs font-mono text-emerald-400 overflow-x-auto whitespace-pre">{{ g.rule_xml }}</pre>
       </div>
 
@@ -339,7 +339,7 @@
   <div *ngIf="selectedRuleDraft()" class="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" (click)="closeRuleModal()">
     <div class="bg-slate-900 border border-cyan-500/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden" (click)="$event.stopPropagation()">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-        <h3 class="text-base font-bold text-white">Review Synthesized Wazuh Rule</h3>
+        <h3 class="text-base font-bold text-white">Review Synthesized ProVigil Rule</h3>
         <button (click)="closeRuleModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <div class="p-6 overflow-y-auto space-y-4 text-xs font-mono">

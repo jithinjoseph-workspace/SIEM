@@ -8,8 +8,10 @@
 //!   and VPNs only (the sender is not authenticated). Unmapped senders keep
 //!   going to the default tenant.
 //!
-//! Files (`data/syslog/`): `ca.key.pem`, `ca.crt.pem`, `devices.json`,
-//! `sources.json`. Device private keys are returned once and never stored.
+//! Storage: ClickHouse `ndr.siem_syslog_registry` (`devices`, `sources`, and `ca`: the
+//! CA certificate with its key encrypted by `AGENT_KEYS_SECRET`, like the agent keys).
+//! The files of earlier versions (`data/syslog/`) are imported once, then removed.
+//! Device private keys are returned once and never stored.
 
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -58,9 +60,73 @@ pub struct SyslogTenancy {
 }
 
 static ST: OnceLock<SyslogTenancy> = OnceLock::new();
+static DB: OnceLock<crate::db::ClickHouseDb> = OnceLock::new();
+/// One registry change at a time: saved to ClickHouse, then applied.
+static EDIT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// Where earlier versions kept the registry (imported once, then removed).
 fn dir() -> std::path::PathBuf {
     crate::data_file_path("syslog")
+}
+
+#[derive(Serialize, Deserialize)]
+struct CaDoc {
+    cert_pem: String,
+    key_enc: String,
+}
+
+fn table() -> String {
+    format!("`{}`.siem_syslog_registry", tenancy::DEFAULT_DB)
+}
+
+async fn read_doc(id: &str) -> Result<Option<String>, String> {
+    let db = DB.get().ok_or("registry not loaded")?;
+    db.root().query(&format!("SELECT doc FROM {} FINAL WHERE id = ?", table())).bind(id).fetch_optional::<String>().await.map_err(|e| e.to_string())
+}
+
+async fn write_doc(id: &str, doc: &str) -> Result<(), String> {
+    let db = DB.get().ok_or("registry not loaded")?;
+    let version = Utc::now().timestamp_micros().max(0) as u64;
+    db.root().query(&format!("INSERT INTO {} (id, doc, version) VALUES (?, ?, ?)", table())).bind(id).bind(doc).bind(version).execute().await.map_err(|e| e.to_string())
+}
+
+async fn save<T: Serialize>(id: &str, v: &[T]) -> Result<(), String> {
+    write_doc(id, &serde_json::to_string(v).map_err(|e| e.to_string())?).await
+}
+
+/// A stored list, or the earlier version's file (imported) when none is stored yet.
+async fn list_doc<T: Serialize + for<'de> Deserialize<'de>>(id: &str, file: &str) -> Result<Vec<T>, String> {
+    if let Some(d) = read_doc(id).await? {
+        return serde_json::from_str(&d).map_err(|e| format!("{id}: {e}"));
+    }
+    let v: Vec<T> = std::fs::read(dir().join(file)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    save(id, &v).await?;
+    Ok(v)
+}
+
+/// Loads the registry from ClickHouse at start (the files of earlier versions are imported
+/// once). Without ClickHouse or `AGENT_KEYS_SECRET`, devices and sources stay unavailable.
+pub async fn load(state: &AppState) {
+    if !state.db.is_connected() {
+        error!("Syslog tenancy unavailable: ClickHouse is not connected");
+        return;
+    }
+    let Some(c) = crate::agent_keys_store::cipher() else {
+        error!("Syslog tenancy unavailable: AGENT_KEYS_SECRET is needed to keep its CA key (encrypted in ClickHouse)");
+        return;
+    };
+    let ddl = format!("CREATE TABLE IF NOT EXISTS {} (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id", table());
+    if let Err(e) = state.db.root().query(&ddl).execute().await {
+        error!("Syslog tenancy unavailable: {e}");
+        return;
+    }
+    let _ = DB.set(state.db.clone());
+    match init(&c).await {
+        Ok(s) => {
+            let _ = ST.set(s);
+        }
+        Err(e) => error!("Syslog tenancy init failed: {e}"),
+    }
 }
 
 /// The CA identity. Rebuilt from the saved key on every start: issued
@@ -78,59 +144,43 @@ fn ca_params() -> CertificateParams {
     p
 }
 
-fn read_json<T: for<'de> Deserialize<'de>>(name: &str) -> Vec<T> {
-    std::fs::read(dir().join(name)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
-}
-
-/// Writes through a temporary file, so a crash never leaves half a registry.
-fn write_json<T: Serialize>(name: &str, v: &[T]) -> std::io::Result<()> {
-    let p = dir().join(name);
-    let tmp = p.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(v)?)?;
-    std::fs::rename(tmp, p)
-}
-
-fn init() -> Result<SyslogTenancy, String> {
+async fn init(c: &ring::aead::LessSafeKey) -> Result<SyslogTenancy, String> {
     let d = dir();
-    std::fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
-    let (kp, cp) = (d.join("ca.key.pem"), d.join("ca.crt.pem"));
-    let (ca_key, ca_pem) = match (std::fs::read_to_string(&kp), std::fs::read_to_string(&cp)) {
-        (Ok(k), Ok(c)) => (KeyPair::from_pem(&k).map_err(|e| e.to_string())?, c),
-        _ => {
-            let key = KeyPair::generate().map_err(|e| e.to_string())?;
-            let cert = ca_params().self_signed(&key).map_err(|e| e.to_string())?;
-            std::fs::write(&kp, key.serialize_pem()).map_err(|e| e.to_string())?;
-            restrict(&kp);
-            std::fs::write(&cp, cert.pem()).map_err(|e| e.to_string())?;
-            info!("Syslog CA created in {}", d.display());
-            (key, cert.pem())
+    let (ca_key, ca_pem) = match read_doc("ca").await? {
+        Some(doc) => {
+            let ca: CaDoc = serde_json::from_str(&doc).map_err(|e| format!("ca: {e}"))?;
+            let key = crate::agent_keys_store::decrypt(c, &ca.key_enc).ok_or("the CA key cannot be decrypted (AGENT_KEYS_SECRET changed?)")?;
+            (KeyPair::from_pem(&key).map_err(|e| e.to_string())?, ca.cert_pem)
+        }
+        None => {
+            let (key, pem) = match (std::fs::read_to_string(d.join("ca.key.pem")), std::fs::read_to_string(d.join("ca.crt.pem"))) {
+                (Ok(k), Ok(p)) => (KeyPair::from_pem(&k).map_err(|e| e.to_string())?, p),
+                _ => {
+                    let key = KeyPair::generate().map_err(|e| e.to_string())?;
+                    let cert = ca_params().self_signed(&key).map_err(|e| e.to_string())?;
+                    info!("Syslog CA created");
+                    (key, cert.pem())
+                }
+            };
+            let key_enc = crate::agent_keys_store::encrypt(c, &key.serialize_pem()).ok_or("the CA key could not be encrypted")?;
+            write_doc("ca", &serde_json::to_string(&CaDoc { cert_pem: pem.clone(), key_enc }).map_err(|e| e.to_string())?).await?;
+            (key, pem)
         }
     };
-    let ca = ca_params().self_signed(&ca_key).map_err(|e| e.to_string())?;
-    Ok(SyslogTenancy { ca, ca_key, ca_pem, devices: RwLock::new(read_json("devices.json")), sources: RwLock::new(read_json("sources.json")) })
-}
-
-/// Owner-only CA key on Unix (Windows: the data directory's ACL applies).
-fn restrict(_p: &std::path::Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(_p, std::fs::Permissions::from_mode(0o600));
+    let devices: Vec<Device> = list_doc("devices", "devices.json").await?;
+    let sources: Vec<Source> = list_doc("sources", "sources.json").await?;
+    // everything is in ClickHouse now: the earlier version's files go (the CA key included)
+    for f in ["ca.key.pem", "ca.crt.pem", "devices.json", "sources.json"] {
+        if std::fs::remove_file(d.join(f)).is_ok() {
+            info!("Syslog registry: {f} imported into ClickHouse and removed");
+        }
     }
+    let _ = std::fs::remove_dir(&d);
+    let ca = ca_params().self_signed(&ca_key).map_err(|e| e.to_string())?;
+    Ok(SyslogTenancy { ca, ca_key, ca_pem, devices: RwLock::new(devices), sources: RwLock::new(sources) })
 }
 
 pub fn get() -> Option<&'static SyslogTenancy> {
-    if ST.get().is_none() {
-        match init() {
-            Ok(s) => {
-                let _ = ST.set(s);
-            }
-            Err(e) => {
-                error!("Syslog tenancy init failed: {e}");
-                return None;
-            }
-        }
-    }
     ST.get()
 }
 
@@ -157,14 +207,13 @@ impl SyslogTenancy {
     }
 
     /// Issues a client certificate and registers the device: (device, cert pem, key pem).
-    fn issue(&self, tenant: &str, name: &str) -> Result<(Device, String, String), String> {
+    async fn issue(&self, tenant: &str, name: &str) -> Result<(Device, String, String), String> {
         let (dev, cert, key) = self.sign_device(tenant, name)?;
-        let mut devs = self.devices.write().unwrap();
+        let _edit = EDIT.lock().await;
+        let mut devs = self.devices.read().unwrap().clone();
         devs.push(dev.clone());
-        if let Err(e) = write_json("devices.json", &devs) {
-            devs.pop();
-            return Err(e.to_string());
-        }
+        save("devices", &devs).await?;
+        *self.devices.write().unwrap() = devs;
         Ok((dev, cert, key))
     }
 
@@ -276,7 +325,7 @@ pub async fn create_device(Extension(ctx): Extension<AuthCtx>, Json(body): Json<
         return bad("name: 1-64 characters, letters, digits, space, '-', '_', '.'");
     }
     let Some(st) = get() else { return not_ready() };
-    match st.issue(&tenant, name) {
+    match st.issue(&tenant, name).await {
         Ok((dev, cert, key)) => {
             info!("Syslog device '{}' issued for tenant {} by {}", dev.name, tenant, ctx.username);
             Json(serde_json::json!({
@@ -299,17 +348,18 @@ pub async fn create_device(Extension(ctx): Extension<AuthCtx>, Json(body): Json<
 /// `DELETE /api/v1/syslog/devices/:id`: revokes the device (open connections stop).
 pub async fn revoke_device(Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     let Some(st) = get() else { return not_ready() };
-    let mut devs = st.devices.write().unwrap();
+    let _edit = EDIT.lock().await;
+    let mut devs = st.devices.read().unwrap().clone();
     let Some(i) = devs.iter().position(|d| d.id == id) else { return StatusCode::NOT_FOUND.into_response() };
     if !ctx.can_manage(&devs[i].tenant_id) {
         return tenancy::forbidden();
     }
     let d = devs.remove(i);
-    if let Err(e) = write_json("devices.json", &devs) {
-        error!("Syslog devices write failed: {e}");
-        devs.insert(i, d);
+    if let Err(e) = save("devices", &devs).await {
+        error!("Syslog devices not saved: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    *st.devices.write().unwrap() = devs;
     info!("Syslog device '{}' of tenant {} revoked by {}", d.name, d.tenant_id, ctx.username);
     Json(serde_json::json!({ "status": "ok" })).into_response()
 }
@@ -348,7 +398,8 @@ pub async fn add_source(Extension(ctx): Extension<AuthCtx>, Json(body): Json<New
     let Ok(ip) = body.ip.trim().parse::<std::net::IpAddr>() else { return bad("ip: an IPv4 or IPv6 address") };
     let ip = ip.to_string();
     let Some(st) = get() else { return not_ready() };
-    let mut srcs = st.sources.write().unwrap();
+    let _edit = EDIT.lock().await;
+    let mut srcs = st.sources.read().unwrap().clone();
     if let Some(s) = srcs.iter().find(|s| s.ip == ip) {
         // one owner per address, so events are never attributed to two tenants
         let msg = if s.tenant_id == tenant { "this address is already mapped" } else { "this address belongs to another tenant" };
@@ -356,11 +407,11 @@ pub async fn add_source(Extension(ctx): Extension<AuthCtx>, Json(body): Json<New
     }
     let label: String = body.label.chars().take(64).collect();
     srcs.push(Source { ip: ip.clone(), tenant_id: tenant.clone(), label, created_at: Utc::now() });
-    if let Err(e) = write_json("sources.json", &srcs) {
-        error!("Syslog sources write failed: {e}");
-        srcs.pop();
+    if let Err(e) = save("sources", &srcs).await {
+        error!("Syslog sources not saved: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    *st.sources.write().unwrap() = srcs;
     info!("Syslog source {ip} mapped to tenant {tenant} by {}", ctx.username);
     Json(serde_json::json!({ "status": "ok" })).into_response()
 }
@@ -368,17 +419,18 @@ pub async fn add_source(Extension(ctx): Extension<AuthCtx>, Json(body): Json<New
 /// `DELETE /api/v1/syslog/sources/:ip`
 pub async fn remove_source(Extension(ctx): Extension<AuthCtx>, Path(ip): Path<String>) -> Response {
     let Some(st) = get() else { return not_ready() };
-    let mut srcs = st.sources.write().unwrap();
+    let _edit = EDIT.lock().await;
+    let mut srcs = st.sources.read().unwrap().clone();
     let Some(i) = srcs.iter().position(|s| s.ip == ip) else { return StatusCode::NOT_FOUND.into_response() };
     if !ctx.can_manage(&srcs[i].tenant_id) {
         return tenancy::forbidden();
     }
-    let s = srcs.remove(i);
-    if let Err(e) = write_json("sources.json", &srcs) {
-        error!("Syslog sources write failed: {e}");
-        srcs.insert(i, s);
+    srcs.remove(i);
+    if let Err(e) = save("sources", &srcs).await {
+        error!("Syslog sources not saved: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    *st.sources.write().unwrap() = srcs;
     Json(serde_json::json!({ "status": "ok" })).into_response()
 }
 

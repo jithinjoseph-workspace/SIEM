@@ -256,17 +256,17 @@ impl State {
         g.inc("queries_total");
     }
 
-    pub fn w_inc_wazuhdb(&self) {
+    pub fn w_inc_provigildb(&self) {
         let mut g = self.lock();
         g.inc("queries_breakdown.wazuhdb_queries");
     }
 
-    pub fn w_inc_wazuhdb_remove(&self) {
+    pub fn w_inc_provigildb_remove(&self) {
         let mut g = self.lock();
         g.inc("queries_breakdown.wazuhdb_breakdown.remove_queries");
     }
 
-    pub fn w_inc_wazuhdb_remove_time(&self, time: Tv) {
+    pub fn w_inc_provigildb_remove_time(&self, time: Tv) {
         let mut g = self.lock();
         g.add("queries_breakdown.wazuhdb_breakdown.remove_time", time);
     }
@@ -1262,11 +1262,11 @@ impl State {
         b.num(_task_tables_tasks, "upgrade_result", s.n("queries_breakdown.task_breakdown.tasks.upgrade_result_queries") as f64);
         b.num(_task_tables_tasks, "upgrade_update_status", s.n("queries_breakdown.task_breakdown.tasks.upgrade_update_status_queries") as f64);
         b.num(_received_breakdown, "wazuhdb", s.n("queries_breakdown.wazuhdb_queries") as f64);
-        let _wazuhdb_breakdown = b.obj();
-        b.node(_received_breakdown, "wazuhdb_breakdown", _wazuhdb_breakdown);
-        let _wazuhdb_db = b.obj();
-        b.node(_wazuhdb_breakdown, "db", _wazuhdb_db);
-        b.num(_wazuhdb_db, "remove", s.n("queries_breakdown.wazuhdb_breakdown.remove_queries") as f64);
+        let _provigildb_breakdown = b.obj();
+        b.node(_received_breakdown, "wazuhdb_breakdown", _provigildb_breakdown);
+        let _provigildb_db = b.obj();
+        b.node(_provigildb_breakdown, "db", _provigildb_db);
+        b.num(_provigildb_db, "remove", s.n("queries_breakdown.wazuhdb_breakdown.remove_queries") as f64);
         let _time = b.obj();
         b.node(_metrics, "time", _time);
         b.num(_time, "execution", s.get_time_total() as f64);
@@ -1408,11 +1408,11 @@ impl State {
         b.num(_task_tables_tasks_t, "upgrade_result", s.ms("queries_breakdown.task_breakdown.tasks.upgrade_result_time") as f64);
         b.num(_task_tables_tasks_t, "upgrade_update_status", s.ms("queries_breakdown.task_breakdown.tasks.upgrade_update_status_time") as f64);
         b.num(_execution_breakdown, "wazuhdb", s.ms("queries_breakdown.wazuhdb_breakdown.remove_time") as f64);
-        let _wazuhdb_breakdown_t = b.obj();
-        b.node(_execution_breakdown, "wazuhdb_breakdown", _wazuhdb_breakdown_t);
-        let _wazuhdb_db_t = b.obj();
-        b.node(_wazuhdb_breakdown_t, "db", _wazuhdb_db_t);
-        b.num(_wazuhdb_db_t, "remove", s.ms("queries_breakdown.wazuhdb_breakdown.remove_time") as f64);
+        let _provigildb_breakdown_t = b.obj();
+        b.node(_execution_breakdown, "wazuhdb_breakdown", _provigildb_breakdown_t);
+        let _provigildb_db_t = b.obj();
+        b.node(_provigildb_breakdown_t, "db", _provigildb_db_t);
+        b.num(_provigildb_db_t, "remove", s.ms("queries_breakdown.wazuhdb_breakdown.remove_time") as f64);
         b.build(wdb_state_json)
     }
 }

@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, ListFilter, RefreshCw, EyeOff, Eye, X, Bot, Gavel, Gauge } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 
-/** One group of identical Wazuh alerts (same rule, agent and source) and its verdict. */
+/** One group of identical ProVigil alerts (same rule, agent and source) and its verdict. */
 interface Rec {
   id: string;
   rule_id: number;
@@ -24,7 +24,7 @@ interface Rec {
 }
 
 /**
- * SIEM Alert Triage: groups of the tenant's Wazuh alerts that are likely harmless,
+ * SIEM Alert Triage: groups of the tenant's ProVigil alerts that are likely harmless,
  * decided by rules first and the AI for the rest. Nothing is hidden until a person
  * applies a recommendation (siem-api /api/v1/siem/triage, crate siem-triage).
  */

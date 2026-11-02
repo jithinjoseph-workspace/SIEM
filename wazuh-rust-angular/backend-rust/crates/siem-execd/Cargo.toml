@@ -5,8 +5,8 @@ edition = "2021"
 description = "Port of Wazuh 4.14.7 wazuh-execd (src/os_execd): active responses, the timeout list and the com socket"
 
 [[bin]]
-name = "wazuh-execd"
-path = "src/bin/wazuh-execd.rs"
+name = "provigil-execd"
+path = "src/bin/provigil-execd.rs"
 
 [dependencies]
 siem-log = { path = "../siem-log" }

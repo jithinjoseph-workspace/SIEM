@@ -65,7 +65,7 @@ pub async fn health(State(state): State<AppState>, ctx: Option<Extension<AuthCtx
             "engine": "running",
             "clickhouse": if ch { "running" } else { "stopped" },
             "valkey": if tenancy::valkey_ok().await { "running" } else { "stopped" },
-            "wazuh_manager": if !crate::wazuh_manager::enabled() { "not used" } else if crate::wazuh_manager::running().is_empty() { "stopped" } else { "running" },
+            "wazuh_manager": if !crate::provigil_manager::enabled() { "not used" } else if crate::provigil_manager::running().is_empty() { "stopped" } else { "running" },
         }
     }))
 }
@@ -109,7 +109,7 @@ pub async fn telemetry(State(state): State<AppState>, Extension(ctx): Extension<
 
 /// `GET /api/monitor/kafka`: the SIEM does not use Kafka.
 pub async fn kafka() -> Json<Value> {
-    Json(json!({ "connected": false, "used": false, "brokers_online": 0, "total_brokers": 0, "lag": 0, "topics": [], "message": "This SIEM reads the Wazuh manager's files directly; it has no Kafka" }))
+    Json(json!({ "connected": false, "used": false, "brokers_online": 0, "total_brokers": 0, "lag": 0, "topics": [], "message": "This SIEM reads the ProVigil manager's files directly; it has no Kafka" }))
 }
 
 /// `GET /api/scale-status`: one node.
@@ -120,9 +120,9 @@ pub async fn scale_status() -> Json<Value> {
 /// `GET /api/admin/engines`: siem-api, each Wazuh manager daemon, ClickHouse and Valkey.
 pub async fn engines(State(state): State<AppState>) -> Json<Value> {
     let mut engines = vec![json!({ "name": "siem-api", "status": format!("Up {}", uptime()), "running": "true", "host": hostname(), "version": env!("CARGO_PKG_VERSION"), "sigma_rules": crate::sigma::rule_count() })];
-    if crate::wazuh_manager::enabled() {
-        let running = crate::wazuh_manager::running();
-        for d in crate::wazuh_manager::daemons() {
+    if crate::provigil_manager::enabled() {
+        let running = crate::provigil_manager::running();
+        for d in crate::provigil_manager::daemons() {
             let up = running.iter().any(|r| r == d);
             engines.push(json!({ "name": d, "status": if up { "Up" } else { "Exited" }, "running": up.to_string() }));
         }
@@ -137,7 +137,7 @@ pub async fn engines(State(state): State<AppState>) -> Json<Value> {
 
 /// `POST /api/admin/engines/scale`: this SIEM has no engine pool to scale.
 pub async fn scale() -> axum::response::Response {
-    (StatusCode::CONFLICT, Json(json!({ "status": "error", "message": "This SIEM runs as one siem-api process with its Wazuh manager daemons; there are no engine replicas to scale. Run more siem-api instances behind the load balancer instead." }))).into_response()
+    (StatusCode::CONFLICT, Json(json!({ "status": "error", "message": "This SIEM runs as one siem-api process with its ProVigil manager daemons; there are no engine replicas to scale. Run more siem-api instances behind the load balancer instead." }))).into_response()
 }
 
 /// `GET /api/admin/leader-status`: one node, always its own leader.
@@ -156,7 +156,7 @@ pub async fn interfaces() -> Json<Vec<String>> {
 /// `GET /api/agent-status`
 pub async fn agent_status(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Value> {
     let (all, active) = agents_in_scope(&state, &ctx);
-    Json(json!({ "running": true, "connected": crate::wazuh_manager::enabled() && !crate::wazuh_manager::running().is_empty(), "agents_count": all, "active_count": active }))
+    Json(json!({ "running": true, "connected": crate::provigil_manager::enabled() && !crate::provigil_manager::running().is_empty(), "agents_count": all, "active_count": active }))
 }
 
 #[derive(clickhouse::Row, serde::Deserialize)]

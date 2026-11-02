@@ -28,6 +28,7 @@ pub mod plugins;
 pub mod rules;
 pub mod ruleset;
 pub mod state;
+pub use siem_ipc::platform_stream as stream;
 pub mod syscheck_json;
 pub mod timeday;
 pub mod to_json;

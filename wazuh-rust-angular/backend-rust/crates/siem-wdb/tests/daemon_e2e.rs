@@ -50,7 +50,7 @@ fn daemon_end_to_end() {
     sub.subscribe(Arc::new(move |d: &[u8]| g.lock().push(d.to_vec())), Arc::new(|| {})).unwrap();
 
     // the daemon
-    let router: Arc<dyn RouterSink> = Arc::new(WazuhRouter::default());
+    let router: Arc<dyn RouterSink> = Arc::new(ProVigilRouter::default());
     let env = Arc::new(DaemonEnv { log: wlog.clone(), router: router.clone(), ossecconf: PathBuf::from("etc/ossec.conf") });
     let mut d = Wdbd::new(WdbConfig::default(), base.clone(), env);
     d.router_agent = router.create(WDB_AGENT_EVENTS_TOPIC);

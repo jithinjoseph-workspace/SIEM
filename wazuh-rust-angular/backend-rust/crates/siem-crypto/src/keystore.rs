@@ -98,6 +98,53 @@ pub struct FileStamp {
     pub inode: u64,
 }
 
+/// Keys from the platform (not in Wazuh): when siem-api starts a manager daemon with
+/// `SIEM_KEYS_ADDR` (its loopback key service) and `SIEM_KEYS_TOKEN`, the daemon reads
+/// the agent keys from it (siem-api keeps them encrypted in ClickHouse): no
+/// `etc/client.keys` file on the manager. Frames: `[u32 LE length][kind][payload]`;
+/// a request carries the token, the answer `<version>\n<client.keys lines>`.
+pub const KEYS_REQ: u8 = b'K';
+pub const VERSION_REQ: u8 = b'V';
+
+/// The platform's key service (address, token), when the daemon was given one.
+pub fn platform_source() -> Option<(String, String)> {
+    let addr = std::env::var("SIEM_KEYS_ADDR").ok().filter(|a| !a.is_empty())?;
+    let token = std::env::var("SIEM_KEYS_TOKEN").ok().filter(|t| !t.is_empty())?;
+    Some((addr, token))
+}
+
+/// A version of the platform's keys as a stamp (never equal to a file's).
+pub fn platform_stamp(version: u64) -> FileStamp {
+    FileStamp { mtime: version as i64, inode: u64::MAX }
+}
+
+/// Asks the platform's key service: `KEYS_REQ` (version, keys) or `VERSION_REQ` (version, "").
+pub fn platform_fetch(kind: u8) -> Result<(u64, String), String> {
+    use std::io::{Read, Write};
+    let (addr, token) = platform_source().ok_or("no key service")?;
+    let mut s = std::net::TcpStream::connect(&addr).map_err(|e| format!("{addr}: {e}"))?;
+    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+    let mut req = ((token.len() + 1) as u32).to_le_bytes().to_vec();
+    req.push(kind);
+    req.extend_from_slice(token.as_bytes());
+    s.write_all(&req).map_err(|e| e.to_string())?;
+    let mut len = [0u8; 4];
+    s.read_exact(&mut len).map_err(|e| e.to_string())?;
+    let n = u32::from_le_bytes(len) as usize;
+    if n == 0 || n > 64 * 1024 * 1024 {
+        return Err(format!("answer of {n} bytes"));
+    }
+    let mut b = vec![0u8; n];
+    s.read_exact(&mut b).map_err(|e| e.to_string())?;
+    if b[0] != kind {
+        return Err("refused".into());
+    }
+    let text = String::from_utf8_lossy(&b[1..]).into_owned();
+    let (v, rest) = text.split_once('\n').unwrap_or((&text, ""));
+    let version = v.trim().parse().map_err(|_| "bad version".to_string())?;
+    Ok((version, rest.to_string()))
+}
+
 pub fn file_stamp(path: &str) -> Option<FileStamp> {
     let m = std::fs::metadata(path).ok()?;
     let mtime = m
@@ -215,9 +262,29 @@ impl KeyStore {
         Ok(())
     }
 
-    /// `OS_ReadKeys(keys, W_ENCRYPTION_KEY, save_removed)`.
+    /// `OS_ReadKeys(keys, W_ENCRYPTION_KEY, save_removed)`; from the platform instead of
+    /// the file when it serves the keys (`platform_fetch`).
     pub fn read(file: &str, pass_empty_keyfile: bool, save_removed: bool) -> Result<Self, KeysError> {
         let mut ks = KeyStore { file: file.to_string(), save_removed, ..Default::default() };
+        if platform_source().is_some() {
+            // the platform starts the daemons once it serves the keys; a few tries cover a slow start
+            let mut last = String::new();
+            for _ in 0..30 {
+                match platform_fetch(KEYS_REQ) {
+                    Ok((version, text)) => {
+                        ks.stamp = Some(platform_stamp(version));
+                        ks.parse(&text)?;
+                        if ks.entries.is_empty() && !pass_empty_keyfile {
+                            return Err(KeysError::NoClientKeys);
+                        }
+                        return Ok(ks);
+                    }
+                    Err(e) => last = e,
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            return Err(KeysError::Open("the platform's key service".into(), last));
+        }
         ks.stamp = file_stamp(file);
         match std::fs::read(file) {
             Ok(data) => ks.parse(&String::from_utf8_lossy(&data))?,
@@ -234,8 +301,11 @@ impl KeyStore {
         Ok(ks)
     }
 
-    /// `OS_CheckUpdateKeys`
+    /// `OS_CheckUpdateKeys` (the platform's key version instead of the file's stamp).
     pub fn needs_reload(&self) -> bool {
+        if platform_source().is_some() {
+            return platform_fetch(VERSION_REQ).is_ok_and(|(v, _)| Some(platform_stamp(v)) != self.stamp);
+        }
         file_stamp(&self.file) != self.stamp
     }
 

@@ -106,10 +106,10 @@ pub struct RulesQuery {
 pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(query): Query<RulesQuery>) -> impl IntoResponse {
     let custom = custom_rules(&state, &ctx).await;
     let enabled_custom = custom.iter().filter(|r| r.enabled == 1).count();
-    let wazuh = state.engine.list_rules();
-    let active = wazuh.len() + enabled_custom;
+    let provigil = state.engine.list_rules();
+    let active = provigil.len() + enabled_custom;
     let mut rules: Vec<Value> = custom.iter().map(custom_json).collect();
-    rules.extend(wazuh.into_iter().map(|r| {
+    rules.extend(provigil.into_iter().map(|r| {
         json!({
             "id": r.id.to_string(), "title": r.description, "description": r.description, "level": r.level, "severity": severity_of(r.level),
             "enabled": true, "groups": r.groups, "tags": r.groups, "conditions": 1, "mitre": r.mitre, "source": "wazuh", "editable": false,
@@ -240,7 +240,7 @@ async fn changeable(state: &AppState, ctx: &AuthCtx, id: &str) -> Result<RuleRow
         Some(r) if r.source == "community" => Err(err(StatusCode::FORBIDDEN, "SigmaHQ community rules apply to every tenant: only the platform admin switches them")),
         Some(_) => Err(err(StatusCode::NOT_FOUND, "Rule not found")),
         None if state.engine.list_rules().iter().any(|r| r.id.to_string() == id) => {
-            Err(err(StatusCode::BAD_REQUEST, "Built-in Wazuh rules cannot be changed or switched off here; add a custom rule instead"))
+            Err(err(StatusCode::BAD_REQUEST, "Built-in ProVigil rules cannot be changed or switched off here; add a custom rule instead"))
         }
         None => Err(err(StatusCode::NOT_FOUND, "Rule not found")),
     }

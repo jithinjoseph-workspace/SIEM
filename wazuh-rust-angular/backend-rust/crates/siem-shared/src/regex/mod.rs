@@ -129,7 +129,7 @@ impl OSRegex {
         }
 
         // Translate Wazuh custom tokens (\p -> punctuation)
-        let translated = translate_wazuh_regex(pattern);
+        let translated = translate_provigil_regex(pattern);
 
         let case_insensitive = (flags & OS_CASE_SENSITIVE) == 0;
         let regex = RegexBuilder::new(&translated)
@@ -177,7 +177,7 @@ impl OSRegex {
 
 /// Translates Wazuh S-Regex custom syntax into standard regex syntax:
 /// Wazuh's `\p` represents punctuation characters: `()*,+-.:;<=>?`
-fn translate_wazuh_regex(pat: &str) -> String {
+fn translate_provigil_regex(pat: &str) -> String {
     let mut out = String::with_capacity(pat.len() * 2);
     let mut chars = pat.chars().peekable();
 

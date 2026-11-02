@@ -99,7 +99,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn escape_like_wazuh() {
+    fn escape_like_provigil() {
         assert_eq!(wstr_escape(b"[001] (agent) any->/var/log", b'|', b':', 8193), b"[001] (agent) any->/var/log");
         assert_eq!(wstr_escape(b"C:\\Windows|x", b'|', b':', 8193), b"C|:\\Windows||x");
         assert_eq!(wstr_escape(b"::", b'|', b':', 8193), b"|:|:");

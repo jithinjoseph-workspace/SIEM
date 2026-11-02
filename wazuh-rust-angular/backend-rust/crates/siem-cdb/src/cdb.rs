@@ -123,7 +123,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cdb_hash_matches_wazuh_algorithm() {
+    fn test_cdb_hash_matches_provigil_algorithm() {
         let hash = cdb_hash(b"192.168.1.1");
         assert_ne!(hash, 0);
 

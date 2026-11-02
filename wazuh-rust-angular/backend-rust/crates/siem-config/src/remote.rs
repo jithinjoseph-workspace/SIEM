@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn default_wazuh_remote_block() {
+    fn default_provigil_remote_block() {
         let (r, w) = parse(
             "<ossec_config><remote><connection>secure</connection><port>1514</port><protocol>tcp</protocol><queue_size>131072</queue_size></remote></ossec_config>",
         )

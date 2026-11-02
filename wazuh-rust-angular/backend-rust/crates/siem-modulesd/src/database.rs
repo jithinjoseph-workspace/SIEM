@@ -131,8 +131,9 @@ impl Database {
         // Remove dangling agent databases
         self.clean_dangling_wdb_dbs().await;
 
+        // keys from the platform (no client.keys file to watch): the timed checks below
         #[cfg(target_os = "linux")]
-        if self.data.real_time {
+        if self.data.real_time && siem_crypto::keystore::platform_source().is_none() {
             return self.real_time_loop().await;
         }
 
@@ -197,6 +198,22 @@ impl Database {
 
     /// `wm_check_agents`: synchronizes when `client.keys` changed.
     async fn check_agents(&self, stamp: &mut Option<(i64, u64)>) {
+        // the platform's key version instead of the file's stamp (siem_crypto::keystore)
+        if siem_crypto::keystore::platform_source().is_some() {
+            match siem_crypto::keystore::platform_fetch(siem_crypto::keystore::VERSION_REQ) {
+                Err(e) => self.error(format!("Couldn't get the agent keys' version: {e}.")),
+                Ok((v, _)) => {
+                    let s = (v as i64, u64::MAX);
+                    if Some(s) != *stamp {
+                        if self.is_worker != 0 {
+                            self.sync_agents().await;
+                        }
+                        *stamp = Some(s);
+                    }
+                }
+            }
+            return;
+        }
         match std::fs::metadata(KEYS_FILE) {
             Err(e) => self.error(format!("Couldn't get client.keys stat: {}.", errno_text(&e))),
             Ok(m) => {

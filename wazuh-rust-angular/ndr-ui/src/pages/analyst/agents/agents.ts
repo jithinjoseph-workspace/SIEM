@@ -282,7 +282,7 @@ export class Agents implements OnInit {
   fleetVulns = signal<{ critical: number; high: number } | null>(null);
   /** Open CVEs per agent (critical, high, medium), for the risk score. */
   agentVulns = signal<Record<string, { critical: number; high: number; medium: number }>>({});
-  /** The manager's Wazuh version: an agent on it is current. */
+  /** The manager's ProVigil version: an agent on it is current. */
   readonly managerVersion = '4.14.7';
 
   ngOnInit() {
@@ -815,7 +815,7 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
     return { score, label, color: score >= 40 ? 'rose' : 'emerald' };
   }
 
-  /** Whether the agent runs the manager's Wazuh version. */
+  /** Whether the agent runs the manager's ProVigil version. */
   agentCurrent(agent: Agent): boolean {
     return (agent.version || '').includes(this.managerVersion);
   }

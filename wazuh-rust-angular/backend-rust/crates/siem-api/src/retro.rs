@@ -45,7 +45,7 @@ async fn events(state: &AppState, tenant: &str, hours: u32, keyword: Option<&str
 
 /// One logtest request on analysisd's socket.
 pub(crate) async fn logtest(req: &str) -> Result<String, String> {
-    let path = crate::wazuh_manager::home().join("queue/sockets/logtest");
+    let path = crate::provigil_manager::home().join("queue/sockets/logtest");
     let mut s = siem_ipc::local::LocalStream::connect(&path).await.map_err(|e| format!("analysisd logtest is not reachable ({}): {e}", path.display()))?;
     siem_ipc::framing::send(&mut s, req.as_bytes()).await.map_err(|e| format!("logtest: {e:?}"))?;
     let r = siem_ipc::framing::recv(&mut s, siem_ipc::OS_MAXSTR).await.map_err(|e| format!("logtest: {e:?}"))?;
@@ -136,5 +136,5 @@ pub async fn fired_rules(State(state): State<AppState>, Extension(ctx): Extensio
         .fetch_all::<(u32, String, u64)>()
         .await
         .unwrap_or_default();
-    Json(json!({ "rules": rows.into_iter().map(|(id, d, n)| json!({ "id": id.to_string(), "name": format!("{id}: {d}"), "hit_count": n, "engine": "Wazuh" })).collect::<Vec<_>>() }))
+    Json(json!({ "rules": rows.into_iter().map(|(id, d, n)| json!({ "id": id.to_string(), "name": format!("{id}: {d}"), "hit_count": n, "engine": "ProVigil" })).collect::<Vec<_>>() }))
 }

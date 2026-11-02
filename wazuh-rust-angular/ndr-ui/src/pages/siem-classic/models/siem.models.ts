@@ -250,7 +250,7 @@ export interface FimSummaryResponse {
   recent_changes: FimSummaryRecord[];
 }
 
-// --- Wazuh Logtest Console ---
+// --- ProVigil Logtest Console ---
 export interface LogtestResult {
   raw_event: string;
   predecoded_timestamp?: string;

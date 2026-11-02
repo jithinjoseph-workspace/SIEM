@@ -15,7 +15,7 @@ pub use authcom::{authcom_dispatch, authcom_getconfig};
 pub use cert::{match_dns_hostname, match_ip_address, verify_peer_identity};
 pub use config::{AuthdConfig, ForceOptions, KeyRequestConfig, DEFAULT_PORT};
 pub use enrollment::{
-    add_agent_to_keystore, can_replace_agent, compare_wazuh_versions, format_success_response,
+    add_agent_to_keystore, can_replace_agent, compare_provigil_versions, format_success_response,
     is_valid_name, parse_enrollment_data, validate_and_prepare, EnrollmentError, EnrollmentRequest,
 };
 pub use groups::{delete_repeated_groups, validate_groups, MAX_GROUPS_PER_MULTIGROUP};

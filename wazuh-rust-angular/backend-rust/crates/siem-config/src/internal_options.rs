@@ -127,7 +127,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_wazuh_internal_options() {
+    fn reads_provigil_internal_options() {
         let dir = tempfile::tempdir().unwrap();
         let etc = dir.path().join("etc");
         std::fs::create_dir_all(&etc).unwrap();

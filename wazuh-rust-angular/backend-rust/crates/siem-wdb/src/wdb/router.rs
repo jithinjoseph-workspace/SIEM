@@ -21,11 +21,11 @@ pub trait RouterSink: Send + Sync {
 /// The router module (siem-router): remote providers of the topics,
 /// `router_provider_create(topic, false)` / `router_provider_send`.
 #[derive(Default)]
-pub struct WazuhRouter {
+pub struct ProVigilRouter {
     handles: Mutex<std::collections::HashMap<String, siem_router::ProviderHandle>>,
 }
 
-impl RouterSink for WazuhRouter {
+impl RouterSink for ProVigilRouter {
     fn create(&self, topic: &str) -> bool {
         let h = siem_router::router_provider_create(topic, false);
         if h == 0 {

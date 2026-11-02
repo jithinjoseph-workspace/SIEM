@@ -261,7 +261,9 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 24] = [
+pub const ANALYST_DDL: [&str; 22] = [
+    // the vulnerability scanner's current results, streamed (vulnerability.rs)
+    crate::vulnerability::DDL,
     // EDR tamper protection: the tenant's setting and each agent's lock state (tamper.rs)
     crate::tamper::DDL,
     // EDR live response requests and their results (live_response.rs)
@@ -279,13 +281,10 @@ pub const ANALYST_DDL: [&str; 24] = [
     crate::response::DDL[1],
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
-    // each agent's latest system inventory (os, hardware, packages, ports, processes...)
-    "CREATE TABLE IF NOT EXISTS siem_agent_inventory (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
-    // each agent's CIS / SCA results and FIM file list (posture_store.rs)
+    // each agent's latest SCA results, for the compliance audit (posture_store.rs); the
+    // rest of an agent's state (inventory, FIM, rootcheck) is read from wazuh-db, not copied
     crate::posture_store::DDL[0],
     crate::posture_store::DDL[1],
-    crate::posture_store::DDL[2],
-    crate::posture_store::DDL[3],
     "CREATE TABLE IF NOT EXISTS siem_yara_rules (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     // what analysts do on the triage / suppression pages (siem-analyst-insight), 30 days
     "CREATE TABLE IF NOT EXISTS siem_analyst_actions (ts UInt64, user String, action LowCardinality(String), rec_id String, verdict LowCardinality(String), source LowCardinality(String), confidence UInt8) ENGINE = MergeTree ORDER BY (user, ts) TTL toDateTime(ts) + INTERVAL 30 DAY",
@@ -294,6 +293,52 @@ pub const ANALYST_DDL: [&str; 24] = [
     "CREATE TABLE IF NOT EXISTS siem_retro_scans (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     "CREATE TABLE IF NOT EXISTS siem_threat_predictions (id String, attack_type String, doc String, predicted_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY predicted_at TTL predicted_at + INTERVAL 90 DAY",
 ];
+
+/// How long events and alerts are kept, in days (0: for ever):
+/// `SIEM_EVENTS_RETENTION_DAYS` (90) and `SIEM_ALERTS_RETENTION_DAYS` (365).
+pub fn retention_days() -> (u32, u32) {
+    let get = |k: &str, d: u32| std::env::var(k).ok().and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+    (get("SIEM_EVENTS_RETENTION_DAYS", 90), get("SIEM_ALERTS_RETENTION_DAYS", 365))
+}
+
+/// The ALTER giving `db.table` (its `create` query) a retention of `days`; None when it has it.
+fn retention_sql(db: &str, table: &str, days: u32, create: &str) -> Option<String> {
+    let has_ttl = create.contains(" TTL ");
+    if days == 0 {
+        return has_ttl.then(|| format!("ALTER TABLE `{db}`.`{table}` REMOVE TTL"));
+    }
+    if has_ttl && create.contains(&format!("toIntervalDay({days})")) {
+        return None;
+    }
+    Some(format!("ALTER TABLE `{db}`.`{table}` MODIFY TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay({days})"))
+}
+
+/// Gives siem_events and siem_alerts of `ndr` and every tenant database their retention.
+/// A new tenant's tables are copies of `ndr`'s, so they get it too. After a change
+/// ClickHouse drops the old rows in the background (one rewrite of the table's parts).
+pub async fn apply_retention(root: &Client) {
+    let (events, alerts) = retention_days();
+    let rows = root
+        .query("SELECT database, name, create_table_query FROM system.tables WHERE name IN ('siem_events', 'siem_alerts') AND (database = ? OR startsWith(database, 'ndr_'))")
+        .bind(crate::tenancy::DEFAULT_DB)
+        .fetch_all::<(String, String, String)>()
+        .await;
+    let rows = match rows {
+        Ok(r) => r,
+        Err(e) => return warn!("Retention not applied: {e}"),
+    };
+    let mut changed = 0;
+    for (db, table, create) in &rows {
+        let days = if table == "siem_events" { events } else { alerts };
+        if let Some(sql) = retention_sql(db, table, days, create) {
+            match root.query(&sql).execute().await {
+                Ok(()) => changed += 1,
+                Err(e) => warn!("Retention of {db}.{table} not set: {e}"),
+            }
+        }
+    }
+    info!("Retention: events {events} days, alerts {alerts} days (0 = kept for ever); {changed} of {} table(s) changed", rows.len());
+}
 
 /// A Replicated* table whose Keeper metadata is gone (Keeper started over, as on
 /// 2026-10-20) stays read-only for good: every insert fails. Its data is still on
@@ -325,8 +370,6 @@ pub enum DocTable {
     Suppressions,
     AnalystState,
     RetroScans,
-    /// id = agent id
-    Inventory,
     /// Alerts that other organisations reported too (swarm.rs)
     SwarmMatches,
     /// The hash-chained decision records (decisions.rs)
@@ -348,7 +391,6 @@ impl DocTable {
             DocTable::Suppressions => "siem_suppressions",
             DocTable::AnalystState => "siem_analyst_state",
             DocTable::RetroScans => "siem_retro_scans",
-            DocTable::Inventory => "siem_agent_inventory",
             DocTable::SwarmMatches => "siem_swarm_matches",
             DocTable::Decisions => "siem_decisions",
             DocTable::Blocks => "siem_blocks",
@@ -656,6 +698,7 @@ impl ClickHouseDb {
 
         info!("SIEM tables ready in '{}' (siem_events, siem_alerts, siem_agents, xdr_incidents, siem_threat_intel, agent_registry, tenant_agent_keys, soar_*)", database);
         restore_lost_replicas(&root_client).await;
+        apply_retention(&root_client).await;
         is_available.store(true, Ordering::SeqCst);
 
         Self {
@@ -1543,5 +1586,19 @@ mod tests {
     fn sql_statements_skip_comment_semicolons() {
         let s = super::sql_statements("-- a; b\nCREATE x (a String, -- c; d\n b String DEFAULT 'x;y');\nINSERT 1;");
         assert_eq!(s, vec!["CREATE x (a String, \n b String DEFAULT 'x;y')", "INSERT 1"]);
+    }
+
+    #[test]
+    fn retention_only_when_it_changes() {
+        let none = "CREATE TABLE ndr.siem_events (`id` String, `timestamp` UInt64) ENGINE = MergeTree ORDER BY (timestamp, agent_id) SETTINGS index_granularity = 8192";
+        let ninety = "CREATE TABLE ndr.siem_events (`id` String, `timestamp` UInt64) ENGINE = MergeTree ORDER BY (timestamp, agent_id) TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay(90) SETTINGS index_granularity = 8192";
+        assert_eq!(
+            super::retention_sql("ndr", "siem_events", 90, none).as_deref(),
+            Some("ALTER TABLE `ndr`.`siem_events` MODIFY TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay(90)")
+        );
+        assert_eq!(super::retention_sql("ndr", "siem_events", 90, ninety), None, "already set");
+        assert!(super::retention_sql("ndr", "siem_events", 30, ninety).unwrap().contains("toIntervalDay(30)"));
+        assert_eq!(super::retention_sql("ndr", "siem_events", 0, ninety).as_deref(), Some("ALTER TABLE `ndr`.`siem_events` REMOVE TTL"));
+        assert_eq!(super::retention_sql("ndr", "siem_events", 0, none), None, "kept for ever already");
     }
 }

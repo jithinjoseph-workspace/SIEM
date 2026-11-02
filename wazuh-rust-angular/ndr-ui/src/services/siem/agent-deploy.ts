@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, map, of } from 'rxjs';
 
 /**
- * Agent deployment commands (the Wazuh agent, wazuh-agent.exe, on Windows;
+ * Agent deployment commands (the ProVigil agent, provigil-agent.exe, on Windows;
  * siem-agent-linux + install.sh on Linux).
  *
  * Every command passes the manager URL, the agent name, the group and the
@@ -95,7 +95,10 @@ function windowsLoggingSteps(p: DeployParams): string[] {
   return steps;
 }
 
-export const WINDOWS_SERVICE = 'WazuhSvc';
+export const WINDOWS_SERVICE = 'ProVigilSvc';
+/** The service and folder of agents installed before the ProVigil rename (migrated on reinstall). */
+export const LEGACY_WINDOWS_SERVICE = 'WazuhSvc';
+export const LEGACY_WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
 export const LINUX_SERVICE = 'wazuh-rust-agent';
 
 /** Default manager URL: the console's own origin (the dev server and Caddy
@@ -167,10 +170,10 @@ const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const pq = (s: string) => `"${s.replace(/[`"$]/g, m => '`' + m)}"`;
 
 /** Install directory of the Windows agent (the MSI's default). */
-export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
+export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ProVigil Agent';
 
 /** The files of the Windows agent package served by the manager. */
-const WINDOWS_AGENT_FILES = ['wazuh-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
+const WINDOWS_AGENT_FILES = ['provigil-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
 
 /** The active-response programs installed in active-response\bin. */
 const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe', 'yara-scan.exe', 'live-response.exe', 'tamper-protect.exe'];
@@ -195,8 +198,10 @@ const WINDOWS_AGENT_ACLS = [
 ];
 
 /**
- * The PowerShell that installs the Wazuh agent (`wazuh-agent.exe`, the
- * `WazuhSvc` service) like the MSI does, and starts it (needs admin):
+ * The PowerShell that installs the ProVigil agent (`provigil-agent.exe`, the
+ * `ProVigilSvc` service) like the MSI does, and starts it (needs admin). An agent
+ * installed before the rename (`WazuhSvc`, `ossec-agent`) is replaced: its service is
+ * removed and its `client.keys` kept, so the host keeps its agent id.
  * downloads the package, enrolls through the manager API (the tenant key
  * picks the tenant), writes `client.keys` and `ossec.conf` (manager address
  * = the console host, port 1514/tcp), installs and starts the service.
@@ -210,6 +215,8 @@ export function windowsInstallScript(p: DeployParams): string {
     `$u = ${pq(c.url)}`,
     `$d = "${WINDOWS_AGENT_DIR}"`,
     `if (Get-Service ${WINDOWS_SERVICE} -ErrorAction SilentlyContinue) { Stop-Service ${WINDOWS_SERVICE} -Force -ErrorAction SilentlyContinue }`,
+    // the agent from before the rename: removed (with tamper protection on, open a maintenance window first)
+    `if (Get-Service ${LEGACY_WINDOWS_SERVICE} -ErrorAction SilentlyContinue) { Stop-Service ${LEGACY_WINDOWS_SERVICE} -Force -ErrorAction SilentlyContinue; sc.exe delete ${LEGACY_WINDOWS_SERVICE} | Out-Null }`,
     `foreach ($s in @(${WINDOWS_AGENT_DIRS.map(x => `'${x}'`).join(',')})) { New-Item -ItemType Directory -Force -Path "$d\\$s" | Out-Null }`,
     `if (-not (Test-Path "$d\\active-response\\active-responses.log")) { New-Item -ItemType File -Path "$d\\active-response\\active-responses.log" | Out-Null }`,
     `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
@@ -227,6 +234,8 @@ export function windowsInstallScript(p: DeployParams): string {
     // enroll last, so a failed download leaves no never-connected agent; a reinstall keeps
     // the host's agent name (and so its id) instead of adding a second agent
     `$n = ${pq(c.name)}`,
+    `$old = "${LEGACY_WINDOWS_AGENT_DIR}"`,
+    `if (-not (Test-Path "$d\\client.keys") -and (Test-Path "$old\\client.keys")) { Copy-Item "$old\\client.keys" "$d\\client.keys" }`,
     `if (Test-Path "$d\\client.keys") { $k = ((Get-Content "$d\\client.keys" -TotalCount 1) -split ' '); if ($k.Count -ge 4 -and $k[1]) { $n = $k[1] } }`,
     `$h = @{}`,
     c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
@@ -235,9 +244,9 @@ export function windowsInstallScript(p: DeployParams): string {
     `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
     // the MSI's permissions (InstallerScripts.vbs): only Administrators and SYSTEM may read the key
     ...WINDOWS_AGENT_ACLS,
-    `& "$d\\wazuh-agent.exe" install-service | Out-Null`,
+    `& "$d\\provigil-agent.exe" install-service | Out-Null`,
     `Start-Service -Name ${WINDOWS_SERVICE}`,
-    `Write-Host "Wazuh agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,
+    `Write-Host "ProVigil agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,
     ...windowsLoggingSteps(p),
     `Get-Service ${WINDOWS_SERVICE}`,
   ].join('; ');

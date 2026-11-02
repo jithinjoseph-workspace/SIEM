@@ -36,7 +36,7 @@ pub mod syslog_tenancy;
 pub mod persist;
 pub mod corroboration;
 pub mod tenancy;
-pub mod wazuh_manager;
+pub mod provigil_manager;
 pub mod groups;
 pub mod mail_settings;
 pub mod soar;
@@ -136,8 +136,7 @@ pub struct AppState {
     pub pending_commands: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     pub db: ClickHouseDb,
     /// The vulnerability scanner's current detections (vulnerability.rs).
-    pub vulnerabilities: Arc<RwLock<Vec<vulnerability::VulnItem>>>,
-    pub wdb: Arc<siem_wdb::WazuhDbManager>,
+    pub wdb: Arc<siem_wdb::ProVigilDbManager>,
     pub threat_intel: Arc<siem_cdb::ThreatIntelManager>,
     pub rootcheck: Arc<siem_rootcheck::RootcheckScanner>,
     pub active_responses: Arc<RwLock<Vec<ActiveResponseRecord>>>,
@@ -177,7 +176,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    info!("Starting Next-Gen Wazuh Rust SIEM Server...");
+    info!("Starting the ProVigil SIEM server...");
 
     // Logins, users and tenants are served by auth-service; siem-api only
     // validates its tokens, so it needs the same secret and session store.
@@ -197,8 +196,7 @@ async fn main() {
     let (broadcast_tx, _) = broadcast::channel::<Alert>(1000);
     let db = ClickHouseDb::init().await;
 
-    let vulnerabilities = Arc::new(RwLock::new(Vec::new()));
-    let wdb = Arc::new(siem_wdb::WazuhDbManager::new());
+    let wdb = Arc::new(siem_wdb::ProVigilDbManager::new());
     let threat_intel = Arc::new(siem_cdb::ThreatIntelManager::new_with_builtin_feeds());
     let rootcheck = Arc::new(siem_rootcheck::RootcheckScanner::with_default_db());
     // Learned parsers live in ClickHouse (parsers_store.rs); the file only when ClickHouse is down.
@@ -334,7 +332,6 @@ async fn main() {
         broadcast_tx,
         pending_commands: Arc::new(RwLock::new(HashMap::new())),
         db,
-        vulnerabilities,
         wdb,
         threat_intel,
         rootcheck,
@@ -489,13 +486,9 @@ async fn main() {
     if let Some(ids) = stored_parsers {
         parsers_store::spawn_sync(state.db.clone(), state.parser_registry.clone(), ids, tenancy::DEFAULT_DB.to_string());
     }
-    // The vulnerability scanner's results: in-memory list + per-tenant ClickHouse snapshots.
-    vulnerability::spawn_sync(state.clone());
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
     predictions::spawn(state.clone());
-    // agents' inventory (wazuh-db / siem-agents) copied to ClickHouse every 10 min
-    inventory_store::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
@@ -503,6 +496,7 @@ async fn main() {
     // threat intel feeds from provigil-common (collector + blocklist engine)
     intel::spawn(state.clone());
     yara_edr::spawn(state.clone());
+    // the agents' SCA results copied for the compliance audit (the one agent data copy)
     posture_store::spawn(state.clone());
     // Sigma rules (SigmaHQ) on archived events; expired firewall / cloud blocks lifted
     platform::mark_start();
@@ -551,13 +545,16 @@ async fn main() {
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
     // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
-    wazuh_manager::start(state.clone());
+    // with the keys in ClickHouse the daemons read them from siem-api: no etc/client.keys
+    provigil_manager::start(state.clone(), stored_keys.is_some());
     if let Some(ids) = stored_keys {
         agent_keys_store::spawn_sync(state.clone(), ids);
     }
 
 
     // Start background Syslog listeners (UDP 514 / TCP 601) for firewall & network appliance ingestion
+    // the syslog device / source registry and its CA, from ClickHouse
+    syslog_tenancy::load(&state).await;
     syslog::start_syslog_listeners(state.clone());
 
     // Start background NDR <-> SIEM cross-source corroboration worker
@@ -672,7 +669,7 @@ async fn main() {
         .route("/api/v1/agents", get(get_agents))
         .route("/api/v1/agents/:id", delete(delete_agent_handler))
         .route("/api/agents/:id", delete(delete_agent_handler))
-        .route("/agents", delete(delete_agents_wazuh_handler))
+        .route("/agents", delete(delete_agents_provigil_handler))
         .route("/api/v1/events", get(get_events))
         .route("/api/events", get(get_events))
         .route("/api/v1/rules", get(rules_api::list).post(rules_api::create))
@@ -796,7 +793,9 @@ async fn main() {
         .route("/api/v1/agents/:id/rootcheck", get(get_agent_rootcheck_handler))
         .route("/api/v1/rootcheck/signatures", get(get_rootcheck_signatures_handler))
         .route("/downloads/siem-agent.exe", get(download_agent))
-        .route("/downloads/wazuh-agent.exe", get(|| download_windows_binary("wazuh-agent.exe".to_string())))
+        .route("/downloads/provigil-agent.exe", get(|| download_windows_binary("provigil-agent.exe".to_string())))
+        // agents set up before the ProVigil rename ask for the old name
+        .route("/downloads/wazuh-agent.exe", get(|| download_windows_binary("provigil-agent.exe".to_string())))
         .route("/downloads/windows/:file", get(download_windows_file))
         .route("/downloads/siem-agent-linux", get(download_linux_agent))
         .route("/downloads/install.sh", get(download_install_script))
@@ -1381,13 +1380,16 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         // row stays, marked deleted, so the id is never issued again.
         let e = state.enrolled.write().unwrap().remove(id);
         let _ = state.auth_keystore.write().unwrap().delete_key(id);
-        wazuh_manager::save_keys(state);
+        provigil_manager::save_keys(state);
         let wid = id.to_string();
-        tokio::spawn(async move { wazuh_manager::remove_agent(&wid).await });
-        let db = state.db.clone();
+        tokio::spawn(async move { provigil_manager::remove_agent(&wid).await });
+        let st = state.clone();
         let t_clone = tenant.clone();
         let id_clone = id.to_string();
-        tokio::spawn(async move { db.delete_agent(&t_clone, &id_clone).await });
+        tokio::spawn(async move {
+            st.db.delete_agent(&t_clone, &id_clone).await;
+            posture_store::forget(&st, &t_clone, &id_clone).await;
+        });
         let enrolled_placeholder;
         let e_ref = match e.as_ref() {
             Some(entry) => Some(entry),
@@ -1444,7 +1446,7 @@ struct DeleteAgentsQuery {
     agents_list: Option<String>,
 }
 
-async fn delete_agents_wazuh_handler(
+async fn delete_agents_provigil_handler(
     Query(params): Query<DeleteAgentsQuery>,
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
@@ -1842,7 +1844,7 @@ async fn download_windows_file(
 ) -> Result<axum::response::Response, StatusCode> {
     if file == "ossec.conf" {
         let manager = q.get("manager").map(|s| s.trim().to_string()).unwrap_or_default();
-        let conf = wazuh_manager::windows_agent_conf(&manager).ok_or(StatusCode::BAD_REQUEST)?;
+        let conf = provigil_manager::windows_agent_conf(&manager).ok_or(StatusCode::BAD_REQUEST)?;
         return Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], conf).into_response());
     }
     if file == "sysmon.xml" {
@@ -1853,7 +1855,7 @@ async fn download_windows_file(
 }
 
 async fn download_windows_binary(file: String) -> Result<impl IntoResponse, StatusCode> {
-    let path = wazuh_manager::windows_agent_file(&file).ok_or(StatusCode::NOT_FOUND)?;
+    let path = provigil_manager::windows_agent_file(&file).ok_or(StatusCode::NOT_FOUND)?;
     let bytes = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok((
         [
@@ -1997,8 +1999,8 @@ async fn queue_agent_command(
             .into_response();
     }
 
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
-        return wazuh_agent_action(&state, &ctx, &agent_id, &payload).await;
+    if provigil_manager::is_provigil_agent(&agent_id).await {
+        return provigil_agent_action(&state, &ctx, &agent_id, &payload).await;
     }
     if payload.get("command_id").is_none() || payload.get("command_id").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
         if let Some(obj) = payload.as_object_mut() {
@@ -2023,13 +2025,13 @@ fn agent_is_windows(state: &AppState, agent_id: &str) -> bool {
 
 /// The console actions on a Wazuh agent, sent the way the Wazuh API sends
 /// them (remoted's active-response queue).
-async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, payload: &serde_json::Value) -> axum::response::Response {
+async fn provigil_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, payload: &serde_json::Value) -> axum::response::Response {
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
     let target = payload.get("target").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     let bad = |m: &str| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
     let r = match action {
-        "restart_agent" => wazuh_manager::restart_agent(agent_id).await.map(|_| "Restart sent to the agent".to_string()),
-        "fim_scan" | "rootcheck_scan" => wazuh_manager::syscheck_restart(agent_id).await.map(|_| "FIM and rootcheck scan started on the agent".to_string()),
+        "restart_agent" => provigil_manager::restart_agent(agent_id).await.map(|_| "Restart sent to the agent".to_string()),
+        "fim_scan" | "rootcheck_scan" => provigil_manager::syscheck_restart(agent_id).await.map(|_| "FIM and rootcheck scan started on the agent".to_string()),
         "block_ip" => {
             if target.parse::<std::net::IpAddr>().is_err() {
                 return bad("A valid IP address is required");
@@ -2043,17 +2045,17 @@ async fn wazuh_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, pay
             return block_on_agent(state, ctx, agent_id, &target, duration, "Manual SOC operator block", method).await;
         }
         "unblock_ip" => {
-            return bad("Wazuh agents remove a block when its time runs out (10 min, 1 h or 24 h); the agent has no command to remove it earlier.")
+            return bad("ProVigil agents remove a block when its time runs out (10 min, 1 h or 24 h); the agent has no command to remove it earlier.")
         }
         "sca_scan" | "syscollector_scan" => {
-            return bad("Wazuh agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
+            return bad("ProVigil agents run this scan on its schedule and when the agent starts. Use Restart agent to run it now.")
         }
         "kill_process" | "quarantine_file" | "restore_file" | "isolate_host" | "release_host" | "yara_scan" => return edr_agent_action(state, ctx, agent_id, action, payload).await,
         _ => return bad("Unknown action"),
     };
     match r {
         Ok(m) => {
-            info!("Wazuh agent {agent_id}: {action} by {}", ctx.username);
+            info!("ProVigil agent {agent_id}: {action} by {}", ctx.username);
             Json(serde_json::json!({ "status": "sent", "message": m })).into_response()
         }
         Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
@@ -2086,7 +2088,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             if let Err(m) = gate("manual_kill_process", serde_json::json!({ "agent_id": agent_id, "pid": pid, "image": image })).await {
                 return reply(StatusCode::FORBIDDEN, m);
             }
-            wazuh_manager::kill_process(agent_id, pid as u32, image.as_deref()).await.map(|_| format!("Kill of process {pid} sent to the agent"))
+            provigil_manager::kill_process(agent_id, pid as u32, image.as_deref()).await.map(|_| format!("Kill of process {pid} sent to the agent"))
         }
         "quarantine_file" => {
             let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
@@ -2095,7 +2097,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             if let Err(m) = gate("manual_quarantine_file", serde_json::json!({ "agent_id": agent_id, "path": path })).await {
                 return reply(StatusCode::FORBIDDEN, m);
             }
-            wazuh_manager::quarantine_file(agent_id, &path).await.map(|_| format!("Quarantine of {path} sent to the agent"))
+            provigil_manager::quarantine_file(agent_id, &path).await.map(|_| format!("Quarantine of {path} sent to the agent"))
         }
         "restore_file" => {
             let Some(id) = str_of("quarantine_id").filter(|i| i.len() <= 64 && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) else {
@@ -2104,7 +2106,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             if let Err(m) = gate("manual_restore_file", serde_json::json!({ "agent_id": agent_id, "quarantine_id": id })).await {
                 return reply(StatusCode::FORBIDDEN, m);
             }
-            wazuh_manager::restore_file(agent_id, &id).await.map(|_| format!("Restore of quarantined file {id} sent to the agent"))
+            provigil_manager::restore_file(agent_id, &id).await.map(|_| format!("Restore of quarantined file {id} sent to the agent"))
         }
         // through response.rs, so it is listed and lifted with the other isolations
         "isolate_host" => {
@@ -2127,7 +2129,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             }
             // also with no record (an isolation from before a restart): the release is harmless
             if recs.is_empty() {
-                wazuh_manager::release_agent(agent_id).await.map(|_| "Release sent to the agent".to_string())
+                provigil_manager::release_agent(agent_id).await.map(|_| "Release sent to the agent".to_string())
             } else if notes.is_empty() {
                 Ok("Release sent to the agent".to_string())
             } else {
@@ -2139,13 +2141,13 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
             let Some(path) = str_of("path").filter(|p| p.len() < 1024) else {
                 return reply(StatusCode::BAD_REQUEST, "The file's full path is required".into());
             };
-            wazuh_manager::yara_scan(agent_id, &path).await.map(|_| format!("YARA scan of {path} sent to the agent; a match becomes an alert"))
+            provigil_manager::yara_scan(agent_id, &path).await.map(|_| format!("YARA scan of {path} sent to the agent; a match becomes an alert"))
         }
         _ => return reply(StatusCode::BAD_REQUEST, "Unknown action".into()),
     };
     match r {
         Ok(m) => {
-            info!("Wazuh agent {agent_id}: {action} by {} ({m})", ctx.username);
+            info!("ProVigil agent {agent_id}: {action} by {} ({m})", ctx.username);
             reply(StatusCode::OK, m)
         }
         Err(e) => reply(StatusCode::SERVICE_UNAVAILABLE, e),
@@ -2154,7 +2156,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
 
 /// Block an IP on a Wazuh agent and record it.
 async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &str, duration: u64, reason: &str, method: Option<&str>) -> axum::response::Response {
-    match wazuh_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration, method).await {
+    match provigil_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration, method).await {
         Ok(command) => {
             let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(duration);
             let rec = ActiveResponseRecord {
@@ -2169,7 +2171,7 @@ async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &st
             };
             state.active_responses.write().unwrap().insert(0, rec.clone());
             persist::save_active_response(state, &rec).await;
-            info!("Wazuh agent {agent_id}: block {ip} for {timeout}s by {}", ctx.username);
+            info!("ProVigil agent {agent_id}: block {ip} for {timeout}s by {}", ctx.username);
             let m = format!("{ip} blocked on the agent for {timeout} s");
             (StatusCode::CREATED, Json(serde_json::json!({ "status": "success", "message": m, "record": rec }))).into_response()
         }
@@ -2460,7 +2462,7 @@ async fn get_threat_intel_handler(State(state): State<AppState>) -> impl IntoRes
     let total_iocs = ips + hashes + domains;
     Json(serde_json::json!({
         "status": "ok",
-        "sources": ["AlienVault OTX", "AbuseIPDB", "Emerging Threats", "MalwareBazaar", "Wazuh CDB Feeds"],
+        "sources": ["AlienVault OTX", "AbuseIPDB", "Emerging Threats", "MalwareBazaar", "CDB lists"],
         "total_iocs": if total_iocs == 0 { 27737 } else { total_iocs }
     }))
 }
@@ -2896,7 +2898,7 @@ async fn get_siem_sources(
 async fn post_siem_sources() -> axum::response::Response {
     (
         StatusCode::GONE,
-        Json(serde_json::json!({ "status": "error", "message": "Add a source by deploying a Wazuh agent (Agent Fleet > Deploy) or registering a syslog device (Tenant admin > Syslog Devices)" })),
+        Json(serde_json::json!({ "status": "error", "message": "Add a source by deploying a ProVigil agent (Agent Fleet > Deploy) or registering a syslog device (Tenant admin > Syslog Devices)" })),
     )
         .into_response()
 }
@@ -2930,36 +2932,42 @@ fn vulnerabilities_response(list: Vec<vulnerability::VulnItem>) -> Vulnerabiliti
     }
 }
 
+/// The tenant's current detections (ClickHouse), or why they cannot be read.
+async fn scoped_vulnerabilities(state: &AppState, ctx: &AuthCtx, agent: Option<&str>) -> Result<Vec<vulnerability::VulnItem>, axum::response::Response> {
+    vulnerability::current(state, &ctx.scope(), agent).await.map(|l| l.into_iter().filter(|v| agent_in_scope(state, ctx, &v.agent_id)).collect()).map_err(|e| {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": format!("vulnerabilities cannot be read: {e}") }))).into_response()
+    })
+}
+
 async fn get_vulnerabilities(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
     Query(params): Query<VulnFilterParams>,
-) -> Json<VulnerabilitiesResponse> {
-    let list: Vec<vulnerability::VulnItem> = state
-        .vulnerabilities
-        .read()
-        .unwrap()
-        .iter()
-        .filter(|v| agent_in_scope(&state, &ctx, &v.agent_id))
+) -> axum::response::Response {
+    let list = match scoped_vulnerabilities(&state, &ctx, params.agent_id.as_deref()).await {
+        Ok(l) => l,
+        Err(r) => return r,
+    };
+    let list: Vec<vulnerability::VulnItem> = list
+        .into_iter()
         .filter(|v| params.severity.as_ref().is_none_or(|s| v.severity.eq_ignore_ascii_case(s)))
         .filter(|v| params.status.as_ref().is_none_or(|s| v.status.eq_ignore_ascii_case(s)))
-        .filter(|v| params.agent_id.as_ref().is_none_or(|a| &v.agent_id == a))
-        .cloned()
         .collect();
-    Json(vulnerabilities_response(list))
+    Json(vulnerabilities_response(list)).into_response()
 }
 
 async fn get_agent_vulnerabilities(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
-) -> Json<VulnerabilitiesResponse> {
-    let list = if agent_in_scope(&state, &ctx, &agent_id) {
-        state.vulnerabilities.read().unwrap().iter().filter(|v| v.agent_id == agent_id).cloned().collect()
-    } else {
-        Vec::new()
-    };
-    Json(vulnerabilities_response(list))
+) -> axum::response::Response {
+    if !agent_in_scope(&state, &ctx, &agent_id) {
+        return Json(vulnerabilities_response(Vec::new())).into_response();
+    }
+    match scoped_vulnerabilities(&state, &ctx, Some(&agent_id)).await {
+        Ok(l) => Json(vulnerabilities_response(l)).into_response(),
+        Err(r) => r,
+    }
 }
 
 /// `POST /api/v1/vulnerabilities`: the scanner re-scans the caller's agents
@@ -2967,7 +2975,7 @@ async fn get_agent_vulnerabilities(
 async fn post_scan_now(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     // shortcut: agents of the default tenant are not in agent_tenants; they get re-scanned only when they already have results
     let mut agents: std::collections::BTreeSet<String> = state.agent_tenants.read().unwrap().keys().filter(|a| agent_in_scope(&state, &ctx, a)).cloned().collect();
-    agents.extend(state.vulnerabilities.read().unwrap().iter().filter(|v| agent_in_scope(&state, &ctx, &v.agent_id)).map(|v| v.agent_id.clone()));
+    agents.extend(scoped_vulnerabilities(&state, &ctx, None).await.unwrap_or_default().into_iter().map(|v| v.agent_id));
     let sent = agents.iter().filter(|a| match vulnerability::request_rescan(a) {
         Ok(()) => true,
         Err(e) => {
@@ -2979,8 +2987,7 @@ async fn post_scan_now(State(state): State<AppState>, Extension(ctx): Extension<
         // a scan takes a few seconds per agent
         tokio::time::sleep(std::time::Duration::from_secs(8)).await;
     }
-    vulnerability::sync_once(&state).await;
-    let n = state.vulnerabilities.read().unwrap().iter().filter(|v| agent_in_scope(&state, &ctx, &v.agent_id)).count();
+    let n = scoped_vulnerabilities(&state, &ctx, None).await.map(|l| l.len()).unwrap_or(0);
     Json(serde_json::json!({
         "status": "ok",
         "message": format!("Re-scan requested for {sent} agent(s); {n} active vulnerabilities. Results keep updating for a minute."),
@@ -2992,8 +2999,8 @@ async fn get_agent_os_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // the copy in ClickHouse (inventory_store), else siem-api's store
-    if let Some(d) = inventory_store::get(&state, &agent_id).await { return Json(serde_json::json!({ "agent_id": agent_id, "os": d["os"], "source": d["source"] })); }
+    // a Wazuh agent: its wazuh-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Os).await { return Json(serde_json::json!({ "agent_id": agent_id, "os": v, "source": "wazuh-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3012,8 +3019,8 @@ async fn get_agent_hw_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // the copy in ClickHouse (inventory_store), else siem-api's store
-    if let Some(d) = inventory_store::get(&state, &agent_id).await { return Json(serde_json::json!({ "agent_id": agent_id, "hardware": d["hardware"], "source": d["source"] })); }
+    // a Wazuh agent: its wazuh-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Hardware).await { return Json(serde_json::json!({ "agent_id": agent_id, "hardware": v, "source": "wazuh-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3032,8 +3039,8 @@ async fn get_agent_packages_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // the copy in ClickHouse (inventory_store), else siem-api's store
-    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["packages"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "packages": p, "source": d["source"] })); }
+    // a Wazuh agent: its wazuh-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Packages).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "packages": v, "source": "wazuh-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let pkgs: Vec<_> = db.syscollector.programs.values().cloned().collect();
@@ -3055,8 +3062,8 @@ async fn get_agent_ports_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // the copy in ClickHouse (inventory_store), else siem-api's store
-    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["ports"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "ports": p, "source": d["source"] })); }
+    // a Wazuh agent: its wazuh-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Ports).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "ports": v, "source": "wazuh-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3077,8 +3084,8 @@ async fn get_agent_netiface_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // the copy in ClickHouse (inventory_store), else siem-api's store
-    if let Some(d) = inventory_store::get(&state, &agent_id).await { let p = d["netiface"].as_array().cloned().unwrap_or_default(); return Json(serde_json::json!({ "agent_id": agent_id, "total": p.len(), "interfaces": p, "source": d["source"] })); }
+    // a Wazuh agent: its wazuh-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Netiface).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "interfaces": v, "source": "wazuh-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3103,13 +3110,9 @@ async fn get_agent_fim_handler(
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
-        // kept in ClickHouse; brought up to date first (two cheap queries when nothing changed)
-        posture_store::sync_agent(&state, &agent_id).await;
-        if let Some(r) = posture_store::fim(&state, &agent_id).await {
-            return Json(r).into_response();
-        }
-        let r = wazuh_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
+    if provigil_manager::is_provigil_agent(&agent_id).await {
+        // the agent's wazuh-db database (not copied)
+        let r = provigil_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
         return Json(r).into_response();
     }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
@@ -3136,13 +3139,8 @@ async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ct
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
-        posture_store::sync_agent(&state, &agent_id).await;
-        if let Some(r) = posture_store::rootcheck(&state, &agent_id).await {
-            return Json(r).into_response();
-        }
-    }
-    let r = wazuh_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
+    // the agent's wazuh-db database (not copied)
+    let r = provigil_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
     Json(r).into_response()
 }
 
@@ -3228,12 +3226,9 @@ async fn get_agent_sca_handler(
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
-        posture_store::sync_agent(&state, &agent_id).await;
-        if let Some(r) = posture_store::sca(&state, &agent_id).await {
-            return Json(r).into_response();
-        }
-        let r = wazuh_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
+    if provigil_manager::is_provigil_agent(&agent_id).await {
+        // the agent's wazuh-db database (the source; posture_store copies it for compliance)
+        let r = provigil_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
         return Json(r).into_response();
     }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
@@ -3381,8 +3376,8 @@ async fn post_agent_rootcheck_handler(
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
-        return match wazuh_manager::syscheck_restart(&agent_id).await {
+    if provigil_manager::is_provigil_agent(&agent_id).await {
+        return match provigil_manager::syscheck_restart(&agent_id).await {
             Ok(()) => Json(serde_json::json!({ "status": "sent", "message": "Rootcheck and FIM scan started on the agent" })).into_response(),
             Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
         };
@@ -3495,7 +3490,7 @@ async fn post_logtest_handler(
 ) -> impl IntoResponse {
     let logtest = siem_engine::LogtestEngine::new(state.engine.clone());
     let res = logtest.test_log(&payload.log);
-    let out = res.format_wazuh_output();
+    let out = res.format_provigil_output();
     Json(serde_json::json!({
         "result": res,
         "output": out,
@@ -3532,7 +3527,7 @@ async fn get_manager_status_handler(State(state): State<AppState>, Extension(ctx
         let agents = state.agents.read().unwrap();
         (agents.len(), agents.values().filter(|a| matches!(a.status, AgentStatus::Active)).count())
     };
-    let mut v = wazuh_manager::status();
+    let mut v = provigil_manager::status();
     v["agents"] = serde_json::json!({ "total": total, "active": active });
     Json(v).into_response()
 }
@@ -3554,15 +3549,17 @@ async fn get_fim_summary_handler(
             total_files += agent_db.read().unwrap().fim.list().len();
         }
     }
-    // and the Wazuh agents' files and registry values (posture_store.rs copies them to ClickHouse)
-    total_files += state
-        .db
-        .tenant_client(&ctx.scope())
-        .query("SELECT count() FROM siem_fim_files FINAL WHERE agent_id IN ?")
-        .bind(&agent_ids)
-        .fetch_one::<u64>()
-        .await
-        .unwrap_or(0) as usize;
+    // and the Wazuh agents' files and registry values: counted in each agent's wazuh-db
+    // database (the tenant's agents only), 8 at a time
+    {
+        use futures_util::StreamExt;
+        let wazuh: Vec<String> = agent_ids.iter().filter_map(|a| a.parse::<u32>().ok().filter(|n| *n > 0)).map(|n| format!("{n:03}")).collect();
+        total_files += futures_util::stream::iter(wazuh)
+            .map(|id: String| async move { inventory_store::count(&id, "fim_entry").await })
+            .buffer_unordered(8)
+            .fold(0u64, |t, n| std::future::ready(t + n))
+            .await as usize;
+    }
 
     // only the FIM alerts come from ClickHouse (they carry data.syscheck)
     for a in history::alerts_containing(&state, &ctx, history::DEFAULT_HOURS, "\"syscheck\"").await.iter().rev() {
@@ -3661,7 +3658,7 @@ async fn post_active_response_block(
     if let Err(m) = decisions::gate_manual(&state, &ctx, &tenant, "manual_block", &req.ip, serde_json::json!({ "agent_id": agent_id, "ip": req.ip, "seconds": req.duration_seconds.unwrap_or(3600) })).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": m }))).into_response();
     }
-    if wazuh_manager::is_wazuh_agent(&agent_id).await {
+    if provigil_manager::is_provigil_agent(&agent_id).await {
         let reason = req.reason.clone().unwrap_or_else(|| "Manual SOC operator block".to_string());
         return block_on_agent(&state, &ctx, &agent_id, &req.ip, req.duration_seconds.unwrap_or(3600), &reason, req.command.as_deref()).await;
     }
@@ -4050,7 +4047,7 @@ async fn post_agent_enroll_handler(
     }
     // authd refuses groups that do not exist ("Invalid group"); the manager names carry the tenant
     let asked: Vec<String> = payload.groups.as_deref().unwrap_or("").split(',').map(str::to_string).collect();
-    let manager_groups = if wazuh_manager::enabled() {
+    let manager_groups = if provigil_manager::enabled() {
         match groups::resolve(&tenant, &asked) {
             Ok(g) => g,
             Err(e) => return err(StatusCode::BAD_REQUEST, &e),
@@ -4098,8 +4095,8 @@ async fn post_agent_enroll_handler(
         siem_authd::enrollment::add_agent_to_keystore(&mut keystore, &name, &ip, Some(&agent_id), None)
     };
     // remoted reads the keys from etc/client.keys, the agent row from global.db
-    wazuh_manager::save_keys(&state);
-    wazuh_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &manager_groups.join(",")).await;
+    provigil_manager::save_keys(&state);
+    provigil_manager::register_agent(&client_key.id, &client_key.name, &client_key.ip, &client_key.raw_key, &manager_groups.join(",")).await;
 
     state.deleted_agents.write().unwrap().remove(&agent_id);
     state.agent_tenants.write().unwrap().insert(agent_id.clone(), tenant.clone());
@@ -4226,7 +4223,7 @@ fn upgrade_agent_id(state: &AppState, ctx: &AuthCtx, agent_id: &str, manage: boo
 
 /// One request to modulesd's agent-upgrade socket (`queue/tasks/upgrade`), its JSON answer.
 async fn upgrade_module_request(req: serde_json::Value) -> axum::response::Response {
-    let path = wazuh_manager::home().join("queue/tasks/upgrade");
+    let path = provigil_manager::home().join("queue/tasks/upgrade");
     let res = async {
         let mut s = siem_ipc::local::LocalStream::connect(&path).await.map_err(|e| e.to_string())?;
         siem_ipc::framing::send(&mut s, req.to_string().as_bytes()).await.map_err(|e| e.to_string())?;
@@ -4414,12 +4411,8 @@ async fn get_agent_inventory_handler(
     Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
 ) -> axum::response::Response {
-    // ClickHouse first (inventory_store syncs wazuh-db and siem-agents)
-    if let Some(s) = inventory_store::get(&state, &agent_id).await.and_then(|d| d.get("summary").filter(|s| !s.is_null()).cloned()) {
-        return Json(s).into_response();
-    }
     // Wazuh agents: what their syscollector synced to wazuh-db
-    if let Some(inv) = wazuh_manager::agent_inventory(&agent_id).await {
+    if let Some(inv) = provigil_manager::agent_inventory(&agent_id).await {
         return Json(inv).into_response();
     }
     let from_memory = {
@@ -4609,7 +4602,7 @@ const REDSWARM_RULES: &str = "redswarm_rules.xml";
 
 /// The deployed Red Swarm rules into the in-process engine the rounds are verified on.
 fn reload_redswarm_rules(state: &AppState) {
-    let xml = std::fs::read_to_string(wazuh_manager::home().join("etc/rules").join(REDSWARM_RULES)).unwrap_or_default();
+    let xml = std::fs::read_to_string(provigil_manager::home().join("etc/rules").join(REDSWARM_RULES)).unwrap_or_default();
     state.engine.set_custom_rules_xml(&xml);
 }
 
@@ -4800,7 +4793,7 @@ async fn post_redswarm_apply_rule_handler(
     // into the manager's custom rules (ids 119000-119999), only if wazuh-analysisd accepts them
     // Wazuh's <mitre> takes only <id> (older drafts also had <tactic> / <technique>)
     let xml: String = draft.rule_xml.lines().filter(|l| !l.trim_start().starts_with("<tactic>") && !l.trim_start().starts_with("<technique>")).collect::<Vec<_>>().join("\n");
-    let deployed = tokio::task::spawn_blocking(move || wazuh_manager::deploy_rule_group(REDSWARM_RULES, &xml, 119_000..=119_999)).await.unwrap_or_else(|e| Err(e.to_string()));
+    let deployed = tokio::task::spawn_blocking(move || provigil_manager::deploy_rule_group(REDSWARM_RULES, &xml, 119_000..=119_999)).await.unwrap_or_else(|e| Err(e.to_string()));
     let (rule_id, xml) = match deployed {
         Ok(x) => x,
         Err(e) => return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
@@ -4833,7 +4826,7 @@ async fn post_redswarm_rollback_rule_handler(
         let Some(rule_id) = rule_id else {
             return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": "The rule has no id" }))).into_response();
         };
-        let removed = tokio::task::spawn_blocking(move || wazuh_manager::remove_rule_group(REDSWARM_RULES, rule_id)).await.unwrap_or_else(|e| Err(e.to_string()));
+        let removed = tokio::task::spawn_blocking(move || provigil_manager::remove_rule_group(REDSWARM_RULES, rule_id)).await.unwrap_or_else(|e| Err(e.to_string()));
         if let Err(e) = removed {
             return (StatusCode::UNPROCESSABLE_ENTITY, Json(serde_json::json!({ "status": "error", "message": e }))).into_response();
         }

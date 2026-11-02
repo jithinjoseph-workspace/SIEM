@@ -82,7 +82,7 @@ pub fn is_valid_name(name: &str) -> bool {
 }
 
 /// Compares Wazuh versions: returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2.
-pub fn compare_wazuh_versions(v1: &str, v2: &str) -> i32 {
+pub fn compare_provigil_versions(v1: &str, v2: &str) -> i32 {
     let clean1 = v1.trim_start_matches('v').trim_start_matches('V');
     let clean2 = v2.trim_start_matches('v').trim_start_matches('V');
 
@@ -161,7 +161,7 @@ pub fn parse_enrollment_data(
         let v_end = after_v.find('\'').ok_or(EnrollmentError::UnterminatedVersion)?;
         let ver = after_v[..v_end].to_string();
 
-        if !allow_higher_versions && compare_wazuh_versions(manager_version, &ver) < 0 {
+        if !allow_higher_versions && compare_provigil_versions(manager_version, &ver) < 0 {
             return Err(EnrollmentError::IncompatibleVersion);
         }
         version = Some(ver);
@@ -397,10 +397,10 @@ mod tests {
 
     #[test]
     fn test_version_comparison() {
-        assert_eq!(compare_wazuh_versions("v4.14.7", "v4.14.7"), 0);
-        assert_eq!(compare_wazuh_versions("v4.14.7", "v4.14.6"), 1);
-        assert_eq!(compare_wazuh_versions("v4.14.6", "v4.14.7"), -1);
-        assert_eq!(compare_wazuh_versions("v5.0.0", "v4.14.7"), 1);
+        assert_eq!(compare_provigil_versions("v4.14.7", "v4.14.7"), 0);
+        assert_eq!(compare_provigil_versions("v4.14.7", "v4.14.6"), 1);
+        assert_eq!(compare_provigil_versions("v4.14.6", "v4.14.7"), -1);
+        assert_eq!(compare_provigil_versions("v5.0.0", "v4.14.7"), 1);
     }
 
     #[test]

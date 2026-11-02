@@ -11,7 +11,7 @@ use siem_log::WLog;
 /// `OS_PIDFILE`
 pub const OS_PIDFILE: &str = "var/run";
 /// `WAZUH_HOME_ENV`
-pub const WAZUH_HOME_ENV: &str = "WAZUH_HOME";
+pub const PROVIGIL_HOME_ENV: &str = "WAZUH_HOME";
 /// `HOME_ERROR`
 pub const HOME_ERROR: &str = "(1108): Unable to find Wazuh install directory. Export it to WAZUH_HOME environment variable.";
 
@@ -40,7 +40,7 @@ pub fn homedir(argv0: &str) -> Result<PathBuf, &'static str> {
             let dir = p.parent().map(|d| d.to_string_lossy().replace('\\', "/")).unwrap_or_default();
             first_token(&dir, "/bin").map(PathBuf::from)
         }
-        None => std::env::var(WAZUH_HOME_ENV).ok().map(PathBuf::from),
+        None => std::env::var(PROVIGIL_HOME_ENV).ok().map(PathBuf::from),
     };
     match cand {
         Some(h) if h.is_dir() => Ok(h),

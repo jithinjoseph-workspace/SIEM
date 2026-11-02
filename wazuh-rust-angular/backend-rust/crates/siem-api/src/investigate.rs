@@ -69,7 +69,7 @@ pub fn classify(q: &str, agents: &[(String, String)]) -> Kind {
 struct AlertRow {
     id: String,
     /// the id SOAR records for its runs (Wazuh's own alert id)
-    wazuh_id: String,
+    provigil_id: String,
     timestamp: u64,
     agent_name: String,
     rule_id: u32,
@@ -239,7 +239,7 @@ pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
         .fetch_all::<CaseRow>()
         .await
         .unwrap_or_default();
-    let alert_ids: Vec<String> = alerts.iter().flat_map(|a| [a.id.clone(), a.wazuh_id.clone()]).filter(|i| !i.is_empty()).collect();
+    let alert_ids: Vec<String> = alerts.iter().flat_map(|a| [a.id.clone(), a.provigil_id.clone()]).filter(|i| !i.is_empty()).collect();
     let runs = tc
         .query("SELECT id, playbook_name, hit_id, status, detail, toUInt32(toUnixTimestamp(created_at)) AS created_at FROM soar_playbook_runs WHERE hit_id IN ? OR positionCaseInsensitive(detail, ?) > 0 ORDER BY created_at DESC LIMIT 100")
         .bind(&alert_ids)
@@ -262,17 +262,15 @@ pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
     // ── the host itself ──
     let host = match &kind {
         Kind::Host(id, name) => {
-            let inv = crate::inventory_store::get(state, id).await;
-            let vulns: Vec<Value> = state
-                .vulnerabilities
-                .read()
-                .unwrap()
+            let inv = crate::inventory_store::host(state, id).await;
+            let vulns: Vec<Value> = crate::vulnerability::current(state, tenant, Some(id))
+                .await
+                .unwrap_or_default()
                 .iter()
-                .filter(|v| &v.agent_id == id)
                 .map(|v| json!({ "cve": v.cve, "severity": v.severity, "cvss": v.cvss_score, "package": v.package_name, "version": v.installed_version, "fixed": v.fixed_version, "status": v.status, "known_exploited": !crate::intel::lookup(&v.cve).is_empty() }))
                 .collect();
             let agent = state.agents.read().unwrap().get(id).map(|a| json!({ "id": a.id, "name": a.name, "ip": a.ip, "os": a.os, "os_type": a.os_type, "status": format!("{:?}", a.status).to_lowercase(), "version": a.version, "last_keepalive": a.last_keepalive }));
-            json!({ "agent": agent, "name": name, "inventory": inv.map(|i| json!({ "os": i["os"], "hardware": i["hardware"], "ports": i["ports"].as_array().map_or(0, |a| a.len()), "processes": i["processes"].as_array().map_or(0, |a| a.len()), "packages": i["packages"].as_array().map_or(0, |a| a.len()) })), "vulnerabilities": vulns })
+            json!({ "agent": agent, "name": name, "inventory": inv.map(|i| json!({ "os": i["os"], "hardware": i["hardware"], "ports": i["ports"], "processes": i["processes"], "packages": i["packages"] })), "vulnerabilities": vulns })
         }
         _ => Value::Null,
     };

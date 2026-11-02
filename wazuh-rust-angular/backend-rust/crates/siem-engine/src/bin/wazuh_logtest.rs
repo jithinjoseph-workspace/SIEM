@@ -25,7 +25,7 @@ fn main() {
                     continue;
                 }
                 let res = logtest.test_log(trimmed);
-                println!("{}", res.format_wazuh_output());
+                println!("{}", res.format_provigil_output());
                 println!("-----------------------------------------------------------------");
             }
             Err(_) => break,

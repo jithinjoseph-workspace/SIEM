@@ -255,7 +255,7 @@
 
       </div>
 
-      <!-- Wazuh alert e-mails (wazuh-maild) -->
+      <!-- ProVigil alert e-mails (wazuh-maild) -->
       <div class="smtp-form-grid">
         <div class="smtp-field">
           <label for="alertEnabled">ALERT E-MAILS FROM THE SIEM MANAGER</label>
@@ -272,7 +272,7 @@
         <div class="smtp-field">
           <label for="alertLevel">MINIMUM RULE LEVEL</label>
           <select id="alertLevel" [(ngModel)]="smtpConfig.alert_level" name="alertLevel" class="smtp-input font-mono">
-            <option *ngFor="let l of levels" [ngValue]="l">{{ l }}{{ l === 12 ? ' (Wazuh default)' : '' }}</option>
+            <option *ngFor="let l of levels" [ngValue]="l">{{ l }}{{ l === 12 ? ' (default)' : '' }}</option>
           </select>
         </div>
         <div class="smtp-field">

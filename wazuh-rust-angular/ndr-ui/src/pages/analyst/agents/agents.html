@@ -17,7 +17,7 @@
         </span>
       </div>
       <p class="text-sm text-slate-400 mt-2 leading-relaxed">
-        Inventory, posture and response for this tenant's Wazuh agents.
+        Inventory, posture and response for this tenant's ProVigil agents.
         <span class="whitespace-nowrap">Manager <span class="font-mono text-cyan-300 break-all">{{ deployManagerUrl() }}</span></span>
         <span class="text-slate-500"> · AES-encrypted agent protocol (TCP 1514)</span>
       </p>
@@ -474,7 +474,7 @@
       </div>
     </div>
     <div *ngIf="groupFeedback()" class="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300 break-words">{{ groupFeedback() }}</div>
-    <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No groups (the Wazuh manager is not running).</div>
+    <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No groups (the ProVigil manager is not running).</div>
     <div *ngIf="groups().length > 0" class="rounded-xl border border-slate-800 overflow-x-auto nice-scroll">
       <table class="w-full text-xs min-w-[420px]">
         <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider">
@@ -914,10 +914,10 @@
           <div class="tab-panel space-y-5">
             <div class="space-y-2">
               <h4 class="font-semibold text-white">Remote management</h4>
-              <p class="text-xs text-slate-500">Sent to the agent through the manager (remoted), as the Wazuh API does.</p>
+              <p class="text-xs text-slate-500">Sent to the agent through the manager (remoted), through the manager API.</p>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button type="button" (click)="triggerAgentAction('restart_agent')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-800 rounded-xl text-left text-xs font-semibold text-white transition flex items-center gap-3">
-                  <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 flex-none"></lucide-angular> Restart the Wazuh agent service</button>
+                  <lucide-angular [img]="RefreshIcon" class="w-4 h-4 text-cyan-400 flex-none"></lucide-angular> Restart the ProVigil agent service</button>
                 <button type="button" (click)="triggerAgentAction('fim_scan')" class="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-800 rounded-xl text-left text-xs font-semibold text-white transition flex items-center gap-3">
                   <lucide-angular [img]="ScanIcon" class="w-4 h-4 text-cyan-400 flex-none"></lucide-angular> Run a FIM + rootcheck scan now</button>
               </div>
@@ -1148,7 +1148,7 @@
         <div class="min-w-0 flex-1">
           <h2 id="deploy-modal-title" class="text-base sm:text-lg font-bold text-white flex flex-wrap items-center gap-2">
             Enroll a new agent
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">Wazuh {{ managerVersion }}</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">ProVigil {{ managerVersion }}</span>
           </h2>
           <p class="text-xs text-slate-400">The agent enrolls on first run, gets its key and joins this tenant's fleet.</p>
         </div>

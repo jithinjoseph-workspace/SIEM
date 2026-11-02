@@ -11,7 +11,6 @@
 //! Agents (`wazuh-agent.exe`, `wazuh-agentd`) connect to remoted on 1514/tcp.
 
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -41,7 +40,7 @@ const INTEGRATIONS: [&str; 5] = ["slack", "pagerduty", "virustotal", "shuffle", 
 
 /// Where the manager lives (`WAZUH_MANAGER_HOME`, else `data/manager`).
 pub fn home() -> PathBuf {
-    let p = match std::env::var("WAZUH_MANAGER_HOME") {
+    let p = match std::env::var("PROVIGIL_MANAGER_HOME").or_else(|_| std::env::var("WAZUH_MANAGER_HOME")) {
         Ok(h) if !h.trim().is_empty() => PathBuf::from(h),
         _ => crate::data_file_path("manager"),
     };
@@ -50,7 +49,7 @@ pub fn home() -> PathBuf {
 
 /// Whether siem-api runs the manager (`WAZUH_MANAGER=0` turns it off).
 pub fn enabled() -> bool {
-    !matches!(std::env::var("WAZUH_MANAGER").as_deref(), Ok("0") | Ok("false") | Ok("no"))
+    !matches!(std::env::var("PROVIGIL_MANAGER").or_else(|_| std::env::var("WAZUH_MANAGER")).as_deref(), Ok("0") | Ok("false") | Ok("no"))
 }
 
 fn keys_file(home: &Path) -> PathBuf {
@@ -58,9 +57,9 @@ fn keys_file(home: &Path) -> PathBuf {
 }
 
 /// The Wazuh 4.14.7 source tree the ruleset is copied from.
-fn wazuh_source() -> Option<PathBuf> {
+fn provigil_source() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
-    if let Ok(s) = std::env::var("WAZUH_SOURCE_DIR") {
+    if let Ok(s) = std::env::var("PROVIGIL_SOURCE_DIR").or_else(|_| std::env::var("WAZUH_SOURCE_DIR")) {
         cands.push(PathBuf::from(s));
     }
     for rel in ["../../wazuh/wazuh-4.14.7", "../wazuh/wazuh-4.14.7", "wazuh/wazuh-4.14.7", "../../../wazuh/wazuh-4.14.7"] {
@@ -147,7 +146,7 @@ fn prepare_home(home: &Path) -> Result<(), String> {
     ] {
         std::fs::create_dir_all(home.join(d)).map_err(|e| format!("{d}: {e}"))?;
     }
-    let src = wazuh_source().ok_or("Wazuh 4.14.7 source tree not found (set WAZUH_SOURCE_DIR)")?;
+    let src = provigil_source().ok_or("Upstream 4.14.7 source tree not found (set PROVIGIL_SOURCE_DIR)")?;
     // The default ruleset is replaced on every start, like a package upgrade.
     for d in ["decoders", "rules"] {
         let to = home.join("ruleset").join(d);
@@ -186,7 +185,7 @@ fn prepare_home(home: &Path) -> Result<(), String> {
         std::fs::write(&conf, ossec_conf()).map_err(|e| format!("ossec.conf: {e}"))?;
     }
     ensure_ar_commands(&conf);
-    if !keys_file(home).exists() {
+    if !platform_keys() && !keys_file(home).exists() {
         std::fs::write(keys_file(home), "").map_err(|e| format!("client.keys: {e}"))?;
     }
     Ok(())
@@ -213,7 +212,7 @@ fn install_agentless_scripts(src: &Path, home: &Path) -> Result<(), String> {
 
 /// The files of the Windows agent package (`/downloads/windows/<file>`).
 pub const WINDOWS_AGENT_FILES: &[&str] = &[
-    "wazuh-agent.exe",
+    "provigil-agent.exe",
     // active-responsein (siem-active-response)
     "netsh.exe",
     "restart-wazuh.exe",
@@ -245,12 +244,35 @@ fn agent_dist_dir() -> PathBuf {
     crate::data_file_path("agent-dist").join("windows")
 }
 
-/// Fills `data/agent-dist/windows` with the package's text files (the MSI
-/// installs them next to `wazuh-agent.exe`).
+/// Where the build puts the package's programs (a Windows build, or the cross-build).
+const BUILD_OUTPUTS: [&str; 3] = ["target/x86_64-pc-windows-gnu/release", "target/release", "backend-rust/target/x86_64-pc-windows-gnu/release"];
+
+fn modified(p: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(p).ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok())
+}
+
+/// The newest of `cands` that exists.
+fn newest(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    cands.into_iter().filter_map(|p| modified(&p).map(|t| (t, p))).max_by_key(|(t, _)| *t).map(|(_, p)| p)
+}
+
+/// Fills `data/agent-dist/windows`: the package's programs from the build output when
+/// it is newer (so the folder alone is a complete package to ship to a server without
+/// the build), and its text files (the MSI installs them next to `wazuh-agent.exe`).
 fn prepare_agent_dist() {
     let dir = agent_dist_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let Some(src) = wazuh_source() else { return };
+    for f in WINDOWS_AGENT_FILES.iter().filter(|f| f.ends_with(".exe")) {
+        let dst = dir.join(f);
+        let Some(built) = newest(BUILD_OUTPUTS.iter().map(|o| PathBuf::from(o).join(f))) else { continue };
+        if modified(&built) > modified(&dst) {
+            match std::fs::copy(&built, &dst) {
+                Ok(_) => info!("Agent package: {f} updated from {}", built.display()),
+                Err(e) => warn!("Agent package: {f} not copied from {}: {e}", built.display()),
+            }
+        }
+    }
+    let Some(src) = provigil_source() else { return };
     for (from, to) in [
         (src.join("etc/internal_options.conf"), "internal_options.conf"),
         (src.join("etc/local_internal_options-win.conf"), "local_internal_options.conf"),
@@ -272,19 +294,17 @@ fn prepare_agent_dist() {
     }
 }
 
-/// A file of the Windows agent package: `data/agent-dist/windows/<name>`,
-/// the agent binary also from the cross-build outputs.
+/// A file of the Windows agent package: `data/agent-dist/windows/<name>`, or for a
+/// program the build output when it is newer (a rebuild while siem-api runs).
 pub fn windows_agent_file(name: &str) -> Option<PathBuf> {
     if !WINDOWS_AGENT_FILES.contains(&name) {
         return None;
     }
     let mut cands = vec![agent_dist_dir().join(name)];
     if name.ends_with(".exe") {
-        for rel in ["target/x86_64-pc-windows-gnu/release", "target/release", "backend-rust/target/x86_64-pc-windows-gnu/release"] {
-            cands.push(PathBuf::from(rel).join(name));
-        }
+        cands.extend(BUILD_OUTPUTS.iter().map(|o| PathBuf::from(o).join(name)));
     }
-    cands.into_iter().find(|p| p.is_file())
+    newest(cands)
 }
 
 /// The Windows agent's `ossec.conf`: the MSI's default (`src/win32/ossec.conf`)
@@ -298,7 +318,7 @@ pub fn windows_agent_conf(manager: &str) -> Option<String> {
     if !ok {
         return None;
     }
-    let src = wazuh_source()?;
+    let src = provigil_source()?;
     let t = std::fs::read_to_string(src.join("src/win32/ossec.conf")).ok()?;
     let t = t.replace("<address>0.0.0.0</address>", &format!("<address>{manager}</address>"));
     let t = t.replacen(
@@ -309,11 +329,22 @@ pub fn windows_agent_conf(manager: &str) -> Option<String> {
     Some(t)
 }
 
+/// The program file of a daemon or tool: siem-api names them as the ported daemons name
+/// themselves (`wazuh-analysisd`: their log tags, state files), the files are `provigil-*`.
 pub(crate) fn exe_name(d: &str) -> String {
+    let d = program_name(d);
     if cfg!(windows) {
         format!("{d}.exe")
     } else {
-        d.to_string()
+        d
+    }
+}
+
+/// A daemon's ProVigil name, as programs and the console show it.
+pub(crate) fn program_name(d: &str) -> String {
+    match d.strip_prefix("wazuh-") {
+        Some(rest) => format!("provigil-{rest}"),
+        None => d.to_string(),
     }
 }
 
@@ -366,18 +397,18 @@ fn build_mitre_db(home: &Path) {
     if db.exists() {
         return;
     }
-    let Some(src) = wazuh_source() else { return };
+    let Some(src) = provigil_source() else { return };
     let json = src.join("ruleset/mitre/enterprise-attack.json");
     let Some(tool) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(exe_name("wazuh-mitredb")))).filter(|p| p.is_file()) else {
-        warn!("Wazuh manager: wazuh-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
+        warn!("ProVigil manager: wazuh-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
         return;
     };
     // built under another name: a half-built file must not look finished
     let tmp = db.with_extension("db.tmp");
     let _ = std::fs::remove_file(&tmp);
     match Command::new(tool).arg("-d").arg(&tmp).arg("-j").arg(&json).stdout(Stdio::null()).status() {
-        Ok(s) if s.success() && std::fs::rename(&tmp, &db).is_ok() => info!("Wazuh manager: built {}", db.display()),
-        other => warn!("Wazuh manager: building mitre.db failed: {other:?}"),
+        Ok(s) if s.success() && std::fs::rename(&tmp, &db).is_ok() => info!("ProVigil manager: built {}", db.display()),
+        other => warn!("ProVigil manager: building mitre.db failed: {other:?}"),
     }
 }
 
@@ -394,7 +425,7 @@ fn kill_stale(home: &Path) {
                 .status();
             // after a reboot the pid may belong to another program
             #[cfg(unix)]
-            if std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.starts_with("wazuh-")) {
+            if std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.starts_with("wazuh-") || c.starts_with("provigil-")) {
                 let _ = Command::new("kill").args(["-9", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
             }
         }
@@ -464,6 +495,17 @@ fn spawn(home: &Path, d: &str) -> std::io::Result<Child> {
         "wazuh-db" | "wazuh-modulesd" | "wazuh-integratord" | "wazuh-csyslogd" => c.arg("-f"),
         _ => c.arg("-f").arg("-D").arg(home),
     };
+    if matches!(d, "wazuh-remoted" | "wazuh-modulesd") {
+        if let Some((addr, token)) = KEYS_SERVICE.get() {
+            c.env("SIEM_KEYS_ADDR", addr).env("SIEM_KEYS_TOKEN", token);
+        }
+    }
+    // analysisd streams alerts and events, the scanner in modulesd its results
+    if matches!(d, "wazuh-analysisd" | "wazuh-modulesd") {
+        if let Some((addr, token)) = STREAM.get() {
+            c.env("SIEM_STREAM_ADDR", addr).env("SIEM_STREAM_TOKEN", token);
+        }
+    }
     let log = |n: &str| std::fs::OpenOptions::new().create(true).append(true).open(home.join("logs").join(n));
     c.stdin(Stdio::null());
     c.stdout(log(&format!("{d}.out")).map(Stdio::from).unwrap_or(Stdio::null()));
@@ -493,7 +535,7 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     c.push((d.to_string(), pid));
                 }
                 record_children(&home);
-                info!("Wazuh manager: {d} started (pid {pid})");
+                info!("ProVigil manager: {} started (pid {pid})", program_name(d));
                 if let Some(tx) = first.take() {
                     // The next daemon starts once this one listens.
                     if let Some(m) = ready_marker(&home, d) {
@@ -512,7 +554,7 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                 record_children(&home);
                 // maild / integratord / csyslogd / agentlessd exit 0 when not configured: start again once ossec.conf changes
                 if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd" | "wazuh-agentlessd") && st.as_ref().is_ok_and(|s| s.success()) {
-                    info!("Wazuh manager: {d} idle (not configured)");
+                    info!("ProVigil manager: {} idle (not configured)", program_name(d));
                     let conf = home.join("etc/ossec.conf");
                     let mtime = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();
                     let seen = mtime(&conf);
@@ -521,10 +563,10 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     }
                     continue;
                 }
-                warn!("Wazuh manager: {d} exited ({st:?}); restarting in 5s (see {}/logs/ossec.log)", home.display());
+                warn!("ProVigil manager: {} exited ({st:?}); restarting in 5s (see {}/logs/ossec.log)", program_name(d), home.display());
             }
             Err(e) => {
-                warn!("Wazuh manager: cannot start {d}: {e}");
+                warn!("ProVigil manager: cannot start {}: {e}", program_name(d));
                 if let Some(tx) = first.take() {
                     let _ = tx.send(());
                 }
@@ -615,7 +657,7 @@ fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<
 /// returns the id and the XML as deployed.
 pub fn deploy_rule_group(file: &str, xml: &str, ids: std::ops::RangeInclusive<u32>) -> Result<(u32, String), String> {
     if !enabled() {
-        return Err("The Wazuh manager is not running".into());
+        return Err("The ProVigil manager is not running".into());
     }
     let _g = RULES_LOCK.lock().unwrap();
     let home = home();
@@ -632,7 +674,7 @@ pub fn deploy_rule_group(file: &str, xml: &str, ids: std::ops::RangeInclusive<u3
 /// Removes the rule group holding `<rule id="id">` from `etc/rules/<file>`.
 pub fn remove_rule_group(file: &str, id: u32) -> Result<(), String> {
     if !enabled() {
-        return Err("The Wazuh manager is not running".into());
+        return Err("The ProVigil manager is not running".into());
     }
     let _g = RULES_LOCK.lock().unwrap();
     let home = home();
@@ -772,7 +814,7 @@ pub fn apply_mail_settings(s: &crate::mail_settings::MailSettings) {
         }
     }
     if changed {
-        info!("Wazuh manager: mail settings applied (alerts by e-mail: {})", if s.alert_enabled { "on" } else { "off" });
+        info!("ProVigil manager: mail settings applied (alerts by e-mail: {})", if s.alert_enabled { "on" } else { "off" });
         // analysisd decides which alerts are mailed; maild and monitord send them
         restart_daemons(&["wazuh-analysisd", "wazuh-maild", "wazuh-monitord"]);
     }
@@ -805,14 +847,14 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
     });
     match wdb().query(&format!("global insert-agent {row}")).await {
         Ok(r) if r.starts_with("ok") => {}
-        Ok(r) => warn!("Wazuh manager: insert-agent {id}: {r}"),
-        Err(e) => warn!("Wazuh manager: insert-agent {id}: {e}"),
+        Ok(r) => warn!("ProVigil manager: insert-agent {id}: {r}"),
+        Err(e) => warn!("ProVigil manager: insert-agent {id}: {e}"),
     }
     let groups: Vec<&str> = group.split(',').map(str::trim).filter(|g| !g.is_empty()).collect();
     let set = serde_json::json!({ "mode": "override", "sync_status": "synced", "data": [{ "id": n, "groups": groups }] });
     if let Ok(r) = wdb().query(&format!("global set-agent-groups {set}")).await {
         if !r.starts_with("ok") {
-            warn!("Wazuh manager: set-agent-groups {id}: {r}");
+            warn!("ProVigil manager: set-agent-groups {id}: {r}");
         }
     }
 }
@@ -824,11 +866,11 @@ pub async fn set_agent_groups(id: &str, groups: &[String]) -> bool {
     match wdb().query(&format!("global set-agent-groups {set}")).await {
         Ok(r) if r.starts_with("ok") => true,
         Ok(r) => {
-            warn!("Wazuh manager: set-agent-groups {id}: {r}");
+            warn!("ProVigil manager: set-agent-groups {id}: {r}");
             false
         }
         Err(e) => {
-            warn!("Wazuh manager: set-agent-groups {id}: {e}");
+            warn!("ProVigil manager: set-agent-groups {id}: {e}");
             false
         }
     }
@@ -841,7 +883,7 @@ pub async fn sync_group(name: &str, exists: bool) -> bool {
     match wdb().query(&format!("global {cmd} {name}")).await {
         Ok(r) if r.starts_with("ok") => true,
         r => {
-            warn!("Wazuh manager: {cmd} {name}: {r:?}");
+            warn!("ProVigil manager: {cmd} {name}: {r:?}");
             false
         }
     }
@@ -867,7 +909,7 @@ pub(crate) async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Val
 }
 
 /// Whether the id is an agent of the Wazuh manager (it has a row in global.db).
-pub async fn is_wazuh_agent(agent_id: &str) -> bool {
+pub async fn is_provigil_agent(agent_id: &str) -> bool {
     let Ok(n) = agent_id.parse::<u32>() else { return false };
     enabled() && wdb().query(&format!("global get-agent-info {n}")).await.is_ok_and(|r| r.starts_with("ok [{"))
 }
@@ -1235,9 +1277,25 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
     }))
 }
 
-/// Whether the manager runs and its `etc/client.keys` is gone.
+/// Whether the manager runs, reads its keys from the file, and the file is gone.
 pub fn keys_file_missing() -> bool {
-    enabled() && home().join("etc").exists() && !keys_file(&home()).exists()
+    !platform_keys() && enabled() && home().join("etc").exists() && !keys_file(&home()).exists()
+}
+
+/// Whether remoted and modulesd read the agent keys from siem-api (ClickHouse), not a file.
+pub fn platform_keys() -> bool {
+    KEYS_SERVICE.get().is_some()
+}
+
+/// Removes `etc/client.keys` once ClickHouse holds every key (platform keys only).
+pub fn forget_keys_file() {
+    let path = keys_file(&home());
+    if platform_keys() && path.exists() {
+        match std::fs::remove_file(&path) {
+            Ok(()) => info!("Agent keys are read from ClickHouse: {} removed", path.display()),
+            Err(e) => warn!("{} not removed: {e}", path.display()),
+        }
+    }
 }
 
 /// Writes the platform keystore to `etc/client.keys` (remoted reloads it).
@@ -1247,24 +1305,35 @@ pub fn save_keys(state: &AppState) {
     if !enabled() {
         return;
     }
+    // remoted and modulesd see the new version through the key service: no file
+    if platform_keys() {
+        return;
+    }
     let ks = state.auth_keystore.read().unwrap().clone();
     let path = keys_file(&home());
     let tmp = path.with_extension("keys.tmp");
     if let Err(e) = ks.save_file(&tmp).and_then(|_| std::fs::rename(&tmp, &path)) {
-        warn!("Wazuh manager: cannot write {}: {e}", path.display());
+        warn!("ProVigil manager: cannot write {}: {e}", path.display());
     }
 }
 
 /// Starts the manager: home, keys, daemons, and the alert/event/status links.
-pub fn start(state: AppState) {
+pub fn start(state: AppState, keys_in_clickhouse: bool) {
     if !enabled() {
-        info!("Wazuh manager disabled (WAZUH_MANAGER=0)");
+        info!("ProVigil manager disabled (PROVIGIL_MANAGER=0)");
         return;
+    }
+    // ClickHouse holds the keys: remoted and modulesd ask siem-api for them (no client.keys)
+    if keys_in_clickhouse {
+        match start_keys_service(state.clone()) {
+            Ok(addr) => info!("Agent keys: remoted and modulesd read them from {addr} (ClickHouse), no etc/client.keys"),
+            Err(e) => warn!("Key service not started ({e}): the daemons read etc/client.keys"),
+        }
     }
     let home = home();
     prepare_agent_dist();
     if let Err(e) = prepare_home(&home) {
-        warn!("Wazuh manager not started: {e}");
+        warn!("ProVigil manager not started: {e}");
         return;
     }
     // Keys of the file not in ClickHouse yet (older installs) join the
@@ -1280,11 +1349,18 @@ pub fn start(state: AppState) {
     save_keys(&state);
     kill_stale(&home);
     if let Err(e) = install_binaries(&home) {
-        warn!("Wazuh manager not started: {e}");
+        warn!("ProVigil manager not started: {e}");
         return;
     }
     build_mitre_db(&home);
-    info!("Wazuh manager home: {}", home.display());
+    info!("ProVigil manager home: {}", home.display());
+    match start_stream(state.clone()) {
+        Ok(addr) => {
+            info!("Alerts, events and vulnerability results stream to {addr}, straight into ClickHouse (no alerts / archives / result files)");
+            crate::vulnerability::fill_if_empty(state.clone());
+        }
+        Err(e) => warn!("Alert stream not started ({e}): analysisd writes no alerts until siem-api restarts"),
+    }
     let h = home.clone();
     std::thread::spawn(move || {
         for d in DAEMONS {
@@ -1296,14 +1372,6 @@ pub fn start(state: AppState) {
     });
 
     let s = state.clone();
-    let p = home.join("logs/alerts/alerts.json");
-    let o = home.join("var/run/siem-api.alerts.offset");
-    tokio::spawn(async move { tail_json(p, o, move |vs| on_alerts(s.clone(), vs)).await });
-    let s = state.clone();
-    let p = home.join("logs/archives/archives.json");
-    let o = home.join("var/run/siem-api.archives.offset");
-    tokio::spawn(async move { tail_json(p, o, move |vs| on_events(s.clone(), vs)).await });
-    let s = state.clone();
     tokio::spawn(async move { agent_status_loop(s).await });
     // the stored SMTP settings win over the files (a fresh manager home gets them too)
     let s = state.clone();
@@ -1314,49 +1382,163 @@ pub fn start(state: AppState) {
     });
 }
 
-/// Follows a JSON-lines file from the saved offset (from the start when
-/// the file was truncated or rotated).
-async fn tail_json<F, Fut>(path: PathBuf, offset_file: PathBuf, mut f: F)
-where
-    F: FnMut(Vec<serde_json::Value>) -> Fut,
-    Fut: std::future::Future<Output = ()>,
-{
-    let mut offset: u64 = std::fs::read_to_string(&offset_file).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
-    let mut partial: Vec<u8> = Vec::new();
-    loop {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let Ok(mut file) = std::fs::File::open(&path) else { continue };
-        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
-        if len < offset {
-            offset = 0;
-            partial.clear();
+/// analysisd's stream (siem-analysisd stream.rs): its loopback address and one-time token.
+static STREAM: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+
+/// The key service for remoted and modulesd (siem_crypto::keystore::platform_fetch).
+static KEYS_SERVICE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+
+/// The keys' version for the daemons: changes with every key change and every start.
+fn keys_version() -> u64 {
+    static EPOCH: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *EPOCH.get_or_init(|| chrono::Utc::now().timestamp_millis().max(0) as u64) + crate::agent_keys_store::VERSION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Serves the agent keys (`client.keys` lines, from the platform keystore that
+/// ClickHouse holds) to remoted and modulesd over loopback, with the one-time token.
+fn start_keys_service(state: AppState) -> std::io::Result<String> {
+    use siem_crypto::keystore::{KEYS_REQ, VERSION_REQ};
+    use tokio::io::AsyncWriteExt;
+    let l = std::net::TcpListener::bind("127.0.0.1:0")?;
+    l.set_nonblocking(true)?;
+    let addr = l.local_addr()?.to_string();
+    let listener = tokio::net::TcpListener::from_std(l)?;
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let _ = KEYS_SERVICE.set((addr.clone(), token.clone()));
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, peer)) = listener.accept().await else { continue };
+            if !peer.ip().is_loopback() {
+                continue;
+            }
+            let (state, token) = (state.clone(), token.clone());
+            tokio::spawn(async move {
+                let Ok(Ok((kind, t))) = tokio::time::timeout(Duration::from_secs(10), read_frame(&mut sock)).await else { return };
+                let payload = if t != token.as_bytes() || !matches!(kind, KEYS_REQ | VERSION_REQ) {
+                    warn!("key service: request refused (wrong token or kind)");
+                    vec![b'X']
+                } else {
+                    let mut p = vec![kind];
+                    p.extend_from_slice(format!("{}\n", keys_version()).as_bytes());
+                    if kind == KEYS_REQ {
+                        let ks = state.auth_keystore.read().unwrap().clone();
+                        for k in &ks.keys {
+                            p.extend_from_slice(k.to_key_line().as_bytes());
+                            p.push(b'\n');
+                        }
+                    }
+                    p
+                };
+                let mut frame = (payload.len() as u32).to_le_bytes().to_vec();
+                frame.extend_from_slice(&payload);
+                let _ = sock.write_all(&frame).await;
+            });
         }
-        if len == offset {
-            continue;
+    });
+    Ok(addr)
+}
+
+/// Frames of the stream: `[u32 LE length][kind][JSON]`.
+const STREAM_MAX_FRAME: usize = 16 * 1024 * 1024;
+/// Lines handed to the pipeline at once (or what came within `STREAM_LINGER`).
+const STREAM_BATCH: usize = 500;
+const STREAM_LINGER: Duration = Duration::from_millis(200);
+
+/// Opens the loopback listener analysisd streams its alerts and events to.
+fn start_stream(state: AppState) -> std::io::Result<String> {
+    let l = std::net::TcpListener::bind("127.0.0.1:0")?;
+    l.set_nonblocking(true)?;
+    let addr = l.local_addr()?.to_string();
+    let listener = tokio::net::TcpListener::from_std(l)?;
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let _ = STREAM.set((addr.clone(), token.clone()));
+    tokio::spawn(async move {
+        loop {
+            let Ok((sock, peer)) = listener.accept().await else { continue };
+            if !peer.ip().is_loopback() {
+                continue;
+            }
+            let (s, t) = (state.clone(), token.clone());
+            tokio::spawn(async move {
+                match stream_conn(s, sock, &t).await {
+                    Ok(()) => info!("analysisd stream closed"),
+                    Err(e) => warn!("analysisd stream: {e}"),
+                }
+            });
         }
-        if file.seek(SeekFrom::Start(offset)).is_err() {
-            continue;
-        }
-        let mut buf = Vec::new();
-        if file.by_ref().take(8 * 1024 * 1024).read_to_end(&mut buf).is_err() {
-            continue;
-        }
-        offset += buf.len() as u64;
-        partial.extend_from_slice(&buf);
-        let mut start = 0;
-        let mut batch = Vec::new();
-        while let Some(nl) = partial[start..].iter().position(|&b| b == b'\n') {
-            let line = &partial[start..start + nl];
-            start += nl + 1;
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
-                batch.push(v);
+    });
+    Ok(addr)
+}
+
+async fn read_frame(r: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<(u8, Vec<u8>)> {
+    use tokio::io::AsyncReadExt;
+    let mut len = [0u8; 4];
+    r.read_exact(&mut len).await?;
+    let n = u32::from_le_bytes(len) as usize;
+    if n == 0 || n > STREAM_MAX_FRAME {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("frame of {n} bytes")));
+    }
+    let mut b = vec![0u8; n];
+    r.read_exact(&mut b).await?;
+    let kind = b[0];
+    b.drain(..1);
+    Ok((kind, b))
+}
+
+/// One analysisd connection: the token first, then alerts (`A`) and events (`E`) in
+/// batches to the pipeline (`on_alerts` / `on_events`, which store them in ClickHouse).
+/// Frames are read by their own task, so a batch timeout never cuts one in half; while
+/// the pipeline waits for ClickHouse the bounded channel stops the reading, and
+/// analysisd keeps the lines in its own queue.
+async fn stream_conn(state: AppState, sock: tokio::net::TcpStream, token: &str) -> std::io::Result<()> {
+    let mut r = tokio::io::BufReader::new(sock);
+    let (kind, t) = read_frame(&mut r).await?;
+    if kind != b'H' || t != token.as_bytes() {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "wrong token"));
+    }
+    info!("analysisd stream connected");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u8, Vec<u8>)>(2 * STREAM_BATCH);
+    let reader = tokio::spawn(async move {
+        loop {
+            match read_frame(&mut r).await {
+                Ok(f) => {
+                    if tx.send(f).await.is_err() {
+                        return Ok(());
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
+                Err(e) => return Err(e),
             }
         }
-        partial.drain(..start);
-        if !batch.is_empty() {
-            f(batch).await;
+    });
+    let (mut alerts, mut events, mut vulns) = (Vec::new(), Vec::new(), Vec::new());
+    loop {
+        let next = if alerts.is_empty() && events.is_empty() && vulns.is_empty() { rx.recv().await } else { tokio::time::timeout(STREAM_LINGER, rx.recv()).await.unwrap_or(Some((0, Vec::new()))) };
+        let closed = next.is_none();
+        if let Some((kind, json)) = next.filter(|(k, _)| *k != 0) {
+            match serde_json::from_slice::<serde_json::Value>(&json) {
+                Ok(v) if kind == b'A' => alerts.push(v),
+                Ok(v) if kind == b'E' => events.push(v),
+                Ok(v) if kind == b'V' => vulns.push(v),
+                Ok(_) => {}
+                Err(e) => warn!("analysisd stream: line not JSON ({e})"),
+            }
+            if !closed && alerts.len() + events.len() + vulns.len() < STREAM_BATCH {
+                continue;
+            }
         }
-        let _ = std::fs::write(&offset_file, (offset - partial.len() as u64).to_string());
+        if !alerts.is_empty() {
+            on_alerts(state.clone(), std::mem::take(&mut alerts)).await;
+        }
+        if !events.is_empty() {
+            on_events(state.clone(), std::mem::take(&mut events)).await;
+        }
+        if !vulns.is_empty() {
+            crate::vulnerability::ingest(&state, std::mem::take(&mut vulns)).await;
+        }
+        if closed {
+            return reader.await.unwrap_or(Ok(()));
+        }
     }
 }
 
@@ -1548,6 +1730,14 @@ fn event_source(location: &str, decoder: &str) -> EventSource {
 
 /// One `archives.json` line (every event analysisd received) as a platform event.
 async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
+    // an agent's SCA results changed: copied for the compliance audit within seconds
+    for v in &vs {
+        if v["location"].as_str() == Some("sca") {
+            if let Some(a) = v["agent"]["id"].as_str().filter(|a| *a != "000") {
+                crate::posture_store::changed(a);
+            }
+        }
+    }
     // live response results go to their own table, not the event archive
     let (live, vs): (Vec<_>, Vec<_>) = vs.into_iter().partition(crate::live_response::is_result);
     if !live.is_empty() {
@@ -1639,6 +1829,15 @@ fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {
     }
 }
 
+/// An agent's version as the console shows it: agents report "Wazuh v4.14.7" on the
+/// wire (kept for compatibility with the rules and Wazuh agents), shown as ProVigil.
+fn display_version(v: &str) -> String {
+    match v.strip_prefix("Wazuh ") {
+        Some(rest) => format!("ProVigil {rest}"),
+        None => v.to_string(),
+    }
+}
+
 /// Agent status, OS, version and keepalive from wazuh-db's global.db.
 async fn agent_status_loop(state: AppState) {
     let wdb = wdb();
@@ -1678,7 +1877,7 @@ async fn agent_status_loop(state: AppState) {
                     name: s(&r, &["name"]),
                     ip: ip.clone(),
                     os: os.clone(),
-                    version: s(&r, &["version"]),
+                    version: display_version(&s(&r, &["version"])),
                     status: status.clone(),
                     last_keepalive,
                     os_type: os_type.to_string(),
@@ -1689,7 +1888,7 @@ async fn agent_status_loop(state: AppState) {
                 if !os_type.is_empty() {
                     a.os_type = os_type.to_string();
                 }
-                let ver = s(&r, &["version"]);
+                let ver = display_version(&s(&r, &["version"]));
                 if !ver.is_empty() {
                     a.version = ver;
                 }

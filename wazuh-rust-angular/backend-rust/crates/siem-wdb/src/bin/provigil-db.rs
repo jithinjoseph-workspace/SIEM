@@ -312,7 +312,7 @@ mod linux {
 
         // Router module logging initialization and providers
         router_initialize(wlog.clone());
-        let router: Arc<dyn RouterSink> = Arc::new(WazuhRouter::default());
+        let router: Arc<dyn RouterSink> = Arc::new(ProVigilRouter::default());
         let env = Arc::new(DaemonEnv { log: wlog.clone(), router: router.clone(), ossecconf: PathBuf::from(OSSECCONF) });
         let mut d = Wdbd::new(conf.wdb.clone(), base.clone(), env);
         d.router_agent = router.create(WDB_AGENT_EVENTS_TOPIC);

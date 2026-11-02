@@ -44,12 +44,12 @@ struct CorrelationState {
 pub struct AnalysisEngine {
     rules: Arc<Vec<CompiledRule>>,
     decoders: Arc<Vec<Decoder>>,
-    pub wazuh_rules: Arc<Vec<CompiledWazuhRule>>,
-    pub wazuh_decoders: Arc<Vec<CompiledDecoder>>,
-    pub accumulator: Arc<WazuhAccumulator>,
+    pub provigil_rules: Arc<Vec<CompiledProVigilRule>>,
+    pub provigil_decoders: Arc<Vec<CompiledDecoder>>,
+    pub accumulator: Arc<ProVigilAccumulator>,
     correlation: Arc<Mutex<CorrelationState>>,
     /// Rules deployed at runtime (Red Swarm), shared by every clone of the engine.
-    custom_rules: Arc<RwLock<Vec<CompiledWazuhRule>>>,
+    custom_rules: Arc<RwLock<Vec<CompiledProVigilRule>>>,
 }
 
 impl AnalysisEngine {
@@ -58,15 +58,15 @@ impl AnalysisEngine {
         let rules = Self::default_rules();
 
         // Load core Wazuh XML decoders and rules
-        let wazuh_decoders = Self::default_wazuh_decoders();
-        let wazuh_rules = Self::default_wazuh_rules();
-        let accumulator = Arc::new(WazuhAccumulator::new(50_000));
+        let provigil_decoders = Self::default_provigil_decoders();
+        let provigil_rules = Self::default_provigil_rules();
+        let accumulator = Arc::new(ProVigilAccumulator::new(50_000));
 
         let mut engine = Self {
             rules: Arc::new(rules),
             decoders: Arc::new(decoders),
-            wazuh_rules: Arc::new(wazuh_rules),
-            wazuh_decoders: Arc::new(wazuh_decoders),
+            provigil_rules: Arc::new(provigil_rules),
+            provigil_decoders: Arc::new(provigil_decoders),
             accumulator,
             correlation: Arc::new(Mutex::new(CorrelationState::default())),
             custom_rules: Arc::new(RwLock::new(Vec::new())),
@@ -102,7 +102,7 @@ impl AnalysisEngine {
 
         if decoders_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&decoders_dir) {
-                let mut new_decoders = (*self.wazuh_decoders).clone();
+                let mut new_decoders = (*self.provigil_decoders).clone();
                 let mut count = 0;
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -114,13 +114,13 @@ impl AnalysisEngine {
                     }
                 }
                 info!("AnalysisEngine: Loaded {} official decoders from {}", count, decoders_dir.display());
-                self.wazuh_decoders = Arc::new(new_decoders);
+                self.provigil_decoders = Arc::new(new_decoders);
             }
         }
 
         if rules_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&rules_dir) {
-                let mut new_rules = (*self.wazuh_rules).clone();
+                let mut new_rules = (*self.provigil_rules).clone();
                 let mut count = 0;
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -132,7 +132,7 @@ impl AnalysisEngine {
                     }
                 }
                 info!("AnalysisEngine: Loaded {} official rules from {}", count, rules_dir.display());
-                self.wazuh_rules = Arc::new(new_rules);
+                self.provigil_rules = Arc::new(new_rules);
             }
         }
     }
@@ -140,7 +140,7 @@ impl AnalysisEngine {
     /// Return all active detection rules (including Wazuh XML rules converted to core Rule format)
     pub fn list_rules(&self) -> Vec<Rule> {
         let mut all_rules: Vec<Rule> = self.rules.iter().map(|r| r.rule.clone()).collect();
-        for wr in self.wazuh_rules.iter() {
+        for wr in self.provigil_rules.iter() {
             if !wr.noalert {
                 all_rules.push(wr.to_core_rule());
             }
@@ -149,11 +149,11 @@ impl AnalysisEngine {
     }
 
     /// Ingest additional Wazuh XML rules dynamically
-    pub fn add_wazuh_rules_xml(&mut self, xml: &str) {
-        let mut current = (*self.wazuh_rules).clone();
+    pub fn add_provigil_rules_xml(&mut self, xml: &str) {
+        let mut current = (*self.provigil_rules).clone();
         let mut parsed = parse_rules_xml(xml);
         current.append(&mut parsed);
-        self.wazuh_rules = Arc::new(current);
+        self.provigil_rules = Arc::new(current);
     }
 
     /// Replace the runtime-deployed rules (seen at once by every clone of the engine).
@@ -162,11 +162,11 @@ impl AnalysisEngine {
     }
 
     /// Ingest additional Wazuh XML decoders dynamically
-    pub fn add_wazuh_decoders_xml(&mut self, xml: &str) {
-        let mut current = (*self.wazuh_decoders).clone();
+    pub fn add_provigil_decoders_xml(&mut self, xml: &str) {
+        let mut current = (*self.provigil_decoders).clone();
         let mut parsed = parse_decoders_xml(xml);
         current.append(&mut parsed);
-        self.wazuh_decoders = Arc::new(current);
+        self.provigil_decoders = Arc::new(current);
     }
 
     /// Process a raw ingested log event and return an alert if any rule triggered
@@ -175,7 +175,7 @@ impl AnalysisEngine {
         let mut event_data: HashMap<String, serde_json::Value> = HashMap::new();
 
         // 1. Evaluate official Wazuh XML decoders first
-        for d in self.wazuh_decoders.iter() {
+        for d in self.provigil_decoders.iter() {
             if d.try_decode(&event.message, &mut decoded, &mut event_data) {
                 break;
             }
@@ -184,7 +184,7 @@ impl AnalysisEngine {
         // 2. Evaluate official Wazuh XML rules hierarchically
         let mut active_sids: Vec<u32> = Vec::new();
         let mut active_groups: Vec<String> = Vec::new();
-        let mut highest_wazuh_alert: Option<Alert> = None;
+        let mut highest_provigil_alert: Option<Alert> = None;
         let mut highest_level: u8 = 0;
 
         let parent_decoder = decoded.extra.get("parent_decoder").map(|s| s.as_str());
@@ -196,7 +196,7 @@ impl AnalysisEngine {
         });
 
         let custom_rules = self.custom_rules.read().unwrap();
-        for w_rule in self.wazuh_rules.iter().chain(custom_rules.iter()) {
+        for w_rule in self.provigil_rules.iter().chain(custom_rules.iter()) {
             if w_rule.matches(
                 &event.message,
                 &decoded.decoder_name,
@@ -228,7 +228,7 @@ impl AnalysisEngine {
 
                 if !w_rule.noalert && w_rule.level >= highest_level {
                     highest_level = w_rule.level;
-                    highest_wazuh_alert = Some(Alert {
+                    highest_provigil_alert = Some(Alert {
                         id: Uuid::new_v4(),
                         timestamp: Utc::now(),
                         rule: w_rule.to_rule_alert_info(),
@@ -254,8 +254,8 @@ impl AnalysisEngine {
 
         drop(custom_rules);
         // a level-0 match is not a detection (Wazuh never alerts on it): the built-in rules still get a say
-        if highest_wazuh_alert.as_ref().is_some_and(|a| a.rule.level > 0) {
-            return highest_wazuh_alert;
+        if highest_provigil_alert.as_ref().is_some_and(|a| a.rule.level > 0) {
+            return highest_provigil_alert;
         }
 
         // 3. Fall back to built-in rules
@@ -337,7 +337,7 @@ impl AnalysisEngine {
             }
         }
 
-        highest_wazuh_alert
+        highest_provigil_alert
     }
 
     /// Run decoders against the raw text to extract key fields
@@ -692,7 +692,7 @@ impl AnalysisEngine {
             .collect()
     }
 
-    fn default_wazuh_decoders() -> Vec<CompiledDecoder> {
+    fn default_provigil_decoders() -> Vec<CompiledDecoder> {
         let xml = r#"
 <decoders>
   <decoder name="sshd">
@@ -736,7 +736,7 @@ impl AnalysisEngine {
         parse_decoders_xml(xml)
     }
 
-    fn default_wazuh_rules() -> Vec<CompiledWazuhRule> {
+    fn default_provigil_rules() -> Vec<CompiledProVigilRule> {
         let xml = r#"
 <ruleset>
   <!-- OSSEC Base Rules -->
@@ -838,7 +838,7 @@ mod tests {
     use siem_core::EventSource;
 
     #[test]
-    fn test_wazuh_xml_decoding_and_rule_evaluation() {
+    fn test_provigil_xml_decoding_and_rule_evaluation() {
         let engine = AnalysisEngine::new();
 
         // 1. Test SSH Failed Login log matching Wazuh rule 5716

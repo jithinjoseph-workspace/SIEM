@@ -211,7 +211,7 @@ fn err(code: StatusCode, m: String) -> Response {
 pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(q): Query<CompQuery>) -> Response {
     let client = state.db.tenant_client(&ctx.scope());
     let agents: Vec<String> = crate::scoped_agents(&state, &ctx).into_iter().map(|a| a.id).collect();
-    if q.refresh.as_deref().is_some_and(|r| r == "1" || r == "true") && crate::wazuh_manager::enabled() {
+    if q.refresh.as_deref().is_some_and(|r| r == "1" || r == "true") && crate::provigil_manager::enabled() {
         for a in agents.iter().take(REFRESH_AGENTS) {
             crate::posture_store::sync_agent(&state, a).await;
         }
@@ -328,7 +328,7 @@ pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
         let scored = checks_passed + checks_failed > 0;
         frameworks.push(json!({
             "name": fw.name, "full_name": fw.full_name,
-            "version": if fw.sca_keys.is_empty() { "Wazuh rules".to_string() } else { format!("{} (CIS checks) · Wazuh rules", fw.sca_keys[0]) },
+            "version": if fw.sca_keys.is_empty() { "ProVigil rules".to_string() } else { format!("{} (CIS checks) · ProVigil rules", fw.sca_keys[0]) },
             // the share of passed configuration check results; none when no check maps it
             "score_percent": if scored { json!(((checks_passed as f64 / (checks_passed + checks_failed) as f64) * 1000.0).round() / 10.0) } else { Value::Null },
             "total_requirements": requirements.len(), "passed_count": passed_count, "alert_count": alert_count,

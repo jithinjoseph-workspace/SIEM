@@ -30,5 +30,5 @@ siem-router = { path = "../siem-router" }
 tempfile = "3"
 
 [[bin]]
-name = "wazuh-remoted"
+name = "provigil-remoted"
 path = "src/main.rs"

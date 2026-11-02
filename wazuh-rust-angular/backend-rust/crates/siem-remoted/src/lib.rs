@@ -115,7 +115,7 @@ impl Deps {
             wdb: Arc::new(siem_ipc::wdbc::WdbcSocket::new(settings.paths.wdb_sock())),
             sink: Box::new(mq::QueueSocket::new(settings.paths.queue())),
             #[cfg(any(target_os = "linux", windows))]
-            router: Box::new(router::WazuhRouter::new()),
+            router: Box::new(router::ProVigilRouter::new()),
             #[cfg(not(any(target_os = "linux", windows)))]
             router: Box::new(router::NoRouter),
             cluster: Box::new(NoCluster),

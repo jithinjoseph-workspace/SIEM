@@ -2,7 +2,7 @@
 //! shutdown, keepalive, requests), group assignment, `merged.mg` generation
 //! for groups and multigroups, and shared-file distribution.
 
-use crate::config::{compare_wazuh_versions, OSSEC_NAME, OSSEC_VERSION};
+use crate::config::{compare_provigil_versions, OSSEC_NAME, OSSEC_VERSION};
 use crate::keystore::{KeySnapshot, NetProtocol};
 use crate::server::*;
 use crate::state::Counter;
@@ -243,7 +243,7 @@ impl Remoted {
                             Some(ver) => {
                                 self.agent_versions.lock().unwrap().insert(key.id.clone(), ver.to_string());
                                 if !self.settings.remote.allow_higher_versions
-                                    && compare_wazuh_versions(Some(OSSEC_VERSION), Some(ver), false) < 0
+                                    && compare_provigil_versions(Some(OSSEC_VERSION), Some(ver), false) < 0
                                 {
                                     v.is_startup = true;
                                     v.cleaned = Some(clean);
@@ -328,7 +328,7 @@ impl Remoted {
                         match info.get("version").and_then(|x| x.as_str()) {
                             Some(ver) => {
                                 if !self.settings.remote.allow_higher_versions
-                                    && compare_wazuh_versions(Some(OSSEC_VERSION), Some(ver), false) < 0
+                                    && compare_provigil_versions(Some(OSSEC_VERSION), Some(ver), false) < 0
                                 {
                                     self.send_wrong_version_response(&key.id, HC_INVALID_VERSION, AgentStatusCode::InvalidVersion, Some(ver)).await;
                                     return;

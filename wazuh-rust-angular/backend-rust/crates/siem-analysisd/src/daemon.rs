@@ -171,11 +171,17 @@ pub struct LogFiles {
     jf: LogFile,
     ff: LogFile,
     crt_rsec: i64,
+    /// siem-api's stream carries the alerts and events (stream.rs): no log files
+    pub stream: bool,
 }
 
 impl LogFiles {
     /// `OS_GetLogLocation`
     pub fn get_log_location(&mut self, home: &Path, g: &siem_config::global::GlobalConfig, day: i32, year: i32, mon: &str, now: i64) -> std::io::Result<()> {
+        if self.stream {
+            self.crt_rsec = now;
+            return Ok(());
+        }
         let m = g.max_output_size;
         openlog(&mut self.ef, home, "logs/archives", year, mon, "archive", day, "log", "logs/archives/archives.log", false, m)?;
         if g.logall_json != 0 {
@@ -192,6 +198,9 @@ impl LogFiles {
 
     /// `OS_RotateLogs`
     pub fn rotate(&mut self, home: &Path, g: &siem_config::global::GlobalConfig, day: i32, year: i32, mon: &str, now: i64) {
+        if self.stream {
+            return;
+        }
         let m = g.max_output_size;
         let files: [(&mut LogFile, &str, &str, &str, &str); 5] = [
             (&mut self.ef, "logs/archives", "archive", "log", "logs/archives/archives.log"),
@@ -616,6 +625,10 @@ pub struct Analysis {
     ar_cfg: ArConfig,
     whitelist: ArWhitelist,
     forwarder: Option<Forwarder>,
+    /// siem-api's stream (stream.rs), instead of the alerts / archives files
+    stream: Option<crate::stream::Stream>,
+    /// the alerts' `id` second part: bytes streamed (the alerts.log position otherwise)
+    stream_pos: i64,
     fts_file: Option<File>,
     today: i32,
     thishour: i32,
@@ -817,15 +830,18 @@ impl Analysis {
         let (limits, limits_msg) = Limits::load(cfg.global.eps.maximum, cfg.global.eps.timeframe, cfg.global.eps.maximum_found);
         let inq = InQueues::new(&cfg.internal.q);
         let now = engine.clock.now().sec;
+        let stream = crate::stream::Stream::from_env();
         let mut a = Analysis {
             cfg,
             engine,
             stats,
             stats_rule,
-            files: LogFiles::default(),
+            files: LogFiles { stream: stream.is_some(), ..Default::default() },
             ar_cfg,
             whitelist,
             forwarder,
+            stream,
+            stream_pos: 0,
             fts_file: None,
             today: 0,
             thishour: 0,
@@ -1135,7 +1151,13 @@ impl Analysis {
         }
         if let Some(ev) = out.archive {
             self.state.archive_written(ev.agent_id.as_deref(), now);
-            if g.logall != 0 {
+            if let Some(st) = self.stream.as_mut() {
+                if let Some(l) = output::json_archive(&self.engine, &ev, &mut msgs) {
+                    if let Some(w) = st.send(crate::stream::EVENT, &l) {
+                        msgs.warn(w);
+                    }
+                }
+            } else if g.logall != 0 {
                 let mut buf = Vec::new();
                 let _ = output::os_store(&ev, &mut buf);
                 self.files.ef.write(&buf);
@@ -1163,6 +1185,22 @@ impl Analysis {
     /// `forward`: `w_writer_log_thread` (sends to the forwarders); the
     /// statistical writer does not.
     fn write_alert(&mut self, g: &siem_config::global::GlobalConfig, ev: &Event, msgs: &mut LogList, forward: bool) {
+        if self.stream.is_some() {
+            self.engine.alert_second_id = self.stream_pos;
+            let before = msgs.msgs.len();
+            let line = output::json_alert(&self.engine, ev, msgs);
+            self.stream_pos += line.len() as i64;
+            if let Some(w) = self.stream.as_mut().and_then(|st| st.send(crate::stream::ALERT, &line)) {
+                msgs.warn(w);
+            }
+            let now = self.engine.clock.now().sec;
+            if let Some(fw) = self.forwarder.as_mut().filter(|_| forward) {
+                let again: Vec<_> = msgs.msgs[before..].to_vec();
+                msgs.msgs.extend(again);
+                fw.send(&line[..line.len() - 1], now, msgs);
+            }
+            return;
+        }
         if g.custom_alert_output != 0 {
             self.engine.alert_second_id = self.files.af.pos as i64;
             let fmt = g.custom_alert_output_format.clone().unwrap_or_default();
@@ -1405,7 +1443,8 @@ impl Analysis {
         }
         let opts = ProcessOptions {
             logfw: self.cfg.internal.log_fw != 0,
-            logall: self.cfg.global.logall != 0 || self.cfg.global.logall_json != 0,
+            // the stream always carries the events: they are the platform's event store
+            logall: self.cfg.global.logall != 0 || self.cfg.global.logall_json != 0 || self.stream.is_some(),
             stats: self.cfg.global.stats as i32,
         };
         let lnow = self.local_now();

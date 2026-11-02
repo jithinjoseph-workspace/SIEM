@@ -14,7 +14,7 @@ pub use agent_db::AgentDatabase;
 pub use fim_store::FimStore;
 pub use global_db::{ConnectionStatus, GlobalAgent, GlobalDb};
 pub use integrity::{IntegrityChecker, RangeChecksum};
-pub use manager_db::WazuhDbManager;
+pub use manager_db::ProVigilDbManager;
 pub use models::{
     FimAction, FimDelta, FimEntry, FimEntryType, ScaCheckResult, ScaStatus, SysHwInfo,
     SysNetIface, SysOsInfo, SysPort, SysProgram,
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_wire_protocol_commands() {
-        let manager = Arc::new(WazuhDbManager::new());
+        let manager = Arc::new(ProVigilDbManager::new());
         let protocol = WdbWireProtocol::new(manager.clone());
 
         // Global commands

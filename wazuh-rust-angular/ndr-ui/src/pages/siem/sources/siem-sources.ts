@@ -15,7 +15,7 @@ interface SiemSource {
 }
 
 /**
- * The tenant's log sources: its Wazuh agents and syslog devices, with their
+ * The tenant's log sources: its ProVigil agents and syslog devices, with their
  * real event rate. Sources are added by deploying an agent or registering a
  * syslog device; there is no other ingest path.
  */
@@ -64,6 +64,6 @@ export class SiemSources implements OnInit {
   }
 
   sourceTypeLabel(t: string): string {
-    return ({ windows: 'Wazuh agent (Windows)', linux: 'Wazuh agent (Linux)', macos: 'Wazuh agent (macOS)', network: 'Syslog device' } as Record<string, string>)[t] ?? t;
+    return ({ windows: 'ProVigil agent (Windows)', linux: 'ProVigil agent (Linux)', macos: 'ProVigil agent (macOS)', network: 'Syslog device' } as Record<string, string>)[t] ?? t;
   }
 }

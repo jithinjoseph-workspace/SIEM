@@ -9,7 +9,7 @@ use siem_engine::AnalysisEngine;
 
 use crate::crypto::{decrypt_aes256_cbc, encrypt_aes256_cbc, CryptoError};
 use crate::keys::{KeyError, KeysDatabase};
-use crate::protocol::{ProtocolError, RemotedMessage, WazuhSubsystem};
+use crate::protocol::{ProtocolError, RemotedMessage, ProVigilSubsystem};
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -108,23 +108,23 @@ impl RemotedServer {
 
         // Map subsystem to SIEM EventSource
         let source = match remoted_msg.subsystem {
-            WazuhSubsystem::Fim => EventSource::Fim,
-            WazuhSubsystem::Syscollector => EventSource::Syscollector,
-            WazuhSubsystem::Sca => EventSource::Sca,
-            WazuhSubsystem::Keepalive => EventSource::Syscollector,
-            WazuhSubsystem::Rootcheck => EventSource::Syscollector,
-            WazuhSubsystem::ActiveResponse => EventSource::Auth,
-            WazuhSubsystem::Log => EventSource::Syslog,
+            ProVigilSubsystem::Fim => EventSource::Fim,
+            ProVigilSubsystem::Syscollector => EventSource::Syscollector,
+            ProVigilSubsystem::Sca => EventSource::Sca,
+            ProVigilSubsystem::Keepalive => EventSource::Syscollector,
+            ProVigilSubsystem::Rootcheck => EventSource::Syscollector,
+            ProVigilSubsystem::ActiveResponse => EventSource::Auth,
+            ProVigilSubsystem::Log => EventSource::Syslog,
         };
 
         let location = match remoted_msg.subsystem {
-            WazuhSubsystem::Fim => "syscheck",
-            WazuhSubsystem::Rootcheck => "rootcheck",
-            WazuhSubsystem::Syscollector => "syscollector",
-            WazuhSubsystem::Sca => "sca",
-            WazuhSubsystem::Keepalive => "wazuh-agent",
-            WazuhSubsystem::ActiveResponse => "active-response",
-            WazuhSubsystem::Log => "remoted",
+            ProVigilSubsystem::Fim => "syscheck",
+            ProVigilSubsystem::Rootcheck => "rootcheck",
+            ProVigilSubsystem::Syscollector => "syscollector",
+            ProVigilSubsystem::Sca => "sca",
+            ProVigilSubsystem::Keepalive => "wazuh-agent",
+            ProVigilSubsystem::ActiveResponse => "active-response",
+            ProVigilSubsystem::Log => "remoted",
         };
 
         // Create RawEvent and evaluate against rule engine
@@ -233,7 +233,7 @@ mod tests {
 
         assert_eq!(msg.agent_id, "001");
         assert_eq!(msg.counter, 101);
-        assert_eq!(msg.subsystem, WazuhSubsystem::Fim);
+        assert_eq!(msg.subsystem, ProVigilSubsystem::Fim);
         assert_eq!(msg.payload, "/etc/passwd modified");
 
         // Counter updated: replay of counter 101 should fail

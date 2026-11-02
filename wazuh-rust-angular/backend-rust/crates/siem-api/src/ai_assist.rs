@@ -140,7 +140,7 @@ pub async fn analyze(State(state): State<AppState>, Extension(ctx): Extension<Au
     } else if let Some(aid) = &req.alert_id {
         if let Some(a) = crate::history::alert(&state, &ctx, aid).await {
             host = a.agent.name.clone();
-            source = "Wazuh alert".into();
+            source = "ProVigil alert".into();
             location = format!("Rule #{}", a.rule.id);
             text = format!("Rule ID: {}\nLevel: {}\nDescription: {}\nFull log: {}\nMITRE: {:?}\nDecoded: {:?}", a.rule.id, a.rule.level, a.rule.description, a.full_log, a.rule.mitre, a.decoded);
         }

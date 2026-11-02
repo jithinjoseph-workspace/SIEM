@@ -198,5 +198,5 @@ pub mod info {
     pub const NO_SYSLOG: &str = "(1501): IP or network must be present in syslog access list (allowed-ips). Syslog server disabled.";
     pub const CONN_TO: &str = "Connected to '%s' (%s queue)";
     pub const MAIL_DIS: &str = "E-Mail notification disabled. Clean Exit.";
-    pub const WAZUH_HOMEDIR: &str = "Wazuh home directory: %s";
+    pub const PROVIGIL_HOMEDIR: &str = "Wazuh home directory: %s";
 }

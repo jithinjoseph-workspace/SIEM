@@ -50,7 +50,7 @@ pub mod modules {
     pub const CCLUSTER: u32 = 0o0004000000;
     pub const CLGCSOCKET: u32 = 0o0010000000;
     pub const CANDSOCKET: u32 = 0o0020000000;
-    pub const WAZUHDB: u32 = 0o0040000000;
+    pub const PROVIGILDB: u32 = 0o0040000000;
     pub const CLOGTEST: u32 = 0o0100000000;
     pub const ATAMPERING: u32 = 0o0200000000;
 }
@@ -197,7 +197,7 @@ pub enum Section {
     RuleTest,
     AgentUpgrade,
     TaskManager,
-    WazuhDb,
+    ProVigilDb,
     Github,
     Office365,
     MsGraph,
@@ -405,8 +405,8 @@ fn read_main_elements(
             }
         } else if has && el == "wdb" {
             if !client {
-                if mods & WAZUHDB != 0 {
-                    call(ctx, Section::WazuhDb)?;
+                if mods & PROVIGILDB != 0 {
+                    call(ctx, Section::ProVigilDb)?;
                 }
             } else {
                 ctx.warn(format!("{el} configuration is only set in the manager."));

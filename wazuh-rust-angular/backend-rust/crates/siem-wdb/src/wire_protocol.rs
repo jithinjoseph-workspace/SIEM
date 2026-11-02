@@ -1,15 +1,15 @@
 use crate::global_db::ConnectionStatus;
-use crate::manager_db::WazuhDbManager;
+use crate::manager_db::ProVigilDbManager;
 use crate::models::{FimEntry, FimEntryType, ScaCheckResult, ScaStatus};
 use serde_json::json;
 use std::sync::Arc;
 
 pub struct WdbWireProtocol {
-    manager: Arc<WazuhDbManager>,
+    manager: Arc<ProVigilDbManager>,
 }
 
 impl WdbWireProtocol {
-    pub fn new(manager: Arc<WazuhDbManager>) -> Self {
+    pub fn new(manager: Arc<ProVigilDbManager>) -> Self {
         Self { manager }
     }
 

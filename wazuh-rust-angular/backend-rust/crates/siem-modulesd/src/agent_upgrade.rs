@@ -201,7 +201,7 @@ struct AgentInfo {
     major_version: Option<String>,
     minor_version: Option<String>,
     architecture: Option<String>,
-    wazuh_version: Option<String>,
+    provigil_version: Option<String>,
     connection_status: Option<String>,
     package_type: Option<String>,
 }
@@ -223,7 +223,7 @@ enum Parsed {
 
 /// `compare_wazuh_versions(a, b, true)`
 fn cmpv(a: &str, b: &str) -> i32 {
-    siem_remoted::config::compare_wazuh_versions(Some(a), Some(b), true)
+    siem_remoted::config::compare_provigil_versions(Some(a), Some(b), true)
 }
 
 /// `%.3d`
@@ -639,7 +639,7 @@ impl UpgradeManager {
                 major_version: s("os_major"),
                 minor_version: s("os_minor"),
                 architecture: s("os_arch"),
-                wazuh_version: s("version"),
+                provigil_version: s("version"),
                 connection_status: s("connection_status"),
                 package_type: None,
             },
@@ -964,7 +964,7 @@ impl UpgradeManager {
         if self.send_lock_restart(id).await != 0 {
             result = SEND_LOCK_RESTART_ERROR;
         }
-        let ver = at.info.wazuh_version.as_deref().unwrap_or("");
+        let ver = at.info.provigil_version.as_deref().unwrap_or("");
         let fmt = cmpv(ver.find('v').map(|p| &ver[p..]).unwrap_or(""), NEW_UPGRADE_MECHANISM);
         if result == SUCCESS && self.send_open(id, fmt, &wpk).await != 0 {
             result = SEND_OPEN_ERROR;
@@ -1229,7 +1229,7 @@ fn validate_agent_task(at: &mut AgentTask) -> i32 {
     if r != SUCCESS {
         return r;
     }
-    validate_version(i.wazuh_version.as_deref(), i.platform.as_deref().unwrap_or(""), &mut at.task)
+    validate_version(i.provigil_version.as_deref(), i.platform.as_deref().unwrap_or(""), &mut at.task)
 }
 
 /// `wm_agent_upgrade_validate_system`
@@ -1278,8 +1278,8 @@ fn validate_system(platform: Option<&str>, major: Option<&str>, minor: Option<&s
 }
 
 /// `wm_agent_upgrade_validate_version`
-fn validate_version(wazuh_version: Option<&str>, platform: &str, task: &mut TaskKind) -> i32 {
-    let Some(v) = wazuh_version else { return GLOBAL_DB_FAILURE };
+fn validate_version(provigil_version: Option<&str>, platform: &str, task: &mut TaskKind) -> i32 {
+    let Some(v) = provigil_version else { return GLOBAL_DB_FAILURE };
     let Some(p) = v.find('v') else { return GLOBAL_DB_FAILURE };
     let agent = &v[p..];
     if cmpv(agent, MINIMAL_VERSION_SUPPORT) < 0 {

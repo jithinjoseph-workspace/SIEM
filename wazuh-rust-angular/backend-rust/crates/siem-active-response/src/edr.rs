@@ -52,7 +52,7 @@ pub fn kill_refusal(pid: u32, image: &str, system_root: &str) -> Option<String> 
     }
     let image = norm(image);
     let (dir, name) = image.rsplit_once('\\').unwrap_or(("", image.as_str()));
-    if name == "wazuh-agent.exe" {
+    if name == "provigil-agent.exe" || name == "wazuh-agent.exe" {
         return Some("it is the agent itself".into());
     }
     // a copy elsewhere (an svchost.exe in Temp) is fair game: masquerading malware

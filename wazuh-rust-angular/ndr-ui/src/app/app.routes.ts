@@ -39,7 +39,7 @@ export const routes: Routes = [
       { path: 'support',        canActivate: [authGuard], loadComponent: () => import('../pages/analyst/support/support').then(m => m.Support) },
       { path: 'honeypots',      canActivate: [authGuard], data: { permission: 'honeypots'     }, loadComponent: () => import('../pages/analyst/honeypots/honeypots').then(m => m.Honeypots) },
       { path: 'retrospective',  canActivate: [authGuard], data: { permission: 'retrospective' }, loadComponent: () => import('../pages/analyst/retrospective/retrospective').then(m => m.Retrospective) },
-      /* ── Wazuh Unified SIEM Suite ── */
+      /* ── ProVigil Unified SIEM Suite ── */
       { path: 'agents',         canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/agents/agents').then(m => m.Agents) },
       { path: 'risk-fabric',    canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/risk-fabric/risk-fabric').then(m => m.RiskFabric) },
       { path: 'intent-prediction', canActivate: [authGuard], data: { permission: 'siem-agents' }, loadComponent: () => import('../pages/analyst/intent-prediction/intent-prediction').then(m => m.IntentPrediction) },
@@ -62,7 +62,7 @@ export const routes: Routes = [
       { path: 'siem-swarm',         canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/swarm/siem-swarm').then(m => m.SiemSwarm) },
       { path: 'siem-decisions',     redirectTo: '/analyst/siem-ai-oversight?tab=decisions' },
       { path: 'siem-ai-oversight',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/oversight/siem-ai-oversight').then(m => m.SiemAiOversight) },
-      // the editable rules page (Wazuh ruleset + the tenant's custom Sigma rules) for SIEM tenants
+      // the editable rules page (ProVigil ruleset + the tenant's custom Sigma rules) for SIEM tenants
       { path: 'siem-rules',         canActivate: [authGuard], data: { permission: 'siem-rules' }, loadComponent: () => import('../pages/analyst/rules/rules').then(m => m.Rules) },
       { path: 'siem-investigate',   canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/investigate/siem-investigate').then(m => m.SiemInvestigate) },
       { path: 'siem-copilot',       canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/copilot/siem-copilot').then(m => m.SiemCopilot) },

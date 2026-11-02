@@ -23,3 +23,4 @@ pub mod wdbc;
 
 /// `OS_MAXSTR`
 pub const OS_MAXSTR: usize = 65536;
+pub mod platform_stream;

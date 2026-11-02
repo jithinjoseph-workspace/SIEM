@@ -137,7 +137,7 @@ impl Wdbd {
         if buf.eq(actor, "agent") {
             self.parse_agent(&mut buf, next, peer)
         } else if buf.eq(actor, "wazuhdb") {
-            self.parse_wazuhdb(&mut buf, next)
+            self.parse_provigildb(&mut buf, next)
         } else if buf.eq(actor, "mitre") {
             self.parse_mitre(&mut buf, next, peer)
         } else if buf.eq(actor, "global") {
@@ -552,8 +552,8 @@ impl Wdbd {
     }
 
     /// The `wazuhdb` actor.
-    fn parse_wazuhdb(&self, buf: &mut CBuf, query: usize) -> (i32, B) {
-        self.state.w_inc_wazuhdb();
+    fn parse_provigildb(&self, buf: &mut CBuf, query: usize) -> (i32, B) {
+        self.state.w_inc_provigildb();
         let Some(sp) = buf.wchr(query, b' ') else {
             self.mdebug1(b"Invalid DB query syntax.");
             self.mdebug2(&msg!("DB query error near: ", buf.at(query)));
@@ -562,10 +562,10 @@ impl Wdbd {
         buf.nul(sp);
         let next = sp + 1;
         if buf.eq(query, "remove") {
-            self.state.w_inc_wazuhdb_remove();
+            self.state.w_inc_provigildb_remove();
             let b = self.tv();
             let data = self.remove_multiple_agents(buf.at(next));
-            self.state.w_inc_wazuhdb_remove_time(Tv::diff(self.tv(), b));
+            self.state.w_inc_provigildb_remove_time(Tv::diff(self.tv(), b));
             // cJSON_PrintUnformatted(NULL) is NULL: "%s" prints "(null)"
             let printed = data.map(|d| d.print_unformatted()).unwrap_or_else(|| b"(null)".to_vec());
             (0, out(msg!("ok ", printed)))

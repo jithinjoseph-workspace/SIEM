@@ -347,23 +347,23 @@ impl SoarStore for Store {
         let integration = |kind: &'static str| async move { ps::actions::find_integration(self, tenant, kind, config).await };
         let r = match pb.action_type.as_str() {
             "slack" => match config["webhook_url"].as_str().filter(|u| !u.is_empty()) {
-                Some(url) => run_wazuh_script("slack", alert, "", url).await,
+                Some(url) => run_provigil_script("slack", alert, "", url).await,
                 None => Err("Missing webhook_url".into()),
             },
             "pagerduty" => match integration("pagerduty").await {
-                Some(c) => run_wazuh_script("pagerduty", alert, c["routing_key"].as_str().or(c["api_key"].as_str()).unwrap_or(""), "").await,
+                Some(c) => run_provigil_script("pagerduty", alert, c["routing_key"].as_str().or(c["api_key"].as_str()).unwrap_or(""), "").await,
                 None => Err("No enabled PagerDuty integration".into()),
             },
             "virustotal" => match integration("virustotal").await {
-                Some(c) => run_wazuh_script("virustotal", alert, c["api_key"].as_str().unwrap_or(""), "").await,
+                Some(c) => run_provigil_script("virustotal", alert, c["api_key"].as_str().unwrap_or(""), "").await,
                 None => Err("No enabled VirusTotal integration".into()),
             },
             "shuffle" => match integration("shuffle").await {
-                Some(c) => run_wazuh_script("shuffle", alert, "", c["webhook_url"].as_str().unwrap_or("")).await,
+                Some(c) => run_provigil_script("shuffle", alert, "", c["webhook_url"].as_str().unwrap_or("")).await,
                 None => Err("No enabled Shuffle integration".into()),
             },
             "maltiverse" => match integration("maltiverse").await {
-                Some(c) => run_wazuh_script("maltiverse", alert, c["api_key"].as_str().unwrap_or(""), c["hook_url"].as_str().filter(|u| !u.is_empty()).unwrap_or("https://api.maltiverse.com")).await,
+                Some(c) => run_provigil_script("maltiverse", alert, c["api_key"].as_str().unwrap_or(""), c["hook_url"].as_str().filter(|u| !u.is_empty()).unwrap_or("https://api.maltiverse.com")).await,
                 None => Err("No enabled Maltiverse integration".into()),
             },
             "webhook" => match config["webhook_url"].as_str().filter(|u| !u.is_empty()) {
@@ -404,8 +404,8 @@ impl SoarStore for Store {
 
 // ───────────────────────── the Wazuh actions ─────────────────────────
 
-async fn run_wazuh_script(name: &str, alert: &Value, api_key: &str, hook_url: &str) -> Result<String, String> {
-    run_script_in(&crate::wazuh_manager::home(), name, alert, api_key, hook_url).await
+async fn run_provigil_script(name: &str, alert: &Value, api_key: &str, hook_url: &str) -> Result<String, String> {
+    run_script_in(&crate::provigil_manager::home(), name, alert, api_key, hook_url).await
 }
 
 /// One integration script on one alert, with integratord's arguments
@@ -415,7 +415,7 @@ async fn run_script_in(home: &std::path::Path, name: &str, alert: &Value, api_ke
     if !hook_url.is_empty() {
         ps::check_url(hook_url).await?;
     }
-    let script = home.join("integrations").join(crate::wazuh_manager::exe_name(name));
+    let script = home.join("integrations").join(crate::provigil_manager::exe_name(name));
     if !script.is_file() {
         return Err(format!("integration script {} is not installed", script.display()));
     }
@@ -537,10 +537,10 @@ pub async fn block_now(state: &AppState, agent_id: &str, ip: &str, hours: u64, r
     if ip.parse::<std::net::IpAddr>().map_or(true, |a| !ps::is_public(a)) {
         return Err(format!("block_ip skipped: source '{ip}' is not a public address"));
     }
-    if agent_id.is_empty() || agent_id == "000" || !crate::wazuh_manager::is_wazuh_agent(&agent_id).await {
+    if agent_id.is_empty() || agent_id == "000" || !crate::provigil_manager::is_provigil_agent(&agent_id).await {
         return Err(format!("block_ip skipped: agent '{agent_id}' cannot run active responses"));
     }
-    let command = crate::wazuh_manager::block_ip(&agent_id, crate::agent_is_windows(state, &agent_id), &ip, hours * 3600, None).await?;
+    let command = crate::provigil_manager::block_ip(&agent_id, crate::agent_is_windows(state, &agent_id), &ip, hours * 3600, None).await?;
     let timeout = command.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(hours * 3600);
     let rec = crate::ActiveResponseRecord {
         id: format!("ar-{}", &uuid::Uuid::new_v4().to_string()[..8]),
@@ -835,9 +835,9 @@ pub async fn test_integration(State(state): State<AppState>, Extension(ctx): Ext
             "id": format!("{}.0", chrono::Utc::now().timestamp()), "full_log": "Provigil SOAR integration test", "location": "soar",
         });
         match r.kind.as_str() {
-            "slack" => run_wazuh_script("slack", &test_alert, "", config["webhook_url"].as_str().unwrap_or("")).await,
-            "shuffle" => run_wazuh_script("shuffle", &test_alert, "", config["webhook_url"].as_str().unwrap_or("")).await,
-            "pagerduty" => run_wazuh_script("pagerduty", &test_alert, config["routing_key"].as_str().unwrap_or(""), "").await,
+            "slack" => run_provigil_script("slack", &test_alert, "", config["webhook_url"].as_str().unwrap_or("")).await,
+            "shuffle" => run_provigil_script("shuffle", &test_alert, "", config["webhook_url"].as_str().unwrap_or("")).await,
+            "pagerduty" => run_provigil_script("pagerduty", &test_alert, config["routing_key"].as_str().unwrap_or(""), "").await,
             "syslog" => send_syslog(&config, &test_alert).await,
             "webhook" | "teams" | "discord" => post_alert(config["webhook_url"].as_str().unwrap_or(""), &json!({ "text": "✅ Provigil SOAR test message" })).await,
             // VirusTotal / Maltiverse spend API quota on a lookup: only the key is checked
@@ -1031,7 +1031,7 @@ mod tests {
     }
 
     #[test]
-    fn context_from_wazuh_alert() {
+    fn context_from_provigil_alert() {
         let c = context(&alert(), "acme");
         assert_eq!((c.severity.as_str(), c.src_ip.as_str(), c.src_port, c.tenant_id.as_str()), ("HIGH", "203.0.113.9", 51022, "acme"));
         assert!(c.tags.contains(&"sshd".to_string()) && c.tags.contains(&"T1110".to_string()));
@@ -1188,8 +1188,8 @@ mod tests {
     /// The Wazuh Slack script (siem-integratord's `integrations` program) posts the
     /// alert to the hook. Needs `cargo build -p siem-integratord --bin integrations`.
     #[tokio::test]
-    async fn wazuh_slack_script_posts_the_alert() {
-        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug").join(crate::wazuh_manager::exe_name("integrations"));
+    async fn provigil_slack_script_posts_the_alert() {
+        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug").join(crate::provigil_manager::exe_name("integrations"));
         if !bin.is_file() {
             eprintln!("skipped: {} not built", bin.display());
             return;
@@ -1197,7 +1197,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(home.path().join("integrations")).unwrap();
         std::fs::create_dir_all(home.path().join("logs")).unwrap();
-        std::fs::copy(&bin, home.path().join("integrations").join(crate::wazuh_manager::exe_name("slack"))).unwrap();
+        std::fs::copy(&bin, home.path().join("integrations").join(crate::provigil_manager::exe_name("slack"))).unwrap();
         let (url, server) = http_once();
         let r = run_script_in(home.path(), "slack", &alert(), "", &url).await;
         let req = server.join().unwrap();

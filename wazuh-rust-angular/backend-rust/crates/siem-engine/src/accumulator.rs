@@ -16,12 +16,12 @@ pub struct MatchedEventRecord {
 
 /// Wazuh Stateful Event Accumulator & Correlation Window
 /// Direct high-performance Rust port of Wazuh `analysisd/accumulator.c` and `analysisd/eventinfo.c:Search_LastSids()`
-pub struct WazuhAccumulator {
+pub struct ProVigilAccumulator {
     history: Mutex<VecDeque<MatchedEventRecord>>,
     max_history: usize,
 }
 
-impl WazuhAccumulator {
+impl ProVigilAccumulator {
     pub fn new(max_history: usize) -> Self {
         Self {
             history: Mutex::new(VecDeque::with_capacity(max_history)),

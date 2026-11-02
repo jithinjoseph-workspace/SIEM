@@ -23,7 +23,7 @@ interface Prediction {
 }
 
 /**
- * SIEM Threat Predictions: from the order of MITRE tactics in each host's Wazuh
+ * SIEM Threat Predictions: from the order of MITRE tactics in each host's ProVigil
  * alerts (24 h), the attack stage likely to come next, with the reason and what
  * to do (siem-api /api/v1/siem/predictions, crate siem-predict).
  */

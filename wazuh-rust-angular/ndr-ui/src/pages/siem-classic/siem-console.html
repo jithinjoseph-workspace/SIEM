@@ -99,7 +99,7 @@
             </span>
           </div>
           <div class="kpi-value mono text-cyan">{{ rules().length | number }}</div>
-          <div class="kpi-footer text-muted">Wazuh rules loaded (plus Sigma)</div>
+          <div class="kpi-footer text-muted">ProVigil rules loaded (plus Sigma)</div>
         </div>
       </div>
 
@@ -116,7 +116,7 @@
         <div class="card panel-card">
           <div class="panel-header">
             <h3>Threat Severity Breakdown</h3>
-            <span class="text-muted text-xs mono">Wazuh Standard (L1 - L15)</span>
+            <span class="text-muted text-xs mono">ProVigil Standard (L1 - L15)</span>
           </div>
           <div class="severity-bars">
             <div class="severity-row">
@@ -366,7 +366,7 @@
     <section *ngIf="activeTab() === 'rules'" class="tab-content">
       <div class="fleet-header">
         <div>
-          <h2>Wazuh-Compatible Detection Rules</h2>
+          <h2>Detection Rules</h2>
           <p class="text-muted">Compiled and evaluated concurrently by the Rust Analysis Engine</p>
         </div>
       </div>

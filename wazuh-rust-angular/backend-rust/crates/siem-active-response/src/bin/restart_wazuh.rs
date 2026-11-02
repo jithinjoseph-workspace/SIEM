@@ -33,7 +33,7 @@ fn main() {
     {
         // system(): cmd.exe expands %WINDIR%
         for verb in ["stop", "start"] {
-            let _ = std::process::Command::new("cmd").args(["/C", &format!("%WINDIR%\\system32\\net.exe {verb} Wazuh")]).status();
+            let _ = std::process::Command::new("cmd").args(["/C", &format!("%WINDIR%\\system32\\net.exe {verb} ProVigilSvc")]).status();
         }
     }
     write_debug_file(&argv0, b"Ended");

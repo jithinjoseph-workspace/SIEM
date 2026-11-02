@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tracing::info;
 
 use crate::tenancy::{self, AuthCtx};
-use crate::{wazuh_manager, AppState};
+use crate::{provigil_manager, AppState};
 
 /// `etc/agent.conf` of the Wazuh sources (installed as `shared/agent-template.conf`).
 const TEMPLATE: &str = "<agent_config>\n\n  <!-- Shared agent configuration here -->\n\n</agent_config>\n";
@@ -56,12 +56,12 @@ pub fn display_name(tenant: &str, m: &str) -> Option<String> {
 }
 
 fn group_dir(m: &str) -> std::path::PathBuf {
-    wazuh_manager::home().join("etc/shared").join(m)
+    provigil_manager::home().join("etc/shared").join(m)
 }
 
 /// `tenant`'s group names (`default` first).
 pub fn tenant_groups(tenant: &str) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(wazuh_manager::home().join("etc/shared"))
+    let mut names: Vec<String> = std::fs::read_dir(provigil_manager::home().join("etc/shared"))
         .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).filter_map(|e| display_name(tenant, &e.file_name().to_string_lossy())).collect())
         .unwrap_or_default();
     names.sort_by(|a, b| (a != "default", a).cmp(&(b != "default", b)));
@@ -139,7 +139,7 @@ fn verify_agent_conf(text: &str) -> Result<(), String> {
 }
 
 fn manager_ready() -> Option<Response> {
-    (!wazuh_manager::enabled()).then(|| err(StatusCode::SERVICE_UNAVAILABLE, "The Wazuh manager is not running"))
+    (!provigil_manager::enabled()).then(|| err(StatusCode::SERVICE_UNAVAILABLE, "The ProVigil manager is not running"))
 }
 
 /// Whether the caller may change group `g` of `tenant`.
@@ -214,7 +214,7 @@ pub async fn create_group(Extension(ctx): Extension<AuthCtx>, Json(p): Json<NewG
         let _ = std::fs::set_permissions(dir.join("agent.conf"), std::fs::Permissions::from_mode(0o660));
         let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
     }
-    if !wazuh_manager::sync_group(&m, true).await {
+    if !provigil_manager::sync_group(&m, true).await {
         let _ = std::fs::remove_dir_all(&dir);
         return err(StatusCode::SERVICE_UNAVAILABLE, "wazuh-db did not accept the group");
     }
@@ -257,10 +257,10 @@ pub async fn delete_group(State(state): State<AppState>, Extension(ctx): Extensi
     if let Err(e) = std::fs::remove_dir_all(group_dir(&m)) {
         return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("Could not delete group: {e}"));
     }
-    wazuh_manager::sync_group(&m, false).await;
+    provigil_manager::sync_group(&m, false).await;
     for (id, left) in drop_group_from_agents(&state, &tenant, &name) {
         let left = resolve(&tenant, &left).unwrap_or_else(|_| vec!["default".to_string()]);
-        wazuh_manager::set_agent_groups(&id, &left).await;
+        provigil_manager::set_agent_groups(&id, &left).await;
     }
     info!("Agent group '{m}' deleted by {}", ctx.username);
     Json(serde_json::json!({ "status": "ok", "message": format!("Group '{name}' deleted.") })).into_response()
@@ -341,7 +341,7 @@ pub async fn put_agent_groups(
         Ok(g) => g,
         Err(e) => return err(StatusCode::BAD_REQUEST, &e),
     };
-    if !wazuh_manager::set_agent_groups(&id, &groups).await {
+    if !provigil_manager::set_agent_groups(&id, &groups).await {
         return err(StatusCode::SERVICE_UNAVAILABLE, "wazuh-db did not accept the groups");
     }
     let shown: Vec<String> = groups.iter().filter_map(|m| display_name(&tenant, m)).collect();

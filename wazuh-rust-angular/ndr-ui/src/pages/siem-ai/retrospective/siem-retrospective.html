@@ -5,7 +5,7 @@
       Retrospective
     </h1>
     <p class="text-sm text-slate-400 mt-1">
-      Would a Wazuh rule have caught something in the past? Stored events are sent again through the running analysisd, so the
+      Would a ProVigil rule have caught something in the past? Stored events are sent again through the running analysisd, so the
       current ruleset decides (including rules you added or changed after the events arrived). Or search the events for a keyword.
     </p>
   </div>
@@ -15,7 +15,7 @@
 
   <form (ngSubmit)="start()" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-3">
     <div class="flex gap-4 text-sm" role="radiogroup" aria-label="Scan type">
-      <label class="flex items-center gap-2"><input type="radio" name="mode" value="rule" [(ngModel)]="mode"> Wazuh rule</label>
+      <label class="flex items-center gap-2"><input type="radio" name="mode" value="rule" [(ngModel)]="mode"> ProVigil rule</label>
       <label class="flex items-center gap-2"><input type="radio" name="mode" value="keyword" [(ngModel)]="mode"> Keyword</label>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">

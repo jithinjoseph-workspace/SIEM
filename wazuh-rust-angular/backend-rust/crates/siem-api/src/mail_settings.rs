@@ -184,7 +184,7 @@ pub async fn post_smtp(State(state): State<AppState>, Extension(ctx): Extension<
         tracing::warn!("SMTP settings not saved: {e}");
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "status": "error", "message": "Settings could not be saved" }))).into_response();
     }
-    crate::wazuh_manager::apply_mail_settings(&s);
+    crate::provigil_manager::apply_mail_settings(&s);
     Json(serde_json::json!({ "status": "ok" })).into_response()
 }
 

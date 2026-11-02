@@ -39,7 +39,7 @@ impl PortableEnv {
             peers: Mutex::new(HashMap::new()),
             next: AtomicI32::new(1),
             #[cfg(windows)]
-            router: Arc::new(super::router::WazuhRouter::default()),
+            router: Arc::new(super::router::ProVigilRouter::default()),
         }
     }
 

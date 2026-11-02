@@ -10,7 +10,7 @@ pub enum ProtocolError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum WazuhSubsystem {
+pub enum ProVigilSubsystem {
     Fim,            // 1: Syscheck
     Rootcheck,      // 2: Rootcheck
     Syscollector,   // 3: Syscollector
@@ -24,7 +24,7 @@ pub enum WazuhSubsystem {
 pub struct RemotedMessage {
     pub agent_id: String,
     pub counter: u64,
-    pub subsystem: WazuhSubsystem,
+    pub subsystem: ProVigilSubsystem,
     pub payload: String,
 }
 
@@ -68,25 +68,25 @@ impl RemotedMessage {
         };
 
         let subsystem = match subsystem_token {
-            "1" | "syscheck" => WazuhSubsystem::Fim,
-            "2" | "rootcheck" => WazuhSubsystem::Rootcheck,
-            "3" | "syscollector" => WazuhSubsystem::Syscollector,
-            "4" | "sca" => WazuhSubsystem::Sca,
-            "5" | "hostinfo" | "ping" => WazuhSubsystem::Keepalive,
-            "6" | "active-response" | "ar" => WazuhSubsystem::ActiveResponse,
+            "1" | "syscheck" => ProVigilSubsystem::Fim,
+            "2" | "rootcheck" => ProVigilSubsystem::Rootcheck,
+            "3" | "syscollector" => ProVigilSubsystem::Syscollector,
+            "4" | "sca" => ProVigilSubsystem::Sca,
+            "5" | "hostinfo" | "ping" => ProVigilSubsystem::Keepalive,
+            "6" | "active-response" | "ar" => ProVigilSubsystem::ActiveResponse,
             _ => {
                 if payload.starts_with("syscheck:") || payload.contains("File '") {
-                    WazuhSubsystem::Fim
+                    ProVigilSubsystem::Fim
                 } else if payload.starts_with("rootcheck:") {
-                    WazuhSubsystem::Rootcheck
+                    ProVigilSubsystem::Rootcheck
                 } else if payload.starts_with("sca:") {
-                    WazuhSubsystem::Sca
+                    ProVigilSubsystem::Sca
                 } else if payload.starts_with("syscollector:") {
-                    WazuhSubsystem::Syscollector
+                    ProVigilSubsystem::Syscollector
                 } else if payload.starts_with("ossec: Agent started") || payload.starts_with("#ping") {
-                    WazuhSubsystem::Keepalive
+                    ProVigilSubsystem::Keepalive
                 } else {
-                    WazuhSubsystem::Log
+                    ProVigilSubsystem::Log
                 }
             }
         };
@@ -115,7 +115,7 @@ mod tests {
         let msg = RemotedMessage::parse("001", raw).unwrap();
         assert_eq!(msg.agent_id, "001");
         assert_eq!(msg.counter, 1054);
-        assert_eq!(msg.subsystem, WazuhSubsystem::Fim);
+        assert_eq!(msg.subsystem, ProVigilSubsystem::Fim);
         assert_eq!(msg.payload, "/etc/shadow modified md5=1234567890abcdef");
     }
 
@@ -124,7 +124,7 @@ mod tests {
         let raw = "#!2001:3:{\"packages\": [{\"name\": \"xz-utils\", \"version\": \"5.6.0\"}]}";
         let msg = RemotedMessage::parse("002", raw).unwrap();
         assert_eq!(msg.counter, 2001);
-        assert_eq!(msg.subsystem, WazuhSubsystem::Syscollector);
+        assert_eq!(msg.subsystem, ProVigilSubsystem::Syscollector);
         assert!(msg.payload.contains("xz-utils"));
     }
 
@@ -133,6 +133,6 @@ mod tests {
         let raw = "#!500:5:#ping";
         let msg = RemotedMessage::parse("003", raw).unwrap();
         assert_eq!(msg.counter, 500);
-        assert_eq!(msg.subsystem, WazuhSubsystem::Keepalive);
+        assert_eq!(msg.subsystem, ProVigilSubsystem::Keepalive);
     }
 }

@@ -68,7 +68,7 @@ export class AdminRules extends RulesBase implements OnInit {
   private mapRule(r: any) {
     return {
       name:        r.title || 'Unknown',
-      type:        r.source === 'custom' ? 'Custom' : 'Wazuh',
+      type:        r.source === 'custom' ? 'Custom' : 'ProVigil',
       editable:    !!r.editable,
       severity:    (r.severity || 'medium').toUpperCase(),
       status:      r.enabled ? 'ACTIVE' : 'INACTIVE',

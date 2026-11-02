@@ -146,13 +146,13 @@ pub async fn create(State(state): State<AppState>, Extension(ctx): Extension<Aut
     if let Err(e) = save(&client, &r).await {
         return reply(StatusCode::SERVICE_UNAVAILABLE, format!("The request could not be recorded, so nothing was sent: {e}"));
     }
-    if let Err(e) = crate::wazuh_manager::live_response(&agent_id, &r.id, action, &path).await {
+    if let Err(e) = crate::provigil_manager::live_response(&agent_id, &r.id, action, &path).await {
         r.status = "failed".into();
         r.message = e.clone();
         let _ = save(&client, &r).await;
         return reply(StatusCode::SERVICE_UNAVAILABLE, e);
     }
-    info!("Wazuh agent {agent_id}: live response {action} {path} by {} (request {})", ctx.username, r.id);
+    info!("ProVigil agent {agent_id}: live response {action} {path} by {} (request {})", ctx.username, r.id);
     (StatusCode::OK, Json(json!({ "status": "sent", "message": "Sent to the agent; the answer usually takes a few seconds.", "request": view(&r) }))).into_response()
 }
 

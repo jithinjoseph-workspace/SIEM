@@ -35,5 +35,5 @@ siem-router = { path = "../siem-router" }
 tempfile = "3"
 
 [[bin]]
-name = "wazuh-modulesd"
-path = "src/bin/wazuh-modulesd.rs"
+name = "provigil-modulesd"
+path = "src/bin/provigil-modulesd.rs"

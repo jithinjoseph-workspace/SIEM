@@ -5,7 +5,7 @@ edition = "2021"
 description = "Port of Wazuh 4.14.7 wazuh-agent.exe (src/win32): the Windows agent process and service"
 
 [[bin]]
-name = "wazuh-agent"
+name = "provigil-agent"
 path = "src/main.rs"
 
 [dependencies]

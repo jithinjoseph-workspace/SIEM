@@ -1,13 +1,13 @@
 <div class="p-6 space-y-6 text-slate-200">
   <div>
     <h1 class="text-2xl font-bold text-white">SIEM Manager</h1>
-    <p class="text-sm text-slate-400">Agents, throughput and queues of the Wazuh manager (refreshed every 5 seconds). A queue that stays full, or discarded / dropped events that keep growing, mean the manager needs more capacity (see docs/MANAGER_SCALING_PLAN.md).</p>
+    <p class="text-sm text-slate-400">Agents, throughput and queues of the ProVigil manager (refreshed every 5 seconds). A queue that stays full, or discarded / dropped events that keep growing, mean the manager needs more capacity (see docs/MANAGER_SCALING_PLAN.md).</p>
   </div>
 
   <div *ngIf="error()" class="p-4 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
 
   <ng-container *ngIf="status() as s">
-    <div *ngIf="!s.enabled" class="p-4 rounded-xl border border-amber-800 bg-amber-950/40 text-amber-300 text-sm">The Wazuh manager is disabled (WAZUH_MANAGER=0).</div>
+    <div *ngIf="!s.enabled" class="p-4 rounded-xl border border-amber-800 bg-amber-950/40 text-amber-300 text-sm">The ProVigil manager is disabled (PROVIGIL_MANAGER=0).</div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">

@@ -17,9 +17,11 @@ use windows_sys::Win32::System::Services::{
 };
 
 /// `g_lpszServiceName` / `g_lpszServiceDisplayName` / `g_lpszServiceDescription`
-const SERVICE_NAME: &[u8] = b"WazuhSvc\0";
-const DISPLAY_NAME: &[u8] = b"Wazuh\0";
-const DESCRIPTION: &[u8] = b"Wazuh Windows Agent\0";
+const SERVICE_NAME: &[u8] = b"ProVigilSvc\0";
+const DISPLAY_NAME: &[u8] = b"ProVigil Agent\0";
+const DESCRIPTION: &[u8] = b"ProVigil Windows Agent\0";
+/// The service of agents installed before the ProVigil rename: removed on install.
+const LEGACY_SERVICE_NAME: &[u8] = b"WazuhSvc\0";
 /// `DELETE` / `SERVICE_STOP`
 const DELETE: u32 = 0x0001_0000;
 const SERVICE_STOP: u32 = 0x0020;
@@ -160,8 +162,32 @@ fn system_message(err: u32) -> String {
     }
 }
 
+/// The pre-rename service (`WazuhSvc`), stopped and deleted when it exists.
+fn remove_legacy_service() {
+    // SAFETY: SCM handles we open and close.
+    unsafe {
+        let m = sc_manager();
+        if m.is_null() {
+            return;
+        }
+        let s = OpenServiceA(m, LEGACY_SERVICE_NAME.as_ptr(), SERVICE_STOP | DELETE);
+        if !s.is_null() {
+            let mut st: SERVICE_STATUS = std::mem::zeroed();
+            let _ = ControlService(s, SERVICE_CONTROL_STOP, &mut st);
+            if DeleteService(s) != 0 {
+                log().plain("INFO", "Removed the pre-rename service (WazuhSvc).");
+            } else {
+                log().plain("ERROR", format!("The pre-rename service (WazuhSvc) could not be removed ({}): with tamper protection on, open a maintenance window first.", GetLastError()));
+            }
+            CloseServiceHandle(s);
+        }
+        CloseServiceHandle(m);
+    }
+}
+
 /// `InstallService`: 1 on success.
 pub fn install_service(path: &str) -> i32 {
+    remove_legacy_service();
     if uninstall_service() == 0 {
         log().plain("ERROR", "Failure running UninstallService().");
         return 0;
@@ -212,7 +238,7 @@ pub fn install_service(path: &str) -> i32 {
 /// `UninstallService`: 1 on success (or when there is nothing to remove).
 pub fn uninstall_service() -> i32 {
     let mut rc = 0;
-    let name = "WazuhSvc";
+    let name = "ProVigilSvc";
     // SAFETY: SCM handles we open and close.
     unsafe {
         let m = sc_manager();

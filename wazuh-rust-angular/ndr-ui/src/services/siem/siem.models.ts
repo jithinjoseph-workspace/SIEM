@@ -238,7 +238,7 @@ export interface ComplianceRemediation {
   requirements: string[];
 }
 
-/** A recent alert whose Wazuh rule carries compliance groups. */
+/** A recent alert whose ProVigil rule carries compliance groups. */
 export interface ComplianceEvidence {
   timestamp: number;
   agent_id: string;
@@ -349,7 +349,7 @@ export interface FimSummaryResponse {
   recent_changes: FimSummaryRecord[];
 }
 
-// --- Wazuh Logtest Console ---
+// --- ProVigil Logtest Console ---
 export interface LogtestResult {
   raw_event: string;
   predecoded_timestamp?: string;

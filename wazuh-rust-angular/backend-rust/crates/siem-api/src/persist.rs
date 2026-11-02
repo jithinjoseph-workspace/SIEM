@@ -6,7 +6,6 @@
 use chrono::Utc;
 use clickhouse::Client;
 use serde::{Deserialize, Serialize};
-use crate::vulnerability::VulnItem;
 use tracing::{info, warn};
 
 use crate::{tenancy, ActiveResponseRecord, AppState};
@@ -107,17 +106,6 @@ struct ArRow {
 }
 
 #[derive(clickhouse::Row, Serialize, Deserialize)]
-struct VulnRow {
-    snapshot_at: u64,
-    agent_id: String,
-    cve_id: String,
-    package_name: String,
-    severity: String,
-    status: String,
-    detection: String,
-}
-
-#[derive(clickhouse::Row, Serialize, Deserialize)]
 struct CmdRow {
     agent_id: String,
     command_id: String,
@@ -169,30 +157,6 @@ pub async fn save_active_response(state: &AppState, r: &ActiveResponseRecord) {
     insert(state.db.tenant_client(&tenant_of(state, &r.agent_id)), "siem_active_responses", &[row]).await;
 }
 
-/// Saves the current detections of one agent (a new snapshot).
-pub async fn save_vulnerabilities(state: &AppState, agent_id: &str, detections: &[VulnItem]) {
-    if !state.db.is_connected() {
-        return;
-    }
-    let snapshot_at = now_ms();
-    let mut rows: Vec<VulnRow> = detections
-        .iter()
-        .map(|d| VulnRow {
-            snapshot_at,
-            agent_id: agent_id.to_string(),
-            cve_id: d.cve.clone(),
-            package_name: d.package_name.clone(),
-            severity: d.severity.to_ascii_lowercase(),
-            status: d.status.clone(),
-            detection: serde_json::to_string(d).unwrap_or_default(),
-        })
-        .collect();
-    if rows.is_empty() {
-        rows.push(VulnRow { snapshot_at, agent_id: agent_id.to_string(), cve_id: String::new(), package_name: String::new(), severity: String::new(), status: String::new(), detection: String::new() });
-    }
-    insert(state.db.tenant_client(&tenant_of(state, agent_id)), "siem_vulnerabilities", &rows).await;
-}
-
 /// Saves a queued command (`delivered` = false) or marks it fetched.
 pub async fn save_commands(state: &AppState, agent_id: &str, commands: &[serde_json::Value], delivered: bool) {
     if !state.db.is_connected() || commands.is_empty() {
@@ -226,27 +190,19 @@ pub async fn load_all(state: &AppState) {
         }
     }
     let root = state.db.root().clone();
-    let (mut ars, mut vulns, mut cmds) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut ars, mut cmds) = (Vec::new(), Vec::new());
     for db in &dbs {
         ensure_tables(&root, db).await;
         match root.query(&format!("SELECT ?fields FROM `{db}`.siem_active_responses FINAL ORDER BY triggered_at DESC")).fetch_all::<ArRow>().await {
             Ok(rows) => ars.extend(rows),
             Err(e) => warn!("{db}.siem_active_responses: {e}"),
         }
-        let q = format!(
-            "SELECT ?fields FROM `{db}`.siem_vulnerabilities WHERE detection != '' AND (agent_id, snapshot_at) IN \
-             (SELECT agent_id, max(snapshot_at) FROM `{db}`.siem_vulnerabilities GROUP BY agent_id)"
-        );
-        match root.query(&q).fetch_all::<VulnRow>().await {
-            Ok(rows) => vulns.extend(rows),
-            Err(e) => warn!("{db}.siem_vulnerabilities: {e}"),
-        }
         match root.query(&format!("SELECT ?fields FROM `{db}`.siem_agent_commands FINAL WHERE delivered = 0 ORDER BY created_at")).fetch_all::<CmdRow>().await {
             Ok(rows) => cmds.extend(rows),
             Err(e) => warn!("{db}.siem_agent_commands: {e}"),
         }
     }
-    let (na, nv, nc) = (ars.len(), vulns.len(), cmds.len());
+    let (na, nc) = (ars.len(), cmds.len());
     {
         let mut list = state.active_responses.write().unwrap();
         list.clear();
@@ -262,11 +218,6 @@ pub async fn load_all(state: &AppState) {
         }));
     }
     {
-        let mut list = state.vulnerabilities.write().unwrap();
-        list.clear();
-        list.extend(vulns.iter().filter_map(|r| serde_json::from_str::<VulnItem>(&r.detection).ok()));
-    }
-    {
         let mut map = state.pending_commands.write().unwrap();
         map.clear();
         for r in cmds {
@@ -275,5 +226,5 @@ pub async fn load_all(state: &AppState) {
             }
         }
     }
-    info!("Loaded from ClickHouse: {na} active responses, {nv} vulnerability detections, {nc} queued agent commands ({} databases)", dbs.len());
+    info!("Loaded from ClickHouse: {na} active responses, {nc} queued agent commands ({} databases)", dbs.len());
 }

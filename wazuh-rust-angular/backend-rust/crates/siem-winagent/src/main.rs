@@ -50,7 +50,7 @@ mod win {
     /// `agent_help`
     fn agent_help() -> ! {
         siem_log::crt_print(&format!(
-            "\nWazuh {ARGV0} v4.14.7 .\n\
+            "\nProVigil {ARGV0} v4.14.7 .\n\
              Available options:\n\
              \t/?                This help message.\n\
              \t-h                This help message.\n\

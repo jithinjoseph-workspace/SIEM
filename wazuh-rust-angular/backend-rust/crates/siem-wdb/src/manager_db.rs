@@ -4,18 +4,18 @@ use crate::agent_db::AgentDatabase;
 use crate::global_db::GlobalDb;
 
 #[derive(Clone)]
-pub struct WazuhDbManager {
+pub struct ProVigilDbManager {
     agents: Arc<RwLock<HashMap<String, Arc<RwLock<AgentDatabase>>>>>,
     pub global: Arc<GlobalDb>,
 }
 
-impl Default for WazuhDbManager {
+impl Default for ProVigilDbManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl WazuhDbManager {
+impl ProVigilDbManager {
     pub fn new() -> Self {
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),

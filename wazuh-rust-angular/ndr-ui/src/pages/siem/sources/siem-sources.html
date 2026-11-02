@@ -4,7 +4,7 @@
     <div>
       <div class="eyebrow">SIEM — Log Sources</div>
       <h2>Source Management</h2>
-      <p>Your Wazuh agents and syslog devices, with the events each sent in the last 5 minutes.</p>
+      <p>Your ProVigil agents and syslog devices, with the events each sent in the last 5 minutes.</p>
     </div>
     <div class="header-actions">
       <button class="btn-refresh" (click)="load()">
@@ -75,7 +75,7 @@
       </div>
       <div class="modal-body">
         <div class="setup-section-label">Hosts (Windows, Linux, macOS)</div>
-        <p class="muted">Install the Wazuh agent: it sends the host's event logs, file integrity, inventory and SCA results.
+        <p class="muted">Install the ProVigil agent: it sends the host's event logs, file integrity, inventory and SCA results.
           Use <a routerLink="/analyst/agents" (click)="closeModal()">Agent Fleet → Deploy New Agent</a> (needs the Deploy Agents permission) or ask your tenant admin
           (<a routerLink="/tenant-admin/agent-deployment" (click)="closeModal()">Agent Deployment</a>).</p>
         <div class="setup-section-label">Firewalls, switches, appliances</div>

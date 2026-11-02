@@ -91,7 +91,7 @@ pub struct RawXmlGroup {
 
 /// Compiled Wazuh Rule for real-time evaluation
 #[derive(Clone)]
-pub struct CompiledWazuhRule {
+pub struct CompiledProVigilRule {
     pub id: u32,
     pub level: u8,
     pub noalert: bool,
@@ -112,7 +112,7 @@ pub struct CompiledWazuhRule {
     pub mitre: Option<MitreAttack>,
 }
 
-impl CompiledWazuhRule {
+impl CompiledProVigilRule {
     pub fn from_raw(raw: RawXmlRule, parent_group: Option<&str>) -> Option<Self> {
         if raw.id == 0 {
             return None;
@@ -190,7 +190,7 @@ impl CompiledWazuhRule {
         active_sids: &[u32],
         active_groups: &[String],
         data: &std::collections::HashMap<String, serde_json::Value>,
-        accumulator: Option<&crate::accumulator::WazuhAccumulator>,
+        accumulator: Option<&crate::accumulator::ProVigilAccumulator>,
         agent_id: &str,
         src_ip: Option<&str>,
         user: Option<&str>,
@@ -346,7 +346,7 @@ impl CompiledWazuhRule {
 }
 
 /// Parse rules from an XML string
-pub fn parse_rules_xml(xml: &str) -> Vec<CompiledWazuhRule> {
+pub fn parse_rules_xml(xml: &str) -> Vec<CompiledProVigilRule> {
     let mut compiled_rules = Vec::new();
 
     // Wrap in dummy root if needed
@@ -368,13 +368,13 @@ pub fn parse_rules_xml(xml: &str) -> Vec<CompiledWazuhRule> {
     if let Ok(container) = quick_xml::de::from_str::<RulesetContainer>(&wrapped_xml) {
         for group in container.groups {
             for raw in group.rules {
-                if let Some(cr) = CompiledWazuhRule::from_raw(raw, Some(&group.name)) {
+                if let Some(cr) = CompiledProVigilRule::from_raw(raw, Some(&group.name)) {
                     compiled_rules.push(cr);
                 }
             }
         }
         for raw in container.direct_rules {
-            if let Some(cr) = CompiledWazuhRule::from_raw(raw, None) {
+            if let Some(cr) = CompiledProVigilRule::from_raw(raw, None) {
                 compiled_rules.push(cr);
             }
         }
@@ -384,7 +384,7 @@ pub fn parse_rules_xml(xml: &str) -> Vec<CompiledWazuhRule> {
 }
 
 /// Load rules from an XML file
-pub fn load_rules_file<P: AsRef<Path>>(path: P) -> Result<Vec<CompiledWazuhRule>, String> {
+pub fn load_rules_file<P: AsRef<Path>>(path: P) -> Result<Vec<CompiledProVigilRule>, String> {
     let content = fs::read_to_string(path.as_ref())
         .map_err(|e| format!("Failed to read {}: {}", path.as_ref().display(), e))?;
     Ok(parse_rules_xml(&content))

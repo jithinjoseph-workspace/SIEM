@@ -242,7 +242,7 @@ export class Compliance implements OnInit {
     }));
   }
 
-  /** The recent alerts whose Wazuh rule carries compliance groups (the evidence behind the alert counts). */
+  /** The recent alerts whose ProVigil rule carries compliance groups (the evidence behind the alert counts). */
   private setEvidence(res: ComplianceResponse) {
     this.auditLogs.set((res.evidence ?? []).map((e, i) => {
       const actor = e.agent_name || e.agent_id || 'manager';
@@ -254,7 +254,7 @@ export class Compliance implements OnInit {
         action: e.description || `Rule ${e.rule_id}`,
         resource: e.requirements.join(', '),
         risk: e.level >= 12 ? 'High' : e.level >= 7 ? 'Medium' : e.level >= 4 ? 'Low' : 'Informational',
-        // an alert is a finding to review; level 7 and up (Wazuh's "high importance") a failure
+        // an alert is a finding to review; level 7 and up ("high importance") a failure
         status: e.level >= 7 ? 'Fail' : 'Review Needed',
       } as AuditLogItem;
     }));

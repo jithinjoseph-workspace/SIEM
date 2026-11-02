@@ -290,7 +290,7 @@ impl RemotedSettings {
 }
 
 /// `compare_wazuh_versions(v1, v2, compare_patch)`
-pub fn compare_wazuh_versions(v1: Option<&str>, v2: Option<&str>, compare_patch: bool) -> i32 {
+pub fn compare_provigil_versions(v1: Option<&str>, v2: Option<&str>, compare_patch: bool) -> i32 {
     fn parse(v: Option<&str>) -> (i32, i32, i32) {
         let Some(v) = v else { return (0, 0, 0) };
         // strncpy(ver, version, 9)
@@ -321,10 +321,10 @@ mod tests {
 
     #[test]
     fn versions() {
-        assert_eq!(compare_wazuh_versions(Some("v4.14.7"), Some("v4.15.0"), false), -1);
-        assert_eq!(compare_wazuh_versions(Some("v4.14.7"), Some("v4.14.9"), false), 0);
-        assert_eq!(compare_wazuh_versions(Some("v4.14.7"), Some("v4.14.9"), true), -1);
-        assert_eq!(compare_wazuh_versions(Some("v4.14.7"), Some("Wazuh v3.13.0"), false), 1);
-        assert_eq!(compare_wazuh_versions(Some("v4.14.7"), None, false), 1);
+        assert_eq!(compare_provigil_versions(Some("v4.14.7"), Some("v4.15.0"), false), -1);
+        assert_eq!(compare_provigil_versions(Some("v4.14.7"), Some("v4.14.9"), false), 0);
+        assert_eq!(compare_provigil_versions(Some("v4.14.7"), Some("v4.14.9"), true), -1);
+        assert_eq!(compare_provigil_versions(Some("v4.14.7"), Some("Wazuh v3.13.0"), false), 1);
+        assert_eq!(compare_provigil_versions(Some("v4.14.7"), None, false), 1);
     }
 }

@@ -19,7 +19,7 @@ use thiserror::Error;
 pub const IPV6_LINK_LOCAL_PREFIX: &str = "FE80:0000:0000:0000:";
 
 /// Default IPC timeout in seconds matching `WAZUH_IPC_TIMEOUT`.
-pub const WAZUH_IPC_TIMEOUT: u64 = 600;
+pub const PROVIGIL_IPC_TIMEOUT: u64 = 600;
 
 /// Maximum payload size for cluster communication matching `MAX_PAYLOAD_SIZE` (1 MB).
 pub const MAX_CLUSTER_PAYLOAD_SIZE: usize = 1_000_000;

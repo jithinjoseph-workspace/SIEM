@@ -15,14 +15,14 @@ static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 /// A parsed Wazuh semantic version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WazuhVersion {
+pub struct ProVigilVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
     pub pre_release: Option<String>,
 }
 
-impl WazuhVersion {
+impl ProVigilVersion {
     pub fn new(major: u32, minor: u32, patch: u32) -> Self {
         Self {
             major,
@@ -62,19 +62,19 @@ impl WazuhVersion {
     /// Check if this agent version is compatible with a manager version.
     /// Wazuh rule: Manager can support agents that are at most the manager's version
     /// (Manager >= Agent).
-    pub fn is_compatible_with_manager(&self, manager_version: &WazuhVersion) -> bool {
+    pub fn is_compatible_with_manager(&self, manager_version: &ProVigilVersion) -> bool {
         // Agent must not be newer than manager
         self <= manager_version
     }
 }
 
-impl PartialOrd for WazuhVersion {
+impl PartialOrd for ProVigilVersion {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for WazuhVersion {
+impl Ord for ProVigilVersion {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.major.cmp(&other.major) {
             Ordering::Equal => match self.minor.cmp(&other.minor) {
@@ -94,7 +94,7 @@ impl Ord for WazuhVersion {
     }
 }
 
-impl fmt::Display for WazuhVersion {
+impl fmt::Display for ProVigilVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref pre) = self.pre_release {
             write!(f, "v{}.{}.{}-{}", self.major, self.minor, self.patch, pre)

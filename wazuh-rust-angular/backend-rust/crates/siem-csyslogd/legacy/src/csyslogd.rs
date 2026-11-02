@@ -87,13 +87,13 @@ impl SyslogDaemon {
     /// Parses a JSON alert (matching Wazuh `alerts.json` format) and forwards it.
     pub fn process_json_str(&mut self, json_str: &str) -> Result<usize, serde_json::Error> {
         let val: serde_json::Value = serde_json::from_str(json_str)?;
-        let alert = parse_wazuh_json_alert(&val);
+        let alert = parse_provigil_json_alert(&val);
         Ok(self.process_alert(&alert))
     }
 }
 
 /// Parses a standard Wazuh `alerts.json` event into `SyslogAlert`.
-pub fn parse_wazuh_json_alert(val: &serde_json::Value) -> SyslogAlert {
+pub fn parse_provigil_json_alert(val: &serde_json::Value) -> SyslogAlert {
     let mut alert = SyslogAlert::default();
     alert.raw_json = Some(val.clone());
 

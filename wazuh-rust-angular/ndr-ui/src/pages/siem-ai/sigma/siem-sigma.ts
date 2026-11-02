@@ -8,7 +8,7 @@ import { AuthService } from '../../../services/auth/auth';
 
 /**
  * Sigma Detection: the SigmaHQ community rules (provigil-common's engine) the SIEM
- * runs on every archived event besides the Wazuh rules, and what they caught
+ * runs on every archived event besides the ProVigil rules, and what they caught
  * (siem-api /api/v1/siem/sigma).
  */
 @Component({

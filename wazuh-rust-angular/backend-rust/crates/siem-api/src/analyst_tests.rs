@@ -26,8 +26,7 @@ async fn state() -> AppState {
         broadcast_tx,
         pending_commands: Arc::new(RwLock::new(HashMap::new())),
         db: crate::db::ClickHouseDb::init().await,
-        vulnerabilities: Arc::new(RwLock::new(Vec::new())),
-        wdb: Arc::new(siem_wdb::WazuhDbManager::new()),
+        wdb: Arc::new(siem_wdb::ProVigilDbManager::new()),
         threat_intel: Arc::new(siem_cdb::ThreatIntelManager::new_with_builtin_feeds()),
         rootcheck: Arc::new(siem_rootcheck::RootcheckScanner::with_default_db()),
         active_responses: Arc::new(RwLock::new(Vec::new())),
@@ -339,25 +338,22 @@ async fn history_and_inventory_from_clickhouse() {
         let mitre = body(crate::mitre::matrix(State(st.clone()), Extension(ca.clone())).await.into_response()).await;
         assert!(mitre.contains("T1110"), "MITRE from ClickHouse: {}", &mitre[..mitre.len().min(400)]);
 
-        // inventory of a siem-agent: stored in ClickHouse, read back by the endpoint
+        // inventory of a siem-agent: read from siem-api's store, nothing copied
         st.agent_tenants.write().unwrap().insert("901".into(), ta.clone());
         {
             let db = st.wdb.get_or_create("901", "host-901");
             db.write().unwrap().syscollector.set_os_info(siem_wdb::SysOsInfo { hostname: "host-901".into(), architecture: "x86_64".into(), os_name: "Ubuntu".into(), os_version: "24.04".into(), os_codename: None, os_major: None, os_minor: None, os_build: None, platform: "ubuntu".into(), release: "6.8".into() });
         }
-        assert!(crate::inventory_store::sync_agent(&st, "901").await);
-        assert!(!crate::inventory_store::sync_agent(&st, "901").await, "unchanged: not written again");
         let os = crate::get_agent_os_handler(State(st.clone()), Path("901".into())).await.into_response();
         let os = body(os).await;
-        assert!(os.contains("Ubuntu") && os.contains("siem-agent"), "{os}");
-        let stored = st.db.doc(&ta, crate::db::DocTable::Inventory, "901").await.unwrap().unwrap();
-        assert!(stored.contains("24.04"));
+        assert!(os.contains("Ubuntu") && os.contains("24.04"), "{os}");
+        assert_eq!(crate::inventory_store::host(&st, "901").await.unwrap()["source"], "siem-agent");
 
         // inventory of a real Wazuh agent from the running wazuh-db (if one has reported)
         let mut found = None;
         for n in 1..200u32 {
             let id = format!("{n:03}");
-            if crate::wazuh_manager::agent_inventory(&id).await.is_some() {
+            if crate::provigil_manager::agent_inventory(&id).await.is_some() {
                 found = Some(id);
                 break;
             }
@@ -365,11 +361,13 @@ async fn history_and_inventory_from_clickhouse() {
         match found {
             Some(id) => {
                 st.agent_tenants.write().unwrap().insert(id.clone(), ta.clone());
-                let inv = crate::inventory_store::get(&st, &id).await.expect("synced on first read");
+                // read live from the agent's own wazuh-db database: the page's rows are the table's
+                let inv = crate::inventory_store::host(&st, &id).await.expect("a Wazuh agent's host view");
                 assert_eq!(inv["source"], "wazuh-db");
-                let pk = body(crate::get_agent_packages_handler(State(st.clone()), Path(id.clone())).await.into_response()).await;
-                eprintln!("wazuh agent {id}: {} packages, {} ports, {} processes from ClickHouse", inv["packages"].as_array().map_or(0, |a| a.len()), inv["ports"].as_array().map_or(0, |a| a.len()), inv["processes"].as_array().map_or(0, |a| a.len()));
-                assert!(pk.contains("\"source\":\"wazuh-db\""));
+                let pk: serde_json::Value = serde_json::from_str(&body(crate::get_agent_packages_handler(State(st.clone()), Path(id.clone())).await.into_response()).await).unwrap();
+                assert_eq!(pk["source"], "wazuh-db");
+                assert_eq!(pk["total"], inv["packages"], "every package of sys_programs, from this agent's database");
+                eprintln!("wazuh agent {id}: {} packages, {} ports, {} processes from wazuh-db", inv["packages"], inv["ports"], inv["processes"]);
             }
             None => eprintln!("no Wazuh agent with inventory in the running wazuh-db: skipped that part"),
         }
@@ -783,7 +781,8 @@ async fn intel_and_investigation_end_to_end() {
         let agent = siem_core::Agent { id: "077".into(), name: "web-77".into(), ip: "10.0.0.77".into(), os: "Ubuntu".into(), version: "4.14".into(), status: siem_core::AgentStatus::Active, last_keepalive: chrono::Utc::now(), os_type: "linux".into() };
         st.agents.write().unwrap().insert("077".into(), agent);
         st.agent_tenants.write().unwrap().insert("077".into(), tenant.clone());
-        st.vulnerabilities.write().unwrap().push(serde_json::from_value(json!({ "cve": "CVE-2024-3400", "title": "PAN-OS", "severity": "Critical", "cvss_score": 10.0, "package_name": "panos", "installed_version": "10.2", "fixed_version": null, "agent_id": "077", "agent_name": "web-77", "status": "Active", "detected_at": "", "description": "", "reference": "", "category": "" })).unwrap());
+        // the scanner's document, through the same intake as its stream
+        crate::vulnerability::ingest(&st, vec![json!({ "id": "077_panos_CVE-2024-3400", "operation": "INSERTED", "data": { "agent": { "id": "077", "name": "web-77" }, "package": { "name": "panos", "version": "10.2" }, "vulnerability": { "id": "CVE-2024-3400", "severity": "Critical", "score": { "base": 10.0 } } } })]).await;
 
         let now = chrono::Utc::now().timestamp_millis() as u64;
         let mut a1 = alert(5760, 5, "sshd: authentication failed", "077", "198.51.100.66", now - 60_000);

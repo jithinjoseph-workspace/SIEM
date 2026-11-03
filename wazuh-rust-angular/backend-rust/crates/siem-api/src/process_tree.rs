@@ -69,7 +69,7 @@ pub struct Activity {
     pub detail: String,
 }
 
-/// Wazuh doubles the backslashes of Windows event data.
+/// ProVigil doubles the backslashes of Windows event data.
 fn undouble(s: &str) -> String {
     s.replace("\\\\", "\\")
 }

@@ -1,7 +1,7 @@
 //! Database synchronization dispatcher (analysisd/decoders/dbsync.c): agent
-//! `dbsync` messages are turned into wazuh-db queries; integrity check
+//! `dbsync` messages are turned into provigil-db queries; integrity check
 //! answers are sent back to the agent (through remoted) or to the local
-//! syscheck / wazuh-modules socket.
+//! syscheck / provigil-modules socket.
 
 use siem_cjson::Json;
 

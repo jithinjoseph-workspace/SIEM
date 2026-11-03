@@ -1,7 +1,7 @@
-//! Each Wazuh agent's latest SCA results in ClickHouse, `siem_sca_checks` in the agent's
+//! Each ProVigil agent's latest SCA results in ClickHouse, `siem_sca_checks` in the agent's
 //! tenant's database (one row per check, with its scan's summary): the one copy of agent
 //! data siem-api keeps, because the compliance audit (compliance.rs) scores every agent of
-//! a tenant against every check in one query. The agent pages read wazuh-db (the agent's
+//! a tenant against every check in one query. The agent pages read provigil-db (the agent's
 //! SQLite database), the source; FIM, rootcheck and inventory are not copied at all.
 //! Copied when the scan changed (a cheap query on `sca_scan_info` tells), within seconds of
 //! the agent's SCA event; every agent once at start.
@@ -26,7 +26,7 @@ pub const DDL: [&str; 2] = [
 
 /// How often the changed agents are copied.
 const CHANGED_EVERY: Duration = Duration::from_secs(5);
-/// Agents copied at the same time (wazuh-db answers with 8 workers).
+/// Agents copied at the same time (provigil-db answers with 8 workers).
 const PARALLEL: usize = 8;
 /// Agents with an SCA event since the last copy (or whose copy failed: tried again).
 static CHANGED: Mutex<Option<std::collections::BTreeSet<String>>> = Mutex::new(None);
@@ -163,7 +163,7 @@ pub async fn forget(state: &AppState, tenant: &str, agent_id: &str) {
     }
 }
 
-/// Every Wazuh agent 90 s after start, then the agents with an SCA event on the stream
+/// Every ProVigil agent 90 s after start, then the agents with an SCA event on the stream
 /// (`changed`), within seconds; `PARALLEL` at a time.
 pub fn spawn(state: AppState) {
     tokio::spawn(async move {
@@ -171,8 +171,8 @@ pub fn spawn(state: AppState) {
         let mut ids: Vec<String> = state.agents.read().unwrap().keys().cloned().collect();
         loop {
             if state.db.is_connected() && crate::provigil_manager::enabled() && !ids.is_empty() {
-                let wazuh: Vec<String> = ids.iter().filter(|k| k.parse::<u32>().is_ok_and(|n| n > 0)).cloned().collect();
-                let n = futures_util::stream::iter(wazuh)
+                let agent_dbs: Vec<String> = ids.iter().filter(|k| k.parse::<u32>().is_ok_and(|n| n > 0)).cloned().collect();
+                let n = futures_util::stream::iter(agent_dbs)
                     .map(|id| {
                         let st = state.clone();
                         async move { sync_agent(&st, &id).await as usize }

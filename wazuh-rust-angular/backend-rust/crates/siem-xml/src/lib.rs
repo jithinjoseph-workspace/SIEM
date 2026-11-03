@@ -1,9 +1,9 @@
-//! `siem-xml`: faithful port of Wazuh's XML library `src/os_xml/`.
+//! `siem-xml`: faithful port of the upstream XML library `src/os_xml/`.
 //!
-//! Every Wazuh configuration file is read through this parser: `ossec.conf`,
+//! Every ProVigil configuration file is read through this parser: `ossec.conf`,
 //! `agent.conf`, `local_internal_options`, rules, decoders, and lists. It
 //! keeps the C library's flat-array document model (`el`, `ct`, `tp`, `rl`,
-//! `ck`, `ln`), so all the `OS_Get*` lookups behave exactly as they do in Wazuh.
+//! `ck`, `ln`), so all the `OS_Get*` lookups behave exactly as they do in upstream.
 
 mod access;
 pub mod dump;
@@ -48,7 +48,7 @@ impl XmlNode {
     }
 }
 
-/// Parse error: message (as Wazuh prints it), line, and the C return code.
+/// Parse error: message (as upstream prints it), line, and the C return code.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message} (line {line})")]
 pub struct XmlError {

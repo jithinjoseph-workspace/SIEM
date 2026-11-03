@@ -1,4 +1,4 @@
-//! Wazuh Report Generator Subsystem (`src/reportd`)
+//! ProVigil Report Generator Subsystem (`src/reportd`)
 //!
 //! Generates summary reports, frequency distributions, and related correlations
 //! across alert log files and event streams.

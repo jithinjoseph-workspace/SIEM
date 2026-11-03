@@ -1,10 +1,10 @@
-//! Regulatory compliance as Wazuh computes it, from the tenant's own data only:
-//! * configuration: the frameworks of each CIS / SCA check as the agent reports them (wazuh-db
+//! Regulatory compliance as upstream computes it, from the tenant's own data only:
+//! * configuration: the frameworks of each CIS / SCA check as the agent reports them (provigil-db
 //!   `sca_check_compliance`, copied to `siem_sca_checks.compliance`). A requirement passes
 //!   when its checks pass on every agent; the framework's score is the passed share of its
 //!   checks' results;
-//! * alerts: the compliance groups of each Wazuh rule (`rule.pci_dss`, `gdpr`, `hipaa`,
-//!   `nist_800_53`, `tsc`), counted per requirement as the Wazuh dashboard's modules do.
+//! * alerts: the compliance groups of each ProVigil rule (`rule.pci_dss`, `gdpr`, `hipaa`,
+//!   `nist_800_53`, `tsc`), counted per requirement as the ProVigil dashboard's modules do.
 //! Nothing is assumed: a framework the checks do not map has no score, only alerts.
 //!
 //! Each tenant keeps a profile (`siem_compliance_profile`): the frameworks it reports on,
@@ -31,7 +31,7 @@ const MAX_EXCLUDED: usize = 20_000;
 const MAX_SCOPE_GROUPS: usize = 50;
 
 const WINDOW_HOURS: i64 = 24;
-/// Agents brought up to date by a refresh (two cheap wazuh-db queries each when unchanged);
+/// Agents brought up to date by a refresh (two cheap provigil-db queries each when unchanged);
 /// beyond them the 10-minute background copy applies.
 const REFRESH_AGENTS: usize = 200;
 
@@ -45,11 +45,11 @@ struct Framework {
     full_name: &'static str,
     /// keys of the framework in the SCA checks (the agent's policy files)
     sca_keys: &'static [&'static str],
-    /// the Wazuh rule field
+    /// the ProVigil rule field
     alert_key: &'static str,
 }
 
-/// The frameworks the Wazuh ruleset and the CIS policies tag (older policies use
+/// The frameworks the ProVigil ruleset and the CIS policies tag (older policies use
 /// `nist_800_53`, `tsc` and `gdpr_IV`).
 const FRAMEWORKS: [Framework; 5] = [
     Framework { name: "PCI_DSS", full_name: "Payment Card Industry Data Security Standard", sca_keys: &["pci_dss_v4.0", "pci_dss_4.0"], alert_key: "pci_dss" },

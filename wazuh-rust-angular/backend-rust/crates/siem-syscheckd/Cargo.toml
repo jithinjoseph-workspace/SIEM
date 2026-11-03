@@ -2,7 +2,7 @@
 name = "siem-syscheckd"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh File Integrity Monitoring (FIM) daemon (wazuh-syscheckd) for integrity scans, real-time watcher, whodata, diff analysis, and registry tracking"
+description = "ProVigil File Integrity Monitoring (FIM) daemon (provigil-syscheckd) for integrity scans, real-time watcher, whodata, diff analysis, and registry tracking"
 
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }

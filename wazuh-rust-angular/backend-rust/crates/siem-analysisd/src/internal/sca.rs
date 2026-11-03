@@ -1,7 +1,7 @@
 //! Security Configuration Assessment decoder
 //! (analysisd/decoders/security_configuration_assessment.c): check results,
 //! scan summaries, policy lists and dump-end events from the agents' SCA
-//! module are stored in wazuh-db; changes become `sca.*` fields for the
+//! module are stored in provigil-db; changes become `sca.*` fields for the
 //! rules, and out-of-sync databases make the manager request a dump.
 
 use std::collections::VecDeque;

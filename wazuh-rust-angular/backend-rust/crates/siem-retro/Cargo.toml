@@ -2,7 +2,7 @@
 name = "siem-retro"
 version = "0.1.0"
 edition = "2021"
-description = "Retrospective scans for the SIEM: past events re-run through the live Wazuh ruleset (analysisd logtest), or a keyword search"
+description = "Retrospective scans for the SIEM: past events re-run through the live ProVigil ruleset (analysisd logtest), or a keyword search"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

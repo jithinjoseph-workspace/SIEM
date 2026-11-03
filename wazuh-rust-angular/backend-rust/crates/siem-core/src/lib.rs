@@ -75,7 +75,7 @@ pub struct MitreAttack {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
     pub id: u32,
-    pub level: u8, // 1 to 15 (matching Wazuh standard)
+    pub level: u8, // 1 to 15 (matching ProVigil standard)
     pub description: String,
     pub regex_pattern: String,
     pub groups: Vec<String>,
@@ -115,7 +115,7 @@ pub struct DecoderAlertInfo {
     pub name: String,
 }
 
-/// Final Security Alert produced by the correlation engine (matching Wazuh Alert structure)
+/// Final Security Alert produced by the correlation engine (matching ProVigil Alert structure)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alert {
     pub id: Uuid,

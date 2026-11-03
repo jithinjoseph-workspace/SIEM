@@ -1,4 +1,4 @@
-//! Wazuh Input Validator (validate_op.c)
+//! ProVigil Input Validator (validate_op.c)
 //!
 //! Provides validation functions for agent IDs, names, IP addresses, CIDR ranges,
 //! network ports, and path safety to prevent injection and path traversal.
@@ -11,12 +11,12 @@ use std::sync::LazyLock;
 static AGENT_ID_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{1,8}$").unwrap());
 static AGENT_NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9.\-_]{1,128}$").unwrap());
 
-/// Validate Wazuh agent ID format (numeric string, 1 to 8 digits).
+/// Validate ProVigil agent ID format (numeric string, 1 to 8 digits).
 pub fn is_valid_agent_id(id: &str) -> bool {
     AGENT_ID_REGEX.is_match(id.trim())
 }
 
-/// Validate Wazuh agent name format (alphanumeric with ., -, _, up to 128 chars).
+/// Validate ProVigil agent name format (alphanumeric with ., -, _, up to 128 chars).
 pub fn is_valid_agent_name(name: &str) -> bool {
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed.len() > 128 {

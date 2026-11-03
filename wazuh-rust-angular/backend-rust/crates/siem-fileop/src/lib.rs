@@ -3,7 +3,7 @@
 //! `MergeAppendFile`, `UnmergeFiles`, `TestUnmergeFiles`, `checkBinaryFile`,
 //! `w_copy_file`, `wreaddir`, `rmdir_ex`, `cldir_ex_ignore`, `OS_MD5_File`.
 //!
-//! Paths are handled as `/`-separated strings, as Wazuh does: the relative
+//! Paths are handled as `/`-separated strings, as upstream does: the relative
 //! names written into `merged.mg` must be byte-identical to a C manager's.
 
 pub mod crt;

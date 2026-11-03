@@ -1,4 +1,4 @@
-//! `wazuh-remoted` command line (`src/remoted/main.c`).
+//! `provigil-remoted` command line (`src/remoted/main.c`).
 
 use siem_remoted::config::RemotedSettings;
 use siem_remoted::{Deps, Remoted};

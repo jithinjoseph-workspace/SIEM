@@ -1,7 +1,7 @@
-//! Superseded: the faithful port of Wazuh's rsync is the `siem-dbsync`
+//! Superseded: the faithful port of the upstream rsync is the `siem-dbsync`
 //! crate. This simplified in-memory version is kept for its current users.
 //!
-//! Wazuh differential table synchronization protocol (rsync)
+//! ProVigil differential table synchronization protocol (rsync)
 //!
 //! Provides range-based checksum partitioning and binary search differential synchronization
 //! to reconcile databases between endpoints with minimal network bandwidth.

@@ -1,7 +1,7 @@
 //! Alert formatting and filtering engine (`src/os_csyslogd/alert.c`, `src/os_csyslogd/csyslogd.c`)
 //!
 //! Formats alerts for Syslog transmission in 4 standardized formats:
-//! 1. Default Wazuh/OSSEC Syslog format (`DEFAULT_CSYSLOG`)
+//! 1. Default ProVigil/OSSEC Syslog format (`DEFAULT_CSYSLOG`)
 //! 2. Common Event Format (`CEF_CSYSLOG`)
 //! 3. JSON format (`JSON_CSYSLOG`)
 //! 4. Splunk Key/Value format (`SPLUNK_CSYSLOG`)
@@ -10,7 +10,7 @@ use crate::config::{SyslogConfig, SyslogFormat};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
-/// Alert data structure matching `alert_data` in Wazuh C.
+/// Alert data structure matching `alert_data` in upstream C.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SyslogAlert {
     pub level: u32,
@@ -411,7 +411,7 @@ fn check_field_str(val: &str) -> Option<&str> {
 pub fn format_syslog_timestamp(date_str: Option<&str>) -> String {
     if let Some(s) = date_str {
         let trimmed = s.trim();
-        // Wazuh log format often starts with "2023 Jul 10 10:11:23"
+        // ProVigil log format often starts with "2023 Jul 10 10:11:23"
         if trimmed.len() > 14 && trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
             let sub = &trimmed[5..];
             if sub.len() >= 15 {

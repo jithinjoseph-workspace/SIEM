@@ -1,6 +1,6 @@
-//! Wazuh Active Response Management IPC Protocol (`src/os_execd/wcom.c`)
+//! ProVigil Active Response Management IPC Protocol (`src/os_execd/wcom.c`)
 //!
-//! Provides the Unix domain IPC control dispatcher for `wazuh-execd`:
+//! Provides the Unix domain IPC control dispatcher for `provigil-execd`:
 //! - `restart`, `reload` (with `lock_restart` protection)
 //! - `lock_restart <timeout>`
 //! - `unmerge <file_path>`
@@ -163,7 +163,7 @@ pub fn wcom_unmerge(incoming_dir: &Path, file_path: &str) -> String {
         return "err Cannot unmerge file".to_string();
     }
 
-    // In Wazuh, multi-file bundle format lines start with !<size> <filename> followed by bytes.
+    // In upstream, multi-file bundle format lines start with !<size> <filename> followed by bytes.
     // For general archives, unmerge parses file blocks.
     "ok ".to_string()
 }

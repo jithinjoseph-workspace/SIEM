@@ -1,4 +1,4 @@
-//! Wazuh Integrator Engine (src/os_integrator/integrator.c)
+//! ProVigil Integrator Engine (src/os_integrator/integrator.c)
 //!
 //! Evaluates incoming JSON alerts against configured integrations, validates requirements,
 //! serializes alert files, and dispatches external integrations.

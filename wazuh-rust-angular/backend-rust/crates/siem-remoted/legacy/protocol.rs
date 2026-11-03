@@ -29,7 +29,7 @@ pub struct RemotedMessage {
 }
 
 impl RemotedMessage {
-    /// Parse a decrypted Wazuh agent wire message
+    /// Parse a decrypted ProVigil agent wire message
     /// Standard format: "#!counter:subsystem_id:payload" or "#OSSEC:!counter:subsystem_id:payload"
     /// or "counter:subsystem_id:payload"
     pub fn parse(agent_id: &str, raw: &str) -> Result<Self, ProtocolError> {

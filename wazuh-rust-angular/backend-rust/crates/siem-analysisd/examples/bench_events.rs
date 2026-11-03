@@ -1,8 +1,8 @@
 //! Throughput benchmark of the event path (decode + rules + output), with a
 //! small sampling profiler (Linux: SIGPROF + glibc `backtrace`).
 //!
-//! bench_events <manager home> <count> [winevt|syslog] [profile | live <wazuh-db home>]
-//! "live" uses the daemon's own environment (labels from the running wazuh-db).
+//! bench_events <manager home> <count> [winevt|syslog] [profile | live <provigil-db home>]
+//! "live" uses the daemon's own environment (labels from the running provigil-db).
 //! The home needs etc/ (ossec.conf, internal options), ruleset/ and a writable logs/.
 //! With "profile", the hottest functions (self and inclusive) are printed via addr2line;
 //! build with CARGO_PROFILE_RELEASE_DEBUG=1 for names.

@@ -1,4 +1,4 @@
-//! The wazuh-db global helpers remoted uses (`wdb_global_helpers.c`), sending
+//! The provigil-db global helpers remoted uses (`wdb_global_helpers.c`), sending
 //! exactly the query strings a C remoted sends.
 
 use crate::agent_info::AgentInfoData;

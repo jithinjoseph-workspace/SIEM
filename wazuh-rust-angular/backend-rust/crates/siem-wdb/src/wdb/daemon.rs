@@ -1,4 +1,4 @@
-//! The wazuh-db daemon (wazuh_db/main.c): the local socket dealer, the
+//! The provigil-db daemon (wazuh_db/main.c): the local socket dealer, the
 //! worker pool sharing an epoll notification queue, and the gc, upgrade
 //! and backup threads. Linux only, like the C (`wnotify` is epoll there).
 

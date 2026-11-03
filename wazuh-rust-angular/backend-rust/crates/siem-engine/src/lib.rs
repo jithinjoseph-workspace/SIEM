@@ -57,7 +57,7 @@ impl AnalysisEngine {
         let decoders = Self::default_decoders();
         let rules = Self::default_rules();
 
-        // Load core Wazuh XML decoders and rules
+        // Load core ProVigil XML decoders and rules
         let provigil_decoders = Self::default_provigil_decoders();
         let provigil_rules = Self::default_provigil_rules();
         let accumulator = Arc::new(ProVigilAccumulator::new(50_000));
@@ -72,7 +72,7 @@ impl AnalysisEngine {
             custom_rules: Arc::new(RwLock::new(Vec::new())),
         };
 
-        // Automatically discover and load official Wazuh ruleset if directory is present
+        // Automatically discover and load official ProVigil ruleset if directory is present
         let mut candidates = Vec::new();
         if let Ok(env_path) = std::env::var("WAZUH_RULESET_PATH") {
             candidates.push(PathBuf::from(env_path));
@@ -95,7 +95,7 @@ impl AnalysisEngine {
         engine
     }
 
-    /// Load official Wazuh XML rules and decoders from a directory containing `decoders/` and `rules/`
+    /// Load official ProVigil XML rules and decoders from a directory containing `decoders/` and `rules/`
     pub fn load_ruleset_directory(&mut self, base_path: &Path) {
         let decoders_dir = base_path.join("decoders");
         let rules_dir = base_path.join("rules");
@@ -137,7 +137,7 @@ impl AnalysisEngine {
         }
     }
 
-    /// Return all active detection rules (including Wazuh XML rules converted to core Rule format)
+    /// Return all active detection rules (including ProVigil XML rules converted to core Rule format)
     pub fn list_rules(&self) -> Vec<Rule> {
         let mut all_rules: Vec<Rule> = self.rules.iter().map(|r| r.rule.clone()).collect();
         for wr in self.provigil_rules.iter() {
@@ -148,7 +148,7 @@ impl AnalysisEngine {
         all_rules
     }
 
-    /// Ingest additional Wazuh XML rules dynamically
+    /// Ingest additional ProVigil XML rules dynamically
     pub fn add_provigil_rules_xml(&mut self, xml: &str) {
         let mut current = (*self.provigil_rules).clone();
         let mut parsed = parse_rules_xml(xml);
@@ -161,7 +161,7 @@ impl AnalysisEngine {
         *self.custom_rules.write().unwrap() = parse_rules_xml(xml);
     }
 
-    /// Ingest additional Wazuh XML decoders dynamically
+    /// Ingest additional ProVigil XML decoders dynamically
     pub fn add_provigil_decoders_xml(&mut self, xml: &str) {
         let mut current = (*self.provigil_decoders).clone();
         let mut parsed = parse_decoders_xml(xml);
@@ -174,14 +174,14 @@ impl AnalysisEngine {
         let mut decoded = self.decode(&event.message);
         let mut event_data: HashMap<String, serde_json::Value> = HashMap::new();
 
-        // 1. Evaluate official Wazuh XML decoders first
+        // 1. Evaluate official ProVigil XML decoders first
         for d in self.provigil_decoders.iter() {
             if d.try_decode(&event.message, &mut decoded, &mut event_data) {
                 break;
             }
         }
 
-        // 2. Evaluate official Wazuh XML rules hierarchically
+        // 2. Evaluate official ProVigil XML rules hierarchically
         let mut active_sids: Vec<u32> = Vec::new();
         let mut active_groups: Vec<String> = Vec::new();
         let mut highest_provigil_alert: Option<Alert> = None;
@@ -253,7 +253,7 @@ impl AnalysisEngine {
         }
 
         drop(custom_rules);
-        // a level-0 match is not a detection (Wazuh never alerts on it): the built-in rules still get a say
+        // a level-0 match is not a detection (ProVigil never alerts on it): the built-in rules still get a say
         if highest_provigil_alert.as_ref().is_some_and(|a| a.rule.level > 0) {
             return highest_provigil_alert;
         }
@@ -841,7 +841,7 @@ mod tests {
     fn test_provigil_xml_decoding_and_rule_evaluation() {
         let engine = AnalysisEngine::new();
 
-        // 1. Test SSH Failed Login log matching Wazuh rule 5716
+        // 1. Test SSH Failed Login log matching ProVigil rule 5716
         let ssh_failed_log = "sshd[1234]: Failed password for root from 192.168.1.50 port 45233 ssh2";
         let event = RawEvent::new("001", EventSource::Syslog, "/var/log/auth.log", ssh_failed_log);
 
@@ -855,7 +855,7 @@ mod tests {
         assert!(alert.manager.is_some());
         assert_eq!(alert.manager.as_ref().unwrap().name, "wazuh-manager-rust");
 
-        // 2. Test Windows EventLog 4625 matching Wazuh rule 60101
+        // 2. Test Windows EventLog 4625 matching ProVigil rule 60101
         let win_event_log = "Windows-Event [Security] EventID:4625 An account failed to log on. User:Administrator";
         let event_win = RawEvent::new("002", EventSource::WindowsEvent, "Security", win_event_log);
 

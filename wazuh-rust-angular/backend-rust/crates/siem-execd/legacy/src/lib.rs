@@ -1,6 +1,6 @@
-//! Wazuh Active Response Execution Daemon (src/os_execd)
+//! ProVigil Active Response Execution Daemon (src/os_execd)
 //!
-//! Complete, 100% line-by-line parity port of Wazuh's active response execution daemon:
+//! Complete, 100% line-by-line parity port of the upstream active response execution daemon:
 //! - config: active-response configuration loader and command catalog (ar.conf)
 //! - timeout: Timeout schedule tracker and repeated offenders multiplier penalty manager
 //! - executor: Safe command execution with STDIN pipes and directory traversal protection

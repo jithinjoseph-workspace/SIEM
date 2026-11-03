@@ -130,7 +130,7 @@ pub mod manager {
             }
         };
 
-        // 1. Permanent installation directory (matching Wazuh standard: %ProgramFiles%\Wazuh-Agent\)
+        // 1. Permanent installation directory (matching ProVigil standard: %ProgramFiles%\Wazuh-Agent\)
         let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".to_string());
         let target_dir = std::path::PathBuf::from(format!(r"{}\Wazuh-Agent", program_files));
         let target_exe = target_dir.join("siem-agent.exe");
@@ -155,13 +155,13 @@ pub mod manager {
         println!("[*] Registering Windows Service '{}'...", SERVICE_NAME);
         println!("    Binary Path: {}", exe_str);
 
-        // 2. Clean up any existing service entry first (mirroring Wazuh win_service.c: UninstallService())
+        // 2. Clean up any existing service entry first (mirroring upstream win_service.c: UninstallService())
         let _ = Command::new("sc.exe").args(["stop", SERVICE_NAME]).output();
         std::thread::sleep(Duration::from_millis(300));
         let _ = Command::new("sc.exe").args(["delete", SERVICE_NAME]).output();
         std::thread::sleep(Duration::from_millis(300));
 
-        // 3. Create service with Automatic startup (matching Wazuh standard)
+        // 3. Create service with Automatic startup (matching ProVigil standard)
         let bin_path_arg = format!("'\"{}\" --service'", exe_str);
         let ps_cmd = format!(
             "New-Service -Name '{}' -BinaryPathName {} -DisplayName '{}' -Description '{}' -StartupType Automatic",
@@ -211,7 +211,7 @@ pub mod manager {
             .args(["description", SERVICE_NAME, SERVICE_DESCRIPTION])
             .output();
 
-        // 5. Configure failure recovery actions (restart on failure after 5s/10s/30s - matching Wazuh supervisor)
+        // 5. Configure failure recovery actions (restart on failure after 5s/10s/30s - matching ProVigil supervisor)
         let _ = Command::new("sc.exe")
             .args([
                 "failure",
@@ -221,7 +221,7 @@ pub mod manager {
             ])
             .output();
 
-        // 6. Write permanent local agent-config.json in installation folder (matches Wazuh ossec.conf).
+        // 6. Write permanent local agent-config.json in installation folder (matches upstream ossec.conf).
         // No agent_id: the agent enrolls on first start and keeps its id in client.keys.
         let manager_url = custom_manager_url.unwrap_or("http://127.0.0.1:8088");
         let config_path = target_dir.join("agent-config.json");

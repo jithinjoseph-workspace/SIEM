@@ -1,5 +1,5 @@
 //! The task manager database (wazuh_db/wdb_task.c) and the JSON commands
-//! on the wazuh-db socket (wazuh_db/wdb_com.c).
+//! on the provigil-db socket (wazuh_db/wdb_com.c).
 
 use siem_cjson::Json;
 

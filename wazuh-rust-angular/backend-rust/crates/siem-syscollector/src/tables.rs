@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Hardware Inventory Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Hardware table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Hardware table).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HardwareItem {
     pub board_serial: Option<String>,
@@ -14,7 +14,7 @@ pub struct HardwareItem {
 }
 
 /// Operating System Inventory Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (OS table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (OS table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OsItem {
     pub os_name: String,
@@ -30,7 +30,7 @@ pub struct OsItem {
 }
 
 /// Network Interface Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Network Interface table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Network Interface table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkIfaceItem {
     pub name: String,
@@ -42,7 +42,7 @@ pub struct NetworkIfaceItem {
 }
 
 /// Network Protocol Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Network Protocol table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Network Protocol table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkProtocolItem {
     pub iface: String,
@@ -52,7 +52,7 @@ pub struct NetworkProtocolItem {
 }
 
 /// Network Address Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Network Address table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Network Address table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkAddressItem {
     pub iface: String,
@@ -63,7 +63,7 @@ pub struct NetworkAddressItem {
 }
 
 /// Installed Software Package Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Packages table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Packages table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageItem {
     pub name: String,
@@ -77,7 +77,7 @@ pub struct PackageItem {
 }
 
 /// Windows Hotfix Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Hotfixes table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Hotfixes table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HotfixItem {
     pub hotfix: String, // "KB5005565"
@@ -85,7 +85,7 @@ pub struct HotfixItem {
 }
 
 /// Network Port / Socket Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Ports table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Ports table).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortItem {
     pub protocol: String, // "tcp", "udp", "tcp6", "udp6"
@@ -102,7 +102,7 @@ pub struct PortItem {
 }
 
 /// Running Process Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Processes table).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Processes table).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcessItem {
     pub pid: u32,
@@ -122,7 +122,7 @@ pub struct ProcessItem {
 }
 
 /// System User Account Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Users table - dbsync_users).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Users table - dbsync_users).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserItem {
     pub user_name: String,
@@ -159,7 +159,7 @@ pub struct UserItem {
 }
 
 /// System Group Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Groups table - dbsync_groups).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Groups table - dbsync_groups).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupItem {
     pub group_id: Option<i64>,
@@ -172,7 +172,7 @@ pub struct GroupItem {
 }
 
 /// System Service Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Services table - dbsync_services).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Services table - dbsync_services).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceItem {
     pub service_id: String,
@@ -210,7 +210,7 @@ pub struct ServiceItem {
 }
 
 /// Browser Extension Item.
-/// Ported from Wazuh include/syscollectorTablesDef.hpp (Browser Extensions table - dbsync_browser_extensions).
+/// Ported from upstream include/syscollectorTablesDef.hpp (Browser Extensions table - dbsync_browser_extensions).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrowserExtensionItem {
     pub browser_name: String,

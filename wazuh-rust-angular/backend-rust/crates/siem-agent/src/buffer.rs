@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-/// Resilient Client Buffer matching Wazuh's client_buffer specifications
+/// Resilient Client Buffer matching the upstream client_buffer specifications
 /// Queue capacity: 5,000 events
 /// Events per second limit: 500 EPS
 pub struct AgentBuffer {

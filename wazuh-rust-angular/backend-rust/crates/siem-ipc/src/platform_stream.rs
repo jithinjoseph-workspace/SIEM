@@ -1,4 +1,4 @@
-//! The platform's stream (not in Wazuh): when siem-api starts a manager daemon with
+//! The platform's stream (not in upstream): when siem-api starts a manager daemon with
 //! `SIEM_STREAM_ADDR` (its loopback listener) and `SIEM_STREAM_TOKEN`, the daemon sends
 //! what it would write to a file (analysisd: alerts and archived events; the
 //! vulnerability scanner: its result documents) to siem-api, which stores it in

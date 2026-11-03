@@ -1,6 +1,6 @@
-//! Wazuh Integrator IPC Control Interface (src/os_integrator/intgcom.c)
+//! ProVigil Integrator IPC Control Interface (src/os_integrator/intgcom.c)
 //!
-//! Provides the Unix domain IPC control dispatcher for wazuh-integratord:
+//! Provides the Unix domain IPC control dispatcher for provigil-integratord:
 //! - Commands: `getconfig`
 //! - Dispatches responses formatted as `ok <json_data>` or `err <msg>`
 

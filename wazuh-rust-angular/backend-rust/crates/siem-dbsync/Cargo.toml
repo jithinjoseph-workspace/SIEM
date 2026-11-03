@@ -2,7 +2,7 @@
 name = "siem-dbsync"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh's dbsync and rsync shared modules (SQLite-backed inventory diffs and the range-checksum sync protocol)"
+description = "Port of the upstream dbsync and rsync shared modules (SQLite-backed inventory diffs and the range-checksum sync protocol)"
 
 [dependencies]
 siem-njson = { path = "../siem-njson" }

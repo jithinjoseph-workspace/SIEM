@@ -8,7 +8,7 @@ use crate::tables::{
 use serde::{Deserialize, Serialize};
 
 /// Configuration for syscollector scanning.
-/// Ported from Wazuh include/syscollector.h.
+/// Ported from upstream include/syscollector.h.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyscollectorConfig {
     pub interval_secs: u64,
@@ -45,7 +45,7 @@ impl Default for SyscollectorConfig {
 }
 
 /// Core Syscollector Engine managing normalization and delta synchronization.
-/// Ported from Wazuh src/syscollectorImp.cpp.
+/// Ported from upstream src/syscollectorImp.cpp.
 pub struct SyscollectorEngine {
     pub config: SyscollectorConfig,
     pub normalizer: SysNormalizer,

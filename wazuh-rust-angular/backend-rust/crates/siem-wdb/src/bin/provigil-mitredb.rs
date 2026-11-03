@@ -1,7 +1,7 @@
 //! `tools/mitre/mitredb.py`: builds `var/db/mitre.db` (the database
-//! wazuh-db serves as "mitre") from MITRE ATT&CK's `enterprise-attack.json`.
+//! provigil-db serves as "mitre") from MITRE ATT&CK's `enterprise-attack.json`.
 //!
-//! `wazuh-mitredb [-d <mitre.db>] [-j <enterprise-attack.json>]`
+//! `provigil-mitredb [-d <mitre.db>] [-j <enterprise-attack.json>]`
 //!
 //! The schema is what SQLAlchemy's `create_all` emits for the script's
 //! models on SQLite (VARCHAR / DATETIME / BOOLEAN), the rows what its

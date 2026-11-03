@@ -59,7 +59,7 @@ impl FimWatcher {
         self.build_baseline();
     }
 
-    /// Save baseline state to disk (mirroring Wazuh syscheck.db)
+    /// Save baseline state to disk (mirroring upstream syscheck.db)
     pub fn save_baseline(&self) {
         let db_path = Self::get_db_path();
         if let Ok(json) = serde_json::to_string_pretty(&self.baseline) {
@@ -156,7 +156,7 @@ impl FimWatcher {
                         event.metadata.insert("sha256".into(), current.hash.clone());
                         buffer.push(event).await;
 
-                        // Check for NTFS Alternate Data Streams (matching Wazuh rootcheck/win-common.c: os_check_ads)
+                        // Check for NTFS Alternate Data Streams (matching ProVigil rootcheck/win-common.c: os_check_ads)
                         if let Some(stream_name) = Self::check_ntfs_ads(path) {
                             let ads_msg = format!(
                                 "rootcheck: NTFS Alternate Data Stream found: '{}:{}'. Possible hidden backdoor payload.",
@@ -182,7 +182,7 @@ impl FimWatcher {
                     event.metadata.insert("sha256".into(), current.hash.clone());
                     buffer.push(event).await;
 
-                    // Check for NTFS Alternate Data Streams (matching Wazuh rootcheck/win-common.c: os_check_ads)
+                    // Check for NTFS Alternate Data Streams (matching ProVigil rootcheck/win-common.c: os_check_ads)
                     if let Some(stream_name) = Self::check_ntfs_ads(path) {
                         let ads_msg = format!(
                             "rootcheck: NTFS Alternate Data Stream found: '{}:{}'. Possible hidden backdoor payload.",
@@ -220,7 +220,7 @@ impl FimWatcher {
         (modified_count, added_count, deleted_count)
     }
 
-    /// Check for known Windows malware/rootkit files (mirroring Wazuh win_malware_rcl.txt & check_rc_files.c)
+    /// Check for known Windows malware/rootkit files (mirroring upstream win_malware_rcl.txt & check_rc_files.c)
     pub async fn check_rootkit_signatures(&self, buffer: &AgentBuffer) {
         #[cfg(target_os = "windows")]
         {
@@ -259,7 +259,7 @@ impl FimWatcher {
         }
     }
 
-    /// Check for NTFS Alternate Data Streams (mirroring Wazuh rootcheck/win-common.c: os_check_ads)
+    /// Check for NTFS Alternate Data Streams (mirroring upstream rootcheck/win-common.c: os_check_ads)
     fn check_ntfs_ads(path: &Path) -> Option<String> {
         #[cfg(target_os = "windows")]
         {

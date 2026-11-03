@@ -1,5 +1,5 @@
 //! `client-agent/state.c`: the agent state counters, the
-//! `var/run/wazuh-agentd.state` file and the `getstate` JSON.
+//! `var/run/provigil-agentd.state` file and the `getstate` JSON.
 
 use std::io::Write;
 use std::sync::atomic::Ordering;

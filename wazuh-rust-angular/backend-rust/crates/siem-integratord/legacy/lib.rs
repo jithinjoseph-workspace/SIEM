@@ -1,6 +1,6 @@
-//! Wazuh External Integrations Daemon (src/os_integrator)
+//! ProVigil External Integrations Daemon (src/os_integrator)
 //!
-//! Complete port of Wazuh's external integration subsystem:
+//! Complete port of the upstream external integration subsystem:
 //! - `config`: `<integration>` XML parsing and validation (`config.c`, `integrator-config.h`).
 //! - `executor`: Alert serialization and subprocess execution (`integrator.c`).
 //! - `engine`: Alert filter engine and dispatcher (`integrator.c`).

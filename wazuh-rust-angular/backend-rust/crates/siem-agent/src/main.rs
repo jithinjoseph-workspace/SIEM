@@ -16,9 +16,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
 
-/// Core asynchronous agent loop that spawns and manages all Wazuh telemetry workers.
+/// Core asynchronous agent loop that spawns and manages all ProVigil telemetry workers.
 pub async fn run_agent_loop() {
-    // 0. Enable DLL verification (matching Wazuh win_utils.c: enable_dll_verification to prevent DLL hijacking)
+    // 0. Enable DLL verification (matching ProVigil win_utils.c: enable_dll_verification to prevent DLL hijacking)
     #[cfg(windows)]
     unsafe {
         #[link(name = "kernel32")]
@@ -163,7 +163,7 @@ pub async fn run_agent_loop() {
     reg_event.metadata.insert("os_type".into(), "windows".into());
     buffer.push(reg_event).await;
 
-    // 3. Configure Monitored Directories for FIM (File Integrity Monitoring - mirroring Wazuh ossec.conf)
+    // 3. Configure Monitored Directories for FIM (File Integrity Monitoring - mirroring upstream ossec.conf)
     let mut fim_paths = Vec::new();
 
     #[cfg(target_os = "windows")]
@@ -260,7 +260,7 @@ pub async fn run_agent_loop() {
         Duration::from_secs(120),
     );
 
-    // Worker 6: Periodic Keepalive / Heartbeat (Wazuh notify_time = 20s)
+    // Worker 6: Periodic Keepalive / Heartbeat (ProVigil notify_time = 20s)
     let heartbeat_buffer = Arc::clone(&buffer);
     let hb_agent_id = agent_id.clone();
     let hb_hostname = agent_name.clone();
@@ -278,7 +278,7 @@ pub async fn run_agent_loop() {
             event.metadata.insert("health".into(), "ok".into());
             heartbeat_buffer.push(event).await;
 
-            // Write local Wazuh Agent state file (matching client-agent/state.c)
+            // Write local ProVigil Agent state file (matching client-agent/state.c)
             let state_content = format!(
                 "# Wazuh Rust Agent State\nstatus='active'\nagent_id='{}'\nhostname='{}'\nheartbeat_seq='{}'\nlast_keepalive='{}'\nhealth='ok'\n",
                 hb_agent_id, hb_hostname, count, chrono::Utc::now().to_rfc3339()
@@ -442,7 +442,7 @@ fn main() {
                 return;
             }
             "start" | "--console" | "--foreground" => {
-                // Run directly in console (matching Wazuh win_agent.c: start)
+                // Run directly in console (matching ProVigil win_agent.c: start)
                 run_in_console();
                 return;
             }

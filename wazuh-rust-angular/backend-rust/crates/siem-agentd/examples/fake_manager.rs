@@ -1,5 +1,5 @@
-//! A minimal stand-in for wazuh-remoted, used to compare the C and Rust
-//! `wazuh-agentd` (TCP only).
+//! A minimal stand-in for provigil-remoted, used to compare the C and Rust
+//! `provigil-agentd` (TCP only).
 //!
 //! It decrypts every message an agent sends and logs it, acknowledges the
 //! startup and keep-alive control messages, and plays a script of

@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7's syscollector module (`wazuh_modules/syscollector/`
+//! Port of upstream 4.14.7 syscollector module (`wazuh_modules/syscollector/`
 //! and `wm_syscollector.c`) on `siem-dbsync` (dbsync + rsync) and
 //! `siem-sysinfo` (the data provider).
 

@@ -1,4 +1,4 @@
-//! The wazuh-analysisd daemon: input queue, rule matching thread, alert /
+//! The provigil-analysisd daemon: input queue, rule matching thread, alert /
 //! archive / firewall / FTS writers with daily files and rotation
 //! (alerts/getloglocation.c), hourly statistics files (stats.c), labels
 //! cache (labels.c), active responses and the logtest socket.
@@ -284,8 +284,8 @@ fn totals_file(home: &Path, year: i32, mon: &str, day: i32) -> std::io::Result<F
 type LabelMap = Arc<std::sync::Mutex<HashMap<String, (Vec<Label>, i64)>>>;
 
 /// `labels_find`'s cache. An expired entry is still served while a background
-/// task re-reads it from wazuh-db (its own connection), so events of known agents
-/// never wait on wazuh-db; only an agent seen for the first time is read inline.
+/// task re-reads it from provigil-db (its own connection), so events of known agents
+/// never wait on provigil-db; only an agent seen for the first time is read inline.
 /// (C reads inline too, but from one of several decoder threads.)
 struct LabelCache {
     config: Vec<Label>,
@@ -396,7 +396,7 @@ pub trait Env {
     }
 }
 
-/// The running daemon's environment: wazuh-db labels cache, the execd /
+/// The running daemon's environment: provigil-db labels cache, the execd /
 /// remoted AR queues (kept connected) and the daemon logger.
 pub struct LiveEnv {
     pub ctx: Ctx,
@@ -869,13 +869,13 @@ impl Analysis {
         Ok(a)
     }
 
-    /// The daemon's environment (labels from wazuh-db, AR queues).
+    /// The daemon's environment (labels from provigil-db, AR queues).
     pub fn live_env(&self, ctx: Ctx) -> LiveEnv {
         let labels = LabelCache::new(to_labels(&self.cfg.labels), self.cfg.internal.label_cache_maxage as i64, Some(&ctx));
         LiveEnv { ctx, labels, exec: None, ar: None, node_name: self.node_name.clone() }
     }
 
-    /// `mitre_load`: the MITRE table from wazuh-db, shared with logtest.
+    /// `mitre_load`: the MITRE table from provigil-db, shared with logtest.
     pub fn load_mitre(&mut self, env: &mut dyn Env) {
         let mut errs = Vec::new();
         let db = crate::mitre::MitreDb::load(&mut |q| env.wdb_json(q), &mut errs);

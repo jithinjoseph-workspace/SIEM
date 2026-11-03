@@ -129,7 +129,7 @@ pub fn join(v: &Py, sep: &str) -> R<String> {
 pub struct Ctx {
     pub args: Vec<String>,
     pub debug_enabled: bool,
-    /// `pwd`: the Wazuh home (two levels above the script).
+    /// `pwd`: the ProVigil home (two levels above the script).
     pub home: PathBuf,
 }
 

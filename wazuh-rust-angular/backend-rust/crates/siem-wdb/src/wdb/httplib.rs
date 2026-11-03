@@ -1,4 +1,4 @@
-//! The server half of cpp-httplib 0.14.2 (Wazuh's deps/54 build: no zlib,
+//! The server half of cpp-httplib 0.14.2 (the upstream deps/54 build: no zlib,
 //! brotli or OpenSSL support, select() based) as the router uses it: a
 //! unix socket listener, a thread pool, keep-alive handling, request
 //! parsing, routing with regex (literal) and `:param` matchers, ranges and

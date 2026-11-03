@@ -1,5 +1,5 @@
-//! `wazuh-integratord` (os_integrator/main.c):
-//! `wazuh-integratord -[Vhdtf] [-u user] [-g group]`.
+//! `provigil-integratord` (os_integrator/main.c):
+//! `provigil-integratord -[Vhdtf] [-u user] [-g group]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

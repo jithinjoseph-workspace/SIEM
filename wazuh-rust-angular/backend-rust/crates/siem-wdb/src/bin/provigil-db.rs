@@ -1,4 +1,4 @@
-//! `wazuh-db` (wazuh_db/main.c `main`): `wazuh-db -[Vhdtf]`.
+//! `provigil-db` (wazuh_db/main.c `main`): `provigil-db -[Vhdtf]`.
 
 #[cfg(not(target_os = "linux"))]
 fn main() {

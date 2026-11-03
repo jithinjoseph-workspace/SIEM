@@ -1,4 +1,4 @@
-//! Minimal wazuh-logtest: `logtest <wazuh-home>`, one event per stdin line,
+//! Minimal provigil-logtest: `logtest <provigil-home>`, one event per stdin line,
 //! prints the output JSON (and rule debug with `-v`).
 
 use std::io::BufRead;

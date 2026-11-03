@@ -1,6 +1,6 @@
 //! Threat predictions for the SIEM: which attack stage is likely next.
 //!
-//! Wazuh rules carry MITRE ATT&CK tactics. For each agent, the tactics of its
+//! ProVigil rules carry MITRE ATT&CK tactics. For each agent, the tactics of its
 //! recent alerts in time order show how far an attack has progressed along the
 //! kill chain (initial access -> execution -> ... -> impact). An agent that has
 //! moved through several stages in order is likely to reach the next one; the

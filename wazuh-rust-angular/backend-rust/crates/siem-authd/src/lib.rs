@@ -1,4 +1,4 @@
-//! Wazuh Authd & Agent Enrollment Subsystem (`src/os_auth`)
+//! ProVigil Authd & Agent Enrollment Subsystem (`src/os_auth`)
 //!
 //! Provides agent registration, key exchange, mutual TLS verification,
 //! duplicate agent replacement rules, group validation, and local control IPC.

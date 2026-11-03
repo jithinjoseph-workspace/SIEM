@@ -2,7 +2,7 @@
 name = "siem-crypto"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Cryptography Subsystem (src/os_crypto)"
+description = "ProVigil Cryptography Subsystem (src/os_crypto)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

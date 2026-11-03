@@ -15,7 +15,7 @@ impl NetworkChecker {
     }
 
     /// Check if a network interface is running in promiscuous mode.
-    /// In Wazuh check_rc_if.c, interfaces with IFF_PROMISC are flagged as potential packet sniffers.
+    /// In upstream check_rc_if.c, interfaces with IFF_PROMISC are flagged as potential packet sniffers.
     pub fn check_interface_promiscuous(
         &self,
         interface_name: &str,

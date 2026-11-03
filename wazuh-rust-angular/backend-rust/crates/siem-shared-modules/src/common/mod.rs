@@ -1,4 +1,4 @@
-//! Common definitions, return types, and constants for Wazuh shared modules.
+//! Common definitions, return types, and constants for ProVigil shared modules.
 
 use std::fmt;
 

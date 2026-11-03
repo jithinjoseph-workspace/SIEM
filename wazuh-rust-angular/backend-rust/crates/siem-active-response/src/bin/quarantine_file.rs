@@ -1,4 +1,4 @@
-//! EDR response (not in Wazuh): moves a file into the agent's `quarantine\`
+//! EDR response (not in upstream): moves a file into the agent's `quarantine\`
 //! folder (renamed `<id>.bin`, so it cannot be run by a double click) with a
 //! `<id>.json` record of where it came from and its SHA-256, or puts it back.
 //! extra_args: `path=<full path>`, or `restore=<id>`. Windows files and the

@@ -1,6 +1,6 @@
-//! Wazuh Client Syslog Forwarder Daemon (`src/os_csyslogd`)
+//! ProVigil Client Syslog Forwarder Daemon (`src/os_csyslogd`)
 //!
-//! Complete, 100% line-by-line parity port of Wazuh's syslog output daemon:
+//! Complete, 100% line-by-line parity port of the upstream syslog output daemon:
 //! - `config`: `<syslog_output>` XML parser and JSON schema (`getCsyslogConfig`)
 //! - `formatter`: Syslog message formatters (Default, CEF, JSON, Splunk) & filter evaluation
 //! - `sender`: UDP syslog socket transport with auto-reconnection and DNS resolution

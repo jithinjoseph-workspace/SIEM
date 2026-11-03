@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7 Security Configuration Assessment
+//! Port of upstream 4.14.7 Security Configuration Assessment
 //! (`wazuh_modules/wm_sca.c`, `config/wmodules-sca.c`) with the shared
 //! pieces it needs: `shared/yaml2json.c` and `shared/schedule_scan.c`.
 

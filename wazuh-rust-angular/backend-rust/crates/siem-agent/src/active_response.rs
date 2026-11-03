@@ -60,7 +60,7 @@ impl ActiveResponseHandler {
                     event.metadata.insert("target_ip".into(), ip.to_string());
                     buffer.push(event).await;
 
-                    // Automatically spawn Wazuh active response timeout reversion task (10 minutes / 600s)
+                    // Automatically spawn ProVigil active response timeout reversion task (10 minutes / 600s)
                     let _unblock_agent_id = self.agent_id.clone();
                     let unblock_ip_str = ip.to_string();
                     tokio::spawn(async move {
@@ -296,7 +296,7 @@ impl ActiveResponseHandler {
         false
     }
 
-    /// Restart the Wazuh Agent service (mirroring Wazuh restart-wazuh.c)
+    /// Restart the upstream Agent service (mirroring upstream restart-wazuh.c)
     pub async fn restart_agent(&self, buffer: &AgentBuffer) -> bool {
         info!("Active Response: Executing agent restart command");
         let msg = format!("active-response: Restarting agent {} service", self.agent_id);
@@ -318,11 +318,11 @@ impl ActiveResponseHandler {
         true
     }
 
-    /// Run an on-demand FIM and Rootcheck scan across the host (mirroring Wazuh syscheckd on-demand trigger)
+    /// Run an on-demand FIM and Rootcheck scan across the host (mirroring upstream syscheckd on-demand trigger)
     pub async fn run_fim_scan(&self, buffer: &AgentBuffer) -> bool {
         info!("Active Response: Running on-demand FIM & Rootcheck scan on host");
 
-        // 1. Emit FIM_SCAN_START (matching Wazuh create_db.c: fim_send_scan_info(FIM_SCAN_START))
+        // 1. Emit FIM_SCAN_START (matching ProVigil create_db.c: fim_send_scan_info(FIM_SCAN_START))
         let start_msg = format!("wazuh-syscheckd[{}]: File integrity monitoring scan started. (FIM_SCAN_START)", self.agent_id);
         info!("{}", start_msg);
         let mut start_event = RawEvent::new(&self.agent_id, EventSource::Fim, "syscheck/scan_info", start_msg);
@@ -372,7 +372,7 @@ impl ActiveResponseHandler {
         fim_watcher.load_or_build_baseline();
         let (modified, added, deleted) = fim_watcher.scan_and_emit(buffer).await;
 
-        // 4. Emit FIM_SCAN_END (matching Wazuh create_db.c: fim_send_scan_info(FIM_SCAN_END))
+        // 4. Emit FIM_SCAN_END (matching ProVigil create_db.c: fim_send_scan_info(FIM_SCAN_END))
         let total_changes = modified + added + deleted;
         let end_msg = if total_changes > 0 {
             format!(
@@ -419,7 +419,7 @@ impl ActiveResponseHandler {
     }
 }
 
-/// Active response daemon (equivalent to Wazuh win_execd.c)
+/// Active response daemon (equivalent to ProVigil win_execd.c)
 /// Periodically polls the SIEM manager for remediation commands and executes them locally.
 pub fn spawn_active_response_worker(
     agent_id: String,

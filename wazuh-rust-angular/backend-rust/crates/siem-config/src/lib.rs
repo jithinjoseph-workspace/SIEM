@@ -1,10 +1,10 @@
-//! `siem-config`: port of Wazuh's configuration layer (`src/config/`).
+//! `siem-config`: port of the upstream configuration layer (`src/config/`).
 //!
 //! * [`read_config`] is `ReadConfig` + `read_main_elements`: it walks
 //!   `<ossec_config>` (or `<agent_config>` in shared `agent.conf`) and hands each
 //!   section to a [`ConfigHandler`] when the caller asked for that module.
-//!   Unknown sections, and empty sections that Wazuh requires to have children,
-//!   are rejected exactly as Wazuh rejects them.
+//!   Unknown sections, and empty sections that ProVigil requires to have children,
+//!   are rejected exactly as upstream rejects them.
 //! * [`internal_options`] is `getDefine_Int` (`internal_options.conf` and
 //!   `local_internal_options.conf`).
 //! * Section readers live in their own modules (`global`, `remote`, ...).
@@ -56,7 +56,7 @@ pub mod modules {
 }
 use modules::*;
 
-/// A configuration error, carrying the message Wazuh would log with `merror`.
+/// A configuration error, carrying the message ProVigil would log with `merror`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ConfigError(pub String);
@@ -98,7 +98,7 @@ pub struct AgentIdentity {
     pub profile: Option<String>,
 }
 
-/// Warnings collected while parsing (Wazuh `mwarn`), plus context.
+/// Warnings collected while parsing (ProVigil `mwarn`), plus context.
 #[derive(Debug, Clone)]
 pub struct ConfigContext {
     pub platform: Platform,
@@ -152,7 +152,7 @@ impl ConfigContext {
 }
 
 /// Every section `read_main_elements` knows about. Some sections reach the
-/// handler twice under different names, because Wazuh calls two readers for
+/// handler twice under different names, because ProVigil calls two readers for
 /// them: `syscheck` arrives as [`Section::Syscheck`] and [`Section::GlobalSyscheck`],
 /// and `socket` as [`Section::LogcollectorSocket`] and [`Section::AnalysisdSocket`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

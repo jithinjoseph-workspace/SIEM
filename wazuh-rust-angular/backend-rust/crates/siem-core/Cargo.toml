@@ -2,7 +2,7 @@
 name = "siem-core"
 version = "0.1.0"
 edition = "2021"
-description = "Core domain models and types for next-generation Wazuh-compatible SIEM"
+description = "Core domain models and types for next-generation ProVigil-compatible SIEM"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

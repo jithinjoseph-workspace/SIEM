@@ -1,4 +1,4 @@
-//! Wazuh SysInfo / Data Provider implementation (mirroring src/data_provider)
+//! ProVigil SysInfo / Data Provider implementation (mirroring src/data_provider)
 //!
 //! Provides direct, cross-platform hardware, OS, network, port, process,
 //! package, user, service, and browser extension inspection.

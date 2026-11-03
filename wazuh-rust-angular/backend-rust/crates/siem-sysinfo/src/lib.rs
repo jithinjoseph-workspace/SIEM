@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7's `data_provider` (`src/data_provider/`): the
+//! Port of upstream 4.14.7 `data_provider` (`src/data_provider/`): the
 //! `SysInfo` class syscollector reads its inventory from.
 //!
 //! Every category is an nlohmann JSON value ([`siem_njson::Value`], whose

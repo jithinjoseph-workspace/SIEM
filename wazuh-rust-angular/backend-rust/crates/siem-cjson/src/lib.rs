@@ -1,6 +1,6 @@
-//! `siem-cjson`: port of cJSON 1.7.18 as pinned by Wazuh (deps v54).
+//! `siem-cjson`: port of cJSON 1.7.18 as pinned by upstream (deps v54).
 //!
-//! Wazuh's JSON output (alerts, archives, wazuh-db payloads, API responses
+//! the upstream JSON output (alerts, archives, provigil-db payloads, API responses
 //! produced in C) and the JSON *decoder* depend on cJSON's exact behaviour:
 //! objects keep insertion order and may contain duplicate keys, lookups are
 //! case-insensitive, numbers print through `%d` / `%1.15g` / `%1.17g`, control

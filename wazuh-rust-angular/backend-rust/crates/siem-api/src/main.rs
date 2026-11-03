@@ -544,10 +544,10 @@ async fn main() {
 
     // Agent keys: ClickHouse is the master copy, etc/client.keys is written from it.
     let stored_keys = agent_keys_store::load(&state).await;
-    // The Wazuh manager (wazuh-db, analysisd, remoted on 1514/tcp) for the agents.
+    // The ProVigil manager (provigil-db, analysisd, remoted on 1514/tcp) for the agents.
     // with the keys in ClickHouse the daemons read them from siem-api: no etc/client.keys
     provigil_manager::start(state.clone(), stored_keys.is_some());
-    // agents removed from the platform but still in wazuh-db (removed while it was down)
+    // agents removed from the platform but still in provigil-db (removed while it was down)
     tokio::spawn(provigil_manager::purge_removed(state.deleted_agents.read().unwrap().iter().cloned().collect()));
     if let Some(ids) = stored_keys {
         agent_keys_store::spawn_sync(state.clone(), ids);
@@ -1022,7 +1022,7 @@ fn seed_sample_data(state: &AppState) {
         keep_events(&state, [ev]);
     }
 
-    // Seed Wazuh DB agent state (OS, Hardware, Network, Packages, Ports, FIM, SCA)
+    // Seed ProVigil DB agent state (OS, Hardware, Network, Packages, Ports, FIM, SCA)
     let agent_001_db = state.wdb.get_or_create("001", "srv-prod-ubuntu-01");
     {
         let mut db = agent_001_db.write().unwrap();
@@ -1352,7 +1352,7 @@ async fn get_agents(State(state): State<AppState>, Extension(ctx): Extension<Aut
         let mut agents_guard = state.agents.write().unwrap();
         let now = Utc::now();
         for agent in agents_guard.values_mut() {
-            // Mirroring wazuh-monitord: mark disconnected if last keepalive exceeds 60s
+            // Mirroring provigil-monitord: mark disconnected if last keepalive exceeds 60s
             if (now - agent.last_keepalive).num_seconds() > 60 {
                 agent.status = AgentStatus::Disconnected;
             }
@@ -1591,7 +1591,7 @@ async fn ingest_event(
             record_alert(&state, &tenant, alert).await;
         }
 
-        // Automated SCA Evaluation: store check results in Wazuh DB and raise alert on failure
+        // Automated SCA Evaluation: store check results in ProVigil DB and raise alert on failure
         if event.source == EventSource::Sca {
             let policy_id = event
                 .metadata
@@ -1651,7 +1651,7 @@ async fn ingest_event(
                         ip: agent_ip.clone(),
                     },
                     manager: Some(siem_core::ManagerAlertInfo {
-                        name: "wazuh-manager-rust".to_string(),
+                        name: "provigil-manager".to_string(),
                     }),
                     rule: siem_core::RuleAlertInfo {
                         id: 19001,
@@ -1688,7 +1688,7 @@ async fn ingest_event(
             }
         }
 
-        // Automated FIM Evaluation: store file integrity state in Wazuh DB and raise alert on change
+        // Automated FIM Evaluation: store file integrity state in ProVigil DB and raise alert on change
         if event.source == EventSource::Fim {
             let action_str = event.metadata.get("action").map(|s| s.as_str()).unwrap_or("modified");
             let fim_action = match action_str {
@@ -1750,7 +1750,7 @@ async fn ingest_event(
                     ip: agent_ip.clone(),
                 },
                 manager: Some(siem_core::ManagerAlertInfo {
-                    name: "wazuh-manager-rust".to_string(),
+                    name: "provigil-manager".to_string(),
                 }),
                 decoder: None,
                 full_log: format!("ossec: File '{}' was {:?}", event.location, fim_action),
@@ -2023,7 +2023,7 @@ fn agent_is_windows(state: &AppState, agent_id: &str) -> bool {
     state.agents.read().unwrap().get(agent_id).is_some_and(|a| a.os_type == "windows" || a.os.to_lowercase().contains("windows"))
 }
 
-/// The console actions on a Wazuh agent, sent the way the Wazuh API sends
+/// The console actions on a ProVigil agent, sent the way the ProVigil API sends
 /// them (remoted's active-response queue).
 async fn provigil_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, payload: &serde_json::Value) -> axum::response::Response {
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
@@ -2062,7 +2062,7 @@ async fn provigil_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, 
     }
 }
 
-/// EDR actions on a Windows Wazuh agent (siem-active-response's kill-process,
+/// EDR actions on a Windows ProVigil agent (siem-active-response's kill-process,
 /// quarantine-file, isolate-host). Each passes the decision gate on the agent's
 /// address (recorded; a protected host is refused), except lifting an isolation.
 /// The agent logs the outcome to active-responses.log, which comes back as events.
@@ -2154,7 +2154,7 @@ async fn edr_agent_action(state: &AppState, ctx: &AuthCtx, agent_id: &str, actio
     }
 }
 
-/// Block an IP on a Wazuh agent and record it.
+/// Block an IP on a ProVigil agent and record it.
 async fn block_on_agent(state: &AppState, ctx: &AuthCtx, agent_id: &str, ip: &str, duration: u64, reason: &str, method: Option<&str>) -> axum::response::Response {
     match provigil_manager::block_ip(agent_id, agent_is_windows(state, agent_id), ip, duration, method).await {
         Ok(command) => {
@@ -2199,7 +2199,7 @@ pub struct SyscheckRestartQuery {
     pub agents_list: Option<String>,
 }
 
-/// Official Wazuh REST API PUT /syscheck endpoint (mirroring api/controllers/syscheck_controller.py)
+/// Official ProVigil REST API PUT /syscheck endpoint (mirroring api/controllers/syscheck_controller.py)
 async fn put_syscheck_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
@@ -2894,7 +2894,7 @@ async fn get_siem_sources(
     Json(SiemSourcesResponse { sources })
 }
 
-/// `POST /api/siem/sources`: sources are Wazuh agents and syslog devices, added where they enroll.
+/// `POST /api/siem/sources`: sources are ProVigil agents and syslog devices, added where they enroll.
 async fn post_siem_sources() -> axum::response::Response {
     (
         StatusCode::GONE,
@@ -2971,7 +2971,7 @@ async fn get_agent_vulnerabilities(
 }
 
 /// `POST /api/v1/vulnerabilities`: the scanner re-scans the caller's agents
-/// from wazuh-db's package inventory, then the results are read again.
+/// from provigil-db's package inventory, then the results are read again.
 async fn post_scan_now(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     // shortcut: agents of the default tenant are not in agent_tenants; they get re-scanned only when they already have results
     let mut agents: std::collections::BTreeSet<String> = state.agent_tenants.read().unwrap().keys().filter(|a| agent_in_scope(&state, &ctx, a)).cloned().collect();
@@ -2999,8 +2999,8 @@ async fn get_agent_os_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // a Wazuh agent: its wazuh-db database, else siem-api's store
-    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Os).await { return Json(serde_json::json!({ "agent_id": agent_id, "os": v, "source": "wazuh-db" })); }
+    // a ProVigil agent: its provigil-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Os).await { return Json(serde_json::json!({ "agent_id": agent_id, "os": v, "source": "provigil-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3019,8 +3019,8 @@ async fn get_agent_hw_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // a Wazuh agent: its wazuh-db database, else siem-api's store
-    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Hardware).await { return Json(serde_json::json!({ "agent_id": agent_id, "hardware": v, "source": "wazuh-db" })); }
+    // a ProVigil agent: its provigil-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Hardware).await { return Json(serde_json::json!({ "agent_id": agent_id, "hardware": v, "source": "provigil-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3039,8 +3039,8 @@ async fn get_agent_packages_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // a Wazuh agent: its wazuh-db database, else siem-api's store
-    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Packages).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "packages": v, "source": "wazuh-db" })); }
+    // a ProVigil agent: its provigil-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Packages).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "packages": v, "source": "provigil-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         let pkgs: Vec<_> = db.syscollector.programs.values().cloned().collect();
@@ -3062,8 +3062,8 @@ async fn get_agent_ports_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // a Wazuh agent: its wazuh-db database, else siem-api's store
-    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Ports).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "ports": v, "source": "wazuh-db" })); }
+    // a ProVigil agent: its provigil-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Ports).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "ports": v, "source": "provigil-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3084,8 +3084,8 @@ async fn get_agent_netiface_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> impl IntoResponse {
-    // a Wazuh agent: its wazuh-db database, else siem-api's store
-    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Netiface).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "interfaces": v, "source": "wazuh-db" })); }
+    // a ProVigil agent: its provigil-db database, else siem-api's store
+    if let Some(v) = inventory_store::part(&agent_id, inventory_store::Part::Netiface).await { let n = v.as_array().map_or(0, |a| a.len()); return Json(serde_json::json!({ "agent_id": agent_id, "total": n, "interfaces": v, "source": "provigil-db" })); }
     if let Some(agent_db) = state.wdb.get(&agent_id) {
         let db = agent_db.read().unwrap();
         Json(serde_json::json!({
@@ -3111,7 +3111,7 @@ async fn get_agent_fim_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if provigil_manager::is_provigil_agent(&agent_id).await {
-        // the agent's wazuh-db database (not copied)
+        // the agent's provigil-db database (not copied)
         let r = provigil_manager::agent_fim(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "entries": [] }));
         return Json(r).into_response();
     }
@@ -3139,7 +3139,7 @@ async fn get_agent_rootcheck_handler(State(state): State<AppState>, Extension(ct
     if !agent_in_scope(&state, &ctx, &agent_id) {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
-    // the agent's wazuh-db database (not copied)
+    // the agent's provigil-db database (not copied)
     let r = provigil_manager::agent_rootcheck(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "total": 0, "events": [] }));
     Json(r).into_response()
 }
@@ -3185,7 +3185,7 @@ async fn post_agent_fim_handler(
                 ip: "127.0.0.1".to_string(),
             },
             manager: Some(siem_core::ManagerAlertInfo {
-                name: "wazuh-manager-rust".to_string(),
+                name: "provigil-manager".to_string(),
             }),
             decoder: None,
             full_log: format!("ossec: File '{}' was {:?}", d.path, d.action),
@@ -3227,7 +3227,7 @@ async fn get_agent_sca_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "Agent not found" }))).into_response();
     }
     if provigil_manager::is_provigil_agent(&agent_id).await {
-        // the agent's wazuh-db database (the source; posture_store copies it for compliance)
+        // the agent's provigil-db database (the source; posture_store copies it for compliance)
         let r = provigil_manager::agent_sca(&agent_id).await.unwrap_or_else(|| serde_json::json!({ "agent_id": agent_id, "score": 0, "passed": 0, "failed": 0, "checks": [] }));
         return Json(r).into_response();
     }
@@ -3430,7 +3430,7 @@ async fn post_agent_rootcheck_handler(
                 ip: "127.0.0.1".to_string(),
             },
             manager: Some(siem_core::ManagerAlertInfo {
-                name: "wazuh-manager-rust".to_string(),
+                name: "provigil-manager".to_string(),
             }),
             decoder: None,
             full_log: format!("rootcheck: {} - Target: {}", det.details, det.target),
@@ -3476,7 +3476,7 @@ async fn get_rootcheck_signatures_handler() -> impl IntoResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Wazuh Parity: Logtest, Compliance, MITRE Matrix, FIM, Active Response
+// ProVigil Parity: Logtest, Compliance, MITRE Matrix, FIM, Active Response
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -3518,7 +3518,7 @@ pub struct FimSummaryRecord {
 }
 
 /// `GET /api/v1/manager/status` (platform admin): daemons, queues and counters of the
-/// Wazuh manager, plus the connected agents of every tenant.
+/// ProVigil manager, plus the connected agents of every tenant.
 async fn get_manager_status_handler(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
     if !ctx.is_super() {
         return tenancy::forbidden();
@@ -3533,7 +3533,7 @@ async fn get_manager_status_handler(State(state): State<AppState>, Extension(ctx
 }
 
 /// `GET /api/v1/fim/summary`: the latest file and registry changes, from the
-/// agents' FIM alerts (Wazuh's `syscheck` block), newest first.
+/// agents' FIM alerts (the upstream `syscheck` block), newest first.
 async fn get_fim_summary_handler(
     State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
@@ -3549,12 +3549,12 @@ async fn get_fim_summary_handler(
             total_files += agent_db.read().unwrap().fim.list().len();
         }
     }
-    // and the Wazuh agents' files and registry values: counted in each agent's wazuh-db
+    // and the ProVigil agents' files and registry values: counted in each agent's provigil-db
     // database (the tenant's agents only), 8 at a time
     {
         use futures_util::StreamExt;
-        let wazuh: Vec<String> = agent_ids.iter().filter_map(|a| a.parse::<u32>().ok().filter(|n| *n > 0)).map(|n| format!("{n:03}")).collect();
-        total_files += futures_util::stream::iter(wazuh)
+        let agent_dbs: Vec<String> = agent_ids.iter().filter_map(|a| a.parse::<u32>().ok().filter(|n| *n > 0)).map(|n| format!("{n:03}")).collect();
+        total_files += futures_util::stream::iter(agent_dbs)
             .map(|id: String| async move { inventory_store::count(&id, "fim_entry").await })
             .buffer_unordered(8)
             .fold(0u64, |t, n| std::future::ready(t + n))
@@ -3861,7 +3861,7 @@ async fn delete_parser_handler(
 }
 
 // ------------------------------------------------------------------------------------------------
-// Wazuh Subsystem Handlers: Authd, Integratord, Csyslogd, Reportd, Agent Upgrade
+// ProVigil Subsystem Handlers: Authd, Integratord, Csyslogd, Reportd, Agent Upgrade
 // ------------------------------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -3971,7 +3971,7 @@ fn persist_registry(state: &AppState, agent_id: &str, tenant: &str, e: Option<&E
 
 
 
-/// Wazuh agent name rules (`OS_IsValidName`): letters, digits, '.', '_', '-'; 2..=128 chars.
+/// ProVigil agent name rules (`OS_IsValidName`): letters, digits, '.', '_', '-'; 2..=128 chars.
 fn valid_agent_name(name: &str) -> bool {
     (2..=128).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
@@ -3989,7 +3989,7 @@ fn next_free_agent_id(state: &AppState) -> String {
     state.agents.read().unwrap().keys().for_each(|k| consider(k));
     state.agent_tenants.read().unwrap().keys().for_each(|k| consider(k));
     state.auth_keystore.read().unwrap().keys.iter().for_each(|k| consider(&k.id));
-    // Ids are never reused, even after an agent is deleted (like Wazuh's
+    // Ids are never reused, even after an agent is deleted (like the upstream
     // client.keys counter): old data stays attached to the old agent only.
     // fetch_add hands each concurrent enrollment its own id.
     state.max_agent_id.fetch_max(max, std::sync::atomic::Ordering::SeqCst);
@@ -4172,7 +4172,7 @@ async fn get_reports_summary_handler(
         *engine.field_counts.entry(rule_id.to_string()).or_default() += n;
     }
 
-    // per framework: the alerts whose Wazuh rule carries its tag (the scores are /api/v1/compliance)
+    // per framework: the alerts whose ProVigil rule carries its tag (the scores are /api/v1/compliance)
     let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(history::DEFAULT_HOURS as u64 * 3_600_000);
     let tags = state.db.compliance_tag_counts(&ctx.scope(), since, &["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"]).await.unwrap_or_default();
     let compliance_summary: serde_json::Map<String, serde_json::Value> = tags
@@ -4190,7 +4190,7 @@ async fn get_reports_summary_handler(
     }))
 }
 
-/// An agent upgrade, as the Wazuh API's `PUT /agents/upgrade` /
+/// An agent upgrade, as the ProVigil API's `PUT /agents/upgrade` /
 /// `/agents/upgrade_custom` take it. `file_path` selects a custom upgrade.
 #[derive(Debug, Deserialize)]
 pub struct UpgradeAgentRequest {
@@ -4411,7 +4411,7 @@ async fn get_agent_inventory_handler(
     Extension(ctx): Extension<AuthCtx>,
     Path(agent_id): Path<String>,
 ) -> axum::response::Response {
-    // Wazuh agents: what their syscollector synced to wazuh-db
+    // ProVigil agents: what their syscollector synced to provigil-db
     if let Some(inv) = provigil_manager::agent_inventory(&agent_id).await {
         return Json(inv).into_response();
     }
@@ -4790,8 +4790,8 @@ async fn post_redswarm_apply_rule_handler(
     if draft.status != siem_redswarm::DraftRuleStatus::PendingApproval {
         return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "This draft was already decided" }))).into_response();
     }
-    // into the manager's custom rules (ids 119000-119999), only if wazuh-analysisd accepts them
-    // Wazuh's <mitre> takes only <id> (older drafts also had <tactic> / <technique>)
+    // into the manager's custom rules (ids 119000-119999), only if provigil-analysisd accepts them
+    // the upstream <mitre> takes only <id> (older drafts also had <tactic> / <technique>)
     let xml: String = draft.rule_xml.lines().filter(|l| !l.trim_start().starts_with("<tactic>") && !l.trim_start().starts_with("<technique>")).collect::<Vec<_>>().join("\n");
     let deployed = tokio::task::spawn_blocking(move || provigil_manager::deploy_rule_group(REDSWARM_RULES, &xml, 119_000..=119_999)).await.unwrap_or_else(|e| Err(e.to_string()));
     let (rule_id, xml) = match deployed {

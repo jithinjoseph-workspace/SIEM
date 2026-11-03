@@ -1,9 +1,9 @@
-//! Port of `wazuh-maild` (`src/os_maild`, Wazuh 4.14.7): e-mail alerts from
+//! Port of `provigil-maild` (`src/os_maild`, upstream 4.14.7): e-mail alerts from
 //! `alerts.json` / `alerts.log`, granular `<email_alerts>`, grouping, SMS
 //! format, `email_maxperhour`, and the daily reports (`shared/report_op.c`)
 //! monitord sends.
 //!
-//! Extension (not in Wazuh): SMTP over TLS with login, see [`smtp_ext`].
+//! Extension (not in upstream): SMTP over TLS with login, see [`smtp_ext`].
 
 pub mod alert;
 pub mod cfile;
@@ -35,7 +35,7 @@ pub fn strerror(e: &std::io::Error) -> String {
     s.split(" (os error").next().unwrap_or(&s).to_string()
 }
 
-/// `CreateThread`'s debug line (`wazuh.thread_stack_size`, KiB).
+/// `CreateThread`'s debug line (`provigil.thread_stack_size`, KiB).
 pub fn log_thread_start(log: &WLog) {
     let o = siem_config::internal_options::InternalOptions::from_home("");
     match o.get_int("wazuh", "thread_stack_size", 2048, 65536) {

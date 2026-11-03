@@ -1,6 +1,6 @@
 //! Native Active Response Actions Implementation (`src/active-response`)
 //!
-//! Provides cross-platform implementations for the standard Wazuh response actions:
+//! Provides cross-platform implementations for the standard ProVigil response actions:
 //! - `firewall-drop` (Linux iptables/nftables, Windows netsh, macOS pf)
 //! - `host-deny` (/etc/hosts.deny)
 //! - `disable-account` (Linux passwd, Windows net user)

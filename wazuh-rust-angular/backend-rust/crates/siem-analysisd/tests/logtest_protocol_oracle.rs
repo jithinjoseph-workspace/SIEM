@@ -1,4 +1,4 @@
-//! Differential test of the wazuh-logtest request protocol
+//! Differential test of the provigil-logtest request protocol
 //! (`w_logtest_process_request`) against the C oracle in protocol mode.
 //!
 //! Env: SIEM_LOGTEST_ORACLE (oracle command line), SIEM_TEST_HOME (Rust home

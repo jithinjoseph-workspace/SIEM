@@ -1,4 +1,4 @@
-//! Wazuh Mail List / Alert Aggregation Queue (src/os_maild/mail_list.c, mail_list.h)
+//! ProVigil Mail List / Alert Aggregation Queue (src/os_maild/mail_list.c, mail_list.h)
 //!
 //! Provides a bounded FIFO / ring buffer that buffers alert messages for grouping
 //! and batch delivery up to `MAIL_LIST_SIZE` (96 alerts).

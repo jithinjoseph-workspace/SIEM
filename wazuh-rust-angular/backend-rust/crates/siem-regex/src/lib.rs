@@ -1,11 +1,11 @@
-//! `siem-regex`: Wazuh-compatible pattern matching.
+//! `siem-regex`: ProVigil-compatible pattern matching.
 //!
 //! Port of `src/os_regex/` (OSRegex, OSMatch, OS_WordMatch and string helpers),
 //! the `w_expression_t` wrapper from `src/shared/expression.c` (OSRegex /
 //! OSMatch / PCRE2 / string / IP list) and the `os_ip` helpers from
 //! `src/shared/validate_op.c`.
 //!
-//! The stock Wazuh ruleset relies on OSRegex's exact (and unusual) semantics,
+//! The stock ProVigil ruleset relies on OSRegex's exact (and unusual) semantics,
 //! so rules and decoders must use this crate rather than the `regex` crate.
 
 pub mod expression;

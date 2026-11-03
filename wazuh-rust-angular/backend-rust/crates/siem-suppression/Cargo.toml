@@ -2,7 +2,7 @@
 name = "siem-suppression"
 version = "0.1.0"
 edition = "2021"
-description = "Expiring alert suppressions for the SIEM (from triage or an analyst), matched against Wazuh alerts"
+description = "Expiring alert suppressions for the SIEM (from triage or an analyst), matched against ProVigil alerts"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

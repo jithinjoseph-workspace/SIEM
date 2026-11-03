@@ -1,4 +1,4 @@
-//! Wazuh Rule Expression Matching Engine (expression.c, rules_op.c)
+//! ProVigil Rule Expression Matching Engine (expression.c, rules_op.c)
 //!
 //! Evaluates field condition expressions including exact string matches, regexes,
 //! CIDR IP subnet memberships, and numeric threshold operators (<, <=, >, >=, ==, !=).

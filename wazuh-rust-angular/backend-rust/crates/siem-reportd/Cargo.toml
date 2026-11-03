@@ -2,7 +2,7 @@
 name = "siem-reportd"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Report Generator Subsystem (src/reportd)"
+description = "ProVigil Report Generator Subsystem (src/reportd)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

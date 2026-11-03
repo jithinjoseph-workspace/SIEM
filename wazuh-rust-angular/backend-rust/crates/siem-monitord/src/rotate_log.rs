@@ -1,5 +1,5 @@
 //! `monitord/rotate_log.c`: rotation of `logs/ossec.log` / `logs/ossec.json`
-//! into `logs/wazuh/<year>/<Mon>/ossec-<dd>[-<nnn>].{log,json}[.gz]`.
+//! into `logs/provigil/<year>/<Mon>/ossec-<dd>[-<nnn>].{log,json}[.gz]`.
 
 use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
 

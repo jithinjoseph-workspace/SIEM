@@ -1,4 +1,4 @@
-//! Wazuh Package Digital Signatures (`src/os_crypto/signature/signature.c`, `signature.h`)
+//! ProVigil Package Digital Signatures (`src/os_crypto/signature/signature.c`, `signature.h`)
 //!
 //! Verifies WPK256 package signatures (`WPK256` magic number, embedded X.509 cert, RSA-SHA256 signature).
 

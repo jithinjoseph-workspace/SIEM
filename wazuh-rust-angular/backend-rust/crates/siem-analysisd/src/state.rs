@@ -1,5 +1,5 @@
 //! Daemon statistics (analysisd/state.c): global and per-agent counters,
-//! the `var/run/wazuh-analysisd.state` file and the `getstats` /
+//! the `var/run/provigil-analysisd.state` file and the `getstats` /
 //! `getagentsstats` JSON.
 
 use std::collections::HashMap;
@@ -551,7 +551,7 @@ impl State {
         )
     }
 
-    /// `w_analysisd_write_state`: write `<home>/var/run/wazuh-analysisd.state`
+    /// `w_analysisd_write_state`: write `<home>/var/run/provigil-analysisd.state`
     /// through a `.temp` file and a rename. Returns the error to log.
     pub fn write_file(&self, home: &Path, q: &QueueStatus) -> Result<(), String> {
         let path = home.join(format!("var/run/{ARGV0}.state"));

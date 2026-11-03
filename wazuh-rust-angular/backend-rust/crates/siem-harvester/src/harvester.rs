@@ -2,7 +2,7 @@ use crate::wcs_model::{WcsFimDocument, WcsInventoryDocument};
 use serde::{Deserialize, Serialize};
 
 /// Policy configuration for the Harvester pipeline.
-/// Ported from Wazuh src/policyHarvesterManager.hpp.
+/// Ported from upstream src/policyHarvesterManager.hpp.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarvesterConfig {
     pub enabled: bool,
@@ -23,7 +23,7 @@ impl Default for HarvesterConfig {
 }
 
 /// Inventory Harvester Engine.
-/// Ported from Wazuh src/inventoryHarvesterFacade.cpp.
+/// Ported from upstream src/inventoryHarvesterFacade.cpp.
 pub struct InventoryHarvester {
     pub config: HarvesterConfig,
 }

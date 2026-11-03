@@ -1,7 +1,7 @@
-//! Wazuh's ruleset unit tests (ruleset/testing/tests/*.ini) run through the
-//! Rust engine with wazuh-logtest semantics.
+//! ProVigil ruleset unit tests (ruleset/testing/tests/*.ini) run through the
+//! Rust engine with provigil-logtest semantics.
 //!
-//! Prepare the inputs with `tools/make_test_home.py <wazuh-src> <home> <cases.json>`
+//! Prepare the inputs with `tools/make_test_home.py <provigil-src> <home> <cases.json>`
 //! and run with `SIEM_TEST_HOME=<home> SIEM_TEST_CASES=<cases.json>`.
 
 use std::path::PathBuf;

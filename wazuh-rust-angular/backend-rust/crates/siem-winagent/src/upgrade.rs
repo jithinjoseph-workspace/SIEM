@@ -16,7 +16,7 @@ use siem_xml::{OsXml, XmlNode};
 
 /// `AGENT_UPGRADE_WM_NAME`
 pub const NAME: &str = "agent-upgrade";
-/// `WM_AGENT_UPGRADE_LOGTAG` (the module sources are built with ARGV0 "wazuh-modulesd")
+/// `WM_AGENT_UPGRADE_LOGTAG` (the module sources are built with ARGV0 "provigil-modulesd")
 const LOGTAG: &str = "wazuh-modulesd:agent-upgrade";
 const OSSECCONF: &str = "ossec.conf";
 const DEFAULTQUEUE: &str = "queue/sockets/queue";

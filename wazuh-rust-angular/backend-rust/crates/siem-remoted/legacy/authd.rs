@@ -43,7 +43,7 @@ impl AuthdService {
         Self { keys_db, config }
     }
 
-    /// Process a raw Wazuh enrollment message (e.g. from TCP 1515)
+    /// Process a raw ProVigil enrollment message (e.g. from TCP 1515)
     /// Request format: "OSSEC A:'agent_name' [G:'group'] [P:'password']"
     pub fn handle_enrollment_request(
         &self,

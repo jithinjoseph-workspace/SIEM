@@ -1,5 +1,5 @@
 //! `logcollector/state.c`: per-file event/byte counts and per-target
-//! drops, global and per-interval, the `wazuh-logcollector.state` file and
+//! drops, global and per-interval, the `provigil-logcollector.state` file and
 //! the `getstate` JSON.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

@@ -1,7 +1,7 @@
 use crate::tables::PackageItem;
 use regex::Regex;
 
-/// Syscollector Normalizer ported from Wazuh syscollectorNormalizer.cpp and norm_config.json.
+/// Syscollector Normalizer ported from upstream syscollectorNormalizer.cpp and norm_config.json.
 pub struct SysNormalizer {
     exclusions: Vec<Regex>,
     vendor_rules: Vec<(Regex, &'static str)>,

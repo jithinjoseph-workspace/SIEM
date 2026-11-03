@@ -1,9 +1,9 @@
-//! Wazuh Shared Foundation Library (src/shared)
+//! ProVigil Shared Foundation Library (src/shared)
 //!
-//! Provides the core SIEM runtime primitives ported directly from Wazuh's C code:
+//! Provides the core SIEM runtime primitives ported directly from the upstream C code:
 //! - `validate`: Input and path validation (`validate_op.c`).
 //! - `keys`: Agent fleet registry and `client.keys` manager (`agent_op.c`, `read-agents.c`).
-//! - `version`: Wazuh version comparing and SemVer engine (`version_op.c`).
+//! - `version`: ProVigil version comparing and SemVer engine (`version_op.c`).
 //! - `schedule`: Recurring scan scheduling with intervals and jitter (`schedule_scan.c`).
 //! - `expression`: Condition matching for rules and decoders (`expression.c`, `rules_op.c`).
 //! - `formatter`: Custom alert template variable replacement (`custom_output_search_replace.c`).

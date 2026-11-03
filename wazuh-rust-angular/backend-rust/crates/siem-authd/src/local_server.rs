@@ -1,7 +1,7 @@
 //! Local Authd Server & IPC Dispatcher (`src/os_auth/local-server.c`)
 //!
 //! Handles local JSON commands sent via `AUTH_LOCAL_SOCK` (or Windows named pipe)
-//! supporting `add`, `remove`, and `get` operations with Wazuh standard error codes.
+//! supporting `add`, `remove`, and `get` operations with ProVigil standard error codes.
 
 use crate::authcom::authcom_dispatch;
 use crate::config::{AuthdConfig, ForceOptions};
@@ -12,7 +12,7 @@ use siem_crypto::keys::{ClientKey, KeyStore};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Wazuh standard local error codes matching `ERRORS[]` in `local-server.c`.
+/// ProVigil standard local error codes matching `ERRORS[]` in `local-server.c`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalErrorCode {
     Internal = 9001,

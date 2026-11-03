@@ -1,4 +1,4 @@
-//! Faithful port of wazuh-db's library (wazuh_db/ of Wazuh 4.14.7): the
+//! Faithful port of provigil-db's library (wazuh_db/ of upstream 4.14.7): the
 //! per-agent, global, tasks and MITRE SQLite databases, the query parser and
 //! the per-domain operations, on SQLite 3.50.4 (siem-sqlite) like the C.
 //!
@@ -205,7 +205,7 @@ pub fn s32(b: &[u8]) -> &[u8] {
     &b[..b.len().min(32)]
 }
 
-/// The process services wazuh-db uses.
+/// The process services provigil-db uses.
 pub trait WdbEnv: Send + Sync {
     /// A log message ("ERROR", "WARNING", "INFO", "DEBUG", "DEBUG2").
     fn log(&self, level: &str, msg: &[u8]);
@@ -446,7 +446,7 @@ pub fn wstr_chr(s: &[u8], c: u8) -> Option<usize> {
     None
 }
 
-/// wazuh-db's process-wide state.
+/// provigil-db's process-wide state.
 pub struct Wdbd {
     pub cfg: WdbConfig,
     /// The home directory paths are relative to (empty in the daemon).
@@ -800,7 +800,7 @@ impl Wdbd {
         drop(db);
         // getuid() != 0 in tests and in the daemon after privsep
         if is_root() {
-            // chown(path, root, wazuh): done by the installer in practice
+            // chown(path, root, provigil): done by the installer in practice
         } else {
             self.mdebug1(b"Ignoring chown when creating file from SQL.");
         }

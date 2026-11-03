@@ -1,4 +1,4 @@
-//! The rules pages: the Wazuh ruleset (read-only, as in Wazuh) and the tenant's own
+//! The rules pages: the ProVigil ruleset (read-only, as in upstream) and the tenant's own
 //! custom rules. A custom rule is a Sigma rule built from the page's form (one field,
 //! a matcher, a value) and stored in ClickHouse `ndr.sigma_rules` (source 'custom',
 //! the tenant's id; a platform admin's apply to every tenant, '*'); the Sigma engine
@@ -102,7 +102,7 @@ pub struct RulesQuery {
     q: Option<String>,
 }
 
-/// `GET /api/rules`: the caller's custom rules first, then the Wazuh ruleset.
+/// `GET /api/rules`: the caller's custom rules first, then the ProVigil ruleset.
 pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(query): Query<RulesQuery>) -> impl IntoResponse {
     let custom = custom_rules(&state, &ctx).await;
     let enabled_custom = custom.iter().filter(|r| r.enabled == 1).count();
@@ -112,7 +112,7 @@ pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     rules.extend(provigil.into_iter().map(|r| {
         json!({
             "id": r.id.to_string(), "title": r.description, "description": r.description, "level": r.level, "severity": severity_of(r.level),
-            "enabled": true, "groups": r.groups, "tags": r.groups, "conditions": 1, "mitre": r.mitre, "source": "wazuh", "editable": false,
+            "enabled": true, "groups": r.groups, "tags": r.groups, "conditions": 1, "mitre": r.mitre, "source": "provigil", "editable": false,
         })
     }));
     if let Some(q) = query.q.as_deref().map(str::to_lowercase).filter(|q| !q.is_empty()) {
@@ -126,13 +126,13 @@ pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     (StatusCode::OK, headers, Json(page))
 }
 
-/// `GET /api/rules/:id`: a custom rule (with its form), or a Wazuh rule.
+/// `GET /api/rules/:id`: a custom rule (with its form), or a ProVigil rule.
 pub async fn get_one(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     if let Some(r) = rule_row(&state, &id).await.filter(|r| r.source == "custom" && (r.tenant_id == rule_tenant(&ctx) || r.tenant_id == "*")) {
         return Json(custom_json(&r)).into_response();
     }
     match state.engine.list_rules().into_iter().find(|r| r.id.to_string() == id) {
-        Some(r) => Json(json!({ "id": id, "title": r.description, "severity": severity_of(r.level), "level": r.level, "source": "wazuh", "editable": false })).into_response(),
+        Some(r) => Json(json!({ "id": id, "title": r.description, "severity": severity_of(r.level), "level": r.level, "source": "provigil", "editable": false })).into_response(),
         None => err(StatusCode::NOT_FOUND, "Rule not found"),
     }
 }

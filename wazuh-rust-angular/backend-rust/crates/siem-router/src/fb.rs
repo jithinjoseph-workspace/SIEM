@@ -1,4 +1,4 @@
-//! The part of flatbuffers 23.5.26 (Wazuh's deps/54 build, with Wazuh's
+//! The part of flatbuffers 23.5.26 (the upstream deps/54 build, with the upstream
 //! `zero_on_float_to_int` option) the router uses: `flatbuffers::Parser`
 //! reading a schema and then JSON (`Parser::Parse`), and the
 //! `FlatBufferBuilder` that lays the binary out. Byte-identical output and
@@ -11,7 +11,7 @@
 //! vectors of unions, includes, rpc services, proto mode and the attributes
 //! that change the binary otherwise (`key`, `shared`, `hash`,
 //! `force_align`, `bit_flags`, `flexbuffer`, `nested_flatbuffer`,
-//! `offset64`, `vector64`) are refused with an error: Wazuh's schemas use
+//! `offset64`, `vector64`) are refused with an error: the upstream schemas use
 //! none of them.
 //!
 //! JSON: the whole of `ParseTable`/`ParseAnyValue`/`ParseSingleValue` for

@@ -1,4 +1,4 @@
-//! Wazuh Authd CLI Binary (`src/os_auth/main-server.c`)
+//! ProVigil Authd CLI Binary (`src/os_auth/main-server.c`)
 
 use siem_authd::config::AuthdConfig;
 use siem_authd::server::AuthDaemon;

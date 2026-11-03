@@ -68,7 +68,7 @@ pub fn classify(q: &str, agents: &[(String, String)]) -> Kind {
 #[derive(clickhouse::Row, Deserialize)]
 struct AlertRow {
     id: String,
-    /// the id SOAR records for its runs (Wazuh's own alert id)
+    /// the id SOAR records for its runs (the upstream own alert id)
     provigil_id: String,
     timestamp: u64,
     agent_name: String,

@@ -2,7 +2,7 @@
 name = "siem-ipc"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh local IPC: unix-socket queues, secure framing, SendMSG format and the wazuh-db client"
+description = "ProVigil local IPC: unix-socket queues, secure framing, SendMSG format and the provigil-db client"
 
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }

@@ -47,7 +47,7 @@ impl Router for NoRouter {
 
 /// The real router (`secure.c`'s HandleSecure start): `router_initialize`
 /// with the ":router" tagged log and the remote providers
-/// `deltas-syscollector` and `rsync` on wazuh-modulesd's broker.
+/// `deltas-syscollector` and `rsync` on provigil-modulesd's broker.
 #[cfg(any(target_os = "linux", windows))]
 pub struct ProVigilRouter {
     syscollector: siem_router::ProviderHandle,

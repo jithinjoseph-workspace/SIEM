@@ -1,4 +1,4 @@
-//! Faithful port of Wazuh `OSRegex` (`src/os_regex/os_regex_compile.c`,
+//! Faithful port of upstream `OSRegex` (`src/os_regex/os_regex_compile.c`,
 //! `os_regex_execute.c`).
 //!
 //! The matching algorithm is *not* a regular backtracking regex engine: it is a
@@ -8,7 +8,7 @@
 //! pointers (a `0` byte past the end of a buffer plays the role of the C NUL
 //! terminator).
 //!
-//! Supported syntax (see the Wazuh "Regular Expression Syntax" docs):
+//! Supported syntax (see the upstream "Regular Expression Syntax" docs):
 //! `\w \d \s \p \W \D \S \. \t \$ \( \) \\ \| \<`, the `+` / `*` modifiers on an
 //! escape, `^` / `$` anchors, `|` alternation and one level of `( )` capture.
 
@@ -55,7 +55,7 @@ pub(crate) fn at(buf: &[u8], i: isize) -> u8 {
 }
 
 /// On x86 `char` is signed: comparing a pattern `char` holding a byte >= 0x80
-/// with an `unsigned char` from `charmap` never succeeds. Wazuh's ruleset is
+/// with an `unsigned char` from `charmap` never succeeds. ProVigil ruleset is
 /// validated against that behaviour, so literal non-ASCII bytes never match.
 #[inline]
 pub(crate) fn signed_eq(pattern_byte: u8, mapped: u8) -> bool {

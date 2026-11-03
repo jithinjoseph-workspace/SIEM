@@ -4,7 +4,7 @@
 //! through a hub, never raw logs:
 //!
 //! - what is shared: an attacker's *public* IP, a malicious file hash, an
-//!   ordered chain of MITRE techniques, the Wazuh rule ids (a public ruleset),
+//!   ordered chain of MITRE techniques, the ProVigil rule ids (a public ruleset),
 //!   a severity bucket, the day, and a sighting count with Laplace noise;
 //! - what is never shared: log lines, host names, users, internal (private)
 //!   addresses, agent or tenant identities;
@@ -18,7 +18,7 @@
 //!   member cannot make the others block something by reporting it.
 //!
 //! Federated model updates are not part of this: the SIEM's detection is the
-//! Wazuh ruleset plus LLM providers, not a locally trained model.
+//! ProVigil ruleset plus LLM providers, not a locally trained model.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
@@ -50,7 +50,7 @@ pub struct Fingerprint {
     pub token: String,
     /// MITRE technique ids seen with it (public ATT&CK ids).
     pub techniques: Vec<String>,
-    /// Wazuh rule ids (the public ruleset).
+    /// ProVigil rule ids (the public ruleset).
     pub rule_ids: Vec<u32>,
     /// 0 low, 1 medium, 2 high, 3 critical
     pub severity: u8,
@@ -116,7 +116,7 @@ pub fn org_id(deployment_secret: &[u8], tenant: &str) -> String {
     token(deployment_secret, Kind::ExternalIp, &format!("org:{tenant}"))
 }
 
-/// A Wazuh alert (JSON) as one alert's indicators: the public source IP and
+/// A ProVigil alert (JSON) as one alert's indicators: the public source IP and
 /// malicious file hashes of alerts from [`MIN_LEVEL`].
 pub fn indicators(alert: &Value) -> Vec<(Kind, String)> {
     let level = alert["rule"]["level"].as_u64().unwrap_or(0) as u32;

@@ -1,4 +1,4 @@
-//! Port of `wazuh-agentlessd` (`src/agentlessd`, Wazuh 4.14.7): runs the
+//! Port of `provigil-agentlessd` (`src/agentlessd`, upstream 4.14.7): runs the
 //! `agentless/` expect scripts against hosts without an agent and forwards
 //! their integrity (`FWD:`), log (`LOG:`) and diff (`STORE:`) output to analysisd.
 

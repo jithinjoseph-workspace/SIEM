@@ -1,6 +1,6 @@
 //! MITRE ATT&CK matrix: the full Enterprise catalog from the manager's
 //! `var/db/mitre.db` (SQLite, built from the ruleset's enterprise-attack.json, as
-//! Wazuh's own mitre.db), with the tenant's alerts per technique from ClickHouse.
+//! the upstream own mitre.db), with the tenant's alerts per technique from ClickHouse.
 //! Read on each request (a few ms); nothing is kept in memory.
 //!
 //! `GET /api/v1/mitre/matrix`

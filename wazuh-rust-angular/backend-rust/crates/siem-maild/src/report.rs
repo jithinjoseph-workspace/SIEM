@@ -1,6 +1,6 @@
 //! `shared/report_op.c`: the daily report (`os_ReportdStart`) and its
 //! filter configuration (`os_report_configfilter`), used by monitord's
-//! `<reports>` and by `wazuh-reportd`.
+//! `<reports>` and by `provigil-reportd`.
 
 use crate::alert::{atoi, AlertData, FileQueue, CRALERT_FP_SET, CRALERT_READ_ALL};
 use crate::cfile::CFile;

@@ -98,7 +98,7 @@ pub struct FileStamp {
     pub inode: u64,
 }
 
-/// Keys from the platform (not in Wazuh): when siem-api starts a manager daemon with
+/// Keys from the platform (not in upstream): when siem-api starts a manager daemon with
 /// `SIEM_KEYS_ADDR` (its loopback key service) and `SIEM_KEYS_TOKEN`, the daemon reads
 /// the agent keys from it (siem-api keeps them encrypted in ClickHouse): no
 /// `etc/client.keys` file on the manager. Frames: `[u32 LE length][kind][payload]`;

@@ -311,7 +311,7 @@ pub fn check(events: &[(Value, String)]) -> Found {
             f.started.push((tenant.clone(), agent.clone()));
             continue;
         }
-        // Wazuh's eventchannel decoder doubles the backslashes of event data
+        // the upstream eventchannel decoder doubles the backslashes of event data
         let ed = |k: &str| st(v, &format!("/data/win/eventdata/{k}")).replace("\\\\", "\\");
         let id = st(v, "/data/win/system/eventID");
         let provider = st(v, "/data/win/system/providerName");
@@ -431,7 +431,7 @@ mod tests {
             win("049", "7040", "Service Control Manager", json!({ "param1": "Wazuh", "param2": "auto start", "param3": "disabled" })),
             win("049", "7034", "Service Control Manager", json!({ "param1": "Wazuh", "param2": "1" })),
             win("049", "7034", "Service Control Manager", json!({ "param1": "Print Spooler" })),
-            // as Wazuh sends it: backslashes doubled
+            // as upstream sends it: backslashes doubled
             win("049", "13", "Microsoft-Windows-Sysmon", json!({ "targetObject": "HKLM\\\\System\\\\CurrentControlSet\\\\Services\\\\WazuhSvc\\\\Start", "image": "C:\\\\Windows\\\\regedit.exe" })),
             win("049", "13", "Microsoft-Windows-Sysmon", json!({ "targetObject": "HKLM\\System\\CurrentControlSet\\Services\\WazuhSvc\\Security", "image": "C:\\Windows\\system32\\services.exe" })),
             (json!({ "agent": { "id": "049" }, "full_log": "ossec: Agent started: 'pc->any'." }), "acm".into()),

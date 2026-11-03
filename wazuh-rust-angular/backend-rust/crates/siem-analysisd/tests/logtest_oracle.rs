@@ -1,10 +1,10 @@
-//! Differential test against Wazuh's real logtest pipeline compiled from C
+//! Differential test against the upstream real logtest pipeline compiled from C
 //! (see tools/oracle/README.md).
 //!
 //! Env:
 //!   SIEM_LOGTEST_ORACLE   command line of the oracle, e.g.
 //!                         "wsl -d Ubuntu-20.04 --cd /home/u/oracle -- ./logtest_oracle home"
-//!   SIEM_TEST_HOME        Rust-side Wazuh home (a separate copy from the oracle's)
+//!   SIEM_TEST_HOME        Rust-side ProVigil home (a separate copy from the oracle's)
 //!   SIEM_TEST_CASES       cases.json from tools/make_test_home.py
 //!   SIEM_ORACLE_MANAGER   hostname of the oracle machine (manager.name)
 //!   SIEM_ORACLE_ROUNDS    number of long sessions (default 2)

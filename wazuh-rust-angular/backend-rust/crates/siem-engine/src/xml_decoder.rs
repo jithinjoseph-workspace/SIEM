@@ -27,7 +27,7 @@ pub struct RawXmlDecoder {
     pub order: Option<String>,
 }
 
-/// Compiled Wazuh Decoder for high-speed pattern matching & field extraction
+/// Compiled ProVigil Decoder for high-speed pattern matching & field extraction
 #[derive(Clone)]
 pub struct CompiledDecoder {
     pub name: String,
@@ -145,7 +145,7 @@ impl CompiledDecoder {
     }
 }
 
-/// Helper to parse decoders from a Wazuh XML string or file
+/// Helper to parse decoders from a ProVigil XML string or file
 pub fn parse_decoders_xml(xml: &str) -> Vec<CompiledDecoder> {
     let mut decoders = Vec::new();
 

@@ -105,7 +105,7 @@ pub struct SoarContext {
     /// Unique flow identifier (community_id or similar)
     pub community_id: String,
     pub tenant_id: String,
-    /// The original SIEM alert (Wazuh alert JSON); `None` for NDR hits.
+    /// The original SIEM alert (ProVigil alert JSON); `None` for NDR hits.
     /// The `rule_*` / `agent_name` / `location` conditions read it.
     pub alert: Option<serde_json::Value>,
 }

@@ -1,5 +1,5 @@
 //! Blocking port of `src/os_net/os_net.c` on raw file descriptors, for the
-//! daemons that keep Wazuh's threaded, select-based design (wazuh-agentd
+//! daemons that keep the upstream threaded, select-based design (provigil-agentd
 //! and the other agent daemons). Return values follow the C code: a
 //! descriptor, `OS_SOCKTERR` / `OS_INVALID`, or a byte count.
 //!

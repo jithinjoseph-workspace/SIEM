@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use ipnet::IpNet;
 
-/// DJB2 hash algorithm matching Wazuh analysisd/cdb/cdb_hash.c
+/// DJB2 hash algorithm matching ProVigil analysisd/cdb/cdb_hash.c
 #[inline]
 pub fn cdb_hash(buf: &[u8]) -> u32 {
     let mut h: u32 = 5381;
@@ -82,7 +82,7 @@ impl CdbTable {
         None
     }
 
-    /// Load standard Wazuh CDB text list format:
+    /// Load standard ProVigil CDB text list format:
     /// key:value
     /// or simple key lines
     pub fn load_from_text(&mut self, content: &str) -> usize {

@@ -1,9 +1,9 @@
-//! `siem-analysisd`: port of wazuh-analysisd (src/analysisd).
+//! `siem-analysisd`: port of provigil-analysisd (src/analysisd).
 //!
 //! The modules mirror the C sources: event pre-decoding (`cleanevent.c`),
 //! XML decoders and `DecodeEvent`, plugin decoders, rules loading and
 //! matching, CDB lists, FTS/ignore, the accumulator, `doDiff`, the alert
-//! JSON format and the wazuh-logtest pipeline.
+//! JSON format and the provigil-logtest pipeline.
 
 pub mod analysis;
 pub mod ar;

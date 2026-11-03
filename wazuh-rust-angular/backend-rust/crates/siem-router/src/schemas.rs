@@ -1,5 +1,5 @@
 //! The schema texts of `shared_modules/utils/flatbuffers/include/*_schema.h`
-//! (generated from Wazuh 4.14.7's `.fbs` files the way its CMakeLists does:
+//! (generated from upstream 4.14.7 `.fbs` files the way its CMakeLists does:
 //! `echo -e` of the unquoted `cat` output, so whitespace runs become one space).
 
 /// `syscollector_deltas_SCHEMA`

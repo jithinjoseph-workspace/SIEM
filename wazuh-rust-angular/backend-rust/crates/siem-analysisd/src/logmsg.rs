@@ -1,5 +1,5 @@
 //! `os_analysisd_log_msg_t` lists (`smwarn` / `smerror` / `sminfo`): messages
-//! collected while loading a ruleset, returned to wazuh-logtest clients or
+//! collected while loading a ruleset, returned to provigil-logtest clients or
 //! printed by analysisd.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub const ERRORLIST_MAXSIZE: usize = 50;
 const OS_BUFFER_SIZE: usize = 2048;
 
 impl LogList {
-    /// A list with Wazuh's `ERRORLIST_MAXSIZE` limit.
+    /// A list with the upstream `ERRORLIST_MAXSIZE` limit.
     pub fn bounded() -> Self {
         LogList { max: Some(ERRORLIST_MAXSIZE), ..Default::default() }
     }

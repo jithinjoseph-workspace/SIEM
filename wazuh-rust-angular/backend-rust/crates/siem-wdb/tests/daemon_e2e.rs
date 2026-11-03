@@ -1,4 +1,4 @@
-//! End to end test of the wazuh-db daemon runtime (Linux): the dealer and
+//! End to end test of the provigil-db daemon runtime (Linux): the dealer and
 //! worker threads on queue/db/wdb with the OS_SendSecureTCP framing, the
 //! router (broker, remote provider, remote subscriber) carrying the
 //! deleteAgent event, and the HTTP API on queue/sockets/wdb-http.sock.
@@ -41,7 +41,7 @@ fn daemon_end_to_end() {
     let base = PathBuf::new();
     let wlog = Arc::new(WLog::new("wazuh-db", &base));
 
-    // the broker (wazuh-modulesd's side) and a remote subscriber
+    // the broker (provigil-modulesd's side) and a remote subscriber
     router_initialize(wlog.clone());
     assert_eq!(siem_router::router_start(), 0);
     let got: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));

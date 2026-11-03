@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7 `wazuh-logcollector` (`src/logcollector/`) for
+//! Port of upstream 4.14.7 `provigil-logcollector` (`src/logcollector/`) for
 //! Linux: localfile monitoring (files, globs, date-based names, commands,
 //! journald), the format readers, per-target output queues, the
 //! `file_status.json` positions, statistics and the `lccom` socket.

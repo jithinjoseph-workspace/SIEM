@@ -1,4 +1,4 @@
-//! `logcollector/main.c`: the `wazuh-logcollector` command line.
+//! `logcollector/main.c`: the `provigil-logcollector` command line.
 
 #[cfg(not(unix))]
 fn main() {

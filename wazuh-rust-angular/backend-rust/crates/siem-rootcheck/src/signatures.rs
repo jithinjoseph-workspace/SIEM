@@ -60,7 +60,7 @@ impl RootcheckDatabase {
         Ok(())
     }
 
-    /// Load rootkit files from Wazuh rootkit_files.txt format
+    /// Load rootkit files from upstream rootkit_files.txt format
     pub fn load_rootkit_files_from_str(&mut self, content: &str) -> usize {
         let mut count = 0;
         for line in content.lines() {
@@ -88,7 +88,7 @@ impl RootcheckDatabase {
         count
     }
 
-    /// Load trojan binary patterns from Wazuh rootkit_trojans.txt format
+    /// Load trojan binary patterns from upstream rootkit_trojans.txt format
     pub fn load_rootkit_trojans_from_str(&mut self, content: &str) -> usize {
         let mut count = 0;
         for line in content.lines() {
@@ -115,7 +115,7 @@ impl RootcheckDatabase {
         count
     }
 
-    /// Initialize database with built-in Wazuh rootkit & trojan signatures
+    /// Initialize database with built-in upstream rootkit & trojan signatures
     pub fn new_with_builtin_signatures() -> Self {
         let mut db = Self::new();
 

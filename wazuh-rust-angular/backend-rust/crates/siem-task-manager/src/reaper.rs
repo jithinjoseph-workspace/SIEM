@@ -2,7 +2,7 @@ use crate::task_store::TaskStore;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
-/// Background task reaper ported from Wazuh wm_task_manager.c timeout and cleanup threads.
+/// Background task reaper ported from upstream wm_task_manager.c timeout and cleanup threads.
 pub struct TaskReaper {
     store: Arc<TaskStore>,
     timeout_check_interval: Duration,

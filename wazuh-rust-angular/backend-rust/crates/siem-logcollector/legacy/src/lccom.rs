@@ -1,4 +1,4 @@
-//! Wazuh Logcollector IPC Control Interface (src/logcollector/lccom.c)
+//! ProVigil Logcollector IPC Control Interface (src/logcollector/lccom.c)
 //!
 //! Handles control socket requests:
 //! - `getconfig localfile`

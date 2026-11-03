@@ -1,5 +1,5 @@
-//! `wazuh-maild` (os_maild/maild.c `main`):
-//! `wazuh-maild -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
+//! `provigil-maild` (os_maild/maild.c `main`):
+//! `provigil-maild -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

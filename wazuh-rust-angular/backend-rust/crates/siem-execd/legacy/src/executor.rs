@@ -1,6 +1,6 @@
 //! Active Response Process Execution (`src/os_execd/exec.c`, `src/os_execd/execd.c`)
 //!
-//! Handles safe process execution via STDIN / STDOUT pipes matching Wazuh's active response protocol.
+//! Handles safe process execution via STDIN / STDOUT pipes matching the upstream active response protocol.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;

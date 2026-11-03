@@ -1,4 +1,4 @@
-//! Wazuh Recurring Scan Scheduler (schedule_scan.c)
+//! ProVigil Recurring Scan Scheduler (schedule_scan.c)
 //!
 //! Evaluates next scan execution times for FIM, Syscollector, Rootcheck, and Vulnerability Scanner
 //! supporting intervals, days of week, days of month, time windows, and anti-burst jitter.

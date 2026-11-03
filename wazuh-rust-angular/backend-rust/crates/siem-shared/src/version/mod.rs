@@ -1,7 +1,7 @@
-//! Wazuh Version & SemVer Engine (version_op.c)
+//! ProVigil Version & SemVer Engine (version_op.c)
 //!
 //! Provides parsing, semantic version comparison, and compatibility matrices
-//! for Wazuh manager and agent versions.
+//! for ProVigil manager and agent versions.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:Wazuh\s+)?v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([a-zA-Z0-9.\-_]+))?$").unwrap()
 });
 
-/// A parsed Wazuh semantic version.
+/// A parsed ProVigil semantic version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProVigilVersion {
     pub major: u32,
@@ -32,7 +32,7 @@ impl ProVigilVersion {
         }
     }
 
-    /// Parse a version string like "v4.14.7", "Wazuh v4.2.0-rc1", or "4.9".
+    /// Parse a version string like "v4.14.7", "ProVigil v4.2.0-rc1", or "4.9".
     pub fn parse(s: &str) -> Result<Self, String> {
         let trimmed = s.trim();
         let caps = VERSION_REGEX
@@ -60,7 +60,7 @@ impl ProVigilVersion {
     }
 
     /// Check if this agent version is compatible with a manager version.
-    /// Wazuh rule: Manager can support agents that are at most the manager's version
+    /// ProVigil rule: Manager can support agents that are at most the manager's version
     /// (Manager >= Agent).
     pub fn is_compatible_with_manager(&self, manager_version: &ProVigilVersion) -> bool {
         // Agent must not be newer than manager

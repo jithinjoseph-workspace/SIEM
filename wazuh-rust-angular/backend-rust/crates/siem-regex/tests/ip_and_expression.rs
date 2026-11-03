@@ -1,4 +1,4 @@
-//! Cases taken from Wazuh `src/unit_tests/shared/test_validate_op.c` and
+//! Cases taken from upstream `src/unit_tests/shared/test_validate_op.c` and
 //! `test_expression.c` (where those tests do not depend on mocks).
 
 use siem_regex::{ip_found, ip_found_list, is_valid_ip, ExpType, Expression, IpNet};

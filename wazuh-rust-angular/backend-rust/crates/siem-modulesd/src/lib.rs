@@ -1,4 +1,4 @@
-//! Port of wazuh-modulesd (Wazuh 4.14.7 `src/wazuh_modules/`), the
+//! Port of provigil-modulesd (upstream 4.14.7 `src/wazuh_modules/`), the
 //! manager side. Ported modules: `database` (`wm_database.c`),
 //! `agent-upgrade` (manager), `task-manager` and `download`.
 

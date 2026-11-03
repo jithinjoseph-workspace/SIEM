@@ -1,5 +1,4 @@
-//! (analysisd.c `main`):
-//! `analysisd -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
+//analysis files
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

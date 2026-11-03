@@ -1,5 +1,5 @@
-//! The part of nlohmann::json 3.11.2 (Wazuh's deps/54 build) the router's
-//! wazuh-db endpoints use: `json::parse` (strict, exceptions on) with its
+//! The part of nlohmann::json 3.11.2 (the upstream deps/54 build) the router's
+//! provigil-db endpoints use: `json::parse` (strict, exceptions on) with its
 //! exact error texts, `contains`, `at`, `get<T>` and the range-for
 //! iteration semantics. Errors are the exceptions' `what()` strings.
 

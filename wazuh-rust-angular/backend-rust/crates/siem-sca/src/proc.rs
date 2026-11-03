@@ -3,7 +3,7 @@
 
 use siem_log::WLog;
 
-/// `ARGV0` of libwazuhshared in the Windows agent (its `mterror(ARGV0, ...)`)
+/// `ARGV0` of libprovigilshared in the Windows agent (its `mterror(ARGV0, ...)`)
 #[cfg(windows)]
 const ARGV0: &str = "wazuh-remoted";
 

@@ -1,4 +1,4 @@
-//! The SQL schemas of wazuh_db/ (`schema_*.sql`), embedded like Wazuh's
+//! The SQL schemas of wazuh_db/ (`schema_*.sql`), embedded like the upstream
 //! Makefile does: `tr -d "\n"` on each file, so the C strings have no
 //! newlines (the files have no `--` comments, quotes or backslashes).
 

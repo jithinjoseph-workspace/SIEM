@@ -29,7 +29,7 @@ pub enum AgentVersion {
 /// What `OS_Exec` needs from the outside world.
 pub trait ArBackend {
     /// `labels_get(labels_find(id), "_wazuh_version")`, else the version
-    /// reported by wazuh-db (`global get-agent-info`).
+    /// reported by provigil-db (`global get-agent-info`).
     fn agent_version(&mut self, agent_id: i32) -> AgentVersion;
     /// `wdb_get_agents_by_connection_status("active")`
     fn active_agents(&mut self) -> Option<Vec<i32>>;
@@ -180,7 +180,7 @@ fn exec_msg(ar: &ActiveResponse, agent_id: &str, msg: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Parse "Wazuh vX.Y.Z" like the `strtok_r(v / .)` sequence of `OS_Exec`.
+/// Parse "ProVigil vX.Y.Z" like the `strtok_r(v / .)` sequence of `OS_Exec`.
 pub fn parse_agent_version(v: &str) -> Option<(i32, i32, i32)> {
     let b = v.as_bytes();
     // strtok_r(agt_version, "v"): skip leading 'v's, the first token ends at the next 'v'

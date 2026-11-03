@@ -1,4 +1,4 @@
-//! Wazuh Agentless Monitoring Subsystem (`src/agentlessd`)
+//! ProVigil Agentless Monitoring Subsystem (`src/agentlessd`)
 //!
 //! Executes periodic SSH/Expect integrity checks, diff tracking for network devices,
 //! and forwards changes as security alerts.

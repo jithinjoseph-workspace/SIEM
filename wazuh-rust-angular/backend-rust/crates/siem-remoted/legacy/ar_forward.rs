@@ -96,7 +96,7 @@ impl ArForwarder {
     }
 
     /// Format active response wire message:
-    /// In Wazuh: `CONTROL_HEADER EXECD_HEADER cmd` -> `#!-execd {command}`
+    /// In upstream: `CONTROL_HEADER EXECD_HEADER cmd` -> `#!-execd {command}`
     pub fn format_wire_payload(cmd: &str, is_control_only: bool) -> String {
         if is_control_only {
             format!("#!-{}", cmd)

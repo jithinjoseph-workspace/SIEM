@@ -2,7 +2,7 @@ use crate::wcs_model::{WcsAgent, WcsHost, WcsInventoryDocument};
 use chrono::Utc;
 use siem_syscollector::SyncDelta;
 
-/// System Inventory Orchestrator ported from Wazuh src/systemInventoryOrchestrator.hpp.
+/// System Inventory Orchestrator ported from upstream src/systemInventoryOrchestrator.hpp.
 pub struct SystemInventoryOrchestrator;
 
 impl SystemInventoryOrchestrator {

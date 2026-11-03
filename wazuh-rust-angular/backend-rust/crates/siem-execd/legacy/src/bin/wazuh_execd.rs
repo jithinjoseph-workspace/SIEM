@@ -1,4 +1,4 @@
-//! Wazuh Active Response Execution Daemon CLI Binary (`src/os_execd/main.c`)
+//! ProVigil Active Response Execution Daemon CLI Binary (`src/os_execd/main.c`)
 //!
 //! CLI arguments:
 //!   -V          Version and license message

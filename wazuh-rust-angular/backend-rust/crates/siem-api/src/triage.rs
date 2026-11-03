@@ -1,5 +1,5 @@
 //! Alert triage for the SIEM (siem-triage), per tenant: the SIEM triage page.s
-//! `/api/v1/siem/triage` API on the tenant's Wazuh alerts of the last 24 h, and a
+//! `/api/v1/siem/triage` API on the tenant's ProVigil alerts of the last 24 h, and a
 //! background run every 30 minutes. Applying a recommendation creates a
 //! suppression (siem-suppression); nothing is hidden without a person.
 //!

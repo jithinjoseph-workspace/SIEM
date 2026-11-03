@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Wazuh Common Schema (WCS) Agent Metadata.
+/// ProVigil Common Schema (WCS) Agent Metadata.
 /// Ported from src/wcsModel/wcsClasses/agent.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsAgent {
@@ -15,7 +15,7 @@ pub struct WcsAgent {
     pub cluster: Option<String>,
 }
 
-/// Wazuh Common Schema (WCS) Host Metadata.
+/// ProVigil Common Schema (WCS) Host Metadata.
 /// Ported from src/wcsModel/wcsClasses/host.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsHost {
@@ -26,7 +26,7 @@ pub struct WcsHost {
     pub os_platform: String,
 }
 
-/// Wazuh Common Schema (WCS) Package payload.
+/// ProVigil Common Schema (WCS) Package payload.
 /// Ported from src/wcsModel/wcsClasses/package.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsPackage {
@@ -42,7 +42,7 @@ pub struct WcsPackage {
     pub size: Option<u64>,
 }
 
-/// Wazuh Common Schema (WCS) Port payload.
+/// ProVigil Common Schema (WCS) Port payload.
 /// Ported from src/wcsModel/wcsClasses/port.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsPort {
@@ -60,7 +60,7 @@ pub struct WcsPort {
     pub process: Option<String>,
 }
 
-/// Wazuh Common Schema (WCS) Process payload.
+/// ProVigil Common Schema (WCS) Process payload.
 /// Ported from src/wcsModel/wcsClasses/process.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsProcess {
@@ -75,7 +75,7 @@ pub struct WcsProcess {
     pub euser: Option<String>,
 }
 
-/// Wazuh Common Schema (WCS) FIM File payload.
+/// ProVigil Common Schema (WCS) FIM File payload.
 /// Ported from src/wcsModel/wcsClasses/file.hpp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WcsFile {

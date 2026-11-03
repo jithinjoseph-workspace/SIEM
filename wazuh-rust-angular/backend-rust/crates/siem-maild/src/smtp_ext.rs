@@ -1,6 +1,6 @@
-//! Extension, not in Wazuh 4.14.7: authenticated SMTP over TLS.
+//! Extension, not in upstream 4.14.7: authenticated SMTP over TLS.
 //!
-//! Wazuh's maild speaks plain SMTP on port 25 without login, so providers
+//! the upstream maild speaks plain SMTP on port 25 without login, so providers
 //! like Gmail or Office 365 need a local relay. When `etc/smtp_auth.conf`
 //! exists (written by siem-api from the platform's SMTP settings), every
 //! e-mail maild/monitord sends goes through it instead:
@@ -14,7 +14,7 @@
 //! ```
 //!
 //! The dialog is then EHLO, STARTTLS (or implicit TLS on 465), AUTH PLAIN,
-//! followed by the same MAIL FROM / RCPT TO / DATA as Wazuh. In this mode the
+//! followed by the same MAIL FROM / RCPT TO / DATA as upstream. In this mode the
 //! message text is sent with CRLF line ends and dot-stuffing.
 
 use std::io::Write;

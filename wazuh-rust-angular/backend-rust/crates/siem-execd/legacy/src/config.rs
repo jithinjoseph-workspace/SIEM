@@ -1,4 +1,4 @@
-//! Wazuh Active Response Execution Daemon Configuration (`src/os_execd/config.c`, `src/os_execd/exec.c`)
+//! ProVigil Active Response Execution Daemon Configuration (`src/os_execd/config.c`, `src/os_execd/exec.c`)
 //!
 //! Handles XML parsing of `<active-response>` configurations, repeated offender timeouts,
 //! command catalogs (`ar.conf`), and JSON serialization for `getARConfig` and `getExecdInternalOptions`.

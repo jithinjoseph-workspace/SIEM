@@ -1,6 +1,6 @@
-//! Wazuh LogCollector Daemon (src/logcollector)
+//! ProVigil LogCollector Daemon (src/logcollector)
 //!
-//! Complete, 100% equivalent Rust port of Wazuh's log collection subsystem:
+//! Complete, 100% equivalent Rust port of the upstream log collection subsystem:
 //! - `config`: `<localfile>` and `<socket>` XML parsing, options and JSON schemas (`config.c`, `localfile-config.h`).
 //! - `readers`: 20+ format parsers including syslog, json, multiline, audit, journald, macos, win eventchannel, ucs2, djb, command (`read_*.c`).
 //! - `state`: persistent offset and SHA-1 hash tracking in `file_status.json` (`state.c`, `state.h`).

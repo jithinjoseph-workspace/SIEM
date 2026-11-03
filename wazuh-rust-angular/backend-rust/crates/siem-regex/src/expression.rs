@@ -1,4 +1,4 @@
-//! Port of Wazuh `w_expression_t` (`src/shared/expression.c`): the
+//! Port of upstream `w_expression_t` (`src/shared/expression.c`): the
 //! polymorphic matcher behind every rule / decoder field that accepts a
 //! `type="osmatch|osregex|pcre2"` attribute.
 

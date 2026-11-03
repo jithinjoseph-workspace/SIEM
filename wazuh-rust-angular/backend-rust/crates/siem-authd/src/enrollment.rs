@@ -55,7 +55,7 @@ pub struct EnrollmentRequest {
     pub key_hash: Option<String>,
 }
 
-/// Agent status in database (mockable/compatible with Wazuh DB agent-info).
+/// Agent status in database (mockable/compatible with ProVigil DB agent-info).
 #[derive(Debug, Clone)]
 pub struct AgentDbInfo {
     pub connection_status: String, // "active", "disconnected", "never_connected"
@@ -81,7 +81,7 @@ pub fn is_valid_name(name: &str) -> bool {
     name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
 }
 
-/// Compares Wazuh versions: returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2.
+/// Compares ProVigil versions: returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2.
 pub fn compare_provigil_versions(v1: &str, v2: &str) -> i32 {
     let clean1 = v1.trim_start_matches('v').trim_start_matches('V');
     let clean2 = v2.trim_start_matches('v').trim_start_matches('V');

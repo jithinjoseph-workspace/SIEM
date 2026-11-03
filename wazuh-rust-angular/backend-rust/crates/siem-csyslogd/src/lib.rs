@@ -1,4 +1,4 @@
-//! Port of `wazuh-csyslogd` (`src/os_csyslogd`, Wazuh 4.14.7): forwards
+//! Port of `provigil-csyslogd` (`src/os_csyslogd`, upstream 4.14.7): forwards
 //! alerts to remote syslog servers over UDP in the default, CEF, JSON or
 //! Splunk format, filtered by level, rule, group and location.
 

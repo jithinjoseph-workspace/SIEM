@@ -89,7 +89,7 @@ pub struct RawXmlGroup {
     pub rules: Vec<RawXmlRule>,
 }
 
-/// Compiled Wazuh Rule for real-time evaluation
+/// Compiled ProVigil Rule for real-time evaluation
 #[derive(Clone)]
 pub struct CompiledProVigilRule {
     pub id: u32,

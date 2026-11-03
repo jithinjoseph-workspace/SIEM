@@ -1,5 +1,5 @@
 //! Network response for the SIEM, with provigil-common's integrations:
-//! * blocking an IP reaches past the agent (Wazuh active response) to the tenant's
+//! * blocking an IP reaches past the agent (ProVigil active response) to the tenant's
 //!   perimeter firewall (pfSense, FortiGate, PAN-OS, OPNsense, REST) and cloud
 //!   (AWS security group, Azure NSG, GCP VPC) integrations;
 //! * isolating a host moves it to a quarantine VLAN on its switch (UniFi, Cisco,
@@ -63,7 +63,7 @@ pub struct Block {
     pub reason: String,
     pub tenant_id: String,
     pub created_at: String,
-    /// The agent that blocked it too (Wazuh active response), and how that went.
+    /// The agent that blocked it too (ProVigil active response), and how that went.
     pub agent_id: String,
     pub agent_result: String,
     pub cloud_type: String,
@@ -209,7 +209,7 @@ pub async fn unblock(state: &AppState, tenant: &str, id: &str, status: &str) -> 
     Ok(notes.join("; "))
 }
 
-/// The tenant's Windows Wazuh agent to isolate: `agent_id`, else the agent at `ip`.
+/// The tenant's Windows ProVigil agent to isolate: `agent_id`, else the agent at `ip`.
 async fn windows_agent(state: &AppState, tenant: &str, ip: &str, agent_id: Option<&str>) -> Option<String> {
     let id = {
         let tenants = state.agent_tenants.read().unwrap().clone();

@@ -1,5 +1,5 @@
-//! Agent inventory, read live, nothing copied: a Wazuh agent's from the manager's
-//! wazuh-db (the agent's own SQLite database, `queue/db/<id>.db`), a siem-agent's from
+//! Agent inventory, read live, nothing copied: a ProVigil agent's from the manager's
+//! provigil-db (the agent's own SQLite database, `queue/db/<id>.db`), a siem-agent's from
 //! siem-api's store. Callers have checked the agent is the caller's tenant's (the
 //! `/api/v1/agents/<id>` middleware, `agent_in_scope`, or the tenant's own agent list).
 
@@ -17,7 +17,7 @@ pub enum Part {
     Netiface,
 }
 
-/// The part from wazuh-db; None when the agent is not a Wazuh agent (a siem-agent: its store).
+/// The part from provigil-db; None when the agent is not a ProVigil agent (a siem-agent: its store).
 pub async fn part(agent_id: &str, part: Part) -> Option<Value> {
     if !crate::provigil_manager::is_provigil_agent(agent_id).await {
         return None;
@@ -42,7 +42,7 @@ pub async fn host(state: &AppState, agent_id: &str) -> Option<Value> {
             "packages": count(&id, "sys_programs").await,
             "ports": count(&id, "sys_ports").await,
             "processes": count(&id, "sys_processes").await,
-            "source": "wazuh-db",
+            "source": "provigil-db",
         }));
     }
     let db = state.wdb.get(agent_id)?;
@@ -64,10 +64,10 @@ pub(crate) async fn count(id: &str, table: &'static str) -> u64 {
         .unwrap_or(0)
 }
 
-/// Rows of an agent table, 100 at a time: one wazuh-db reply is at most 64 KB,
+/// Rows of an agent table, 100 at a time: one provigil-db reply is at most 64 KB,
 /// so a large SELECT (full process command lines) would come back empty. A page
-/// wazuh-db refuses (too long) is asked again in halves; a single row it still
-/// refuses is skipped (a few in a row: wazuh-db is down, stop).
+/// provigil-db refuses (too long) is asked again in halves; a single row it still
+/// refuses is skipped (a few in a row: provigil-db is down, stop).
 pub(crate) async fn paged(id: &str, sql: &str, max: usize) -> Vec<Value> {
     let (mut page, mut offset, mut skipped) = (100usize, 0usize, 0usize);
     let mut out = Vec::new();

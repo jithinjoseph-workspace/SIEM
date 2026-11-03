@@ -1,6 +1,6 @@
-//! The wazuh-db HTTP API on `queue/sockets/wdb-http.sock`: the router's
+//! The provigil-db HTTP API on `queue/sockets/wdb-http.sock`: the router's
 //! `router_register_api_endpoint` / `router_start_api` (router.cpp), the
-//! wazuh-db gateway and its endpoints (shared_modules/router/src/wazuh-db)
+//! provigil-db gateway and its endpoints (shared_modules/router/src/provigil-db)
 //! over `wdb_global_pre` / `wdb_global_post`. Responses are serialized like
 //! reflectiveJson.hpp, statements behave like sqlite3Wrapper.hpp and the
 //! request bodies are parsed like nlohmann::json 3.11.2. Linux only.

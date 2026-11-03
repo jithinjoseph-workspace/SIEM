@@ -156,7 +156,7 @@ pub fn listed_ranges() -> Vec<(String, String)> {
     index().read().unwrap().ranges.iter().map(|(r, h)| (r.clone(), h.source.clone())).collect()
 }
 
-/// The indicators in a Wazuh alert: public source/destination IPs, file hashes, URL hosts.
+/// The indicators in a ProVigil alert: public source/destination IPs, file hashes, URL hosts.
 pub fn indicators(alert: &Value) -> Vec<String> {
     let s = |v: &Value| v.as_str().map(str::trim).filter(|x| !x.is_empty()).map(String::from);
     let mut out = Vec::new();

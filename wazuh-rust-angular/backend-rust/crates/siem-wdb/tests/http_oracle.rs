@@ -1,6 +1,6 @@
-//! Differential test of the wazuh-db HTTP API (wdb-http.sock) against
+//! Differential test of the provigil-db HTTP API (wdb-http.sock) against
 //! tools/oracle/http_harness.cpp (the router's API code, cpp-httplib 0.14.2,
-//! nlohmann 3.11.2 and the real endpoints over the real wazuh-db library).
+//! nlohmann 3.11.2 and the real endpoints over the real provigil-db library).
 //!
 //! Environment:
 //!   SIEM_HTTP_ORACLE  command line of the oracle, e.g.

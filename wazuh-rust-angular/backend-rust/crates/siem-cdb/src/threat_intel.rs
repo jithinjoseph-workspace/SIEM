@@ -83,7 +83,7 @@ impl ThreatIntelManager {
         None
     }
 
-    /// Initialize with rich built-in threat intelligence lists matching Wazuh ruleset lists
+    /// Initialize with rich built-in threat intelligence lists matching ProVigil ruleset lists
     pub fn new_with_builtin_feeds() -> Self {
         let manager = Self::new();
 

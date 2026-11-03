@@ -2,7 +2,7 @@
 name = "siem-log"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh shared/debug_op.c: ossec.log / ossec.json daemon logging"
+description = "Port of upstream shared/debug_op.c: ossec.log / ossec.json daemon logging"
 
 [dependencies]
 siem-xml = { path = "../siem-xml" }

@@ -195,7 +195,7 @@ impl ClickHouseAlertRow {
                 ip: self.agent_ip.clone(),
             },
             manager: Some(siem_core::ManagerAlertInfo {
-                name: "wazuh-manager-rust".to_string(),
+                name: "provigil-manager".to_string(),
             }),
             decoder: None,
             full_log: self.full_log.clone(),
@@ -282,7 +282,7 @@ pub const ANALYST_DDL: [&str; 22] = [
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
     // each agent's latest SCA results, for the compliance audit (posture_store.rs); the
-    // rest of an agent's state (inventory, FIM, rootcheck) is read from wazuh-db, not copied
+    // rest of an agent's state (inventory, FIM, rootcheck) is read from provigil-db, not copied
     crate::posture_store::DDL[0],
     crate::posture_store::DDL[1],
     "CREATE TABLE IF NOT EXISTS siem_yara_rules (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
@@ -1198,7 +1198,7 @@ impl ClickHouseDb {
             .map(|rows| rows.iter().map(|r| r.to_alert()).collect())
     }
 
-    /// Per compliance tag of the Wazuh rules (`pci_dss`, `hipaa`, ...): the alerts since
+    /// Per compliance tag of the ProVigil rules (`pci_dss`, `hipaa`, ...): the alerts since
     /// `since_ms` that carry it and how many distinct requirements they name.
     pub async fn compliance_tag_counts(&self, tenant_id: &str, since_ms: u64, tags: &[&'static str]) -> Option<Vec<(&'static str, u64, u64)>> {
         if !self.is_connected() {

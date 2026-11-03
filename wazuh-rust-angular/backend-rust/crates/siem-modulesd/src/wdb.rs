@@ -1,4 +1,4 @@
-//! The wazuh-db global helpers the database module uses
+//! The provigil-db global helpers the database module uses
 //! (`wazuh_db/helpers/wdb_global_helpers.c`, `shared/wazuhdb_op.c`), with
 //! the C log messages.
 

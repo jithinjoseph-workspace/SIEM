@@ -1,6 +1,6 @@
-//! Wazuh Syslog IPC Control Interface (`src/os_csyslogd/csyscom.c`)
+//! ProVigil Syslog IPC Control Interface (`src/os_csyslogd/csyscom.c`)
 //!
-//! Provides the IPC control dispatcher for wazuh-csyslogd:
+//! Provides the IPC control dispatcher for provigil-csyslogd:
 //! - Command: `getconfig csyslog`
 //! - Dispatches responses formatted as `ok <json_data>` or `err <msg>`
 

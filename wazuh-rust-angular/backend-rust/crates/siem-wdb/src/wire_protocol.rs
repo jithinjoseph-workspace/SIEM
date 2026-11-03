@@ -13,7 +13,7 @@ impl WdbWireProtocol {
         Self { manager }
     }
 
-    /// Evaluates a raw Wazuh DB text socket command string and returns response
+    /// Evaluates a raw ProVigil DB text socket command string and returns response
     pub fn execute_command(&self, raw_cmd: &str) -> String {
         let trimmed = raw_cmd.trim();
         let mut parts = trimmed.split_whitespace();

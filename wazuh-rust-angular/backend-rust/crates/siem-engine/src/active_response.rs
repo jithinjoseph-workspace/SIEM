@@ -31,7 +31,7 @@ pub struct ActiveResponseRule {
     pub timeout: Option<u32>, // in seconds
 }
 
-/// Builds active response JSON payload according to Wazuh AR protocol Version 1
+/// Builds active response JSON payload according to ProVigil AR protocol Version 1
 /// (parity with getActiveResponseInJSON in ar_json.c)
 pub fn build_ar_json(
     command_name: &str,

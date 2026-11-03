@@ -1,4 +1,4 @@
-//! Wazuh Email Formatting and SMTP Delivery Engine (src/os_maild/sendmail.c, sendcustomemail.c)
+//! ProVigil Email Formatting and SMTP Delivery Engine (src/os_maild/sendmail.c, sendcustomemail.c)
 //!
 //! Formats alerts into RFC 2822 emails and delivers them via RFC 5321 SMTP dialog
 //! or local sendmail command pipeline.
@@ -24,7 +24,7 @@ pub enum MailerError {
     Io(String),
 }
 
-/// Formatter for Wazuh alert emails matching `sendmail.c`
+/// Formatter for ProVigil alert emails matching `sendmail.c`
 pub struct AlertMailFormatter;
 
 impl AlertMailFormatter {

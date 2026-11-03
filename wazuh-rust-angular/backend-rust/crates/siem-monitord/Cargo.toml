@@ -2,7 +2,7 @@
 name = "siem-monitord"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-monitord (src/monitord): agent disconnection alerts, ossec.log rotation, alerts/archives signing and compression"
+description = "Port of provigil-monitord (src/monitord): agent disconnection alerts, ossec.log rotation, alerts/archives signing and compression"
 
 [dependencies]
 siem-config = { path = "../siem-config" }

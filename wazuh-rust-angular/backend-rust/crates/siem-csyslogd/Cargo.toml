@@ -2,7 +2,7 @@
 name = "siem-csyslogd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-csyslogd (src/os_csyslogd): alert forwarding to remote syslog servers"
+description = "Port of provigil-csyslogd (src/os_csyslogd): alert forwarding to remote syslog servers"
 
 [dependencies]
 siem-config = { path = "../siem-config" }

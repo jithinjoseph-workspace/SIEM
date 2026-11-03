@@ -85,7 +85,7 @@ impl TimeControl {
     }
 }
 
-/// The daemon state (`mond`, `agents_to_alert_hash`, the wazuh-db socket).
+/// The daemon state (`mond`, `agents_to_alert_hash`, the provigil-db socket).
 pub struct Monitor {
     pub mond: MonitorConfig,
     pub log: Arc<WLog>,

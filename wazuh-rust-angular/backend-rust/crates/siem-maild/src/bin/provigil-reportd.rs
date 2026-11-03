@@ -1,6 +1,6 @@
-//! `wazuh-reportd` (reportd/report.c `main`): reads alerts on stdin and
+//! `provigil-reportd` (reportd/report.c `main`): reads alerts on stdin and
 //! prints the report (`os_ReportdStart`, ported in `siem_maild::report`) to
-//! stderr. `wazuh-reportd -[Vhdtns] [-u user] [-g group] [-D dir] [-f filter value] [-r filter value]`.
+//! stderr. `provigil-reportd -[Vhdtns] [-u user] [-g group] [-D dir] [-f filter value] [-r filter value]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

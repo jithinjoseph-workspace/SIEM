@@ -4,7 +4,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-// FIM Bitmask flags matching Wazuh syscheck.h
+// FIM Bitmask flags matching ProVigil syscheck.h
 pub const CHECK_SIZE: u32 = 0x0001;
 pub const CHECK_PERM: u32 = 0x0002;
 pub const CHECK_OWNER: u32 = 0x0004;

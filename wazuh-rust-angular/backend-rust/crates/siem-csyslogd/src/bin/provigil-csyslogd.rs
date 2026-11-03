@@ -1,5 +1,5 @@
-//! `wazuh-csyslogd` (os_csyslogd/main.c):
-//! `wazuh-csyslogd -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
+//! `provigil-csyslogd` (os_csyslogd/main.c):
+//! `provigil-csyslogd -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

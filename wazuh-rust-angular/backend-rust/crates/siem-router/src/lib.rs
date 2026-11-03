@@ -1,9 +1,9 @@
-//! Port of Wazuh's router (shared_modules/router): topics published by
+//! Port of the upstream router (shared_modules/router): topics published by
 //! providers and delivered to subscribers, locally or through the
 //! `queue/router/` unix sockets.
 //!
 //! * [`socket`]: the utils socket layer (framing, epoll server/client).
-//! * The broker side (`router_start`, run by wazuh-modulesd): the
+//! * The broker side (`router_start`, run by provigil-modulesd): the
 //!   registration server on `queue/router/subscription.sock` and one
 //!   [`Publisher`] per topic on `queue/router/<topic>`.
 //! * Remote providers register the topic (`InitProvider`), connect to its
@@ -664,7 +664,7 @@ thread_local! {
 fn fb_parser() -> fb::Parser {
     let mut p = fb::Parser::new();
     p.opts.skip_unexpected_fields_in_json = true;
-    // Wazuh's own option: a float for an integer field is 0
+    // the upstream own option: a float for an integer field is 0
     p.opts.zero_on_float_to_int = true;
     p
 }

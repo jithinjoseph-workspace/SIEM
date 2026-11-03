@@ -1,4 +1,4 @@
-//! Wazuh secure agent message framing — port of `src/os_crypto/shared/msgs.c`
+//! ProVigil secure agent message framing — port of `src/os_crypto/shared/msgs.c`
 //! (`CreateSecMSG`, `ReadSecMSG`, counter handling).
 //!
 //! Wire layout produced by `CreateSecMSG` (after the optional `!<id>!` prefix

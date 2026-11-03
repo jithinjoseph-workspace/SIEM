@@ -275,12 +275,12 @@ pub struct RuleConfig {
     pub default_timeframe: i32,
     /// `RULEPATH` prefix for rule files given without a directory.
     pub rulepath: String,
-    /// Wazuh home: relative ruleset paths are resolved against it (analysisd
+    /// ProVigil home: relative ruleset paths are resolved against it (analysisd
     /// runs chdir'ed there).
     pub home: std::path::PathBuf,
 }
 
-/// Resolve a path relative to the Wazuh home.
+/// Resolve a path relative to the ProVigil home.
 pub fn resolve(home: &std::path::Path, p: &str) -> std::path::PathBuf {
     let pb = std::path::Path::new(p);
     if pb.is_absolute() {

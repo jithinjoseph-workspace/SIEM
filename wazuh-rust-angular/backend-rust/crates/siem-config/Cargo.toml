@@ -2,7 +2,7 @@
 name = "siem-config"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh's configuration layer (src/config): ReadConfig, internal options and section readers"
+description = "Port of the upstream configuration layer (src/config): ReadConfig, internal options and section readers"
 
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }

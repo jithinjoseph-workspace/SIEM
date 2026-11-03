@@ -1,11 +1,11 @@
-//! `siem-remoted`: port of Wazuh's `wazuh-remoted` (`src/remoted/`).
+//! `siem-remoted`: port of the upstream `provigil-remoted` (`src/remoted/`).
 //!
-//! Speaks the real Wazuh agent protocol on 1514/TCP+UDP: framed TCP
+//! Speaks the upstream agent protocol on 1514/TCP+UDP: framed TCP
 //! (`OS_SendSecureTCP`), `!<id>!` dynamic-IP prefixes, AES/Blowfish
 //! `ReadSecMSG`/`CreateSecMSG` (via `siem-crypto`), control messages
 //! (startup/shutdown/keepalive/requests), shared-file (`merged.mg`)
 //! distribution, active-response forwarding, the `queue/sockets/remote` API
-//! socket, remote syslog, and the wazuh-db updates a C remoted performs.
+//! socket, remote syslog, and the provigil-db updates a C remoted performs.
 
 pub mod agent_info;
 pub mod config;
@@ -109,7 +109,7 @@ pub struct Deps {
 }
 
 impl Deps {
-    /// Talk to the other daemons through their Wazuh sockets.
+    /// Talk to the other daemons through their ProVigil sockets.
     pub fn sockets(settings: &RemotedSettings) -> Self {
         Self {
             wdb: Arc::new(siem_ipc::wdbc::WdbcSocket::new(settings.paths.wdb_sock())),

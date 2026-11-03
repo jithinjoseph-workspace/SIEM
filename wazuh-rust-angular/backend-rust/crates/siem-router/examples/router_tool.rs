@@ -1,5 +1,5 @@
 //! The Rust twin of tools/oracle/router_tool.cpp (same modes and output),
-//! for the interop test against Wazuh's C++ router.
+//! for the interop test against the upstream C++ router.
 
 #[cfg(not(target_os = "linux"))]
 fn main() {}

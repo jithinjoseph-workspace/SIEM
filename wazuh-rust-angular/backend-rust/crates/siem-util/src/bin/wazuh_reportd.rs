@@ -1,4 +1,4 @@
-//! Wazuh Reportd CLI (reportd/report.c)
+//! ProVigil Reportd CLI (reportd/report.c)
 //!
 //! Generates summary reports from stdin or alerts files based on filtering rules and relations.
 

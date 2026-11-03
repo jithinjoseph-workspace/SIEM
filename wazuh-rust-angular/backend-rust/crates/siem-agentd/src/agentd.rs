@@ -30,7 +30,7 @@ extern "C" fn stopped_hook() {
 }
 
 /// `w_create_thread` (`CreateThreadJoinable` with the
-/// `wazuh.thread_stack_size` stack).
+/// `provigil.thread_stack_size` stack).
 fn spawn(name: &str, ag: &Arc<Agentd>, f: fn(&Agentd)) {
     let kib = ag.define_int("wazuh", "thread_stack_size", 2048, 65536) as usize;
     ag.log.debug2(format!("Thread stack size set to: {kib} KiB"));

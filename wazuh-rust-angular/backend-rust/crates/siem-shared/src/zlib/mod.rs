@@ -1,7 +1,7 @@
-//! Wazuh Zlib Compression & Decompression Layer (os_zlib/os_zlib.c, os_zlib.h)
+//! ProVigil Zlib Compression & Decompression Layer (os_zlib/os_zlib.c, os_zlib.h)
 //!
 //! Provides RFC 1950 Zlib compression (level 9 / Z_BEST_COMPRESSION) and decompression
-//! used throughout Wazuh for wire protocol payload compression, log archives, and active response.
+//! used throughout ProVigil for wire protocol payload compression, log archives, and active response.
 
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;

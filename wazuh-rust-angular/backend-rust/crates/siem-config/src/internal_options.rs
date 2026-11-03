@@ -14,7 +14,7 @@ pub struct InternalOptions {
 }
 
 impl InternalOptions {
-    /// Paths relative to a Wazuh home directory (`etc/...`).
+    /// Paths relative to a ProVigil home directory (`etc/...`).
     pub fn from_home(home: impl AsRef<Path>) -> Self {
         let h = home.as_ref();
         Self {
@@ -31,7 +31,7 @@ impl InternalOptions {
     }
 
     /// `_read_file`. `Ok(None)` when the option is absent; `Err` only when a
-    /// non-local file cannot be opened (Wazuh logs FOPEN_ERROR and treats it
+    /// non-local file cannot be opened (ProVigil logs FOPEN_ERROR and treats it
     /// as absent, so that case is also `Ok(None)` with a log line).
     fn read_file(path: &Path, high: &str, low: &str, is_local: bool) -> Option<String> {
         let data = match std::fs::read(path) {
@@ -87,7 +87,7 @@ impl InternalOptions {
         Self::read_file(&self.local, high, low, true).or_else(|| Self::read_file(&self.defaults, high, low, false))
     }
 
-    /// `getDefine_Int`. Wazuh exits the daemon on error; we return `Err`.
+    /// `getDefine_Int`. ProVigil exits the daemon on error; we return `Err`.
     pub fn get_int(&self, high: &str, low: &str, min: i32, max: i32) -> Result<i32> {
         let value = self
             .get_string(high, low)

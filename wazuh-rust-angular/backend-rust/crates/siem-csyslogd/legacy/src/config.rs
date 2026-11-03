@@ -1,4 +1,4 @@
-//! Wazuh Syslog Forwarder Configuration (`src/os_csyslogd/config.c`, `src/config/csyslogd-config.c`)
+//! ProVigil Syslog Forwarder Configuration (`src/os_csyslogd/config.c`, `src/config/csyslogd-config.c`)
 //!
 //! Handles XML parsing of `<syslog_output>` blocks, defaults, and JSON serialization
 //! matching `getCsyslogConfig()`.

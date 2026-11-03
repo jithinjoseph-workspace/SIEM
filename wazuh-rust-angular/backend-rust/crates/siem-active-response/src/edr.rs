@@ -1,4 +1,4 @@
-//! The endpoint responses the console adds to Wazuh's (not in Wazuh 4.14.7):
+//! The endpoint responses the console adds to the upstream (not in upstream 4.14.7):
 //! kill-process, quarantine-file and isolate-host. What they may touch is
 //! decided here, apart from the Windows calls, so it is tested on any OS.
 

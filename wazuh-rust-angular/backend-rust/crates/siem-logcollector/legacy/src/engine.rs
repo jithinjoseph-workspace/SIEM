@@ -1,4 +1,4 @@
-//! Wazuh LogCollector Engine (src/logcollector/logcollector.c)
+//! ProVigil LogCollector Engine (src/logcollector/logcollector.c)
 //!
 //! Orchestrates file harvesting, command execution, multiline parsing,
 //! ignore/restrict filtering, state tracking, and log forwarding.

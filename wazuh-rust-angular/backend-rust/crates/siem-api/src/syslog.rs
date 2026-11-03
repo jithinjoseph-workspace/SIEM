@@ -201,7 +201,7 @@ async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: 
     };
 
 
-    // Evaluate against high-performance Wazuh XML rules & sliding-window accumulator
+    // Evaluate against high-performance ProVigil XML rules & sliding-window accumulator
     let maybe_alert = state.engine.process_event(&raw_event, &agent_name, peer_ip);
 
     if let Some(alert) = maybe_alert {

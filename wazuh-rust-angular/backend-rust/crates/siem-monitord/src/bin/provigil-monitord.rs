@@ -1,5 +1,5 @@
-//! `wazuh-monitord` (monitord/main.c):
-//! `wazuh-monitord -[Vhdtf] [-u user] [-g group] [-c config] [-D dir] [-n] [-w sec]`.
+//! `provigil-monitord` (monitord/main.c):
+//! `provigil-monitord -[Vhdtf] [-u user] [-g group] [-c config] [-D dir] [-n] [-w sec]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

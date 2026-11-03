@@ -1,4 +1,4 @@
-//! The legacy checksum helpers of shared/syscheck_op.c used by wazuh-db
+//! The legacy checksum helpers of shared/syscheck_op.c used by provigil-db
 //! (`sk_decode_sum`, `sk_decode_extradata`, `sk_build_sum`). The decoding
 //! is the same code as siem-analysisd's port of the file.
 

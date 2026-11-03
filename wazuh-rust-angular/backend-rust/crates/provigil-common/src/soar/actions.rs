@@ -35,7 +35,7 @@ pub async fn execute_action(
     let mut detail = String::new();
 
     'action: {
-    // the product (e.g. the SIEM with its Wazuh integrations) runs it its own way
+    // the product (e.g. the SIEM with its ProVigil integrations) runs it its own way
     if let Some((ok, d)) = store.soar_product_action(pb, &config, ctx).await {
         status = if ok { "success" } else { "failed" }.to_string();
         detail = d;

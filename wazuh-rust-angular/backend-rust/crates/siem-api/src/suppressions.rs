@@ -95,7 +95,7 @@ pub struct ManualBody {
 
 /// `POST /api/v1/siem/suppressions`
 pub async fn create_manual(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(b): Json<ManualBody>) -> Json<Value> {
-    // a numeric tag is a Wazuh rule id
+    // a numeric tag is a ProVigil rule id
     let rule_id = b.rule_id.or_else(|| b.tag.as_deref().and_then(|t| t.trim().parse().ok()));
     let r = Request {
         rule_id,

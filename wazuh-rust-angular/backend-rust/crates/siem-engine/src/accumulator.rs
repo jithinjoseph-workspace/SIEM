@@ -14,8 +14,8 @@ pub struct MatchedEventRecord {
     pub groups: Vec<String>,
 }
 
-/// Wazuh Stateful Event Accumulator & Correlation Window
-/// Direct high-performance Rust port of Wazuh `analysisd/accumulator.c` and `analysisd/eventinfo.c:Search_LastSids()`
+/// ProVigil Stateful Event Accumulator & Correlation Window
+/// Direct high-performance Rust port of upstream `analysisd/accumulator.c` and `analysisd/eventinfo.c:Search_LastSids()`
 pub struct ProVigilAccumulator {
     history: Mutex<VecDeque<MatchedEventRecord>>,
     max_history: usize,
@@ -66,7 +66,7 @@ impl ProVigilAccumulator {
         });
     }
 
-    /// Search recent matching SIDs within timeframe (mirroring Wazuh Search_LastSids in eventinfo.c)
+    /// Search recent matching SIDs within timeframe (mirroring upstream Search_LastSids in eventinfo.c)
     pub fn count_matched_sids(
         &self,
         target_sid: u32,
@@ -124,7 +124,7 @@ impl ProVigilAccumulator {
         count
     }
 
-    /// Search recent matching groups within timeframe (mirroring Wazuh Search_LastGroups in eventinfo.c)
+    /// Search recent matching groups within timeframe (mirroring upstream Search_LastGroups in eventinfo.c)
     pub fn count_matched_groups(
         &self,
         target_group: &str,

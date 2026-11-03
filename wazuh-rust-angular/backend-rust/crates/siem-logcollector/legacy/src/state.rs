@@ -1,4 +1,4 @@
-//! Wazuh Logcollector State Manager (src/logcollector/state.c, state.h)
+//! ProVigil Logcollector State Manager (src/logcollector/state.c, state.h)
 //!
 //! Manages persistent file positions and SHA-1 hashes saved in `file_status.json`.
 //! This ensures that when the logcollector daemon restarts, it resumes reading

@@ -1,4 +1,4 @@
-//! YARA scanning of one file (EDR, not in Wazuh), with the rules the manager sends every
+//! YARA scanning of one file (EDR, not in upstream), with the rules the manager sends every
 //! agent (`shared/siem-yara.rules`: YARA Forge core and the SIEM's test rule). Used by the
 //! `yara-scan` program on the agent and by the manager to check a rule set before sending it.
 //!

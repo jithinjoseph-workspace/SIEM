@@ -1,4 +1,4 @@
-//! Wazuh Mail Daemon Core Engine (src/os_maild/maild.c)
+//! ProVigil Mail Daemon Core Engine (src/os_maild/maild.c)
 //!
 //! Orchestrates alert processing, severity filtering, granular routing,
 //! anti-flooding rate limits, aggregation buffers, and delivery execution.
@@ -56,7 +56,7 @@ impl HourlyRateTracker {
     }
 }
 
-/// The Wazuh Mail Daemon service matching `maild.c`
+/// The upstream Mail Daemon service matching `maild.c`
 pub struct MailDaemon {
     pub config: MailConfig,
     pub queue: MailQueue,

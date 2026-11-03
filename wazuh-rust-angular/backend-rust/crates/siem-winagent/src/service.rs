@@ -110,7 +110,7 @@ pub fn os_stop_service() -> i32 {
             CloseServiceHandle(m);
         }
     }
-    // Avoid races with newer instances of wazuh-agent
+    // Avoid races with newer instances of provigil-agent
     std::thread::sleep(std::time::Duration::from_millis(300));
     rc
 }

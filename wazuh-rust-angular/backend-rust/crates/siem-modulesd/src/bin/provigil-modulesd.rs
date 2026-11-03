@@ -1,4 +1,4 @@
-//! `wazuh-modulesd` (wazuh_modules/main.c): `wazuh-modulesd -[dfht]`.
+//! `provigil-modulesd` (wazuh_modules/main.c): `provigil-modulesd -[dfht]`.
 //!
 //! Runs the ported manager modules, in the C list order: `agent-upgrade` and
 //! `task-manager` (default modules, read again from `<agent-upgrade>` /
@@ -249,7 +249,7 @@ async fn main() {
             remediation_lru_size: remediation_lru,
             manager_disabled_scan: disable_scan,
             report_queue_size: report_queue,
-            // shortcut: no cluster support (wazuh-clusterd is not ported): standalone manager values
+            // shortcut: no cluster support (provigil-clusterd is not ported): standalone manager values
             cluster_enabled: false,
             cluster_name: hostname.clone(),
             cluster_node_name: "undefined".into(),

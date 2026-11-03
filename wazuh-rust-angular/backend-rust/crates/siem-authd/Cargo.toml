@@ -2,7 +2,7 @@
 name = "siem-authd"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Agent Enrollment and Authd Daemon (src/os_auth)"
+description = "ProVigil Agent Enrollment and Authd Daemon (src/os_auth)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

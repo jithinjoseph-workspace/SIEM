@@ -1,5 +1,5 @@
 //! Differential test of dbsync and rsync against `tools/oracle/dbsync_harness.cpp`
-//! (Wazuh's real C++ behind the same C API). Both run the same script in
+//! (the upstream real C++ behind the same C API). Both run the same script in
 //! the same scratch directory; every return value, log line, callback,
 //! stderr line and the final contents of every database file must match.
 //!

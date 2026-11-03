@@ -1,7 +1,7 @@
 //! Per-tenant SOAR for the SIEM: the shared provigil-common SOAR (playbooks,
 //! integrations, runs and cases in each tenant's own database, the same tables
-//! and API the NDR uses) run on the tenant's Wazuh alerts. Actions on a SIEM
-//! alert go through the ported Wazuh code: the integration scripts of
+//! and API the NDR uses) run on the tenant's ProVigil alerts. Actions on a SIEM
+//! alert go through the ported ProVigil code: the integration scripts of
 //! integratord (Slack, PagerDuty, VirusTotal, Shuffle, Maltiverse), csyslogd's
 //! syslog formats, and active response for `block_ip`.
 
@@ -374,7 +374,7 @@ impl SoarStore for Store {
                 Some(c) => send_syslog(&c, alert).await,
                 None => Err("No enabled syslog integration".into()),
             },
-            // the agent (Wazuh active response) and the perimeter firewall / cloud (response.rs)
+            // the agent (ProVigil active response) and the perimeter firewall / cloud (response.rs)
             "block_ip" => match &self.state {
                 Some(s) => {
                     let agent = alert["agent"]["id"].as_str();
@@ -402,7 +402,7 @@ impl SoarStore for Store {
     }
 }
 
-// ───────────────────────── the Wazuh actions ─────────────────────────
+// ───────────────────────── the upstream actions ─────────────────────────
 
 async fn run_provigil_script(name: &str, alert: &Value, api_key: &str, hook_url: &str) -> Result<String, String> {
     run_script_in(&crate::provigil_manager::home(), name, alert, api_key, hook_url).await
@@ -439,7 +439,7 @@ async fn run_script_in(home: &std::path::Path, name: &str, alert: &Value, api_ke
     }
 }
 
-/// The whole Wazuh alert as JSON (what Wazuh's custom integrations receive).
+/// The whole ProVigil alert as JSON (what the upstream custom integrations receive).
 async fn post_alert(url: &str, alert: &Value) -> Result<String, String> {
     ps::check_url(url).await?;
     match reqwest::Client::new().post(url).json(alert).timeout(Duration::from_secs(10)).send().await {
@@ -559,7 +559,7 @@ pub async fn block_now(state: &AppState, agent_id: &str, ip: &str, hours: u64, r
 
 // ───────────────────────── running playbooks on alerts ─────────────────────────
 
-/// A Wazuh alert as the playbook conditions see it.
+/// A ProVigil alert as the playbook conditions see it.
 pub fn context(alert: &Value, tenant: &str) -> SoarContext {
     let level = alert["rule"]["level"].as_u64().unwrap_or(0);
     let s = |v: &Value| match v {
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     /// Against the local ClickHouse, in a scratch tenant database it drops:
-    /// integrations, playbooks, runs and cases, and playbooks firing on Wazuh alerts.
+    /// integrations, playbooks, runs and cases, and playbooks firing on ProVigil alerts.
     /// `cargo test -p siem-api soar::tests::live_clickhouse -- --ignored`
     #[tokio::test]
     #[ignore]
@@ -1185,7 +1185,7 @@ mod tests {
         }
     }
 
-    /// The Wazuh Slack script (siem-integratord's `integrations` program) posts the
+    /// The upstream Slack script (siem-integratord's `integrations` program) posts the
     /// alert to the hook. Needs `cargo build -p siem-integratord --bin integrations`.
     #[tokio::test]
     async fn provigil_slack_script_posts_the_alert() {
@@ -1203,7 +1203,7 @@ mod tests {
         let req = server.join().unwrap();
         assert!(r.is_ok(), "{r:?}");
         assert!(req.starts_with("POST /hook"), "{req}");
-        // the Wazuh Slack message: the rule description and the agent
+        // the upstream Slack message: the rule description and the agent
         assert!(req.contains("sshd: brute force") && req.contains("web-01"), "{req}");
     }
 

@@ -2,7 +2,7 @@
 name = "siem-maild"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-maild (src/os_maild) and the daily reports (shared/report_op.c), plus optional SMTP TLS/AUTH"
+description = "Port of provigil-maild (src/os_maild) and the daily reports (shared/report_op.c), plus optional SMTP TLS/AUTH"
 
 [dependencies]
 siem-config = { path = "../siem-config" }

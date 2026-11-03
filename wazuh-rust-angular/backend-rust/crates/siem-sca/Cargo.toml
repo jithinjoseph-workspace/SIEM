@@ -2,7 +2,7 @@
 name = "siem-sca"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7 wm_sca (Security Configuration Assessment), shared/yaml2json.c and shared/schedule_scan.c"
+description = "Port of upstream 4.14.7 wm_sca (Security Configuration Assessment), shared/yaml2json.c and shared/schedule_scan.c"
 
 [[bin]]
 name = "sca-yaml2json"

@@ -1,4 +1,4 @@
-//! EDR tamper protection (not in Wazuh): locks the agent service (`tamper::LOCKED_SDDL`,
+//! EDR tamper protection (not in upstream): locks the agent service (`tamper::LOCKED_SDDL`,
 //! restart on failure) or opens a maintenance window.
 //! extra_args: `lock`; `off` (unlocked until locked again); `window=<id>` opens a window:
 //! with a timeout, execd runs it again with "delete" when the time is up, which locks again

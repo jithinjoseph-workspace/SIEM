@@ -1,4 +1,4 @@
-//! Wazuh Syslog Daemon Binary Entry Point (`src/os_csyslogd/main.c`)
+//! ProVigil Syslog Daemon Binary Entry Point (`src/os_csyslogd/main.c`)
 //!
 //! CLI arguments:
 //!   -V          Version and license message

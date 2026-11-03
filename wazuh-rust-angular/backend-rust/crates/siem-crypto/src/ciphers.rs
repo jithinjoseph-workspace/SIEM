@@ -1,8 +1,8 @@
-//! Wazuh Block Ciphers: AES-256-CBC and Blowfish-CBC (`src/os_crypto/aes`, `src/os_crypto/blowfish`)
+//! ProVigil Block Ciphers: AES-256-CBC and Blowfish-CBC (`src/os_crypto/aes`, `src/os_crypto/blowfish`)
 //!
-//! Complete 1-to-1 parity implementation of Wazuh's symmetric encryption routines:
-//! - AES-256-CBC with PKCS7 padding and Wazuh standard IV `b"FEDCBA0987654321"`
-//! - Blowfish-CBC with Wazuh standard IV `[0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10]`
+//! Complete 1-to-1 parity implementation of the upstream symmetric encryption routines:
+//! - AES-256-CBC with PKCS7 padding and ProVigil standard IV `b"FEDCBA0987654321"`
+//! - Blowfish-CBC with ProVigil standard IV `[0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10]`
 
 use aes::Aes256;
 use blowfish::Blowfish;
@@ -62,7 +62,7 @@ pub fn decrypt_aes(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, 
     Ok(res.to_vec())
 }
 
-/// Encrypts or decrypts a string/slice using AES with Wazuh default IV matching `OS_AES_Str`.
+/// Encrypts or decrypts a string/slice using AES with ProVigil default IV matching `OS_AES_Str`.
 pub fn os_aes_str(input: &[u8], charkey: &str, is_encrypt: bool) -> Result<Vec<u8>, CipherError> {
     if is_encrypt {
         encrypt_aes(charkey.as_bytes(), PROVIGIL_AES_IV, input)
@@ -117,7 +117,7 @@ pub fn decrypt_blowfish(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, C
     Ok(out)
 }
 
-/// Encrypts or decrypts using Blowfish with Wazuh default IV matching `OS_BF_Str`.
+/// Encrypts or decrypts using Blowfish with ProVigil default IV matching `OS_BF_Str`.
 pub fn os_bf_str(input: &[u8], charkey: &str, is_encrypt: bool) -> Result<Vec<u8>, CipherError> {
     if is_encrypt {
         encrypt_blowfish(charkey.as_bytes(), PROVIGIL_BLOWFISH_IV, input)

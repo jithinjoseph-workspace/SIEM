@@ -1,7 +1,7 @@
 //! Shared utilities module (utils)
 //!
 //! Provides fundamental concurrency, caching, pipeline, and cryptographic building blocks
-//! mirroring Wazuh's `src/shared_modules/utils` (threadSafeQueue, cacheLRU, pipelinePattern, roundRobinSelector, etc.).
+//! mirroring the upstream `src/shared_modules/utils` (threadSafeQueue, cacheLRU, pipelinePattern, roundRobinSelector, etc.).
 
 use sha1::Sha1;
 use sha2::{Digest, Sha256};

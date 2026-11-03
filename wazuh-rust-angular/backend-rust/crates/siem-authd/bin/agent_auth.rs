@@ -1,4 +1,4 @@
-//! Wazuh Agent Enrollment Client CLI (`src/os_auth/main-client.c`)
+//! ProVigil Agent Enrollment Client CLI (`src/os_auth/main-client.c`)
 
 use std::env;
 use std::fs::OpenOptions;

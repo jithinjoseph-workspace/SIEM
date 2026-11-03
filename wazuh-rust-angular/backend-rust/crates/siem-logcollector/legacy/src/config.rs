@@ -1,4 +1,4 @@
-//! Wazuh Logcollector Configuration Parser (src/logcollector/config.c, localfile-config.h)
+//! ProVigil Logcollector Configuration Parser (src/logcollector/config.c, localfile-config.h)
 //!
 //! Parses `<localfile>` and `<socket>` blocks from `ossec.conf`.
 //! Supports 20+ log formats, multiline regex configurations, ignore/restrict regexes,

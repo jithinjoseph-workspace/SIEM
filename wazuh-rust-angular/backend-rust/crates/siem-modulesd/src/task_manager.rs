@@ -1,6 +1,6 @@
 //! The task manager module (`wazuh_modules/task_manager/*.c`,
 //! `config/wmodules-task-manager.c`): the `queue/tasks/task` socket that
-//! keeps the upgrade tasks in wazuh-db's tasks database.
+//! keeps the upgrade tasks in provigil-db's tasks database.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -482,7 +482,7 @@ fn num(j: &Json) -> Option<i32> {
     }
 }
 
-/// The "error" number of a wazuh-db reply.
+/// The "error" number of a provigil-db reply.
 fn wdb_error(r: &Json) -> Option<i32> {
     r.get("error").and_then(num)
 }

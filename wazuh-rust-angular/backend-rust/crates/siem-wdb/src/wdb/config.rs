@@ -1,4 +1,4 @@
-//! The wazuh-db configuration: the `wazuh_db.*` internal options read by
+//! The provigil-db configuration: the `wazuh_db.*` internal options read by
 //! main.c and the `<wdb>` section (config/wazuh_db-config.c).
 
 use std::path::Path;
@@ -30,7 +30,7 @@ pub enum LoadError {
     /// `getDefine_Int` failed (merror_exit with the message).
     Internal(ConfigError),
     /// `ReadConfig` failed: merror(message), then
-    /// merror_exit("Invalid configuration block for Wazuh-DB.").
+    /// merror_exit("Invalid configuration block for ProVigil-DB.").
     Config(ConfigError),
 }
 

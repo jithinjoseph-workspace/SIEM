@@ -1,9 +1,9 @@
-//! Alert triage for the SIEM: finds groups of Wazuh alerts that are most likely
+//! Alert triage for the SIEM: finds groups of ProVigil alerts that are most likely
 //! harmless, so an analyst can hide them in one click. It only *recommends*:
 //! nothing is suppressed until a person applies a recommendation.
 //!
 //!   1. group   - one decision per (rule, agent, source IP), not per alert
-//!   2. rules   - Wazuh's own lifecycle events are benign; tampering, critical
+//!   2. rules   - the upstream own lifecycle events are benign; tampering, critical
 //!                levels and late kill-chain tactics are suspicious
 //!   3. AI last - only groups the rules cannot decide, within a per-tenant
 //!                hourly budget; an answer is cached so a group is asked once
@@ -21,7 +21,7 @@ pub const MIN_AI_CONFIDENCE: u8 = 70;
 const KEEP_DECIDED_SECS: u64 = 30 * 24 * 3600;
 const MAX_RECS: usize = 300;
 
-/// Wazuh lifecycle events (0015-ossec_rules.xml): server / agent started, log rotated.
+/// ProVigil lifecycle events (0015-ossec_rules.xml): server / agent started, log rotated.
 const BENIGN_RULES: &[(u32, &str)] = &[(502, "Wazuh server started"), (503, "Wazuh agent started"), (591, "log file rotated")];
 /// Log tampering (0015-ossec_rules.xml): log size reduced, event log cleared.
 const TAMPER_RULES: &[u32] = &[592, 593];
@@ -203,7 +203,7 @@ pub fn decision_from_reply(reply: &str) -> Option<Decision> {
     Some(Decision { verdict, source: Source::Ai, confidence, reason })
 }
 
-/// A group and its decision, as stored and shown (the NDR triage fields, plus the Wazuh ones).
+/// A group and its decision, as stored and shown (the NDR triage fields, plus the upstream ones).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recommendation {
     pub id: String,

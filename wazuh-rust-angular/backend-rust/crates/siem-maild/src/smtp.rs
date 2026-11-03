@@ -2,7 +2,7 @@
 //! `os_maild/sendcustomemail.c` (`OS_SendCustomEmail`): the SMTP dialog,
 //! or a local sendmail program when the server is a path.
 //!
-//! Extension (not in Wazuh): when `etc/smtp_auth.conf` exists the dialog runs
+//! Extension (not in upstream): when `etc/smtp_auth.conf` exists the dialog runs
 //! over STARTTLS or implicit TLS with SMTP AUTH, so providers such as Gmail or
 //! Office 365 can be used directly; see [`crate::smtp_ext`].
 
@@ -119,7 +119,7 @@ impl Session {
         }
     }
 
-    /// Body text: verbatim in Wazuh mode; CRLF line ends and dot-stuffing in
+    /// Body text: verbatim in upstream mode; CRLF line ends and dot-stuffing in
     /// extension mode (strict servers such as Gmail need both).
     fn send_body(&mut self, b: &[u8]) {
         if self.ext && !matches!(self.conn, Conn::Pipe(_)) {

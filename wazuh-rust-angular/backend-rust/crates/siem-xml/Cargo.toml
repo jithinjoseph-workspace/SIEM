@@ -2,7 +2,7 @@
 name = "siem-xml"
 version = "0.1.0"
 edition = "2021"
-description = "Faithful port of Wazuh os_xml (the XML dialect used by ossec.conf, rules and decoders)"
+description = "Faithful port of upstream os_xml (the XML dialect used by ossec.conf, rules and decoders)"
 
 [dependencies]
 thiserror = "1"

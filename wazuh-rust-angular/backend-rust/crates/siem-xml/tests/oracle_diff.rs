@@ -1,7 +1,7 @@
-//! Differential test against Wazuh's C `os_xml` (`tools/xml_harness.c`).
+//! Differential test against the upstream C `os_xml` (`tools/xml_harness.c`).
 //!
 //! `SIEM_XML_ORACLE=<harness>` enables it; `SIEM_XML_CORPUS=<dir>` adds every
-//! `*.xml` / `*.conf` file under that directory (e.g. a Wazuh source tree).
+//! `*.xml` / `*.conf` file under that directory (e.g. a ProVigil source tree).
 //! Without the variables the test is skipped.
 
 use siem_xml::{dump::dump, OsXml};

@@ -17,7 +17,7 @@ pub mod queues {
     pub const UPGRADE_MQ: u8 = b'u';
 }
 
-/// Default analysisd queue path relative to the Wazuh home (`DEFAULTQUEUE`).
+/// Default analysisd queue path relative to the ProVigil home (`DEFAULTQUEUE`).
 pub const DEFAULTQUEUE: &str = "queue/sockets/queue";
 
 /// `wstr_escape(dst, size, str, escape, match)`: prefixes `escape` and `match`
@@ -57,7 +57,7 @@ pub fn wstr_escape(s: &[u8], escape: u8, matchc: u8, dst_size: usize) -> Vec<u8>
     dst
 }
 
-/// `SendMSGAction` formatting. Returns `None` when Wazuh would drop the
+/// `SendMSGAction` formatting. Returns `None` when ProVigil would drop the
 /// message (keepalive locations, or a malformed `SECURE_MQ` payload).
 ///
 /// * `SECURE_MQ`: `message` is `"<q>:<location>:<msg>"` from an agent; the

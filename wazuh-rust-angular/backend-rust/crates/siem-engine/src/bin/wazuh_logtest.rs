@@ -1,9 +1,9 @@
-//! Wazuh Logtest CLI Tool (mirroring src/analysisd/logtest.c `wazuh-logtest`)
+//! ProVigil Logtest CLI Tool (mirroring src/analysisd/logtest.c `provigil-logtest`)
 //!
 //! Interactive command-line tool to test and debug rules and decoders.
 //! Usage:
-//!   wazuh-logtest
-//!   echo "Oct 03 14:00:00 ubuntu sshd[1234]: Failed password..." | wazuh-logtest
+//!   provigil-logtest
+//!   echo "Oct 03 14:00:00 ubuntu sshd[1234]: Failed password..." | provigil-logtest
 
 use siem_engine::logtest::LogtestEngine;
 use std::io::{self, BufRead};

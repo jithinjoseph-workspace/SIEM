@@ -8,7 +8,7 @@ use crate::formatter::SyslogAlert;
 use crate::sender::UdpSyslogSender;
 use tracing::{debug, error, warn};
 
-/// Main daemon engine for wazuh-csyslogd
+/// Main daemon engine for provigil-csyslogd
 pub struct SyslogDaemon {
     pub configs: Vec<SyslogConfig>,
     pub senders: Vec<UdpSyslogSender>,
@@ -84,7 +84,7 @@ impl SyslogDaemon {
         forwarded_count
     }
 
-    /// Parses a JSON alert (matching Wazuh `alerts.json` format) and forwards it.
+    /// Parses a JSON alert (matching ProVigil `alerts.json` format) and forwards it.
     pub fn process_json_str(&mut self, json_str: &str) -> Result<usize, serde_json::Error> {
         let val: serde_json::Value = serde_json::from_str(json_str)?;
         let alert = parse_provigil_json_alert(&val);
@@ -92,7 +92,7 @@ impl SyslogDaemon {
     }
 }
 
-/// Parses a standard Wazuh `alerts.json` event into `SyslogAlert`.
+/// Parses a standard ProVigil `alerts.json` event into `SyslogAlert`.
 pub fn parse_provigil_json_alert(val: &serde_json::Value) -> SyslogAlert {
     let mut alert = SyslogAlert::default();
     alert.raw_json = Some(val.clone());

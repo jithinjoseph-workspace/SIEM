@@ -1,4 +1,4 @@
-//! Wazuh Active Response Daemon Core Runtime (`src/os_execd/execd.c`)
+//! ProVigil Active Response Daemon Core Runtime (`src/os_execd/execd.c`)
 //!
 //! Handles active response message parsing, execution orchestration, timeout scheduling,
 //! and graceful termination cleanup.

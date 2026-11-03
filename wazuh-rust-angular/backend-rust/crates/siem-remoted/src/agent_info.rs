@@ -1,6 +1,6 @@
 //! Port of `src/shared/remoted_op.c` (`parse_agent_update_msg`,
 //! `parse_uname_string`, `get_os_arch`): turns an agent keepalive into the
-//! `agent_info_data` that remoted stores in wazuh-db.
+//! `agent_info_data` that remoted stores in provigil-db.
 
 use regex::Regex;
 use serde_json::{Map, Value};

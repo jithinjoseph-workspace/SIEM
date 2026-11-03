@@ -1,4 +1,4 @@
-//! Differential test against Wazuh's C `os_regex` (see `tools/gen_oracle.py`).
+//! Differential test against the upstream C `os_regex` (see `tools/gen_oracle.py`).
 //!
 //! Each row: `mode \t hex(pattern) \t hex(log) \t expected`, where `expected`
 //! is what the compiled C harness (`tools/harness.c`) printed:
@@ -73,7 +73,7 @@ fn matches_c_oracle() {
         let (pat, log) = (unhex(cols[1]), unhex(cols[2]));
         let got = run(cols[0], &pat, &log);
         // The C implementation crashed on this input (memory-safety bug in
-        // Wazuh); we only require the port to return without panicking.
+        // ProVigil); we only require the port to return without panicking.
         if cols[3] == "CRASH" {
             continue;
         }

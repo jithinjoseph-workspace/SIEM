@@ -1,7 +1,7 @@
 //! Port of `src/os_xml/os_xml.c` (`OS_ReadXML`, `OS_ReadXMLString`,
 //! `ParseXML`, `_ReadElem`, `_getattributes`, `_oscomment`).
 //!
-//! Wazuh XML is not standard XML: a document may have several root elements,
+//! ProVigil XML is not standard XML: a document may have several root elements,
 //! entities such as `&lt;` are **not** decoded, `\<` escapes a `<` inside
 //! content, and `<!-- ... -->` / `<! ... !>` comments are allowed anywhere.
 //! Rules, decoders, `ossec.conf` and `agent.conf` all rely on that, so this

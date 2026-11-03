@@ -1,10 +1,10 @@
-//! Port of Wazuh 4.14.7 `wazuh-execd` (`src/os_execd/`): the active
+//! Port of upstream 4.14.7 `provigil-execd` (`src/os_execd/`): the active
 //! response executor. It reads `ar.conf`, runs the response scripts with the
 //! JSON protocol (`add`, `check_keys`, `continue`/`abort`, `delete`), keeps
 //! the timeout list and the repeated offenders, and answers the `com`
 //! requests (`wcom_dispatch`).
 //!
-//! On Unix it is the `wazuh-execd` daemon reading `queue/alerts/execq`. On
+//! On Unix it is the `provigil-execd` daemon reading `queue/alerts/execq`. On
 //! Windows it runs inside `wazuh-agent.exe` (`WinExecdStart`): agentd pushes
 //! the messages to a queue drained by one thread, and calls
 //! `ExecdTimeoutRun` from its main loop.

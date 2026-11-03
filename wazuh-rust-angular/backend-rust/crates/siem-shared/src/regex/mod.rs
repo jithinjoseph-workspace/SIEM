@@ -1,6 +1,6 @@
-//! Wazuh Pattern and Regular Expression Engine (src/os_regex)
+//! ProVigil Pattern and Regular Expression Engine (src/os_regex)
 //!
-//! Complete 1-to-1 port of Wazuh's custom regex and pattern matching engine:
+//! Complete 1-to-1 port of the upstream custom regex and pattern matching engine:
 //! - `OSRegex`: S-Regex compiler and executor with capture group extraction,
 //!   case-sensitivity flags, and special character classes (`\d`, `\w`, `\s`, `\p`, `\D`, `\W`, `\S`).
 //! - `OSMatch`: High-performance wildcard and sub-pattern matcher with negation (`!`),
@@ -20,7 +20,7 @@ pub const OS_CASE_SENSITIVE: u32 = 0o000400;
 /// Maximum allowed pattern size matching `OS_PATTERN_MAXSIZE`.
 pub const OS_PATTERN_MAXSIZE: usize = 20480;
 
-/// Wazuh C Error Codes matching `os_regex.h`
+/// ProVigil C Error Codes matching `os_regex.h`
 pub const OS_REGEX_REG_NULL: i32 = 1;
 pub const OS_REGEX_PATTERN_NULL: i32 = 2;
 pub const OS_REGEX_MAXSIZE: i32 = 3;
@@ -53,7 +53,7 @@ pub enum RegexError {
 }
 
 impl RegexError {
-    /// Return the corresponding Wazuh C integer error code
+    /// Return the corresponding ProVigil C integer error code
     pub fn code(&self) -> i32 {
         match self {
             RegexError::RegNull => OS_REGEX_REG_NULL,
@@ -85,7 +85,7 @@ impl fmt::Display for RegexError {
 
 impl std::error::Error for RegexError {}
 
-/// OSRegex structure representing a compiled Wazuh regex.
+/// OSRegex structure representing a compiled ProVigil regex.
 #[derive(Debug, Clone)]
 pub struct OSRegex {
     raw: String,
@@ -128,7 +128,7 @@ impl OSRegex {
             return Err(RegexError::BadParenthesis);
         }
 
-        // Translate Wazuh custom tokens (\p -> punctuation)
+        // Translate ProVigil custom tokens (\p -> punctuation)
         let translated = translate_provigil_regex(pattern);
 
         let case_insensitive = (flags & OS_CASE_SENSITIVE) == 0;
@@ -175,8 +175,8 @@ impl OSRegex {
     }
 }
 
-/// Translates Wazuh S-Regex custom syntax into standard regex syntax:
-/// Wazuh's `\p` represents punctuation characters: `()*,+-.:;<=>?`
+/// Translates ProVigil S-Regex custom syntax into standard regex syntax:
+/// the upstream `\p` represents punctuation characters: `()*,+-.:;<=>?`
 fn translate_provigil_regex(pat: &str) -> String {
     let mut out = String::with_capacity(pat.len() * 2);
     let mut chars = pat.chars().peekable();
@@ -186,7 +186,7 @@ fn translate_provigil_regex(pat: &str) -> String {
             if let Some(&next) = chars.peek() {
                 if next == 'p' {
                     chars.next();
-                    // Wazuh \p class: ()*+,-.:;<=>?
+                    // ProVigil \p class: ()*+,-.:;<=>?
                     out.push_str(r"[\(\)\*\+,\-\.:;<=>\?]");
                     continue;
                 } else if next == '<' {
@@ -460,7 +460,7 @@ mod tests {
         assert!(!os_str_is_num(""));
 
         // OS_StrHowClosedMatch
-        assert_eq!(os_str_how_closed_match("wazuh-agent", "wazuh-manager"), 6); // "wazuh-"
+        assert_eq!(os_str_how_closed_match("wazuh-agent", "wazuh-manager"), 6); // "provigil-"
 
         // OS_StrBreak with escaped delimiter
         let escaped_pieces = os_str_break(':', r"user:pass\:with\:colons:1000", 3);

@@ -1,6 +1,6 @@
 //! Platform SMTP settings (super admin): stored in `ndr.settings` (the
 //! `global_smtp_*` keys auth-service already reads for password-reset mail)
-//! and applied to the Wazuh manager, so wazuh-maild and monitord's reports
+//! and applied to the ProVigil manager, so provigil-maild and monitord's reports
 //! send through the same account (TLS + login via `etc/smtp_auth.conf`).
 
 use axum::extract::{Extension, State};
@@ -20,7 +20,7 @@ pub struct MailSettings {
     /// Empty in requests: keep the stored one. Never returned.
     #[serde(default)]
     pub password: String,
-    /// Alert e-mails from the manager (wazuh-maild).
+    /// Alert e-mails from the manager (provigil-maild).
     #[serde(default)]
     pub alert_enabled: bool,
     #[serde(default)]
@@ -56,7 +56,7 @@ impl MailSettings {
         }
     }
 
-    /// What Wazuh's `email_to` reader accepts, and nothing XML would need escaped.
+    /// What the upstream `email_to` reader accepts, and nothing XML would need escaped.
     fn valid_email(s: &str) -> bool {
         let ok = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+');
         match s.split_once('@') {

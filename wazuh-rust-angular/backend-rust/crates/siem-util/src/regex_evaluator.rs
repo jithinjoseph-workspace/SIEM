@@ -36,7 +36,7 @@ impl RegexEvaluator {
         }
     }
 
-    /// Evaluates a Wazuh OSRegex pattern with capture substrings
+    /// Evaluates a ProVigil OSRegex pattern with capture substrings
     pub fn evaluate_os_regex(pattern: &str, line: &str) -> Result<RegexMatchResult, siem_shared::regex::RegexError> {
         let reg = siem_shared::regex::OSRegex::compile(
             pattern,
@@ -57,7 +57,7 @@ impl RegexEvaluator {
         }
     }
 
-    /// Evaluates a Wazuh OSMatch pattern (supports negation and OR alternations)
+    /// Evaluates a ProVigil OSMatch pattern (supports negation and OR alternations)
     pub fn evaluate_os_match(pattern: &str, line: &str) -> Result<bool, siem_shared::regex::RegexError> {
         let m = siem_shared::regex::OSMatch::compile(pattern, 0)?;
         Ok(m.execute(line))

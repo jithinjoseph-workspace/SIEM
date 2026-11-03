@@ -1,5 +1,5 @@
 //! Daemon logging (shared/debug_op.c): `logs/ossec.log` (plain) and
-//! `logs/ossec.json` (JSON) under the Wazuh home, the format chosen by
+//! `logs/ossec.json` (JSON) under the ProVigil home, the format chosen by
 //! `<logging><log_format>` in `etc/ossec.conf`, plus stderr unless the
 //! daemon went to the background.
 //!

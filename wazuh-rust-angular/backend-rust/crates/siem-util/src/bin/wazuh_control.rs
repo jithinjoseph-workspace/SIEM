@@ -1,8 +1,8 @@
-//! Wazuh Control CLI (src/init/wazuh-server.sh, wazuh-client.sh)
+//! ProVigil Control CLI (src/init/provigil-server.sh, provigil-client.sh)
 //!
-//! Native cross-platform implementation of `wazuh-control`:
+//! Native cross-platform implementation of `provigil-control`:
 //! - Commands: `start`, `stop`, `restart`, `status`, `info`
-//! - JSON output support via `-j` flag matching Wazuh REST API expectations.
+//! - JSON output support via `-j` flag matching ProVigil REST API expectations.
 //! - Checks daemon PID files and process liveness across Linux and Windows.
 
 use serde_json::json;

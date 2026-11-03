@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha1_smol::Sha1;
 use std::collections::{HashMap, HashSet};
 
-/// Synchronization operations matching Wazuh dbsync / syscollectorImp.cpp.
+/// Synchronization operations matching ProVigil dbsync / syscollectorImp.cpp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum SyncOperation {
@@ -22,7 +22,7 @@ pub struct SyncDelta {
 }
 
 /// Calculates the SHA-1 item ID based on primary key fields.
-/// Matches Wazuh getItemId in syscollectorImp.cpp.
+/// Matches upstream getItemId in syscollectorImp.cpp.
 pub fn get_item_id(item: &serde_json::Value, id_fields: &[&str]) -> String {
     let mut hasher = Sha1::new();
 
@@ -42,7 +42,7 @@ pub fn get_item_id(item: &serde_json::Value, id_fields: &[&str]) -> String {
 }
 
 /// Calculates the SHA-1 checksum of the entire item content.
-/// Matches Wazuh getItemChecksum in syscollectorImp.cpp.
+/// Matches upstream getItemChecksum in syscollectorImp.cpp.
 pub fn get_item_checksum(item: &serde_json::Value) -> String {
     let mut hasher = Sha1::new();
     let content = item.to_string();
@@ -51,7 +51,7 @@ pub fn get_item_checksum(item: &serde_json::Value) -> String {
 }
 
 /// Agent-side or manager-side table sync cache tracking item IDs and checksums.
-/// Ported from Wazuh syscollectorImp.cpp.
+/// Ported from upstream syscollectorImp.cpp.
 #[derive(Debug, Clone, Default)]
 pub struct TableSyncCache {
     /// Maps item_id -> checksum

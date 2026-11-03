@@ -1,4 +1,4 @@
-//! Lookup tables generated verbatim from Wazuh `src/os_regex/os_regex_maps.c` (v4.14.7).
+//! Lookup tables generated verbatim from upstream `src/os_regex/os_regex_maps.c` (v4.14.7).
 //! Do not edit by hand.
 
 /// `hostname_map`: non-zero for characters valid in a hostname.

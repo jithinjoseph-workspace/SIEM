@@ -1,14 +1,14 @@
-//! The Wazuh manager behind the SIEM: siem-api prepares a manager home
+//! The ProVigil manager behind the SIEM: siem-api prepares a manager home
 //! (`data/manager`, laid out like `/var/ossec`), runs the ported daemons
-//! (`wazuh-db`, `wazuh-analysisd`, `wazuh-remoted`) as child processes and
+//! (`provigil-db`, `provigil-analysisd`, `provigil-remoted`) as child processes and
 //! links them to the platform:
 //!
 //! * enrollment writes `etc/client.keys` (remoted reloads it on change);
 //! * `logs/alerts/alerts.json` becomes platform alerts and
 //!   `logs/archives/archives.json` platform events, per agent tenant;
-//! * agent status, OS and version come from wazuh-db's global database.
+//! * agent status, OS and version come from provigil-db's global database.
 //!
-//! Agents (`wazuh-agent.exe`, `wazuh-agentd`) connect to remoted on 1514/tcp.
+//! Agents (`wazuh-agent.exe`, `provigil-agentd`) connect to remoted on 1514/tcp.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ fn keys_file(home: &Path) -> PathBuf {
     home.join("etc").join("client.keys")
 }
 
-/// The Wazuh 4.14.7 source tree the ruleset is copied from.
+/// The upstream 4.14.7 source tree the ruleset is copied from.
 fn provigil_source() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Ok(s) = std::env::var("PROVIGIL_SOURCE_DIR").or_else(|_| std::env::var("WAZUH_SOURCE_DIR")) {
@@ -217,7 +217,7 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "netsh.exe",
     "restart-wazuh.exe",
     "route-null.exe",
-    // EDR responses (siem-active-response, not in Wazuh)
+    // EDR responses (siem-active-response, not in upstream)
     "kill-process.exe",
     "quarantine-file.exe",
     "isolate-host.exe",
@@ -229,7 +229,7 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "vista_sec.txt",
     "help.txt",
     "norm_config.json",
-    // rulesetsca: the MSI installs the one matching the OS (wazuh-installer.wxs)
+    // rulesetsca: the MSI installs the one matching the OS (provigil-installer.wxs)
     "cis_win10_enterprise.yml",
     "cis_win11_enterprise.yml",
     "cis_win2012r2.yml",
@@ -330,7 +330,7 @@ pub fn windows_agent_conf(manager: &str) -> Option<String> {
 }
 
 /// The program file of a daemon or tool: siem-api names them as the ported daemons name
-/// themselves (`wazuh-analysisd`: their log tags, state files), the files are `provigil-*`.
+/// themselves (`provigil-analysisd`: their log tags, state files), the files are `provigil-*`.
 pub(crate) fn exe_name(d: &str) -> String {
     let d = program_name(d);
     if cfg!(windows) {
@@ -348,7 +348,7 @@ pub(crate) fn program_name(d: &str) -> String {
     }
 }
 
-/// Copies the daemons built next to siem-api into `<home>/bin` (wazuh-db
+/// Copies the daemons built next to siem-api into `<home>/bin` (provigil-db
 /// finds its home from there, like an installed manager).
 /// Command-line tools of the manager (installed in `bin/`, not supervised).
 const MANAGER_TOOLS: &[&str] = &["wazuh-reportd"];
@@ -391,7 +391,7 @@ fn install_binaries(home: &Path) -> Result<(), String> {
 }
 
 /// `var/db/mitre.db` (what the package installs with `mitredb.py`), built
-/// once from the ruleset's `enterprise-attack.json` with `wazuh-mitredb`.
+/// once from the ruleset's `enterprise-attack.json` with `provigil-mitredb`.
 fn build_mitre_db(home: &Path) {
     let db = home.join("var/db/mitre.db");
     if db.exists() {
@@ -400,7 +400,7 @@ fn build_mitre_db(home: &Path) {
     let Some(src) = provigil_source() else { return };
     let json = src.join("ruleset/mitre/enterprise-attack.json");
     let Some(tool) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(exe_name("wazuh-mitredb")))).filter(|p| p.is_file()) else {
-        warn!("ProVigil manager: wazuh-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
+        warn!("ProVigil manager: provigil-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
         return;
     };
     // built under another name: a half-built file must not look finished
@@ -608,7 +608,7 @@ fn used_rule_ids(home: &Path) -> std::collections::HashSet<u32> {
 
 static RULES_LOCK: Mutex<()> = Mutex::new(());
 
-/// Writes (or removes) `etc/rules/<file>` once `wazuh-analysisd -t` accepts the whole ruleset
+/// Writes (or removes) `etc/rules/<file>` once `provigil-analysisd -t` accepts the whole ruleset
 /// with the change, then restarts analysisd so it loads the rules. The check runs on a staged
 /// copy (`etc/rules.staging` and its own ossec.conf), so the running or restarting analysisd
 /// never reads a file that has not passed it; any ERROR, CRITICAL or duplicate rule id fails it.
@@ -654,11 +654,11 @@ fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<
             let bad = log.lines().any(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"));
             (o.status.success() && !bad, log)
         }
-        Err(e) => (false, format!("wazuh-analysisd -t: {e}")),
+        Err(e) => (false, format!("provigil-analysisd -t: {e}")),
     };
     if !ok {
         let why = log.lines().find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)")).unwrap_or(log.trim()).to_string();
-        return Err(format!("wazuh-analysisd rejected the rules: {why}"));
+        return Err(format!("provigil-analysisd rejected the rules: {why}"));
     }
     let path = rules.join(file);
     match content {
@@ -876,7 +876,7 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
     }
 }
 
-/// Wazuh API `set_agent_group_relationship` (override): the agent's whole group list.
+/// ProVigil API `set_agent_group_relationship` (override): the agent's whole group list.
 pub async fn set_agent_groups(id: &str, groups: &[String]) -> bool {
     let Ok(n) = id.parse::<i64>() else { return false };
     let set = serde_json::json!({ "mode": "override", "sync_status": "syncreq", "data": [{ "id": n, "groups": groups }] });
@@ -907,8 +907,8 @@ pub async fn sync_group(name: &str, exists: bool) -> bool {
 }
 
 /// `wdb_remove_agent`, then the agent's own database (`queue/db/<id>.db`: inventory,
-/// FIM, SCA, rootcheck), as the Wazuh API's agent removal does (`wazuhdb remove`). With
-/// its `global.db` row gone wazuh-db never opens (so never re-creates) that database.
+/// FIM, SCA, rootcheck), as the ProVigil API's agent removal does (`wazuhdb remove`). With
+/// its `global.db` row gone provigil-db never opens (so never re-creates) that database.
 pub async fn remove_agent(id: &str) -> bool {
     if !enabled() {
         return false;
@@ -923,13 +923,13 @@ pub async fn remove_agent(id: &str) -> bool {
     let _ = std::fs::remove_file(home().join("queue/rids").join(format!("{n:03}")));
     let ok = row.as_deref().is_ok_and(|r| r.starts_with("ok")) && file.as_deref().is_ok_and(|r| r.starts_with("ok"));
     if !ok {
-        warn!("ProVigil manager: agent {n:03} not fully removed from wazuh-db: {row:?} / {file:?}");
+        warn!("ProVigil manager: agent {n:03} not fully removed from provigil-db: {row:?} / {file:?}");
     }
     ok
 }
 
-/// Agents removed from the platform that wazuh-db still holds (a `global.db` row or a
-/// database file, e.g. removed while the manager was down): removed once wazuh-db answers.
+/// Agents removed from the platform that provigil-db still holds (a `global.db` row or a
+/// database file, e.g. removed while the manager was down): removed once provigil-db answers.
 pub async fn purge_removed(ids: Vec<String>) {
     if !enabled() || ids.is_empty() {
         return;
@@ -964,7 +964,7 @@ pub async fn purge_removed(ids: Vec<String>) {
     }
     let still: Vec<String> = removed.iter().filter(|k| file(**k).exists()).map(|k| format!("{k:03}")).collect();
     if !removed.is_empty() {
-        info!("ProVigil manager: {} removed agent(s) also removed from wazuh-db (row and database file)", removed.len() - still.len());
+        info!("ProVigil manager: {} removed agent(s) also removed from provigil-db (row and database file)", removed.len() - still.len());
     }
     if !still.is_empty() {
         warn!("ProVigil manager: database file of removed agent(s) {} still in queue/db (in use by another program)", still.join(", "));
@@ -978,14 +978,14 @@ pub(crate) async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Val
     serde_json::from_str::<serde_json::Value>(json).ok()?.as_array().cloned()
 }
 
-/// Whether the id is an agent of the Wazuh manager (it has a row in global.db).
+/// Whether the id is an agent of the ProVigil manager (it has a row in global.db).
 pub async fn is_provigil_agent(agent_id: &str) -> bool {
     let Ok(n) = agent_id.parse::<u32>() else { return false };
     enabled() && wdb().query(&format!("global get-agent-info {n}")).await.is_ok_and(|r| r.starts_with("ok [{"))
 }
 
 /// One message to remoted's active-response queue (`queue/alerts/ar`), as
-/// the Wazuh API's `WazuhQueue.send_msg_to_agent` writes it.
+/// the ProVigil API's `WazuhQueue.send_msg_to_agent` writes it.
 async fn send_ar_queue(msg: &str) -> Result<(), String> {
     let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar")).await.map_err(|e| format!("remoted active-response queue: {e}"))?;
     s.send(msg.as_bytes()).await.map_err(|e| format!("remoted active-response queue: {e}"))
@@ -1179,7 +1179,7 @@ fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
     }
 }
 
-/// The FIM entries of a Wazuh agent (`fim_entry` in its wazuh-db database).
+/// The FIM entries of a ProVigil agent (`fim_entry` in its provigil-db database).
 pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
     agent_fim_upto(agent_id, 1000).await
 }
@@ -1208,10 +1208,10 @@ pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Va
             r
         })
         .collect();
-    Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "wazuh-db" }))
+    Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "provigil-db" }))
 }
 
-/// The latest SCA scan of a Wazuh agent (`sca_scan_info` / `sca_check` in its wazuh-db database).
+/// The latest SCA scan of a ProVigil agent (`sca_scan_info` / `sca_check` in its provigil-db database).
 pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
     let scan = agent_sql(&id, "SELECT policy_id, pass, fail, invalid, score, end_scan FROM sca_scan_info ORDER BY end_scan DESC LIMIT 1;").await?.into_iter().next()?;
@@ -1250,11 +1250,11 @@ pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
         .collect();
     Some(serde_json::json!({
         "agent_id": agent_id, "policy_id": policy, "policy_name": name, "score": scan["score"], "passed": scan["pass"], "failed": scan["fail"],
-        "not_applicable": scan["invalid"], "scanned_at": ts(scan.get("end_scan")), "checks": checks, "source": "wazuh-db",
+        "not_applicable": scan["invalid"], "scanned_at": ts(scan.get("end_scan")), "checks": checks, "source": "provigil-db",
     }))
 }
 
-/// The rootcheck findings of a Wazuh agent (`pm_event` in its wazuh-db database).
+/// The rootcheck findings of a ProVigil agent (`pm_event` in its provigil-db database).
 pub async fn agent_rootcheck(agent_id: &str) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
     let rows = agent_sql(&id, "SELECT date_first, date_last, log, pci_dss, cis FROM pm_event ORDER BY date_last DESC LIMIT 1000;").await?;
@@ -1267,10 +1267,10 @@ pub async fn agent_rootcheck(agent_id: &str) -> Option<serde_json::Value> {
             r
         })
         .collect();
-    Some(serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "wazuh-db" }))
+    Some(serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "provigil-db" }))
 }
 
-/// The inventory syscollector reported for an agent, from wazuh-db, in the
+/// The inventory syscollector reported for an agent, from provigil-db, in the
 /// console's `AgentInventory` shape. None when the agent has no inventory.
 pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
     if !enabled() {
@@ -1343,7 +1343,7 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
         "active_services": services,
         "local_users": users,
         "network_adapters": adapters,
-        "source": "wazuh-db",
+        "source": "provigil-db",
     }))
 }
 
@@ -1655,7 +1655,7 @@ fn flat(data: &serde_json::Value) -> HashMap<String, String> {
 
 /// One `alerts.json` line as a platform alert of the agent's tenant.
 /// The user of a Windows event: the account logged on / failed / changed, else who acted
-/// ("-" is Windows for none; Wazuh doubles the backslash of DOMAIN\user).
+/// ("-" is Windows for none; ProVigil doubles the backslash of DOMAIN\user).
 fn windows_user(v: &serde_json::Value) -> Option<String> {
     ["targetUserName", "subjectUserName"].iter().find_map(|k| {
         v.pointer(&format!("/data/win/eventdata/{k}")).and_then(|x| x.as_str()).map(|u| u.replace("\\\\", "\\")).filter(|u| !u.is_empty() && u != "-")
@@ -1748,7 +1748,7 @@ async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
 }
 
 /// Stores tenant-tagged alerts, then shows them and runs SOAR on them unless suppressed;
-/// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original Wazuh alert).
+/// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original ProVigil alert).
 pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
     let mut pending: Vec<&Alert> = alerts.iter().collect();
@@ -1778,7 +1778,7 @@ pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_
         shown.push(a);
         soar.push((v, t));
     }
-    // each tenant's SOAR playbooks, on the original Wazuh alert
+    // each tenant's SOAR playbooks, on the original ProVigil alert
     crate::soar::on_alerts(state, soar);
     crate::keep_alerts(state, shown);
 }
@@ -1832,7 +1832,7 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
         wait = (wait * 2).min(RETRY_MAX);
     }
     // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
-    // besides the Wazuh ruleset
+    // besides the ProVigil ruleset
     let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
     let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
         let mut m = crate::sigma::check(&tagged);
@@ -1876,7 +1876,7 @@ fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {
     metadata.insert("tenant_id".into(), tenant);
     metadata.insert("hostname".into(), s(&v, &["agent", "name"]));
     metadata.insert("decoder".into(), decoder.clone());
-    metadata.insert("pipeline".into(), "wazuh-manager".into());
+    metadata.insert("pipeline".into(), "provigil-manager".into());
     if let Some(d) = v.get("data") {
         metadata.insert("data_json".into(), d.to_string());
     }
@@ -1901,7 +1901,7 @@ fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {
 }
 
 /// An agent's version as the console shows it: agents report "Wazuh v4.14.7" on the
-/// wire (kept for compatibility with the rules and Wazuh agents), shown as ProVigil.
+/// wire (kept for compatibility with the rules and ProVigil agents), shown as ProVigil.
 fn display_version(v: &str) -> String {
     match v.strip_prefix("Wazuh ") {
         Some(rest) => format!("ProVigil {rest}"),
@@ -1909,7 +1909,7 @@ fn display_version(v: &str) -> String {
     }
 }
 
-/// Agent status, OS, version and keepalive from wazuh-db's global.db.
+/// Agent status, OS, version and keepalive from provigil-db's global.db.
 async fn agent_status_loop(state: AppState) {
     let wdb = wdb();
     let mut last_saved: HashMap<String, (AgentStatus, i64)> = HashMap::new();

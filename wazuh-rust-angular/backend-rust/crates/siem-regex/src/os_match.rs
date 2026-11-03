@@ -1,4 +1,4 @@
-//! Faithful port of Wazuh `OSMatch` (`src/os_regex/os_match_compile.c`,
+//! Faithful port of upstream `OSMatch` (`src/os_regex/os_match_compile.c`,
 //! `os_match_execute.c`) and `OS_WordMatch` (`os_regex_match.c`).
 //!
 //! OSMatch is the matcher behind `<match>`: case-insensitive substring search

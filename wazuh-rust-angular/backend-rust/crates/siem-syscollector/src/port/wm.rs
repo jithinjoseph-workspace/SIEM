@@ -302,7 +302,7 @@ pub struct Env {
     pub log: Box<dyn Fn(LogLevel, &str) + Send + Sync>,
     /// `DEFAULTQUEUE`
     pub default_queue: String,
-    /// CLIENT: "wazuh-agentd" in the reconnection message, else "wazuh-analysisd".
+    /// CLIENT: "provigil-agentd" in the reconnection message, else "provigil-analysisd".
     pub peer: &'static str,
 }
 

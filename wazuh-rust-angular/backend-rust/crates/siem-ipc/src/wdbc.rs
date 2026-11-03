@@ -1,4 +1,4 @@
-//! wazuh-db client (`src/shared/wazuhdb_op.c`): queries go over the
+//! provigil-db client (`src/shared/wazuhdb_op.c`): queries go over the
 //! `queue/db/wdb` stream socket, framed with `OS_SendSecureTCP`, and include
 //! the trailing NUL (`size + 1`). Replies look like `"ok <payload>"`,
 //! `"err <msg>"`, `"due <payload>"` or `"ign <msg>"`.
@@ -64,7 +64,7 @@ impl WdbcError {
     }
 }
 
-/// Anything that can answer wazuh-db queries: the socket client below, or
+/// Anything that can answer provigil-db queries: the socket client below, or
 /// an in-process `siem-wdb` instance.
 #[async_trait::async_trait]
 pub trait WdbQuery: Send + Sync {

@@ -2,7 +2,7 @@
 name = "siem-rootcheck"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh-compatible rootkit detection and trojan binary signature verification engine"
+description = "ProVigil-compatible rootkit detection and trojan binary signature verification engine"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

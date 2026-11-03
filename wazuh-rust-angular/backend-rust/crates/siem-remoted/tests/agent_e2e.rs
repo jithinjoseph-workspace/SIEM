@@ -1,6 +1,6 @@
-//! End-to-end test: a simulated Wazuh 4.14.7 agent talks to the Rust remoted
+//! End-to-end test: a simulated upstream 4.14.7 agent talks to the Rust remoted
 //! exactly like the C agent does (framed TCP, AES, startup, keepalive, events),
-//! and we check the ACKs, the `merged.mg` push, wazuh-db queries, the
+//! and we check the ACKs, the `merged.mg` push, provigil-db queries, the
 //! analysisd queue output, the remcom socket and active-response forwarding.
 
 use siem_crypto::keys::{ClientKey, CryptoMethod};
@@ -24,7 +24,7 @@ impl WdbQuery for MockWdb {
     async fn query(&self, q: &str) -> Result<String, WdbcError> {
         self.log.lock().unwrap().push(q.to_string());
         if q.starts_with("global select-agent-group") {
-            // Agent has no group yet: wazuh-db answers with an empty group.
+            // Agent has no group yet: provigil-db answers with an empty group.
             return Ok("ok [{}]".into());
         }
         if q.starts_with("global get-distinct-groups") {
@@ -95,7 +95,7 @@ async fn real_agent_session() {
     let remoted = Remoted::new(settings, deps).unwrap();
     remoted.start().await.unwrap();
 
-    // The default group's merged.mg was built at startup, Wazuh-style.
+    // The default group's merged.mg was built at startup, ProVigil-style.
     let merged = std::fs::read_to_string(h.join("etc/shared/default/merged.mg")).unwrap();
     assert_eq!(
         merged,
@@ -130,7 +130,7 @@ async fn real_agent_session() {
     }
     assert_eq!(body, merged);
 
-    // Events go to analysisd in Wazuh's queue format.
+    // Events go to analysisd in the upstream queue format.
     agent.send("1:/var/log/auth.log:Oct  5 10:00:00 web01 sshd[123]: Failed password for root from 10.1.1.1 port 22 ssh2").await;
     agent.send("1:keepalive:ignored").await;
     let ev = tokio::time::timeout(Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
@@ -139,7 +139,7 @@ async fn real_agent_session() {
         "1:[001] (web01) any->/var/log/auth.log:Oct  5 10:00:00 web01 sshd[123]: Failed password for root from 10.1.1.1 port 22 ssh2"
     );
 
-    // wazuh-db saw the same queries a C remoted sends.
+    // provigil-db saw the same queries a C remoted sends.
     tokio::time::sleep(Duration::from_millis(500)).await;
     let log = wdb.log.lock().unwrap().clone();
     assert!(log.contains(&"global reset-agents-connection synced".to_string()), "{log:#?}");
@@ -176,7 +176,7 @@ async fn real_agent_session() {
     assert_eq!(agent.recv().await, "#!-execd {\"version\":1,\"command\":\"add\",\"parameters\":{}}");
 
     // A replayed control message from a closed socket is ignored, and shutdown
-    // is reported to analysisd and wazuh-db.
+    // is reported to analysisd and provigil-db.
     agent.send("#!-agent shutdown ").await;
     let ev = tokio::time::timeout(Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
     assert_eq!(

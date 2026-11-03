@@ -1,6 +1,6 @@
-//! Wazuh XML Parser and Engine (src/os_xml)
+//! ProVigil XML Parser and Engine (src/os_xml)
 //!
-//! Full 1-to-1 port of Wazuh's custom XML parser:
+//! Full 1-to-1 port of the upstream custom XML parser:
 //! - `os_xml.c`, `os_xml.h`: XML DOM tokenizer, node representations, and parser.
 //! - `os_xml_variables.c`: `<var name="...">...</var>` variable extraction and `$VAR` substitution.
 //! - `os_xml_access.c`, `os_xml_node_access.c`: Hierarchical XPath-like element querying (`OS_GetElements`, `OS_GetElementContent`, `OS_ElementExist`).
@@ -52,7 +52,7 @@ impl XmlNode {
     }
 }
 
-/// The Wazuh XML document representation (OS_XML).
+/// The upstream XML document representation (OS_XML).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OsXml {
     pub root_nodes: Vec<XmlNode>,

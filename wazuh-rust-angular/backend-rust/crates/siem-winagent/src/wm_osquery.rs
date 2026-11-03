@@ -15,7 +15,7 @@ use siem_xml::XmlNode;
 
 /// `WM_OSQUERYMONITOR_CONTEXT.name` (also the module tag)
 pub const NAME: &str = "osquery";
-/// `WM_OSQUERYMONITOR_LOGTAG` (the module files are built with ARGV0 "wazuh-modulesd")
+/// `WM_OSQUERYMONITOR_LOGTAG` (the module files are built with ARGV0 "provigil-modulesd")
 const LOGTAG: &str = "wazuh-modulesd:osquery";
 const TMP_CONFIG_PATH: &str = "tmp/osquery.conf.tmp";
 const OSQUERYD_BIN: &str = "osqueryd.exe";

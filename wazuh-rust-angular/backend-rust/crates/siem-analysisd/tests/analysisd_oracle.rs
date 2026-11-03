@@ -1,4 +1,4 @@
-//! Differential test of the daemon's event path against Wazuh's real
+//! Differential test of the daemon's event path against the upstream real
 //! analysisd code compiled from C (tools/oracle/ad_harness.c): queue
 //! message -> OS_CleanMSG -> DecodeEvent -> w_process_event_thread ->
 //! alerts.log, alerts.json, archives.log, archives.json, firewall.log,
@@ -9,7 +9,7 @@
 //!   SIEM_AD_ORACLE       command line of the oracle, e.g.
 //!                        "wsl -d Ubuntu-20.04 --cd /home/u/oracle_build -- env TZ=UTC ./ad_oracle home_ad"
 //!                        (ORACLE_TIME is appended by the test through `env`)
-//!   SIEM_TEST_HOME       Rust-side Wazuh home (same ruleset and etc/ossec.conf
+//!   SIEM_TEST_HOME       Rust-side ProVigil home (same ruleset and etc/ossec.conf
 //!                        as the oracle's, including the AR blocks)
 //!   SIEM_TEST_CASES      cases.json from tools/make_test_home.py
 //!   SIEM_ORACLE_MANAGER  hostname of the oracle machine (manager.name)
@@ -42,7 +42,7 @@ impl Clock for FixedClock {
     }
 }
 
-/// The harness's fake world (labels_find, wazuh-db, node name, AR queues).
+/// The harness's fake world (labels_find, provigil-db, node name, AR queues).
 #[derive(Default)]
 struct TestEnv {
     ar_log: Vec<u8>,
@@ -75,7 +75,7 @@ fn find(h: &[u8], n: &[u8]) -> Option<usize> {
 }
 
 impl TestEnv {
-    /// The harness's fake wazuh-db (`wdbc_query_ex` in ad_harness.c).
+    /// The harness's fake provigil-db (`wdbc_query_ex` in ad_harness.c).
     fn wdb(&mut self, q: &[u8], len: usize) -> Result<Vec<u8>, i32> {
         self.wdb_log.extend_from_slice(q);
         self.wdb_log.push(b'\n');

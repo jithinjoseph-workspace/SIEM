@@ -1,7 +1,7 @@
 //! In-process pub-sub routing module (router)
 //!
 //! Provides decoupled event publishing and subscription using topic-based routing,
-//! patterned after Wazuh's `RouterProvider` and `RouterSubscriber`.
+//! patterned after the upstream `RouterProvider` and `RouterSubscriber`.
 
 use crate::common::{ReturnType, Result, SharedModuleError};
 use serde::{Deserialize, Serialize};

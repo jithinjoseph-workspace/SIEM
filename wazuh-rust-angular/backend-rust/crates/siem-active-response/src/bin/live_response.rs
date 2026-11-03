@@ -1,4 +1,4 @@
-//! EDR live response (not in Wazuh): answers one investigation request from the console.
+//! EDR live response (not in upstream): answers one investigation request from the console.
 //! extra_args: `id=<request id>`, `action=processes|connections|services|dir|file`,
 //! `path=<full path>` for `dir` and `file`. Read-only: it lists and reads, never changes
 //! anything. The answer goes to active-responses.log in chunks (`live::result_lines`).

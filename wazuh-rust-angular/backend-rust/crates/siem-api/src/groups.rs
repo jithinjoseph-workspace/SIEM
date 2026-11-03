@@ -1,5 +1,5 @@
-//! Agent groups: Wazuh's `etc/shared/<group>/agent.conf` plus each agent's
-//! membership in wazuh-db (remoted sends the group's merged.mg on the next
+//! Agent groups: the upstream `etc/shared/<group>/agent.conf` plus each agent's
+//! membership in provigil-db (remoted sends the group's merged.mg on the next
 //! keepalive). Group names are per tenant: tenant `acm`'s group `web` is the
 //! manager group `acm.web`. `default` is shared by every tenant and only the
 //! platform admin edits it.
@@ -16,17 +16,17 @@ use tracing::info;
 use crate::tenancy::{self, AuthCtx};
 use crate::{provigil_manager, AppState};
 
-/// `etc/agent.conf` of the Wazuh sources (installed as `shared/agent-template.conf`).
+/// `etc/agent.conf` of the upstream sources (installed as `shared/agent-template.conf`).
 const TEMPLATE: &str = "<agent_config>\n\n  <!-- Shared agent configuration here -->\n\n</agent_config>\n";
 
-/// Largest agent.conf accepted (Wazuh API `max_upload_size` default).
+/// Largest agent.conf accepted (ProVigil API `max_upload_size` default).
 const MAX_CONF: usize = 10 * 1024 * 1024;
 
 fn err(code: StatusCode, msg: &str) -> Response {
     (code, Json(serde_json::json!({ "status": "error", "message": msg }))).into_response()
 }
 
-/// Wazuh API `InputValidator.group`: `^(?!^(\.{1,2}|all)$)[\w\.\-]+$`, at most 255 chars.
+/// ProVigil API `InputValidator.group`: `^(?!^(\.{1,2}|all)$)[\w\.\-]+$`, at most 255 chars.
 fn valid_group(g: &str) -> bool {
     !g.is_empty()
         && g.len() <= 255
@@ -183,7 +183,7 @@ pub struct NewGroup {
     pub name: String,
 }
 
-/// `POST /api/v1/groups` (Wazuh `create_group`): the folder and the template agent.conf.
+/// `POST /api/v1/groups` (ProVigil `create_group`): the folder and the template agent.conf.
 pub async fn create_group(Extension(ctx): Extension<AuthCtx>, Json(p): Json<NewGroup>) -> Response {
     let tenant = ctx.scope();
     if !ctx.can_manage(&tenant) {
@@ -216,13 +216,13 @@ pub async fn create_group(Extension(ctx): Extension<AuthCtx>, Json(p): Json<NewG
     }
     if !provigil_manager::sync_group(&m, true).await {
         let _ = std::fs::remove_dir_all(&dir);
-        return err(StatusCode::SERVICE_UNAVAILABLE, "wazuh-db did not accept the group");
+        return err(StatusCode::SERVICE_UNAVAILABLE, "provigil-db did not accept the group");
     }
     info!("Agent group '{m}' created by {}", ctx.username);
     Json(serde_json::json!({ "status": "ok", "message": format!("Group '{name}' created.") })).into_response()
 }
 
-/// Moves `tenant`'s agents off group `g` (display name); returns (id, new groups) to send to wazuh-db.
+/// Moves `tenant`'s agents off group `g` (display name); returns (id, new groups) to send to provigil-db.
 fn drop_group_from_agents(state: &AppState, tenant: &str, g: &str) -> Vec<(String, Vec<String>)> {
     let mut changed = Vec::new();
     let mut enrolled = state.enrolled.write().unwrap();
@@ -238,7 +238,7 @@ fn drop_group_from_agents(state: &AppState, tenant: &str, g: &str) -> Vec<(Strin
     changed
 }
 
-/// `DELETE /api/v1/groups/:name` (Wazuh `delete_groups`): the folder goes,
+/// `DELETE /api/v1/groups/:name` (ProVigil `delete_groups`): the folder goes,
 /// and the group's agents keep their other groups (or fall back to `default`).
 pub async fn delete_group(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(name): Path<String>) -> Response {
     let tenant = ctx.scope();
@@ -284,7 +284,7 @@ pub async fn get_agent_conf(Extension(ctx): Extension<AuthCtx>, Path(name): Path
     }
 }
 
-/// `PUT /api/v1/groups/:name/agent.conf` (Wazuh `upload_group_file`): checked, then replaced in one rename.
+/// `PUT /api/v1/groups/:name/agent.conf` (ProVigil `upload_group_file`): checked, then replaced in one rename.
 pub async fn put_agent_conf(Extension(ctx): Extension<AuthCtx>, Path(name): Path<String>, body: String) -> Response {
     let tenant = ctx.scope();
     if !can_edit(&ctx, &tenant, &name) {
@@ -319,7 +319,7 @@ pub struct AgentGroups {
     pub groups: Vec<String>,
 }
 
-/// `PUT /api/v1/agents/:id/groups`: the agent's full group list (Wazuh
+/// `PUT /api/v1/agents/:id/groups`: the agent's full group list (ProVigil
 /// `set-agent-groups` override; an empty list means `default`).
 pub async fn put_agent_groups(
     State(state): State<AppState>,
@@ -342,7 +342,7 @@ pub async fn put_agent_groups(
         Err(e) => return err(StatusCode::BAD_REQUEST, &e),
     };
     if !provigil_manager::set_agent_groups(&id, &groups).await {
-        return err(StatusCode::SERVICE_UNAVAILABLE, "wazuh-db did not accept the groups");
+        return err(StatusCode::SERVICE_UNAVAILABLE, "provigil-db did not accept the groups");
     }
     let shown: Vec<String> = groups.iter().filter_map(|m| display_name(&tenant, m)).collect();
     if let Some(e) = state.enrolled.write().unwrap().get_mut(&id) {

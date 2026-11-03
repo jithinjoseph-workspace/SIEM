@@ -1,5 +1,5 @@
 //! MITRE ATT&CK lookup (`mitre.c`): technique external id -> name and the
-//! ordered list of its tactics, loaded from wazuh-db's `mitre` database.
+//! ordered list of its tactics, loaded from provigil-db's `mitre` database.
 
 use std::collections::HashMap;
 

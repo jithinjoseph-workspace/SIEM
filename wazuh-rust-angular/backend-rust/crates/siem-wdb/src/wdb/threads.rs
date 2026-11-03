@@ -1,4 +1,4 @@
-//! The threads of wazuh-db's main (wazuh_db/main.c) that do not touch the
+//! The threads of provigil-db's main (wazuh_db/main.c) that do not touch the
 //! local socket: gc, backup and the database upgrade, with the `running`
 //! flag the signal handler clears.
 

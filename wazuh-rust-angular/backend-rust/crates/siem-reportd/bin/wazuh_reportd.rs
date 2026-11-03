@@ -1,4 +1,4 @@
-//! Wazuh Reportd CLI Binary (`src/reportd/report.c`)
+//! ProVigil Reportd CLI Binary (`src/reportd/report.c`)
 
 use siem_reportd::engine::ReportEngine;
 use siem_reportd::filter::ReportFilter;

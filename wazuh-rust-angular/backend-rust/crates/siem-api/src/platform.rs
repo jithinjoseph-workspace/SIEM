@@ -65,7 +65,7 @@ pub async fn health(State(state): State<AppState>, ctx: Option<Extension<AuthCtx
             "engine": "running",
             "clickhouse": if ch { "running" } else { "stopped" },
             "valkey": if tenancy::valkey_ok().await { "running" } else { "stopped" },
-            "wazuh_manager": if !crate::provigil_manager::enabled() { "not used" } else if crate::provigil_manager::running().is_empty() { "stopped" } else { "running" },
+            "provigil_manager": if !crate::provigil_manager::enabled() { "not used" } else if crate::provigil_manager::running().is_empty() { "stopped" } else { "running" },
         }
     }))
 }
@@ -117,7 +117,7 @@ pub async fn scale_status() -> Json<Value> {
     Json(json!({ "status": "standalone", "nodes": 1, "capacity_percent": host().lock().unwrap().0.round() }))
 }
 
-/// `GET /api/admin/engines`: siem-api, each Wazuh manager daemon, ClickHouse and Valkey.
+/// `GET /api/admin/engines`: siem-api, each ProVigil manager daemon, ClickHouse and Valkey.
 pub async fn engines(State(state): State<AppState>) -> Json<Value> {
     let mut engines = vec![json!({ "name": "siem-api", "status": format!("Up {}", uptime()), "running": "true", "host": hostname(), "version": env!("CARGO_PKG_VERSION"), "sigma_rules": crate::sigma::rule_count() })];
     if crate::provigil_manager::enabled() {

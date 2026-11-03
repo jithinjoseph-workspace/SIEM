@@ -2,7 +2,7 @@
 name = "siem-cdb"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh-compatible fast Constant Database (CDB) engine for Threat Intelligence (IPs, Hashes, Domains)"
+description = "ProVigil-compatible fast Constant Database (CDB) engine for Threat Intelligence (IPs, Hashes, Domains)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

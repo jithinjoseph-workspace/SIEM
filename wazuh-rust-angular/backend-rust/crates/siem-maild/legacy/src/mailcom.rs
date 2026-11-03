@@ -1,6 +1,6 @@
-//! Wazuh Mailcom IPC Control Socket and Client (src/os_maild/mailcom.c, os_maild_client.c)
+//! ProVigil Mailcom IPC Control Socket and Client (src/os_maild/mailcom.c, os_maild_client.c)
 //!
-//! Provides the Unix domain IPC control interface for wazuh-maild:
+//! Provides the Unix domain IPC control interface for provigil-maild:
 //! - Commands: `getconfig global`, `getconfig alerts`, `getconfig internal`
 //! - Dispatches responses formatted as `ok <json_data>` or `err <msg>`
 

@@ -1,4 +1,4 @@
-// Wazuh's Makefile: ${OSSEC_CC} ${OSSEC_CFLAGS} -w -fPIC -DSQLITE_ENABLE_DBSTAT_VTAB=1 -c sqlite3.c
+// the upstream Makefile: ${OSSEC_CC} ${OSSEC_CFLAGS} -w -fPIC -DSQLITE_ENABLE_DBSTAT_VTAB=1 -c sqlite3.c
 fn main() {
     println!("cargo:rerun-if-changed=sqlite/sqlite3.c");
     println!("cargo:rerun-if-changed=sqlite/sqlite3.h");

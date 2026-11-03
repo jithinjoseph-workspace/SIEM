@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Task status lifecycle.
-/// Matches Wazuh wm_task_manager status codes.
+/// Matches upstream wm_task_manager status codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
@@ -61,7 +61,7 @@ pub enum TaskCommand {
     UpgradeCancelTasks,
 }
 
-/// Error codes matching Wazuh error_code enum in wm_task_manager.h.
+/// Error codes matching ProVigil error_code enum in wm_task_manager.h.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskErrorCode {
     Success = 0,

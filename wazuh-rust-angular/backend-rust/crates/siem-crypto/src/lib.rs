@@ -1,8 +1,8 @@
-//! Wazuh Cryptography Subsystem (`src/os_crypto`)
+//! ProVigil Cryptography Subsystem (`src/os_crypto`)
 //!
-//! Complete 100% line-by-line parity port of Wazuh's crypto subsystem:
+//! Complete 100% line-by-line parity port of the upstream crypto subsystem:
 //! - `hashes`: MD5, SHA-1, SHA-256, SHA-512, HMAC-SHA1, and simultaneous multi-hash streaming
-//! - `ciphers`: AES-256-CBC and Blowfish-CBC encryption and decryption with Wazuh standard IVs
+//! - `ciphers`: AES-256-CBC and Blowfish-CBC encryption and decryption with ProVigil standard IVs
 //! - `keys`: `client.keys` parsing, 192-bit symmetric encryption key derivation, and keystore management
 //! - `msgs`: Secure agent message envelope protocol (replay counters, MD5 checksum, zlib compression, padding)
 //! - `signature`: WPK256 package signature validation

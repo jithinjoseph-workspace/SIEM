@@ -1,7 +1,7 @@
 //! Syscollector decoder (analysisd/decoders/syscollector.c): inventory
 //! messages from the agents' syscollector module (network interfaces, OS,
 //! hardware, packages, hotfixes, ports, processes and the `dbsync_*`
-//! deltas) are stored in wazuh-db and exposed as dynamic fields.
+//! deltas) are stored in provigil-db and exposed as dynamic fields.
 
 use sha1::{Digest, Sha1};
 use siem_cjson::Json;

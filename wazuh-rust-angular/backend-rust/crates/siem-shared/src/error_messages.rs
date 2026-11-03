@@ -1,4 +1,4 @@
-//! Wazuh Canonical Error, Warning and Information Messages (src/error_messages)
+//! ProVigil Canonical Error, Warning and Information Messages (src/error_messages)
 //!
 //! Provides the centralized error definitions and codes matching:
 //! - `error_messages.h` (codes 1101 - 9000)

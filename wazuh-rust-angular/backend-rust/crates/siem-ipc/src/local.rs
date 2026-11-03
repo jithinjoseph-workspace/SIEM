@@ -1,4 +1,4 @@
-//! Local sockets at Wazuh paths (`OS_BindUnixDomain`, `OS_ConnectUnixDomain`,
+//! Local sockets at ProVigil paths (`OS_BindUnixDomain`, `OS_ConnectUnixDomain`,
 //! `OS_SendUnix`, `OS_RecvUnix`).
 //!
 //! On Unix these are `AF_UNIX` sockets. On Windows, which has no `AF_UNIX`

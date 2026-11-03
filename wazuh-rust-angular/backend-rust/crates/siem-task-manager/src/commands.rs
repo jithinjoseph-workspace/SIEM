@@ -4,7 +4,7 @@ use crate::task_model::{
 use crate::task_store::TaskStore;
 use std::sync::Arc;
 
-/// Task Manager engine ported from Wazuh wm_task_manager_commands.c.
+/// Task Manager engine ported from upstream wm_task_manager_commands.c.
 pub struct TaskManager {
     store: Arc<TaskStore>,
     default_node: String,

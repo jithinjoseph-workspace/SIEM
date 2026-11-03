@@ -1,7 +1,7 @@
 //! Sigma detection for the SIEM, with provigil-common's engine and SigmaHQ rule
 //! sync (`ndr.sigma_rules`, shared with the NDR engine): every event the manager
 //! archives (Windows event channel, Linux audit, syslog) is checked against the
-//! enabled rules, in addition to the Wazuh ruleset; a match becomes a SIEM alert
+//! enabled rules, in addition to the ProVigil ruleset; a match becomes a SIEM alert
 //! (rule id 950000-999999 from the Sigma rule's id, groups "sigma" + its tags,
 //! MITRE from its `attack.*` tags), so triage, SOAR and the investigation see it.
 //!
@@ -107,13 +107,13 @@ pub fn spawn(state: AppState) {
     });
 }
 
-/// `commandLine` -> `CommandLine` (Wazuh's eventdata names are Sigma's, lower-camel).
+/// `commandLine` -> `CommandLine` (the upstream eventdata names are Sigma's, lower-camel).
 fn pascal(k: &str) -> String {
     let mut c = k.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
-/// A Wazuh archive event as the Sigma engine sees it; `None` when it has nothing to match.
+/// A ProVigil archive event as the Sigma engine sees it; `None` when it has nothing to match.
 pub fn normalize(v: &Value) -> Option<NormalizedEvent> {
     let s = |x: &Value| x.as_str().filter(|t| !t.is_empty()).map(String::from);
     let mut raw = Map::new();
@@ -122,7 +122,7 @@ pub fn normalize(v: &Value) -> Option<NormalizedEvent> {
         if let Some(ed) = win["eventdata"].as_object() {
             for (k, val) in ed {
                 if let Some(t) = val.as_str() {
-                    // the Wazuh agent doubles every backslash of eventchannel values; Sigma paths have single ones
+                    // the ProVigil agent doubles every backslash of eventchannel values; Sigma paths have single ones
                     raw.insert(pascal(k), json!(t.replace("\\\\", "\\")));
                 }
             }
@@ -177,7 +177,7 @@ pub fn normalize(v: &Value) -> Option<NormalizedEvent> {
     Some(ev)
 }
 
-/// The Wazuh alert level of a Sigma severity.
+/// The ProVigil alert level of a Sigma severity.
 pub fn level(severity: &str) -> u8 {
     match severity.to_lowercase().as_str() {
         "critical" => 13,
@@ -195,7 +195,7 @@ pub fn rule_number(id: &str) -> u32 {
     950_000 + (h % 50_000) as u32
 }
 
-/// The SIEM alert for a Sigma match on an archived Wazuh event.
+/// The SIEM alert for a Sigma match on an archived ProVigil event.
 pub fn alert_for(v: &Value, m: &DetectionMatch) -> siem_core::Alert {
     let s = |x: &Value| x.as_str().unwrap_or("").to_string();
     // attack.t1087.001 is a technique, attack.discovery a tactic (attack.g0016 / s0002: groups, software)
@@ -352,7 +352,7 @@ level: medium
             "timestamp": "2026-10-26T08:48:49.815+0000", "agent": { "id": "043", "name": "win-node", "ip": "192.168.1.70" }, "location": "EventChannel",
             "decoder": { "name": "windows_eventchannel" },
             "data": { "win": { "system": { "eventID": "4798", "channel": "Security", "providerName": "Microsoft-Windows-Security-Auditing" },
-                               // as the Wazuh agent sends it: every backslash doubled
+                               // as the ProVigil agent sends it: every backslash doubled
                                "eventdata": { "targetUserName": "Guest", "callerProcessName": "C:\\\\Windows\\\\System32\\\\net1.exe" } } }
         });
         let n = normalize(&ev).unwrap();

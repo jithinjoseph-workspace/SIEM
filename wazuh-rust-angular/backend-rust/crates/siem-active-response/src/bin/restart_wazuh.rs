@@ -1,5 +1,5 @@
 //! `src/active-response/restart-wazuh.c`: restarts the agent
-//! (`wazuh-control restart` on Unix, `net stop/start Wazuh` on Windows).
+//! (`provigil-control restart` on Unix, `net stop/start ProVigil` on Windows).
 
 #[cfg(windows)]
 #[path = "../../../siem-winagent/src/dll_verify.rs"]

@@ -1,5 +1,5 @@
-//! Wazuh's configuration error/warning texts (`error_messages.h`,
-//! `warning_messages.h`), so logs read exactly like a Wazuh manager's.
+//! the upstream configuration error/warning texts (`error_messages.h`,
+//! `warning_messages.h`), so logs read exactly like a ProVigil manager's.
 
 pub fn xml_error(file: &str, err: &str, line: u32) -> String {
     format!("(1226): Error reading XML file '{file}': {err} (line {line}).")

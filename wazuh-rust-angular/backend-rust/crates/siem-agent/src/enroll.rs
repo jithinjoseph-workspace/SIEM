@@ -50,7 +50,7 @@ pub fn export_agent_key(key: &str) {
     }
 }
 
-/// Wazuh agent names: letters, digits, '.', '_', '-' (anything else becomes '-').
+/// ProVigil agent names: letters, digits, '.', '_', '-' (anything else becomes '-').
 pub fn sanitize_name(name: &str) -> String {
     let s: String = name
         .trim()
@@ -118,7 +118,7 @@ pub async fn enroll_until_done(manager_url: &str, name: &str, groups: &str, os_t
     }
 }
 
-/// Stores the identity as a Wazuh `client.keys` line (`ID NAME IP KEY`).
+/// Stores the identity as a ProVigil `client.keys` line (`ID NAME IP KEY`).
 pub fn write_client_keys(path: &Path, e: &Enrollment) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);

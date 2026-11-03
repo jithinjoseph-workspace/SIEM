@@ -1,4 +1,4 @@
-//! EDR response (not in Wazuh): network isolation of the endpoint with Windows
+//! EDR response (not in upstream): network isolation of the endpoint with Windows
 //! Firewall block rules (`edr::isolation_rules`) that leave only the manager.
 //! extra_args: `id=<isolation id>`, `allow=<manager IPv4>[,...]`; `release` lifts it.
 //! With a timeout, execd runs it again with "delete" when the time is up: that lifts

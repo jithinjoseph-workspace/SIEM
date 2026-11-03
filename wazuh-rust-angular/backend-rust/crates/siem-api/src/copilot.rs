@@ -75,7 +75,7 @@ pub struct AlertFilter {
     pub text: Option<String>,
     /// any of these words or phrases (in the description or the log)
     pub any_text: Vec<String>,
-    /// any of these Wazuh rule groups (authentication_failed, account_changed...)
+    /// any of these ProVigil rule groups (authentication_failed, account_changed...)
     pub groups: Vec<String>,
     pub min_level: Option<u8>,
     pub max_level: Option<u8>,
@@ -927,7 +927,7 @@ pub fn filter_from_text(message: &str, agents: &[(String, String)]) -> AlertFilt
     f
 }
 
-/// The Wazuh rule groups a kind of activity stands for ("login failures" -> authentication_failed...).
+/// The ProVigil rule groups a kind of activity stands for ("login failures" -> authentication_failed...).
 pub fn groups_in(m: &str) -> Vec<String> {
     let m = m.to_lowercase();
     let has = |w: &[&str]| w.iter().any(|x| m.contains(x));

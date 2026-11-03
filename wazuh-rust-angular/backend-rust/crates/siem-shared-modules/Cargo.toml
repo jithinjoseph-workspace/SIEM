@@ -2,7 +2,7 @@
 name = "siem-shared-modules"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh shared_modules (dbsync, rsync, router, indexer_connector, keystore, content_manager, utils, http-request)"
+description = "Port of upstream shared_modules (dbsync, rsync, router, indexer_connector, keystore, content_manager, utils, http-request)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

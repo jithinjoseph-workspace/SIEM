@@ -14,7 +14,7 @@ pub struct RegistryMonitor {
 
 impl RegistryMonitor {
     pub fn new(agent_id: String) -> Self {
-        // High-value persistence and security-critical registry paths from Wazuh ossec.conf
+        // High-value persistence and security-critical registry paths from upstream ossec.conf
         let default_keys = vec![
             r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run".to_string(),
             r"HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce".to_string(),

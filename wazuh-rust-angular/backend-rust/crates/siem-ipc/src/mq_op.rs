@@ -2,7 +2,7 @@
 //! `SendMSG`) and `shared/wait_op.c` (the agent's global "wait" lock that
 //! pauses senders while the manager is unreachable).
 //!
-//! Paths are relative to the Wazuh home: the daemons `chdir` there at startup,
+//! Paths are relative to the ProVigil home: the daemons `chdir` there at startup,
 //! as the C daemons do.
 //!
 //! On Windows every component runs inside `wazuh-agent.exe`: `StartMQ` is a

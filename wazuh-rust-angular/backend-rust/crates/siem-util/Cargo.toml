@@ -2,7 +2,7 @@
 name = "siem-util"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh utility command-line tools (agent_control, list_agents, verify-agent-conf, clear_stats, wazuh-regex)"
+description = "ProVigil utility command-line tools (agent_control, list_agents, verify-agent-conf, clear_stats, provigil-regex)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

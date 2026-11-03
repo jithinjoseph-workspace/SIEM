@@ -1,4 +1,4 @@
-//! Wazuh Mail Configuration (src/os_maild/config.c, mail-config.h)
+//! ProVigil Mail Configuration (src/os_maild/config.c, mail-config.h)
 //!
 //! Handles parsing and configuration management for `<email_alerts>` and `<global>`:
 //! - SMTP server, HELO hostname, sender address, reply-to, and recipient lists.

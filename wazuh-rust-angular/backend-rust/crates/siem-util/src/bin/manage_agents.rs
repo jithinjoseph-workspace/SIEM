@@ -1,4 +1,4 @@
-//! Wazuh Manage Agents CLI (`src/addagent/main.c`, `manage_agents.c`, `manage_keys.c`, `validate.c`)
+//! ProVigil Manage Agents CLI (`src/addagent/main.c`, `manage_agents.c`, `manage_keys.c`, `validate.c`)
 //!
 //! Provides the command-line and interactive menu utility for managing agents
 //! and authentication keys in `client.keys`.

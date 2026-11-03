@@ -22,7 +22,7 @@ pub struct EpsLimits {
 }
 
 /// `_Config` (global part). Zero-initialised like `os_calloc`; daemons set
-/// their own defaults before reading, as in Wazuh.
+/// their own defaults before reading, as in upstream.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalConfig {
     pub logall: u8,

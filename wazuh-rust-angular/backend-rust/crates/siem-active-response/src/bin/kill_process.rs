@@ -1,4 +1,4 @@
-//! EDR response (not in Wazuh): ends a process on the endpoint.
+//! EDR response (not in upstream): ends a process on the endpoint.
 //! extra_args: `pid=<n>`, optionally `image=<full path>` (refused when the PID now
 //! runs another program: PIDs are reused). Critical Windows processes and the
 //! agent are never killed (`edr::kill_refusal`).

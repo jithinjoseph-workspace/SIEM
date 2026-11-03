@@ -277,7 +277,7 @@ async fn analyst_insights_end_to_end() {
 
 /// History pages and agent inventory read ClickHouse: full alerts round-trip,
 /// a restarted siem-api (empty memory) still sees them, tenants stay apart,
-/// and inventory syncs from a siem-agent and from the running wazuh-db.
+/// and inventory syncs from a siem-agent and from the running provigil-db.
 #[tokio::test]
 #[ignore]
 async fn history_and_inventory_from_clickhouse() {
@@ -294,7 +294,7 @@ async fn history_and_inventory_from_clickhouse() {
         a.rule.mitre = Some(siem_core::MitreAttack { id: "T1110".into(), tactic: "Credential Access".into(), technique: "Brute Force".into() });
         a.decoded.file_path = Some("/etc/passwd".into());
         a.data.insert("syscheck".into(), json!({ "path": "/etc/passwd", "event": "modified" }));
-        // the compliance groups Wazuh's rule 5710 carries
+        // the compliance groups ProVigil rule 5710 carries
         a.data.insert("wazuh_rule".into(), json!({ "id": "5710", "pci_dss": ["10.2.4", "10.2.5"], "gdpr": ["IV_35.7.d"], "tsc": ["CC6.1"] }));
         let a = crate::tenancy::tag_alert(a, &ta);
         let mut other = crate::tenancy::tag_alert(alert(100200, 3, "tenant B only", "902", "", now - 30_000), &tb);
@@ -349,7 +349,7 @@ async fn history_and_inventory_from_clickhouse() {
         assert!(os.contains("Ubuntu") && os.contains("24.04"), "{os}");
         assert_eq!(crate::inventory_store::host(&st, "901").await.unwrap()["source"], "siem-agent");
 
-        // inventory of a real Wazuh agent from the running wazuh-db (if one has reported)
+        // inventory of a upstream agent from the running provigil-db (if one has reported)
         let mut found = None;
         for n in 1..200u32 {
             let id = format!("{n:03}");
@@ -361,11 +361,11 @@ async fn history_and_inventory_from_clickhouse() {
         match found {
             Some(id) => {
                 st.agent_tenants.write().unwrap().insert(id.clone(), ta.clone());
-                // read live from the agent's own wazuh-db database: the page's rows are the table's
+                // read live from the agent's own provigil-db database: the page's rows are the table's
                 let inv = crate::inventory_store::host(&st, &id).await.expect("a Wazuh agent's host view");
-                assert_eq!(inv["source"], "wazuh-db");
+                assert_eq!(inv["source"], "provigil-db");
                 let pk: serde_json::Value = serde_json::from_str(&body(crate::get_agent_packages_handler(State(st.clone()), Path(id.clone())).await.into_response()).await).unwrap();
-                assert_eq!(pk["source"], "wazuh-db");
+                assert_eq!(pk["source"], "provigil-db");
                 assert_eq!(pk["total"], inv["packages"], "every package of sys_programs, from this agent's database");
                 eprintln!("wazuh agent {id}: {} packages, {} ports, {} processes from wazuh-db", inv["packages"], inv["ports"], inv["processes"]);
             }

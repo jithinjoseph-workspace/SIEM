@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7 `wazuh-agentd` (`src/client-agent/`): the agent
+//! Port of upstream 4.14.7 `provigil-agentd` (`src/client-agent/`): the agent
 //! daemon that keeps the encrypted session with the manager, forwards the
 //! local event queue (`queue/sockets/queue`) and dispatches what the
 //! manager sends back (active responses, shared files, requests).
@@ -8,7 +8,7 @@
 //! Like the C daemon it uses blocking sockets and threads.
 //!
 //! On Windows these modules run inside `wazuh-agent.exe` (`win32/`): there
-//! is no `wazuh-agentd` main ([`agentd`] is Unix only); `local_start` drives
+//! is no `provigil-agentd` main ([`agentd`] is Unix only); `local_start` drives
 //! them, and the in-process components the C code calls directly (execd,
 //! logcollector, syscheck, modules) are reached through [`WinHooks`].
 
@@ -69,7 +69,7 @@ pub const HC_ERROR: &str = "err ";
 /// `REQ_RESPONSE_LENGTH`
 pub const REQ_RESPONSE_LENGTH: usize = 64;
 
-// defs.h (relative to the Wazuh home / the Windows install directory)
+// defs.h (relative to the ProVigil home / the Windows install directory)
 #[cfg(unix)]
 #[allow(dead_code)]
 mod paths {
@@ -416,7 +416,7 @@ impl Agentd {
     }
 }
 
-/// `"%c:%s:%s"` with `LOCALFILE_MQ` and the "wazuh-agent" location.
+/// `"%c:%s:%s"` with `LOCALFILE_MQ` and the "provigil-agent" location.
 pub fn agent_event(msg: &str) -> String {
     format!("{LOCALFILE_MQ}:wazuh-agent:{msg}")
 }

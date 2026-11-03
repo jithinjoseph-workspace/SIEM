@@ -67,7 +67,7 @@ impl RemotedServer {
         peer_ip: &str,
         packet_bytes: &[u8],
     ) -> Result<(RemotedMessage, Option<Alert>), ServerError> {
-        // Agent packets in Wazuh:
+        // Agent packets in upstream:
         // Format A: starts with "!agent_id:ciphertext" or ":agent_id:ciphertext"
         // Format B: pure ciphertext, key looked up by peer_ip
         let (agent_id, ciphertext) = if packet_bytes.starts_with(b"!") || packet_bytes.starts_with(b":") {
@@ -156,7 +156,7 @@ impl RemotedServer {
         Ok(full_packet)
     }
 
-    /// Start listening on UDP port 1514 (mirroring Wazuh remoted UDP receiver)
+    /// Start listening on UDP port 1514 (mirroring upstream remoted UDP receiver)
     pub async fn start_udp_listener(self: Arc<Self>) -> Result<(), std::io::Error> {
         let socket = UdpSocket::bind(self.config.bind_addr).await?;
         info!("Wazuh Remoted listening on UDP {}", self.config.bind_addr);

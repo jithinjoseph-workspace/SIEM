@@ -1,4 +1,4 @@
-//! Port of Wazuh 4.14.7's `shared_modules/dbsync` and `shared_modules/rsync`.
+//! Port of upstream 4.14.7 `shared_modules/dbsync` and `shared_modules/rsync`.
 //!
 //! * dbsync keeps an inventory in SQLite and reports what changed: row
 //!   syncs (`syncRow`), whole-table snapshots (`updateWithSnapshot`),

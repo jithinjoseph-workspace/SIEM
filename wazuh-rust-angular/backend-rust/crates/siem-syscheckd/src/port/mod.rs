@@ -1,4 +1,4 @@
-//! Faithful port of Wazuh 4.14.7 syscheckd (`src/syscheckd`, `config/syscheck-config.c`).
+//! Faithful port of upstream 4.14.7 syscheckd (`src/syscheckd`, `config/syscheck-config.c`).
 //! The modules at the crate root are an earlier prototype, not used by the agent.
 
 pub mod cfmt;

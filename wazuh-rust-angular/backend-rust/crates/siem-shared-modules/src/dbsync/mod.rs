@@ -1,4 +1,4 @@
-//! Superseded: the faithful port of Wazuh's dbsync is the `siem-dbsync`
+//! Superseded: the faithful port of the upstream dbsync is the `siem-dbsync`
 //! crate. This simplified in-memory version is kept for its current users.
 //!
 //! Database synchronization engine (dbsync)

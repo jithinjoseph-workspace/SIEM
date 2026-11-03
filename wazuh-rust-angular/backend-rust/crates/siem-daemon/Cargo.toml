@@ -2,7 +2,7 @@
 name = "siem-daemon"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh daemon start-up helpers: w_homedir, privsep, PID files, goDaemon, StartSIG"
+description = "ProVigil daemon start-up helpers: w_homedir, privsep, PID files, goDaemon, StartSIG"
 
 [dependencies]
 siem-log = { path = "../siem-log" }

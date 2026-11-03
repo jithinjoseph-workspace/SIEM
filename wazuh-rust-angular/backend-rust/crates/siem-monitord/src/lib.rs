@@ -1,6 +1,6 @@
-//! Port of `wazuh-monitord` (`src/monitord`, Wazuh 4.14.7).
+//! Port of `provigil-monitord` (`src/monitord`, upstream 4.14.7).
 //!
-//! * marks agents without keepalive as disconnected in wazuh-db and raises
+//! * marks agents without keepalive as disconnected in provigil-db and raises
 //!   the "Agent disconnected" alert (rule 504) through analysisd's queue;
 //! * optionally removes agents disconnected for too long (`delete_old_agents`);
 //! * rotates `logs/ossec.log` / `logs/ossec.json` by day and by size;

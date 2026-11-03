@@ -58,7 +58,7 @@ pub fn evaluate_condition(pb: &SoarNativePlaybook, ctx: &SoarContext) -> bool {
             _ => false,
         },
 
-        // SIEM alert fields (Wazuh alert JSON); never true for NDR hits.
+        // SIEM alert fields (ProVigil alert JSON); never true for NDR hits.
         "rule_level" => {
             let Some(level) = alert_str(ctx, &["rule", "level"]).and_then(|l| l.parse::<f64>().ok()) else { return false };
             let Ok(threshold) = pb.cond_value.trim().parse::<f64>() else { return false };

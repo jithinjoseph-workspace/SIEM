@@ -1,4 +1,4 @@
-//! Wazuh SysInfo Test Tool / CLI (mirroring src/data_provider/testtool/main.cpp)
+//! ProVigil SysInfo Test Tool / CLI (mirroring src/data_provider/testtool/main.cpp)
 //!
 //! Provides the sysinfo diagnostic CLI tool matching sysinfo_test_tool.
 //! Supports:

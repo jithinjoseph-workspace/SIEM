@@ -2,7 +2,7 @@
 name = "siem-integratord"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-integratord (src/os_integrator) and the integration scripts (integrations/*.py)"
+description = "Port of provigil-integratord (src/os_integrator) and the integration scripts (integrations/*.py)"
 
 [dependencies]
 siem-config = { path = "../siem-config" }

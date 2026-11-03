@@ -1,5 +1,5 @@
 //! The Rust side of the monitord oracle (tests/oracle: `harness.c`): the same
-//! commands on stdin, run in a Wazuh home (the cwd). Logs go to
+//! commands on stdin, run in a ProVigil home (the cwd). Logs go to
 //! `$MON_RLOG/logs/ossec.log`.
 
 use std::io::BufRead;

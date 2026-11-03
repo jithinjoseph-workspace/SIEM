@@ -171,7 +171,7 @@ impl KeysDatabase {
         format!("{:03}", max_id + 1)
     }
 
-    /// Parse contents of a Wazuh client.keys file
+    /// Parse contents of a ProVigil client.keys file
     pub fn load_from_str(&self, content: &str) -> usize {
         let mut count = 0;
         for line in content.lines() {

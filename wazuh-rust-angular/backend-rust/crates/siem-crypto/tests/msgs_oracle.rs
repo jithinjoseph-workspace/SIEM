@@ -1,4 +1,4 @@
-//! Differential test against Wazuh's C `msgs.c` (see `tools/README.md`).
+//! Differential test against the upstream C `msgs.c` (see `tools/README.md`).
 //!
 //! Skipped unless `SIEM_MSGS_ORACLE` points to a built `msgs_harness`.
 

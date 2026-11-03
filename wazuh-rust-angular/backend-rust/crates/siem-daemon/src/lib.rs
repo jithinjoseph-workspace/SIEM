@@ -1,4 +1,4 @@
-//! Start-up plumbing shared by the Wazuh daemons: `w_homedir`
+//! Start-up plumbing shared by the ProVigil daemons: `w_homedir`
 //! (shared/file_op.c), privilege separation (privsep_op.c), PID files
 //! (`CreatePID` / `DeletePID` / `DeleteState`), `goDaemon` and `StartSIG`
 //! (sig_op.c). The Unix calls are no-ops elsewhere.

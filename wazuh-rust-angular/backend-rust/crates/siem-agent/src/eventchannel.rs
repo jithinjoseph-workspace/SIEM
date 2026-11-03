@@ -14,7 +14,7 @@ pub struct WindowsEventChannel {
 
 impl WindowsEventChannel {
     pub fn new(agent_id: String) -> Self {
-        // High-value threat telemetry channels mirroring Wazuh Windows EventChannel configuration
+        // High-value threat telemetry channels mirroring upstream Windows EventChannel configuration
         let channels = vec![
             "Security".into(),
             "System".into(),

@@ -1,7 +1,7 @@
-//! Wazuh Logtest Emulation Engine (src/analysisd/logtest.c)
+//! ProVigil Logtest Emulation Engine (src/analysisd/logtest.c)
 //!
 //! Provides the diagnostic test engine simulating Phase 1 (pre-decoding),
-//! Phase 2 (decoding), and Phase 3 (rule matching) matching upstream `wazuh-logtest`.
+//! Phase 2 (decoding), and Phase 3 (rule matching) matching upstream `provigil-logtest`.
 
 use crate::AnalysisEngine;
 use regex::Regex;
@@ -26,7 +26,7 @@ pub struct LogtestResult {
 }
 
 impl LogtestResult {
-    /// Formats the result as traditional Wazuh Logtest output
+    /// Formats the result as traditional ProVigil Logtest output
     pub fn format_provigil_output(&self) -> String {
         let mut out = String::new();
 
@@ -95,7 +95,7 @@ impl LogtestEngine {
         }
     }
 
-    /// Analyze a single raw log line through the 3-phase Wazuh pipeline
+    /// Analyze a single raw log line through the 3-phase ProVigil pipeline
     pub fn test_log(&self, line: &str) -> LogtestResult {
         let trimmed = line.trim();
 

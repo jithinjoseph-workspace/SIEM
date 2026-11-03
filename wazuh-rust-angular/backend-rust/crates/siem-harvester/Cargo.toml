@@ -2,7 +2,7 @@
 name = "siem-harvester"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh Common Schema (WCS) Inventory & FIM Harvester Pipeline (wm_inventory_harvester)"
+description = "ProVigil Common Schema (WCS) Inventory & FIM Harvester Pipeline (wm_inventory_harvester)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

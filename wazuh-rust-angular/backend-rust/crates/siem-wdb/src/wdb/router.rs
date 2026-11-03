@@ -1,4 +1,4 @@
-//! The router providers wazuh-db publishes to (`wdb-agent-events`,
+//! The router providers provigil-db publishes to (`wdb-agent-events`,
 //! `wdb-inventory-events`), shared by the Linux and the portable daemon.
 
 use std::sync::Arc;

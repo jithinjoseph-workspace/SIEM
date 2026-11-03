@@ -1,6 +1,6 @@
-//! Wazuh Email Notification Daemon (src/os_maild)
+//! ProVigil Email Notification Daemon (src/os_maild)
 //!
-//! Provides the complete port of Wazuh's alert email subsystem:
+//! Provides the complete port of ProVigil alert email subsystem:
 //! - `config`: `<email_alerts>` and `<global>` configuration parsing (`config.c`).
 //! - `mail_list`: Alert buffering and aggregation queue (`mail_list.c`, `mail_list.h`).
 //! - `mailer`: RFC 2822 formatting and RFC 5321 SMTP dialog (`sendmail.c`, `sendcustomemail.c`).

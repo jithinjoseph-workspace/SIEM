@@ -1,7 +1,7 @@
 //! OpenSearch / Elasticsearch Indexer Connector
 //!
 //! Provides high-throughput NDJSON bulk ingestion, multi-node failover,
-//! buffer queueing with backpressure, and automatic retries for Wazuh events.
+//! buffer queueing with backpressure, and automatic retries for ProVigil events.
 
 use crate::common::{ReturnType, Result, SharedModuleError};
 use serde::{Deserialize, Serialize};

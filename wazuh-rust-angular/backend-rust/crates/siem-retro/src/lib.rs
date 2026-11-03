@@ -33,7 +33,7 @@ pub struct ScanRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
-    /// A Wazuh rule id.
+    /// A ProVigil rule id.
     Rule(u32),
     Keyword(String),
 }

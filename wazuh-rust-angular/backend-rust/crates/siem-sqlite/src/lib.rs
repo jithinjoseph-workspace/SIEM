@@ -1,6 +1,6 @@
-//! `siem-sqlite`: SQLite 3.50.4 (the amalgamation Wazuh 4.14.7 builds from
-//! deps v54, compiled with `-DSQLITE_ENABLE_DBSTAT_VTAB=1` like Wazuh's
-//! Makefile) behind a thin wrapper of the C API calls wazuh-db makes.
+//! `siem-sqlite`: SQLite 3.50.4 (the amalgamation upstream 4.14.7 builds from
+//! deps v54, compiled with `-DSQLITE_ENABLE_DBSTAT_VTAB=1` like the upstream
+//! Makefile) behind a thin wrapper of the C API calls provigil-db makes.
 //!
 //! The wrapper keeps the C semantics on purpose: return codes instead of
 //! `Result`s, `column_text` returning NULL for NULL values, statements that
@@ -253,7 +253,7 @@ pub struct Stmt {
     raw: *mut RawStmt,
 }
 
-// SAFETY: serialized mode; callers serialize use of a statement (wazuh-db
+// SAFETY: serialized mode; callers serialize use of a statement (provigil-db
 // locks the database for each query).
 unsafe impl Send for Stmt {}
 unsafe impl Sync for Stmt {}

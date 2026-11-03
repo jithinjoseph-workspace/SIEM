@@ -1,4 +1,4 @@
-//! `os_execd/main.c`: the `wazuh-execd` command line (Unix; on Windows
+//! `os_execd/main.c`: the `provigil-execd` command line (Unix; on Windows
 //! execd runs inside `wazuh-agent.exe`).
 
 #[cfg(not(unix))]

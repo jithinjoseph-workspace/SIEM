@@ -1,4 +1,4 @@
-//! Alert suppressions for the SIEM: hide one noisy Wazuh rule for one agent
+//! Alert suppressions for the SIEM: hide one noisy ProVigil rule for one agent
 //! and/or one source IP, for a limited time. They come from a triage
 //! recommendation a person applied, or from an analyst directly; nothing
 //! suppresses on its own.

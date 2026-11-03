@@ -2,7 +2,7 @@
 name = "siem-agentd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7 wazuh-agentd (src/client-agent)"
+description = "Port of upstream 4.14.7 provigil-agentd (src/client-agent)"
 
 [[bin]]
 name = "wazuh-agentd"

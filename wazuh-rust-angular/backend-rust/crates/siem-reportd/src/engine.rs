@@ -127,7 +127,7 @@ impl ReportEngine {
         }
     }
 
-    /// Writes report output in standard Wazuh reportd text format.
+    /// Writes report output in standard ProVigil reportd text format.
     pub fn write_report<W: Write>(&self, mut out: W, filter: &ReportFilter) -> std::io::Result<()> {
         let name = filter
             .report_name

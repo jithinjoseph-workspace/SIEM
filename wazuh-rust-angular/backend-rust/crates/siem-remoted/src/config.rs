@@ -90,7 +90,7 @@ impl InternalRemoted {
     }
 }
 
-/// Paths derived from the Wazuh home directory (chroot-relative in C).
+/// Paths derived from the ProVigil home directory (chroot-relative in C).
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub home: PathBuf,

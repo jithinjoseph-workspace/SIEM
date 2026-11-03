@@ -1,4 +1,4 @@
-//! Wazuh Monitord CLI Binary (`src/monitord/main.c`)
+//! ProVigil Monitord CLI Binary (`src/monitord/main.c`)
 
 use siem_monitord::config::MonitorConfig;
 use siem_monitord::daemon::MonitorDaemon;

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
 /// In-memory and persistent concurrent store for agent tasks.
-/// Ported from Wazuh wm_task_manager_tasks.c & wm_task_manager_commands.c.
+/// Ported from upstream wm_task_manager_tasks.c & wm_task_manager_commands.c.
 pub struct TaskStore {
     tasks: RwLock<HashMap<u64, TaskRecord>>,
     agent_tasks: RwLock<HashMap<String, Vec<u64>>>,
@@ -133,7 +133,7 @@ impl TaskStore {
         count
     }
 
-    /// Timeout tasks that have been in Progress longer than max_seconds (Wazuh default: 900s = 15m).
+    /// Timeout tasks that have been in Progress longer than max_seconds (ProVigil default: 900s = 15m).
     pub fn timeout_expired_tasks(&self, max_in_progress_seconds: i64) -> usize {
         let mut count = 0;
         let now = Utc::now();
@@ -154,7 +154,7 @@ impl TaskStore {
         count
     }
 
-    /// Cleanup old completed tasks past the retention period (Wazuh default: 604800s = 7 days).
+    /// Cleanup old completed tasks past the retention period (ProVigil default: 604800s = 7 days).
     pub fn cleanup_old_tasks(&self, max_age_seconds: i64) -> usize {
         let now = Utc::now();
         let threshold = Duration::seconds(max_age_seconds);

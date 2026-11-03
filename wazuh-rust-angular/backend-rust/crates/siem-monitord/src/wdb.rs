@@ -4,7 +4,7 @@ use siem_cjson::Json;
 use siem_ipc::wdbc::{parse_result, WdbQuery, WdbcError, WdbcResult, WdbcSocket, WDB_LOCAL_SOCK};
 use siem_log::WLog;
 
-/// A blocking wazuh-db client over the async `WdbcSocket`.
+/// A blocking provigil-db client over the async `WdbcSocket`.
 pub struct Wdb {
     sock: WdbcSocket,
     rt: tokio::runtime::Handle,

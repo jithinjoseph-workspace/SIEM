@@ -270,7 +270,7 @@ mod tests {
             DUP_SECURE
         );
         assert_eq!(parse("<ossec_config><remote><port>1514</port></remote></ossec_config>").unwrap_err(), CONN_ERROR);
-        // Empty <remote/> has no children: Wazuh reports it as an invalid element.
+        // Empty <remote/> has no children: ProVigil reports it as an invalid element.
         assert_eq!(parse("<ossec_config><remote/></ossec_config>").unwrap_err(), xml_invelem("remote"));
         assert_eq!(
             parse("<ossec_config><remote><connection>syslog</connection><queue_size>5</queue_size></remote></ossec_config>").unwrap_err(),

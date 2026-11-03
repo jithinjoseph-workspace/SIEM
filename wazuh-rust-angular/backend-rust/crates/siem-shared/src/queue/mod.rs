@@ -1,4 +1,4 @@
-//! Wazuh Event & Message Queues (file-queue.c, json-queue.c, mq_op.c)
+//! ProVigil Event & Message Queues (file-queue.c, json-queue.c, mq_op.c)
 //!
 //! Provides disk-backed rotating event queues and bounded memory queues for daemon IPC.
 

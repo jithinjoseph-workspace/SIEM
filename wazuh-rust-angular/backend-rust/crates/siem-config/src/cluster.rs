@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(node_name(&f), "worker01");
         assert_eq!(cluster_name(&f), "wazuh");
         std::fs::write(&f, "<ossec_config><cluster><node_type>master</node_type><disabled>yes</disabled></cluster></ossec_config>").unwrap();
-        // <cluster> has no text content of its own here, so Wazuh treats it as absent.
+        // <cluster> has no text content of its own here, so ProVigil treats it as absent.
         assert_eq!(is_worker(&f), Some(false));
     }
 }

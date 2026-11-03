@@ -1,4 +1,4 @@
-//! Wazuh Log Readers (src/logcollector/read_*.c)
+//! ProVigil Log Readers (src/logcollector/read_*.c)
 //!
 //! Implements all log format parsing engines:
 //! - `Syslog`: Standard line-oriented log parser.

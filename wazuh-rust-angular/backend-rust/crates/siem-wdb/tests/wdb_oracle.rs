@@ -1,4 +1,4 @@
-//! Differential test of the wazuh-db port against the real C library
+//! Differential test of the provigil-db port against the real C library
 //! (tools/oracle/wdb_harness.c), driven with the same request stream.
 //!
 //! Environment:
@@ -82,7 +82,7 @@ fn corpus() -> Corpus {
         c.q(r);
         c.q(format!("{r}\n"));
     }
-    // ---- wazuh-db JSON commands
+    // ---- provigil-db JSON commands
     for r in [
         "{", "{}", "{\"command\":1}", "{\"command\":\"nope\"}", "{\"command\":\"getstats\"}", "{\"command\":\"getconfig\"}",
         "{\"command\":\"getconfig\",\"parameters\":{}}", "{\"command\":\"getconfig\",\"parameters\":{\"section\":\"internal\"}}",

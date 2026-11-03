@@ -1,4 +1,4 @@
-//! Wazuh Authd Server Daemon Engine (`src/os_auth/main-server.c`)
+//! ProVigil Authd Server Daemon Engine (`src/os_auth/main-server.c`)
 //!
 //! Orchestrates the TCP enrollment server, client connection pool, local IPC command
 //! dispatcher, and persistent `client.keys` disk synchronization.

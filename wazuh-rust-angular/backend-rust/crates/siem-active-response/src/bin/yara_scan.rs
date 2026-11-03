@@ -1,4 +1,4 @@
-//! EDR response (not in Wazuh): scans one file with the YARA rules the manager sends every
+//! EDR response (not in upstream): scans one file with the YARA rules the manager sends every
 //! agent (`shared\siem-yara.yar`) and logs the outcome (match / clean / failed) with the
 //! file's SHA-256 and the rule set's version, for the manager to alert on and cache.
 //! extra_args: `path=<full path>`. Runs at below-normal priority; files over 64 MB are skipped.

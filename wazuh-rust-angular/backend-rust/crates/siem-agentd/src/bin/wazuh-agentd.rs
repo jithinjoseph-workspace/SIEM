@@ -1,4 +1,4 @@
-//! `client-agent/main.c`: the `wazuh-agentd` command line.
+//! `client-agent/main.c`: the `provigil-agentd` command line.
 
 #[cfg(not(unix))]
 fn main() {

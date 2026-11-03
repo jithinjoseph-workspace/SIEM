@@ -1,5 +1,5 @@
-//! `wazuh-agentlessd` (agentlessd/main.c):
-//! `wazuh-agentlessd -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
+//! `provigil-agentlessd` (agentlessd/main.c):
+//! `provigil-agentlessd -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

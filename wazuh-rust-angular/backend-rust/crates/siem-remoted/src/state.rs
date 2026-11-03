@@ -1,6 +1,6 @@
 //! Port of `src/remoted/state.c`: global and per-agent counters, the JSON
 //! returned by the `getstats` / `getagentsstats` remcom commands, and the
-//! `var/run/wazuh-remoted.state` file.
+//! `var/run/provigil-remoted.state` file.
 
 use serde_json::{json, Value};
 use std::collections::HashMap;

@@ -1,4 +1,4 @@
-//! Port of `wazuh-integratord` (`src/os_integrator`, Wazuh 4.14.7) and of the
+//! Port of `provigil-integratord` (`src/os_integrator`, upstream 4.14.7) and of the
 //! integration scripts it runs (`integrations/{slack,pagerduty,virustotal,
 //! shuffle,maltiverse}.py`), so the manager needs no Python.
 

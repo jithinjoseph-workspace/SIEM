@@ -2,7 +2,7 @@
 name = "siem-remoted"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-remoted: the agent communication daemon (Wazuh wire protocol on 1514)"
+description = "Port of provigil-remoted: the agent communication daemon (ProVigil wire protocol on 1514)"
 
 [dependencies]
 siem-crypto = { path = "../siem-crypto" }

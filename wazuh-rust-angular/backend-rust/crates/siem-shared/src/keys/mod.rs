@@ -1,7 +1,7 @@
-//! Wazuh Agent Keys and Fleet Management (agent_op.c, read-agents.c, enrollment_op.c)
+//! ProVigil Agent Keys and Fleet Management (agent_op.c, read-agents.c, enrollment_op.c)
 //!
 //! Provides parsing, atomic persistence, validation, and status resolution for the canonical
-//! Wazuh `client.keys` registry (`ID NAME IP KEY`).
+//! ProVigil `client.keys` registry (`ID NAME IP KEY`).
 
 use crate::validate::{is_valid_agent_id, is_valid_agent_ip, is_valid_agent_name};
 use serde::{Deserialize, Serialize};

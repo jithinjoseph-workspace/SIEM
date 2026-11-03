@@ -2,7 +2,7 @@
 name = "siem-agentlessd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-agentlessd (src/agentlessd): periodic integrity and diff checks of agentless hosts over SSH"
+description = "Port of provigil-agentlessd (src/agentlessd): periodic integrity and diff checks of agentless hosts over SSH"
 
 [dependencies]
 siem-config = { path = "../siem-config" }

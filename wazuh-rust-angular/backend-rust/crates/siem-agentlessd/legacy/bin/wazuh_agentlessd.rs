@@ -1,4 +1,4 @@
-//! Wazuh Agentless Daemon CLI Binary (`src/agentlessd/main.c`)
+//! ProVigil Agentless Daemon CLI Binary (`src/agentlessd/main.c`)
 
 use siem_agentlessd::config::AgentlessConfig;
 use siem_agentlessd::daemon::AgentlessDaemon;

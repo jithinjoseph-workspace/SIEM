@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Root Wazuh Configuration (mirroring src/config/config.c ReadConfig)
+/// Root ProVigil Configuration (mirroring src/config/config.c ReadConfig)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename = "ossec_config")]
 pub struct OssecConfig {
@@ -483,7 +483,7 @@ impl OssecConfig {
     }
 }
 
-/// Helper to parse standard Wazuh `client.keys` (Format: `ID NAME IP KEY`)
+/// Helper to parse standard ProVigil `client.keys` (Format: `ID NAME IP KEY`)
 pub fn parse_client_keys<P: AsRef<Path>>(path: P) -> Option<(String, String, String, String)> {
     if let Ok(content) = fs::read_to_string(path) {
         for line in content.lines() {

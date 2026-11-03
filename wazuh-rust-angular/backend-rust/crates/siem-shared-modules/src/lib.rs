@@ -1,6 +1,6 @@
-//! Wazuh Shared Modules Rust Implementation
+//! ProVigil Shared Modules Rust Implementation
 //!
-//! Provides direct, production-grade 1-to-1 ports of Wazuh's C++ shared modules:
+//! Provides direct, production-grade 1-to-1 ports of the upstream C++ shared modules:
 //! - `common`: Error codes, common results, and definitions.
 //! - `dbsync`: Database synchronization, row hashing, composite checksums, and delta generation.
 //! - `rsync`: Differential table reconciliation with binary search range checksums.

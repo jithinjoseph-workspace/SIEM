@@ -2,7 +2,7 @@
 name = "siem-modulesd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-modulesd (wazuh_modules/): the manager modules database, agent-upgrade, task-manager and download"
+description = "Port of provigil-modulesd (wazuh_modules/): the manager modules database, agent-upgrade, task-manager and download"
 
 [dependencies]
 siem-log = { path = "../siem-log" }

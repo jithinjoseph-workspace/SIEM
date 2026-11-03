@@ -2,7 +2,7 @@ use crate::wcs_model::{WcsAgent, WcsFile, WcsFimDocument};
 use chrono::Utc;
 use siem_wdb::models::FimEntry;
 
-/// FIM Inventory Orchestrator ported from Wazuh src/fimInventoryOrchestrator.hpp.
+/// FIM Inventory Orchestrator ported from upstream src/fimInventoryOrchestrator.hpp.
 pub struct FimInventoryOrchestrator;
 
 impl FimInventoryOrchestrator {

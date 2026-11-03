@@ -1,4 +1,4 @@
-//! Port of Wazuh `os_ip` handling from `src/shared/validate_op.c`
+//! Port of upstream `os_ip` handling from `src/shared/validate_op.c`
 //! (`OS_IsValidIP`, `OS_IPFound`, `OS_IPFoundList`, `OS_GetIPv4FromIPv6`,
 //! `OS_ExpandIPv6`). Used by `<srcip>` / `<dstip>` in rules and by CDB/AR
 //! white-lists.

@@ -2,7 +2,7 @@
 name = "siem-logcollector"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7 wazuh-logcollector (src/logcollector)"
+description = "Port of upstream 4.14.7 provigil-logcollector (src/logcollector)"
 
 [[bin]]
 name = "wazuh-logcollector"

@@ -1,4 +1,4 @@
-//! Wazuh Monitoring, Disconnection Detector, Log Rotator & Report Subsystem (`src/monitord`)
+//! ProVigil Monitoring, Disconnection Detector, Log Rotator & Report Subsystem (`src/monitord`)
 //!
 //! Provides agent keepalive tracking, disconnection detection and alerting,
 //! automatic deletion of abandoned agents, daily and size-based log rotation,

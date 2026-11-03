@@ -1,4 +1,4 @@
-//! Wazuh Cryptographic Hash Functions (`src/os_crypto/md5`, `sha1`, `sha256`, `sha512`, `hmac`, `md5_sha1_sha256`)
+//! ProVigil Cryptographic Hash Functions (`src/os_crypto/md5`, `sha1`, `sha256`, `sha512`, `hmac`, `md5_sha1_sha256`)
 //!
 //! Provides MD5, SHA-1, SHA-256, SHA-512, HMAC-SHA1, and simultaneous multi-hash file streaming.
 

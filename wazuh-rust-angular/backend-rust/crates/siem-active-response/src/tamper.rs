@@ -1,4 +1,4 @@
-//! Agent tamper protection (EDR, not in Wazuh): what `tamper-protect` writes on the
+//! Agent tamper protection (EDR, not in upstream): what `tamper-protect` writes on the
 //! agent service. Locked, the "ProVigilSvc" service lets Administrators read and start it
 //! but not stop, pause, reconfigure, delete it or change who may; SYSTEM (the agent
 //! itself: upgrades, restarts) keeps full control. Its recovery restarts a killed agent.

@@ -1,4 +1,4 @@
-//! wazuh-logtest service (analysisd/logtest.c): sessions and the JSON
+//! provigil-logtest service (analysisd/logtest.c): sessions and the JSON
 //! request/response protocol spoken on `queue/sockets/logtest`.
 
 use std::collections::HashMap;

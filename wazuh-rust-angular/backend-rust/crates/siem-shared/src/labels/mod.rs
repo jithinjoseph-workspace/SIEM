@@ -1,4 +1,4 @@
-//! Wazuh Agent Custom Labels Manager (labels_op.c)
+//! ProVigil Agent Custom Labels Manager (labels_op.c)
 //!
 //! Handles parsing, hidden label filtering, and hierarchical JSON injection of agent labels
 //! into alert events and inventory payloads.

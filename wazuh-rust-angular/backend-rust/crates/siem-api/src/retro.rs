@@ -125,7 +125,7 @@ pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
     }
 }
 
-/// `GET /api/v1/siem/retrospective/fired-rules`: the Wazuh rules that fired for the tenant (7 days).
+/// `GET /api/v1/siem/retrospective/fired-rules`: the ProVigil rules that fired for the tenant (7 days).
 pub async fn fired_rules(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> Json<Value> {
     let since_ms = (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
     let rows = state

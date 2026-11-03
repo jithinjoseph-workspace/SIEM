@@ -1,6 +1,6 @@
-//! Wazuh Network and Socket Communications Layer (src/os_net)
+//! ProVigil Network and Socket Communications Layer (src/os_net)
 //!
-//! Complete 1-to-1 port of Wazuh's network library (`os_net.h`, `os_net.c`):
+//! Complete 1-to-1 port of the upstream network library (`os_net.h`, `os_net.c`):
 //! - Secure TCP framing: 4-byte unsigned little-endian length prefix header.
 //! - Secure TCP Cluster framing: `[counter: 4 BE][length: 4 BE][command: 12 bytes][payload]`.
 //! - TCP & UDP socket bindings, connections, timeouts, keepalives, and buffer controls.
@@ -59,7 +59,7 @@ impl From<io::Error> for NetError {
     }
 }
 
-/// Converts a 32-bit unsigned integer to Wazuh wire order (Little Endian), matching `wnet_order`.
+/// Converts a 32-bit unsigned integer to ProVigil wire order (Little Endian), matching `wnet_order`.
 pub fn wnet_order(val: u32) -> u32 {
     val.to_le()
 }
@@ -73,7 +73,7 @@ pub fn wnet_order_big(val: u32) -> u32 {
 // Secure TCP Protocol Framing (4-byte LE length prefix)
 // ============================================================================
 
-/// Encodes a message using Wazuh's Secure TCP protocol format:
+/// Encodes a message using the upstream Secure TCP protocol format:
 /// `[length: 4 bytes Little Endian] [payload: length bytes]`.
 pub fn encode_secure_tcp(payload: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(4 + payload.len());

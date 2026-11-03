@@ -1,4 +1,4 @@
-//! Wazuh Log Filter & OutFormat Processor (src/logcollector/logcollector.c)
+//! ProVigil Log Filter & OutFormat Processor (src/logcollector/logcollector.c)
 //!
 //! Provides:
 //! - `check_ignore_and_restrict`: PCRE/Regex filtering matching `check_ignore_and_restrict()` in `logcollector.c`.

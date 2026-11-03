@@ -35,7 +35,7 @@ impl Syscollector {
         Self { agent_id }
     }
 
-    /// Gather full system hardware and software inventory (mirroring Wazuh sysInfoWin.cpp)
+    /// Gather full system hardware and software inventory (mirroring upstream sysInfoWin.cpp)
     pub fn collect_inventory(&self) -> SystemInventory {
         let hostname = std::env::var("COMPUTERNAME")
             .or_else(|_| std::env::var("HOSTNAME"))
@@ -384,7 +384,7 @@ pub fn spawn_syscollector_worker(
         let collector = Syscollector::new(agent_id);
         info!("Syscollector inventory daemon initialized (interval: {:?})", interval);
 
-        // Scan immediately on start (matching Wazuh scan_on_start="yes")
+        // Scan immediately on start (matching ProVigil scan_on_start="yes")
         collector.scan_and_emit(&buffer).await;
 
         let mut ticker = tokio::time::interval(interval);

@@ -1,4 +1,4 @@
-//! Wazuh Agent Keystore Management (`src/os_crypto/shared/keys.c`)
+//! ProVigil Agent Keystore Management (`src/os_crypto/shared/keys.c`)
 //!
 //! Handles parsing of `client.keys`, 192-bit symmetric encryption key derivation,
 //! agent ID / IP fast lookup indexing, and replay counter state.
@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 
-/// Wazuh symmetric cipher method matching `crypt_method` in `sec.h`.
+/// ProVigil symmetric cipher method matching `crypt_method` in `sec.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CryptoMethod {
     Blowfish = 0,
@@ -58,7 +58,7 @@ impl ClientKey {
     }
 }
 
-/// Derives Wazuh's 192-bit symmetric encryption key matching `OS_AddKey` in `keys.c`:
+/// Derives the upstream 192-bit symmetric encryption key matching `OS_AddKey` in `keys.c`:
 /// 1. filesum1 = MD5(name)
 /// 2. filesum2 = MD5(id)
 /// 3. half = MD5(filesum1 + filesum2)[0..15]
@@ -74,7 +74,7 @@ pub fn derive_encryption_key(name: &str, id: &str, raw_key: &str) -> String {
     format!("{}{}", key_hash, half)
 }
 
-/// Wazuh agent credentials keystore matching `keystore` in `sec.h`.
+/// ProVigil agent credentials keystore matching `keystore` in `sec.h`.
 #[derive(Debug, Clone, Default)]
 pub struct KeyStore {
     pub keys: Vec<ClientKey>,

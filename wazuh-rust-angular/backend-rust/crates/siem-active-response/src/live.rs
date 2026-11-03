@@ -1,4 +1,4 @@
-//! Live response (EDR, not in Wazuh): what `live-response` sends back for one request.
+//! Live response (EDR, not in upstream): what `live-response` sends back for one request.
 //! The result travels as active-responses.log lines, the agent's own encrypted channel
 //! to the manager (so an isolated host still answers): the payload gzip-compressed and
 //! base64-encoded in chunks of [`CHUNK`] characters, one line each, then one "done" line

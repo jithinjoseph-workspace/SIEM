@@ -89,7 +89,7 @@ pub fn read_labels(ctx: &mut ConfigContext, nodes: &[XmlNode], labels: &mut Vec<
     r
 }
 
-/// `labels_parse`: labels from wazuh-db (`[{"key":..,"value":..}]`). The
+/// `labels_parse`: labels from provigil-db (`[{"key":..,"value":..}]`). The
 /// stored keys are quoted: `"k"` normal, `!"k"` hidden, `#"k"` internal
 /// (system); anything else is skipped, and the key ends at the next quote.
 pub fn labels_parse(json: &siem_cjson::Json) -> Vec<Label> {

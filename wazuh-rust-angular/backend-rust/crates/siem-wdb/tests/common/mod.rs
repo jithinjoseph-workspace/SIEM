@@ -1,4 +1,4 @@
-//! Shared by the wazuh-db differential tests: the injected environment, the
+//! Shared by the provigil-db differential tests: the injected environment, the
 //! line protocol of tools/oracle/wdb_harness.c (Q / T / G) run on the Rust
 //! library, the database dumps and the oracle runner.
 

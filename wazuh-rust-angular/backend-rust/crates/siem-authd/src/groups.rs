@@ -30,7 +30,7 @@ pub fn delete_repeated_groups(groups: &str) -> String {
     unique.join(",")
 }
 
-/// Validates group name(s) according to Wazuh `w_auth_validate_groups` rules.
+/// Validates group name(s) according to ProVigil `w_auth_validate_groups` rules.
 pub fn validate_groups(groups: &str) -> Result<String, String> {
     let regex = get_group_regex();
     let mut count = 0;

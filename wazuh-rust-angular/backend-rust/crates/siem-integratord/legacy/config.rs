@@ -1,4 +1,4 @@
-//! Wazuh External Integration Configuration (src/os_integrator/config.c, integrator-config.h)
+//! ProVigil External Integration Configuration (src/os_integrator/config.c, integrator-config.h)
 //!
 //! Handles parsing, validation, and storage for `<integration>` blocks:
 //! - Supported native providers: Slack, PagerDuty, VirusTotal, Shuffle, Maltiverse.

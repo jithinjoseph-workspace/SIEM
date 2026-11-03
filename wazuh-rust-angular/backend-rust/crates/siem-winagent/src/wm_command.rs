@@ -11,7 +11,7 @@ use siem_xml::XmlNode;
 
 /// `WM_COMMAND_CONTEXT.name`
 pub const NAME: &str = "command";
-/// `WM_COMMAND_LOGTAG` (ARGV0 ":command"; the module files are built with ARGV0 "wazuh-modulesd")
+/// `WM_COMMAND_LOGTAG` (ARGV0 ":command"; the module files are built with ARGV0 "provigil-modulesd")
 const LOGTAG: &str = "wazuh-modulesd:command";
 /// `WM_COMMAND_DEFAULT_INTERVAL`
 const DEFAULT_INTERVAL: u32 = 2;

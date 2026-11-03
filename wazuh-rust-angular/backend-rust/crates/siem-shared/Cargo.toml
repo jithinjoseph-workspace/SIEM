@@ -2,7 +2,7 @@
 name = "siem-shared"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh src/shared domain primitives (client.keys, version, scheduler, expression, formatter, labels, queues, validator, audit)"
+description = "Port of upstream src/shared domain primitives (client.keys, version, scheduler, expression, formatter, labels, queues, validator, audit)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

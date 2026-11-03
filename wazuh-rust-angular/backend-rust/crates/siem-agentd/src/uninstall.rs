@@ -1,7 +1,7 @@
 //! The anti-tampering check of `client-agent/agentd.c`
 //! (`package_uninstall_validation`, `check_uninstall_permission`,
 //! `authenticate_and_get_token`): before the package is removed, the
-//! installer asks the Wazuh API whether the uninstall is allowed. The
+//! installer asks the ProVigil API whether the uninstall is allowed. The
 //! HTTPS requests mirror `wurl_http_request` (shared/url.c).
 
 use std::io::{Read, Write};

@@ -2,7 +2,7 @@
 name = "siem-winagent"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7 wazuh-agent.exe (src/win32): the Windows agent process and service"
+description = " (src/win32): the Windows agent process and service"
 
 [[bin]]
 name = "provigil-agent"

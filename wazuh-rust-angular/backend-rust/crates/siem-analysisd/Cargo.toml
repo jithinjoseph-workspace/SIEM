@@ -2,7 +2,7 @@
 name = "siem-analysisd"
 version = "0.1.0"
 edition = "2021"
-description = "Port of wazuh-analysisd (src/analysisd): pre-decoding, XML decoders, rules engine, CDB lists, FTS, accumulator, JSON alerts and logtest"
+description = "(src/analysis): pre-decoding, XML decoders, rules engine, CDB lists, FTS, accumulator, JSON alerts and logtest"
 
 [dependencies]
 siem-regex = { path = "../siem-regex" }

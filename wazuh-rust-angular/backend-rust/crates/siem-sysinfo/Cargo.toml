@@ -2,7 +2,7 @@
 name = "siem-sysinfo"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7's data_provider (sysinfo): the system inventory syscollector reports"
+description = " data_provider (sysinfomation): the system inventory syscollector reports"
 
 [dependencies]
 siem-njson = { path = "../siem-njson" }

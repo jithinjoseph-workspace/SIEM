@@ -2,7 +2,7 @@
 name = "siem-wdb"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh DB agent and global state management engine (global.db, FIM inventory, Syscollector, SCA, Rootcheck, wire protocol)"
+description = " global state management engine (global.db, FIM inventory, Syscollector, SCA, Rootcheck, wire protocol)"
 
 [dependencies]
 siem-core = { path = "../siem-core" }

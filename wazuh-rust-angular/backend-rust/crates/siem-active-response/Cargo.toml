@@ -2,7 +2,7 @@
 name = "siem-active-response"
 version = "0.1.0"
 edition = "2021"
-description = "Port of Wazuh 4.14.7 active-response programs (src/active-response): netsh, restart-wazuh, firewall-drop"
+description = "(src/active-response): netsh, restart-wazuh, firewall-drop"
 
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }
@@ -40,7 +40,7 @@ path = "src/bin/firewall_drop.rs"
 name = "route-null"
 path = "src/bin/route_null.rs"
 
-# EDR responses (not in Wazuh 4.14.7), Windows
+# EDR responses  Windows
 [[bin]]
 name = "kill-process"
 path = "src/bin/kill_process.rs"

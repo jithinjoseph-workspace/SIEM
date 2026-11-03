@@ -2,7 +2,7 @@
 name = "siem-syscollector"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh-compatible System Inventory Collector & Delta Sync Engine (wm_syscollector)"
+description = " System Inventory Collector & Delta Sync Engine (syscollector)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

@@ -2,7 +2,7 @@
 name = "siem-triage"
 version = "0.1.0"
 edition = "2021"
-description = "Alert triage for the SIEM: groups similar Wazuh alerts, rules first, AI only for undecided groups, recommendations a person applies"
+description = "Alert triage for the SIEM: groups similar  alerts, rules first, AI only for undecided groups, recommendations a person applies"
 
 [dependencies]
 siem-ai = { path = "../siem-ai" }

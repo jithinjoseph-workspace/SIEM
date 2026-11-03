@@ -2,7 +2,7 @@
 name = "siem-task-manager"
 version = "0.1.0"
 edition = "2021"
-description = "Wazuh-compatible Task Management daemon (wm_task_manager) for remote agent upgrades and task lifecycle tracking"
+description = "compatible Task Management daemon (task_manager) for remote agent upgrades and task lifecycle tracking"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

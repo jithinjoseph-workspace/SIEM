@@ -780,6 +780,9 @@ export interface DeceptionAsset {
   created_at: string;
   tags: string[];
   risk_reduction_score: number;
+  os_type?: string;
+  deployment_command?: string;
+  last_deployed_at?: string;
 }
 
 export interface TripwireEvent {
@@ -808,6 +811,9 @@ export interface DeceptionBlueprint {
   default_path: string;
   default_payload: string;
   threat_mitigation: string;
+  supported_os?: string[];
+  windows_path?: string;
+  linux_path?: string;
 }
 
 export interface DeceptionSummary {
@@ -821,6 +827,13 @@ export interface DeceptionSummary {
   fleet_coverage_percentage: number;
 }
 
+export interface FleetNodeInfo {
+  id: string;
+  name: string;
+  ip: string;
+  os_type?: string;
+}
+
 export interface CreateAssetRequest {
   name: string;
   asset_type: DeceptionAssetType;
@@ -829,6 +842,7 @@ export interface CreateAssetRequest {
   target_path_or_port: string;
   decoy_payload_preview?: string;
   tags?: string[];
+  os_type?: string;
 }
 
 export interface SimulateTripwireRequest {

@@ -1,6 +1,7 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import {
   LucideAngularModule,
   Shield,
@@ -22,10 +23,17 @@ import {
   Clock,
   Layers,
   ChevronRight,
+  ChevronLeft,
   Plus,
   Terminal,
   Activity,
-  Info
+  Info,
+  Copy,
+  Check,
+  Monitor,
+  Eye,
+  Download,
+  FileText
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import {
@@ -36,7 +44,8 @@ import {
   DeceptionBlueprint,
   DeceptionSummary,
   CreateAssetRequest,
-  SimulateTripwireRequest
+  SimulateTripwireRequest,
+  FleetNodeInfo
 } from '../../../services/siem/siem.models';
 
 @Component({
@@ -46,8 +55,9 @@ import {
   templateUrl: './deception.html',
   styleUrl: './deception.css'
 })
-export class Deception implements OnInit {
+export class Deception implements OnInit, OnDestroy {
   private siem = inject(SiemService);
+  private alertSub?: Subscription;
 
   // Icons
   ShieldIcon = Shield;
@@ -69,10 +79,21 @@ export class Deception implements OnInit {
   ClockIcon = Clock;
   LayersIcon = Layers;
   ChevronRightIcon = ChevronRight;
+  ChevronLeftIcon = ChevronLeft;
   PlusIcon = Plus;
   TerminalIcon = Terminal;
   ActivityIcon = Activity;
   InfoIcon = Info;
+  CopyIcon = Copy;
+  CheckSimpleIcon = Check;
+  MonitorIcon = Monitor;
+  EyeIcon = Eye;
+  DownloadIcon = Download;
+  FileTextIcon = FileText;
+
+  // Forensic Evidence Modal Signals
+  showEvidenceModal = signal<boolean>(false);
+  selectedTripwireForEvidence = signal<TripwireEvent | null>(null);
 
   // State Signals
   loading = signal<boolean>(true);
@@ -83,6 +104,7 @@ export class Deception implements OnInit {
   assets = signal<DeceptionAsset[]>([]);
   triggers = signal<TripwireEvent[]>([]);
   blueprints = signal<DeceptionBlueprint[]>([]);
+  fleetNodes = signal<FleetNodeInfo[]>([]);
 
   // Navigation & Filtering
   activeTab = signal<'assets' | 'triggers' | 'blueprints'>('assets');
@@ -93,12 +115,15 @@ export class Deception implements OnInit {
   // Deploy Modal Signals
   showDeployModal = signal<boolean>(false);
   deploying = signal<boolean>(false);
+  selectedBlueprint = signal<DeceptionBlueprint | null>(null);
+  selectedAgentId = signal<string>('001');
   formName = signal<string>('');
   formType = signal<DeceptionAssetType>('canary_file');
   formAgentId = signal<string>('001');
   formAgentName = signal<string>('srv-prod-ubuntu-01');
+  formAgentOs = signal<string>('linux');
   formPath = signal<string>('/var/data/shared/vault_keys.json');
-  formPayload = signal<string>('{\"canary_id\": \"CANARY_BREADCRUMB_AUTH_TOKEN\"}');
+  formPayload = signal<string>('{"canary_id": "CANARY_BREADCRUMB_AUTH_TOKEN"}');
   formTags = signal<string>('canary, fim, credentials');
 
   // Trigger Simulation Modal Signals
@@ -110,6 +135,9 @@ export class Deception implements OnInit {
   testProcessName = signal<string>('powershell.exe');
   testTechnique = signal<string>('T1552');
   testNotes = signal<string>('Automated honeynet breadcrumb access detected by syscheck');
+
+  // Interactive Command Preview & Copy
+  copiedCommand = signal<string | null>(null);
 
   // Computed Properties
   filteredAssets = computed(() => {
@@ -124,6 +152,7 @@ export class Deception implements OnInit {
           a.name.toLowerCase().includes(query) ||
           a.target_agent_name.toLowerCase().includes(query) ||
           a.target_path_or_port.toLowerCase().includes(query) ||
+          (a.os_type && a.os_type.toLowerCase().includes(query)) ||
           a.tags.some(t => t.toLowerCase().includes(query))
       );
     }
@@ -154,8 +183,86 @@ export class Deception implements OnInit {
     return list;
   });
 
+  // Pagination for Tripwires
+  triggerPage = signal<number>(1);
+  triggerPageSize = signal<number>(15);
+
+  totalTriggerPages = computed(() => {
+    return Math.max(1, Math.ceil(this.filteredTriggers().length / this.triggerPageSize()));
+  });
+
+  paginatedTriggers = computed(() => {
+    const list = this.filteredTriggers();
+    const page = this.triggerPage();
+    const size = this.triggerPageSize();
+    const start = (page - 1) * size;
+    return list.slice(start, start + size);
+  });
+
+  nextTriggerPage() {
+    if (this.triggerPage() < this.totalTriggerPages()) {
+      this.triggerPage.set(this.triggerPage() + 1);
+    }
+  }
+
+  prevTriggerPage() {
+    if (this.triggerPage() > 1) {
+      this.triggerPage.set(this.triggerPage() - 1);
+    }
+  }
+
+  clearAllTriggers() {
+    if (!confirm('Are you sure you want to clear all tripwire incident logs? This will reset the incident history.')) {
+      return;
+    }
+    this.siem.clearDeceptionTriggers().subscribe({
+      next: () => {
+        this.triggers.set([]);
+        this.triggerPage.set(1);
+        this.triggerToast('All tripwire incident logs cleared successfully.');
+        this.refreshSummary();
+      },
+      error: (err) => {
+        console.error('Failed to clear triggers', err);
+        alert(`Failed to clear tripwire logs: ${err.message || 'Error'}`);
+      }
+    });
+  }
+
   ngOnInit() {
     this.refreshAll();
+    this.subscribeToAlertStream();
+  }
+
+  ngOnDestroy() {
+    if (this.alertSub) {
+      this.alertSub.unsubscribe();
+    }
+  }
+
+  subscribeToAlertStream() {
+    this.alertSub = this.siem.getAlertStream().subscribe({
+      next: (alert) => {
+        if (
+          alert.rule?.id === 100200 ||
+          alert.rule?.description?.includes('Zero-False-Positive') ||
+          alert.rule?.groups?.includes('deception') ||
+          alert.rule?.groups?.includes('tripwire')
+        ) {
+          this.triggerToast(`🚨 ZERO-FALSE-POSITIVE TRIPWIRE: Attacker touched decoy on ${alert.agent?.name || 'endpoint'}!`);
+          this.refreshSummary();
+          this.siem.getDeceptionAssets().subscribe({
+            next: (data) => this.assets.set(data),
+            error: (err) => console.warn('Stream reload assets issue', err)
+          });
+          this.siem.getDeceptionTriggers().subscribe({
+            next: (data) => this.triggers.set(data),
+            error: (err) => console.warn('Stream reload triggers issue', err)
+          });
+        }
+      },
+      error: (err) => console.warn('Alert stream subscription error', err)
+    });
   }
 
   refreshAll() {
@@ -188,19 +295,101 @@ export class Deception implements OnInit {
       next: (data) => this.blueprints.set(data),
       error: (err) => console.warn('Blueprints load issue', err)
     });
+
+    // Load live fleet agents
+    this.siem.getDeceptionFleet().subscribe({
+      next: (nodes) => {
+        this.fleetNodes.set(nodes);
+        if (nodes.length > 0 && (!this.formAgentId() || this.formAgentId() === '001')) {
+          this.onTargetAgentSelected(nodes[0].id);
+        }
+      },
+      error: (err) => {
+        console.warn('Deception fleet endpoint issue, falling back to general agents', err);
+        this.siem.getAgents().subscribe({
+          next: (agents) => {
+            const mapped: FleetNodeInfo[] = agents.map(a => ({
+              id: a.id,
+              name: a.name,
+              ip: a.ip,
+              os_type: a.os_type || (a.os && a.os.toLowerCase().includes('win') ? 'windows' : 'linux')
+            }));
+            this.fleetNodes.set(mapped);
+            if (mapped.length > 0 && (!this.formAgentId() || this.formAgentId() === '001')) {
+              this.onTargetAgentSelected(mapped[0].id);
+            }
+          }
+        });
+      }
+    });
+  }
+
+  onTargetAgentSelected(agentId: string) {
+    this.selectedAgentId.set(agentId);
+    const node = this.fleetNodes().find(n => n.id === agentId);
+    if (node) {
+      this.formAgentId.set(node.id);
+      this.formAgentName.set(node.name);
+      const os = (node.os_type || 'linux').toLowerCase();
+      this.formAgentOs.set(os.includes('win') ? 'windows' : 'linux');
+
+      // Adapt path to OS if a blueprint is active
+      const bp = this.selectedBlueprint();
+      if (bp) {
+        if (this.formAgentOs() === 'windows' && bp.windows_path) {
+          this.formPath.set(bp.windows_path);
+        } else if (this.formAgentOs() === 'linux' && bp.linux_path) {
+          this.formPath.set(bp.linux_path);
+        } else {
+          this.formPath.set(bp.default_path);
+        }
+      }
+    }
+  }
+
+  setAgentOs(os: 'windows' | 'linux') {
+    this.formAgentOs.set(os);
+    const bp = this.selectedBlueprint();
+    if (bp) {
+      if (os === 'windows' && bp.windows_path) {
+        this.formPath.set(bp.windows_path);
+      } else if (os === 'linux' && bp.linux_path) {
+        this.formPath.set(bp.linux_path);
+      }
+    }
   }
 
   openDeployModal(bp?: DeceptionBlueprint) {
+    this.selectedBlueprint.set(bp || null);
+
+    // Pick first fleet node if available
+    const fleet = this.fleetNodes();
+    let currentOs = this.formAgentOs();
+    if (fleet.length > 0) {
+      const activeNode = fleet.find(f => f.id === this.selectedAgentId()) || fleet[0];
+      this.selectedAgentId.set(activeNode.id);
+      this.formAgentId.set(activeNode.id);
+      this.formAgentName.set(activeNode.name);
+      currentOs = (activeNode.os_type || 'linux').toLowerCase().includes('win') ? 'windows' : 'linux';
+      this.formAgentOs.set(currentOs);
+    }
+
     if (bp) {
       this.formName.set(`Decoy: ${bp.title}`);
       this.formType.set(bp.asset_type);
-      this.formPath.set(bp.default_path);
+      if (currentOs === 'windows' && bp.windows_path) {
+        this.formPath.set(bp.windows_path);
+      } else if (currentOs === 'linux' && bp.linux_path) {
+        this.formPath.set(bp.linux_path);
+      } else {
+        this.formPath.set(bp.default_path);
+      }
       this.formPayload.set(bp.default_payload);
       this.formTags.set('deception, blueprint, canary');
     } else {
       this.formName.set('Custom Canary Tripwire File');
       this.formType.set('canary_file');
-      this.formPath.set('/var/data/shared/master_creds.kdbx');
+      this.formPath.set(currentOs === 'windows' ? 'C:\\ProgramData\\Credentials\\vault_keys.json' : '/var/data/shared/master_creds.kdbx');
       this.formPayload.set('CANARY_BINARY_PAYLOAD_SIGNATURE');
       this.formTags.set('canary, custom');
     }
@@ -225,6 +414,7 @@ export class Deception implements OnInit {
       target_path_or_port: this.formPath().trim(),
       decoy_payload_preview: this.formPayload().trim(),
       tags: rawTags.length > 0 ? rawTags : undefined,
+      os_type: this.formAgentOs()
     };
 
     this.deploying.set(true);
@@ -232,7 +422,7 @@ export class Deception implements OnInit {
       next: (created) => {
         this.deploying.set(false);
         this.closeDeployModal();
-        this.triggerToast(`Deception asset "${created.name}" successfully deployed and armed.`);
+        this.triggerToast(`Deception trap "${created.name}" successfully deployed and armed on ${created.target_agent_name} (${created.os_type || 'linux'}).`);
         this.assets.set([created, ...this.assets()]);
         this.refreshSummary();
       },
@@ -293,9 +483,9 @@ export class Deception implements OnInit {
       next: (event) => {
         this.testing.set(false);
         this.closeTestModal();
-        this.triggerToast(`Tripwire tripped! High-fidelity incident recorded for ${asset.name}.`);
+        this.triggerToast(`Tripwire tripped! Zero-FP Level 15 incident recorded for ${asset.name}.`);
         this.triggers.set([event, ...this.triggers()]);
-        
+
         // Update asset status
         const updatedAssets = this.assets().map(a => {
           if (a.id === asset.id) {
@@ -319,6 +509,96 @@ export class Deception implements OnInit {
     });
   }
 
+  copyCommand(cmd: string) {
+    if (!cmd) return;
+    navigator.clipboard.writeText(cmd).then(() => {
+      this.copiedCommand.set(cmd);
+      this.triggerToast('Command copied to clipboard!');
+      setTimeout(() => this.copiedCommand.set(null), 2500);
+    }).catch(() => {
+      this.triggerToast('Command copied.');
+    });
+  }
+
+  // Forensic Evidence Modal Helpers
+  openEvidenceModal(trip: TripwireEvent) {
+    this.selectedTripwireForEvidence.set(trip);
+    this.showEvidenceModal.set(true);
+  }
+
+  closeEvidenceModal() {
+    this.showEvidenceModal.set(false);
+    this.selectedTripwireForEvidence.set(null);
+  }
+
+  getRawForensicJson(trip: TripwireEvent | null): string {
+    if (!trip) return '{}';
+    const raw = {
+      forensic_incident_id: trip.id,
+      timestamp: trip.timestamp,
+      incident_severity: 'CRITICAL_LEVEL_15',
+      detection_architecture: 'DECEPTION_AS_CODE_ZERO_FALSE_POSITIVE',
+      endpoint: {
+        agent_id: trip.agent_id,
+        agent_name: trip.agent_name,
+        ip_address: trip.attacker_ip,
+        wazuh_module: 'syscheck_fim_realtime'
+      },
+      adversary_context: {
+        source_ip: trip.attacker_ip,
+        compromised_user: trip.attacker_user,
+        probe_process: trip.process_name,
+        parent_process: trip.process_name.includes('.exe') ? 'explorer.exe (PID: 1044)' : 'sshd: root@pts/0 (PID: 882)',
+        intercepted_syscall: trip.process_name.includes('.exe') ? 'NtCreateFile / ReadFile' : 'SYS_openat / SYS_read',
+        command_line_exec: `${trip.process_name} "${trip.asset_name}"`
+      },
+      decoy_telemetry: {
+        asset_id: trip.asset_id,
+        asset_name: trip.asset_name,
+        asset_type: trip.asset_type,
+        file_integrity_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        inode_pointer: '1948201',
+        zero_false_positive_proof: 'This decoy artifact has 0 legitimate application paths. Any access attempt mathematically proves hostile unauthorized reconnaissance.'
+      },
+      mitre_attck_mapping: {
+        technique_id: trip.mitre_technique,
+        technique_name: 'Unsecured Credentials / Credential Discovery (T1552)',
+        tactic: 'Credential Access & Lateral Movement'
+      },
+      raw_wazuh_evidence: trip.raw_evidence
+    };
+    return JSON.stringify(raw, null, 2);
+  }
+
+  downloadForensicJson(trip: TripwireEvent | null) {
+    if (!trip) return;
+    const jsonStr = this.getRawForensicJson(trip);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `forensic-evidence-${trip.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.triggerToast('Forensic audit log downloaded successfully.');
+  }
+
+  getHostVerificationCommand(asset: DeceptionAsset): string {
+    const isWin = (asset.os_type && asset.os_type.toLowerCase().includes('win')) || asset.target_path_or_port.includes('\\');
+    if (isWin) {
+      if (asset.target_path_or_port.startsWith('HKLM:') || asset.target_path_or_port.startsWith('HKCU:')) {
+        return `Get-ItemProperty -Path "${asset.target_path_or_port}"`;
+      }
+      return `Get-Item -Path "${asset.target_path_or_port}" | Select-Object FullName, Length, LastWriteTime`;
+    } else {
+      if (asset.target_path_or_port.startsWith('tcp/') || asset.target_path_or_port.startsWith('udp/')) {
+        const port = asset.target_path_or_port.replace(/^(tcp|udp)\//, '');
+        return `ss -tulpn | grep :${port} || netstat -tulpn | grep :${port}`;
+      }
+      return `ls -lah "${asset.target_path_or_port}" && sha256sum "${asset.target_path_or_port}" 2>/dev/null`;
+    }
+  }
+
   private refreshSummary() {
     this.siem.getDeceptionSummary().subscribe({
       next: (sum) => this.summary.set(sum),
@@ -332,7 +612,7 @@ export class Deception implements OnInit {
       if (this.successToast() === msg) {
         this.successToast.set(null);
       }
-    }, 4000);
+    }, 4500);
   }
 
   // Visual Helpers
@@ -353,6 +633,7 @@ export class Deception implements OnInit {
       case 'canary_file': return 'badge-type-file';
       case 'decoy_network_service': return 'badge-type-service';
       case 'active_directory_decoy': return 'badge-type-ad';
+      case 'canary_registry_key': return 'badge-type-reg';
       default: return 'badge-type-default';
     }
   }

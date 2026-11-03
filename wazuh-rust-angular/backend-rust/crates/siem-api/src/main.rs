@@ -322,9 +322,9 @@ async fn main() {
     ]));
 
     let auth_keystore = Arc::new(RwLock::new(siem_crypto::keys::KeyStore::new()));
-    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new("data/risk_fabric_config.json"));
-    let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new("data/intent_engine_config.json"));
-    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new("data/deception_config.json"));
+    let risk_fabric = Arc::new(siem_risk_fabric::RiskFabricEngine::new(data_file_path("risk_fabric_config.json")));
+    let intent_engine = Arc::new(siem_intent_engine::IntentEngine::new(data_file_path("intent_engine_config.json")));
+    let deception_engine = Arc::new(siem_deception::DeceptionEngine::new(data_file_path("deception_config.json")));
 
     let state = AppState {
         engine: AnalysisEngine::new(),
@@ -634,6 +634,88 @@ async fn main() {
         state.intent_engine.sync_enrolled_fleet(&initial_fleet);
     }
 
+    let deception_fleet_reader = {
+        let f_state = state.clone();
+        Arc::new(move || {
+            let mut fleet = Vec::new();
+            let deleted = f_state.deleted_agents.read().unwrap();
+            {
+                let agents = f_state.agents.read().unwrap();
+                for a in agents.values() {
+                    if deleted.contains(&a.id) {
+                        continue;
+                    }
+                    let os = if !a.os_type.is_empty() {
+                        Some(a.os_type.clone())
+                    } else if a.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    fleet.push(siem_deception::FleetNodeInfo {
+                        id: a.id.clone(),
+                        name: a.name.clone(),
+                        ip: a.ip.clone(),
+                        os_type: os,
+                    });
+                }
+            }
+            if fleet.is_empty() {
+                let enrolled = f_state.enrolled.read().unwrap();
+                for (id, e) in enrolled.iter() {
+                    if deleted.contains(id) || e.disabled {
+                        continue;
+                    }
+                    let os = if !e.os_type.is_empty() {
+                        Some(e.os_type.clone())
+                    } else if e.name.to_lowercase().contains("win") {
+                        Some("windows".to_string())
+                    } else {
+                        Some("linux".to_string())
+                    };
+                    fleet.push(siem_deception::FleetNodeInfo {
+                        id: id.clone(),
+                        name: e.name.clone(),
+                        ip: "127.0.0.1".to_string(),
+                        os_type: os,
+                    });
+                }
+            }
+            fleet
+        })
+    };
+
+    let deception_deploy_dispatcher = {
+        let dec_state = state.clone();
+        Arc::new(move |agent_id: &str, cmd: &serde_json::Value| {
+            tracing::info!("DeceptionEngine: Dispatching automated decoy deployment to agent '{}'", agent_id);
+            dec_state.pending_commands.write().unwrap()
+                .entry(agent_id.to_string())
+                .or_default()
+                .push(cmd.clone());
+
+            let save_state = dec_state.clone();
+            let aid = agent_id.to_string();
+            let cmd_clone = cmd.clone();
+            tokio::spawn(async move {
+                persist::save_commands(&save_state, &aid, &[cmd_clone], false).await;
+            });
+        })
+    };
+
+    let deception_alert_emitter = {
+        let alert_state = state.clone();
+        Arc::new(move |alert: siem_core::Alert| {
+            tracing::info!("DeceptionEngine: ZERO-FP TRIPWIRE COMPROMISE: Alert #{} on agent '{}'", alert.rule.id, alert.agent.name);
+            alert_state.alerts.write().unwrap().insert(0, alert.clone());
+            let _ = alert_state.broadcast_tx.send(alert.clone());
+        })
+    };
+
+    state.deception_engine.set_deploy_dispatcher(deception_deploy_dispatcher);
+    state.deception_engine.set_alert_emitter(deception_alert_emitter);
+    state.deception_engine.set_fleet_reader(deception_fleet_reader.clone());
+
     let active_response_dispatcher = {
         let ar_state = state.clone();
         Arc::new(move |agent_id: &str, action_type: &str, target: &str| {
@@ -695,9 +777,17 @@ async fn main() {
             "/api/v1/intent",
             siem_intent_engine::api::router(
                 state.intent_engine.clone(),
-                Some(alerts_reader),
+                Some(alerts_reader.clone()),
                 Some(fleet_reader),
                 Some(active_response_dispatcher),
+            ),
+        )
+        .nest_service(
+            "/api/v1/deception",
+            siem_deception::api::router_with_fleet(
+                state.deception_engine.clone(),
+                Some(alerts_reader),
+                Some(deception_fleet_reader.clone()),
             ),
         )
         .route("/api/server-info", get(get_server_info_handler))
@@ -4602,6 +4692,15 @@ async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     keep_alerts(&state, [alert.clone()]);
     state.db.insert_alert(&alert).await;
     let _ = state.broadcast_tx.send(alert.clone());
+
+    // Evaluate live agent alert against Deception honeynet tripwires (ignore deception's own alerts to prevent cascading loops)
+    if alert.rule.id != 100999
+        && alert.rule.id != 100200
+        && !alert.rule.groups.iter().any(|g| g == "deception" || g == "zero_false_positive")
+    {
+        state.deception_engine.ingest_live_alerts(&[alert.clone()]);
+    }
+
     alert
 }
 

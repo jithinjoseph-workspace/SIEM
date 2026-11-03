@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::engine::DeceptionEngine;
 use crate::models::{
-    CreateAssetRequest, DeceptionAsset, DeceptionBlueprint, DeceptionSummary,
+    CreateAssetRequest, DeceptionAsset, DeceptionBlueprint, DeceptionSummary, FleetNodeInfo,
     SimulateTripwireRequest, TripwireEvent,
 };
 
@@ -17,21 +17,35 @@ use crate::models::{
 pub struct DeceptionApiState {
     pub engine: Arc<DeceptionEngine>,
     pub get_alerts: Option<Arc<dyn Fn() -> Vec<siem_core::Alert> + Send + Sync>>,
+    pub get_fleet: Option<Arc<dyn Fn() -> Vec<FleetNodeInfo> + Send + Sync>>,
 }
 
 pub fn router(
     engine: Arc<DeceptionEngine>,
     get_alerts: Option<Arc<dyn Fn() -> Vec<siem_core::Alert> + Send + Sync>>,
 ) -> Router {
-    let state = DeceptionApiState { engine, get_alerts };
+    router_with_fleet(engine, get_alerts, None)
+}
+
+pub fn router_with_fleet(
+    engine: Arc<DeceptionEngine>,
+    get_alerts: Option<Arc<dyn Fn() -> Vec<siem_core::Alert> + Send + Sync>>,
+    get_fleet: Option<Arc<dyn Fn() -> Vec<FleetNodeInfo> + Send + Sync>>,
+) -> Router {
+    let state = DeceptionApiState {
+        engine,
+        get_alerts,
+        get_fleet,
+    };
 
     Router::new()
         .route("/summary", get(get_summary_handler))
         .route("/assets", get(get_assets_handler).post(post_create_asset_handler))
         .route("/assets/:id", delete(delete_asset_handler))
-        .route("/triggers", get(get_triggers_handler))
+        .route("/triggers", get(get_triggers_handler).delete(delete_triggers_handler))
         .route("/test-trigger", post(post_test_trigger_handler))
         .route("/templates", get(get_templates_handler))
+        .route("/fleet", get(get_fleet_handler))
         .with_state(state)
 }
 
@@ -92,6 +106,16 @@ async fn get_triggers_handler(
     Json(state.engine.get_triggers())
 }
 
+async fn delete_triggers_handler(
+    State(state): State<DeceptionApiState>,
+) -> Json<serde_json::Value> {
+    state.engine.clear_triggers();
+    Json(serde_json::json!({
+        "status": "success",
+        "message": "Tripwire trigger history cleared successfully"
+    }))
+}
+
 async fn post_test_trigger_handler(
     State(state): State<DeceptionApiState>,
     Json(req): Json<SimulateTripwireRequest>,
@@ -112,4 +136,14 @@ async fn get_templates_handler(
     State(state): State<DeceptionApiState>,
 ) -> Json<Vec<DeceptionBlueprint>> {
     Json(state.engine.get_blueprints())
+}
+
+async fn get_fleet_handler(
+    State(state): State<DeceptionApiState>,
+) -> Json<Vec<FleetNodeInfo>> {
+    if let Some(fleet_fn) = &state.get_fleet {
+        Json(fleet_fn())
+    } else {
+        Json(state.engine.get_fleet_nodes())
+    }
 }

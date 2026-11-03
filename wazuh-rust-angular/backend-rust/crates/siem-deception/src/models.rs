@@ -50,6 +50,12 @@ pub struct DeceptionAsset {
     pub created_at: DateTime<Utc>,
     pub tags: Vec<String>,
     pub risk_reduction_score: u8,
+    #[serde(default)]
+    pub os_type: Option<String>,
+    #[serde(default)]
+    pub deployment_command: Option<String>,
+    #[serde(default)]
+    pub last_deployed_at: Option<DateTime<Utc>>,
 }
 
 /// High-Fidelity Zero False-Positive Attacker Interaction Tripwire Record
@@ -82,6 +88,12 @@ pub struct DeceptionBlueprint {
     pub default_path: String,
     pub default_payload: String,
     pub threat_mitigation: String,
+    #[serde(default)]
+    pub supported_os: Vec<String>,
+    #[serde(default)]
+    pub windows_path: Option<String>,
+    #[serde(default)]
+    pub linux_path: Option<String>,
 }
 
 /// Global Summary & Health Report for the Deception Grid
@@ -107,6 +119,8 @@ pub struct CreateAssetRequest {
     pub target_path_or_port: String,
     pub decoy_payload_preview: Option<String>,
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub os_type: Option<String>,
 }
 
 /// Request to simulate/test a tripwire event
@@ -118,4 +132,13 @@ pub struct SimulateTripwireRequest {
     pub process_name: Option<String>,
     pub mitre_technique: Option<String>,
     pub notes: Option<String>,
+}
+
+/// Fleet Endpoint Metadata for targeting
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetNodeInfo {
+    pub id: String,
+    pub name: String,
+    pub ip: String,
+    pub os_type: Option<String>,
 }

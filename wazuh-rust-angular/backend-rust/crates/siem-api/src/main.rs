@@ -1752,27 +1752,63 @@ async fn ingest_event(
                 siem_wdb::FimAction::Deleted => (553, 7),
             };
 
+            let file_target = event
+                .metadata
+                .get("file_path")
+                .cloned()
+                .unwrap_or_else(|| event.location.clone());
+            let mode = event.metadata.get("mode").cloned().unwrap_or_else(|| "realtime".to_string());
+            let user_name = event.metadata.get("user_name").or_else(|| event.metadata.get("audit_name")).cloned();
+            let proc_name = event.metadata.get("process_name").cloned();
+            let proc_id_u32 = event.metadata.get("process_id").and_then(|s| s.parse::<u32>().ok());
+            let new_hash_val = event.metadata.get("new_hash").or_else(|| event.metadata.get("sha256")).cloned();
+
+            let mut syscheck_data = serde_json::json!({
+                "path": file_target,
+                "event": action_str,
+                "mode": mode,
+                "sha256_after": new_hash_val,
+            });
+
+            if let Some(ref u) = user_name {
+                syscheck_data["audit"]["user"]["name"] = serde_json::json!(u);
+            }
+            if let Some(uid_val) = event.metadata.get("user_id") {
+                syscheck_data["audit"]["user"]["id"] = serde_json::json!(uid_val);
+            }
+            if let Some(ref p) = proc_name {
+                syscheck_data["audit"]["process"]["name"] = serde_json::json!(p);
+            }
+            if let Some(pid_val) = proc_id_u32 {
+                syscheck_data["audit"]["process"]["id"] = serde_json::json!(pid_val);
+            }
+            if let Some(ppid_val) = event.metadata.get("parent_process_id") {
+                syscheck_data["audit"]["process"]["ppid"] = serde_json::json!(ppid_val);
+            }
+
+            let mut data_map = HashMap::new();
+            data_map.insert("syscheck".to_string(), syscheck_data);
+
             let agent_db = state.wdb.get_or_create(&event.agent_id, &agent_name);
-            let sha256_val = event.metadata.get("sha256").cloned();
             let now_ts = Utc::now().timestamp().max(0) as u64;
-            let file_name = std::path::Path::new(&event.location)
+            let file_name = std::path::Path::new(&file_target)
                 .file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or(&event.location)
+                .unwrap_or(&file_target)
                 .to_string();
             {
                 let mut db = agent_db.write().unwrap();
                 db.fim.upsert(siem_wdb::FimEntry {
-                    full_path: event.location.clone(),
+                    full_path: file_target.clone(),
                     file_name,
                     entry_type: siem_wdb::FimEntryType::File,
                     size: None,
                     perm: None,
-                    uid: None,
+                    uid: event.metadata.get("user_id").and_then(|s| s.parse().ok()),
                     gid: None,
                     md5: None,
                     sha1: None,
-                    sha256: sha256_val.clone(),
+                    sha256: new_hash_val.clone(),
                     mtime: now_ts,
                     inode: None,
                     changes: 1,
@@ -1780,13 +1816,26 @@ async fn ingest_event(
                 });
             }
 
+            let full_log_text = if let Some(ref u) = user_name {
+                format!(
+                    "ossec: [{}] File '{}' was {:?} by user '{}' (process: '{}')",
+                    mode,
+                    file_target,
+                    fim_action,
+                    u,
+                    proc_name.as_deref().unwrap_or("unknown")
+                )
+            } else {
+                format!("ossec: [{}] File '{}' was {:?}", mode, file_target, fim_action)
+            };
+
             let alert = Alert {
                 id: uuid::Uuid::new_v4(),
                 timestamp: Utc::now(),
                 rule: siem_core::RuleAlertInfo {
                     id: rule_id,
                     level,
-                    description: format!("File Integrity Monitoring: File '{}' {:?}", event.location, fim_action),
+                    description: format!("File Integrity Monitoring: File '{}' {:?}", file_target, fim_action),
                     groups: vec!["syscheck".to_string(), "fim".to_string()],
                     mitre: Some(siem_core::MitreAttack {
                         id: "T1565.001".to_string(),
@@ -1803,23 +1852,23 @@ async fn ingest_event(
                     name: "wazuh-manager-rust".to_string(),
                 }),
                 decoder: None,
-                full_log: format!("ossec: File '{}' was {:?}", event.location, fim_action),
+                full_log: full_log_text,
                 decoded: siem_core::DecodedFields {
                     decoder_name: "syscheck".to_string(),
                     src_ip: None,
                     dst_ip: None,
                     src_port: None,
                     dst_port: None,
-                    user: None,
-                    program_name: None,
-                    process_id: None,
-                    file_path: Some(event.location.clone()),
+                    user: user_name,
+                    program_name: proc_name,
+                    process_id: proc_id_u32,
+                    file_path: Some(file_target.clone()),
                     action: Some(format!("{:?}", fim_action)),
                     status: None,
                     extra: event.metadata.clone(),
                 },
                 location: "syscheck".to_string(),
-                data: HashMap::new(),
+                data: data_map,
             };
             let alert = record_alert(&state, &tenant, alert).await;
             last_alert = Some(alert);

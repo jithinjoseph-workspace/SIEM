@@ -126,6 +126,19 @@ impl AgentBuffer {
     pub fn dropped_events(&self) -> usize {
         self.dropped_count.load(Ordering::Relaxed)
     }
+
+    #[cfg(test)]
+    pub fn mock(capacity: usize) -> (Self, tokio::sync::mpsc::Receiver<siem_core::RawEvent>) {
+        let (tx, rx) = tokio::sync::mpsc::channel::<siem_core::RawEvent>(capacity);
+        (
+            Self {
+                tx,
+                dropped_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                capacity,
+            },
+            rx,
+        )
+    }
 }
 
 /// Default headers for manager requests: the tenant agent key from

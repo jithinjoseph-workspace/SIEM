@@ -45,6 +45,11 @@ pub fn default_config() -> RiskFabricConfig {
                 "192.168.10.15".into(),
                 "srv-prod-ubuntu-01".into(),
             ],
+            group_patterns: vec![
+                "pci*".into(),
+                "*payment*".into(),
+                "finance".into(),
+            ],
             identity_patterns: vec![
                 "*cashier*".into(),
                 "*finance*".into(),
@@ -76,10 +81,17 @@ pub fn default_config() -> RiskFabricConfig {
                 "win-node-7a5e".into(),
                 "192.168.1.*".into(),
             ],
+            group_patterns: vec![
+                "*dc*".into(),
+                "*domain-controllers*".into(),
+                "*iam*".into(),
+                "*active-directory*".into(),
+            ],
             identity_patterns: vec![
                 "administrator".into(),
                 "admin*".into(),
                 "root".into(),
+                "system".into(),
                 "svc_*".into(),
                 "*ciso*".into(),
                 "*cio*".into(),
@@ -103,6 +115,11 @@ pub fn default_config() -> RiskFabricConfig {
                 "*ingress*".into(),
                 "*api*".into(),
                 "*portal*".into(),
+            ],
+            group_patterns: vec![
+                "*web*".into(),
+                "*dmz*".into(),
+                "*ingress*".into(),
             ],
             identity_patterns: vec![
                 "www-data".into(),
@@ -128,12 +145,68 @@ pub fn default_config() -> RiskFabricConfig {
                 "*sql*".into(),
                 "*postgres*".into(),
             ],
+            group_patterns: vec![
+                "*erp*".into(),
+                "*database*".into(),
+                "*sql*".into(),
+            ],
             identity_patterns: vec![
                 "*operator*".into(),
                 "*dba*".into(),
                 "*erp*".into(),
             ],
             impact_template: "Corporate ERP or backend database impacted; potential disruption to supply chain logistics or unauthorized business records access.".to_string(),
+            enabled: true,
+        },
+        BusinessProcessDefinition {
+            id: "bp-win-corp".to_string(),
+            name: "Corporate Windows Workstations & Fleet".to_string(),
+            description: "Windows domain hosts, workstations, and endpoint fleet nodes.".to_string(),
+            criticality: "High".to_string(),
+            asset_weight: 2.1,
+            identity_weight: 1.8,
+            asset_patterns: vec![
+                "*win*".into(),
+                "win-node-*".into(),
+            ],
+            group_patterns: vec![
+                "*windows*".into(),
+                "*workstation*".into(),
+                "default".into(),
+            ],
+            identity_patterns: vec![
+                "administrator".into(),
+                "admin*".into(),
+                "system".into(),
+            ],
+            impact_template: "Windows domain host security event detected; potential active lateral pivot, credential access, or defense evasion.".to_string(),
+            enabled: true,
+        },
+        BusinessProcessDefinition {
+            id: "bp-linux-prod".to_string(),
+            name: "Enterprise Linux Workload Infrastructure".to_string(),
+            description: "Enterprise Linux servers, application containers, and daemon workloads.".to_string(),
+            criticality: "High".to_string(),
+            asset_weight: 2.0,
+            identity_weight: 1.8,
+            asset_patterns: vec![
+                "*linux*".into(),
+                "linux-node-*".into(),
+                "*ubuntu*".into(),
+                "*debian*".into(),
+                "*rhel*".into(),
+            ],
+            group_patterns: vec![
+                "*linux*".into(),
+                "*server*".into(),
+                "default".into(),
+            ],
+            identity_patterns: vec![
+                "root".into(),
+                "wheel".into(),
+                "admin*".into(),
+            ],
+            impact_template: "Linux host telemetry alert; elevated potential for privilege escalation, root compromise, or daemon abuse.".to_string(),
             enabled: true,
         },
         BusinessProcessDefinition {
@@ -150,6 +223,11 @@ pub fn default_config() -> RiskFabricConfig {
                 "*qa*".into(),
                 "*sandbox*".into(),
                 "*lab*".into(),
+            ],
+            group_patterns: vec![
+                "*dev*".into(),
+                "*test*".into(),
+                "*sandbox*".into(),
             ],
             identity_patterns: vec![
                 "*tester*".into(),

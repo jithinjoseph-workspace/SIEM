@@ -1,5 +1,5 @@
 <div class="risk-fabric-container">
-  <!-- Header Bar -->
+  <!-- Top Header Bar -->
   <header class="page-header">
     <div class="header-left">
       <div class="header-icon-badge">
@@ -7,13 +7,26 @@
       </div>
       <div>
         <div class="header-breadcrumbs">
-          <span>AETHER XDR & SIEM</span>
+          <span>AETHER SIEM & NDR</span>
           <span class="sep">/</span>
-          <span class="current">Feature 6: Business-Process Risk Fabric</span>
+          <span>ENTERPRISE RISK POSTURE</span>
+          <span class="sep">/</span>
+          <span class="current">BUSINESS-PROCESS RISK FABRIC</span>
         </div>
-        <h1 class="page-title">Business-Process Risk Fabric</h1>
+        <div class="title-with-pill">
+          <h1 class="page-title">Business-Process Risk Fabric</h1>
+          <!-- Live Telemetry Status Pill -->
+          <div class="live-engine-pill">
+            <span class="pulse-dot"></span>
+            <span class="engine-status-text">LIVE FLEET ENGINE ACTIVE</span>
+            <span class="engine-meta-divider">|</span>
+            <span class="engine-meta-text">
+              {{ fleetStats().total }} Enrolled ({{ fleetStats().windows }} Win, {{ fleetStats().linux }} Linux)
+            </span>
+          </div>
+        </div>
         <p class="page-subtitle">
-          Dynamic contextual risk scoring prioritizing alerts based on business process criticality, asset mapping, identity tiers, and active temporal windows.
+          Dynamic contextual risk scoring prioritizing alerts based on real-time agent telemetry, business process criticality, identity privilege tiers, and operational time windows.
         </p>
       </div>
     </div>
@@ -45,7 +58,7 @@
 
   <!-- KPI Overview Strip -->
   <div class="kpi-grid">
-    <div class="kpi-card">
+    <div class="kpi-card card-cyan">
       <div class="kpi-icon-wrap bg-cyan-dim">
         <lucide-angular [img]="ActivityIcon" class="icon-md text-cyan"></lucide-angular>
       </div>
@@ -55,49 +68,55 @@
           <span class="kpi-value text-cyan">{{ summary().average_dynamic_risk }}</span>
           <span class="kpi-unit">/ 100</span>
         </div>
-        <span class="kpi-hint">Weighted across active fleet alerts</span>
+        <div class="kpi-bar-wrap">
+          <div class="kpi-bar-fill bg-cyan" [style.width.%]="summary().average_dynamic_risk"></div>
+        </div>
+        <span class="kpi-hint">Weighted across all active endpoint alerts</span>
       </div>
     </div>
 
-    <div class="kpi-card">
+    <div class="kpi-card card-red">
       <div class="kpi-icon-wrap bg-red-dim">
         <lucide-angular [img]="ShieldAlertIcon" class="icon-md text-red"></lucide-angular>
       </div>
       <div class="kpi-content">
-        <span class="kpi-label">Catastrophic Business Threats</span>
+        <span class="kpi-label">Catastrophic Threats</span>
         <div class="kpi-value-row">
           <span class="kpi-value text-red">{{ summary().catastrophic_alerts_count }}</span>
-          <span class="badge badge-catastrophic">Urgent</span>
+          <span class="badge badge-catastrophic">Immediate Action</span>
         </div>
-        <span class="kpi-hint">Mission-critical systems under high severity attack</span>
+        <div class="kpi-bar-wrap">
+          <div class="kpi-bar-fill bg-red" [style.width.%]="summary().catastrophic_alerts_count > 0 ? 100 : 0"></div>
+        </div>
+        <span class="kpi-hint">Critical business processes under elevated attack</span>
       </div>
     </div>
 
-    <div class="kpi-card">
+    <div class="kpi-card card-purple">
       <div class="kpi-icon-wrap bg-purple-dim">
         <lucide-angular [img]="BuildingIcon" class="icon-md text-purple"></lucide-angular>
       </div>
       <div class="kpi-content">
-        <span class="kpi-label">Managed Business Processes</span>
+        <span class="kpi-label">Monitored Business Functions</span>
         <div class="kpi-value-row">
           <span class="kpi-value">{{ summary().total_processes }}</span>
-          <span class="kpi-unit">Mapped</span>
+          <span class="kpi-unit">Functions</span>
         </div>
-        <span class="kpi-hint">PCI, IAM, Web Ingress, ERP, Sandboxes</span>
+        <span class="kpi-hint">PCI-DSS, Core IAM, Web Ingress, ERP, Fleet Sandboxes</span>
       </div>
     </div>
 
-    <div class="kpi-card">
+    <div class="kpi-card card-amber">
       <div class="kpi-icon-wrap bg-amber-dim">
         <lucide-angular [img]="ClockIcon" class="icon-md text-amber"></lucide-angular>
       </div>
       <div class="kpi-content">
-        <span class="kpi-label">Active Temporal Windows</span>
+        <span class="kpi-label">Active Temporal Schedules</span>
         <div class="kpi-value-row">
           <span class="kpi-value text-amber">{{ summary().active_time_windows }}</span>
           <span class="badge badge-active">Live Multipliers</span>
         </div>
-        <span class="kpi-hint">Financial close, maintenance, off-hours</span>
+        <span class="kpi-hint">Financial close, maintenance, and off-hours multipliers</span>
       </div>
     </div>
   </div>
@@ -106,23 +125,27 @@
   <div class="tabs-nav">
     <button class="tab-btn" [class.active]="activeTab() === 'overview'" (click)="activeTab.set('overview')">
       <lucide-angular [img]="LayersIcon" class="icon-sm"></lucide-angular>
-      Risk Fabric Matrix
+      <span>Overview & Matrix</span>
     </button>
     <button class="tab-btn" [class.active]="activeTab() === 'simulator'" (click)="activeTab.set('simulator')">
       <lucide-angular [img]="SlidersIcon" class="icon-sm"></lucide-angular>
-      Dynamic Risk Simulator
+      <span>Dynamic Risk Simulator</span>
     </button>
     <button class="tab-btn" [class.active]="activeTab() === 'processes'" (click)="activeTab.set('processes')">
       <lucide-angular [img]="BuildingIcon" class="icon-sm"></lucide-angular>
-      Business Processes ({{ processes().length }})
+      <span>Business Processes</span>
+      <span class="tab-count-badge">{{ processes().length }}</span>
     </button>
     <button class="tab-btn" [class.active]="activeTab() === 'windows'" (click)="activeTab.set('windows')">
       <lucide-angular [img]="ClockIcon" class="icon-sm"></lucide-angular>
-      Operational Time Windows ({{ windows().length }})
+      <span>Operational Time Windows</span>
+      <span class="tab-count-badge">{{ windows().length }}</span>
     </button>
     <button class="tab-btn" [class.active]="activeTab() === 'live_alerts'" (click)="activeTab.set('live_alerts')">
-      <lucide-angular [img]="ShieldIcon" class="icon-sm"></lucide-angular>
-      Live Risk Enriched Alerts ({{ alerts().length }})
+      <lucide-angular [img]="ShieldIcon" class="icon-sm text-cyan"></lucide-angular>
+      <span>Live Enriched Alerts</span>
+      <span class="tab-count-badge alert-count-badge">{{ alerts().length }}</span>
+      <span class="pulse-dot-sm"></span>
     </button>
   </div>
 
@@ -133,11 +156,11 @@
         <!-- Criticality Ranking Card -->
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">
+            <div class="card-title-group">
               <lucide-angular [img]="TargetIcon" class="icon-sm text-cyan"></lucide-angular>
-              Business Process Criticality Breakdown
-            </h3>
-            <span class="card-badge">Real-Time</span>
+              <h3 class="card-title">Business Process Risk Breakdown</h3>
+            </div>
+            <span class="card-badge">Live Fleet Context</span>
           </div>
           <div class="card-body">
             <div class="process-rankings">
@@ -150,7 +173,7 @@
                     </span>
                   </div>
                   <div class="ranking-stats">
-                    <span class="alerts-count">{{ proc.alerts_count }} alerts</span>
+                    <span class="alerts-count">{{ proc.alerts_count }} active alerts</span>
                     <div class="max-score-pill" [class]="getTierClass(proc.max_risk_score >= 85 ? 'catastrophic' : proc.max_risk_score >= 70 ? 'critical' : proc.max_risk_score >= 45 ? 'high' : 'medium')">
                       Max Score: {{ proc.max_risk_score }}
                     </div>
@@ -158,44 +181,61 @@
                 </div>
               } @empty {
                 <div class="empty-state">
-                  <lucide-angular [img]="ShieldIcon" class="icon-lg text-muted"></lucide-angular>
-                  <p>No active business process alerts recorded yet. Seed data active.</p>
+                  <lucide-angular [img]="ShieldIcon" class="icon-lg text-cyan"></lucide-angular>
+                  <p class="empty-title">Continuous Live Monitoring Active</p>
+                  <p class="empty-desc">
+                    All {{ fleetStats().total }} enrolled endpoints are currently in healthy baseline state. Security alerts matching business processes will automatically populate risk metrics here in real time.
+                  </p>
                 </div>
               }
             </div>
           </div>
         </div>
 
-        <!-- Formula & Mechanics Explainer -->
+        <!-- Formula & Pipeline Explainer -->
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">
+            <div class="card-title-group">
               <lucide-angular [img]="SparklesIcon" class="icon-sm text-amber"></lucide-angular>
-              Dynamic Unified Risk Scoring Architecture
-            </h3>
-            <span class="card-badge">Spec v2.1</span>
+              <h3 class="card-title">Dynamic Contextual Risk Pipeline</h3>
+            </div>
+            <span class="card-badge">Spec v2.2</span>
           </div>
           <div class="card-body">
             <div class="formula-box">
-              <code>Dynamic Risk Score = clamp(1, 100, (TechSeverity_Base × W_asset × W_identity × M_time))</code>
+              <code>Dynamic Risk = clamp(1, 100, TechSeverity_Base × W_asset × W_identity × M_time)</code>
             </div>
-            <ul class="mechanics-list">
-              <li>
-                <strong>1. Baseline Technical Severity (0-100):</strong> Normalized from Wazuh XML rule level (0 to 15) using <code>Level × 6.67</code>.
-              </li>
-              <li>
-                <strong>2. Asset Criticality Weight (W_asset):</strong> Mission-Critical (2.4x) on payment and domain controllers down to 0.4x on development sandboxes.
-              </li>
-              <li>
-                <strong>3. Identity Tier Weight (W_identity):</strong> Domain Administrators, root, and C-Suite executive accounts scale severity up to 2.0x.
-              </li>
-              <li>
-                <strong>4. Temporal Window Multiplier (M_time):</strong> Scales risk up during month-end close or off-hours, and reduces priority during maintenance windows.
-              </li>
-              <li>
-                <strong>5. Executive Impact Narrative:</strong> Instantly translates low-level technical events into board-ready operational risk impact statements.
-              </li>
-            </ul>
+
+            <div class="pipeline-flow">
+              <div class="pipeline-step">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                  <strong>Raw Severity Normalization</strong>
+                  <span>Wazuh XML rule level (0 to 15) is linearly mapped to a baseline 0–100 scale.</span>
+                </div>
+              </div>
+              <div class="pipeline-step">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                  <strong>Asset & Group Criticality (W_asset)</strong>
+                  <span>Multipliers applied according to enrolled Wazuh groups (e.g. <code>pci-dss</code>, <code>domain-controllers</code>) and host patterns.</span>
+                </div>
+              </div>
+              <div class="pipeline-step">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                  <strong>Cross-Platform Identity Tier (W_identity)</strong>
+                  <span>Normalizes Windows domain/local accounts and Linux PAM/audit users; elevates privileged identities (<code>Administrator</code>, <code>root</code>, <code>wheel</code>) up to 2.0x.</span>
+                </div>
+              </div>
+              <div class="pipeline-step">
+                <div class="step-num">04</div>
+                <div class="step-content">
+                  <strong>Temporal Multiplier (M_time)</strong>
+                  <span>Scales priority dynamically during financial closes or off-hours, de-escalating during scheduled maintenance.</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -209,63 +249,95 @@
         <!-- Controls Panel -->
         <div class="card sim-controls-card">
           <div class="card-header">
-            <h3 class="card-title">
+            <div class="card-title-group">
               <lucide-angular [img]="SlidersIcon" class="icon-sm text-cyan"></lucide-angular>
-              Context Parameters Sandbox
-            </h3>
+              <h3 class="card-title">Context Parameters Sandbox</h3>
+            </div>
             <button class="btn btn-sm btn-outline" (click)="runSimulation()">
               <lucide-angular [img]="PlayIcon" class="icon-xs"></lucide-angular>
-              Calculate
+              Calculate Risk
             </button>
           </div>
           <div class="card-body">
-            <!-- Preset Scenarios -->
-            <div class="scenario-chips">
-              <span class="scenario-label">Quick Scenarios:</span>
-              <button class="chip-btn" (click)="loadSimulationScenario('pci_breach')">PCI Exfiltration</button>
-              <button class="chip-btn" (click)="loadSimulationScenario('ad_takeover')">AD Domain Admin</button>
-              <button class="chip-btn" (click)="loadSimulationScenario('dmz_probe')">DMZ C2 Beacon</button>
-              <button class="chip-btn" (click)="loadSimulationScenario('dev_noise')">Dev Box Noise</button>
+            <!-- Scenario Quick Picks -->
+            <div class="preset-scenarios">
+              <span class="preset-label">Operational Scenarios:</span>
+              <div class="chips-row">
+                <button class="chip-btn" (click)="loadSimulationScenario('pci_breach')">
+                  <lucide-angular [img]="TerminalIcon" class="icon-xs text-cyan"></lucide-angular>
+                  PCI Exfiltration (Linux)
+                </button>
+                <button class="chip-btn" (click)="loadSimulationScenario('ad_takeover')">
+                  <lucide-angular [img]="ServerIcon" class="icon-xs text-amber"></lucide-angular>
+                  Domain Admin (Windows AD)
+                </button>
+                <button class="chip-btn" (click)="loadSimulationScenario('dmz_probe')">
+                  <lucide-angular [img]="ZapIcon" class="icon-xs text-purple"></lucide-angular>
+                  DMZ C2 Beacon
+                </button>
+                <button class="chip-btn" (click)="loadSimulationScenario('dev_noise')">
+                  Dev Sandbox Noise
+                </button>
+              </div>
             </div>
 
+            <!-- Agent Selector -->
             <div class="form-group">
-              <label>Select Enrolled Fleet Node</label>
+              <label>Select Target from Live Fleet</label>
               <select class="form-control" [ngModel]="selectedSimAgentId()" (ngModelChange)="onSelectSimAgent($event)">
-                <option value="custom">-- Custom Manual Input --</option>
+                <option value="custom">Custom Node / Manual Input</option>
                 @for (agent of availableAgents(); track agent.id) {
-                  <option [value]="agent.id">{{ agent.name }} ({{ agent.ip }} - {{ agent.os_type || agent.os }})</option>
+                  <option [value]="agent.id">
+                    {{ agent.name }} ({{ agent.ip }} • {{ agent.os_type || agent.os }})
+                  </option>
                 }
               </select>
-              <span class="form-hint">Pulls real enrolled node metadata directly from the live SIEM fleet</span>
+              <span class="form-hint">Automatically pulls host identifiers, OS platform, and Wazuh groups from the live inventory</span>
             </div>
 
-            <div class="form-group">
-              <label>Target Host / Agent Name</label>
-              <input type="text" class="form-control" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event); runSimulation()" />
-              <span class="form-hint">Matches asset pattern (e.g. *pay*, *win*, *linux*)</span>
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>Target Host / Agent Name</label>
+                <input type="text" class="form-control" [ngModel]="simAgentName()" (ngModelChange)="simAgentName.set($event); runSimulation()" />
+                <span class="form-hint">Matches asset pattern (e.g. *pay*, *win*, *linux*)</span>
+              </div>
+
+              <div class="form-group">
+                <label>Target OS Platform</label>
+                <select class="form-control" [ngModel]="simAgentOs()" (ngModelChange)="simAgentOs.set($event); runSimulation()">
+                  <option value="windows">Windows Server / Workstation</option>
+                  <option value="linux">Linux Server / Container</option>
+                  <option value="macos">macOS Endpoint</option>
+                </select>
+                <span class="form-hint">Used for platform-specific identity mapping</span>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label>Host IP Address</label>
-              <input type="text" class="form-control" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event); runSimulation()" />
-            </div>
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>Host IP Address</label>
+                <input type="text" class="form-control" [ngModel]="simAgentIp()" (ngModelChange)="simAgentIp.set($event); runSimulation()" />
+              </div>
 
-            <div class="form-group">
-              <label>Associated Identity / Account</label>
-              <input type="text" class="form-control" [ngModel]="simUser()" (ngModelChange)="simUser.set($event); runSimulation()" />
-              <span class="form-hint">Matches identity pattern (e.g. administrator, *cashier*)</span>
+              <div class="form-group">
+                <label>Associated Identity / Account</label>
+                <input type="text" class="form-control" [ngModel]="simUser()" (ngModelChange)="simUser.set($event); runSimulation()" />
+                <span class="form-hint">administrator, root, cashier_svc, intern</span>
+              </div>
             </div>
 
             <div class="form-group">
               <div class="label-row">
-                <label>Technical Rule Level (0 - 15)</label>
-                <span class="level-indicator">Level {{ simRuleLevel() }}</span>
+                <label>Technical Wazuh Rule Level (0 - 15)</label>
+                <span class="level-indicator" [class.lvl-high]="simRuleLevel() >= 10" [class.lvl-crit]="simRuleLevel() >= 12">
+                  Level {{ simRuleLevel() }}
+                </span>
               </div>
               <input type="range" min="1" max="15" class="form-range" [ngModel]="simRuleLevel()" (ngModelChange)="simRuleLevel.set($event); runSimulation()" />
             </div>
 
             <div class="form-group">
-              <label>Rule Description</label>
+              <label>Technical Rule Description</label>
               <input type="text" class="form-control" [ngModel]="simRuleDesc()" (ngModelChange)="simRuleDesc.set($event); runSimulation()" />
             </div>
           </div>
@@ -274,13 +346,13 @@
         <!-- Simulation Output Card -->
         <div class="card sim-results-card">
           <div class="card-header">
-            <h3 class="card-title">
+            <div class="card-title-group">
               <lucide-angular [img]="SparklesIcon" class="icon-sm text-cyan"></lucide-angular>
-              Dynamic Score Calculation Breakdown
-            </h3>
+              <h3 class="card-title">Dynamic Risk Score Dossier</h3>
+            </div>
             @if (simResult()) {
               <span class="badge" [class]="getTierClass(simResult()?.dynamic_risk_tier)">
-                {{ simResult()?.dynamic_risk_tier }} Risk
+                {{ simResult()?.dynamic_risk_tier }} Impact
               </span>
             }
           </div>
@@ -312,7 +384,7 @@
                     </div>
                     <div class="factor-item">
                       <span class="f-label">Active Schedule:</span>
-                      <span class="f-value">{{ res.active_window_name || 'Standard' }}</span>
+                      <span class="f-value">{{ res.active_window_name || 'Standard Production' }}</span>
                     </div>
                   </div>
                 </div>
@@ -327,23 +399,24 @@
                 <p class="narrative-text">{{ res.executive_impact }}</p>
               </div>
 
-              <!-- Comparison Table -->
+              <!-- Before vs After Comparison Strip -->
               <div class="comparison-strip">
                 <div class="cmp-box">
-                  <span class="cmp-label">Static Technical Severity</span>
+                  <span class="cmp-label">Raw Wazuh Technical Level</span>
                   <span class="cmp-val">Level {{ res.technical_severity }} / 15</span>
                 </div>
                 <div class="cmp-arrow">
                   <lucide-angular [img]="ArrowRightIcon" class="icon-sm text-cyan"></lucide-angular>
                 </div>
-                <div class="cmp-box highlighted">
-                  <span class="cmp-label">Dynamic Business Risk</span>
+                <div class="cmp-box highlighted" [class]="getTierClass(res.dynamic_risk_tier)">
+                  <span class="cmp-label">Contextual Business Risk</span>
                   <span class="cmp-val">{{ res.dynamic_risk_score }} / 100 ({{ res.dynamic_risk_tier }})</span>
                 </div>
               </div>
             } @else {
               <div class="empty-state">
-                <p>Calculating simulation...</p>
+                <lucide-angular [img]="RefreshIcon" class="icon-lg animate-spin text-cyan"></lucide-angular>
+                <p>Calculating risk score...</p>
               </div>
             }
           </div>
@@ -357,22 +430,34 @@
     <div class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">
+          <div class="card-title-group">
             <lucide-angular [img]="BuildingIcon" class="icon-sm text-cyan"></lucide-angular>
-            Configured Business Processes & Asset Matrices
-          </h3>
-          <button class="btn btn-sm btn-primary" (click)="openNewProcessModal()">
-            <lucide-angular [img]="PlusIcon" class="icon-xs"></lucide-angular>
-            Add Business Process
-          </button>
+            <h3 class="card-title">Configured Business Processes & Asset Matrices</h3>
+          </div>
+          <div class="header-tools">
+            <div class="search-box">
+              <lucide-angular [img]="SearchIcon" class="icon-xs text-muted"></lucide-angular>
+              <input
+                type="text"
+                placeholder="Search processes, groups, patterns..."
+                [ngModel]="searchProcessQuery()"
+                (ngModelChange)="searchProcessQuery.set($event)"
+              />
+            </div>
+            <button class="btn btn-sm btn-primary" (click)="openNewProcessModal()">
+              <lucide-angular [img]="PlusIcon" class="icon-xs"></lucide-angular>
+              Add Business Process
+            </button>
+          </div>
         </div>
         <div class="card-body p-0">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Process Name & ID</th>
+                <th>Process Name & Description</th>
                 <th>Criticality</th>
-                <th>Asset Patterns</th>
+                <th>Wazuh Fleet Groups</th>
+                <th>Asset Match Patterns</th>
                 <th>Identity Patterns</th>
                 <th>Weights</th>
                 <th>Status</th>
@@ -380,7 +465,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (proc of processes(); track proc.id) {
+              @for (proc of filteredProcesses(); track proc.id) {
                 <tr>
                   <td>
                     <div class="td-title">{{ proc.name }}</div>
@@ -390,6 +475,15 @@
                     <span class="badge" [class]="'crit-' + proc.criticality.toLowerCase()">
                       {{ proc.criticality }}
                     </span>
+                  </td>
+                  <td>
+                    <div class="tag-list">
+                      @for (g of proc.group_patterns || []; track g) {
+                        <span class="tag-pill tag-group">{{ g }}</span>
+                      } @empty {
+                        <span class="text-muted text-xs">—</span>
+                      }
+                    </div>
                   </td>
                   <td>
                     <div class="tag-list">
@@ -427,8 +521,8 @@
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="7" class="text-center py-4 text-muted">
-                    No business processes configured.
+                  <td colspan="8" class="text-center py-4 text-muted">
+                    No business processes match the search query.
                   </td>
                 </tr>
               }
@@ -444,19 +538,19 @@
     <div class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">
+          <div class="card-title-group">
             <lucide-angular [img]="ClockIcon" class="icon-sm text-cyan"></lucide-angular>
-            Temporal Business Windows & Priority Multipliers
-          </h3>
+            <h3 class="card-title">Temporal Business Schedules & Multipliers</h3>
+          </div>
         </div>
         <div class="card-body p-0">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Window Name</th>
+                <th>Schedule Name</th>
                 <th>Type & Scope</th>
                 <th>Priority Multiplier</th>
-                <th>Active Context</th>
+                <th>Operational Context</th>
                 <th class="text-right">Toggle & Actions</th>
               </tr>
             </thead>
@@ -479,7 +573,7 @@
                     <span class="multiplier-tag" [class.elevated]="win.multiplier > 1.0" [class.suppressed]="win.multiplier < 1.0">
                       {{ win.multiplier }}x
                       @if (win.multiplier > 1.0) {
-                        (Elevated)
+                        (Escalated)
                       } @else if (win.multiplier < 1.0) {
                         (De-escalated)
                       } @else {
@@ -514,21 +608,28 @@
     <div class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">
+          <div class="card-title-group">
             <lucide-angular [img]="ShieldAlertIcon" class="icon-sm text-cyan"></lucide-angular>
-            Real-Time Risk Fabric Enriched Alerts
-          </h3>
-          <span class="card-badge">{{ alerts().length }} Total Alerts</span>
+            <h3 class="card-title">Real-Time Risk Fabric Enriched Alerts</h3>
+          </div>
+          <div class="header-tools">
+            <div class="live-stream-badge">
+              <span class="pulse-dot"></span>
+              <span>WebSocket Stream Active</span>
+              <span class="text-muted text-xs">({{ alerts().length }} Ingested)</span>
+            </div>
+          </div>
         </div>
         <div class="card-body p-0">
           <table class="data-table">
             <thead>
               <tr>
                 <th>Dynamic Score</th>
-                <th>Target Asset</th>
+                <th>Target Endpoint</th>
                 <th>Business Process</th>
                 <th>Technical Rule</th>
                 <th>Executive Impact Narrative</th>
+                <th class="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -548,7 +649,7 @@
                   </td>
                   <td>
                     <div class="td-title">{{ a.agent.name }}</div>
-                    <div class="td-subtitle">{{ a.agent.ip }}</div>
+                    <div class="td-subtitle">{{ a.agent.ip }} (ID: {{ a.agent.id }})</div>
                   </td>
                   <td>
                     @if (a.risk_fabric || a.data?.['risk_fabric']; as rf) {
@@ -557,7 +658,7 @@
                         {{ rf.process_criticality }}
                       </span>
                     } @else {
-                      <span class="text-muted">Unclassified</span>
+                      <span class="text-muted">General Workload</span>
                     }
                   </td>
                   <td>
@@ -571,10 +672,18 @@
                       <p class="impact-preview text-muted">{{ a.full_log }}</p>
                     }
                   </td>
+                  <td class="text-right">
+                    <button class="btn btn-xs btn-outline" (click)="loadAlertIntoSimulator(a)" title="Load this live alert into Dynamic Simulator">
+                      <lucide-angular [img]="PlayIcon" class="icon-xs"></lucide-angular>
+                      Simulate
+                    </button>
+                  </td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="5" class="text-center py-4 text-muted">No alerts currently loaded.</td>
+                  <td colspan="6" class="text-center py-5 text-muted">
+                    No alerts in current buffer. The table will update automatically as new events arrive from enrolled agents.
+                  </td>
                 </tr>
               }
             </tbody>
@@ -584,43 +693,52 @@
     </div>
   }
 
-  <!-- Modal for Creating/Editing Business Process -->
+  <!-- MODAL: ADD / EDIT PROCESS -->
   @if (isProcessModalOpen()) {
-    <div class="modal-backdrop" (click)="isProcessModalOpen.set(false)">
+    <div class="modal-overlay" (click)="isProcessModalOpen.set(false)">
       <div class="modal-card" (click)="$event.stopPropagation()">
         <div class="modal-header">
-          <h3>{{ editingProcessId() ? 'Edit Business Process' : 'Map New Business Process' }}</h3>
+          <div class="modal-title-row">
+            <lucide-angular [img]="BuildingIcon" class="icon-sm text-cyan"></lucide-angular>
+            <h3>{{ editingProcessId() ? 'Edit Business Process' : 'Map New Business Process' }}</h3>
+          </div>
           <button class="btn-icon" (click)="isProcessModalOpen.set(false)">
             <lucide-angular [img]="CancelIcon" class="icon-sm"></lucide-angular>
           </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Process Name</label>
+            <label>Business Process Name</label>
             <input type="text" class="form-control" [ngModel]="procFormName()" (ngModelChange)="procFormName.set($event)" placeholder="e.g. Core SWIFT Payment Engine" />
           </div>
           <div class="form-group">
-            <label>Description</label>
-            <input type="text" class="form-control" [ngModel]="procFormDesc()" (ngModelChange)="procFormDesc.set($event)" placeholder="Business function and scope" />
+            <label>Description & Scope</label>
+            <input type="text" class="form-control" [ngModel]="procFormDesc()" (ngModelChange)="procFormDesc.set($event)" placeholder="Business function, revenue impact, or compliance scope" />
           </div>
-          <div class="form-row">
-            <div class="form-group col">
+          <div class="form-row-3">
+            <div class="form-group">
               <label>Criticality Tier</label>
               <select class="form-control" [ngModel]="procFormCriticality()" (ngModelChange)="procFormCriticality.set($event)">
-                <option value="Mission-Critical">Mission-Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
+                <option value="Mission-Critical">Mission-Critical (2.4x Max)</option>
+                <option value="High">High (1.6x)</option>
+                <option value="Medium">Medium (1.0x)</option>
+                <option value="Low">Low (0.6x)</option>
+                <option value="Sandbox">Sandbox / Dev (0.3x)</option>
               </select>
             </div>
-            <div class="form-group col">
+            <div class="form-group">
               <label>Asset Weight (0.1 - 3.0)</label>
               <input type="number" step="0.1" class="form-control" [ngModel]="procFormAssetWeight()" (ngModelChange)="procFormAssetWeight.set($event)" />
             </div>
-            <div class="form-group col">
+            <div class="form-group">
               <label>Identity Weight (0.1 - 3.0)</label>
               <input type="number" step="0.1" class="form-control" [ngModel]="procFormIdentityWeight()" (ngModelChange)="procFormIdentityWeight.set($event)" />
             </div>
+          </div>
+          <div class="form-group">
+            <label>Wazuh Fleet Group Patterns (comma-separated)</label>
+            <input type="text" class="form-control" [ngModel]="procFormGroupPatterns()" (ngModelChange)="procFormGroupPatterns.set($event)" placeholder="pci-dss, domain-controllers, webservers" />
+            <span class="form-hint">Matches agent groups enrolled in the SIEM manager</span>
           </div>
           <div class="form-group">
             <label>Asset Matching Patterns (comma-separated)</label>
@@ -632,7 +750,7 @@
           </div>
           <div class="form-group">
             <label>Executive Impact Template</label>
-            <textarea class="form-control" rows="3" [ngModel]="procFormImpactTemplate()" (ngModelChange)="procFormImpactTemplate.set($event)"></textarea>
+            <textarea class="form-control" rows="3" [ngModel]="procFormImpactTemplate()" (ngModelChange)="procFormImpactTemplate.set($event)" placeholder="Executive narrative displayed when this business function is threatened"></textarea>
           </div>
         </div>
         <div class="modal-footer">

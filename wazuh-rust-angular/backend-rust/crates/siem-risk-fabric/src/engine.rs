@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::models::{
-    BusinessProcessDefinition, BusinessTimeWindow, ProcessRiskStat, RiskEvaluationRequest,
-    RiskFabricConfig, RiskFabricScore, RiskFabricSummary,
+    BusinessProcessDefinition, BusinessTimeWindow, FleetAgentMeta, ProcessRiskStat,
+    RiskEvaluationRequest, RiskFabricConfig, RiskFabricScore, RiskFabricSummary,
 };
 use crate::storage;
 
@@ -14,7 +14,7 @@ use crate::storage;
 pub struct RiskFabricEngine {
     processes: Arc<RwLock<Vec<BusinessProcessDefinition>>>,
     time_windows: Arc<RwLock<Vec<BusinessTimeWindow>>>,
-    fleet: Arc<RwLock<HashMap<String, (String, String, Option<String>)>>>,
+    fleet: Arc<RwLock<HashMap<String, FleetAgentMeta>>>,
     config_path: PathBuf,
 }
 
@@ -32,12 +32,49 @@ impl RiskFabricEngine {
         }
     }
 
-    /// Synchronizes live enrolled agent fleet metadata
+    /// Synchronizes live enrolled agent fleet metadata using tuples
     pub fn sync_fleet(&self, fleet: &[(String, String, String, Option<String>)]) {
         let mut map = self.fleet.write().unwrap();
         map.clear();
         for (id, name, ip, os) in fleet {
-            map.insert(id.clone(), (name.clone(), ip.clone(), os.clone()));
+            let mut groups = Vec::new();
+            let name_lower = name.to_lowercase();
+            if name_lower.contains("dc") || name_lower.contains("ad") || name_lower.contains("iam") {
+                groups.push("domain-controllers".to_string());
+                groups.push("active-directory".to_string());
+            }
+            if name_lower.contains("pay") || name_lower.contains("pos") || name_lower.contains("swift") {
+                groups.push("pci-dss".to_string());
+                groups.push("payment-gateway".to_string());
+            }
+            if name_lower.contains("web") || name_lower.contains("dmz") || name_lower.contains("nginx") {
+                groups.push("dmz".to_string());
+                groups.push("webservers".to_string());
+            }
+            if name_lower.contains("erp") || name_lower.contains("db") || name_lower.contains("sql") {
+                groups.push("database".to_string());
+                groups.push("erp".to_string());
+            }
+
+            map.insert(
+                id.clone(),
+                FleetAgentMeta {
+                    id: id.clone(),
+                    name: name.clone(),
+                    ip: ip.clone(),
+                    os_type: os.clone(),
+                    groups,
+                },
+            );
+        }
+    }
+
+    /// Synchronizes live enrolled agent fleet with rich metadata including Wazuh groups
+    pub fn sync_fleet_meta(&self, fleet: &[FleetAgentMeta]) {
+        let mut map = self.fleet.write().unwrap();
+        map.clear();
+        for meta in fleet {
+            map.insert(meta.id.clone(), meta.clone());
         }
     }
 
@@ -56,17 +93,21 @@ impl RiskFabricEngine {
         let agent_id = alert.agent.id.to_lowercase();
         let agent_ip = alert.agent.ip.to_lowercase();
         let location = alert.location.to_lowercase();
-        let user = alert.decoded.user.as_deref().unwrap_or("").to_lowercase();
+        let user = resolve_alert_user(alert);
         let rule_level = alert.rule.level;
         let rule_desc = &alert.rule.description;
 
-        // Resolve fleet registry OS if available
-        let fleet_os = {
+        // Resolve fleet registry OS and groups if available
+        let (fleet_os, fleet_groups) = {
             let f = self.fleet.read().unwrap();
-            f.get(&alert.agent.id)
-                .and_then(|(_, _, os)| os.clone())
-                .unwrap_or_default()
-                .to_lowercase()
+            if let Some(agent_meta) = f.get(&alert.agent.id) {
+                (
+                    agent_meta.os_type.clone().unwrap_or_default().to_lowercase(),
+                    agent_meta.groups.iter().map(|g| g.to_lowercase()).collect::<Vec<_>>(),
+                )
+            } else {
+                (String::new(), Vec::new())
+            }
         };
 
         let processes = self.processes.read().unwrap();
@@ -80,7 +121,12 @@ impl RiskFabricEngine {
                     || matches_pattern(pattern, &agent_id)
                     || matches_pattern(pattern, &agent_ip)
                     || matches_pattern(pattern, &location)
+                    || (!fleet_os.is_empty() && matches_pattern(pattern, &fleet_os))
+                    || fleet_groups.iter().any(|g| matches_pattern(pattern, g))
+            }) || p.group_patterns.iter().any(|gp| {
+                fleet_groups.iter().any(|g| matches_pattern(gp, g))
             });
+
             if matches_asset {
                 if let Some(ref current) = matched_proc {
                     if p.asset_weight > current.asset_weight {
@@ -101,10 +147,10 @@ impl RiskFabricEngine {
                 if is_win {
                     (
                         "bp-win-corp".to_string(),
-                        "Corporate Windows Infrastructure".to_string(),
+                        "Corporate Windows Workstations & Fleet".to_string(),
                         "High".to_string(),
                         2.1,
-                        "Windows domain host security event detected. Potential active lateral pivot, credential access, or defense evasion.".to_string(),
+                        "Windows domain host security event detected; potential active lateral pivot, credential access, or defense evasion.".to_string(),
                     )
                 } else if is_linux {
                     (
@@ -112,7 +158,7 @@ impl RiskFabricEngine {
                         "Enterprise Linux Workload Infrastructure".to_string(),
                         "High".to_string(),
                         2.0,
-                        "Linux host telemetry alert. Elevated potential for privilege escalation, root compromise, or daemon abuse.".to_string(),
+                        "Linux host telemetry alert; elevated potential for privilege escalation, root compromise, or daemon abuse.".to_string(),
                     )
                 } else {
                     (
@@ -135,8 +181,22 @@ impl RiskFabricEngine {
                     }
                 }
             }
-            if user == "root" || user == "administrator" || user == "system" {
-                identity_weight = identity_weight.max(1.8);
+            // Privileged accounts elevation across Windows and Linux
+            if user == "root"
+                || user == "administrator"
+                || user == "system"
+                || user == "domain admins"
+                || user == "enterprise admins"
+                || user == "wheel"
+            {
+                identity_weight = identity_weight.max(2.0);
+            } else if user.starts_with("svc_")
+                || user.starts_with("nt authority")
+                || user == "www-data"
+                || user == "nginx"
+                || user == "postgres"
+            {
+                identity_weight = identity_weight.max(1.5);
             }
         }
 
@@ -269,9 +329,21 @@ impl RiskFabricEngine {
                 user: req.user.clone(),
                 ..Default::default()
             },
-            location: format!("/var/log/{}", req.agent_name),
+            location: match req.os_type.as_deref() {
+                Some("windows") => r"C:\Windows\System32\Security.evtx".to_string(),
+                _ if req.agent_name.to_lowercase().contains("win") => r"C:\Windows\System32\Security.evtx".to_string(),
+                _ => format!("/var/log/{}", req.agent_name),
+            },
             data: HashMap::new(),
         };
+
+        if let Some(ref os) = req.os_type {
+            dummy_alert.data.insert("agent_os".to_string(), serde_json::Value::String(os.clone()));
+        }
+        if let Some(ref u) = req.user {
+            dummy_alert.data.insert("win.eventdata.targetUserName".to_string(), serde_json::Value::String(u.clone()));
+            dummy_alert.data.insert("dstuser".to_string(), serde_json::Value::String(u.clone()));
+        }
 
         self.evaluate_alert(&mut dummy_alert)
     }
@@ -404,6 +476,67 @@ impl RiskFabricEngine {
     }
 }
 
+/// Dynamically resolves the user identity across Windows EventData and Linux Syslog/Auditd payloads
+pub fn resolve_alert_user(alert: &Alert) -> String {
+    // 1. Check decoded user
+    if let Some(ref u) = alert.decoded.user {
+        let trimmed = u.trim();
+        if !trimmed.is_empty() && trimmed != "-" && trimmed != "(unknown)" {
+            return clean_username(trimmed);
+        }
+    }
+
+    // 2. Windows EventData checks (Security EventID 4624, 4625, 4672, 4720, Sysmon EventID 1)
+    for key in &[
+        "win.eventdata.targetUserName",
+        "win.eventdata.subjectUserName",
+        "win.eventdata.user",
+        "Event.EventData.TargetUserName",
+        "Event.EventData.SubjectUserName",
+        "TargetUserName",
+        "SubjectUserName",
+    ] {
+        if let Some(val) = alert.data.get(*key).and_then(|v| v.as_str()) {
+            let trimmed = val.trim();
+            // Exclude machine accounts ending in $ (e.g. DC01$)
+            if !trimmed.is_empty() && trimmed != "-" && !trimmed.ends_with('$') {
+                return clean_username(trimmed);
+            }
+        }
+    }
+
+    // 3. Linux auth / sudo / auditd checks
+    for key in &[
+        "dstuser",
+        "srcuser",
+        "audit.auid",
+        "audit.uid",
+        "pam.user",
+        "user",
+    ] {
+        if let Some(val) = alert.data.get(*key).and_then(|v| v.as_str()) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() && trimmed != "-" {
+                return clean_username(trimmed);
+            }
+        }
+    }
+
+    String::new()
+}
+
+/// Normalizes usernames by stripping Windows domain prefixes (e.g. "CORP\admin" -> "admin")
+pub fn clean_username(user: &str) -> String {
+    let lower = user.to_lowercase();
+    if let Some(pos) = lower.find('\\') {
+        lower[pos + 1..].to_string()
+    } else if let Some(pos) = lower.find('@') {
+        lower[..pos].to_string()
+    } else {
+        lower
+    }
+}
+
 /// Dynamically evaluates whether a business time window is in effect using the system clock and calendar
 pub fn evaluate_temporal_window(w: &BusinessTimeWindow, now: chrono::DateTime<Utc>) -> (bool, f64) {
     if !w.active {
@@ -521,11 +654,52 @@ mod tests {
             agent_name: "srv-prod-ubuntu-01".into(),
             agent_ip: "192.168.10.15".into(),
             user: Some("administrator".into()),
+            os_type: Some("linux".into()),
         };
         let score = engine.simulate(&req);
         assert!(score.dynamic_risk_score >= 85);
         assert_eq!(score.dynamic_risk_tier, "Catastrophic");
         assert!(score.executive_impact.contains("PCI-DSS"));
         let _ = std::fs::remove_file(temp_file);
+    }
+
+    #[test]
+    fn test_cross_platform_identity_resolution() {
+        let mut alert = Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 60100,
+                level: 12,
+                description: "Windows logon failure".into(),
+                groups: vec!["windows".into()],
+                mitre: None,
+            },
+            agent: siem_core::AgentAlertInfo {
+                id: "017".into(),
+                name: "win-node-dc10".into(),
+                ip: "192.168.1.10".into(),
+            },
+            manager: None,
+            decoder: None,
+            full_log: "".into(),
+            decoded: siem_core::DecodedFields::default(), // empty decoded.user
+            location: r"C:\Windows\System32\Winevt\Security.evtx".into(),
+            data: HashMap::new(),
+        };
+
+        // Case 1: Windows EventData with Domain prefix
+        alert.data.insert("win.eventdata.targetUserName".into(), serde_json::Value::String(r"CORP\Administrator".into()));
+        assert_eq!(resolve_alert_user(&alert), "administrator");
+
+        // Case 2: Machine account excluded
+        alert.data.insert("win.eventdata.targetUserName".into(), serde_json::Value::String(r"CORP\DC10$".into()));
+        alert.data.insert("win.eventdata.subjectUserName".into(), serde_json::Value::String(r"svc_backup".into()));
+        assert_eq!(resolve_alert_user(&alert), "svc_backup");
+
+        // Case 3: Linux sudo dstuser
+        alert.data.clear();
+        alert.data.insert("dstuser".into(), serde_json::Value::String("root".into()));
+        assert_eq!(resolve_alert_user(&alert), "root");
     }
 }

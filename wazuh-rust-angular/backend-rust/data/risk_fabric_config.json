@@ -20,6 +20,7 @@
         "192.168.10.15",
         "srv-prod-ubuntu-01"
       ],
+      "group_patterns": [],
       "identity_patterns": [
         "*cashier*",
         "*finance*",
@@ -51,6 +52,7 @@
         "win-node-7a5e",
         "192.168.1.*"
       ],
+      "group_patterns": [],
       "identity_patterns": [
         "administrator",
         "admin*",
@@ -79,6 +81,7 @@
         "*api*",
         "*portal*"
       ],
+      "group_patterns": [],
       "identity_patterns": [
         "www-data",
         "nginx",
@@ -103,6 +106,7 @@
         "*sql*",
         "*postgres*"
       ],
+      "group_patterns": [],
       "identity_patterns": [
         "*operator*",
         "*dba*",
@@ -126,12 +130,37 @@
         "*sandbox*",
         "*lab*"
       ],
+      "group_patterns": [],
       "identity_patterns": [
         "*tester*",
         "*intern*",
         "*dev*"
       ],
       "impact_template": "Isolated development or QA asset activity; low enterprise operational risk, suppressed from high-urgency SOC response.",
+      "enabled": true
+    },
+    {
+      "id": "bp-1793613371810",
+      "name": "",
+      "description": "",
+      "criticality": "Mission-Critical",
+      "asset_weight": 2.0,
+      "identity_weight": 1.5,
+      "asset_patterns": [
+        "*pay*",
+        "*swift*",
+        "192.168.10.*"
+      ],
+      "group_patterns": [
+        "pci-dss",
+        "domain-controllers"
+      ],
+      "identity_patterns": [
+        "admin*",
+        "*cashier*",
+        "svc_*"
+      ],
+      "impact_template": "Critical asset or privileged identity compromised; immediate containment mandatory.",
       "enabled": true
     }
   ],

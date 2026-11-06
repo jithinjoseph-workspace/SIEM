@@ -42,6 +42,7 @@ import {
   DeceptionBlueprint,
   DeceptionSummary,
   CreateAssetRequest,
+  FleetNodeInfo,
   SimulateTripwireRequest, ComplianceProfile, ComplianceProfileResponse, LiveResponseRequest, TamperStatus } from './siem.models';
 
 @Injectable({
@@ -702,6 +703,14 @@ export class SiemService {
 
   getDeceptionTemplates(): Observable<DeceptionBlueprint[]> {
     return this.http.get<DeceptionBlueprint[]>(`${this.apiUrl}/api/v1/deception/templates`);
+  }
+
+  getDeceptionFleet(): Observable<FleetNodeInfo[]> {
+    return this.http.get<FleetNodeInfo[]>(`${this.apiUrl}/api/v1/deception/fleet`);
+  }
+
+  clearDeceptionTriggers(): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/api/v1/deception/triggers`);
   }
 }
 

@@ -34,6 +34,9 @@ pub fn default_storage() -> DeceptionStorage {
             created_at: now,
             tags: vec!["canary".into(), "fim".into(), "credentials".into()],
             risk_reduction_score: 85,
+            os_type: Some("linux".into()),
+            deployment_command: Some("mkdir -p /var/data/shared && echo 'KDBX4' > /var/data/shared/master_passwords_2026.kdbx".into()),
+            last_deployed_at: Some(now),
         },
         DeceptionAsset {
             id: asset2_id.clone(),
@@ -49,6 +52,9 @@ pub fn default_storage() -> DeceptionStorage {
             created_at: now,
             tags: vec!["aws".into(), "honeytoken".into(), "cloud".into()],
             risk_reduction_score: 92,
+            os_type: Some("linux".into()),
+            deployment_command: Some("mkdir -p /home/ubuntu/.aws && echo 'AKIA_TRIPWIRE' > /home/ubuntu/.aws/credentials".into()),
+            last_deployed_at: Some(now),
         },
         DeceptionAsset {
             id: asset3_id.clone(),
@@ -64,6 +70,9 @@ pub fn default_storage() -> DeceptionStorage {
             created_at: now,
             tags: vec!["port-scan".into(), "decoy-service".into(), "dmz".into()],
             risk_reduction_score: 78,
+            os_type: Some("linux".into()),
+            deployment_command: Some("nohup nc -k -l -p 6379 >/dev/null 2>&1 &".into()),
+            last_deployed_at: Some(now),
         },
     ];
 
@@ -99,12 +108,12 @@ pub fn load_storage(path: &Path) -> Option<DeceptionStorage> {
         Ok(data) => match serde_json::from_str::<DeceptionStorage>(&data) {
             Ok(store) => Some(store),
             Err(e) => {
-                error!("Failed to parse deception config from {:?}: {}", path, e);
+                error!("Failed to parse deception storage from {:?}: {}", path, e);
                 None
             }
         },
         Err(e) => {
-            error!("Failed to read deception config from {:?}: {}", path, e);
+            error!("Failed to read deception storage from {:?}: {}", path, e);
             None
         }
     }
@@ -116,17 +125,14 @@ pub fn save_storage(path: &Path, storage: &DeceptionStorage) {
     }
     match serde_json::to_string_pretty(storage) {
         Ok(json) => {
-            let tmp_path = path.with_extension("tmp");
-            if let Err(e) = fs::write(&tmp_path, json) {
-                error!("Failed to write temporary deception file {:?}: {}", tmp_path, e);
-                return;
-            }
-            if let Err(e) = fs::rename(&tmp_path, path) {
-                error!("Failed to commit deception file {:?}: {}", path, e);
+            if let Err(e) = fs::write(path, json) {
+                error!("Failed to write deception storage to {:?}: {}", path, e);
             } else {
-                info!("Persisted deception grid configuration to {:?}", path);
+                info!("Saved deception grid configuration to {:?}", path);
             }
         }
-        Err(e) => error!("Failed to serialize deception storage: {}", e),
+        Err(e) => {
+            error!("Failed to serialize deception storage: {}", e);
+        }
     }
 }

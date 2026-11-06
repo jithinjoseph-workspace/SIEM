@@ -8,8 +8,10 @@ mod lifecycle;
 mod logcollector;
 mod rootcheck;
 mod sca;
+pub mod inotify_watcher;
 mod syscheck;
 mod syscollector;
+pub mod whodata;
 
 use buffer::AgentBuffer;
 use client_agent::ClientAgent;

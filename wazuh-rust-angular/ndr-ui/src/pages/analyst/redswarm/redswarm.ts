@@ -165,7 +165,7 @@ export class RedswarmComponent implements OnInit {
   approveAndDeployRule(draftId: string) {
     this.siem.approveAndDeployRule(draftId).subscribe({
       next: (res: any) => {
-        this.ruleDeployMessage.set(`✓ Deployed as rule ${res?.rule_id} (etc/rules/redswarm_rules.xml); wazuh-analysisd checked the ruleset and reloaded it.`);
+        this.ruleDeployMessage.set(`✓ Deployed as rule ${res?.rule_id} (etc/rules/redswarm_rules.xml); provigil-analysisd checked the ruleset and reloaded it.`);
         this.refreshAll();
       },
       error: (err) => {

@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn chunks_put_back_together() {
-        let payload: Vec<u8> = (0..200_000u32).flat_map(|i| (i * 2654435761).to_le_bytes()).collect();
+        let payload: Vec<u8> = (0..200_000u32).flat_map(|i| i.wrapping_mul(2654435761).to_le_bytes()).collect();
         let lines = result_lines("ab12", "file", &payload, ",\"path\":\"C:\\\\x\"");
         assert!(lines.len() > 2 && lines.iter().all(|l| l.len() < CHUNK + 200), "short lines");
         let done = lines.last().unwrap();

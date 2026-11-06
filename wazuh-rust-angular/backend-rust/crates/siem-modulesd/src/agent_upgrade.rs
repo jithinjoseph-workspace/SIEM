@@ -20,7 +20,7 @@ use crate::task_general::*;
 /// `AGENT_UPGRADE_WM_NAME`
 pub const NAME: &str = "agent-upgrade";
 /// `WM_AGENT_UPGRADE_LOGTAG`
-const LOGTAG: &str = "wazuh-modulesd:agent-upgrade";
+const LOGTAG: &str = "provigil-modulesd:agent-upgrade";
 /// `WM_UPGRADE_SOCK`, `WM_TASK_MODULE_SOCK`, `REMOTE_LOCAL_SOCK`, `CLUSTER_SOCK`
 pub const WM_UPGRADE_SOCK: &str = "queue/tasks/upgrade";
 const WM_TASK_MODULE_SOCK: &str = "queue/tasks/task";
@@ -605,7 +605,7 @@ impl UpgradeManager {
             Ok(r) => match parse_result(&r) {
                 (WdbcResult::Ok, arg) => parse(arg.as_bytes()),
                 (WdbcResult::Error, arg) => {
-                    self.log.error(format!("Bad response from wazuh-db: {arg}"));
+                    self.log.error(format!("Bad response from provigil-db: {arg}"));
                     None
                 }
                 _ => None,
@@ -615,12 +615,12 @@ impl UpgradeManager {
                 None
             }
             Err(_) => {
-                self.log.error("No response from wazuh-db.");
+                self.log.error("No response from provigil-db.");
                 None
             }
         };
         if root.is_none() {
-            self.log.error(format!("Error querying Wazuh DB to get the agent's {id} information."));
+            self.log.error(format!("Error querying provigil-db to get the agent's {id} information."));
         }
         root
     }

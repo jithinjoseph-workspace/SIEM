@@ -1,5 +1,8 @@
 mod agcom;
 mod buffer;
+// upstream config readers, moved out of siem-core; deleted with this prototype agent
+#[allow(dead_code)]
+mod config_parser;
 mod client_agent;
 mod control;
 mod enroll;

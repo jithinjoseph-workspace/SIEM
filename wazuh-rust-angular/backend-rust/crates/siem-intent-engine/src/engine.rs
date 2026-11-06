@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -12,7 +13,7 @@ use crate::models::{
     EntityIntentDossier, ExecuteActionRequest, IntentHypothesisScore, IntentSummaryReport,
     KillChainMilestone, LiveAlertRecord, PreemptiveAction, SimulationIntentRequest,
 };
-use crate::storage::{self, IntentEngineStorage};
+use crate::storage;
 
 pub type ActionDispatcher = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
 
@@ -27,29 +28,53 @@ pub struct TimelineEvidence {
 #[derive(Clone)]
 pub struct IntentEngine {
     dossiers: Arc<RwLock<Vec<EntityIntentDossier>>>,
-    executed_actions: Arc<RwLock<Vec<String>>>,
-    config_path: PathBuf,
+    /// The agents whose dossier changed since siem-api last stored them
+    changed: Arc<Mutex<HashSet<String>>>,
+    /// The dossier file of an earlier version, until its dossiers are stored
+    legacy_file: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl IntentEngine {
-    pub fn new(config_path: impl Into<PathBuf>) -> Self {
-        let path = config_path.into();
-        let store = storage::load_storage(&path).unwrap_or_else(storage::default_storage);
-        storage::save_storage(&path, &store);
-
+    /// `legacy_file`: the dossier file of an earlier version, if any: its dossiers count as
+    /// changed, and it goes once they are stored ([`IntentEngine::stored`]).
+    pub fn new(legacy_file: impl Into<PathBuf>) -> Self {
+        let path = legacy_file.into();
+        let store = storage::load_storage(&path);
+        let dossiers = store.as_ref().map(|s| s.dossiers.clone()).unwrap_or_default();
+        let changed = dossiers.iter().map(|d| d.entity_id.clone()).collect();
         Self {
-            dossiers: Arc::new(RwLock::new(store.dossiers)),
-            executed_actions: Arc::new(RwLock::new(store.executed_actions)),
-            config_path: path,
+            dossiers: Arc::new(RwLock::new(dossiers)),
+            changed: Arc::new(Mutex::new(changed)),
+            legacy_file: Arc::new(Mutex::new(store.map(|_| path))),
         }
     }
 
-    pub fn save(&self) {
-        let store = IntentEngineStorage {
-            dossiers: self.dossiers.read().unwrap().clone(),
-            executed_actions: self.executed_actions.read().unwrap().clone(),
-        };
-        storage::save_storage(&self.config_path, &store);
+    /// The dossiers stored in ClickHouse, at start; what is already here is newer.
+    pub fn load(&self, stored: Vec<EntityIntentDossier>) {
+        let mut list = self.dossiers.write().unwrap();
+        for d in stored {
+            if !list.iter().any(|x| x.entity_id == d.entity_id) {
+                list.push(d);
+            }
+        }
+    }
+
+    /// The dossiers that changed since the last call, for siem-api to store.
+    pub fn take_changed(&self) -> Vec<EntityIntentDossier> {
+        let changed = std::mem::take(&mut *self.changed.lock().unwrap());
+        self.dossiers.read().unwrap().iter().filter(|d| changed.contains(&d.entity_id)).cloned().collect()
+    }
+
+    /// These agents' dossiers could not be stored: they stay changed.
+    pub fn store_failed(&self, agents: impl IntoIterator<Item = String>) {
+        self.changed.lock().unwrap().extend(agents);
+    }
+
+    /// All that `take_changed` gave was stored: the old dossier file is not needed any more.
+    pub fn stored(&self) {
+        if let Some(path) = self.legacy_file.lock().unwrap().take() {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     /// Primary Multi-Hypothesis Intent Evaluator using real alert timestamps, native tactics, and OS awareness
@@ -480,7 +505,7 @@ impl IntentEngine {
         }
         let mut list = self.dossiers.write().unwrap();
         let now = Utc::now();
-        let mut changed = false;
+        let mut changed = self.changed.lock().unwrap();
 
         for (agent_id, agent_name, agent_ip, os_type) in fleet {
             if let Some(existing) = list.iter_mut().find(|d| d.entity_id == *agent_id) {
@@ -488,7 +513,7 @@ impl IntentEngine {
                     existing.entity_name = agent_name.clone();
                     existing.entity_ip = agent_ip.clone();
                     existing.os_type = os_type.clone();
-                    changed = true;
+                    changed.insert(agent_id.clone());
                 }
             } else {
                 list.push(EntityIntentDossier {
@@ -508,13 +533,8 @@ impl IntentEngine {
                     alerts_analyzed: 0,
                     last_updated_at: now,
                 });
-                changed = true;
+                changed.insert(agent_id.clone());
             }
-        }
-
-        drop(list);
-        if changed {
-            self.save();
         }
     }
 
@@ -568,7 +588,7 @@ impl IntentEngine {
                     user.as_deref(),
                 );
                 dossier.alerts_analyzed = records.iter().filter(|r| r.agent_id == agent_id).count();
-                self.upsert_dossier(dossier);
+                self.put_dossier(dossier);
             }
         }
     }
@@ -683,14 +703,17 @@ impl IntentEngine {
     }
 
     pub fn upsert_dossier(&self, dossier: EntityIntentDossier) {
+        self.put_dossier(dossier);
+    }
+
+    fn put_dossier(&self, dossier: EntityIntentDossier) {
+        self.changed.lock().unwrap().insert(dossier.entity_id.clone());
         let mut list = self.dossiers.write().unwrap();
         if let Some(pos) = list.iter().position(|d| d.id == dossier.id || d.entity_id == dossier.entity_id) {
             list[pos] = dossier;
         } else {
             list.push(dossier);
         }
-        drop(list);
-        self.save();
     }
 
     pub fn execute_action(
@@ -704,9 +727,8 @@ impl IntentEngine {
                 if a.id == req.action_id {
                     a.status = if req.dry_run { "simulated".into() } else { "executed".into() };
                     let action_copy = a.clone();
+                    self.changed.lock().unwrap().insert(d.entity_id.clone());
                     drop(list);
-                    self.executed_actions.write().unwrap().push(req.action_id.clone());
-                    self.save();
 
                     if !req.dry_run {
                         if let Some(disp) = dispatcher {
@@ -737,6 +759,58 @@ impl IntentEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dossier(engine: &IntentEngine, agent: &str) -> EntityIntentDossier {
+        engine.sync_enrolled_fleet(&[(agent.to_string(), format!("pc-{agent}"), "10.0.0.1".to_string(), None)]);
+        engine.get_dossier(agent).unwrap()
+    }
+
+    #[test]
+    fn only_changed_agents_are_handed_over_and_a_failed_store_stays_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = IntentEngine::new(dir.path().join("none.json"));
+        dossier(&engine, "001");
+        dossier(&engine, "002");
+        let ids = |v: Vec<EntityIntentDossier>| {
+            let mut i: Vec<String> = v.into_iter().map(|d| d.entity_id).collect();
+            i.sort();
+            i
+        };
+        assert_eq!(ids(engine.take_changed()), ["001", "002"]);
+        assert!(engine.take_changed().is_empty(), "handed over once");
+        let mut d = engine.get_dossier("002").unwrap();
+        d.alerts_analyzed = 9;
+        engine.upsert_dossier(d);
+        assert_eq!(ids(engine.take_changed()), ["002"]);
+        engine.store_failed(["002".to_string()]);
+        assert_eq!(ids(engine.take_changed()), ["002"], "tried again");
+    }
+
+    #[test]
+    fn an_old_dossier_file_moves_once_and_goes_only_when_stored() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, bad) = (dir.path().join("intent.json"), dir.path().join("bad.json"));
+        let d = dossier(&IntentEngine::new(dir.path().join("none.json")), "007");
+        std::fs::write(&file, serde_json::json!({ "dossiers": [d], "executed_actions": ["a1"] }).to_string()).unwrap();
+        let engine = IntentEngine::new(&file);
+        assert_eq!(engine.take_changed().len(), 1);
+        assert!(file.exists(), "kept until stored");
+        engine.stored();
+        assert!(!file.exists());
+        // the file is newer than what ClickHouse holds; another agent's row is added
+        let mut stale = d.clone();
+        stale.alerts_analyzed = 99;
+        let mut other = d.clone();
+        other.entity_id = "008".into();
+        engine.load(vec![stale, other]);
+        assert_eq!(engine.get_dossier("007").unwrap().alerts_analyzed, 0);
+        assert!(engine.get_dossier("008").is_some());
+        assert!(engine.take_changed().is_empty(), "what was loaded is stored already");
+        // a file it cannot read is left where it is
+        std::fs::write(&bad, "not json").unwrap();
+        IntentEngine::new(&bad).stored();
+        assert!(bad.exists());
+    }
 
     #[test]
     fn test_ransomware_intent_prediction() {

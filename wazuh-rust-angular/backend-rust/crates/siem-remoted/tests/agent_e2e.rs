@@ -166,7 +166,7 @@ async fn real_agent_session() {
     framing::send(&mut c, br#"{"command":"getstats"}"#).await.unwrap();
     let resp: serde_json::Value = serde_json::from_slice(&framing::recv(&mut c, 70000).await.unwrap()).unwrap();
     assert_eq!(resp["error"], 0);
-    assert_eq!(resp["data"]["name"], "wazuh-remoted");
+    assert_eq!(resp["data"]["name"], "provigil-remoted");
     assert!(resp["data"]["metrics"]["messages"]["received_breakdown"]["event"].as_u64().unwrap() >= 2);
     assert_eq!(resp["data"]["metrics"]["messages"]["received_breakdown"]["control_breakdown"]["startup"], 1);
 
@@ -181,7 +181,7 @@ async fn real_agent_session() {
     let ev = tokio::time::timeout(Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
     assert_eq!(
         String::from_utf8(ev).unwrap(),
-        "1:[001] (web01) any->wazuh-remoted:ossec: Agent stopped: 'web01->any'."
+        "1:[001] (web01) any->provigil-remoted:ossec: Agent stopped: 'web01->any'."
     );
     tokio::time::sleep(Duration::from_millis(500)).await;
     let log = wdb.log.lock().unwrap().clone();

@@ -61,7 +61,7 @@ fn flush(log: &WLog, ctx: &mut ConfigContext) {
     }
 }
 
-const ARGV0: &str = "wazuh-modulesd";
+const ARGV0: &str = "provigil-modulesd";
 
 fn print_out(s: &str) {
     eprintln!("{s}");
@@ -70,8 +70,7 @@ fn print_out(s: &str) {
 /// `wm_help`
 fn wm_help() -> ! {
     print_out(" ");
-    print_out("Wazuh v4.14.7 - Wazuh Inc. (info@wazuh.com)");
-    print_out("http://www.wazuh.com");
+    print_out("ProVigil v4.14.7");
     print_out(&format!("  {ARGV0}: -[Vhdtf]"));
     print_out("    -d          Execute in debug mode. This parameter");
     print_out("                can be specified multiple times");
@@ -148,7 +147,7 @@ async fn main() {
             log.now_debug();
         }
     }
-    log.debug1(format!("Wazuh home directory: {}", home_path.display()));
+    log.debug1(format!("ProVigil home directory: {}", home_path.display()));
 
     let nofile = match opts.get_int("wazuh_modules", "rlimit_nofile", 8192, 1048576) {
         Ok(v) => v,
@@ -209,8 +208,8 @@ async fn main() {
     // router (wm_router_read, before the other manager modules): the broker of queue/router/
     #[cfg(any(target_os = "linux", windows))]
     {
-        log.tagged("wazuh-modulesd:router", "INFO", "Loaded router module.");
-        log.tagged("wazuh-modulesd:router", "INFO", "Starting router module.");
+        log.tagged("provigil-modulesd:router", "INFO", "Loaded router module.");
+        log.tagged("provigil-modulesd:router", "INFO", "Starting router module.");
         let l = log.clone();
         siem_router::router_initialize(Arc::new(move |level: &str, msg: &[u8]| {
             let lv = match level {
@@ -218,7 +217,7 @@ async fn main() {
                 "ERROR_EXIT" => "CRITICAL",
                 other => other,
             };
-            l.tagged("wazuh-modulesd:router", lv, msg);
+            l.tagged("provigil-modulesd:router", lv, msg);
         }));
         siem_router::router_start();
     }

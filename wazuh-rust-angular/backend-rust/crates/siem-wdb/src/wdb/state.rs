@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use parking_lot::{Mutex, MutexGuard};
 use siem_cjson::Json;
 
-const ARGV0: &str = "wazuh-db";
+const ARGV0: &str = "provigil-db";
 
 /// `struct timeval`
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

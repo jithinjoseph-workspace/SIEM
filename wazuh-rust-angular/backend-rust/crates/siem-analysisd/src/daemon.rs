@@ -23,6 +23,7 @@ use crate::daemon_config::AnalysisdConfig;
 use crate::engine::{Engine, EngineConfig};
 use crate::event::*;
 use crate::labels::{Label, LabelFlags};
+use crate::internal::db_worker::{self, DbCfg, DbDecoders, DbWorkers, Decoded};
 use crate::logmsg::{LogLevel, LogList};
 use crate::logtest::{Logtest, LogtestConfig};
 use crate::input::{InQueues, Kind};
@@ -32,6 +33,8 @@ use crate::state::{Component, EpsReport, QueueStat, QueueStatus, State};
 use crate::rules::{ActiveResponse as RuleAr, RuleConfig, RuleId};
 
 pub const OS_MAXSTR: usize = 65536;
+/// Threads for the decoders that wait on provigil-db (each agent's database is its own).
+const DB_WORKERS: usize = 4;
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// Logging used by the daemon (`minfo` / `mwarn` / `merror`).
@@ -66,14 +69,14 @@ impl Logger for StderrLogger {
             return;
         }
         let now = Local::now().format("%Y/%m/%d %H:%M:%S");
-        eprintln!("{now} wazuh-analysisd: {level}: {msg}");
+        eprintln!("{now} provigil-analysisd: {level}: {msg}");
     }
     fn log_bytes(&self, level: &str, msg: &[u8]) {
         if level.starts_with("DEBUG") {
             return;
         }
         let now = Local::now().format("%Y/%m/%d %H:%M:%S");
-        let mut line = format!("{now} wazuh-analysisd: {level}: ").into_bytes();
+        let mut line = format!("{now} provigil-analysisd: {level}: ").into_bytes();
         line.extend_from_slice(msg);
         line.push(b'\n');
         let _ = std::io::stderr().write_all(&line);
@@ -403,6 +406,7 @@ pub struct LiveEnv {
     labels: LabelCache,
     exec: Option<siem_ipc::local::DatagramSender>,
     ar: Option<siem_ipc::local::DatagramSender>,
+    provigil_ar: Option<siem_ipc::local::DatagramSender>,
     node_name: String,
 }
 
@@ -468,7 +472,7 @@ impl Env for LiveEnv {
         match parse_result(&r) {
             (WdbcResult::Ok, p) => siem_cjson::parse(p.as_bytes()),
             (WdbcResult::Error, p) => {
-                self.ctx.log.log("ERROR", &format!("Bad response from wazuh-db: {p}"));
+                self.ctx.log.log("ERROR", &format!("Bad response from provigil-db: {p}"));
                 None
             }
             _ => None,
@@ -504,9 +508,13 @@ impl Env for LiveEnv {
 }
 
 impl LiveEnv {
-    fn send(&mut self, which: bool, msg: &[u8]) {
-        let path = self.ctx.home.join(if which { "queue/alerts/execq" } else { "queue/alerts/ar" });
-        let slot = if which { &mut self.exec } else { &mut self.ar };
+    fn send(&mut self, queue: &str, msg: &[u8]) {
+        let path = self.ctx.home.join(queue);
+        let slot = match queue {
+            "queue/alerts/execq" => &mut self.exec,
+            "queue/alerts/ar" => &mut self.ar,
+            _ => &mut self.provigil_ar,
+        };
         if slot.is_none() {
             let p = path.clone();
             *slot = self.ctx.rt.block_on(async move { siem_ipc::local::DatagramSender::connect(p).await.ok() });
@@ -607,11 +615,15 @@ impl ArBackend for LiveEnv {
     }
 
     fn send_exec(&mut self, msg: &[u8]) {
-        self.send(true, msg)
+        self.send("queue/alerts/execq", msg)
     }
 
     fn send_ar(&mut self, msg: &[u8]) {
-        self.send(false, msg)
+        self.send("queue/alerts/ar", msg)
+    }
+
+    fn send_provigil_ar(&mut self, msg: &[u8]) {
+        self.send(siem_ipc::mq::PROVIGIL_ARQUEUE, msg)
     }
 }
 
@@ -641,6 +653,9 @@ pub struct Analysis {
     reported: std::collections::HashSet<u8>,
     /// state.c counters
     pub state: State,
+    /// For siem-api's backpressure: its datagrams (`FROM_API`) taken in, and the fullest
+    /// queue's usage (f32 bits). Answered without this thread, so a pause does not look like lag.
+    pub load: Arc<[std::sync::atomic::AtomicU64; 2]>,
     /// limits.c
     pub limits: Limits,
     inq: InQueues,
@@ -651,9 +666,9 @@ pub struct Analysis {
     /// `HostinfoInit` state (opened when the event loop starts).
     hostinfo: Option<crate::internal::hostinfo::Hostinfo>,
     winevt: crate::internal::winevt::Winevt,
-    sca: crate::internal::sca::Sca,
-    syscollector: crate::internal::syscollector::Syscollector,
-    fim: crate::internal::syscheck::Fim,
+    /// The decoders that wait on provigil-db, when no worker threads run.
+    db: DbDecoders,
+    workers: Option<DbWorkers>,
 }
 
 fn engine_config(cfg: &AnalysisdConfig, shost: &[u8], manager: &[u8]) -> EngineConfig {
@@ -830,7 +845,7 @@ impl Analysis {
         let (limits, limits_msg) = Limits::load(cfg.global.eps.maximum, cfg.global.eps.timeframe, cfg.global.eps.maximum_found);
         let inq = InQueues::new(&cfg.internal.q);
         let now = engine.clock.now().sec;
-        let stream = crate::stream::Stream::from_env();
+        let stream = crate::stream::Stream::from_env(&cfg.home.join("queue/stream-spool/analysisd"));
         let mut a = Analysis {
             cfg,
             engine,
@@ -853,6 +868,7 @@ impl Analysis {
             node_name,
             reported: Default::default(),
             state: State::new(now),
+            load: Default::default(),
             limits,
             inq,
             reported_eps_drop: false,
@@ -861,9 +877,8 @@ impl Analysis {
             limits_msg: Some(limits_msg),
             hostinfo: None,
             winevt: Default::default(),
-            sca: Default::default(),
-            syscollector: Default::default(),
-            fim: Default::default(),
+            db: Default::default(),
+            workers: None,
         };
         a.init_fts();
         Ok(a)
@@ -872,7 +887,7 @@ impl Analysis {
     /// The daemon's environment (labels from provigil-db, AR queues).
     pub fn live_env(&self, ctx: Ctx) -> LiveEnv {
         let labels = LabelCache::new(to_labels(&self.cfg.labels), self.cfg.internal.label_cache_maxage as i64, Some(&ctx));
-        LiveEnv { ctx, labels, exec: None, ar: None, node_name: self.node_name.clone() }
+        LiveEnv { ctx, labels, exec: None, ar: None, provigil_ar: None, node_name: self.node_name.clone() }
     }
 
     /// `mitre_load`: the MITRE table from provigil-db, shared with logtest.
@@ -893,6 +908,8 @@ impl Analysis {
     /// and a new accumulator). Returns true when the new ruleset could not
     /// be loaded (the current one stays); `list` gets the load messages.
     pub fn reload_ruleset(&mut self, env: &mut dyn Env, list: &mut LogList) -> bool {
+        // what the workers hold was decoded with the current ruleset's ids
+        self.finish_decoding(env);
         let home = self.cfg.home.clone();
         let conf = home.join("etc/ossec.conf");
         let Some(rs) = crate::ruleset::load_ruleset_conf(&conf, "etc/ossec.conf", &home, false, list) else {
@@ -1238,6 +1255,9 @@ impl Analysis {
 
     /// `ad_input_main` for one datagram: validate, count and queue it.
     pub fn receive(&mut self, env: &mut dyn Env, msg: &[u8]) {
+        let msg = msg.strip_prefix(&[crate::stream::FROM_API]).inspect(|_| {
+            self.load[0].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }).unwrap_or(msg);
         // buffer[recv] = '\0'; the queued copy is os_strdup(buffer)
         let cmsg = cstr(msg);
         if cmsg.len() < 4 {
@@ -1300,10 +1320,14 @@ impl Analysis {
         self.pump_some(env, usize::MAX);
     }
 
-    /// `pump` for at most `max` messages (the daemon interleaves input).
+    /// `pump` for at most `max` messages (the daemon interleaves input), and the rules for
+    /// what the workers finished.
     pub fn pump_some(&mut self, env: &mut dyn Env, max: usize) {
+        while let Some(d) = self.workers.as_ref().and_then(|w| w.done.try_recv().ok()) {
+            self.take_decoded(env, d);
+        }
         let mut n = 0;
-        while n < max && !self.inq.is_empty() {
+        while n < max && self.inq.has_fast() {
             if !self.limits.try_credit() {
                 return;
             }
@@ -1311,16 +1335,71 @@ impl Analysis {
             self.decode_and_process(env, kind, &msg);
             n += 1;
         }
+        while self.inq.has_slow() && self.worker_room() {
+            if !self.limits.try_credit() {
+                return;
+            }
+            let (kind, msg) = self.inq.pop_slow().unwrap();
+            self.decode_and_process(env, kind, &msg);
+        }
+    }
+
+    fn worker_room(&self) -> bool {
+        self.workers.as_ref().is_some_and(|w| w.in_flight < db_worker::WINDOW)
+    }
+
+    /// Decoders with `envs` (one worker thread each) take over what waits on provigil-db.
+    pub fn start_db_workers<E: Env + Send + 'static>(&mut self, envs: Vec<E>) {
+        self.workers = Some(DbWorkers::start(envs));
+        self.inq.split = true;
+    }
+
+    /// Waits for everything at the workers.
+    pub fn finish_decoding(&mut self, env: &mut dyn Env) {
+        while self.workers.as_ref().is_some_and(|w| w.in_flight > 0) {
+            let Some(Ok(d)) = self.workers.as_ref().map(|w| w.done.recv()) else { return };
+            self.take_decoded(env, d);
+        }
+    }
+
+    /// A worker's event goes on to the rules.
+    fn take_decoded(&mut self, env: &mut dyn Env, d: Decoded) {
+        if let Some(w) = &mut self.workers {
+            w.in_flight -= 1;
+        }
+        if let Some((id, name)) = d.fim {
+            let info = &mut self.engine.decoders.infos[self.engine.internal.fim];
+            (info.id, info.name) = (id, name);
+        }
+        if d.keep {
+            self.match_rules(env, *d.ev);
+        }
     }
 
     /// Messages a decoder could take right now (queued and EPS credits).
     pub fn can_pump(&self) -> bool {
-        !self.inq.is_empty() && !self.limits.limit_reached().0
+        (self.inq.has_fast() || (self.inq.has_slow() && self.worker_room())) && !self.limits.limit_reached().0
     }
 
     /// Messages still waiting for a decoder.
     pub fn pending(&self) -> bool {
-        !self.inq.is_empty()
+        !self.inq.is_empty() || self.workers.as_ref().is_some_and(|w| w.in_flight > 0)
+    }
+
+    /// A decoder queue cannot take another message: what comes in waits before the queues.
+    pub fn input_full(&self) -> bool {
+        self.inq.any_full()
+    }
+
+    /// How full the fullest decoder queue is, 0 to 1.
+    pub fn queue_usage(&self) -> f32 {
+        self.inq.max_usage()
+    }
+
+    /// `getload`'s answer, from what the analysis thread last published.
+    pub fn load_json(load: &[std::sync::atomic::AtomicU64; 2]) -> Vec<u8> {
+        let o = std::sync::atomic::Ordering::Relaxed;
+        format!(r#"{{"error":0,"message":"ok","data":{{"queue_usage":{},"received":{}}}}}"#, f32::from_bits(load[1].load(o) as u32), load[0].load(o)).into_bytes()
     }
 
     fn decode_and_process(&mut self, env: &mut dyn Env, kind: Kind, msg: &[u8]) {
@@ -1347,56 +1426,41 @@ impl Analysis {
             env.log("ERROR", &[&b"(1222): Invalid msg: "[..], msg].concat());
             return;
         }
+        // no rule matching follows dbsync and upgrade
+        let waits = match kind {
+            Kind::Dbsync => Some(Component::Dbsync),
+            Kind::Upgrade => Some(Component::Upgrade),
+            Kind::Syscheck => Some(Component::Syscheck),
+            Kind::Syscollector => Some(Component::Syscollector),
+            Kind::Sca => Some(Component::Sca),
+            Kind::Rootcheck => Some(Component::Rootcheck),
+            _ if msg[0] == CISCAT_MQ => Some(Component::Ciscat),
+            _ => None,
+        };
+        if let Some(c) = waits {
+            self.state.decoded(c, ev.agent_id.as_deref(), now.sec);
+            let order = self.engine.cfg.rule.decoder_order_size;
+            if msg[0] == CISCAT_MQ {
+                crate::plugins::json_decoder(&mut self.engine.decoders, &mut ev, order);
+            }
+            let g = &self.cfg.global;
+            let fim = crate::internal::syscheck::FimConfig {
+                alert_new: g.syscheck_alert_new != 0,
+                auto_ignore: g.syscheck_auto_ignore != 0,
+                ignore_time: g.syscheck_ignore_time as i64,
+                ignore_frequency: g.syscheck_ignore_frequency,
+            };
+            let cfg = DbCfg { ids: self.engine.internal, order_size: order, fim };
+            if let Some(w) = &mut self.workers {
+                return w.send(kind, cfg, ev);
+            }
+            let info = &mut self.engine.decoders.infos[cfg.ids.fim];
+            if self.db.decode(env, kind, &cfg, info, &mut ev) {
+                self.match_rules(env, ev);
+            }
+            return;
+        }
         match kind {
-            Kind::Dbsync => {
-                // w_dispatch_dbsync_thread: no rule matching
-                self.state.decoded(Component::Dbsync, ev.agent_id.as_deref(), now.sec);
-                let agent = ev.agent_id.clone().unwrap_or_default();
-                let log = ev.log().to_vec();
-                crate::internal::dbsync::dispatch(env, cstr(&agent), &log);
-                return;
-            }
-            Kind::Syscheck => {
-                self.state.decoded(Component::Syscheck, ev.agent_id.as_deref(), now.sec);
-                let g = &self.cfg.global;
-                let fcfg = crate::internal::syscheck::FimConfig {
-                    alert_new: g.syscheck_alert_new != 0,
-                    auto_ignore: g.syscheck_auto_ignore != 0,
-                    ignore_time: g.syscheck_ignore_time as i64,
-                    ignore_frequency: g.syscheck_ignore_frequency,
-                };
-                let ids = self.engine.internal;
-                if !self.fim.decode(env, &mut self.engine.decoders, ids.fim, &ids.fim_ids, &fcfg, &mut ev) {
-                    return;
-                }
-            }
-            Kind::Upgrade => {
-                // w_dispatch_upgrade_module_thread: no rule matching
-                self.state.decoded(Component::Upgrade, ev.agent_id.as_deref(), now.sec);
-                let agent = ev.agent_id.clone().unwrap_or_default();
-                let log = ev.log().to_vec();
-                crate::internal::upgrade::dispatch(env, cstr(&agent), &log);
-                return;
-            }
-            Kind::Syscollector => {
-                self.state.decoded(Component::Syscollector, ev.agent_id.as_deref(), now.sec);
-                let dec = self.engine.internal.syscollector;
-                let order = self.engine.cfg.rule.decoder_order_size;
-                if !self.syscollector.decode(env, dec, order, &mut ev) {
-                    return;
-                }
-            }
-            Kind::Sca => {
-                self.state.decoded(Component::Sca, ev.agent_id.as_deref(), now.sec);
-                let dec = self.engine.internal.sca;
-                let order = self.engine.cfg.rule.decoder_order_size;
-                let keep = self.sca.decode(env, dec, order, &mut ev);
-                // RequestDBThread
-                self.sca.drain(env);
-                if !keep {
-                    return;
-                }
-            }
             Kind::Winevt => {
                 self.state.decoded(Component::Eventchannel, ev.agent_id.as_deref(), now.sec);
                 let dec = self.engine.internal.winevt;
@@ -1413,21 +1477,6 @@ impl Analysis {
                     return;
                 }
             }
-            Kind::Rootcheck => {
-                self.state.decoded(Component::Rootcheck, ev.agent_id.as_deref(), now.sec);
-                let dec = self.engine.internal.rootcheck;
-                if !crate::internal::rootcheck::decode(env, dec, &mut ev) {
-                    return;
-                }
-            }
-            _ if msg[0] == CISCAT_MQ => {
-                self.state.decoded(Component::Ciscat, ev.agent_id.as_deref(), now.sec);
-                let dec = self.engine.internal.ciscat;
-                let order = self.engine.cfg.rule.decoder_order_size;
-                if !crate::internal::ciscat::decode(env, &mut self.engine.decoders, dec, order, &mut ev) {
-                    return;
-                }
-            }
             _ => {
                 match msg[0] {
                     SYSLOG_MQ => self.state.decoded(Component::Syslog, None, now.sec),
@@ -1441,6 +1490,12 @@ impl Analysis {
                 self.engine.decode(&mut ev);
             }
         }
+        self.match_rules(env, ev);
+    }
+
+    /// `w_process_event_thread` for one decoded event, and its writers.
+    fn match_rules(&mut self, env: &mut dyn Env, ev: Event) {
+        let now = self.engine.clock.now();
         let opts = ProcessOptions {
             logfw: self.cfg.internal.log_fw != 0,
             // the stream always carries the events: they are the platform's event store
@@ -1630,10 +1685,10 @@ pub fn run(mut analysis: Analysis, log: Arc<dyn Logger>) -> std::io::Result<()> 
     startup_messages(&analysis.cfg, &*log);
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let wdb: Arc<dyn WdbQuery> = Arc::new(WdbcSocket::new(home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK)));
-    let ctx = Ctx { home: home.clone(), rt: rt.handle().clone(), wdb, log: log.clone() };
+    let ctx = |wdb| Ctx { home: home.clone(), rt: rt.handle().clone(), wdb, log: log.clone() };
 
     let logtest_cfg = analysis.cfg.logtest.clone();
-    let mut env = analysis.live_env(ctx);
+    let mut env = analysis.live_env(ctx(wdb));
     // mitre_load (main thread, before the logtest service starts)
     analysis.load_mitre(&mut env);
     // OS_ReadMSG: OS_InitLog / the first OS_GetLogLocation, the internal
@@ -1707,6 +1762,10 @@ pub fn run(mut analysis: Analysis, log: Arc<dyn Logger>) -> std::io::Result<()> 
 
     // Input queue
     let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(131072);
+    let envs = (0..DB_WORKERS)
+        .map(|_| analysis.live_env(ctx(Arc::new(WdbcSocket::new(home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK))))))
+        .collect();
+    analysis.start_db_workers(envs);
     let qpath = home.join(siem_ipc::mq::DEFAULTQUEUE);
     let l3 = log.clone();
     rt.spawn(async move {
@@ -1735,6 +1794,7 @@ pub fn run(mut analysis: Analysis, log: Arc<dyn Logger>) -> std::io::Result<()> 
     let (atx, arx) = mpsc::channel::<AsysReq>();
     let apath = home.join(crate::asyscom::ANLSYS_LOCAL_SOCK);
     let l4 = log.clone();
+    let load = analysis.load.clone();
     rt.spawn(async move {
         let _ = std::fs::remove_file(&apath);
         let listener = match siem_ipc::local::StreamListener::bind(&apath).await {
@@ -1747,11 +1807,14 @@ pub fn run(mut analysis: Analysis, log: Arc<dyn Logger>) -> std::io::Result<()> 
         };
         loop {
             let Ok(mut s) = listener.accept().await else { continue };
-            let atx = atx.clone();
+            let (atx, load) = (atx.clone(), load.clone());
             let l5 = l4.clone();
             tokio::spawn(async move {
                 match siem_ipc::framing::recv(&mut s, OS_MAXSTR).await {
                     Ok(req) if req.is_empty() => {} // "Empty message from local client"
+                    Ok(req) if req.starts_with(b"{\"command\":\"getload\"}") => {
+                        let _ = siem_ipc::framing::send(&mut s, &Analysis::load_json(&load)).await;
+                    }
                     Ok(req) => {
                         let (otx, orx) = tokio::sync::oneshot::channel();
                         if atx.send((req, otx)).is_err() {
@@ -1773,18 +1836,30 @@ pub fn run(mut analysis: Analysis, log: Arc<dyn Logger>) -> std::io::Result<()> 
     // Input, decoding, rule matching, writers and rotation (this thread)
     let mut last_tick = std::time::Instant::now();
     loop {
-        // ad_input_main: queue (or drop) everything that has arrived
-        let wait = if analysis.can_pump() { Duration::ZERO } else { Duration::from_millis(50) };
-        match rx.recv_timeout(wait) {
-            Ok(m) => {
-                analysis.receive(&mut env, &m);
-                while let Ok(m) = rx.try_recv() {
+        // ad_input_main: queue what has arrived. What the queues cannot take waits in this
+        // channel, then in the socket's buffer: siem-api sees that and refuses agents' batches
+        let wait = match (analysis.can_pump(), analysis.pending()) {
+            (true, _) => Duration::ZERO,
+            (false, true) => Duration::from_millis(1),
+            (false, false) => Duration::from_millis(50),
+        };
+        if analysis.input_full() {
+            std::thread::sleep(wait);
+        } else {
+            match rx.recv_timeout(wait) {
+                Ok(m) => {
                     analysis.receive(&mut env, &m);
+                    while !analysis.input_full() {
+                        let Ok(m) = rx.try_recv() else { break };
+                        analysis.receive(&mut env, &m);
+                    }
                 }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+        // at its fullest, before the decoders take from it
+        analysis.load[1].store(analysis.queue_usage().to_bits() as u64, std::sync::atomic::Ordering::Relaxed);
         while let Ok((req, otx)) = arx.try_recv() {
             let resp = crate::asyscom::dispatch(&mut analysis, &mut env, &req);
             let _ = otx.send(resp);

@@ -5,7 +5,7 @@ edition = "2021"
 description = "(src/analysis): pre-decoding, XML decoders, rules engine, CDB lists, FTS, accumulator, JSON alerts and logtest"
 
 [dependencies]
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-xml = { path = "../siem-xml" }
 siem-cjson = { path = "../siem-cjson" }
 siem-config = { path = "../siem-config" }
@@ -19,3 +19,4 @@ regex = "1.10"
 
 [dev-dependencies]
 libc = "0.2"
+tempfile = "3"

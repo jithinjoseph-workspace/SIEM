@@ -27,12 +27,12 @@ use siem_log::WLog;
 
 /// `ARGV0` (the Windows agent logs execd under its own name)
 #[cfg(unix)]
-pub const ARGV0: &str = "wazuh-execd";
+pub const ARGV0: &str = "provigil-execd";
 #[cfg(windows)]
 pub const ARGV0: &str = "wazuh-agent";
 /// `ARGV0` of the os_execd objects (`execd.h`), also in the Windows agent:
 /// the "module" of the AR messages.
-pub const EXECD_NAME: &str = "wazuh-execd";
+pub const EXECD_NAME: &str = "provigil-execd";
 
 #[cfg(unix)]
 mod paths {

@@ -12,6 +12,8 @@ pub struct NovelFingerprintBuffer {
     pub first_seen: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
     pub is_synthesizing: bool,
+    /// After a failed synthesis: no new attempt before this time (else every new sample retried it).
+    pub retry_after: Option<DateTime<Utc>>,
 }
 
 pub struct SampleAccumulator {
@@ -47,6 +49,7 @@ impl SampleAccumulator {
             first_seen: now,
             last_seen: now,
             is_synthesizing: false,
+            retry_after: None,
         });
 
         entry.count += 1;
@@ -61,7 +64,7 @@ impl SampleAccumulator {
             entry.samples.push_back(trimmed);
         }
 
-        if entry.samples.len() >= self.default_threshold && !entry.is_synthesizing {
+        if entry.samples.len() >= self.default_threshold && !entry.is_synthesizing && entry.retry_after.is_none_or(|t| now >= t) {
             entry.is_synthesizing = true;
             Some(entry.samples.iter().cloned().collect())
         } else {
@@ -78,6 +81,14 @@ impl SampleAccumulator {
         let mut guard = self.buffers.write().unwrap();
         if let Some(buf) = guard.get_mut(&fingerprint) {
             buf.is_synthesizing = synthesizing;
+        }
+    }
+
+    /// A synthesis failed: wait before trying this fingerprint again.
+    pub fn mark_failed(&self, fingerprint: u64) {
+        if let Some(buf) = self.buffers.write().unwrap().get_mut(&fingerprint) {
+            buf.is_synthesizing = false;
+            buf.retry_after = Some(Utc::now() + chrono::Duration::minutes(10));
         }
     }
 
@@ -110,5 +121,21 @@ impl SampleAccumulator {
     pub fn count_pending(&self) -> usize {
         let guard = self.buffers.read().unwrap();
         guard.len()
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_synthesis_is_not_retried_on_every_sample() {
+        let acc = SampleAccumulator::new(50, 2);
+        assert!(acc.push_sample(7, "sig", "a 1").is_none());
+        assert!(acc.push_sample(7, "sig", "a 2").is_some());
+        acc.mark_failed(7);
+        assert!(acc.push_sample(7, "sig", "a 3").is_none());
+        acc.buffers.write().unwrap().get_mut(&7).unwrap().retry_after = Some(Utc::now() - chrono::Duration::seconds(1));
+        assert!(acc.push_sample(7, "sig", "a 4").is_some());
     }
 }

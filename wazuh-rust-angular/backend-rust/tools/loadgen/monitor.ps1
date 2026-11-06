@@ -2,8 +2,8 @@
 # analysisd / remoted state, ClickHouse rows of tenant loadtest. Usage: monitor.ps1 <out.csv> <seconds>
 param([string]$out, [int]$secs)
 $run = "$PSScriptRoot\..\..\data\manager\var\run"
-$names = "siem-api", "wazuh-remoted", "wazuh-analysisd", "wazuh-db", "wazuh-modulesd", "loadgen"
-function St($f) { $h = @{}; Get-Content "$run\$f" -ErrorAction SilentlyContinue | ForEach-Object { if ($_ -match "^(\w+)='(.*)'") { $h[$matches[1]] = $matches[2] } }; $h }
+$names = "siem-api", "provigil-remoted", "provigil-analysisd", "provigil-db", "provigil-modulesd", "loadgen"
+function St($f) { $h = @{}; $p = "$run\provigil-$f"; if (-not (Test-Path $p)) { $p = "$run\wazuh-$f" }; Get-Content $p -ErrorAction SilentlyContinue | ForEach-Object { if ($_ -match "^(\w+)='(.*)'") { $h[$matches[1]] = $matches[2] } }; $h }
 $cols = @("t_s") + ($names | ForEach-Object { "$_`_cpu", "$_`_mb" }) + "tcp_sessions", "remoted_queue", "remoted_discarded", "ana_received", "ana_dropped", "ana_event_q", "ana_winevt_q", "ana_alerts_q", "ana_archives_q", "alerts_written", "ch_events", "ch_alerts", "ch_cpu", "ch_mem"
 ($cols -join ",") | Out-File $out -Encoding utf8
 $prev = @{}; $t0 = Get-Date
@@ -17,7 +17,7 @@ while (((Get-Date) - $t0).TotalSeconds -lt $secs) {
             $prev[$n] = @($cpu, $now); $row += $c, [int]($p.WorkingSet64 / 1MB)
         } else { $row += "", "" }
     }
-    $r = St "wazuh-remoted.state"; $a = St "wazuh-analysisd.state"
+    $r = St "remoted.state"; $a = St "analysisd.state"
     $row += $r.tcp_sessions, $r.queue_size, $r.discarded_count, $a.events_received, $a.events_dropped, $a.event_queue_usage, $a.winevt_queue_usage, $a.alerts_queue_usage, $a.archives_queue_usage, $a.alerts_written
     $ch = docker exec xdr-clickhouse clickhouse-client -q "SELECT (SELECT count() FROM ndr_loadtest.siem_events), (SELECT count() FROM ndr_loadtest.siem_alerts)" 2>$null
     $row += ($ch -split "\s+")[0..1]

@@ -4,17 +4,41 @@
 
 pub mod config;
 
+pub mod mq;
+pub use mq::Queue;
+
 use std::io::{Read, Write};
+use std::sync::{Arc, OnceLock};
 
 use siem_execd::wfd::{self, Wfd, W_BIND_STDERR, W_BIND_STDOUT};
 use siem_ipc::mq::queues::{LOCALFILE_MQ, SYSCHECK_MQ};
-use siem_maild::{log, strerror};
-use siem_monitord::mq::{self, Queue};
+
+static LOG: OnceLock<Arc<siem_log::WLog>> = OnceLock::new();
+
+pub fn set_logger(l: Arc<siem_log::WLog>) {
+    let _ = LOG.set(l);
+}
+
+pub fn log() -> &'static siem_log::WLog {
+    LOG.get_or_init(|| Arc::new(siem_log::WLog::new_server(ARGV0, std::path::Path::new(""))))
+}
+
+pub fn strerror(e: &std::io::Error) -> String {
+    let s = e.to_string();
+    s.split(" (os error").next().unwrap_or(&s).to_string()
+}
+
+pub fn log_thread_start(log: &siem_log::WLog) {
+    let o = siem_config::internal_options::InternalOptions::from_home("");
+    if let Ok(kib) = o.get_int("wazuh", "thread_stack_size", 2048, 65536) {
+        log.debug2(format!("Thread stack size set to: {kib} KiB"));
+    }
+}
 
 pub use config::{Entry, LESSD_STATE_CONNECTED, LESSD_STATE_DIFF, LESSD_STATE_PERIODIC};
 use config::trunc1023;
 
-pub const ARGV0: &str = "wazuh-agentlessd";
+pub const ARGV0: &str = "provigil-agentlessd";
 pub const AGENTLESSDIR: &str = "agentless";
 pub const AGENTLESS_ENTRYDIR: &str = "queue/agentless";
 pub const DIFF_DIR: &str = "queue/diff";

@@ -3,7 +3,8 @@ name = "siem-sqlite"
 version = "0.1.0"
 edition = "2021"
 description = "SQLite 3.50.4 as pinned by upstream (deps v54), built with the upstream flags, behind a thin wrapper of the C API used by provigil-db"
-links = "sqlite3"
+# no `links` key: the ProVigil agent builds its own SQLite (rusqlite) in the same workspace;
+# the two never end up in the same program
 
 [dependencies]
 

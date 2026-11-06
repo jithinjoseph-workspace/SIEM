@@ -132,9 +132,13 @@ pub async fn load(state: &AppState) {
 /// The CA identity. Rebuilt from the saved key on every start: issued
 /// certificates chain to the saved `ca.crt.pem` (same name and key).
 fn ca_params() -> CertificateParams {
+    named_ca_params(CA_CN)
+}
+
+pub(crate) fn named_ca_params(cn: &str) -> CertificateParams {
     let mut p = CertificateParams::default();
     let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, CA_CN);
+    dn.push(DnType::CommonName, cn);
     dn.push(DnType::OrganizationName, "Provigil AETHER");
     p.distinguished_name = dn;
     p.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
@@ -239,17 +243,6 @@ impl SyslogTenancy {
         Ok((dev, cert.pem(), key.serialize_pem()))
     }
 
-    /// The server certificate of the TLS listener, for these host names.
-    fn server_cert(&self, hosts: Vec<String>) -> Result<(rcgen::Certificate, KeyPair), String> {
-        let mut p = CertificateParams::new(hosts).map_err(|e| e.to_string())?;
-        p.distinguished_name.push(DnType::CommonName, "Provigil AETHER Syslog");
-        p.key_usages = vec![KeyUsagePurpose::DigitalSignature];
-        p.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-        let key = KeyPair::generate().map_err(|e| e.to_string())?;
-        let cert = p.signed_by(&key, &self.ca, &self.ca_key).map_err(|e| e.to_string())?;
-        Ok((cert, key))
-    }
-
     /// The rustls server: our CA is the only trust root for client certificates.
     pub fn tls_config(&self) -> Result<rustls::ServerConfig, String> {
         use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -265,7 +258,7 @@ impl SyslogTenancy {
                 hosts.push(h.to_string());
             }
         }
-        let (cert, key) = self.server_cert(hosts)?;
+        let (cert, key) = server_cert(&self.ca, &self.ca_key, "Provigil AETHER Syslog", hosts)?;
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         let mut roots = rustls::RootCertStore::empty();
         roots.add(self.ca.der().clone()).map_err(|e| e.to_string())?;
@@ -277,6 +270,22 @@ impl SyslogTenancy {
             .with_single_cert(vec![cert.der().clone(), CertificateDer::from(self.ca.der().to_vec())], PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())))
             .map_err(|e| e.to_string())
     }
+}
+
+/// A server certificate for these host names, valid from the start of this year for 3 years
+/// (a TLS listener gets a new one at each start).
+pub(crate) fn server_cert(ca: &rcgen::Certificate, ca_key: &KeyPair, cn: &str, hosts: Vec<String>) -> Result<(rcgen::Certificate, KeyPair), String> {
+    use chrono::Datelike;
+    let mut p = CertificateParams::new(hosts).map_err(|e| e.to_string())?;
+    p.distinguished_name.push(DnType::CommonName, cn);
+    p.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    p.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    let year = Utc::now().year();
+    p.not_before = rcgen::date_time_ymd(year, 1, 1);
+    p.not_after = rcgen::date_time_ymd(year + 3, 1, 1);
+    let key = KeyPair::generate().map_err(|e| e.to_string())?;
+    let cert = p.signed_by(&key, ca, ca_key).map_err(|e| e.to_string())?;
+    Ok((cert, key))
 }
 
 // ───────────────────────── API ─────────────────────────

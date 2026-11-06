@@ -5,12 +5,12 @@ edition = "2021"
 description = "Port of provigil-remoted: the agent communication daemon (ProVigil wire protocol on 1514)"
 
 [dependencies]
-siem-crypto = { path = "../siem-crypto" }
-siem-regex = { path = "../siem-regex" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-xml = { path = "../siem-xml" }
 siem-config = { path = "../siem-config" }
 siem-ipc = { path = "../siem-ipc" }
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

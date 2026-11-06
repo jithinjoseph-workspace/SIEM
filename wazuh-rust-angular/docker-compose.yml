@@ -96,15 +96,20 @@ services:
     container_name: xdr-siem-api
     restart: always
     ports:
+      - "8443:8443"   # agents: HTTPS (TLS with the private CA in siem_data)
+      - "8089:8089"   # agents: gRPC over TLS
       - "6514:6514"   # Syslog over TLS (RFC 5425), per-tenant client certificates
       # Plain syslog has no sender authentication: publish it only on a private/VPN interface,
       # e.g. "10.0.0.5:514:514/udp" (sources are mapped to tenants by IP in the UI).
       - "514:514/udp" # Syslog UDP
       - "601:601"     # Syslog RFC 6587 TCP
     volumes:
-      - siem_data:/app/data # syslog CA, device registry, learned parsers
+      - siem_data:/app/data # agent and syslog CAs, device registry, learned parsers
     environment:
       - SIEM_PORT=8088
+      - SIEM_EVENTS_RETENTION_DAYS=${SIEM_EVENTS_RETENTION_DAYS:-7}   # raw events, deleted after this
+      - SIEM_ALERTS_RETENTION_DAYS=${SIEM_ALERTS_RETENTION_DAYS:-365} # alerts
+      - SIEM_LAN_IP=${SIEM_LAN_IP:-} # the address agents use: it goes in the TLS certificate
       - SYSLOG_UDP_PORT=514
       - SYSLOG_TCP_PORT=601
       - SYSLOG_TLS_PORT=6514

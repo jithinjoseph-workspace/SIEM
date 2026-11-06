@@ -1,0 +1,28 @@
+[package]
+name = "provigil-agent-server"
+version = "0.1.0"
+edition = "2021"
+description = "What provigil-gateway and siem-api share on the agent side: provigil-db state, engine link, group config, agent CA, keys, command queue table"
+
+[dependencies]
+siem-ipc = { path = "../siem-ipc" }
+tokio = { version = "1.40", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+uuid = { version = "1.10", features = ["v4"] }
+sha2 = "0.10"
+ring = "0.17"
+tracing = "0.1"
+quick-xml = "0.36"
+clickhouse = { version = "0.13", features = ["time", "uuid"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+sysinfo = "0.30"
+local-ip-address = "0.6"
+
+[dev-dependencies]
+tempfile = "3"
+# the tests moved from siem-api: a real provigil-db in memory, the agent's own delta code
+siem-wdb = { path = "../siem-wdb" }
+provigil-agent = { path = "../provigil-agent" }
+tonic = { version = "0.12", default-features = false }

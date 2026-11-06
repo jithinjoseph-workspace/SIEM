@@ -1,28 +1,58 @@
-//! `src/active-response/active_responses.c`: the protocol every active
-//! response program speaks with execd (one JSON line on stdin, the
-//! `check_keys` round trip for stateful responses), the debug log and the
-//! helpers the programs share.
-
-use std::io::{BufRead, Write};
-
-use siem_cjson::Json;
+//! What every ProVigil response program shares: reading and checking the request the
+//! agent writes on standard input, asking the agent before a block that can be undone,
+//! the response log, finding and starting other programs, and a lock so that only one
+//! copy of a response runs its critical part at a time.
 
 pub mod edr;
 pub mod live;
 pub mod tamper;
 pub mod yara;
 
-/// `LOG_FILE`
-#[cfg(unix)]
-pub const LOG_FILE: &str = "logs/active-responses.log";
+#[cfg(windows)]
+pub mod dll_guard;
+
+use std::ffi::OsStr;
+use std::io::{BufRead, Read, Write};
+use std::net::IpAddr;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+/// The response log, relative to the agent's folder (the programs' working directory).
 #[cfg(windows)]
 pub const LOG_FILE: &str = "active-response\\active-responses.log";
-/// `OS_MAXSTR`
-const OS_MAXSTR: usize = 65536;
-/// `COMMANDSIZE_4096`
-const COMMANDSIZE_4096: usize = 4096;
+#[cfg(not(windows))]
+pub const LOG_FILE: &str = "logs/active-responses.log";
 
-/// `ar_command_list`
+/// Longest request line read.
+pub const MAX_LINE: usize = 64 * 1024;
+/// Longest extra arguments text.
+pub const MAX_EXTRA_ARGS: usize = 4 * 1024;
+
+#[cfg(windows)]
+const EOL: &str = "\r\n";
+#[cfg(not(windows))]
+const EOL: &str = "\n";
+
+/// The program name as started.
+pub fn argv0() -> String {
+    std::env::args().next().unwrap_or_default()
+}
+
+fn debug_line(program: &str, message: &[u8]) -> String {
+    format!("{} {program}: {}\n", chrono::Local::now().format("%Y/%m/%d %H:%M:%S"), String::from_utf8_lossy(message))
+}
+
+/// Appends one line to the response log; errors are ignored.
+pub fn write_debug_file(program: &str, message: &[u8]) {
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(LOG_FILE) {
+        let _ = f.write_all(debug_line(program, message).as_bytes());
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Add,
@@ -31,428 +61,406 @@ pub enum Action {
     Abort,
 }
 
-/// `w_get_timestamp(time(NULL))`
-fn timestamp() -> String {
-    chrono::Local::now().format("%Y/%m/%d %H:%M:%S").to_string()
-}
-
-/// `write_debug_file`
-pub fn write_debug_file(ar_name: &str, msg: &[u8]) {
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(LOG_FILE) {
-        let mut line = format!("{} {ar_name}: ", timestamp()).into_bytes();
-        line.extend_from_slice(msg);
-        line.push(b'\n');
-        // wfopen(LOG_FILE, "a") is a binary stream on Windows too
-        let _ = f.write_all(&line);
+/// One line (at most [`MAX_LINE`] bytes), its `\n` / `\r\n` end removed; None at end of input.
+fn read_line<R: BufRead>(input: &mut R) -> Option<String> {
+    let mut buf = Vec::new();
+    let n = input.take(MAX_LINE as u64 + 2).read_until(b'\n', &mut buf).ok()?;
+    if n == 0 {
+        return None;
     }
-}
-
-/// A text-mode C stream (stdout) on Windows writes `\n` as `\r\n`.
-fn text_out(b: Vec<u8>) -> Vec<u8> {
-    if !cfg!(windows) {
-        return b;
+    while matches!(buf.last(), Some(b'\n' | b'\r')) {
+        buf.pop();
     }
-    let mut o = Vec::with_capacity(b.len() + 4);
-    for c in b {
-        if c == b'\n' {
-            o.push(b'\r');
-        }
-        o.push(c);
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// The command of a well-formed message, and the message.
+fn check_message(line: &str) -> Result<(Action, Value), String> {
+    if line.len() > MAX_LINE {
+        return Err("Input too long".into());
     }
-    o
-}
-
-/// `fgets(input, OS_MAXSTR, stdin)`: one line (with its newline), None at EOF.
-fn read_line() -> Option<Vec<u8>> {
-    let mut b = Vec::new();
-    let stdin = std::io::stdin();
-    let mut lock = stdin.lock();
-    loop {
-        let buf = lock.fill_buf().ok()?;
-        if buf.is_empty() {
-            break;
-        }
-        let room = OS_MAXSTR - 1 - b.len();
-        let take = match buf.iter().position(|&c| c == b'\n') {
-            Some(p) if p < room => p + 1,
-            _ => buf.len().min(room),
-        };
-        b.extend_from_slice(&buf[..take]);
-        lock.consume(take);
-        if b.last() == Some(&b'\n') || b.len() >= OS_MAXSTR - 1 {
-            break;
-        }
+    let msg: Value = serde_json::from_str(line).map_err(|_| "Cannot parse input to json".to_string())?;
+    if !msg.get("version").is_some_and(Value::is_number) {
+        return Err("Invalid message: 'version' is missing or not a number".into());
     }
-    // a text-mode C stream on Windows reads "\r\n" as "\n"
-    if cfg!(windows) && b.ends_with(b"\r\n") {
-        b.truncate(b.len() - 2);
-        b.push(b'\n');
+    if !msg.get("origin").is_some_and(Value::is_object) {
+        return Err("Invalid message: 'origin' is missing or not an object".into());
     }
-    (!b.is_empty()).then_some(b)
+    let command = msg.get("command").and_then(Value::as_str).ok_or("Invalid message: 'command' is missing or not a text")?;
+    if !msg.get("parameters").is_some_and(Value::is_object) {
+        return Err("Invalid message: 'parameters' is missing or not an object".into());
+    }
+    let action = match command {
+        "add" => Action::Add,
+        "delete" => Action::Delete,
+        "continue" => Action::Continue,
+        "abort" => Action::Abort,
+        c => return Err(format!("Invalid value of 'command': {c}")),
+    };
+    Ok((action, msg))
 }
 
-/// `get_json_from_input`: the message, when it has version, origin, command and parameters.
-pub fn get_json_from_input(input: &[u8]) -> Option<Json> {
-    let s = &input[..input.iter().position(|&c| c == 0).unwrap_or(input.len())];
-    let (j, _) = siem_cjson::parse_with_opts(s, false).ok()?;
-    j.get("version").filter(|v| v.is_number())?;
-    j.get("origin").filter(|v| v.is_object())?;
-    j.get("command").filter(|v| v.is_string())?;
-    j.get("parameters").filter(|v| v.is_object())?;
-    Some(j)
-}
-
-/// `get_command_from_json`
-pub fn get_command_from_json(input: &Json) -> Option<&[u8]> {
-    input.get("command").and_then(|c| c.as_bytes())
-}
-
-/// `setup_and_check_message`: the action (add or delete) and the message.
-pub fn setup_and_check_message(argv0: &str) -> Option<(Action, Json)> {
-    write_debug_file(argv0, b"Starting");
-    let Some(input) = read_line() else {
-        write_debug_file(argv0, b"Cannot read input from stdin");
+fn setup_from<R: BufRead>(program: &str, input: &mut R) -> Option<(Action, Value)> {
+    write_debug_file(program, b"Starting");
+    let Some(line) = read_line(input) else {
+        write_debug_file(program, b"Cannot read input");
         return None;
     };
-    write_debug_file(argv0, &input);
-    let Some(j) = get_json_from_input(&input) else {
-        write_debug_file(argv0, b"Invalid input format");
-        return None;
-    };
-    let action = match get_command_from_json(&j) {
-        None => {
-            write_debug_file(argv0, b"Cannot read 'command' from json");
-            return None;
-        }
-        Some(b"add") => Action::Add,
-        Some(b"delete") => Action::Delete,
-        Some(_) => {
-            write_debug_file(argv0, b"Invalid value of 'command'");
-            return None;
-        }
-    };
-    Some((action, j))
-}
-
-/// `basename_ex`
-pub fn basename(p: &str) -> &str {
-    let t = if cfg!(windows) { p.rsplit(['/', '\\']).next() } else { p.trim_end_matches('/').rsplit('/').next() };
-    t.unwrap_or(p)
-}
-
-/// `build_json_keys_message`
-fn build_json_keys_message(ar_name: &str, keys: &[&str]) -> Vec<u8> {
-    let mut origin = Json::object();
-    origin.add("name", Json::string(ar_name));
-    origin.add("module", Json::string("active-response"));
-    let mut params = Json::object();
-    params.add("keys", Json::Array(keys.iter().map(|k| Json::string(k)).collect()));
-    let mut m = Json::object();
-    m.add("version", Json::number(1.0));
-    m.add("origin", origin);
-    m.add("command", Json::string("check_keys"));
-    m.add("parameters", params);
-    m.print_unformatted()
-}
-
-/// `send_keys_and_check_message`: Continue or Abort from execd, None on errors.
-pub fn send_keys_and_check_message(argv0: &str, keys: &[&str]) -> Option<Action> {
-    let msg = build_json_keys_message(basename(argv0), keys);
-    write_debug_file(argv0, &msg);
-    let mut out = std::io::stdout();
-    let _ = out.write_all(&text_out([msg.as_slice(), b"\n"].concat()));
-    let _ = out.flush();
-    let Some(input) = read_line() else {
-        write_debug_file(argv0, b"Cannot read input from stdin");
-        return None;
-    };
-    write_debug_file(argv0, &input);
-    let Some(j) = get_json_from_input(&input) else {
-        write_debug_file(argv0, b"Invalid input format");
-        return None;
-    };
-    match get_command_from_json(&j) {
-        None => {
-            write_debug_file(argv0, b"Cannot read 'command' from json");
+    write_debug_file(program, line.as_bytes());
+    match check_message(&line) {
+        Ok((a @ (Action::Add | Action::Delete), msg)) => Some((a, msg)),
+        Ok(_) => {
+            write_debug_file(program, b"Invalid value of 'command'");
             None
         }
-        Some(b"continue") => Some(Action::Continue),
-        Some(b"abort") => Some(Action::Abort),
-        Some(_) => {
-            write_debug_file(argv0, b"Invalid value of 'command'");
+        Err(e) => {
+            write_debug_file(program, e.as_bytes());
             None
         }
     }
 }
 
-/// The add flow of a stateful response: send the keys, then continue or stop.
-/// Err(exit code) when the program must end.
-pub fn check_keys(argv0: &str, key: &str) -> Result<(), i32> {
-    match send_keys_and_check_message(argv0, &[key]) {
-        Some(Action::Continue) => Ok(()),
-        Some(Action::Abort) => {
-            write_debug_file(argv0, b"Aborted");
+/// Reads and checks the request: `Add` or `Delete` and the whole message.
+pub fn setup_and_check_message(program: &str) -> Option<(Action, Value)> {
+    setup_from(program, &mut std::io::stdin().lock())
+}
+
+fn keys_line(program: &str, key: &str) -> String {
+    let name = Path::new(program).file_name().map_or_else(|| program.to_string(), |n| n.to_string_lossy().into_owned());
+    let m = json!({"version": 1, "origin": {"name": name, "module": "active-response"}, "command": "check_keys", "parameters": {"keys": [key]}});
+    format!("{m}{EOL}")
+}
+
+fn check_keys_with<R: BufRead, W: Write>(program: &str, key: &str, input: &mut R, output: &mut W) -> Result<(), i32> {
+    if output.write_all(keys_line(program, key).as_bytes()).and_then(|_| output.flush()).is_err() {
+        write_debug_file(program, b"Cannot send the keys to check");
+        return Err(-1);
+    }
+    let Some(line) = read_line(input) else {
+        write_debug_file(program, b"Cannot read the answer to the keys check");
+        return Err(-1);
+    };
+    write_debug_file(program, line.as_bytes());
+    match check_message(&line) {
+        Ok((Action::Continue, _)) => Ok(()),
+        Ok((Action::Abort, _)) => {
+            write_debug_file(program, b"Aborted");
             Err(0)
         }
-        _ => Err(-1),
-    }
-}
-
-/// `get_srcip_from_json`: win.eventdata ipAddress / destinationIp, else
-/// data.srcip, if it is a valid IP.
-pub fn get_srcip_from_json(input: &Json) -> Option<String> {
-    let data = input.get("parameters")?.get("alert")?.get("data").filter(|d| d.is_object())?;
-    let win = data
-        .get("win")
-        .filter(|w| w.is_object())
-        .and_then(|w| w.get("eventdata"))
-        .filter(|e| e.is_object())
-        .and_then(|e| e.get("ipAddress").filter(|v| v.is_string()).or_else(|| e.get("destinationIp").filter(|v| v.is_string())));
-    let ip = match win {
-        Some(v) => v,
-        None => data.get("srcip").filter(|v| v.is_string())?,
-    };
-    let ip = String::from_utf8_lossy(ip.as_bytes()?).into_owned();
-    get_ip_version(&ip).map(|_| ip)
-}
-
-/// `get_ip_version`: 4, 6, or None (`getaddrinfo` with `AI_NUMERICHOST`).
-pub fn get_ip_version(ip: &str) -> Option<u8> {
-    let c = std::ffi::CString::new(ip).ok()?;
-    #[cfg(unix)]
-    // SAFETY: getaddrinfo with a valid C string and hints; the result is freed.
-    unsafe {
-        let mut hint: libc::addrinfo = std::mem::zeroed();
-        hint.ai_family = libc::AF_UNSPEC;
-        hint.ai_flags = libc::AI_NUMERICHOST;
-        let mut res: *mut libc::addrinfo = std::ptr::null_mut();
-        if libc::getaddrinfo(c.as_ptr(), std::ptr::null(), &hint, &mut res) != 0 || res.is_null() {
-            return None;
+        Ok(_) => {
+            write_debug_file(program, b"Invalid value of 'command' in the keys check answer");
+            Err(-1)
         }
-        let fam = (*res).ai_family;
-        libc::freeaddrinfo(res);
-        match fam {
-            libc::AF_INET => Some(4),
-            libc::AF_INET6 => Some(6),
-            _ => None,
-        }
-    }
-    #[cfg(windows)]
-    // SAFETY: getaddrinfo with a valid C string and hints; the result is freed.
-    unsafe {
-        use windows_sys::Win32::Networking::WinSock::{freeaddrinfo, getaddrinfo, WSAStartup, ADDRINFOA, AF_INET, AF_INET6, AF_UNSPEC, AI_NUMERICHOST, WSADATA};
-        let mut wsa: WSADATA = std::mem::zeroed();
-        WSAStartup(0x0202, &mut wsa);
-        let mut hint: ADDRINFOA = std::mem::zeroed();
-        hint.ai_family = AF_UNSPEC as i32;
-        hint.ai_flags = AI_NUMERICHOST as i32;
-        let mut res: *mut ADDRINFOA = std::ptr::null_mut();
-        if getaddrinfo(c.as_ptr().cast(), std::ptr::null(), &hint, &mut res) != 0 || res.is_null() {
-            return None;
-        }
-        let fam = (*res).ai_family;
-        freeaddrinfo(res);
-        if fam == AF_INET as i32 {
-            Some(4)
-        } else if fam == AF_INET6 as i32 {
-            Some(6)
-        } else {
-            None
+        Err(e) => {
+            write_debug_file(program, e.as_bytes());
+            Err(-1)
         }
     }
 }
 
-/// `get_extra_args_from_json`: the string items joined with spaces.
-pub fn get_extra_args_from_json(input: &Json) -> Option<String> {
-    let args = input.get("parameters")?.get("extra_args").filter(|a| a.is_array())?;
-    let mut out = String::new();
-    for a in args.children() {
-        if let Some(s) = a.as_str() {
-            if out.len() + s.len() + 2 > COMMANDSIZE_4096 {
-                break;
-            }
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            out.push_str(&s);
-        }
-    }
-    (!out.is_empty()).then_some(out)
+/// Asks the agent whether `key` is already active: Ok to go on, Err(exit code) to stop.
+pub fn check_keys(program: &str, key: &str) -> Result<(), i32> {
+    check_keys_with(program, key, &mut std::io::stdin().lock(), &mut std::io::stdout().lock())
 }
 
-/// `get_binary_path`: (found, the full path or the name itself).
-pub fn get_binary_path(binary: &str) -> (bool, String) {
-    let abs = if cfg!(windows) { binary.as_bytes().get(1) == Some(&b':') || binary.starts_with('\\') } else { binary.starts_with('/') };
-    if abs {
-        return (std::path::Path::new(binary).is_file(), binary.to_string());
+fn find_binary(name: &str, path_var: Option<&OsStr>) -> (bool, String) {
+    let p = Path::new(name);
+    if p.is_absolute() {
+        return (p.is_file(), name.to_string());
     }
-    let Ok(env) = std::env::var("PATH") else { return (false, binary.to_string()) };
-    let (sep, slash) = if cfg!(windows) { (';', '\\') } else { (':', '/') };
-    for dir in env.split(sep).filter(|d| !d.is_empty()) {
-        let full = format!("{dir}{slash}{binary}");
-        if std::path::Path::new(&full).is_file() {
-            return (true, full);
+    for dir in path_var.map(|v| std::env::split_paths(v).collect::<Vec<PathBuf>>()).unwrap_or_default() {
+        let full = dir.join(name);
+        if full.is_file() {
+            return (true, full.to_string_lossy().into_owned());
         }
     }
-    (false, binary.to_string())
+    (false, name.to_string())
 }
 
-/// The command `wpopenv` starts. Windows: the command line is `"path"`
-/// and the arguments joined with spaces, unquoted, as C builds it.
-fn command(path: &str, args: &[&str]) -> std::process::Command {
-    let mut c = std::process::Command::new(path);
+/// Whether the program was found, and its full path (the name itself when not found).
+pub fn get_binary_path(name: &str) -> (bool, String) {
+    find_binary(name, std::env::var_os("PATH").as_deref())
+}
+
+fn command(path: &str, args: &[&str]) -> Command {
+    let mut c = Command::new(path);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+        // netsh, route and reg take their arguments as written: no quoting added
         for a in args {
             c.raw_arg(a);
         }
-        // CREATE_NO_WINDOW
-        c.creation_flags(0x0800_0000);
     }
-    #[cfg(unix)]
+    #[cfg(not(windows))]
     c.args(args);
+    c.stdin(Stdio::null());
     c
 }
 
-/// `wpopenv(path, argv, W_BIND_STDERR)` + `wpclose`: run and wait; false
-/// when it cannot start.
+/// Runs the program and waits; true when it could be started (whatever its exit code).
 pub fn run(path: &str, args: &[&str]) -> bool {
-    let mut c = command(path, args);
-    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    match c.spawn() {
-        Ok(mut ch) => {
-            let _ = ch.wait();
-            true
-        }
-        Err(_) => false,
-    }
+    command(path, args).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
 }
 
-/// `wpopenv(path, argv, W_BIND_STDOUT)`: the program's output lines, None
-/// when it cannot start.
+/// Runs the program and waits; what it printed on standard output.
 pub fn run_output(path: &str, args: &[&str]) -> Option<Vec<u8>> {
-    let mut c = command(path, args);
-    c.stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    c.output().ok().map(|o| o.stdout)
+    command(path, args).stdout(Stdio::piped()).stderr(Stdio::null()).output().ok().map(|o| o.stdout)
 }
 
-/// `lock`: the response's lock directory with its pid file (`mkdir` is the lock).
-#[cfg(unix)]
-pub fn lock(lock_path: &str, lock_pid_path: &str, log_path: &str, proc_name: &str) -> bool {
-    use std::os::unix::fs::DirBuilderExt;
-    let take = || std::fs::DirBuilder::new().mode(0o070).create(lock_path).is_ok();
-    let write_pid = || match std::fs::write(lock_pid_path, std::process::id().to_string()) {
-        Ok(()) => true,
-        Err(_) => {
-            write_debug_file(log_path, b"Cannot write pid file");
-            false
-        }
-    };
-    let max_iteration = 50;
-    let mut i = 0;
-    let mut saved_pid = -1;
-    loop {
-        let mut current_pid = -1;
-        if take() {
-            return write_pid();
-        }
-        match std::fs::read_to_string(lock_pid_path) {
-            Err(_) => write_debug_file(log_path, b"Cannot read pid file"),
-            Ok(t) => match t.trim_start().split(|c: char| !c.is_ascii_digit() && c != '-').next().and_then(|n| n.parse::<i32>().ok()) {
-                Some(p) => {
-                    current_pid = p;
-                    if saved_pid == -1 {
-                        saved_pid = p;
-                    }
-                    if p == saved_pid {
-                        i += 1;
-                    }
-                }
-                None => write_debug_file(log_path, b"Cannot read pid file"),
-            },
-        }
-        std::thread::sleep(std::time::Duration::from_secs(i as u64));
-        i += 1;
-        if i >= max_iteration {
-            let mut killed = false;
-            let (found, pgrep) = get_binary_path("pgrep");
-            if !found {
-                write_debug_file(log_path, format!("Binary '{pgrep}' not found in default paths, the full path will not be used.").as_bytes());
-            }
-            match run_output(&pgrep, &["-f", proc_name]) {
-                None => write_debug_file(log_path, b"Unable to run pgrep"),
-                Some(out) => {
-                    for line in out.split(|&c| c == b'\n') {
-                        let pid = atoi(line);
-                        if pid == current_pid {
-                            let (found, kill) = get_binary_path("kill");
-                            if !found {
-                                write_debug_file(log_path, format!("Binary '{kill}' not found in default paths, the full path will not be used.").as_bytes());
-                            }
-                            if run_output(&kill, &["-9", &pid.to_string()]).is_none() {
-                                write_debug_file(log_path, b"Unable to run kill");
-                            } else {
-                                write_debug_file(log_path, format!("Killed process {pid} holding lock.").as_bytes());
-                                killed = true;
-                                unlock(lock_path, log_path);
-                                i = 0;
-                                saved_pid = -1;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            if !killed {
-                write_debug_file(log_path, format!("Unable to kill process {current_pid} holding lock.").as_bytes());
-                unlock(lock_path, log_path);
-                if take() {
-                    let _ = std::fs::write(lock_pid_path, std::process::id().to_string());
-                    return true;
-                }
-                return false;
-            }
-        }
+/// 4, 6, or None when `ip` is not an IP address.
+pub fn ip_version(ip: &str) -> Option<u8> {
+    match ip.parse::<IpAddr>().ok()? {
+        IpAddr::V4(_) => Some(4),
+        IpAddr::V6(_) => Some(6),
     }
 }
 
-/// `unlock`
-#[cfg(unix)]
-pub fn unlock(lock_path: &str, log_path: &str) {
-    if std::fs::remove_dir_all(lock_path).is_err() {
-        write_debug_file(log_path, b"Unable to remove lock folder");
+/// The attacker IP of the alert: the Windows event's `ipAddress`, else its `destinationIp`,
+/// else `srcip`; None when the field found is not a valid IP address.
+pub fn alert_ip(msg: &Value) -> Option<String> {
+    let data = &msg["parameters"]["alert"]["data"];
+    let ev = &data["win"]["eventdata"];
+    let ip = [&ev["ipAddress"], &ev["destinationIp"], &data["srcip"]].into_iter().find_map(Value::as_str)?;
+    ip_version(ip).map(|_| ip.to_string())
+}
+
+/// The text items of `parameters.extra_args`, joined with spaces (at most [`MAX_EXTRA_ARGS`] bytes).
+pub fn extra_args(msg: &Value) -> String {
+    let items: Vec<&str> = msg["parameters"]["extra_args"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    let mut s = items.join(" ");
+    if s.len() > MAX_EXTRA_ARGS {
+        let mut end = MAX_EXTRA_ARGS;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+    s
+}
+
+/// Lock waits: attempt `n` pauses `n * LOCK_WAIT_MS` (1..=10 s, 55 s in all).
+static LOCK_WAIT_MS: AtomicU64 = AtomicU64::new(1000);
+const LOCK_ATTEMPTS: u64 = 10;
+
+fn read_pid(pid_file: &str) -> Option<u32> {
+    std::fs::read_to_string(pid_file).ok()?.trim().parse().ok()
+}
+
+/// One attempt: Ok when the lock is ours, else the holder's pid (when readable).
+fn try_lock(lock_dir: &str, pid_file: &str) -> Result<(), Option<u32>> {
+    if let Some(parent) = Path::new(lock_dir).parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // creating a folder is atomic: whoever creates it holds the lock
+    match std::fs::create_dir(lock_dir) {
+        Ok(()) => {
+            let _ = std::fs::write(pid_file, std::process::id().to_string());
+            Ok(())
+        }
+        Err(_) => Err(read_pid(pid_file)),
     }
 }
 
-/// C `atoi` of the start of a line.
-#[cfg(unix)]
-fn atoi(b: &[u8]) -> i32 {
-    let s = String::from_utf8_lossy(b);
-    let t = s.trim_start();
-    let end = t.char_indices().take_while(|(i, c)| c.is_ascii_digit() || (*i == 0 && (*c == '-' || *c == '+'))).count();
-    t[..end].parse().unwrap_or(0)
+/// Ends the stuck holder when it runs as `process_name`; true when it was ended.
+#[cfg(target_os = "linux")]
+fn end_holder(pid: u32, process_name: &str) -> bool {
+    if pid == std::process::id() || pid == 0 {
+        return false;
+    }
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+    let arg0 = cmdline.split(|b| *b == 0).next().map(|a| String::from_utf8_lossy(a).into_owned()).unwrap_or_default();
+    let base = Path::new(&arg0).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // the kernel cuts comm to 15 characters
+    let short: String = process_name.chars().take(15).collect();
+    if base != process_name && comm.trim() != short {
+        return false;
+    }
+    // SAFETY: a plain signal to a process id
+    unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) == 0 }
 }
 
-/// The program name as execd started it (`argv[0]`).
-pub fn argv0() -> String {
-    std::env::args().next().unwrap_or_default()
+#[cfg(not(target_os = "linux"))]
+fn end_holder(_pid: u32, _process_name: &str) -> bool {
+    false
+}
+
+/// Takes the lock, waiting for (or taking over from) a stuck holder; false when it cannot.
+pub fn lock(lock_dir: &str, pid_file: &str, program: &str, process_name: &str) -> bool {
+    let mut first: Option<Option<u32>> = None;
+    let mut changed = false;
+    for n in 1..=LOCK_ATTEMPTS + 1 {
+        match try_lock(lock_dir, pid_file) {
+            Ok(()) => return true,
+            Err(holder) => changed |= *first.get_or_insert(holder) != holder,
+        }
+        if n <= LOCK_ATTEMPTS {
+            std::thread::sleep(Duration::from_millis(n * LOCK_WAIT_MS.load(Ordering::Relaxed)));
+        }
+    }
+    let holder = read_pid(pid_file);
+    if changed || first != Some(holder) {
+        write_debug_file(program, b"Unable to take lock: it keeps changing hands");
+        return false;
+    }
+    let pid = holder.unwrap_or(0);
+    if end_holder(pid, process_name) {
+        write_debug_file(program, format!("Lock held too long by process {pid}: ended it and took the lock").as_bytes());
+    } else {
+        write_debug_file(program, format!("Lock held too long by process {pid}: removed the stale lock").as_bytes());
+    }
+    let _ = std::fs::remove_dir_all(lock_dir);
+    if try_lock(lock_dir, pid_file).is_ok() {
+        return true;
+    }
+    write_debug_file(program, b"Unable to take lock");
+    false
+}
+
+pub fn unlock(lock_dir: &str, program: &str) {
+    if let Err(e) = std::fs::remove_dir_all(lock_dir) {
+        write_debug_file(program, format!("Unable to remove lock folder {lock_dir}: {e}").as_bytes());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const GOOD: &str = r#"{"version":1,"origin":{"name":"node01","module":"wazuh-execd"},"command":"add","parameters":{"extra_args":["-a","b"],"alert":{"data":{"srcip":"10.0.0.5"}}}}"#;
+
     #[test]
-    fn input_and_ip_like_c() {
-        let m = br#"{"version":1,"origin":{"name":"x","module":"wazuh-execd"},"command":"add","parameters":{"extra_args":["a","b"],"alert":{"data":{"srcip":"10.0.0.5"}}}}"#;
-        let j = get_json_from_input(m).unwrap();
-        assert_eq!(get_srcip_from_json(&j).as_deref(), Some("10.0.0.5"));
-        assert_eq!(get_extra_args_from_json(&j).as_deref(), Some("a b"));
-        assert!(get_json_from_input(br#"{"version":1,"command":"add","parameters":{}}"#).is_none());
-        let w = br#"{"version":1,"origin":{},"command":"add","parameters":{"alert":{"data":{"srcip":"1.1.1.1","win":{"eventdata":{"ipAddress":"2001:db8::1"}}}}}}"#;
-        assert_eq!(get_srcip_from_json(&get_json_from_input(w).unwrap()).as_deref(), Some("2001:db8::1"));
-        assert_eq!(get_ip_version("10.0.0.300"), None);
-        assert_eq!(build_json_keys_message("netsh.exe", &["1.2.3.4"]), br#"{"version":1,"origin":{"name":"netsh.exe","module":"active-response"},"command":"check_keys","parameters":{"keys":["1.2.3.4"]}}"#);
+    fn messages_checked() {
+        let (a, m) = check_message(GOOD).unwrap();
+        assert_eq!(a, Action::Add);
+        assert_eq!(m["parameters"]["alert"]["data"]["srcip"], "10.0.0.5");
+        assert_eq!(check_message(&GOOD.replace("\"add\"", "\"delete\"")).unwrap().0, Action::Delete);
+        for bad in [
+            "not json",
+            r#"{"origin":{},"command":"add","parameters":{}}"#,
+            r#"{"version":"1","origin":{},"command":"add","parameters":{}}"#,
+            r#"{"version":1,"command":"add","parameters":{}}"#,
+            r#"{"version":1,"origin":"x","command":"add","parameters":{}}"#,
+            r#"{"version":1,"origin":{},"parameters":{}}"#,
+            r#"{"version":1,"origin":{},"command":7,"parameters":{}}"#,
+            r#"{"version":1,"origin":{},"command":"add"}"#,
+            r#"{"version":1,"origin":{},"command":"add","parameters":[]}"#,
+            r#"{"version":1,"origin":{},"command":"jump","parameters":{}}"#,
+        ] {
+            assert!(check_message(bad).is_err(), "{bad}");
+        }
+        // continue / abort are answers, not requests
+        assert!(setup_from("t", &mut r#"{"version":1,"origin":{},"command":"continue","parameters":{}}"#.as_bytes()).is_none());
+        let crlf = format!("{GOOD}\r\nsecond line\n");
+        let mut input = crlf.as_bytes();
+        assert_eq!(setup_from("t", &mut input).unwrap().0, Action::Add);
+        assert_eq!(read_line(&mut input).as_deref(), Some("second line"));
+        assert!(setup_from("t", &mut "".as_bytes()).is_none());
+    }
+
+    #[test]
+    fn keys_round_trip() {
+        let mut out = Vec::new();
+        let answer = |c: &str| format!(r#"{{"version":1,"origin":{{"name":"node01","module":"wazuh-execd"}},"command":"{c}","parameters":{{}}}}"#);
+        assert_eq!(check_keys_with("/var/ossec/active-response/bin/firewall-drop", "10.0.0.5", &mut answer("continue").as_bytes(), &mut out), Ok(()));
+        let line = String::from_utf8(out).unwrap();
+        assert!(line.ends_with(EOL) && line.matches('\n').count() == 1);
+        let sent: Value = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(sent, json!({"version":1,"origin":{"name":"firewall-drop","module":"active-response"},"command":"check_keys","parameters":{"keys":["10.0.0.5"]}}));
+        let mut sink = Vec::new();
+        assert_eq!(check_keys_with("t", "k", &mut format!("{}\r\n", answer("abort")).as_bytes(), &mut sink), Err(0));
+        assert_eq!(check_keys_with("t", "k", &mut answer("add").as_bytes(), &mut sink), Err(-1));
+        assert_eq!(check_keys_with("t", "k", &mut "garbage".as_bytes(), &mut sink), Err(-1));
+        assert_eq!(check_keys_with("t", "k", &mut "".as_bytes(), &mut sink), Err(-1));
+    }
+
+    #[test]
+    fn attacker_ip() {
+        let msg = |data: Value| json!({"parameters": {"alert": {"data": data}}});
+        let win = |ev: Value| msg(json!({"srcip": "10.0.0.3", "win": {"eventdata": ev}}));
+        assert_eq!(alert_ip(&win(json!({"ipAddress": "10.0.0.1", "destinationIp": "10.0.0.2"}))).as_deref(), Some("10.0.0.1"));
+        assert_eq!(alert_ip(&win(json!({"destinationIp": "10.0.0.2"}))).as_deref(), Some("10.0.0.2"));
+        assert_eq!(alert_ip(&win(json!({}))).as_deref(), Some("10.0.0.3"));
+        assert_eq!(alert_ip(&msg(json!({"srcip": "2001:db8::1"}))).as_deref(), Some("2001:db8::1"));
+        assert_eq!(alert_ip(&msg(json!({"srcip": "10.0.0.300"}))), None);
+        assert_eq!(alert_ip(&msg(json!({"srcip": "1.2.3.4; rm -rf /"}))), None);
+        assert_eq!(alert_ip(&json!({"parameters": {}})), None);
+        assert_eq!((ip_version("1.2.3.4"), ip_version("::1"), ip_version("x")), (Some(4), Some(6), None));
+    }
+
+    #[test]
+    fn extra_args_joined() {
+        assert_eq!(extra_args(&json!({"parameters": {"extra_args": ["-a", 3, "b", null, "c d"]}})), "-a b c d");
+        assert_eq!(extra_args(&json!({"parameters": {}})), "");
+        let long = extra_args(&json!({"parameters": {"extra_args": ["é".repeat(3000)]}}));
+        assert!(long.len() <= MAX_EXTRA_ARGS && long.len() > MAX_EXTRA_ARGS - 2);
+    }
+
+    #[test]
+    fn binary_path() {
+        let dir = std::env::temp_dir().join(format!("ar-path-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tool = dir.join("some-tool");
+        std::fs::write(&tool, b"").unwrap();
+        let abs = tool.to_string_lossy().into_owned();
+        assert_eq!(find_binary(&abs, None), (true, abs.clone()));
+        let path_var = std::env::join_paths([std::env::temp_dir().join("ar-none"), dir.clone()]).unwrap();
+        assert_eq!(find_binary("some-tool", Some(&path_var)), (true, abs));
+        assert_eq!(find_binary("other-tool", Some(&path_var)), (false, "other-tool".to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn debug_line_format() {
+        let l = debug_line("firewall-drop", b"Starting");
+        let (time, rest) = l.split_at(19);
+        assert!(chrono::NaiveDateTime::parse_from_str(time, "%Y/%m/%d %H:%M:%S").is_ok(), "{l}");
+        assert_eq!(rest, " firewall-drop: Starting\n");
+    }
+
+    #[test]
+    fn lock_is_exclusive() {
+        LOCK_WAIT_MS.store(5, Ordering::Relaxed);
+        let base = std::env::temp_dir().join(format!("ar-lock-test-{}", std::process::id()));
+        let dir = base.join("fw-drop").to_string_lossy().into_owned();
+        let pid = format!("{dir}/pid");
+        assert!(lock(&dir, &pid, "t", "no-such-process"));
+        assert_eq!(read_pid(&pid), Some(std::process::id()));
+        // a second attempt fails while the first is held
+        assert_eq!(try_lock(&dir, &pid), Err(Some(std::process::id())));
+        unlock(&dir, "t");
+        assert!(try_lock(&dir, &pid).is_ok());
+        unlock(&dir, "t");
+
+        // a holder that keeps changing is not taken over
+        assert!(try_lock(&dir, &pid).is_ok());
+        let (d2, p2) = (dir.clone(), pid.clone());
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let s2 = stop.clone();
+        let t = std::thread::spawn(move || {
+            let mut n = 1_000_000u32;
+            while !s2.load(Ordering::Relaxed) {
+                n += 1;
+                let _ = std::fs::create_dir_all(&d2);
+                // whole pid files only: a half-written one reads as no holder
+                let tmp = format!("{p2}.tmp");
+                let _ = std::fs::write(&tmp, n.to_string());
+                let _ = std::fs::rename(&tmp, &p2);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        });
+        assert!(!lock(&dir, &pid, "t", "no-such-process"));
+        stop.store(true, Ordering::Relaxed);
+        t.join().unwrap();
+
+        // a stuck holder (same pid all along) loses its stale lock
+        std::fs::write(&pid, "4000000000").unwrap();
+        assert!(lock(&dir, &pid, "t", "no-such-process"));
+        assert_eq!(read_pid(&pid), Some(std::process::id()));
+        unlock(&dir, "t");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

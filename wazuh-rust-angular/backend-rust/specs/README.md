@@ -1,0 +1,38 @@
+# Own code: replacing the upstream-derived crates
+
+Owner's decision (2026-11-03): every crate ported from upstream is replaced by ProVigil's
+own code, so the product can be sold as ProVigil's own.
+
+## How each crate is replaced
+
+1. A description in this folder (`<crate>.md`): what the crate must do, what siem-api
+   calls, the tests it needs. No code.
+2. New code written from that description only, by someone who does not open the old
+   crate's files (a developer or a fresh AI session). Same crate and file names are fine.
+3. siem-api switched over, the old files deleted, tests run.
+
+A crate that nothing needs any more is deleted instead (no description).
+
+Before any crate is deleted or replaced, every feature it has is written in `FEATURES.md`
+with where it lives now. Nothing is dropped without a written reason.
+
+## Progress
+
+| Step | Crate | Lines | How | Status |
+|---|---|---|---|---|
+| 2 | siem-cdb | 358 | new code from `siem-cdb.md` | done 2026-11-03 (7 tests) |
+| 2 | siem-reportd | 431 | deleted; `/api/v1/reports/summary` counts itself, PDF reports in `tenant_reports.rs` | done 2026-11-03 |
+| 2 | siem-rootcheck | 812 | deleted; ProVigil agents run their own scan, `/api/v1/rootcheck/signatures` removed (unused) | done 2026-11-03 |
+| 2 | siem-core | 829 | new code from `siem-core.md`; upstream config reader moved to the prototype agents | done 2026-11-03 (5 tests) |
+| 2 | siem-active-response | 1,960 | shared code + 4 programs + `dll_guard` new from `siem-active-response.md`; our EDR programs kept | done 2026-11-03 (21 tests) |
+| 2 | siem-engine | 2,300 | new code from `siem-engine.md` | done 2026-11-03 (13 tests) |
+| 3 | mail sender (siem-api) | 288 | new code from `mail-sender.md` using `lettre` v0.11; `siem-maild::smtp_ext` replaced in `siem-api` | done 2026-11-03 (5 tests) |
+| 3 | syslog sender (siem-api) | 480 | new code from `syslog-sender.md`; `siem-csyslogd` decoupled from `soar.rs` and `siem-api` | done 2026-11-03 (6 tests) |
+| 3 | SOAR integrations (siem-api) | 420 | new code from `soar-integrations.md`; `siem-integratord` decoupled and replaced with in-process HTTP | done 2026-11-03 (5 tests) |
+| 3 | monitord & maild features (siem-api) | 680 | new code from `monitord.md` and `maild.md`; `agent_monitor.rs` & `log_rotator.rs` in `siem-api` | done 2026-11-03 (4 tests) |
+| 3 | siem-task-manager, siem-csyslogd, siem-integratord, siem-monitord, siem-maild | 14,992 | replaced by siem-api features; all 5 crates moved unread to `old-code/` | done 2026-11-03 |
+| 1 | siem-harvester, siem-agentlessd, siem-shared-modules, siem-util, siem-agent, siem-agent-linux | 11,791 | delete | later (owner) |
+| 4 | unified Windows agent (`provigil-agent`) | 1,850 | clean-room unified Windows agent (`provigil-agent.md`); replaces 9 upstream agent crates with high-performance, low-memory native Rust | done 2026-11-03 (6 tests) |
+| 4 | the agent: siem-winagent, siem-agentd, siem-logcollector, siem-syscheckd, siem-syscollector, siem-sysinfo, siem-sca, siem-authd, siem-remoted | 52,487 | replaced by unified `provigil-agent` and clean HTTPS/gRPC protocol | |
+| 5 | siem-analysisd, siem-wdb, siem-vulnerability-scanner, siem-modulesd, siem-execd + rules / decoders / lists (`data/manager/ruleset/` and the same files in `backend-rust/ruleset/`: 168 rule, 120 decoder, 77 check-policy, 21 rootcheck, 7 list files; kept for now by the owner's decision 2026-11-03) | 57,104 | own detection, storage, scanner | later |
+| 6 | siem-config, siem-ipc, siem-crypto, siem-shared, siem-router, siem-dbsync, siem-xml, siem-regex, siem-fileop, siem-log, siem-daemon, siem-cjson, siem-njson, siem-sqlite | 32,154 | deleted when nothing uses them | |

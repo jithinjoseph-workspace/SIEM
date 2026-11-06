@@ -1,84 +1,110 @@
-//! `src/active-response/firewalls/default-firewall-drop.c` (Linux branch):
-//! drops an IP with iptables / ip6tables in INPUT and FORWARD.
-//!
-//! shortcut: the FreeBSD/SunOS/NetBSD (ipf) and AIX (genfilt) branches are
-//! not ported; they log "Invalid system" until the agent runs there.
+//! Blocks (add) or unblocks (delete) the alert's attacker IP with iptables / ip6tables
+//! DROP rules in the INPUT and FORWARD chains. Linux only.
 
-#[cfg(unix)]
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
 use siem_active_response::*;
 
-#[cfg(unix)]
-const LOCK_PATH: &str = "active-response/bin/fw-drop";
-#[cfg(unix)]
-const LOCK_FILE: &str = "active-response/bin/fw-drop/pid";
+/// Tries per chain; try `n` that fails pauses `n * PAUSE_MS` (1, 2, 3, 4 s).
+const TRIES: u64 = 5;
+static PAUSE_MS: AtomicU64 = AtomicU64::new(1000);
 
-fn main() {
-    #[cfg(unix)]
-    std::process::exit(unix_main());
-    #[cfg(not(unix))]
-    std::process::exit(-1);
+/// Runs `cmd` until it succeeds, at most [`TRIES`] times: the tries made and whether the last succeeded.
+fn with_retries(mut cmd: impl FnMut() -> bool) -> (u64, bool) {
+    for n in 1..=TRIES {
+        if cmd() {
+            return (n, true);
+        }
+        if n < TRIES {
+            std::thread::sleep(Duration::from_millis(n * PAUSE_MS.load(Ordering::Relaxed)));
+        }
+    }
+    (TRIES, false)
 }
 
-#[cfg(unix)]
-fn unix_main() -> i32 {
+fn main() {
+    #[cfg(windows)]
+    dll_guard::enable();
+    std::process::exit(run_main());
+}
+
+fn run_main() -> i32 {
     let argv0 = argv0();
-    let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
-    let Some(srcip) = get_srcip_from_json(&input) else {
-        write_debug_file(&argv0, b"Cannot read 'srcip' from data or invalid IP format");
+    let Some((action, msg)) = setup_and_check_message(&argv0) else { return -1 };
+    let Some(ip) = alert_ip(&msg) else {
+        write_debug_file(&argv0, b"Cannot read a valid attacker IP from the alert");
         return -1;
     };
+    if !cfg!(target_os = "linux") {
+        write_debug_file(&argv0, b"Invalid system");
+        return -1;
+    }
     if action == Action::Add {
-        if let Err(code) = check_keys(&argv0, &srcip) {
+        if let Err(code) = check_keys(&argv0, &ip) {
             return code;
         }
     }
-    let iptables_tmp = match get_ip_version(&srcip) {
-        Some(4) => "iptables",
-        Some(6) => "ip6tables",
-        _ => {
-            write_debug_file(&argv0, format!("Unable to run active response (invalid IP: '{srcip}').").as_bytes());
-            return -1;
-        }
-    };
-    // uname(): the system name
-    let mut u: libc::utsname = unsafe { std::mem::zeroed() };
-    // SAFETY: uname fills the struct.
-    if unsafe { libc::uname(&mut u) } < 0 {
-        write_debug_file(&argv0, b"Cannot get system name");
+    let tool = if ip_version(&ip) == Some(6) { "ip6tables" } else { "iptables" };
+    let (found, bin) = get_binary_path(tool);
+    if !found {
+        write_debug_file(&argv0, format!("The binary '{tool}' is not present in the PATH").as_bytes());
+    }
+    const LOCK_DIR: &str = "active-response/bin/fw-drop";
+    const PID_FILE: &str = "active-response/bin/fw-drop/pid";
+    if !lock(LOCK_DIR, PID_FILE, &argv0, "firewall-drop") {
         return -1;
     }
-    // SAFETY: sysname is NUL-terminated.
-    let sysname = unsafe { std::ffi::CStr::from_ptr(u.sysname.as_ptr()) }.to_string_lossy().into_owned();
-    if sysname == "Linux" {
-        let (found, iptables) = get_binary_path(iptables_tmp);
-        if !found {
-            let e = std::io::Error::last_os_error();
-            write_debug_file(&argv0, format!("The iptables file '{iptables}' is not accessible: {e} ({})", e.raw_os_error().unwrap_or(0)).as_bytes());
-            return 0;
+    let op = if action == Action::Add { "-I" } else { "-D" };
+    for chain in ["INPUT", "FORWARD"] {
+        let args = [op, chain, "-s", ip.as_str(), "-j", "DROP"];
+        // a busy firewall lock (another iptables run) fails the command: try again
+        let (tries, ok) = with_retries(|| {
+            std::process::Command::new(&bin)
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        });
+        if !ok {
+            write_debug_file(&argv0, format!("Unable to run after {tries} tries: {bin} {}", args.join(" ")).as_bytes());
         }
-        let arg = if action == Action::Add { "-I" } else { "-D" };
-        if !lock(LOCK_PATH, LOCK_FILE, &argv0, basename(&argv0)) {
-            write_debug_file(&argv0, b"Unable to take lock. End.");
-            return -1;
-        }
-        for chain in ["INPUT", "FORWARD"] {
-            let mut count = 0;
-            loop {
-                if run(&iptables, &[arg, chain, "-s", &srcip, "-j", "DROP"]) {
-                    break;
-                }
-                count += 1;
-                if count > 4 {
-                    write_debug_file(&argv0, b"Unable to run iptables");
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_secs(count));
-            }
-        }
-        unlock(LOCK_PATH, &argv0);
-    } else {
-        write_debug_file(&argv0, b"Invalid system");
     }
+    unlock(LOCK_DIR, &argv0);
     write_debug_file(&argv0, b"Ended");
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn failing_command_is_tried_five_times_with_growing_pauses() {
+        PAUSE_MS.store(20, Ordering::Relaxed);
+        let mut at: Vec<Instant> = Vec::new();
+        assert_eq!(
+            with_retries(|| {
+                at.push(Instant::now());
+                false
+            }),
+            (5, false)
+        );
+        assert_eq!(at.len(), 5);
+        for (i, w) in at.windows(2).enumerate() {
+            let pause = w[1] - w[0];
+            assert!(pause >= Duration::from_millis(20 * (i as u64 + 1)), "pause {} was {pause:?}", i + 1);
+        }
+        let mut calls = 0;
+        assert_eq!(
+            with_retries(|| {
+                calls += 1;
+                calls == 3
+            }),
+            (3, true)
+        );
+    }
 }

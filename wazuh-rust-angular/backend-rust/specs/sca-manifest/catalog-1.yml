@@ -1,0 +1,1750 @@
+S0001:
+  title: "Enforce password history: 24 or more passwords remembered"
+  description: "Sets how many previous passwords Windows remembers for each account; a new password may not repeat any of them."
+  rationale: "A long history stops users from cycling back to an old, possibly exposed password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy\\Enforce password history = 24 or more. Security template value [System Access] PasswordHistorySize = 24 (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0002:
+  title: "Maximum password age: 1 to 365 days"
+  description: "Sets how many days a password can be used before Windows requires a change. A value of 0 means passwords never expire."
+  rationale: "A finite lifetime limits how long a stolen password stays useful, while 0 (never expire) removes that limit."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy\\Maximum password age = a value from 1 to 365 days. Security template value [System Access] MaximumPasswordAge = 1-365 (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0003:
+  title: "Minimum password age: 1 or more days"
+  description: "Sets how many days a password must be kept before the user may change it again."
+  rationale: "Without a minimum age a user can change the password repeatedly in one sitting and defeat the password history."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy\\Minimum password age = 1 or more days. Security template value [System Access] MinimumPasswordAge = 1 or more (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0004:
+  title: "Minimum password length: 14 or more characters"
+  description: "Sets the fewest characters a local account password may contain."
+  rationale: "Longer passwords take far longer to guess or crack offline."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy\\Minimum password length = 14 or more. Security template value [System Access] MinimumPasswordLength = 14 or more (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0005:
+  title: "Relax minimum password length limits: Enabled"
+  description: "Allows the minimum password length policy to be set above the legacy limit of 14 characters."
+  rationale: "Lets administrators require passphrases longer than 14 characters when needed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy\\Relax minimum password length limits = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\SAM\\RelaxMinimumPasswordLengthLimits (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0006:
+  title: "Account lockout duration: 15 or more minutes"
+  description: "Sets how long a locked-out account stays locked before it unlocks on its own."
+  rationale: "A lockout of at least 15 minutes slows down online password guessing considerably."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Account Lockout Policy\\Account lockout duration = 15 or more minutes. Security template value [System Access] LockoutDuration = 15 or more (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["AC-7"], pci_dss: ["8.3.4"], hipaa: ["164.308(a)(5)(ii)(C)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0007:
+  title: "Account lockout threshold: 1 to 5 invalid sign-in attempts"
+  description: "Sets how many failed sign-in attempts lock the account. A value of 0 means accounts are never locked."
+  rationale: "A low, non-zero threshold stops brute-force password guessing against local accounts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Account Lockout Policy\\Account lockout threshold = a value from 1 to 5. Security template value [System Access] LockoutBadCount = 1-5 (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["AC-7"], pci_dss: ["8.3.4"], hipaa: ["164.308(a)(5)(ii)(C)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0008:
+  title: "Reset account lockout counter after: 15 or more minutes"
+  description: "Sets how long after a failed sign-in the failed-attempt counter goes back to zero."
+  rationale: "A longer reset window keeps an attacker from simply waiting a few minutes between guesses."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Account Lockout Policy\\Reset account lockout counter after = 15 or more minutes. Security template value [System Access] ResetLockoutCount = 15 or more (seen in the output of secedit /export)."
+  compliance: { nist_800_53: ["AC-7"], pci_dss: ["8.3.4"], hipaa: ["164.308(a)(5)(ii)(C)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0009:
+  title: "Accounts: Block Microsoft accounts: Users can't add or log on with Microsoft accounts"
+  description: "Controls whether consumer Microsoft accounts can be added to the computer or used to sign in."
+  rationale: "Keeping sign-in to organization-managed accounts keeps identities under central control and auditing."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Block Microsoft accounts = Users can't add or log on with Microsoft accounts. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\NoConnectedUser (REG_DWORD) = 3."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0010:
+  title: "Accounts: Guest account status: Disabled"
+  description: "Checks that the built-in Guest account (RID 501) is disabled or not present."
+  rationale: "An enabled Guest account allows unauthenticated people to use the computer and reach network resources."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Guest account status = Disabled. Or run: net user Guest /active:no (use the local name of the account)."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0011:
+  title: "Accounts: Limit local account use of blank passwords to console logon only: Enabled"
+  description: "When enabled, local accounts with an empty password can sign in only at the physical keyboard, not over the network."
+  rationale: "Blank-password accounts would otherwise be open to anyone on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Limit local account use of blank passwords to console logon only = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\LimitBlankPasswordUse (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0012:
+  title: "Accounts: Rename administrator account: no local account name contains 'Admin' (or a translated equivalent)"
+  description: "Checks the output of net user for any local account whose name contains 'Admin' or the localized word for administrator."
+  rationale: "Renaming the built-in administrator removes one half of the credential pair an attacker would otherwise know."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Rename administrator account = a name that does not contain 'admin'. Or rename it in Local Users and Groups (lusrmgr.msc)."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0013:
+  title: "Accounts: Rename guest account: no local account named 'Guest' (or a translated equivalent)"
+  description: "Checks the output of net user for any local account named Guest or the localized word for guest."
+  rationale: "A well-known account name makes the account an easy target for guessing and abuse."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Rename guest account = a name other than 'Guest'. Or rename it in Local Users and Groups (lusrmgr.msc)."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0014:
+  title: "Audit: Shut down system immediately if unable to log security audits: Disabled"
+  description: "When enabled, Windows halts if it cannot write security audit events, for example when the Security log is full."
+  rationale: "Leaving it disabled avoids an easy denial of service where filling the log takes the system down."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Audit: Shut down system immediately if unable to log security audits = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\CrashOnAuditFail (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)", "164.308(a)(1)(ii)(D)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0015:
+  title: "Devices: Prevent users from installing printer drivers: Enabled"
+  description: "When enabled, only administrators can install a printer driver while adding a network printer."
+  rationale: "Printer drivers run with high privilege, so letting ordinary users install them opens a path to system-level code."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Devices: Prevent users from installing printer drivers = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Print\\Providers\\LanMan Print Services\\Servers\\AddPrinterDrivers (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0016:
+  title: "Domain member: Digitally encrypt or sign secure channel data (always): Enabled"
+  description: "Requires that all secure channel traffic between the domain member and a domain controller is signed or encrypted."
+  rationale: "Unprotected secure channel traffic can be read or altered by an attacker on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Digitally encrypt or sign secure channel data (always) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\RequireSignOrSeal (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0017:
+  title: "Domain member: Digitally encrypt secure channel data (when possible): Enabled"
+  description: "The domain member asks to encrypt all secure channel traffic with the domain controller whenever both sides support it."
+  rationale: "Encryption keeps credentials and other secure channel data confidential on the wire."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Digitally encrypt secure channel data (when possible) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\SealSecureChannel (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0018:
+  title: "Domain member: Digitally sign secure channel data (when possible): Enabled"
+  description: "The domain member asks to sign all secure channel traffic with the domain controller whenever both sides support it."
+  rationale: "Signing detects tampering with secure channel traffic in transit."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Digitally sign secure channel data (when possible) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\SignSecureChannel (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0019:
+  title: "Domain member: Disable machine account password changes: Disabled"
+  description: "Controls whether the computer periodically changes its own domain machine account password."
+  rationale: "Regular automatic changes limit the value of a captured machine account password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Disable machine account password changes = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\DisablePasswordChange (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0020:
+  title: "Domain member: Maximum machine account password age: 1 to 30 days"
+  description: "Sets how often the computer changes its domain machine account password. A value of 0 means it never changes."
+  rationale: "Frequent machine password changes shorten the window in which a stolen machine secret can be used."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Maximum machine account password age = a value from 1 to 30 days. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\MaximumPasswordAge (REG_DWORD) = 1-30."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0021:
+  title: "Domain member: Require strong (Windows 2000 or later) session key: Enabled"
+  description: "Requires 128-bit session keys for the secure channel with domain controllers."
+  rationale: "Strong session keys make it much harder to break secure channel encryption."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain member: Require strong (Windows 2000 or later) session key = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\\RequireStrongKey (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0022:
+  title: "Interactive logon: Do not require CTRL+ALT+DEL: Disabled"
+  description: "When this setting is disabled, users must press CTRL+ALT+DEL before signing in."
+  rationale: "The key combination is handled only by Windows, so the user knows the sign-in prompt is genuine and not a password-stealing program."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Do not require CTRL+ALT+DEL = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\DisableCAD (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0023:
+  title: "Interactive logon: Don't display last signed-in: Enabled"
+  description: "When enabled, the sign-in screen does not show the name of the last user who signed in."
+  rationale: "Hiding account names means an attacker at the console must guess both the user name and the password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Don't display last signed-in = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\DontDisplayLastUserName (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-2", "IA-2"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)", "164.312(a)(2)(i)"], iso_27001: ["A.5.15", "A.5.16", "A.8.2"] }
+
+S0024:
+  title: "Interactive logon: Machine account lockout threshold: 1 to 30 invalid attempts"
+  description: "Sets how many failed sign-in attempts cause a BitLocker-protected computer to restart into recovery mode. A value of 0 turns this off."
+  rationale: "A threshold limits brute-force guessing of passwords at the console of a stolen or unattended device."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Machine account lockout threshold = a value from 1 to 30. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\MaxDevicePasswordFailedAttempts (REG_DWORD) = 1-30."
+  compliance: { nist_800_53: ["AC-7"], pci_dss: ["8.3.4"], hipaa: ["164.308(a)(5)(ii)(C)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0025:
+  title: "Interactive logon: Machine inactivity limit: 1 to 900 seconds"
+  description: "Sets how many seconds of inactivity lock the session. A value of 0 means the session never locks for inactivity."
+  rationale: "Locking an idle session stops someone else from using an unattended, signed-in computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Machine inactivity limit = a value from 1 to 900 seconds. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\InactivityTimeoutSecs (REG_DWORD) = 1-900."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["A.8.5"] }
+
+S0026:
+  title: "Interactive logon: Message text for users attempting to log on: not empty"
+  description: "Sets the text of the notice shown before sign-in. The check fails when the value is present but empty."
+  rationale: "A sign-in notice informs users of acceptable use and monitoring, which supports legal action after misuse."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Message text for users attempting to log on = your organization's notice. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\LegalNoticeText (REG_SZ) = the notice text."
+  compliance: { nist_800_53: ["AC-8"], pci_dss: ["12.2.1"], hipaa: ["164.308(a)(5)(i)"], iso_27001: ["A.5.10"] }
+
+S0027:
+  title: "Interactive logon: Message title for users attempting to log on: not empty"
+  description: "Sets the title of the notice shown before sign-in. The check fails when the value is present but empty."
+  rationale: "A titled notice makes the acceptable-use warning clear to every user before they sign in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Message title for users attempting to log on = your notice title. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\LegalNoticeCaption (REG_SZ) = the notice title."
+  compliance: { nist_800_53: ["AC-8"], pci_dss: ["12.2.1"], hipaa: ["164.308(a)(5)(i)"], iso_27001: ["A.5.10"] }
+
+S0028:
+  title: "Interactive logon: Number of previous logons to cache: 4 or fewer"
+  description: "Sets how many domain sign-ins are cached locally so users can sign in when no domain controller is reachable."
+  rationale: "Cached credentials can be extracted and cracked offline, so fewer cached entries means less exposure."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Number of previous logons to cache (in case domain controller is not available) = 4 or fewer. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\CachedLogonsCount (REG_SZ) = 0-4."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0029:
+  title: "Interactive logon: Prompt user to change password before expiration: 5 to 14 days"
+  description: "Sets how many days before a password expires users start seeing a warning."
+  rationale: "Early warning lets users change passwords in time instead of being locked out or choosing a weak password in a hurry."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Prompt user to change password before expiration = a value from 5 to 14 days. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\PasswordExpiryWarning (REG_DWORD) = 5-14."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)"], pci_dss: ["8.3.6", "8.3.9"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17"] }
+
+S0030:
+  title: "Interactive logon: Smart card removal behavior: Lock Workstation, Force Logoff or Disconnect"
+  description: "Sets what Windows does when the smart card used to sign in is removed from the reader."
+  rationale: "Taking action on card removal ensures a session is not left open after the user walks away with the card."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Interactive logon: Smart card removal behavior = Lock Workstation (or Force Logoff / Disconnect if a Remote Desktop Services session). Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\ScRemoveOption (REG_SZ) = 1, 2 or 3."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["A.8.5"] }
+
+S0031:
+  title: "Microsoft network client: Digitally sign communications (always): Enabled"
+  description: "Requires the SMB client to sign all SMB packets; it will not talk to servers that do not sign."
+  rationale: "SMB signing blocks tampering and relay attacks against file sharing traffic."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network client: Digitally sign communications (always) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\\RequireSecuritySignature (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0032:
+  title: "Microsoft network client: Digitally sign communications (if server agrees): Enabled"
+  description: "The SMB client signs packets whenever the server supports signing."
+  rationale: "Negotiated signing protects SMB sessions with any server that can sign."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network client: Digitally sign communications (if server agrees) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\\EnableSecuritySignature (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0033:
+  title: "Microsoft network client: Send unencrypted password to third-party SMB servers: Disabled"
+  description: "Controls whether the SMB client may send a clear-text password to servers that do not support password encryption."
+  rationale: "Clear-text passwords on the network can be captured by anyone who can see the traffic."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network client: Send unencrypted password to third-party SMB servers = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\\EnablePlainTextPassword (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0034:
+  title: "Microsoft network server: Amount of idle time required before suspending session: 15 or fewer minutes"
+  description: "Sets how many minutes an SMB session may stay idle before the server suspends it."
+  rationale: "Closing idle sessions frees server resources and reduces the number of open sessions that could be abused."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network server: Amount of idle time required before suspending session = 15 or fewer minutes. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\AutoDisconnect (REG_DWORD) = 0-15."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["A.8.5"] }
+
+S0035:
+  title: "Microsoft network server: Digitally sign communications (always): Enabled"
+  description: "Requires the SMB server to sign all SMB packets; clients that cannot sign are refused."
+  rationale: "SMB signing blocks tampering and relay attacks against shares on this computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network server: Digitally sign communications (always) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\RequireSecuritySignature (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0036:
+  title: "Microsoft network server: Digitally sign communications (if client agrees): Enabled"
+  description: "The SMB server signs packets whenever the client supports signing."
+  rationale: "Negotiated signing protects SMB sessions with every client that can sign."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network server: Digitally sign communications (if client agrees) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\EnableSecuritySignature (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0037:
+  title: "Microsoft network server: Disconnect clients when logon hours expire: Enabled"
+  description: "When enabled, the SMB server ends sessions of users whose allowed logon hours have ended."
+  rationale: "Enforcing logon hours on open sessions stops access outside the times the account is allowed to work."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network server: Disconnect clients when logon hours expire = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\EnableForcedLogOff (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["A.8.5"] }
+
+S0038:
+  title: "Microsoft network server: Server SPN target name validation level: Accept if provided by client, or higher"
+  description: "Sets how strictly the SMB server checks the service principal name (SPN) the client presents."
+  rationale: "Checking the target name helps stop SMB relay attacks that forward a client's authentication to another server."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Microsoft network server: Server SPN target name validation level = Accept if provided by client (or Required from client). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\SMBServerNameHardeningLevel (REG_DWORD) = 1 or 2."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0039:
+  title: "Network access: Do not allow anonymous enumeration of SAM accounts: Enabled"
+  description: "When enabled, anonymous users cannot list the local user accounts."
+  rationale: "A list of account names is the first step of a password-guessing attack."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Do not allow anonymous enumeration of SAM accounts = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\RestrictAnonymousSAM (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0040:
+  title: "Network access: Do not allow anonymous enumeration of SAM accounts and shares: Enabled"
+  description: "When enabled, anonymous users cannot list local accounts or the names of shared folders."
+  rationale: "Hiding accounts and shares from anonymous users removes useful reconnaissance information."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Do not allow anonymous enumeration of SAM accounts and shares = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\RestrictAnonymous (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0041:
+  title: "Network access: Do not allow storage of passwords and credentials for network authentication: Enabled"
+  description: "When enabled, Credential Manager does not keep passwords or credentials for later network authentication."
+  rationale: "Stored credentials can be stolen from a compromised session and reused against other systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Do not allow storage of passwords and credentials for network authentication = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\DisableDomainCreds (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0042:
+  title: "Network access: Let Everyone permissions apply to anonymous users: Disabled"
+  description: "Controls whether anonymous connections receive the permissions granted to the Everyone group."
+  rationale: "Keeping anonymous users out of Everyone stops them from reaching resources shared with all users."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Let Everyone permissions apply to anonymous users = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\EveryoneIncludesAnonymous (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0043:
+  title: "Network access: Named Pipes that can be accessed anonymously: None"
+  description: "Lists the named pipes that anonymous users may open. The check passes when the list is empty or absent."
+  rationale: "Every anonymously reachable pipe is an unauthenticated entry point into a service."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Named Pipes that can be accessed anonymously = (blank). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\NullSessionPipes (REG_MULTI_SZ) = (empty)."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0044:
+  title: "Network access: Remotely accessible registry paths: only the standard three paths"
+  description: "Lists the registry paths reachable over the network by remote registry clients. The check passes when the value is absent or holds exactly the three default paths for product options, server applications and the Windows NT version key."
+  rationale: "Limiting remote registry paths keeps network users from reading or changing other registry data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Remotely accessible registry paths = System\\CurrentControlSet\\Control\\ProductOptions, System\\CurrentControlSet\\Control\\Server Applications, Software\\Microsoft\\Windows NT\\CurrentVersion. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths\\Machine (REG_MULTI_SZ)."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0045:
+  title: "Network access: Remotely accessible registry paths and sub-paths: the standard list"
+  description: "Lists the registry paths and their sub-keys reachable over the network. The check expects the standard set: printers, event log, OLAP server, print, windows, content index, Terminal Server (and its UserConfig and DefaultUserConfiguration keys), Perflib and SysmonLog."
+  rationale: "Keeping this list to the standard entries stops remote users from reaching other parts of the registry."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Remotely accessible registry paths and subpaths = the standard Windows list described above. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths\\Machine (REG_MULTI_SZ)."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0046:
+  title: "Network access: Restrict anonymous access to Named Pipes and Shares: Enabled"
+  description: "When enabled, anonymous users can reach only the pipes and shares listed in the related policies."
+  rationale: "This closes null-session access to every other pipe and share."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Restrict anonymous access to Named Pipes and Shares = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\RestrictNullSessAccess (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0047:
+  title: "Network access: Restrict clients allowed to make remote calls to SAM: Administrators only"
+  description: "Sets which users may query the local account database (SAM) over remote calls. The expected descriptor O:BAG:BAD:(A;;RC;;;BA) allows only the local Administrators group."
+  rationale: "Restricting remote SAM queries stops ordinary domain users from listing local accounts and groups for attack planning."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Restrict clients allowed to make remote calls to SAM = Administrators: Remote Access: Allow. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\RestrictRemoteSAM (REG_SZ) = O:BAG:BAD:(A;;RC;;;BA)."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0048:
+  title: "Network access: Shares that can be accessed anonymously: None"
+  description: "Lists the shared folders that anonymous users may open. The expected state is an empty or absent list."
+  rationale: "Any anonymously reachable share exposes its files to unauthenticated users."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Shares that can be accessed anonymously = (blank). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\NullSessionShares (REG_MULTI_SZ) = (empty)."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0049:
+  title: "Network access: Sharing and security model for local accounts: Classic"
+  description: "Classic means network sign-ins with local accounts authenticate as themselves; Guest only maps them all to the Guest account."
+  rationale: "The classic model keeps per-account permissions effective for network access."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network access: Sharing and security model for local accounts = Classic - local users authenticate as themselves. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ForceGuest (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AC-3", "AC-14", "CM-7"], pci_dss: ["7.2.1", "2.2.6"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+
+S0050:
+  title: "Network security: Allow Local System to use computer identity for NTLM: Enabled"
+  description: "When enabled, services running as Local System use the computer's identity for NTLM instead of an anonymous session."
+  rationale: "Using the computer identity avoids anonymous (null session) authentication from system services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Allow Local System to use computer identity for NTLM = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\UseMachineId (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0051:
+  title: "Network security: Allow LocalSystem NULL session fallback: Disabled"
+  description: "Controls whether NTLM may fall back to a NULL session when used by Local System."
+  rationale: "A NULL session gives no real protection to the traffic, so fallback should not be allowed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Allow LocalSystem NULL session fallback = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\AllowNullSessionFallback (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0052:
+  title: "Network security: Allow PKU2U authentication requests to this computer to use online identities: Disabled"
+  description: "Controls whether peer-to-peer authentication (PKU2U) may use online identities to sign in to this computer."
+  rationale: "In a managed environment, authentication should go through domain accounts, not online identities."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Allow PKU2U authentication requests to this computer to use online identities = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\pku2u\\AllowOnlineID (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0053:
+  title: "Network security: Do not store LAN Manager hash value on next password change: Enabled"
+  description: "When enabled, Windows does not keep the weak LAN Manager (LM) hash of a new password."
+  rationale: "LM hashes are very easy to crack, so storing them exposes the password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Do not store LAN Manager hash value on next password change = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\NoLMHash (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0054:
+  title: "Network security: Force logoff when logon hours expire: Enabled"
+  description: "When enabled, network sessions of users are ended when their allowed logon hours run out. This check reads the SMB server value EnableForcedLogOff."
+  rationale: "Ending sessions outside allowed hours enforces the time restrictions placed on accounts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Force logoff when logon hours expire = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\EnableForcedLogOff (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["A.8.5"] }
+
+S0055:
+  title: "Network security: LAN Manager authentication level: Send NTLMv2 response only. Refuse LM & NTLM"
+  description: "Sets which challenge/response protocols are used for network sign-in. The expected level allows only NTLMv2 and refuses LM and NTLMv1."
+  rationale: "LM and NTLMv1 responses can be cracked or relayed easily; NTLMv2 is much stronger."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: LAN Manager authentication level = Send NTLMv2 response only. Refuse LM & NTLM. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\LmCompatibilityLevel (REG_DWORD) = 5."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0056:
+  title: "Network security: LDAP client signing requirements: Negotiate signing or higher"
+  description: "Sets whether the LDAP client asks for or requires signing of LDAP traffic."
+  rationale: "Signed LDAP traffic cannot be silently altered or relayed by an attacker in the middle."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: LDAP client signing requirements = Negotiate signing (or Require signing). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LDAP\\LDAPClientIntegrity (REG_DWORD) = 1 or 2."
+  compliance: { nist_800_53: ["SC-8", "SC-8(1)", "SC-23"], pci_dss: ["2.2.6", "4.2.1"], hipaa: ["164.312(c)(1)", "164.312(e)(2)(i)"], iso_27001: ["A.8.20", "A.8.24"] }
+
+S0057:
+  title: "Network security: Restrict NTLM: Audit Incoming NTLM Traffic: Enable auditing for all accounts"
+  description: "Records an event for every incoming NTLM authentication request."
+  rationale: "Auditing NTLM use shows where legacy authentication remains so it can be reduced safely."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Restrict NTLM: Audit Incoming NTLM Traffic = Enable auditing for all accounts. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\AuditReceivingNTLMTraffic (REG_DWORD) = 2."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)", "164.308(a)(1)(ii)(D)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0058:
+  title: "Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers: Deny all"
+  description: "Controls whether this computer may send NTLM authentication to remote servers. Value 2 blocks all outgoing NTLM."
+  rationale: "Blocking outgoing NTLM stops credentials from being relayed or cracked through NTLM."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers = Deny all. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\RestrictSendingNTLMTraffic (REG_DWORD) = 2."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0059:
+  title: "System objects: Require case insensitivity for non-Windows subsystems: Enabled"
+  description: "When enabled, object names are treated as case-insensitive for all subsystems."
+  rationale: "Case-sensitive names could let two objects look alike and confuse Windows programs."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\System objects: Require case insensitivity for non-Windows subsystems = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Kernel\\ObCaseInsensitive (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0060:
+  title: "System objects: Strengthen default permissions of internal system objects: Enabled"
+  description: "When enabled, non-administrators can read but not change shared system objects such as symbolic links."
+  rationale: "Stronger default permissions stop ordinary users from tampering with objects that other processes rely on."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\System objects: Strengthen default permissions of internal system objects (e.g. Symbolic Links) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\ProtectionMode (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0061:
+  title: "User Account Control: Admin Approval Mode for the Built-in Administrator account: Enabled"
+  description: "When enabled, the built-in Administrator account also runs with a filtered token and must approve elevation."
+  rationale: "Without it the built-in Administrator runs everything with full rights, including malware it happens to launch."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Admin Approval Mode for the Built-in Administrator account = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\FilterAdministratorToken (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0062:
+  title: "User Account Control: Behavior of the elevation prompt for standard users: Automatically deny elevation requests"
+  description: "Sets what happens when a standard user starts something that needs administrator rights."
+  rationale: "Denying requests stops standard users from being tricked into typing administrator credentials into an elevation prompt."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Behavior of the elevation prompt for standard users = Automatically deny elevation requests. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\ConsentPromptBehaviorUser (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0063:
+  title: "User Account Control: Detect application installations and prompt for elevation: Enabled"
+  description: "When enabled, Windows detects installers and asks for elevation before running them."
+  rationale: "Installers change the system, so they should only run after an explicit administrator decision."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Detect application installations and prompt for elevation = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableInstallerDetection (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0064:
+  title: "User Account Control: Only elevate UIAccess applications that are installed in secure locations: Enabled"
+  description: "When enabled, accessibility (UIAccess) programs get elevated UI access only if they are installed in protected folders such as Program Files."
+  rationale: "This stops a program in a user-writable folder from driving the elevated desktop."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Only elevate UIAccess applications that are installed in secure locations = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableSecureUIAPaths (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0065:
+  title: "User Account Control: Run all administrators in Admin Approval Mode: Enabled"
+  description: "Turns User Account Control on, so administrators work with a standard token and approve elevation."
+  rationale: "Turning this off disables UAC entirely and lets every program run with full administrator rights."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Run all administrators in Admin Approval Mode = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableLUA (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0066:
+  title: "User Account Control: Switch to the secure desktop when prompting for elevation: Enabled"
+  description: "When enabled, elevation prompts appear on the secure desktop where other programs cannot interact with them."
+  rationale: "The secure desktop stops malware from clicking or faking the elevation prompt."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Switch to the secure desktop when prompting for elevation = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\PromptOnSecureDesktop (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0067:
+  title: "User Account Control: Virtualize file and registry write failures to per-user locations: Enabled"
+  description: "When enabled, older programs that try to write to protected locations are redirected to per-user locations."
+  rationale: "Legacy programs keep working without needing administrator rights."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Virtualize file and registry write failures to per-user locations = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableVirtualization (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0068:
+  title: "Bluetooth Audio Gateway Service service (BTAGService): Disabled"
+  description: "Supports the Bluetooth hands-free and headset audio profiles."
+  rationale: "Bluetooth services add a wireless attack surface that most managed computers do not need."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Bluetooth Audio Gateway Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\BTAGService\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0069:
+  title: "Bluetooth Support Service service (bthserv): Disabled"
+  description: "Discovers and pairs remote Bluetooth devices."
+  rationale: "Turning off Bluetooth support removes a wireless entry point when Bluetooth is not needed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Bluetooth Support Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\bthserv\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0070:
+  title: "Computer Browser service (Browser): Disabled or not installed"
+  description: "Keeps a list of computers on the network for older network browsing. The check also passes when the service is not installed."
+  rationale: "This legacy service relies on SMBv1-era broadcasts and is no longer needed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Computer Browser = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Browser\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0071:
+  title: "Downloaded Maps Manager service (MapsBroker): Disabled"
+  description: "Lets apps use downloaded offline maps."
+  rationale: "Disabling unused services reduces the code that runs and talks to the internet."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Downloaded Maps Manager = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\MapsBroker\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0072:
+  title: "Geolocation Service service (lfsvc): Disabled"
+  description: "Tracks the location of the computer for apps."
+  rationale: "Location data is sensitive and should not be collected on managed computers without need."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Geolocation Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\lfsvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0073:
+  title: "IIS Admin Service service (IISADMIN): Disabled or not installed"
+  description: "Hosts the administration of legacy IIS components. The check also passes when the service is not installed."
+  rationale: "A web server component on a workstation is unneeded attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\IIS Admin Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\IISADMIN\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0074:
+  title: "Infrared monitor service service (irmon): Disabled or not installed"
+  description: "Detects other devices over infrared for file transfer. The check also passes when the service is not installed."
+  rationale: "Infrared file transfer is rarely needed and allows data to move outside normal controls."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Infrared monitor service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\irmon\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0075:
+  title: "Link-Layer Topology Discovery Mapper service (lltdsvc): Disabled"
+  description: "Builds a map of the local network for the network map feature."
+  rationale: "Network discovery traffic reveals information about this host and its neighbors."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Link-Layer Topology Discovery Mapper = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\lltdsvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0076:
+  title: "LxssManager service (LxssManager): Disabled or not installed"
+  description: "Supports running Linux programs on Windows (Windows Subsystem for Linux). The check also passes when the service is not installed."
+  rationale: "A Linux environment can run tools outside the usual Windows monitoring and controls."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\LxssManager = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LxssManager\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0077:
+  title: "Microsoft FTP Service service (FTPSVC): Disabled or not installed"
+  description: "Runs the IIS FTP server. The check also passes when the service is not installed."
+  rationale: "FTP sends credentials in clear text and is not needed on most computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Microsoft FTP Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\FTPSVC\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0078:
+  title: "Microsoft iSCSI Initiator Service service (MSiSCSI): Disabled"
+  description: "Manages connections to iSCSI storage targets."
+  rationale: "Disabling unused storage networking reduces attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Microsoft iSCSI Initiator Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\MSiSCSI\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0079:
+  title: "OpenSSH SSH Server service (sshd): Disabled or not installed"
+  description: "Accepts remote SSH connections to this computer. The check also passes when the service is not installed."
+  rationale: "A remote shell service should run only where it is explicitly needed and managed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\OpenSSH SSH Server = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\sshd\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0080:
+  title: "Peer Name Resolution Protocol service (PNRPsvc): Disabled"
+  description: "Resolves peer names without a central server for peer-to-peer apps."
+  rationale: "Peer-to-peer networking is rarely needed in an organization and widens exposure."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Name Resolution Protocol = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\PNRPsvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0081:
+  title: "Peer Networking Grouping service (p2psvc): Disabled"
+  description: "Supports multi-party peer-to-peer communication."
+  rationale: "Peer-to-peer networking is rarely needed in an organization and widens exposure."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Networking Grouping = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\p2psvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0082:
+  title: "Peer Networking Identity Manager service (p2pimsvc): Disabled"
+  description: "Provides identities for peer-to-peer networking."
+  rationale: "Peer-to-peer networking is rarely needed in an organization and widens exposure."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Networking Identity Manager = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\p2pimsvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0083:
+  title: "PNRP Machine Name Publication Service service (PNRPAutoReg): Disabled"
+  description: "Publishes the computer name using peer name resolution."
+  rationale: "Publishing the computer name over peer-to-peer networks exposes it needlessly."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\PNRP Machine Name Publication Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\PNRPAutoReg\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0084:
+  title: "Print Spooler service (Spooler): Disabled"
+  description: "Queues and manages print jobs."
+  rationale: "The print spooler has a history of serious remote vulnerabilities and should be off where printing is not needed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Print Spooler = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Spooler\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0085:
+  title: "Problem Reports Control Panel Support service (wercplsupport): Disabled"
+  description: "Lets users view and delete problem reports in Control Panel."
+  rationale: "Problem reports may contain sensitive data and support sending it outside the organization."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Problem Reports Control Panel Support = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\wercplsupport\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0086:
+  title: "Remote Access Auto Connection Manager service (RasAuto): Disabled"
+  description: "Dials a remote connection automatically when a program asks for a remote address."
+  rationale: "Automatic dial-up connections can create unmanaged network paths."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Access Auto Connection Manager = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\RasAuto\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0087:
+  title: "Remote Desktop Configuration service (SessionEnv): Disabled"
+  description: "Handles configuration and session maintenance for Remote Desktop."
+  rationale: "Remote Desktop should be disabled where it is not needed to reduce remote attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Desktop Configuration = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\SessionEnv\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0088:
+  title: "Remote Desktop Services service (TermService): Disabled"
+  description: "Accepts interactive Remote Desktop connections."
+  rationale: "Remote Desktop is a common target of brute-force and exploit attempts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Desktop Services = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\TermService\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0089:
+  title: "Remote Desktop Services UserMode Port Redirector service (UmRdpService): Disabled"
+  description: "Redirects printers, drives and ports in Remote Desktop sessions."
+  rationale: "Device redirection can move data in and out of the computer through remote sessions."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Desktop Services UserMode Port Redirector = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\UmRdpService\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0090:
+  title: "Remote Procedure Call (RPC) Locator service (RpcLocator): Disabled"
+  description: "Legacy name service for RPC applications."
+  rationale: "This legacy service is not needed by current Windows and adds attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Procedure Call (RPC) Locator = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\RpcLocator\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0091:
+  title: "Remote Registry service (RemoteRegistry): Disabled"
+  description: "Lets remote users read and change the registry."
+  rationale: "Remote registry access is useful to attackers for reconnaissance and changes."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Remote Registry = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\RemoteRegistry\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0092:
+  title: "Routing and Remote Access service (RemoteAccess): Disabled"
+  description: "Provides routing and dial-up or VPN server functions."
+  rationale: "A workstation should not act as a router or remote access server."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Routing and Remote Access = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\RemoteAccess\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0093:
+  title: "Server service (LanmanServer): Disabled"
+  description: "Shares files, printers and named pipes over SMB."
+  rationale: "Workstations that do not share files do not need to accept SMB connections."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Server = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0094:
+  title: "Simple TCP/IP Services service (simptcp): Disabled or not installed"
+  description: "Provides old test protocols such as echo, discard and quote of the day. The check also passes when the service is not installed."
+  rationale: "These legacy protocols serve no business purpose and can be abused for amplification."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Simple TCP/IP Services = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\simptcp\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0095:
+  title: "SNMP Service service (SNMP): Disabled or not installed"
+  description: "Lets SNMP management tools query and configure this computer. The check also passes when the service is not installed."
+  rationale: "Older SNMP versions use clear-text community strings that are easy to capture and misuse."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\SNMP Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\SNMP\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0096:
+  title: "Special Administration Console Helper service (sacsvr): Disabled or not installed"
+  description: "Provides the Emergency Management Services remote console. The check also passes when the service is not installed."
+  rationale: "A remote management console should be off unless explicitly needed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Special Administration Console Helper = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\sacsvr\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0097:
+  title: "SSDP Discovery service (SSDPSRV): Disabled"
+  description: "Discovers UPnP devices on the network."
+  rationale: "UPnP discovery exposes the host to unauthenticated network devices and traffic."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\SSDP Discovery = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\SSDPSRV\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0098:
+  title: "UPnP Device Host service (upnphost): Disabled"
+  description: "Lets this computer host UPnP devices."
+  rationale: "Hosting UPnP devices accepts unauthenticated network requests."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\UPnP Device Host = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\upnphost\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0099:
+  title: "Web Management Service service (WMSvc): Disabled or not installed"
+  description: "Allows remote management of IIS. The check also passes when the service is not installed."
+  rationale: "Remote web server management is not needed on most computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Web Management Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\WMSvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0100:
+  title: "Windows Error Reporting Service service (WerSvc): Disabled"
+  description: "Sends error reports when programs crash or hang."
+  rationale: "Error reports can contain memory contents and send data outside the organization."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Error Reporting Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\WerSvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0101:
+  title: "Windows Event Collector service (Wecsvc): Disabled"
+  description: "Receives forwarded events from other computers."
+  rationale: "A workstation that does not collect events does not need to accept them."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Event Collector = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Wecsvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0102:
+  title: "Windows Media Player Network Sharing Service service (WMPNetworkSvc): Disabled or not installed"
+  description: "Shares media libraries with other players and devices. The check also passes when the service is not installed."
+  rationale: "Media sharing opens network access to local files with little business value."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Media Player Network Sharing Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\WMPNetworkSvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0103:
+  title: "Windows Mobile Hotspot Service service (icssvc): Disabled"
+  description: "Shares this computer's internet connection with other devices."
+  rationale: "A hotspot can bridge unmanaged devices into the corporate network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Mobile Hotspot Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\icssvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0104:
+  title: "Windows Push Notifications System Service service (WpnService): Disabled"
+  description: "Connects to the Windows push notification service for app notifications."
+  rationale: "Push notifications keep an external connection open that is not needed on hardened systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Push Notifications System Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\WpnService\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0105:
+  title: "Windows PushToInstall Service service (PushToInstall): Disabled"
+  description: "Installs Store apps sent remotely from another device."
+  rationale: "Remote app installation outside management tooling should be blocked."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows PushToInstall Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\PushToInstall\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0106:
+  title: "Windows Remote Management (WS-Management) service (WinRM): Disabled"
+  description: "Accepts remote management and PowerShell remoting requests."
+  rationale: "Remote management should be enabled only where needed because it is a common lateral movement path."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Windows Remote Management (WS-Management) = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\WinRM\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["AC-17", "CM-7"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.6.7"] }
+
+S0107:
+  title: "World Wide Web Publishing Service service (W3SVC): Disabled or not installed"
+  description: "Runs the IIS web server. The check also passes when the service is not installed."
+  rationale: "A web server on a workstation is unneeded attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\World Wide Web Publishing Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\W3SVC\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0108:
+  title: "Xbox Accessory Management Service service (XboxGipSvc): Disabled"
+  description: "Manages connected Xbox accessories."
+  rationale: "Gaming services have no business use on managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Xbox Accessory Management Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\XboxGipSvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0109:
+  title: "Xbox Live Auth Manager service (XblAuthManager): Disabled"
+  description: "Handles Xbox Live sign-in."
+  rationale: "Gaming services have no business use on managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Xbox Live Auth Manager = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\XblAuthManager\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0110:
+  title: "Xbox Live Game Save service (XblGameSave): Disabled"
+  description: "Synchronizes saved game data with Xbox Live."
+  rationale: "Gaming services have no business use on managed computers and send data outside the organization."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Xbox Live Game Save = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\XblGameSave\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0111:
+  title: "Xbox Live Networking Service service (XboxNetApiSvc): Disabled"
+  description: "Supports Xbox Live networking features."
+  rationale: "Gaming services have no business use on managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Xbox Live Networking Service = Disabled. Or set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\XboxNetApiSvc\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "CM-7(1)"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0112:
+  title: "Windows Firewall (Domain profile): Firewall state: On"
+  description: "Turns the host firewall on for the Domain profile, used on domain networks."
+  rationale: "The host firewall blocks unwanted inbound connections even when perimeter defenses fail."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Firewall state = On (recommended). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\EnableFirewall (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0113:
+  title: "Windows Firewall (Domain profile): Inbound connections: Block (default)"
+  description: "Sets the default action for inbound connections that match no rule in the Domain profile."
+  rationale: "Blocking by default means only explicitly allowed traffic can reach the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Inbound connections = Block (default). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\DefaultInboundAction (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0114:
+  title: "Windows Firewall (Domain profile): Display a notification: No"
+  description: "Controls whether users see a notification when a program is blocked from receiving inbound connections in the Domain profile."
+  rationale: "Users presented with such prompts may allow traffic they should not; firewall rules should be managed centrally."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Settings: Customize > Display a notification = No. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\DisableNotifications (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0115:
+  title: "Windows Firewall (Domain profile): Logging name: %SystemRoot%\\System32\\logfiles\\firewall\\domainfw.log"
+  description: "Sets the file where the firewall writes its log for the Domain profile."
+  rationale: "A separate, known log file per profile makes firewall events easy to collect and review."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Logging: Customize > Name = %SystemRoot%\\System32\\logfiles\\firewall\\domainfw.log. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging\\LogFilePath (REG_SZ) = %SystemRoot%\\System32\\logfiles\\firewall\\domainfw.log."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0116:
+  title: "Windows Firewall (Domain profile): Logging size limit: 16,384 KB or greater"
+  description: "Sets the maximum size of the firewall log file for the Domain profile."
+  rationale: "A larger log keeps enough history to investigate an incident before entries are overwritten."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Logging: Customize > Size limit (KB) = 16384 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging\\LogFileSize (REG_DWORD) = 16384 or more."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0117:
+  title: "Windows Firewall (Domain profile): Log dropped packets: Yes"
+  description: "Records packets the firewall drops in the Domain profile."
+  rationale: "Dropped-packet records reveal scanning and blocked attack attempts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Logging: Customize > Log dropped packets = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging\\LogDroppedPackets (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0118:
+  title: "Windows Firewall (Domain profile): Log successful connections: Yes"
+  description: "Records connections the firewall allows in the Domain profile."
+  rationale: "Allowed-connection records help trace what a compromised host talked to."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Domain Profile tab > Logging: Customize > Log successful connections = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging\\LogSuccessfulConnections (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0119:
+  title: "Windows Firewall (Private profile): Firewall state: On"
+  description: "Turns the host firewall on for the Private profile, used on private networks."
+  rationale: "The host firewall blocks unwanted inbound connections even when perimeter defenses fail."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Firewall state = On (recommended). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\EnableFirewall (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0120:
+  title: "Windows Firewall (Private profile): Inbound connections: Block (default)"
+  description: "Sets the default action for inbound connections that match no rule in the Private profile."
+  rationale: "Blocking by default means only explicitly allowed traffic can reach the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Inbound connections = Block (default). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\DefaultInboundAction (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0121:
+  title: "Windows Firewall (Private profile): Display a notification: No"
+  description: "Controls whether users see a notification when a program is blocked from receiving inbound connections in the Private profile."
+  rationale: "Users presented with such prompts may allow traffic they should not; firewall rules should be managed centrally."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Settings: Customize > Display a notification = No. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\DisableNotifications (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0122:
+  title: "Windows Firewall (Private profile): Logging name: %SystemRoot%\\System32\\logfiles\\firewall\\privatefw.log"
+  description: "Sets the file where the firewall writes its log for the Private profile."
+  rationale: "A separate, known log file per profile makes firewall events easy to collect and review."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Logging: Customize > Name = %SystemRoot%\\System32\\logfiles\\firewall\\privatefw.log. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging\\LogFilePath (REG_SZ) = %SystemRoot%\\System32\\logfiles\\firewall\\privatefw.log."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0123:
+  title: "Windows Firewall (Private profile): Logging size limit: 16,384 KB or greater"
+  description: "Sets the maximum size of the firewall log file for the Private profile."
+  rationale: "A larger log keeps enough history to investigate an incident before entries are overwritten."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Logging: Customize > Size limit (KB) = 16384 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging\\LogFileSize (REG_DWORD) = 16384 or more."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0124:
+  title: "Windows Firewall (Private profile): Log dropped packets: Yes"
+  description: "Records packets the firewall drops in the Private profile."
+  rationale: "Dropped-packet records reveal scanning and blocked attack attempts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Logging: Customize > Log dropped packets = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging\\LogDroppedPackets (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0125:
+  title: "Windows Firewall (Private profile): Log successful connections: Yes"
+  description: "Records connections the firewall allows in the Private profile."
+  rationale: "Allowed-connection records help trace what a compromised host talked to."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Private Profile tab > Logging: Customize > Log successful connections = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging\\LogSuccessfulConnections (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0126:
+  title: "Windows Firewall (Public profile): Firewall state: On"
+  description: "Turns the host firewall on for the Public profile, used on public networks."
+  rationale: "The host firewall blocks unwanted inbound connections even when perimeter defenses fail."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Firewall state = On (recommended). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\EnableFirewall (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0127:
+  title: "Windows Firewall (Public profile): Inbound connections: Block (default)"
+  description: "Sets the default action for inbound connections that match no rule in the Public profile."
+  rationale: "Blocking by default means only explicitly allowed traffic can reach the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Inbound connections = Block (default). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\DefaultInboundAction (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0128:
+  title: "Windows Firewall (Public profile): Display a notification: No"
+  description: "Controls whether users see a notification when a program is blocked from receiving inbound connections in the Public profile."
+  rationale: "Users presented with such prompts may allow traffic they should not; firewall rules should be managed centrally."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Settings: Customize > Display a notification = No. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\DisableNotifications (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0129:
+  title: "Windows Firewall (Public profile): Apply local firewall rules: No"
+  description: "Controls whether firewall rules created locally on the computer are applied alongside Group Policy rules in the Public profile."
+  rationale: "On public networks only centrally managed rules should apply, so local changes cannot open ports."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Settings: Customize > Apply local firewall rules = No. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\AllowLocalPolicyMerge (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0130:
+  title: "Windows Firewall (Public profile): Apply local connection security rules: No"
+  description: "Controls whether locally created connection security (IPsec) rules are applied in the Public profile."
+  rationale: "Only centrally managed connection security rules should apply on public networks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Settings: Customize > Apply local connection security rules = No. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\AllowLocalIPsecPolicyMerge (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-7(5)", "CM-7"], pci_dss: ["1.5.1", "1.2.1"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.22"] }
+
+S0131:
+  title: "Windows Firewall (Public profile): Logging name: %SystemRoot%\\System32\\logfiles\\firewall\\publicfw.log"
+  description: "Sets the file where the firewall writes its log for the Public profile."
+  rationale: "A separate, known log file per profile makes firewall events easy to collect and review."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Logging: Customize > Name = %SystemRoot%\\System32\\logfiles\\firewall\\publicfw.log. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging\\LogFilePath (REG_SZ) = %SystemRoot%\\System32\\logfiles\\firewall\\publicfw.log."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0132:
+  title: "Windows Firewall (Public profile): Logging size limit: 16,384 KB or greater"
+  description: "Sets the maximum size of the firewall log file for the Public profile."
+  rationale: "A larger log keeps enough history to investigate an incident before entries are overwritten."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Logging: Customize > Size limit (KB) = 16384 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging\\LogFileSize (REG_DWORD) = 16384 or more."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0133:
+  title: "Windows Firewall (Public profile): Log dropped packets: Yes"
+  description: "Records packets the firewall drops in the Public profile."
+  rationale: "Dropped-packet records reveal scanning and blocked attack attempts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Logging: Customize > Log dropped packets = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging\\LogDroppedPackets (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0134:
+  title: "Windows Firewall (Public profile): Log successful connections: Yes"
+  description: "Records connections the firewall allows in the Public profile."
+  rationale: "Allowed-connection records help trace what a compromised host talked to."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall with Advanced Security\\Windows Defender Firewall Properties\\Public Profile tab > Logging: Customize > Log successful connections = Yes. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging\\LogSuccessfulConnections (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SC-7"], pci_dss: ["10.2.1", "1.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.20"] }
+
+S0135:
+  title: "Audit Credential Validation: Success and Failure"
+  description: "Records checks of account credentials, such as NTLM validation of a user name and password."
+  rationale: "Failed and successful credential checks reveal password guessing and stolen credential use."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Account Logon\\Audit Credential Validation = Success and Failure. Or run: auditpol /set /subcategory:\"Credential Validation\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0136:
+  title: "Audit Application Group Management: Success and Failure"
+  description: "Records changes to application groups, such as those used by Authorization Manager."
+  rationale: "Changes to groups that grant application access should be traceable."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Account Management\\Audit Application Group Management = Success and Failure. Or run: auditpol /set /subcategory:\"Application Group Management\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-2(4)"], pci_dss: ["10.2.1", "10.2.1.5"], hipaa: ["164.312(b)", "164.308(a)(1)(ii)(D)"], iso_27001: ["A.8.15", "A.5.16"] }
+
+S0137:
+  title: "Audit Security Group Management: includes Success"
+  description: "Records creation, deletion and membership changes of security groups."
+  rationale: "Adding an account to a privileged group is a common attacker step and must leave a record."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Account Management\\Audit Security Group Management = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Security Group Management\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-2(4)"], pci_dss: ["10.2.1", "10.2.1.5"], hipaa: ["164.312(b)", "164.308(a)(1)(ii)(D)"], iso_27001: ["A.8.15", "A.5.16"] }
+
+S0138:
+  title: "Audit User Account Management: Success and Failure"
+  description: "Records creation, change, enabling, disabling and deletion of user accounts, and password resets."
+  rationale: "Account changes are key evidence when investigating misuse or persistence."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Account Management\\Audit User Account Management = Success and Failure. Or run: auditpol /set /subcategory:\"User Account Management\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-2(4)"], pci_dss: ["10.2.1", "10.2.1.5"], hipaa: ["164.312(b)", "164.308(a)(1)(ii)(D)"], iso_27001: ["A.8.15", "A.5.16"] }
+
+S0139:
+  title: "Audit Plug and Play Events: includes Success"
+  description: "Records when the system detects an external device such as a USB drive."
+  rationale: "Device connection records help trace data theft and the introduction of malicious hardware."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Detailed Tracking\\Audit Plug and Play Events = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Plug and Play Events\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0140:
+  title: "Audit Process Creation: includes Success"
+  description: "Records each new process with its creator."
+  rationale: "Process creation events are essential for spotting and reconstructing malicious activity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Detailed Tracking\\Audit Process Creation = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Process Creation\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0141:
+  title: "Audit Account Lockout: includes Failure"
+  description: "Records sign-in attempts that fail because the account is locked out."
+  rationale: "Lockout events point to brute-force attacks against specific accounts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Account Lockout = Failure (or Success and Failure). Or run: auditpol /set /subcategory:\"Account Lockout\" /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0142:
+  title: "Audit Group Membership: includes Success"
+  description: "Records the group memberships of an account at each sign-in."
+  rationale: "Knowing the groups in a session token helps assess what a signed-in account could do."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Group Membership = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Group Membership\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0143:
+  title: "Audit Logoff: includes Success"
+  description: "Records when a sign-in session ends."
+  rationale: "Logoff records complete the session timeline used in investigations."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Logoff = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Logoff\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0144:
+  title: "Audit Logon: Success and Failure"
+  description: "Records successful and failed attempts to sign in to the computer."
+  rationale: "Sign-in records are the base evidence for detecting unauthorized access."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Logon = Success and Failure. Or run: auditpol /set /subcategory:\"Logon\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0145:
+  title: "Audit Other Logon/Logoff Events: Success and Failure"
+  description: "Records events such as workstation lock and unlock, screen saver use and Remote Desktop reconnects."
+  rationale: "These events fill gaps in the picture of who used a session and when."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Other Logon/Logoff Events = Success and Failure. Or run: auditpol /set /subcategory:\"Other Logon/Logoff Events\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-7"], pci_dss: ["10.2.1", "10.2.1.4"], hipaa: ["164.312(b)", "164.308(a)(5)(ii)(C)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0146:
+  title: "Audit Special Logon: includes Success"
+  description: "Records sign-ins that receive administrator-equivalent privileges."
+  rationale: "Privileged sign-ins deserve close tracking because they carry the most risk."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Logon/Logoff\\Audit Special Logon = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Special Logon\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-6(9)"], pci_dss: ["10.2.1", "10.2.1.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.18"] }
+
+S0147:
+  title: "Audit Detailed File Share: includes Failure"
+  description: "Records access attempts to individual files and folders on shares."
+  rationale: "Failed share access attempts can show someone probing for data they should not reach."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Object Access\\Audit Detailed File Share = Failure (or Success and Failure). Or run: auditpol /set /subcategory:\"Detailed File Share\" /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-3"], pci_dss: ["10.2.1", "10.2.1.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.3"] }
+
+S0148:
+  title: "Audit File Share: Success and Failure"
+  description: "Records access to shared folders."
+  rationale: "Share access records help trace data access and movement across the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Object Access\\Audit File Share = Success and Failure. Or run: auditpol /set /subcategory:\"File Share\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-3"], pci_dss: ["10.2.1", "10.2.1.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.3"] }
+
+S0149:
+  title: "Audit Other Object Access Events: Success and Failure"
+  description: "Records the management of scheduled tasks and COM+ catalog objects."
+  rationale: "Scheduled tasks are a common persistence method, so their creation should be recorded."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Object Access\\Audit Other Object Access Events = Success and Failure. Or run: auditpol /set /subcategory:\"Other Object Access Events\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-3"], pci_dss: ["10.2.1", "10.2.1.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.3"] }
+
+S0150:
+  title: "Audit Removable Storage: Success and Failure"
+  description: "Records file access on removable storage devices."
+  rationale: "Removable media is a common path for data loss and malware."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Object Access\\Audit Removable Storage = Success and Failure. Or run: auditpol /set /subcategory:\"Removable Storage\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-3"], pci_dss: ["10.2.1", "10.2.1.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.3"] }
+
+S0151:
+  title: "Audit Audit Policy Change: includes Success"
+  description: "Records changes to the audit policy itself."
+  rationale: "Attackers often change audit settings to hide their tracks, so such changes must be visible."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Policy Change\\Audit Audit Policy Change = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Audit Policy Change\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "CM-3"], pci_dss: ["10.2.1", "10.2.1.2", "10.2.1.6"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.32"] }
+
+S0152:
+  title: "Audit Authentication Policy Change: includes Success"
+  description: "Records changes to authentication settings such as trusts, Kerberos policy and user rights for sign-in."
+  rationale: "Changes to how users authenticate can weaken security and must be traceable."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Policy Change\\Audit Authentication Policy Change = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Authentication Policy Change\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "CM-3"], pci_dss: ["10.2.1", "10.2.1.2", "10.2.1.6"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.32"] }
+
+S0153:
+  title: "Audit Authorization Policy Change: includes Success"
+  description: "Records changes to user rights assignments and other authorization settings."
+  rationale: "Granting new rights is a common privilege escalation step."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Policy Change\\Audit Authorization Policy Change = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Authorization Policy Change\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "CM-3"], pci_dss: ["10.2.1", "10.2.1.2", "10.2.1.6"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.32"] }
+
+S0154:
+  title: "Audit MPSSVC Rule-Level Policy Change: Success and Failure"
+  description: "Records changes to Windows Firewall rules."
+  rationale: "Firewall rule changes can open the system to attack and should be recorded."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Policy Change\\Audit MPSSVC Rule-Level Policy Change = Success and Failure. Or run: auditpol /set /subcategory:\"MPSSVC Rule-Level Policy Change\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "CM-3"], pci_dss: ["10.2.1", "10.2.1.2", "10.2.1.6"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.32"] }
+
+S0155:
+  title: "Audit Other Policy Change Events: includes Failure"
+  description: "Records other security policy changes, such as to the Encrypting File System and Trusted Platform Module settings."
+  rationale: "Failed policy changes may indicate tampering attempts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Policy Change\\Audit Other Policy Change Events = Failure (or Success and Failure). Or run: auditpol /set /subcategory:\"Other Policy Change Events\" /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "CM-3"], pci_dss: ["10.2.1", "10.2.1.2", "10.2.1.6"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.32"] }
+
+S0156:
+  title: "Audit Sensitive Privilege Use: Success and Failure"
+  description: "Records use of sensitive privileges such as acting as part of the operating system or debugging programs."
+  rationale: "Use of powerful privileges often marks attacker activity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\Privilege Use\\Audit Sensitive Privilege Use = Success and Failure. Or run: auditpol /set /subcategory:\"Sensitive Privilege Use\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "AC-6(9)"], pci_dss: ["10.2.1", "10.2.1.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15", "A.8.18"] }
+
+S0157:
+  title: "Audit IPsec Driver: Success and Failure"
+  description: "Records events from the IPsec driver, such as dropped packets that fail integrity checks."
+  rationale: "IPsec errors can reveal network attacks or tampering."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\System\\Audit IPsec Driver = Success and Failure. Or run: auditpol /set /subcategory:\"IPsec Driver\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0158:
+  title: "Audit Other System Events: Success and Failure"
+  description: "Records events such as Windows Firewall service start-up and cryptographic key operations."
+  rationale: "These events help detect interference with core security services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\System\\Audit Other System Events = Success and Failure. Or run: auditpol /set /subcategory:\"Other System Events\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0159:
+  title: "Audit Security State Change: includes Success"
+  description: "Records system start-up, shutdown and system time changes."
+  rationale: "State changes mark gaps in monitoring and possible tampering with the clock."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\System\\Audit Security State Change = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Security State Change\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0160:
+  title: "Audit Security System Extension: includes Success"
+  description: "Records loading of security extensions such as authentication packages and the installation of services."
+  rationale: "New security extensions or services are a common way to persist or capture credentials."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\System\\Audit Security System Extension = Success (or Success and Failure). Or run: auditpol /set /subcategory:\"Security System Extension\" /success:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0161:
+  title: "Audit System Integrity: Success and Failure"
+  description: "Records violations of the integrity of the security subsystem, such as audit events lost or code integrity failures."
+  rationale: "Integrity failures can indicate tampering with the operating system or its logs."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Advanced Audit Policy Configuration\\Audit Policies\\System\\Audit System Integrity = Success and Failure. Or run: auditpol /set /subcategory:\"System Integrity\" /success:enable /failure:enable"
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0162:
+  title: "Prevent enabling lock screen camera: Enabled"
+  description: "When enabled, the camera cannot be turned on from the lock screen."
+  rationale: "Keeping the camera off at the lock screen stops anyone without a sign-in from using it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Control Panel\\Personalization\\Prevent enabling lock screen camera = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization\\NoLockScreenCamera (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.6"], hipaa: ["164.310(d)(1)"], iso_27001: ["A.7.10", "A.8.1"] }
+
+S0163:
+  title: "Prevent enabling lock screen slide show: Enabled"
+  description: "When enabled, a picture slide show cannot be shown on the lock screen."
+  rationale: "A lock screen slide show could display private pictures to anyone near the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Control Panel\\Personalization\\Prevent enabling lock screen slide show = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization\\NoLockScreenSlideshow (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0164:
+  title: "Allow users to enable online speech recognition services: Disabled"
+  description: "Controls whether users can turn on cloud-based speech recognition, which sends voice data to Microsoft."
+  rationale: "Voice recordings can contain confidential information that should not leave the organization."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Control Panel\\Regional and Language Options\\Allow users to enable online speech recognition services = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\InputPersonalization\\AllowInputPersonalization (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0165:
+  title: "Allow Online Tips: Disabled"
+  description: "Controls whether the Settings app downloads tips and help content from Microsoft online services."
+  rationale: "Turning off unneeded online content reduces outbound connections from managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Control Panel\\Allow Online Tips = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\AllowOnlineTips (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0166:
+  title: "Apply UAC restrictions to local accounts on network logons: Enabled"
+  description: "When enabled, local administrator accounts get a filtered token when they sign in over the network."
+  rationale: "This blocks pass-the-hash attacks that reuse a local administrator password across computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\Apply UAC restrictions to local accounts on network logons = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\LocalAccountTokenFilterPolicy (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0167:
+  title: "Configure SMB v1 client driver: Disable driver"
+  description: "Sets the start type of the SMBv1 client driver (mrxsmb10). The check also passes when the driver is not installed."
+  rationale: "SMBv1 is an outdated protocol with serious vulnerabilities that have been used by worms."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\Configure SMB v1 client driver = Enabled: Disable driver (recommended). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\mrxsmb10\\Start (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["CM-7", "SC-8"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.8"] }
+
+S0168:
+  title: "Configure SMB v1 server: Disabled"
+  description: "Controls whether the SMB server accepts SMBv1 connections."
+  rationale: "SMBv1 lacks modern protections and has been the target of widespread exploits."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\Configure SMB v1 server = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\\SMB1 (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "SC-8"], pci_dss: ["2.2.4", "2.2.5"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.8"] }
+
+S0169:
+  title: "Enable Certificate Padding: Enabled"
+  description: "When enabled, Authenticode signature checks reject files with extra data in the signature area."
+  rationale: "Strict checking stops attackers from appending content to a signed file without breaking its signature."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\Enable Certificate Padding = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Cryptography\\Wintrust\\Config\\EnableCertPaddingCheck (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0170:
+  title: "Enable Structured Exception Handling Overwrite Protection (SEHOP): Enabled"
+  description: "Turns on validation of the exception handler chain for all processes."
+  rationale: "SEHOP blocks a common class of memory-corruption exploits that overwrite exception handlers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\Enable Structured Exception Handling Overwrite Protection (SEHOP) = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel\\DisableExceptionChainValidation (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0171:
+  title: "NetBT NodeType configuration: P-node"
+  description: "Sets how NetBIOS over TCP/IP resolves names. P-node uses only point-to-point queries to a WINS server and no broadcasts."
+  rationale: "Avoiding broadcast name resolution stops name-spoofing attacks that capture credentials on the local network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\NetBT NodeType configuration = Enabled: P-node (recommended). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters\\NodeType (REG_DWORD) = 2."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0172:
+  title: "WDigest Authentication: Disabled"
+  description: "Controls whether the WDigest provider keeps a reversible copy of the user's password in memory. The check also passes when the value is absent (off by default on current Windows)."
+  rationale: "Plain-text passwords in memory can be dumped by attackers with administrator access."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MS Security Guide\\WDigest Authentication (disabling may require KB2871997) = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\\UseLogonCredential (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0173:
+  title: "MSS: (AutoAdminLogon) Enable Automatic Logon: Disabled"
+  description: "Controls whether Windows signs in automatically with credentials stored in the registry."
+  rationale: "Automatic sign-in stores a password where it can be read and gives anyone at the console a signed-in session."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (AutoAdminLogon) Enable Automatic Logon (not recommended) = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\AutoAdminLogon (REG_SZ) = 0."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0174:
+  title: "MSS: (DisableSavePassword) Prevent the dial-up password from being saved: Enabled"
+  description: "When enabled, users cannot save passwords for dial-up and VPN connections."
+  rationale: "Saved connection passwords can be stolen and used to reach the network from elsewhere."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (DisableSavePassword) Prevent the dial-up password from being saved = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\RasMan\\Parameters\\DisableSavePassword (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0175:
+  title: "MSS: (EnableICMPRedirect) Allow ICMP redirects to override OSPF generated routes: Disabled"
+  description: "Controls whether ICMP redirect messages can change the computer's routing table."
+  rationale: "Forged ICMP redirects can send traffic through an attacker's machine."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (EnableICMPRedirect) Allow ICMP redirects to override OSPF generated routes = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\EnableICMPRedirect (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0176:
+  title: "MSS: (KeepAliveTime) How often keep-alive packets are sent: 300,000 milliseconds (5 minutes)"
+  description: "Sets how often TCP checks that an idle connection is still alive."
+  rationale: "A shorter interval clears dead and half-open connections sooner, limiting resource exhaustion."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (KeepAliveTime) How often keep-alive packets are sent in milliseconds = 300,000 or 5 minutes. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\KeepAliveTime (REG_DWORD) = 300000."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0177:
+  title: "MSS: (NoNameReleaseOnDemand) Ignore NetBIOS name release requests except from WINS servers: Enabled"
+  description: "When enabled, the computer ignores requests to give up its NetBIOS name unless they come from a WINS server."
+  rationale: "This stops a simple denial-of-service attack that forces the computer to drop its name."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (NoNameReleaseOnDemand) Allow the computer to ignore NetBIOS name release requests except from WINS servers = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters\\NoNameReleaseOnDemand (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0178:
+  title: "MSS: (PerformRouterDiscovery) Allow IRDP to detect and configure Default Gateway addresses: Disabled"
+  description: "Controls whether the computer uses router discovery messages to set its default gateway."
+  rationale: "Forged router advertisements could redirect all traffic through an attacker."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (PerformRouterDiscovery) Allow IRDP to detect and configure Default Gateway addresses = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\PerformRouterDiscovery (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0179:
+  title: "MSS: (SafeDllSearchMode) Enable Safe DLL search mode: Enabled"
+  description: "When enabled, Windows searches system folders before the current folder when loading DLLs."
+  rationale: "Safe search order makes it harder to trick a program into loading a malicious DLL."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (SafeDllSearchMode) Enable Safe DLL search mode = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SafeDllSearchMode (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0180:
+  title: "MSS: (TcpMaxDataRetransmissions IPv6) How many times unacknowledged data is retransmitted: 3"
+  description: "Sets how many times TCP over IPv6 resends unacknowledged data before giving up on a connection."
+  rationale: "A low retry count frees resources held by dead connections sooner."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (TcpMaxDataRetransmissions IPv6) How many times unacknowledged data is retransmitted = 3. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\TCPIP6\\Parameters\\TcpMaxDataRetransmissions (REG_DWORD) = 3."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0181:
+  title: "MSS: (TcpMaxDataRetransmissions) How many times unacknowledged data is retransmitted: 3"
+  description: "Sets how many times TCP over IPv4 resends unacknowledged data before giving up on a connection."
+  rationale: "A low retry count frees resources held by dead connections sooner."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (TcpMaxDataRetransmissions) How many times unacknowledged data is retransmitted = 3. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\TcpMaxDataRetransmissions (REG_DWORD) = 3."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0182:
+  title: "Configure NetBIOS settings: Disable NetBIOS name resolution"
+  description: "Controls whether the DNS client falls back to NetBIOS name resolution. The check also passes when the policy is not set."
+  rationale: "NetBIOS name resolution can be spoofed to capture credentials on the local network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\DNS Client\\Configure NetBIOS settings = Enabled: Disable NetBIOS name resolution. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\\EnableNetbios (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0183:
+  title: "Turn off multicast name resolution: Enabled"
+  description: "When enabled, the computer does not use Link-Local Multicast Name Resolution (LLMNR)."
+  rationale: "LLMNR answers can be spoofed by anyone on the local network to capture credentials."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\DNS Client\\Turn off multicast name resolution = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\\EnableMulticast (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0184:
+  title: "Enable Font Providers: Disabled"
+  description: "Controls whether Windows downloads fonts from online font providers."
+  rationale: "Blocking online font downloads removes an outbound connection and a source of untrusted font files."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Fonts\\Enable Font Providers = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\EnableFontProviders (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0185:
+  title: "Enable insecure guest logons: Disabled"
+  description: "Controls whether the SMB client may connect to shares using unauthenticated guest access."
+  rationale: "Guest access gives no identity checks and lets rogue servers serve malicious files."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Lanman Workstation\\Enable insecure guest logons = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation\\AllowInsecureGuestAuth (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0186:
+  title: "Turn on Mapper I/O (LLTDIO) driver: Disabled"
+  description: "Controls the network discovery driver that maps other devices on the local network. The check also passes when the policy is not set."
+  rationale: "Network mapping traffic reveals details about the network and its devices."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Link-Layer Topology Discovery\\Turn on Mapper I/O (LLTDIO) driver = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD\\EnableLLTDIO (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0187:
+  title: "Turn on Responder (RSPNDR) driver: Disabled"
+  description: "Controls the driver that lets this computer be discovered on network maps. The check also passes when the policy is not set."
+  rationale: "Answering discovery requests exposes the computer to network reconnaissance."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Link-Layer Topology Discovery\\Turn on Responder (RSPNDR) driver = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD\\EnableRspndr (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0188:
+  title: "Turn off Microsoft Peer-to-Peer Networking Services: Enabled"
+  description: "When enabled, peer-to-peer networking protocols are switched off."
+  rationale: "Peer-to-peer services are seldom needed and widen the network attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Microsoft Peer-to-Peer Networking Services\\Turn off Microsoft Peer-to-Peer Networking Services = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Peernet\\Disabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0189:
+  title: "Prohibit installation and configuration of Network Bridge on your DNS domain network: Enabled"
+  description: "When enabled, users cannot create a network bridge while connected to the domain network."
+  rationale: "A bridge could join the corporate network to another network and bypass perimeter controls."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Network Connections\\Prohibit installation and configuration of Network Bridge on your DNS domain network = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections\\NC_AllowNetBridge_NLA (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0190:
+  title: "Prohibit use of Internet Connection Sharing on your DNS domain network: Enabled"
+  description: "When enabled, users cannot share the computer's internet connection while on the domain network."
+  rationale: "Connection sharing could let unmanaged devices reach the corporate network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Network Connections\\Prohibit use of Internet Connection Sharing on your DNS domain network = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections\\NC_ShowSharedAccessUI (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0191:
+  title: "Require domain users to elevate when setting a network's location: Enabled"
+  description: "When enabled, domain users must provide administrator rights to change a network's location type."
+  rationale: "Changing a network to private can relax firewall rules, so it should need elevation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Network Connections\\Require domain users to elevate when setting a network's location = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections\\NC_StdDomainUserSetLocation (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AC-6", "AC-6(2)", "AC-6(10)"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(ii)(B)", "164.312(a)(1)"], iso_27001: ["A.8.2", "A.8.18"] }
+
+S0192:
+  title: "IPv6 components: all disabled (DisabledComponents = 255)"
+  description: "Sets which IPv6 components are turned off. The value 255 (0xFF) disables all IPv6 components except the loopback interface."
+  rationale: "Where IPv6 is not used and not monitored, turning it off removes an unmanaged network path."
+  remediation: "Set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\TCPIP6\\Parameters\\DisabledComponents (REG_DWORD) = 255 (0xFF). A restart is required."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0193:
+  title: "Configuration of wireless settings using Windows Connect Now: Disabled"
+  description: "Controls whether wireless settings can be set up with Windows Connect Now over UPnP, in-band 802.11, flash drives or portable devices."
+  rationale: "Turning off these setup channels stops unauthorized wireless configuration of the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Windows Connect Now\\Configuration of wireless settings using Windows Connect Now = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars: EnableRegistrars, DisableUPnPRegistrar, DisableInBand802DOT11Registrar, DisableFlashConfigRegistrar and DisableWPDRegistrar (REG_DWORD) all = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0194:
+  title: "Prohibit access of the Windows Connect Now wizards: Enabled"
+  description: "When enabled, the Windows Connect Now wizards cannot be opened."
+  rationale: "Blocking the wizards stops users from changing wireless settings outside central management."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Windows Connect Now\\Prohibit access of the Windows Connect Now wizards = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\UI\\DisableWcnUi (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0195:
+  title: "Prohibit connection to non-domain networks when connected to domain authenticated network: Enabled"
+  description: "When enabled, the computer cannot connect to another network while it is connected to the domain network."
+  rationale: "Simultaneous connections could bridge the corporate network to an untrusted one."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Windows Connection Manager\\Prohibit connection to non-domain networks when connected to domain authenticated network = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy\\fBlockNonDomain (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-5", "CM-7"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.20", "A.8.21"] }
+
+S0196:
+  title: "Allow Print Spooler to accept client connections: Disabled"
+  description: "Controls whether the print spooler accepts connections from remote clients."
+  rationale: "Blocking remote spooler connections removes a frequently exploited network entry point."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Allow Print Spooler to accept client connections = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RegisterSpoolerRemoteRpcEndPoint (REG_DWORD) = 2."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0197:
+  title: "Configure Redirection Guard: Enabled"
+  description: "Turns on Redirection Guard, which stops the print spooler from following file system redirections such as junctions."
+  rationale: "This blocks a class of privilege escalation attacks through the spooler."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure Redirection Guard = Enabled: Redirection Guard Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RedirectionguardPolicy (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0198:
+  title: "Configure RPC connection settings: Protocol for outgoing RPC connections: RPC over named pipes (value 1)"
+  description: "Sets which protocol the print client uses for outgoing RPC connections to print servers. The check expects RpcUseNamedPipeProtocol = 1."
+  rationale: "Fixing the protocol keeps print client traffic predictable and matched to the server configuration."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC connection settings = Enabled, protocol as checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RpcUseNamedPipeProtocol (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0199:
+  title: "Configure RPC connection settings: Use authentication for outgoing RPC connections: Default"
+  description: "Sets whether the print client authenticates outgoing RPC connections. Default lets Windows choose authenticated connections."
+  rationale: "Authenticated print RPC prevents anonymous connections to print servers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC connection settings = Enabled: Use authentication for outgoing RPC connections: Default. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RpcAuthentication (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0200:
+  title: "Configure RPC listener settings: Protocols to allow for incoming RPC connections: value 7"
+  description: "Sets which protocols the print spooler listens on for incoming RPC. The check expects RpcProtocols = 7."
+  rationale: "A defined set of listener protocols keeps incoming print RPC limited to what is expected."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC listener settings = Enabled with the protocol set matching value 7. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RpcProtocols (REG_DWORD) = 7."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0201:
+  title: "Configure RPC over TCP port: Enabled (port 0 to 65535)"
+  description: "Sets the TCP port used for print RPC over TCP; 0 means a dynamic port. The check passes when a valid port number is configured."
+  rationale: "A configured port lets the firewall be set up precisely for print RPC traffic."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC over TCP port = Enabled: 0 (or a fixed port). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\RpcTcpPort (REG_DWORD) = 0-65535."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0202:
+  title: "Print Spooler RPC packet privacy (RpcAuthnLevelPrivacyEnabled): Enabled"
+  description: "Requires print client RPC connections to the spooler to use packet privacy (encryption). The check also passes when the value is absent, since current Windows enforces it by default."
+  rationale: "Requiring packet privacy blocks print RPC relay and spoofing attacks."
+  remediation: "Set Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Print\\RpcAuthnLevelPrivacyEnabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0203:
+  title: "Limits print driver installation to Administrators: value 0 or not configured"
+  description: "Controls whether only administrators may install print drivers through Point and Print. The check passes when the value is absent or 0; when absent, current Windows allows only administrators."
+  rationale: "Print drivers run with system rights, so their installation should be restricted to administrators."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Limits print driver installation to Administrators. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\\RestrictDriverInstallationToAdministrators (REG_DWORD) = 0 or remove the value."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0204:
+  title: "Manage processing of Queue-specific files: Limit Queue-specific files to Color profiles"
+  description: "Controls which queue-specific files a print server may copy to the client; the expected setting allows only color profiles."
+  rationale: "Blocking other queue-specific files stops a print server from pushing executable content to clients."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Manage processing of Queue-specific files = Enabled: Limit Queue-specific files to Color profiles. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\CopyFilesPolicy (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0205:
+  title: "Point and Print Restrictions: When installing drivers for a new connection: Show warning and elevation prompt"
+  description: "Sets whether users see a warning and must elevate when Point and Print installs a driver for a new printer. The check also passes when the policy is not set."
+  rationale: "An elevation prompt stops silent driver installation from rogue print servers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Point and Print Restrictions = Enabled: When installing drivers for a new connection: Show warning and elevation prompt. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\\NoWarningNoElevationOnInstall (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0206:
+  title: "Point and Print Restrictions: When updating drivers for an existing connection: Show warning and elevation prompt"
+  description: "Sets whether users see a warning and must elevate when Point and Print updates the driver of an existing printer."
+  rationale: "An elevation prompt stops a compromised print server from silently replacing drivers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Point and Print Restrictions = Enabled: When updating drivers for an existing connection: Show warning and elevation prompt. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\\UpdatePromptSettings (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0207:
+  title: "Turn off notifications network usage: Enabled"
+  description: "When enabled, apps cannot use the Windows push notification service over the network."
+  rationale: "This removes a standing outbound connection that hardened systems do not need."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Start Menu and Taskbar\\Notifications\\Turn off notifications network usage = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications\\NoCloudApplicationNotification (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0208:
+  title: "Include command line in process creation events: Enabled"
+  description: "When enabled, process creation audit events also record the full command line."
+  rationale: "Command lines show exactly what an attacker ran, which is vital in investigations."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Audit Process Creation\\Include command line in process creation events = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit\\ProcessCreationIncludeCmdLine_Enabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12", "SI-7"], pci_dss: ["10.2.1", "10.2.1.7"], hipaa: ["164.312(b)", "164.312(c)(1)"], iso_27001: ["A.8.15", "A.8.16"] }
+
+S0209:
+  title: "Encryption Oracle Remediation: Force Updated Clients"
+  description: "Sets how CredSSP (used by Remote Desktop) handles clients and servers that lack the CredSSP security update."
+  rationale: "Forcing updated clients blocks a known attack that relays credentials through unpatched CredSSP."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Credentials Delegation\\Encryption Oracle Remediation = Enabled: Force Updated Clients. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters\\AllowEncryptionOracle (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0210:
+  title: "Remote host allows delegation of non-exportable credentials: Enabled"
+  description: "When enabled, the computer supports Restricted Admin and Remote Credential Guard, which avoid sending reusable credentials to remote hosts."
+  rationale: "Keeping reusable credentials off remote hosts limits credential theft during remote administration."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Credentials Delegation\\Remote host allows delegation of non-exportable credentials = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredentialsDelegation\\AllowProtectedCreds (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0211:
+  title: "Turn On Virtualization Based Security: Enabled"
+  description: "Turns on virtualization-based security, which uses the hypervisor to isolate sensitive parts of Windows."
+  rationale: "Isolation protects credentials and kernel code integrity even from code running with administrator rights."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\EnableVirtualizationBasedSecurity (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0212:
+  title: "Turn On Virtualization Based Security: Select Platform Security Level: Secure Boot and DMA Protection"
+  description: "Sets the platform protections required for virtualization-based security."
+  rationale: "Requiring DMA protection as well as Secure Boot defends against direct memory access attacks on the isolated memory."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled: Select Platform Security Level = Secure Boot and DMA Protection. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\RequirePlatformSecurityFeatures (REG_DWORD) = 3."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0213:
+  title: "Turn On Virtualization Based Security: Virtualization Based Protection of Code Integrity: Enabled with UEFI lock"
+  description: "Turns on hypervisor-protected code integrity (HVCI) and locks the setting in firmware."
+  rationale: "HVCI stops unsigned or tampered kernel code from running; the UEFI lock prevents it being turned off remotely."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled: Virtualization Based Protection of Code Integrity = Enabled with UEFI lock. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\HypervisorEnforcedCodeIntegrity (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0214:
+  title: "Turn On Virtualization Based Security: Require UEFI Memory Attributes Table: Enabled"
+  description: "Requires the firmware to provide the UEFI Memory Attributes Table before HVCI is turned on."
+  rationale: "This ensures firmware memory is correctly marked so code integrity protection works as designed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled: Require UEFI Memory Attributes Table = checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\HVCIMATRequired (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0215:
+  title: "Turn On Virtualization Based Security: Credential Guard Configuration: Enabled with UEFI lock"
+  description: "Turns on Credential Guard, which isolates credential secrets in a protected environment, and locks it in firmware."
+  rationale: "Credential Guard stops tools that dump password hashes and Kerberos tickets from memory."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled: Credential Guard Configuration = Enabled with UEFI lock. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\LsaCfgFlags (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+
+S0216:
+  title: "Prevent installation of devices that match any of these device IDs: Enabled with at least one ID"
+  description: "Blocks installation of devices whose hardware IDs are listed. The check expects the deny list to contain at least one entry."
+  rationale: "Blocking known risky devices, such as certain storage or network adapters, reduces data loss and attack paths."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices that match any of these device IDs = Enabled, with the IDs to block. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDs (REG_DWORD) = 1 and values 1, 2, ... under HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDs."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.6"], hipaa: ["164.310(d)(1)"], iso_27001: ["A.7.10", "A.8.1"] }
+
+S0217:
+  title: "Prevent installation of devices using drivers that match these device setup classes: Enabled with at least one class"
+  description: "Blocks installation of devices in the listed setup classes. The check expects the deny list to contain at least one class GUID."
+  rationale: "Blocking whole device classes, such as IEEE 1394, closes physical attack paths."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices using drivers that match these device setup classes = Enabled, with the classes to block. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClasses (REG_DWORD) = 1 and values 1, 2, ... under HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClasses."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.6"], hipaa: ["164.310(d)(1)"], iso_27001: ["A.7.10", "A.8.1"] }
+
+S0218:
+  title: "Prevent device metadata retrieval from the Internet: Enabled"
+  description: "When enabled, Windows does not download device metadata such as icons and descriptions from the internet."
+  rationale: "Fewer automatic downloads mean fewer outbound connections and less untrusted content."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Prevent device metadata retrieval from the Internet = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Device Metadata\\PreventDeviceMetadataFromNetwork (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0219:
+  title: "Boot-Start Driver Initialization Policy: Good, unknown and bad but critical"
+  description: "Sets which boot-start drivers Windows loads based on the Early Launch Antimalware classification."
+  rationale: "Not loading drivers flagged as bad (unless critical to boot) stops boot-level malware."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Early Launch Antimalware\\Boot-Start Driver Initialization Policy = Enabled: Good, unknown and bad but critical. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Policies\\EarlyLaunch\\DriverLoadPolicy (REG_DWORD) = 3."
+  compliance: { nist_800_53: ["SI-16", "SI-7", "SC-39"], pci_dss: ["2.2.6", "5.2.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.9"] }
+
+S0220:
+  title: "Configure registry policy processing: Do not apply during periodic background processing: unchecked"
+  description: "Controls whether registry-based Group Policy settings are also reapplied during background refresh."
+  rationale: "Background reapplication restores settings that were changed locally without waiting for a restart."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Configure registry policy processing = Enabled: Do not apply during periodic background processing = unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}\\NoBackgroundPolicy (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-2"], pci_dss: ["2.2.1", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+
+S0221:
+  title: "Configure registry policy processing: Process even if the Group Policy objects have not changed: checked"
+  description: "Controls whether registry-based settings are reapplied even when the policy objects have not changed."
+  rationale: "Reapplying unchanged policy undoes unauthorized local changes to managed settings."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Configure registry policy processing = Enabled: Process even if the Group Policy objects have not changed = checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}\\NoGPOListChanges (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-2"], pci_dss: ["2.2.1", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+
+S0222:
+  title: "Configure security policy processing: Do not apply during periodic background processing: unchecked"
+  description: "Controls whether security policy settings are also reapplied during background refresh."
+  rationale: "Background reapplication restores security settings changed locally without waiting for a restart."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Configure security policy processing = Enabled: Do not apply during periodic background processing = unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{827D319E-6EAC-11D2-A4EA-00C04F79F83A}\\NoBackgroundPolicy (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-2"], pci_dss: ["2.2.1", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+
+S0223:
+  title: "Configure security policy processing: Process even if the Group Policy objects have not changed: checked"
+  description: "Controls whether security policy settings are reapplied even when the policy objects have not changed."
+  rationale: "Reapplying unchanged policy undoes unauthorized local changes to security settings."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Configure security policy processing = Enabled: Process even if the Group Policy objects have not changed = checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{827D319E-6EAC-11D2-A4EA-00C04F79F83A}\\NoGPOListChanges (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-2"], pci_dss: ["2.2.1", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+
+S0224:
+  title: "Continue experiences on this device: Disabled"
+  description: "Controls whether the computer takes part in cross-device experiences that hand off activities between devices."
+  rationale: "Cross-device features share data with other, possibly unmanaged devices."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Continue experiences on this device = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\EnableCdp (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0225:
+  title: "Turn off background refresh of Group Policy: Disabled"
+  description: "Controls whether Group Policy is refreshed while the computer is in use. The check passes when DisableBkGndGroupPolicy is not present."
+  rationale: "Background refresh keeps managed security settings current without a restart."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Group Policy\\Turn off background refresh of Group Policy = Disabled. Registry: delete HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\DisableBkGndGroupPolicy if present."
+  compliance: { nist_800_53: ["CM-6", "CM-2"], pci_dss: ["2.2.1", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+
+S0226:
+  title: "Turn off access to the Store: Enabled"
+  description: "When enabled, the 'Look for an app in the Store' option is removed when opening a file with no associated program."
+  rationale: "This keeps users from installing unvetted apps from the Store while opening files."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off access to the Store = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\NoUseStoreOpenWith (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0227:
+  title: "Turn off downloading of print drivers over HTTP: Enabled"
+  description: "When enabled, the computer does not download print drivers over HTTP."
+  rationale: "Drivers fetched over HTTP could be tampered with in transit."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off downloading of print drivers over HTTP = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\DisableWebPnPDownload (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0228:
+  title: "Turn off handwriting personalization data sharing: Enabled"
+  description: "When enabled, handwriting recognition data is not sent to Microsoft."
+  rationale: "Handwriting samples can contain sensitive information."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off handwriting personalization data sharing = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\TabletPC\\PreventHandwritingDataSharing (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0229:
+  title: "Turn off handwriting recognition error reporting: Enabled"
+  description: "When enabled, handwriting recognition error reports are not sent to Microsoft."
+  rationale: "Error reports may include the handwritten content."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off handwriting recognition error reporting = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\HandwritingErrorReports\\PreventHandwritingErrorReports (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0230:
+  title: "Turn off Internet Connection Wizard if URL connection is referring to Microsoft.com: Enabled"
+  description: "When enabled, the Internet Connection Wizard does not contact Microsoft to download a list of providers."
+  rationale: "Managed computers should not sign up for internet services through this wizard."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Internet Connection Wizard if URL connection is referring to Microsoft.com = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Internet Connection Wizard\\ExitOnMSICW (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0231:
+  title: "Turn off Internet download for Web publishing and online ordering wizards: Enabled"
+  description: "When enabled, Windows does not download the list of providers for the web publishing and online ordering wizards."
+  rationale: "These wizards can send files to outside services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Internet download for Web publishing and online ordering wizards = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoWebServices (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0232:
+  title: "Turn off printing over HTTP: Enabled"
+  description: "When enabled, the computer cannot print to printers over HTTP."
+  rationale: "Printing over HTTP can send documents unprotected over untrusted networks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off printing over HTTP = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\DisableHTTPPrinting (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-6", "SC-8"], pci_dss: ["2.2.4", "2.2.6"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9", "A.8.20"] }
+
+S0233:
+  title: "Turn off Registration if URL connection is referring to Microsoft.com: Enabled"
+  description: "When enabled, the Windows Registration Wizard does not connect to Microsoft."
+  rationale: "This avoids sending system and user information outside the organization."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Registration if URL connection is referring to Microsoft.com = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Registration Wizard Control\\NoRegistration (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0234:
+  title: "Turn off Search Companion content file updates: Enabled"
+  description: "When enabled, Search Companion does not download content updates."
+  rationale: "Removing unneeded downloads reduces outbound connections."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Search Companion content file updates = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\SearchCompanion\\DisableContentFileUpdates (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0235:
+  title: "Turn off the \"Order Prints\" picture task: Enabled"
+  description: "When enabled, the Order Prints task for sending pictures to an online print service is removed."
+  rationale: "This stops pictures from being sent to outside services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off the \"Order Prints\" picture task = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoOnlinePrintsWizard (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0236:
+  title: "Turn off the \"Publish to Web\" task for files and folders: Enabled"
+  description: "When enabled, the Publish to Web task for files and folders is removed."
+  rationale: "This stops files from being published to outside web services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off the \"Publish to Web\" task for files and folders = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoPublishingWizard (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0237:
+  title: "Turn off the Windows Messenger Customer Experience Improvement Program: Enabled"
+  description: "When enabled, Windows Messenger does not collect and send usage data."
+  rationale: "Usage data collection sends information outside the organization without business need."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off the Windows Messenger Customer Experience Improvement Program = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Messenger\\Client\\CEIP (REG_DWORD) = 2."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0238:
+  title: "Turn off Windows Customer Experience Improvement Program: Enabled"
+  description: "When enabled, Windows does not collect and send usage data for the improvement program."
+  rationale: "Usage data collection sends information outside the organization without business need."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Windows Customer Experience Improvement Program = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\SQMClient\\Windows\\CEIPEnable (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0239:
+  title: "Turn off Windows Error Reporting: Enabled"
+  description: "When enabled, Windows does not send error reports to Microsoft."
+  rationale: "Error reports can contain memory contents and other sensitive data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Internet Communication Management\\Internet Communication settings\\Turn off Windows Error Reporting = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting\\Disabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)", "164.312(e)(1)"], iso_27001: ["A.8.12", "A.5.34"] }
+
+S0240:
+  title: "Support device authentication using certificate: Enabled: Automatic"
+  description: "Lets the computer authenticate to the domain with its device certificate through Kerberos PKINIT, choosing automatically."
+  rationale: "Certificate-based device authentication is stronger than a password-based machine secret."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Kerberos\\Support device authentication using certificate = Enabled: Automatic. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters: DevicePKInitEnabled (REG_DWORD) = 1 and DevicePKInitBehavior (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-2", "IA-5", "SC-8", "SC-13"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(d)", "164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+
+S0241:
+  title: "Enumeration policy for external devices incompatible with Kernel DMA Protection: Block All"
+  description: "Sets what Windows does with external devices (such as Thunderbolt) whose drivers do not support DMA remapping."
+  rationale: "Blocking them prevents direct memory access attacks through external ports."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Kernel DMA Protection\\Enumeration policy for external devices incompatible with Kernel DMA Protection = Enabled: Block All. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Kernel DMA Protection\\DeviceEnumerationPolicy (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.6"], hipaa: ["164.310(d)(1)"], iso_27001: ["A.7.10", "A.8.1"] }
+
+S0242:
+  title: "Configure password backup directory: Active Directory or Microsoft Entra ID"
+  description: "Sets where Windows LAPS backs up the managed local administrator password (1 = Microsoft Entra ID, 2 = Active Directory)."
+  rationale: "Without a backup directory LAPS does not manage the password, leaving a static shared password in place."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Configure password backup directory = Enabled: Active Directory or Azure AD (Microsoft Entra ID). Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\BackupDirectory (REG_DWORD) = 1 or 2."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0243:
+  title: "Do not allow password expiration time longer than required by policy: Enabled"
+  description: "When enabled, LAPS does not allow the password expiration time to be set longer than the configured password age. The check also passes when the value is absent (on by default)."
+  rationale: "This ensures the managed password is rotated as often as policy says."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Do not allow password expiration time longer than required by policy = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PasswordExpirationProtectionEnabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0244:
+  title: "Enable password encryption: Enabled"
+  description: "When enabled, LAPS encrypts the managed password before storing it in Active Directory."
+  rationale: "Encryption limits who can read the password even if directory attributes are exposed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Enable password encryption = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\ADPasswordEncryptionEnabled (REG_DWORD) = 1."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0245:
+  title: "Password Settings (LAPS): Password Complexity: Large letters + small letters + numbers + special characters"
+  description: "Sets which character types LAPS uses when generating the managed password."
+  rationale: "Using all character types makes the generated password much harder to guess."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Password Settings = Enabled: Password Complexity = Large letters + small letters + numbers + special characters. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PasswordComplexity (REG_DWORD) = 4."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0246:
+  title: "Password Settings (LAPS): Password Length: 15 or more characters"
+  description: "Sets the length of the password LAPS generates for the managed account."
+  rationale: "Long random passwords resist brute-force attacks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Password Settings = Enabled: Password Length = 15 or more. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PasswordLength (REG_DWORD) = 15 or more."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0247:
+  title: "Password Settings (LAPS): Password Age (Days): 30 or fewer"
+  description: "Sets how many days the LAPS-managed password stays valid before it is rotated."
+  rationale: "Frequent rotation shortens how long a disclosed password remains useful."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Password Settings = Enabled: Password Age (Days) = 30 or fewer. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PasswordAgeDays (REG_DWORD) = 30 or fewer."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0248:
+  title: "Post-authentication actions: Grace period (hours): 1 to 8"
+  description: "Sets how many hours after the managed account is used LAPS waits before performing its post-authentication actions."
+  rationale: "A short grace period limits how long a used password stays valid."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Post-authentication actions = Enabled: Grace period (hours) = a value from 1 to 8. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PostAuthenticationResetDelay (REG_DWORD) = 1-8."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0249:
+  title: "Post-authentication actions: Actions: Reset password and logoff, or Reset password and reboot"
+  description: "Sets what LAPS does after the grace period once the managed account has been used (3 = reset and sign out, 5 = reset and restart)."
+  rationale: "Resetting the password and ending the session stops the revealed password from being reused."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Post-authentication actions = Enabled: Actions = Reset the password and logoff the managed account (or reset and reboot). Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PostAuthenticationActions (REG_DWORD) = 3 or 5."
+  compliance: { nist_800_53: ["IA-5", "IA-5(1)", "AC-2"], pci_dss: ["8.3.6", "8.3.9", "2.2.2"], hipaa: ["164.308(a)(5)(ii)(D)"], iso_27001: ["A.5.17", "A.8.2"] }
+
+S0250:
+  title: "Allow Custom SSPs and APs to be loaded into LSASS: Disabled"
+  description: "Controls whether custom security support providers and authentication packages can be loaded into the LSA process."
+  rationale: "Malicious providers loaded into LSASS can capture every password typed on the system."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Local Security Authority\\Allow Custom SSPs and APs to be loaded into LSASS = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\AllowCustomSSPsAPs (REG_DWORD) = 0."
+  compliance: { nist_800_53: ["IA-5", "SC-28", "AC-3"], pci_dss: ["8.3.2", "2.2.6"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+

@@ -29,6 +29,10 @@
         {{ isScanning() ? 'Scanning...' : 'Re-scan now' }}
       </button>
 
+      <button (click)="openExport()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
+        <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
+        Export
+      </button>
     </div>
   </div>
 
@@ -38,33 +42,55 @@
   <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
     <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
       <span class="text-xs text-slate-400 block font-medium">Total Vulnerabilities</span>
-      <span class="text-2xl font-bold text-white mt-1 block">{{ vulnStats().total }}</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ kpis().total }}</span>
     </div>
     <div class="bg-slate-900/80 p-4 rounded-xl border border-rose-900/40">
       <span class="text-xs text-rose-400 block font-medium">Critical (CVSS 9.0+)</span>
-      <span class="text-2xl font-bold text-rose-400 mt-1 block">{{ vulnStats().critical }}</span>
+      <span class="text-2xl font-bold text-rose-400 mt-1 block">{{ kpis().critical }}</span>
     </div>
     <div class="bg-slate-900/80 p-4 rounded-xl border border-amber-900/40">
       <span class="text-xs text-amber-400 block font-medium">High (CVSS 7.0-8.9)</span>
-      <span class="text-2xl font-bold text-amber-400 mt-1 block">{{ vulnStats().high }}</span>
+      <span class="text-2xl font-bold text-amber-400 mt-1 block">{{ kpis().high }}</span>
     </div>
     <div class="bg-slate-900/80 p-4 rounded-xl border border-yellow-900/40">
       <span class="text-xs text-yellow-400 block font-medium">Medium (CVSS 4.0-6.9)</span>
-      <span class="text-2xl font-bold text-yellow-400 mt-1 block">{{ vulnStats().medium }}</span>
+      <span class="text-2xl font-bold text-yellow-400 mt-1 block">{{ kpis().medium }}</span>
     </div>
     <div class="bg-slate-900/80 p-4 rounded-xl border border-blue-900/40">
       <span class="text-xs text-blue-400 block font-medium">Low (CVSS 0.1-3.9)</span>
-      <span class="text-2xl font-bold text-blue-400 mt-1 block">{{ vulnStats().low }}</span>
+      <span class="text-2xl font-bold text-blue-400 mt-1 block">{{ kpis().low }}</span>
     </div>
   </div>
+
+  <!-- Views -->
+  <div class="flex items-center gap-2" role="tablist">
+    <button role="tab" [attr.aria-selected]="tab() === 'agents'" (click)="showTab('agents')" class="px-3 py-1.5 rounded-lg text-sm font-medium border transition"
+      [class.bg-amber-500]="tab() === 'agents'" [class.text-slate-950]="tab() === 'agents'" [class.border-amber-500]="tab() === 'agents'"
+      [class.text-slate-300]="tab() !== 'agents'" [class.border-slate-700]="tab() !== 'agents'">Agents</button>
+    <button role="tab" [attr.aria-selected]="tab() === 'cve'" (click)="showTab('cve')" class="px-3 py-1.5 rounded-lg text-sm font-medium border transition"
+      [class.bg-amber-500]="tab() === 'cve'" [class.text-slate-950]="tab() === 'cve'" [class.border-amber-500]="tab() === 'cve'"
+      [class.text-slate-300]="tab() !== 'cve'" [class.border-slate-700]="tab() !== 'cve'">By CVE</button>
+  </div>
+
+  @if (selectedAgent()) {
+    <div class="flex items-center gap-3">
+      <button (click)="selectedAgent.set(null)" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700 transition">
+        <lucide-angular [img]="BackIcon" class="w-4 h-4"></lucide-angular>
+        Back to agents
+      </button>
+      <span class="text-sm font-semibold text-white">{{ agentRow()?.name }}</span>
+      <span class="text-xs font-mono text-slate-400">{{ selectedAgent() }}</span>
+      <span class="text-xs text-slate-400">{{ agentRow()?.os }}</span>
+    </div>
+  }
 
   <!-- Filters -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
     <div class="relative">
       <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
       <input 
-        [(ngModel)]="searchQuery" 
-        placeholder="Search CVE ID, package or affected host..." 
+        [(ngModel)]="searchQuery" (ngModelChange)="firstPage()"
+        [placeholder]="tab() === 'agents' && !selectedAgent() ? 'Search agent name, ID or OS...' : 'Search CVE ID, package or affected host...'"
         class="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       />
     </div>
@@ -72,7 +98,7 @@
     <div class="flex items-center gap-2">
       <span class="text-xs text-slate-400 uppercase font-semibold">Severity:</span>
       <select 
-        [(ngModel)]="severityFilter" 
+        [(ngModel)]="severityFilter" (ngModelChange)="firstPage()"
         class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       >
         <option value="all">All Severities</option>
@@ -83,6 +109,58 @@
       </select>
     </div>
   </div>
+
+  @if (tab() === 'agents' && !selectedAgent()) {
+  <!-- Agents -->
+  <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
+          <tr>
+            <th class="p-3.5 w-8"><span class="sr-only">Select for export</span></th>
+            <th class="p-3.5">AGENT</th>
+            <th class="p-3.5">ID</th>
+            <th class="p-3.5">OS</th>
+            <th class="p-3.5 text-right">CRITICAL</th>
+            <th class="p-3.5 text-right">HIGH</th>
+            <th class="p-3.5 text-right">MEDIUM</th>
+            <th class="p-3.5 text-right">LOW</th>
+            <th class="p-3.5 text-right">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 text-slate-300">
+          @for (a of pagedAgents(); track a.id) {
+            <tr class="hover:bg-slate-800/50 transition cursor-pointer" tabindex="0" (click)="openAgent(a.id)" (keydown.enter)="openAgent(a.id)">
+              <td class="p-3.5" (click)="$event.stopPropagation()">
+                <input type="checkbox" class="accent-amber-500" [attr.aria-label]="'Select ' + a.name + ' for export'" [checked]="ticked().has(a.id)" (change)="ticked.set(toggled(ticked(), a.id))" (keydown.enter)="$event.stopPropagation()" />
+              </td>
+              <td class="p-3.5 font-semibold text-white">{{ a.name }}</td>
+              <td class="p-3.5 font-mono text-slate-400">{{ a.id }}</td>
+              <td class="p-3.5 text-slate-400">{{ a.os || '-' }}</td>
+              <td class="p-3.5 text-right font-mono font-bold text-rose-400">{{ a.critical }}</td>
+              <td class="p-3.5 text-right font-mono font-bold text-amber-400">{{ a.high }}</td>
+              <td class="p-3.5 text-right font-mono text-yellow-400">{{ a.medium }}</td>
+              <td class="p-3.5 text-right font-mono text-blue-400">{{ a.low }}</td>
+              <td class="p-3.5 text-right font-mono font-semibold text-white">{{ a.total }}</td>
+            </tr>
+          } @empty {
+            <tr><td colspan="9" class="p-6 text-center text-slate-500">No agents match.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  @if (agentPages() > 1) {
+    <div class="flex items-center justify-end gap-3 text-xs text-slate-400">
+      <button (click)="agentPage.set(agentPage() - 1)" [disabled]="agentPage() === 0" class="px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700 disabled:opacity-40">Previous</button>
+      <span>Page {{ agentPage() + 1 }} of {{ agentPages() }}</span>
+      <button (click)="agentPage.set(agentPage() + 1)" [disabled]="agentPage() + 1 >= agentPages()" class="px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700 disabled:opacity-40">Next</button>
+    </div>
+  }
+  } @else {
+  @if (rows().length > maxRows) {
+    <p class="text-xs text-slate-400">Showing the first {{ maxRows }} of {{ rows().length }} rows; search or filter to narrow.</p>
+  }
 
   <!-- Table -->
   <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
@@ -96,12 +174,12 @@
             <th class="p-3.5">AFFECTED PACKAGE</th>
             <th class="p-3.5">INSTALLED VER</th>
             <th class="p-3.5">FIXED VER</th>
-            <th class="p-3.5">AGENT ID</th>
+            <th class="p-3.5">{{ byCve() ? 'AGENTS' : 'AGENT ID' }}</th>
             <th class="p-3.5">TITLE & DESCRIPTION</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-800/60 text-slate-300">
-          <tr *ngFor="let v of filteredVulns()" class="hover:bg-slate-800/50 transition">
+          <tr *ngFor="let v of rows().slice(0, maxRows)" class="hover:bg-slate-800/50 transition">
             <td class="p-3.5 font-mono font-bold text-cyan-400 whitespace-nowrap">{{ v.cve }}</td>
             <td class="p-3.5">
               <span 
@@ -126,12 +204,72 @@
             <td class="p-3.5 font-mono font-semibold">{{ v.cvss_score }}</td>
             <td class="p-3.5 font-semibold text-white">{{ v.package_name }}</td>
             <td class="p-3.5 font-mono text-slate-400">{{ v.installed_version }}</td>
-            <td class="p-3.5 font-mono text-emerald-400">{{ v.fixed_version || 'N/A' }}</td>
-            <td class="p-3.5 font-mono text-slate-400">{{ v.agent_id }}</td>
+            <td class="p-3.5 font-mono text-emerald-400 whitespace-nowrap">
+              {{ v.fixed_version || 'N/A' }}
+              @if (v.needs_review) {
+                <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-bold bg-amber-950 text-amber-400 border border-amber-800" title="The fixed version may use another numbering than the installed one: check it by hand">Verify</span>
+              }
+            </td>
+            <td class="p-3.5 font-mono text-slate-400" [title]="v.agents.join(', ')">{{ v.agents.length > 1 ? v.agents.length + ' agents (' + v.agents.slice(0, 3).join(', ') + (v.agents.length > 3 ? ', …' : '') + ')' : v.agents[0] }}</td>
             <td class="p-3.5 max-w-xs truncate text-slate-300" [title]="v.title">{{ v.title }}</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
+  }
 </div>
+
+<!-- Export dialog -->
+@if (exportOpen()) {
+  <div class="fixed inset-0 z-[10001] bg-black/75 backdrop-blur-sm flex items-stretch sm:items-center justify-center sm:p-4" (click)="exportOpen.set(false)" (document:keydown.escape)="exportOpen.set(false)">
+    <div role="dialog" aria-modal="true" aria-labelledby="vuln-export-title" (click)="$event.stopPropagation()"
+      class="bg-slate-900 sm:border border-slate-700 sm:rounded-2xl w-full sm:max-w-xl max-h-[100dvh] overflow-y-auto p-5 space-y-5 text-sm text-slate-300">
+      <div class="flex items-center justify-between">
+        <h2 id="vuln-export-title" class="text-base font-bold text-white">Export to Excel</h2>
+        <button (click)="exportOpen.set(false)" aria-label="Close" class="p-1 text-slate-400 hover:text-white">
+          <lucide-angular [img]="CloseIcon" class="w-5 h-5"></lucide-angular>
+        </button>
+      </div>
+
+      <fieldset class="space-y-1.5">
+        <legend class="text-xs text-slate-400 uppercase font-semibold mb-1.5">Agents</legend>
+        @if (selectedAgent()) {
+          <label class="flex items-center gap-2"><input type="radio" name="vuln-export-agents" class="accent-amber-500" [checked]="exportAgents() === 'current'" (change)="exportAgents.set('current')" /> This agent ({{ agentRow()?.name }})</label>
+        }
+        <label class="flex items-center gap-2" [class.opacity-40]="!ticked().size"><input type="radio" name="vuln-export-agents" class="accent-amber-500" [disabled]="!ticked().size" [checked]="exportAgents() === 'ticked'" (change)="exportAgents.set('ticked')" /> Selected agents ({{ ticked().size }})</label>
+        <label class="flex items-center gap-2"><input type="radio" name="vuln-export-agents" class="accent-amber-500" [checked]="exportAgents() === 'all'" (change)="exportAgents.set('all')" /> All agents</label>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-xs text-slate-400 uppercase font-semibold mb-1.5">Severities</legend>
+        <div class="flex flex-wrap gap-4">
+          @for (s of severities; track s) {
+            <label class="flex items-center gap-2 capitalize"><input type="checkbox" class="accent-amber-500" [checked]="exportSeverities().has(s)" (change)="exportSeverities.set(toggled(exportSeverities(), s))" /> {{ s }}</label>
+          }
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-xs text-slate-400 uppercase font-semibold mb-1.5">Columns</legend>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          @for (c of reportColumns; track c.key) {
+            <label class="flex items-center gap-2"><input type="checkbox" class="accent-amber-500" [checked]="exportColumns().has(c.key)" (change)="toggleColumn(c.key)" /> {{ c.label }}</label>
+          }
+        </div>
+      </fieldset>
+
+      @if (exportError()) {
+        <p role="alert" class="text-rose-400">{{ exportError() }}</p>
+      }
+      <div class="flex justify-end gap-3">
+        <button (click)="exportOpen.set(false)" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700">Cancel</button>
+        <button (click)="download()" [disabled]="exporting() || !exportSeverities().size || !exportColumns().size"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 text-white font-semibold rounded-lg disabled:opacity-50">
+          <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
+          {{ exporting() ? 'Building...' : 'Download' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -164,7 +164,7 @@ fn wcom_restart(ex: &Execd, reload: bool) -> String {
                 vec!["active-response/bin/restart.sh", "agent"]
             }
         } else {
-            vec!["bin/wazuh-control", what]
+            vec!["bin/provigil-control", what]
         };
         crate::exec::exec_cmd(ex, &cmd);
         "ok ".to_string()
@@ -173,7 +173,7 @@ fn wcom_restart(ex: &Execd, reload: bool) -> String {
     {
         let _ = reload;
         let command = trunc(&format!("{AR_BINDIR}/restart-wazuh.exe"), OS_FLSIZE);
-        let params = br#"{"version":1,"origin":{"name":"","module":"wazuh-execd"},"command":"add","parameters":{"extra_args":[],"alert":{},"program":"restart-wazuh.exe"}}"#;
+        let params = br#"{"version":1,"origin":{"name":"","module":"provigil-execd"},"command":"add","parameters":{"extra_args":[],"alert":{},"program":"restart-wazuh.exe"}}"#;
         match crate::wfd::wpopenv(&ex.log, &command, &[&command], crate::wfd::W_BIND_STDIN) {
             Some(mut w) => {
                 w.write_line(params);
@@ -234,19 +234,19 @@ fn wm_exec(ex: &Execd, command: &str, status: &mut i32) -> Result<String, ()> {
 /// `wcom_check_manager_config`: run every daemon with `-t`.
 fn wcom_check_manager_config(ex: &Execd) -> Vec<u8> {
     const DAEMONS: [&str; 13] = [
-        "bin/wazuh-authd",
-        "bin/wazuh-remoted",
-        "bin/wazuh-execd",
-        "bin/wazuh-analysisd",
-        "bin/wazuh-logcollector",
-        "bin/wazuh-integratord",
-        "bin/wazuh-syscheckd",
-        "bin/wazuh-maild",
-        "bin/wazuh-modulesd",
-        "bin/wazuh-clusterd",
-        "bin/wazuh-agentlessd",
-        "bin/wazuh-integratord",
-        "bin/wazuh-csyslogd",
+        "bin/provigil-authd",
+        "bin/provigil-remoted",
+        "bin/provigil-execd",
+        "bin/provigil-analysisd",
+        "bin/provigil-logcollector",
+        "bin/provigil-integratord",
+        "bin/provigil-syscheckd",
+        "bin/provigil-maild",
+        "bin/provigil-modulesd",
+        "bin/provigil-clusterd",
+        "bin/provigil-agentlessd",
+        "bin/provigil-integratord",
+        "bin/provigil-csyslogd",
     ];
     let mut retval = 0;
     let mut response: Option<String> = None;

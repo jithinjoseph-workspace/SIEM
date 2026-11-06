@@ -70,7 +70,7 @@ export class Agents implements OnInit {
     { id: 'specs', label: 'Hardware', icon: Cpu },
     { id: 'network_ports', label: 'Network', icon: Network },
     { id: 'users_services', label: 'Software', icon: Boxes },
-    { id: 'sca', label: 'CIS SCA', icon: ShieldAlert },
+    { id: 'sca', label: 'SCA', icon: ShieldAlert },
     { id: 'fim', label: 'FIM', icon: FileSearch },
     { id: 'rootcheck', label: 'Rootcheck', icon: Bug },
     { id: 'groups', label: 'Groups', icon: Users },
@@ -214,6 +214,11 @@ export class Agents implements OnInit {
     return list;
   });
 
+  /** The rows drawn: a fleet of thousands is drawn a page at a time ("Show more"). */
+  readonly agentPage = 100;
+  agentLimit = signal(this.agentPage);
+  shownAgents = computed(() => this.filteredAgents().slice(0, this.agentLimit()));
+
   /** Latest inventory the agent reported (GET /api/v1/agents/:id/inventory). */
   selectedAgentInventory = signal<AgentInventory | null>(null);
   inventoryLoading = signal<boolean>(false);
@@ -236,7 +241,7 @@ export class Agents implements OnInit {
   /** Windows agents: firewall rule (netsh) or null route. */
   blockMethod = signal<string>('netsh');
 
-  /** FIM entries and rootcheck findings of the selected agent (wazuh-db). */
+  /** FIM entries and rootcheck findings of the selected agent (provigil-db). */
   fimEntries = signal<any[]>([]);
   fimTotal = signal<number>(0);
   fimFilter = signal<string>('');
@@ -282,10 +287,14 @@ export class Agents implements OnInit {
   fleetVulns = signal<{ critical: number; high: number } | null>(null);
   /** Open CVEs per agent (critical, high, medium), for the risk score. */
   agentVulns = signal<Record<string, { critical: number; high: number; medium: number }>>({});
-  /** The manager's ProVigil version: an agent on it is current. */
+  /** The old agents' version: an old agent on it is current. */
   readonly managerVersion = '4.14.7';
+  /** The published ProVigil agent's version (`/api/server-info`): a ProVigil agent on it is current. */
+  provigilAgentVersion = signal<string | null>(null);
 
   ngOnInit() {
+    fetch(`${defaultManagerUrl()}/api/server-info`).then(r => r.ok ? r.json() : null)
+      .then(i => this.provigilAgentVersion.set(i?.agent_version ?? null)).catch(() => {});
     this.loadAgents();
     this.loadTamper();
     this.siem.getVulnerabilities().subscribe({
@@ -545,7 +554,9 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
       next: (r) => {
         this.upgradeBusy.set(false);
         const d = (r?.data || [])[0];
-        if (d && d.error === 0) {
+        if (r?.status === 'queued') {
+          this.upgradeFeedback.set('✓ Upgrade sent: the agent installs it with its next keepalive and restarts (about 1–2 minutes); its version updates here after that.');
+        } else if (d && d.error === 0) {
           this.upgradeFeedback.set(`✓ Upgrade task ${d.task_id} created. Progress is shown below.`);
         } else {
           this.upgradeFeedback.set(`✗ ${d?.message || r?.message || 'The upgrade could not start'}`);
@@ -817,7 +828,9 @@ Its agent.conf is removed. Its agents keep their other groups (or go back to 'de
 
   /** Whether the agent runs the manager's ProVigil version. */
   agentCurrent(agent: Agent): boolean {
-    return (agent.version || '').includes(this.managerVersion);
+    const v = agent.version || '';
+    const pv = this.provigilAgentVersion();
+    return v.startsWith('ProVigil') ? !!pv && v === `ProVigil v${pv}` : v.includes(this.managerVersion);
   }
 
   /** Format keepalive into readable time */

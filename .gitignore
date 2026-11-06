@@ -65,3 +65,10 @@ wazuh-rust-angular/backend-rust/data/manager/etc/smtp_auth.conf
 # runtime data kept in ClickHouse (agent keys encrypted, learned parsers)
 wazuh-rust-angular/backend-rust/data/manager/etc/client.keys
 wazuh-rust-angular/backend-rust/data/learned_parsers.json*
+
+# private CA key and the load tool's state files (they hold agent keys)
+**/data/tls/
+lt-*.json
+# FIM diff copies of local system files, and old agent exe backups
+/data/diff/
+wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old

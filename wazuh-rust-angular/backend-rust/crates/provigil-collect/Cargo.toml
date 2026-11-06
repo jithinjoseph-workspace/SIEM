@@ -1,0 +1,11 @@
+[package]
+name = "provigil-collect"
+version = "0.1.0"
+edition = "2021"
+description = "Processes, connections and services, shared by the agent and the live-response program"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_ProcessStatus", "Win32_System_RemoteDesktop", "Win32_System_Services", "Win32_System_Threading"] }

@@ -7,7 +7,7 @@ description = "Port of the upstream configuration layer (src/config): ReadConfig
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }
 siem-xml = { path = "../siem-xml" }
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 thiserror = "1"
 tracing = "0.1"
 regex = "1.10"
@@ -17,7 +17,7 @@ chrono = "0.4"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 windows-sys = { version = "0.61", features = ["Win32_System_Environment"] }
 
 [dev-dependencies]

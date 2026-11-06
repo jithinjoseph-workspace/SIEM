@@ -9,6 +9,8 @@ siem-core = { path = "../siem-core" }
 siem-engine = { path = "../siem-engine" }
 siem-config = { path = "../siem-config" }
 siem-xml = { path = "../siem-xml" }
+# the ProVigil agent's central configuration (agent_config.rs)
+quick-xml = "0.36"
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1.40", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
@@ -28,15 +30,10 @@ siem-sqlite = { path = "../siem-sqlite" }
 siem-remoted = { path = "../siem-remoted" }
 siem-wdb = { path = "../siem-wdb" }
 siem-cdb = { path = "../siem-cdb" }
-siem-rootcheck = { path = "../siem-rootcheck" }
-siem-task-manager = { path = "../siem-task-manager" }
 siem-parser-gen = { path = "../siem-parser-gen" }
 siem-authd = { path = "../siem-authd" }
-siem-reportd = { path = "../siem-reportd" }
-siem-crypto = { path = "../siem-crypto" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
 siem-ipc = { path = "../siem-ipc" }
-siem-maild = { path = "../siem-maild" }
-siem-csyslogd = { path = "../siem-csyslogd" }
 siem-cjson = { path = "../siem-cjson" }
 siem-ai = { path = "../siem-ai" }
 siem-triage = { path = "../siem-triage" }
@@ -48,9 +45,10 @@ siem-org-memory = { path = "../siem-org-memory" }
 siem-swarm = { path = "../siem-swarm" }
 siem-decision = { path = "../siem-decision" }
 rand = "0.8"
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 async-trait = "0.1"
 anyhow = "1"
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-native-tls", "builder", "smtp-transport"] }
 tempfile = "3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
@@ -69,3 +67,16 @@ siem-risk-fabric = { path = "../siem-risk-fabric" }
 siem-redswarm = { path = "../siem-redswarm" }
 siem-intent-engine = { path = "../siem-intent-engine" }
 siem-deception = { path = "../siem-deception" }
+# the agent API over gRPC (agent_grpc.rs)
+provigil-proto = { path = "../provigil-proto" }
+tonic = { version = "0.12", default-features = false, features = ["transport", "tls"] }
+# the agent HTTPS listener: axum 0.7 `serve` takes plain TCP only (already built, axum uses it)
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
+# the vulnerability report (vuln_report.rs)
+rust_xlsxwriter = "0.102"
+
+[dev-dependencies]
+# the real engine, for the test of its active responses
+siem-analysisd = { path = "../siem-analysisd" }
+# the TLS tests connect with the real agent links
+provigil-agent = { path = "../provigil-agent" }

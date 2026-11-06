@@ -3,7 +3,7 @@
 
 #[cfg(not(unix))]
 fn main() {
-    eprintln!("wazuh-execd: runs inside wazuh-agent.exe on Windows.");
+    eprintln!("provigil-execd: runs inside provigil-agent.exe on Windows.");
     std::process::exit(1);
 }
 
@@ -29,8 +29,7 @@ mod unix {
 
     fn help() -> ! {
         print_out(" ");
-        print_out("Wazuh v4.14.7 - Wazuh Inc. (info@wazuh.com)");
-        print_out("http://www.wazuh.com");
+        print_out("ProVigil v4.14.7");
         print_out(&format!("  {ARGV0}: -[Vhdtf] [-g group] [-c config]"));
         print_out("    -V          Version and license message");
         print_out("    -h          This help message");
@@ -47,7 +46,7 @@ mod unix {
 
     fn version() -> ! {
         print_out(" ");
-        print_out("Wazuh v4.14.7 - Wazuh Inc.");
+        print_out("ProVigil v4.14.7");
         print_out(" ");
         print_out(
             "This program is free software; you can redistribute it and/or modify\n\
@@ -144,7 +143,7 @@ mod unix {
                 log.now_debug();
             }
         }
-        log.debug1(format!("Wazuh home directory: {}", home.display()));
+        log.debug1(format!("ProVigil home directory: {}", home.display()));
 
         let Some(gid) = siem_daemon::get_group(&group) else {
             let e = errno();

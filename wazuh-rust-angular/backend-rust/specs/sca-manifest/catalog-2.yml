@@ -1,0 +1,1500 @@
+S0251:
+  title: "Configure LSASS to run as a protected process: Enabled with UEFI Lock"
+  description: "Runs the Local Security Authority process (lsass.exe) as a protected process, so only code signed for protected processes can load into it or read its memory."
+  rationale: "Credential-dumping tools commonly read lsass memory; a protected LSA blocks that access from ordinary administrator-level code."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Local Security Authority\\Configure LSASS to run as a protected process = Enabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\RunAsPPL = 1."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0252:
+  title: "Disallow copying of user input methods to the system account for sign-in: Enabled"
+  description: "Stops the input methods (keyboard layouts and IMEs) a user has configured from being copied to the system account that runs the sign-in screen."
+  rationale: "Keeping user-chosen input components off the sign-in screen prevents a third-party input method from running with system rights before anyone signs in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Locale Services\\Disallow copying of user input methods to the system account for sign-in = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Control Panel\\International\\BlockUserInputMethodsForSignIn = 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0253:
+  title: "Block user from showing account details on sign-in: Enabled"
+  description: "Prevents users from choosing to display their account details, such as the email address, on the sign-in screen."
+  rationale: "Hiding account details on the lock and sign-in screens denies a passer-by the user names and addresses that help with targeted attacks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Block user from showing account details on sign-in = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\BlockUserFromShowingAccountDetailsOnSignin = 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0254:
+  title: "Do not display network selection UI: Enabled"
+  description: "Removes the network selection control from the sign-in screen so the network connection cannot be changed before sign-in."
+  rationale: "An unauthenticated person at the console should not be able to move the computer onto a different, possibly hostile, network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Do not display network selection UI = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\DontDisplayNetworkSelectionUI = 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0255:
+  title: "Do not enumerate connected users on domain-joined computers: Enabled"
+  description: "Stops the sign-in screen of a domain-joined computer from listing the users who are signed in or connected."
+  rationale: "A list of connected accounts gives an attacker valid user names to guess passwords against."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Do not enumerate connected users on domain-joined computers = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\DontEnumerateConnectedUsers = 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0256:
+  title: "Enumerate local users on domain-joined computers: Disabled (or not configured)"
+  description: "Controls whether the sign-in screen of a domain-joined computer lists all local user accounts."
+  rationale: "Not listing local accounts keeps account names away from anyone at the console."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Enumerate local users on domain-joined computers = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\EnumerateLocalUsers = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0257:
+  title: "Turn off app notifications on the lock screen: Enabled"
+  description: "Prevents app notifications from appearing on the lock screen."
+  rationale: "Notifications such as messages and calendar items can reveal sensitive content to someone who is not signed in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Turn off app notifications on the lock screen = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\DisableLockScreenAppNotifications = 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0258:
+  title: "Turn off picture password sign-in: Enabled"
+  description: "Prevents domain users from creating or signing in with a picture password (gestures drawn on a picture)."
+  rationale: "Picture password gestures can be observed or inferred from screen smudges and are weaker than a managed password or smart card."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Turn off picture password sign-in = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\BlockDomainPicturePassword = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0259:
+  title: "Turn on convenience PIN sign-in: Disabled (or not configured)"
+  description: "Controls whether domain users can sign in with a convenience PIN, which is a short code tied to the cached domain password rather than to hardware."
+  rationale: "A convenience PIN is a simple stand-in for the domain password without hardware-backed protection, so it lowers sign-in strength."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Turn on convenience PIN sign-in = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\AllowDomainPINLogon = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0260:
+  title: "Allow Clipboard synchronization across devices: Disabled"
+  description: "Controls whether clipboard content is synced through the cloud to the user's other devices."
+  rationale: "Syncing the clipboard can move copied sensitive data, including passwords, to unmanaged devices and to the cloud."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\OS Policies\\Allow Clipboard synchronization across devices = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\AllowCrossDeviceClipboard = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0261:
+  title: "Allow upload of User Activities: Disabled"
+  description: "Controls whether the activity history (apps and documents used) is uploaded to the cloud."
+  rationale: "Uploading activity history sends details of the user's work to a cloud service outside the organisation's control."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\OS Policies\\Allow upload of User Activities = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\UploadUserActivities = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0262:
+  title: "Allow network connectivity during connected-standby (on battery): Disabled"
+  description: "Controls whether the device keeps its network connection while in modern (connected) standby on battery power."
+  rationale: "A sleeping device that stays connected remains reachable and can sync data while unattended."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Allow network connectivity during connected-standby (on battery) = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\f15576e8-98b7-4186-b944-eafa664402d9\\DCSettingIndex = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0263:
+  title: "Allow network connectivity during connected-standby (plugged in): Disabled"
+  description: "Controls whether the device keeps its network connection while in modern (connected) standby on mains power."
+  rationale: "A sleeping device that stays connected remains reachable and can sync data while unattended."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Allow network connectivity during connected-standby (plugged in) = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\f15576e8-98b7-4186-b944-eafa664402d9\\ACSettingIndex = 0."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0264:
+  title: "Allow standby states (S1-S3) when sleeping (on battery): Disabled"
+  description: "Controls whether Windows may use the S1-S3 sleep states on battery; when disabled the device hibernates instead."
+  rationale: "In S1-S3 sleep the memory stays powered, so encryption keys remain in RAM and can be recovered by an attacker with physical access."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Allow standby states (S1-S3) when sleeping (on battery) = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\abfc2519-3608-4c2a-94ea-171b0ed546ab\\DCSettingIndex = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0265:
+  title: "Allow standby states (S1-S3) when sleeping (plugged in): Disabled"
+  description: "Controls whether Windows may use the S1-S3 sleep states on mains power; when disabled the device hibernates instead."
+  rationale: "In S1-S3 sleep the memory stays powered, so encryption keys remain in RAM and can be recovered by an attacker with physical access."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Allow standby states (S1-S3) when sleeping (plugged in) = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\abfc2519-3608-4c2a-94ea-171b0ed546ab\\ACSettingIndex = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0266:
+  title: "Require a password when a computer wakes (on battery): Enabled (or not configured)"
+  description: "Controls whether the user must sign in again when the computer resumes from sleep on battery."
+  rationale: "Without a password on wake, anyone who opens a sleeping laptop gets the signed-in session."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Require a password when a computer wakes (on battery) = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51\\DCSettingIndex = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["8.5"] }
+S0267:
+  title: "Require a password when a computer wakes (plugged in): Enabled (or not configured)"
+  description: "Controls whether the user must sign in again when the computer resumes from sleep on mains power."
+  rationale: "Without a password on wake, anyone who wakes the computer gets the signed-in session."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Power Management\\Sleep Settings\\Require a password when a computer wakes (plugged in) = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51\\ACSettingIndex = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["8.5"] }
+S0268:
+  title: "Configure Offer Remote Assistance: Disabled (or not configured)"
+  description: "Controls whether helpers may offer Remote Assistance to this computer without the user first asking for it."
+  rationale: "Unsolicited assistance gives another person a view of, or control over, the desktop and is a common social-engineering route."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Remote Assistance\\Configure Offer Remote Assistance = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fAllowUnsolicited = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0269:
+  title: "Configure Solicited Remote Assistance: Disabled"
+  description: "Controls whether users can ask someone to connect to their computer through Remote Assistance."
+  rationale: "Remote Assistance exposes the desktop to another party; requests can be abused by attackers posing as support staff."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Remote Assistance\\Configure Solicited Remote Assistance = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fAllowToGetHelp = 0."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0270:
+  title: "Enable RPC Endpoint Mapper Client Authentication: Enabled"
+  description: "Makes RPC clients authenticate to the Endpoint Mapper service when they call it."
+  rationale: "Authenticated endpoint resolution helps prevent anonymous callers from querying or abusing RPC services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Remote Procedure Call\\Enable RPC Endpoint Mapper Client Authentication = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc\\EnableAuthEpResolution = 1."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0271:
+  title: "Restrict Unauthenticated RPC clients: Authenticated (or not configured)"
+  description: "Controls how the RPC runtime treats callers that do not authenticate; the Authenticated level rejects unauthenticated clients except for documented exemptions."
+  rationale: "Rejecting anonymous RPC calls reduces remote attack surface on RPC interfaces."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Remote Procedure Call\\Restrict Unauthenticated RPC clients = Enabled: Authenticated. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc\\RestrictRemoteClients = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0272:
+  title: "Microsoft Support Diagnostic Tool: Turn on MSDT interactive communication with support provider: Disabled"
+  description: "Controls whether the support diagnostic tool can exchange data with, and download troubleshooters from, a remote support provider."
+  rationale: "Blocking this channel stops diagnostic data leaving the computer and stops remote troubleshooting content from being fetched and run."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Troubleshooting and Diagnostics\\Microsoft Support Diagnostic Tool\\Microsoft Support Diagnostic Tool: Turn on MSDT interactive communication with support provider = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\ScriptedDiagnosticsProvider\\Policy\\DisableQueryRemoteServer = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0273:
+  title: "Enable/Disable PerfTrack: Disabled"
+  description: "Turns off PerfTrack, which records responsiveness data for Windows and can send it to Microsoft."
+  rationale: "Disabling it limits performance telemetry about the computer's use from leaving the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Troubleshooting and Diagnostics\\Windows Performance PerfTrack\\Enable/Disable PerfTrack = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WDI\\{9c5a40da-b965-4fc3-8781-88dd50a6299d}\\ScenarioExecutionEnabled = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0274:
+  title: "Turn off the advertising ID: Enabled"
+  description: "Turns off the per-user advertising identifier that apps can use to track the user across apps."
+  rationale: "An advertising ID lets third parties build a profile of the user's activity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\User Profiles\\Turn off the advertising ID = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo\\DisabledByGroupPolicy = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0275:
+  title: "Enable Windows NTP Client: Enabled"
+  description: "Turns on the Windows Time service NTP client so the clock is synchronised from a time source."
+  rationale: "Accurate time is needed for Kerberos authentication and for correlating log events across systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Windows Time Service\\Time Providers\\Enable Windows NTP Client = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpClient\\Enabled = 1."
+  compliance: { nist_800_53: ["AU-8"], pci_dss: ["10.6.1"], hipaa: ["164.312(b)"], iso_27001: ["8.17"] }
+S0276:
+  title: "Enable Windows NTP Server: Disabled (or not configured)"
+  description: "Controls whether this computer answers NTP time requests from other machines."
+  rationale: "A workstation or member server does not need to serve time; leaving the server off removes a listening network service."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Windows Time Service\\Time Providers\\Enable Windows NTP Server = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpServer\\Enabled = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0277:
+  title: "Allow a Windows app to share application data between users: Disabled (or not configured)"
+  description: "Controls whether packaged apps can store data in a shared location readable by every user of the computer."
+  rationale: "Shared app data can leak one user's information to other users of the same machine."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\App Package Deployment\\Allow a Windows app to share application data between users = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateManager\\AllowSharedLocalAppData = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0278:
+  title: "Prevent non-admin users from installing packaged Windows apps: Enabled"
+  description: "Blocks standard users from installing packaged (MSIX / Appx) apps; administrators can still install them."
+  rationale: "Restricting installation keeps unapproved software off managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\App Package Deployment\\Prevent non-admin users from installing packaged Windows apps = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Appx\\BlockNonAdminUserInstall = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0279:
+  title: "Let Windows apps activate with voice while the system is locked: Force Deny"
+  description: "Controls whether apps can be started by voice command while the computer is locked; Force Deny blocks this for all apps."
+  rationale: "Voice activation on a locked computer lets someone without the password interact with apps."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\App Privacy\\Let Windows apps activate with voice while the system is locked = Enabled: Force Deny. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy\\LetAppsActivateWithVoiceAboveLock = 2."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0280:
+  title: "Allow Microsoft accounts to be optional: Enabled"
+  description: "Lets users sign in to apps that support it with an organisational account instead of being forced to use a Microsoft account."
+  rationale: "This keeps work data under organisational identities rather than consumer accounts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\App runtime\\Allow Microsoft accounts to be optional = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\MSAOptional = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0281:
+  title: "Block launching Universal Windows apps with Windows Runtime API access from hosted content: Enabled"
+  description: "Prevents apps whose content is hosted from a web location from starting with access to Windows Runtime APIs."
+  rationale: "Remote web content with access to device APIs is an avenue for code from the internet to act on the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\App runtime\\Block launching Universal Windows apps with Windows Runtime API access from hosted content = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\BlockHostedAppAccessWinRT = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0282:
+  title: "Disallow Autoplay for non-volume devices: Enabled"
+  description: "Turns off AutoPlay for devices that are not storage volumes, such as phones and cameras (MTP devices)."
+  rationale: "AutoPlay can launch content as soon as a device is connected, which malware can exploit."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\AutoPlay Policies\\Disallow Autoplay for non-volume devices = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\NoAutoplayfornonVolume = 1."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0283:
+  title: "Set the default behavior for AutoRun: Do not execute any autorun commands"
+  description: "Sets how Windows handles autorun.inf commands on inserted media; this value prevents any of them from running."
+  rationale: "Autorun commands have been a long-standing way for malware on removable media to run automatically."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\AutoPlay Policies\\Set the default behavior for AutoRun = Enabled: Do not execute any autorun commands. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoAutorun = 1."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0284:
+  title: "Turn off Autoplay: Enabled for all drives"
+  description: "Turns off AutoPlay on every drive type, so inserting media or connecting a drive does not start anything."
+  rationale: "Removing automatic start-up of content from drives blocks a common infection path from removable media."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\AutoPlay Policies\\Turn off Autoplay = Enabled: All drives. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoDriveTypeAutoRun = 255."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0285:
+  title: "Configure enhanced anti-spoofing: Enabled"
+  description: "Requires enhanced anti-spoofing on devices that support it for Windows Hello face recognition."
+  rationale: "Anti-spoofing makes it harder to fool facial recognition with a photo or video of the user."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Biometrics\\Facial Features\\Configure enhanced anti-spoofing = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Biometrics\\FacialFeatures\\EnhancedAntiSpoofing = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0286:
+  title: "Allow access to BitLocker-protected fixed data drives from earlier versions of Windows: Disabled"
+  description: "Controls whether fixed data drives formatted with FAT and protected by BitLocker can be unlocked and read on older Windows versions through the BitLocker To Go Reader."
+  rationale: "Disabling the discovery volume keeps encrypted drives from being opened through a less controlled reader."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Allow access to BitLocker-protected fixed data drives from earlier versions of Windows = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVDiscoveryVolumeType = an empty string."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0287:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Enabled"
+  description: "Turns on the policy that defines the recovery methods available for BitLocker-protected fixed data drives."
+  rationale: "Defining recovery up front ensures encrypted data can be recovered by the organisation if the normal unlock method is lost."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVRecovery = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0288:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Allow data recovery agent"
+  description: "Allows a data recovery agent certificate to be used to recover BitLocker-protected fixed data drives."
+  rationale: "A data recovery agent gives the organisation a central way to recover encrypted drives."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, Allow data recovery agent checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVManageDRA = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0289:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: 256-bit recovery key required or allowed"
+  description: "Sets whether a 256-bit recovery key may be used to recover BitLocker-protected fixed data drives."
+  rationale: "Having a recovery key option means the organisation can recover data if the normal unlock method fails."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, 256-bit recovery key set to Allow or Require. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVRecoveryKey = 1 or 2."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0290:
+  title: "Configure use of hardware-based encryption for fixed data drives: Disabled"
+  description: "Controls whether BitLocker relies on the self-encryption of the drive (eDrive) for fixed data drives; when disabled, software encryption is used."
+  rationale: "Flaws found in some drive firmware encryption mean software encryption under the operating system's control is more dependable."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Configure use of hardware-based encryption for fixed data drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVHardwareEncryption = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0291:
+  title: "Configure use of passwords for fixed data drives: Disabled"
+  description: "Controls whether a password can be used to unlock BitLocker-protected fixed data drives."
+  rationale: "Passwords can be guessed or shared; stronger unlock methods such as smart cards or automatic unlock are preferred."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Configure use of passwords for fixed data drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVPassphrase = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0292:
+  title: "Configure use of smart cards on fixed data drives: Enabled"
+  description: "Allows smart cards to be used to unlock BitLocker-protected fixed data drives."
+  rationale: "A smart card adds a physical factor to unlocking encrypted data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Configure use of smart cards on fixed data drives = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVAllowUserCert = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0293:
+  title: "Configure use of smart cards on fixed data drives: Require use of smart cards"
+  description: "Requires a smart card to unlock BitLocker-protected fixed data drives."
+  rationale: "Requiring a smart card ensures encrypted data cannot be unlocked by knowledge alone."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Configure use of smart cards on fixed data drives = Enabled, Require use of smart cards on fixed data drives checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVEnforceUserCert = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0294:
+  title: "Allow Secure Boot for integrity validation: Enabled"
+  description: "Lets BitLocker use Secure Boot measurements, rather than only TPM PCR values, to validate the platform before releasing the key for the operating system drive."
+  rationale: "Secure Boot validation keeps boot integrity protection in place while reducing unnecessary recovery prompts after firmware updates."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Allow Secure Boot for integrity validation = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSAllowSecureBootForIntegrity = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0295:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Enabled"
+  description: "Turns on the policy that defines the recovery methods available for the BitLocker-protected operating system drive."
+  rationale: "Defining recovery up front lets the organisation recover the system drive when the TPM or PIN cannot unlock it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSRecovery = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0296:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Allow data recovery agent"
+  description: "Allows a data recovery agent certificate to be used to recover the BitLocker-protected operating system drive."
+  rationale: "A data recovery agent gives the organisation a central way to recover encrypted drives."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, Allow data recovery agent checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSManageDRA = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0297:
+  title: "Configure use of hardware-based encryption for operating system drives: Disabled"
+  description: "Controls whether BitLocker relies on the drive's own hardware encryption for the operating system drive; when disabled, software encryption is used."
+  rationale: "Flaws found in some drive firmware encryption mean software encryption under the operating system's control is more dependable."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Configure use of hardware-based encryption for operating system drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSHardwareEncryption = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0298:
+  title: "Configure use of passwords for operating system drives: Disabled"
+  description: "Controls whether a password (rather than a TPM-based protector) can unlock the operating system drive."
+  rationale: "A password protector lacks the TPM's boot integrity check and anti-hammering, so it is weaker."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Configure use of passwords for operating system drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSPassphrase = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0299:
+  title: "Require additional authentication at startup: Enabled"
+  description: "Turns on the policy that lets BitLocker require extra authentication, such as a startup PIN, each time the computer starts."
+  rationale: "Pre-boot authentication protects the drive key if the device is stolen, even when the TPM alone would unlock it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseAdvancedStartup = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0300:
+  title: "Require additional authentication at startup: Allow BitLocker without a compatible TPM not allowed"
+  description: "Controls whether BitLocker can protect the operating system drive on computers without a TPM, using a password or USB key instead."
+  rationale: "Without a TPM there is no hardware check of boot integrity and no protection against offline guessing."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled, Allow BitLocker without a compatible TPM unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\EnableBDEWithNoTPM = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0301:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Save recovery information to AD DS not selected"
+  description: "Controls whether BitLocker recovery information for removable data drives is saved to Active Directory Domain Services."
+  rationale: "Removable drives are recovered through the methods defined for them; this setting keeps the policy aligned with the chosen recovery design and avoids blocking encryption on drives used off the domain."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, Save BitLocker recovery information to AD DS for removable data drives unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVActiveDirectoryBackup = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0302:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Store recovery passwords and key packages"
+  description: "Sets which recovery information is stored in AD DS for removable data drives; value 1 stores both the recovery password and the key package."
+  rationale: "Keeping the key package as well as the password improves the chance of recovering data from a damaged drive."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, Configure storage of BitLocker recovery information to AD DS: Backup recovery passwords and key packages. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVActiveDirectoryInfoToStore = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0303:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Do not wait for AD DS backup before enabling"
+  description: "Controls whether BitLocker on removable data drives waits until recovery information has been stored in AD DS before encrypting."
+  rationale: "Removable drives are often encrypted away from the domain; not waiting for AD DS lets encryption start immediately."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, Do not enable BitLocker until recovery information is stored to AD DS for removable data drives unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVRequireActiveDirectoryBackup = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0304:
+  title: "Configure use of hardware-based encryption for removable data drives: Disabled"
+  description: "Controls whether BitLocker relies on a removable drive's own hardware encryption; when disabled, software encryption is used."
+  rationale: "Software encryption avoids depending on drive firmware whose encryption may be weak."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Configure use of hardware-based encryption for removable data drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVHardwareEncryption = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0305:
+  title: "Configure use of passwords for removable data drives: Disabled"
+  description: "Controls whether a password can be used to unlock BitLocker-protected removable data drives."
+  rationale: "Passwords on portable drives can be guessed offline; smart-card protection is stronger."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Configure use of passwords for removable data drives = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVPassphrase = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0306:
+  title: "Configure use of smart cards on removable data drives: Enabled"
+  description: "Allows smart cards to be used to unlock BitLocker-protected removable data drives."
+  rationale: "A smart card adds a physical factor to unlocking encrypted portable data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Configure use of smart cards on removable data drives = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVAllowUserCert = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0307:
+  title: "Configure use of smart cards on removable data drives: Require use of smart cards"
+  description: "Requires a smart card to unlock BitLocker-protected removable data drives."
+  rationale: "Requiring a smart card means a lost drive cannot be unlocked by a guessed password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Configure use of smart cards on removable data drives = Enabled, Require use of smart cards on removable data drives checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVEnforceUserCert = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0308:
+  title: "Deny write access to removable drives not protected by BitLocker: Do not allow write access to devices configured in another organization not selected"
+  description: "Controls whether write access is also refused to BitLocker drives whose identification field belongs to another organisation."
+  rationale: "Leaving this option off avoids blocking legitimate exchange of encrypted drives with partners, while unprotected drives stay controlled by the main setting."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Deny write access to removable drives not protected by BitLocker = Enabled, Do not allow write access to devices configured in another organization unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVDenyCrossOrg = 0."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0309:
+  title: "Disable new DMA devices when this computer is locked: Enabled"
+  description: "Blocks direct memory access (DMA) for newly connected hot-pluggable devices, such as Thunderbolt devices, while the computer is locked."
+  rationale: "DMA devices can read memory directly, including encryption keys, so blocking them on a locked machine stops DMA attacks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Disable new DMA devices when this computer is locked = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\DisableExternalDMAUnderLock = 1."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0310:
+  title: "Allow Use of Camera: Disabled"
+  description: "Controls whether the device camera can be used."
+  rationale: "Disabling the camera on systems that do not need it prevents covert recording if the device is compromised."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Camera\\Allow Use of Camera = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Camera\\AllowCamera = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0311:
+  title: "Turn off cloud consumer account state content: Enabled"
+  description: "Stops Windows from showing cloud-provided consumer account content in places such as File Explorer and the Start menu."
+  rationale: "Removing consumer cloud content keeps the managed desktop free of consumer service prompts and data exchange."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Cloud Content\\Turn off cloud consumer account state content = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent\\DisableConsumerAccountStateContent = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0312:
+  title: "Turn off cloud optimized content: Enabled"
+  description: "Stops Windows from downloading and showing cloud-optimised content such as suggestions and tips."
+  rationale: "Fewer content downloads from Microsoft cloud services means less data exchange outside the organisation's control."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Cloud Content\\Turn off cloud optimized content = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent\\DisableCloudOptimizedContent = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0313:
+  title: "Turn off Microsoft consumer experiences: Enabled"
+  description: "Stops Windows from automatically installing suggested consumer apps and showing personalised offers."
+  rationale: "Automatically added consumer apps are unapproved software on a managed computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Cloud Content\\Turn off Microsoft consumer experiences = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent\\DisableWindowsConsumerFeatures = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0314:
+  title: "Require pin for pairing: First Time or Always"
+  description: "Requires a PIN when pairing with a wireless display or projection device (Miracast), either on first pairing or every time."
+  rationale: "A PIN stops nearby people from pairing their own device with the computer's screen."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Connect\\Require pin for pairing = Enabled: First Time (or Always). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Connect\\RequirePinForPairing = 1 or 2."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0315:
+  title: "Do not display the password reveal button: Enabled"
+  description: "Hides the button in password fields that shows the typed password in clear text."
+  rationale: "A reveal button lets an onlooker see a password as it is entered."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Credential User Interface\\Do not display the password reveal button = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredUI\\DisablePasswordReveal = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0316:
+  title: "Enumerate administrator accounts on elevation: Disabled (or not configured)"
+  description: "Controls whether the elevation prompt lists administrator accounts for the user to choose from."
+  rationale: "Listing administrator accounts gives an attacker the names of the most valuable accounts."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Credential User Interface\\Enumerate administrator accounts on elevation = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-6", "CM-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(i)"], iso_27001: ["8.2"] }
+S0317:
+  title: "Prevent the use of security questions for local accounts: Enabled"
+  description: "Stops local accounts from setting up and using security questions for password recovery."
+  rationale: "Answers to security questions are often guessable or found online, bypassing the password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Credential User Interface\\Prevent the use of security questions for local accounts = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\NoLocalPasswordResetQuestions = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0318:
+  title: "Allow Diagnostic Data: Off or Required diagnostic data only"
+  description: "Sets how much diagnostic data Windows sends to Microsoft; 0 turns it off (where supported) and 1 sends only the required minimum."
+  rationale: "Limiting diagnostic data reduces the information about the system and its use that leaves the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Allow Diagnostic Data = Enabled: Diagnostic data off (not recommended) or Send required diagnostic data. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\AllowTelemetry = 0 or 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0319:
+  title: "Disable OneSettings Downloads: Enabled"
+  description: "Stops Windows from downloading configuration settings from the OneSettings service."
+  rationale: "Settings pulled from a cloud service can change system behaviour outside the organisation's change control."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Disable OneSettings Downloads = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\DisableOneSettingsDownloads = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0320:
+  title: "Do not show feedback notifications: Enabled"
+  description: "Stops Windows from asking users for feedback through the Feedback Hub."
+  rationale: "Feedback prompts can lead users to send system details and screenshots to Microsoft."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Do not show feedback notifications = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\DoNotShowFeedbackNotifications = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0321:
+  title: "Enable OneSettings Auditing: Enabled"
+  description: "Logs the configuration changes that Windows receives from the OneSettings service."
+  rationale: "An audit trail of cloud-delivered setting changes supports change review and investigation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Enable OneSettings Auditing = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\EnableOneSettingsAuditing = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12"], pci_dss: ["10.2.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0322:
+  title: "Limit Diagnostic Log Collection: Enabled"
+  description: "Prevents additional diagnostic logs from being collected and sent with diagnostic data."
+  rationale: "Diagnostic logs can contain detailed and sensitive information about the system."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Limit Diagnostic Log Collection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\LimitDiagnosticLogCollection = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0323:
+  title: "Limit Dump Collection: Enabled"
+  description: "Limits crash dumps collected for diagnostic data to small dumps."
+  rationale: "Full memory dumps can contain passwords, keys and document contents."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Limit Dump Collection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\LimitDumpCollection = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0324:
+  title: "Toggle user control over Insider builds: Disabled"
+  description: "Prevents users from enrolling the computer in Windows Insider preview builds."
+  rationale: "Preview builds are pre-release software and are not suited to managed production systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Toggle user control over Insider builds = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds\\AllowBuildPreview = 0."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0325:
+  title: "Download Mode: not Internet"
+  description: "Controls Delivery Optimization peer-to-peer downloads; the check passes unless the mode is Internet (3), which shares update content with peers across the internet."
+  rationale: "Exchanging update content with unknown internet peers uses bandwidth and widens exposure; LAN-only or no peering is enough for most sites."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Delivery Optimization\\Download Mode = Enabled: a mode other than Internet (for example Simple or LAN). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization\\DODownloadMode = any value except 3."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0326:
+  title: "Enable App Installer: Disabled"
+  description: "Turns off App Installer (including the winget command-line tool) for users."
+  rationale: "App Installer lets users install software from online sources outside the organisation's approval process."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Desktop App Installer\\Enable App Installer = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller\\EnableAppInstaller = 0."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0327:
+  title: "Enable App Installer Experimental Features: Disabled"
+  description: "Prevents users from turning on experimental features in App Installer."
+  rationale: "Experimental features are unfinished and may weaken controls on software installation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Desktop App Installer\\Enable App Installer Experimental Features = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller\\EnableExperimentalFeatures = 0."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0328:
+  title: "Enable App Installer Hash Override: Disabled"
+  description: "Prevents users from overriding the installer hash check in App Installer."
+  rationale: "The hash check confirms the installer downloaded is the one expected; overriding it allows tampered packages to install."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Desktop App Installer\\Enable App Installer Hash Override = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller\\EnableHashOverride = 0."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0329:
+  title: "Enable App Installer ms-appinstaller protocol: Disabled"
+  description: "Stops packages being installed directly from websites through the ms-appinstaller URI scheme."
+  rationale: "This protocol has been abused to deliver malware from web pages."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Desktop App Installer\\Enable App Installer ms-appinstaller protocol = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller\\EnableMSAppInstallerProtocol = 0."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0330:
+  title: "Application log: Control Event Log behavior when the log file reaches its maximum size: Disabled (or not configured)"
+  description: "Controls what happens when the Application log is full; when disabled, the oldest events are overwritten instead of stopping logging."
+  rationale: "Overwriting old events keeps new events being recorded rather than losing the most recent activity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Application\\Control Event Log behavior when the log file reaches its maximum size = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application\\Retention = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0331:
+  title: "Application log: Specify the maximum log file size (KB): 32,768 or greater"
+  description: "Sets the maximum size of the Application event log."
+  rationale: "A larger log keeps a longer history of events for investigation before old entries are overwritten."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Application\\Specify the maximum log file size (KB) = Enabled: 32768 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application\\MaxSize = 32768 or more."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0332:
+  title: "Security log: Control Event Log behavior when the log file reaches its maximum size: Disabled (or not configured)"
+  description: "Controls what happens when the Security log is full; when disabled, the oldest events are overwritten instead of stopping logging."
+  rationale: "Overwriting old events keeps new security events being recorded."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Security\\Control Event Log behavior when the log file reaches its maximum size = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security\\Retention = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0333:
+  title: "Security log: Specify the maximum log file size (KB): 196,608 or greater"
+  description: "Sets the maximum size of the Security event log."
+  rationale: "Security events are numerous; a large log keeps enough history to investigate incidents."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Security\\Specify the maximum log file size (KB) = Enabled: 196608 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security\\MaxSize = 196608 or more."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0334:
+  title: "Setup log: Control Event Log behavior when the log file reaches its maximum size: Disabled (or not configured)"
+  description: "Controls what happens when the Setup log is full; when disabled, the oldest events are overwritten instead of stopping logging."
+  rationale: "Overwriting old events keeps new setup events being recorded."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Setup\\Control Event Log behavior when the log file reaches its maximum size = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup\\Retention = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0335:
+  title: "Setup log: Specify the maximum log file size (KB): 32,768 or greater"
+  description: "Sets the maximum size of the Setup event log."
+  rationale: "A larger log keeps a longer history of installation and update events."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\Setup\\Specify the maximum log file size (KB) = Enabled: 32768 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup\\MaxSize = 32768 or more."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0336:
+  title: "System log: Control Event Log behavior when the log file reaches its maximum size: Disabled (or not configured)"
+  description: "Controls what happens when the System log is full; when disabled, the oldest events are overwritten instead of stopping logging."
+  rationale: "Overwriting old events keeps new system events being recorded."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\System\\Control Event Log behavior when the log file reaches its maximum size = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System\\Retention = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0337:
+  title: "System log: Specify the maximum log file size (KB): 32,768 or greater"
+  description: "Sets the maximum size of the System event log."
+  rationale: "A larger log keeps a longer history of system events for investigation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Event Log Service\\System\\Specify the maximum log file size (KB) = Enabled: 32768 or more. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System\\MaxSize = 32768 or more."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0338:
+  title: "Turn off Data Execution Prevention for Explorer: Disabled (or not configured)"
+  description: "Controls whether File Explorer runs without Data Execution Prevention (DEP)."
+  rationale: "DEP stops code from running in data memory, which blocks many exploits against Explorer and its add-ins."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\File Explorer\\Turn off Data Execution Prevention for Explorer = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\NoDataExecutionPrevention = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0339:
+  title: "Turn off heap termination on corruption: Disabled (or not configured)"
+  description: "Controls whether File Explorer keeps running after heap corruption instead of terminating."
+  rationale: "Ending the process on heap corruption stops an exploit from continuing with corrupted memory."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\File Explorer\\Turn off heap termination on corruption = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\NoHeapTerminationOnCorruption = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0340:
+  title: "Turn off shell protocol protected mode: Disabled (or not configured)"
+  description: "Controls whether the shell protocol runs in protected mode, which limits the folders it can open."
+  rationale: "Protected mode stops web content from using the shell protocol to open or run files from arbitrary locations."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\File Explorer\\Turn off shell protocol protected mode = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\PreXPSP2ShellProtocolBehavior = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0341:
+  title: "Turn off location: Enabled"
+  description: "Turns off the Windows location service for all users and apps."
+  rationale: "Location data is personal information and is not needed on most managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Location and Sensors\\Turn off location = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors\\DisableLocation = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0342:
+  title: "Allow Message Service Cloud Sync: Disabled"
+  description: "Stops text messages from being backed up and synced through the cloud."
+  rationale: "Syncing messages copies their contents to a cloud service outside the organisation's control."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Messaging\\Allow Message Service Cloud Sync = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Messaging\\AllowMessageSync = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0343:
+  title: "Block all consumer Microsoft account user authentication: Enabled"
+  description: "Prevents apps and services from authenticating users with consumer Microsoft accounts."
+  rationale: "Consumer accounts are outside organisational identity management and can be used to move data out."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft account\\Block all consumer Microsoft account user authentication = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\MicrosoftAccount\\DisableUserAuth = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0344:
+  title: "Configure local setting override for reporting to Microsoft MAPS: Disabled (or not configured)"
+  description: "Controls whether a local preference can override the Group Policy setting for joining Microsoft MAPS (cloud protection)."
+  rationale: "Preventing local overrides keeps the centrally chosen cloud protection setting in force."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\MAPS\\Configure local setting override for reporting to Microsoft MAPS = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet\\LocalSettingOverrideSpynetReporting = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0345:
+  title: "Join Microsoft MAPS: Not configured"
+  description: "Controls membership of Microsoft MAPS, the cloud service that receives information about detected threats; the check passes only when no policy value is set."
+  rationale: "Leaving the policy unset keeps the product default and avoids forcing a reporting level by policy."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\MAPS\\Join Microsoft MAPS = Not Configured. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet\\SpynetReporting must not exist (delete the value)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0346:
+  title: "Configure Attack Surface Reduction rules: Enabled"
+  description: "Turns on Microsoft Defender attack surface reduction (ASR) rules so the rules listed in policy are applied."
+  rationale: "ASR rules block behaviours that malware commonly uses, such as Office apps starting child processes."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Microsoft Defender Exploit Guard\\Attack Surface Reduction\\Configure Attack Surface Reduction rules = Enabled. Registry: HKLM\\Software\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\ASR\\ExploitGuard_ASR_Rules = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0347:
+  title: "Configure Attack Surface Reduction rules: required rules set to Block"
+  description: "Sets eleven attack surface reduction rules to Block: executable content from email, Office child processes, Office creating executables, Office code injection, scripts launching downloads, obfuscated scripts, Win32 API calls from macros, Office communication app child processes, Adobe Reader child processes, credential theft from LSASS, and untrusted processes from USB."
+  rationale: "Each rule targets a technique widely used in phishing and malware attacks; Block mode stops it instead of only auditing it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Microsoft Defender Exploit Guard\\Attack Surface Reduction\\Configure Attack Surface Reduction rules = Enabled, each rule ID set to 1 (Block). Registry: under HKLM\\Software\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\ASR\\Rules, each of these values = 1: BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550, D4F940AB-401B-4EFC-AADC-AD5F3C50688A, 3B576869-A4EC-4529-8536-B80A7769E899, 75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84, D3E037E1-3EB8-44C8-A917-57927947596D, 5BEB7EFE-FD9A-4556-801D-275E5FFC04CC, 92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B, 26190899-1602-49E8-8B27-EB1D0A1CE869, 7674BA52-37EB-4A4F-A9A1-F0F9A1619A2C, 9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2, B2B3F03D-6A65-4F7B-A9C7-1C7EF74A9BA4."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0348:
+  title: "Prevent users and apps from accessing dangerous websites: Block"
+  description: "Turns on Microsoft Defender network protection in block mode, which stops any app from connecting to known malicious domains and IP addresses."
+  rationale: "Blocking connections to dangerous sites stops phishing pages, exploit kits and malware command servers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Microsoft Defender Exploit Guard\\Network Protection\\Prevent users and apps from accessing dangerous websites = Enabled: Block. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\Network Protection\\EnableNetworkProtection = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0349:
+  title: "Enable file hash computation feature: Enabled"
+  description: "Makes Microsoft Defender compute hashes for files it scans."
+  rationale: "File hashes let indicators of compromise and allow or block lists match files reliably."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\MpEngine\\Enable file hash computation feature = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\MpEngine\\EnableFileHashComputation = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0350:
+  title: "Scan all downloaded files and attachments: Enabled (or not configured)"
+  description: "Controls whether Microsoft Defender scans files and attachments downloaded from the internet."
+  rationale: "Downloads and attachments are a primary way malware arrives."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Real-time Protection\\Scan all downloaded files and attachments = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection\\DisableIOAVProtection = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0351:
+  title: "Turn off real-time protection: Disabled (or not configured)"
+  description: "Controls whether Microsoft Defender real-time protection, which scans files and processes as they are used, can be turned off by policy."
+  rationale: "Real-time protection is the main line of defence against malware running on the system."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Real-time Protection\\Turn off real-time protection = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection\\DisableRealtimeMonitoring = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0352:
+  title: "Turn on behavior monitoring: Enabled (or not configured)"
+  description: "Controls Microsoft Defender behaviour monitoring, which watches processes for suspicious activity patterns."
+  rationale: "Behaviour monitoring catches malware that avoids signature detection."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Real-time Protection\\Turn on behavior monitoring = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection\\DisableBehaviorMonitoring = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0353:
+  title: "Turn on script scanning: Enabled (or not configured)"
+  description: "Controls whether Microsoft Defender scans scripts as they run."
+  rationale: "Script-based and file-less attacks are common; scanning scripts at run time detects them."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Real-time Protection\\Turn on script scanning = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection\\DisableScriptScanning = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0354:
+  title: "Configure Watson events: Disabled"
+  description: "Stops Microsoft Defender from sending Watson error reports (generic reports about failures) to Microsoft."
+  rationale: "Error reports can contain details about the system; disabling them limits data sent outside the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Reporting\\Configure Watson events = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Reporting\\DisableGenericRePorts = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0355:
+  title: "Scan packed executables: Enabled (or not configured)"
+  description: "Controls whether Microsoft Defender unpacks and scans compressed or packed executable files."
+  rationale: "Packing is widely used to hide malware from scanners."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Scan\\Scan packed executables = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan\\DisablePackedExeScanning = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0356:
+  title: "Scan removable drives: Enabled"
+  description: "Makes Microsoft Defender include removable drives, such as USB sticks, in full scans."
+  rationale: "Removable media can carry malware between systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Scan\\Scan removable drives = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan\\DisableRemovableDriveScanning = 0."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0357:
+  title: "Turn on e-mail scanning: Enabled"
+  description: "Makes Microsoft Defender scan mailbox files and messages stored locally."
+  rationale: "Email attachments are a frequent malware delivery route."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Scan\\Turn on e-mail scanning = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan\\DisableEmailScanning = 0."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0358:
+  title: "Configure detection for potentially unwanted applications: Block"
+  description: "Makes Microsoft Defender detect and block potentially unwanted applications such as adware and bundled software."
+  rationale: "Unwanted applications degrade security and can open the way to further malware."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Configure detection for potentially unwanted applications = Enabled: Block. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\PUAProtection = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0359:
+  title: "Allow auditing events in Microsoft Defender Application Guard: Enabled"
+  description: "Records audit events that occur inside the Application Guard isolated container in the host event logs."
+  rationale: "Without these events, activity in the isolated browser cannot be investigated."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Allow auditing events in Microsoft Defender Application Guard = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\AuditApplicationGuard = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12"], pci_dss: ["10.2.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0360:
+  title: "Allow camera and microphone access in Microsoft Defender Application Guard: Disabled"
+  description: "Controls whether the isolated Application Guard session can use the host camera and microphone."
+  rationale: "Untrusted web content in the container should not be able to record audio or video."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Allow camera and microphone access in Microsoft Defender Application Guard = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\AllowCameraMicrophoneRedirection = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0361:
+  title: "Allow data persistence for Microsoft Defender Application Guard: Disabled"
+  description: "Controls whether data such as cookies and downloads in the Application Guard container is kept between sessions."
+  rationale: "Discarding container data at the end of each session removes anything malicious that was picked up."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Allow data persistence for Microsoft Defender Application Guard = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\AllowPersistence = 0."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0362:
+  title: "Allow files to download and save to the host operating system from Microsoft Defender Application Guard: Disabled"
+  description: "Controls whether files downloaded in the isolated container can be saved to the host."
+  rationale: "Blocking transfer keeps untrusted downloads inside the isolation boundary."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Allow files to download and save to the host operating system from Microsoft Defender Application Guard = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\SaveFilesToHost = 0."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0363:
+  title: "Turn on Microsoft Defender Application Guard in Managed Mode: Enabled for Microsoft Edge"
+  description: "Turns on Application Guard so untrusted websites open in Microsoft Edge in an isolated, hardware-virtualised container."
+  rationale: "Isolating untrusted browsing keeps browser exploits away from the host and corporate data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Turn on Microsoft Defender Application Guard in Managed Mode = Enabled: 1. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\AllowAppHVSI_ProviderSet = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0364:
+  title: "Enable news and interests on the taskbar: Disabled"
+  description: "Removes the news and interests feed from the taskbar."
+  rationale: "The feed pulls internet content onto the desktop and is not needed on managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\News and interests\\Enable news and interests on the taskbar = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Feeds\\EnableFeeds = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0365:
+  title: "Prevent the usage of OneDrive for file storage: Enabled"
+  description: "Stops users from accessing OneDrive from the OneDrive app and File Explorer, and stops files syncing to it."
+  rationale: "Personal cloud sync can move organisational data outside approved storage."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\OneDrive\\Prevent the usage of OneDrive for file storage = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\OneDrive\\DisableFileSyncNGSC = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0366:
+  title: "Turn off Push To Install service: Enabled"
+  description: "Turns off the service that lets apps bought on another device or on the web be pushed to this computer."
+  rationale: "Remote pushes would let software be installed without local approval."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Push To Install\\Turn off Push To Install service = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\PushToInstall\\DisablePushToInstall = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0367:
+  title: "Do not allow passwords to be saved: Enabled"
+  description: "Prevents the Remote Desktop client from saving passwords."
+  rationale: "Saved RDP credentials can be extracted or used by anyone with access to the user's profile."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Connection Client\\Do not allow passwords to be saved = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\DisablePasswordSaving = 1."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0368:
+  title: "Allow users to connect remotely by using Remote Desktop Services: Disabled (or not configured)"
+  description: "Controls whether remote connections to this computer through Remote Desktop are permitted."
+  rationale: "Where Remote Desktop is not needed, keeping it off removes an often-attacked remote entry point."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Connections\\Allow users to connect remotely by using Remote Desktop Services = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDenyTSConnections = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0369:
+  title: "Allow UI Automation redirection: Disabled"
+  description: "Controls whether UI Automation clients on the local machine can reach applications in the remote session."
+  rationale: "Blocking this redirection limits how local tools can drive or read remote applications."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Allow UI Automation redirection = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\EnableUiaRedirection = 0."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0370:
+  title: "Do not allow COM port redirection: Enabled"
+  description: "Prevents client COM ports from being made available in the Remote Desktop session."
+  rationale: "Each redirected device is a path for data to leave or enter the server."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow COM port redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisableCcm = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0371:
+  title: "Do not allow drive redirection: Enabled"
+  description: "Prevents client drives from being mapped into the Remote Desktop session."
+  rationale: "Mapped drives let files be copied freely between the client and the server, including malware and sensitive data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow drive redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisableCdm = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0372:
+  title: "Do not allow location redirection: Enabled"
+  description: "Prevents the client's location from being passed into the Remote Desktop session."
+  rationale: "Location is personal data and is not needed by remote applications."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow location redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisableLocationRedir = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0373:
+  title: "Do not allow LPT port redirection: Enabled"
+  description: "Prevents client parallel (LPT) ports from being made available in the Remote Desktop session."
+  rationale: "Unneeded device redirection widens the paths for data transfer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow LPT port redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisableLPT = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0374:
+  title: "Do not allow supported Plug and Play device redirection: Enabled"
+  description: "Prevents client Plug and Play devices, such as phones and media players, from being redirected into the session."
+  rationale: "Redirected devices can carry data or malware between the client and the server."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow supported Plug and Play device redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisablePNPRedir = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0375:
+  title: "Do not allow WebAuthn redirection: Enabled"
+  description: "Prevents WebAuthn requests in the remote session from being passed to the client's authenticators."
+  rationale: "Limiting this redirection keeps the client's security keys and Windows Hello from being used by the remote host."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Device and Resource Redirection\\Do not allow WebAuthn redirection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fDisableWebAuthn = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0376:
+  title: "Always prompt for password upon connection: Enabled"
+  description: "Makes the Remote Desktop server ask for a password on every connection, even if the client supplied saved credentials."
+  rationale: "This stops saved credentials on a client from opening a session without the user typing the password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Security\\Always prompt for password upon connection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fPromptForPassword = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0377:
+  title: "Require secure RPC communication: Enabled"
+  description: "Makes the Remote Desktop server accept only authenticated and encrypted RPC requests from clients."
+  rationale: "Unprotected RPC traffic can be read or tampered with on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Security\\Require secure RPC communication = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\fEncryptRPCTraffic = 1."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0378:
+  title: "Require use of specific security layer for remote (RDP) connections: SSL"
+  description: "Requires TLS (shown as SSL) for authentication and encryption of Remote Desktop connections."
+  rationale: "TLS authenticates the server and protects the session better than native RDP security."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Security\\Require use of specific security layer for remote (RDP) connections = Enabled: SSL. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\SecurityLayer = 2."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0379:
+  title: "Require user authentication for remote connections by using Network Level Authentication: Enabled (or not configured)"
+  description: "Requires users to authenticate before a full Remote Desktop session is created (Network Level Authentication)."
+  rationale: "Authenticating first reduces exposure of the server to unauthenticated attackers and denial of service."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Security\\Require user authentication for remote connections by using Network Level Authentication = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\UserAuthentication = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0380:
+  title: "Set client connection encryption level: High Level (or not configured)"
+  description: "Sets the encryption level for Remote Desktop traffic; High Level uses 128-bit encryption in both directions."
+  rationale: "Strong encryption protects session contents from network eavesdropping."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Security\\Set client connection encryption level = Enabled: High Level. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\MinEncryptionLevel = 3 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0381:
+  title: "Set time limit for active but idle Remote Desktop Services sessions: 15 minutes or less, but not Never"
+  description: "Sets how long an active Remote Desktop session can stay idle before it is disconnected."
+  rationale: "Idle sessions left open can be taken over; disconnecting them limits that window."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Session Time Limits\\Set time limit for active but idle Remote Desktop Services sessions = Enabled: 15 minutes or less. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\MaxIdleTime = 1 to 900000 (milliseconds; 0 means never)."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["8.5"] }
+S0382:
+  title: "Set time limit for disconnected sessions: 1 minute"
+  description: "Sets how long a disconnected Remote Desktop session stays on the server before it is ended."
+  rationale: "Ending disconnected sessions quickly frees resources and removes sessions that could be reconnected by someone else."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Session Time Limits\\Set time limit for disconnected sessions = Enabled: 1 minute. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\MaxDisconnectionTime = 60000."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["8.5"] }
+S0383:
+  title: "Do not delete temp folders upon exit: Disabled (or not configured)"
+  description: "Controls whether per-session temporary folders on the Remote Desktop server are kept after the user logs off."
+  rationale: "Deleting temporary folders at logoff removes leftover data that other users or attackers could find."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Temporary folders\\Do not delete temp folders upon exit = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\DeleteTempDirsOnExit = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0384:
+  title: "Prevent downloading of enclosures: Enabled"
+  description: "Stops the feed platform from downloading file attachments (enclosures) from RSS feeds."
+  rationale: "Automatically downloaded feed attachments can deliver malware."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\RSS Feeds\\Prevent downloading of enclosures = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds\\DisableEnclosureDownload = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0385:
+  title: "Allow Cloud Search: Disable Cloud Search"
+  description: "Stops Windows Search from including results from the user's cloud accounts."
+  rationale: "Searching cloud content mixes in data from outside the device and sends queries to cloud services."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow Cloud Search = Enabled: Disable Cloud Search. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\AllowCloudSearch = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0386:
+  title: "Allow Cortana: Disabled"
+  description: "Turns off Cortana."
+  rationale: "Cortana sends voice and search data to cloud services and is not needed on managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow Cortana = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\AllowCortana = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0387:
+  title: "Allow Cortana above lock screen: Disabled"
+  description: "Prevents Cortana from being used while the computer is locked."
+  rationale: "Assistant access on a locked device lets someone interact with the system without signing in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow Cortana above lock screen = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\AllowCortanaAboveLock = 0."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0388:
+  title: "Allow indexing of encrypted files: Disabled (or not configured)"
+  description: "Controls whether Windows Search indexes encrypted files."
+  rationale: "An index of encrypted content may itself not be protected as strongly as the files."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow indexing of encrypted files = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\AllowIndexingEncryptedStoresOrItems = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0389:
+  title: "Allow search and Cortana to use location: Disabled"
+  description: "Stops search and Cortana from using the device location."
+  rationale: "Location is personal data and is not needed for search."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow search and Cortana to use location = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\AllowSearchToUseLocation = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0390:
+  title: "Allow search highlights: Disabled"
+  description: "Turns off search highlights, the trending web content shown in the search box and search home."
+  rationale: "This removes internet content from the search interface on managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Search\\Allow search highlights = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search\\EnableDynamicContentInWSB = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0391:
+  title: "Turn off KMS Client Online AVS Validation: Enabled"
+  description: "Stops the licensing client from sending activation data to Microsoft for online validation."
+  rationale: "This limits licensing data sent from the computer to Microsoft."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Software Protection Platform\\Turn off KMS Client Online AVS Validation = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Software Protection Platform\\NoGenTicket = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0392:
+  title: "Disable all apps from Microsoft Store: Disabled (registry value 1)"
+  description: "Controls whether apps from Microsoft Store can run; the check expects the registry value DisableStoreApps = 1, which the Group Policy editor writes when the policy is set to Disabled."
+  rationale: "Managing Store apps centrally keeps consumer apps from running on managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Store\\Disable all apps from Microsoft Store = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsStore\\DisableStoreApps = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0393:
+  title: "Turn off Automatic Download and Install of updates: Disabled (or not configured)"
+  description: "Controls whether Store apps update themselves automatically; value 4 keeps automatic updates on."
+  rationale: "Keeping apps updated closes known vulnerabilities."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Store\\Turn off Automatic Download and Install of updates = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsStore\\AutoDownload = 4 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0394:
+  title: "Turn off the offer to update to the latest version of Windows: Enabled"
+  description: "Hides the Store offer to upgrade to a newer Windows version."
+  rationale: "Operating system upgrades should follow the organisation's change process, not user choice."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Store\\Turn off the offer to update to the latest version of Windows = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsStore\\DisableOSUpgrade = 1."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0395:
+  title: "Turn off the Store application: Enabled"
+  description: "Blocks access to the Microsoft Store app."
+  rationale: "The Store is an uncontrolled source of software on managed computers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Store\\Turn off the Store application = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsStore\\RemoveWindowsStore = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0396:
+  title: "Allow widgets: Disabled"
+  description: "Turns off the Widgets board and its taskbar entry."
+  rationale: "Widgets pull internet content and account data onto the desktop and are not needed on managed systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Widgets\\Allow widgets = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh\\AllowNewsAndInterests = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0397:
+  title: "Configure Windows Defender SmartScreen: Warn and prevent bypass"
+  description: "Turns on SmartScreen for File Explorer, which checks downloaded programs against reputation data, and stops users from running a flagged program anyway."
+  rationale: "Blocking unrecognised or known-bad downloads, with no click-through, stops many user-launched infections."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Explorer\\Configure Windows Defender SmartScreen = Enabled: Warn and prevent bypass. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\EnableSmartScreen = 1; HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System\\ShellSmartScreenLevel = Block."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0398:
+  title: "Enables or disables Windows Game Recording and Broadcasting: Disabled"
+  description: "Turns off Game DVR recording and broadcasting."
+  rationale: "Screen recording and broadcasting can capture and share sensitive on-screen information."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Game Recording and Broadcasting\\Enables or disables Windows Game Recording and Broadcasting = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR\\AllowGameDVR = 0."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0399:
+  title: "Allow suggested apps in Windows Ink Workspace: Disabled"
+  description: "Stops Windows Ink Workspace from suggesting apps to install."
+  rationale: "Suggested apps encourage installing unapproved software."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Ink Workspace\\Allow suggested apps in Windows Ink Workspace = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace\\AllowSuggestedAppsInWindowsInkWorkspace = 0."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0400:
+  title: "Allow Windows Ink Workspace: Disabled, or On but disallow access above lock"
+  description: "Controls Windows Ink Workspace; 0 turns it off and 1 allows it only when the computer is unlocked."
+  rationale: "Ink Workspace on a locked screen gives access to apps without signing in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Ink Workspace\\Allow Windows Ink Workspace = Enabled: On, but disallow access above lock (or Disabled). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace\\AllowWindowsInkWorkspace = 0 or 1."
+  compliance: { nist_800_53: ["AC-8", "IA-6", "AC-3"], pci_dss: ["8.3.1"], hipaa: ["164.312(a)(1)"], iso_27001: ["8.5"] }
+S0401:
+  title: "Allow user control over installs: Disabled (or not configured)"
+  description: "Controls whether users can change Windows Installer options that are normally reserved for administrators, such as the install folder."
+  rationale: "Letting users override installer settings can bypass security restrictions placed on installations."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Installer\\Allow user control over installs = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\EnableUserControl = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0402:
+  title: "Always install with elevated privileges: Disabled (or not configured)"
+  description: "Controls whether Windows Installer runs every installation with system privileges, even when started by a standard user."
+  rationale: "With this on, any user can gain system rights by running a crafted installer package."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Installer\\Always install with elevated privileges = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-6", "CM-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(i)"], iso_27001: ["8.2"] }
+S0403:
+  title: "Prevent Internet Explorer security prompt for Windows Installer scripts: Disabled (or not configured)"
+  description: "Controls whether web-based scripts can install software without the browser showing a security warning."
+  rationale: "The warning gives the user a chance to stop an installation started from a web page."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Installer\\Prevent Internet Explorer security prompt for Windows Installer scripts = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\SafeForScripting = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0404:
+  title: "Sign-in and lock last interactive user automatically after a restart: Disabled"
+  description: "Controls whether Windows uses the last user's cached credentials to sign in and lock the session automatically after a restart started by the system."
+  rationale: "Automatic sign-in keeps reusable credentials on the device and starts a session without the user present."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Logon Options\\Sign-in and lock last interactive user automatically after a restart = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\DisableAutomaticRestartSignOn = 1."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0405:
+  title: "Turn on PowerShell Script Block Logging: Enabled (or not configured)"
+  description: "Records the content of PowerShell script blocks as they are processed in the PowerShell operational log."
+  rationale: "Script block logs reveal what malicious PowerShell actually ran, even when it was obfuscated."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows PowerShell\\Turn on PowerShell Script Block Logging = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\\EnableScriptBlockLogging = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-2", "AU-12"], pci_dss: ["10.2.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0406:
+  title: "Turn on PowerShell Transcription: Enabled"
+  description: "Writes a transcript of PowerShell sessions, including commands and their output, to text files."
+  rationale: "Transcripts give investigators a record of interactive and scripted PowerShell activity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows PowerShell\\Turn on PowerShell Transcription = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription\\EnableTranscripting = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12"], pci_dss: ["10.2.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0407:
+  title: "WinRM Service: Allow Basic authentication: Disabled (or not configured)"
+  description: "Controls whether the WinRM service accepts Basic authentication, which sends credentials in an easily decoded form."
+  rationale: "Basic authentication exposes passwords if traffic is captured."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Service\\Allow Basic authentication = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\AllowBasic = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0408:
+  title: "WinRM Service: Allow unencrypted traffic: Disabled (or not configured)"
+  description: "Controls whether the WinRM service sends and receives unencrypted messages."
+  rationale: "Unencrypted management traffic can be read and altered on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Service\\Allow unencrypted traffic = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\AllowUnencryptedTraffic = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0409:
+  title: "WinRM Client: Disallow Digest authentication: Enabled"
+  description: "Prevents the WinRM client from using Digest authentication."
+  rationale: "Digest authentication is weaker than Kerberos or Negotiate and can be attacked offline."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Client\\Disallow Digest authentication = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client\\AllowDigest = 0."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0410:
+  title: "Allow remote server management through WinRM: Disabled (or not configured)"
+  description: "Controls whether the WinRM service listens for remote management requests."
+  rationale: "Where remote management is not needed, keeping the listener off removes a remote entry point."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Service\\Allow remote server management through WinRM = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\AllowAutoConfig = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0411:
+  title: "Disallow WinRM from storing RunAs credentials: Enabled"
+  description: "Prevents the WinRM service from storing RunAs credentials for plug-ins."
+  rationale: "Stored credentials can be stolen and reused."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Service\\Disallow WinRM from storing RunAs credentials = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\DisableRunAs = 1."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0412:
+  title: "Allow Remote Shell Access: Disabled"
+  description: "Controls whether remote shells (WinRS) can be opened on this computer."
+  rationale: "Remote shells give interactive command execution to anyone with valid credentials."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Shell\\Allow Remote Shell Access = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\WinRS\\AllowRemoteShellAccess = 0."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0413:
+  title: "Allow clipboard sharing with Windows Sandbox: Disabled"
+  description: "Controls whether the clipboard is shared between the host and Windows Sandbox."
+  rationale: "Clipboard sharing lets data and malicious content cross the sandbox boundary."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Sandbox\\Allow clipboard sharing with Windows Sandbox = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Sandbox\\AllowClipboardRedirection = 0."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0414:
+  title: "Allow networking in Windows Sandbox: Disabled"
+  description: "Controls whether Windows Sandbox has network access."
+  rationale: "A sandbox with network access can reach internal systems or download further payloads."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Sandbox\\Allow networking in Windows Sandbox = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Sandbox\\AllowNetworking = 0."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0415:
+  title: "Prevent users from modifying settings: Enabled"
+  description: "Stops users from changing Exploit protection settings in Windows Security."
+  rationale: "Users or malware turning off exploit mitigations would weaken protection."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Security\\App and browser protection\\Prevent users from modifying settings = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender Security Center\\App and Browser protection\\DisallowExploitProtectionOverride = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0416:
+  title: "No auto-restart with logged on users for scheduled automatic updates installations: Disabled (or not configured)"
+  description: "Controls whether Windows waits for signed-in users instead of restarting automatically to finish installing updates."
+  rationale: "Delayed restarts leave updates uninstalled and the system exposed for longer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Legacy Policies\\No auto-restart with logged on users for scheduled automatic updates installations = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoRebootWithLoggedOnUsers = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0417:
+  title: "Configure Automatic Updates: Enabled (or not configured)"
+  description: "Controls whether Windows Update automatically downloads and installs updates."
+  rationale: "Automatic updates close known vulnerabilities promptly."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage end user experience\\Configure Automatic Updates = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoUpdate = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0418:
+  title: "Configure Automatic Updates: Scheduled install day: Every day"
+  description: "Sets the day scheduled automatic updates are installed; 0 means every day."
+  rationale: "Installing updates daily keeps the window of exposure to known flaws short."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage end user experience\\Configure Automatic Updates = Enabled, Scheduled install day: 0 - Every day. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\ScheduledInstallDay = 0 (the check also passes when HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\NoAutoUpdate is not 4)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0419:
+  title: "Remove access to \"Pause updates\" feature: Enabled"
+  description: "Removes the option for users to pause Windows updates."
+  rationale: "Paused updates leave the system unpatched against known vulnerabilities."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage end user experience\\Remove access to \"Pause updates\" feature = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\SetDisablePauseUXAccess = 1."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0420:
+  title: "Manage preview builds: Disable preview builds (or not configured)"
+  description: "Controls whether the device can receive Windows Insider preview builds; value 1 stops them."
+  rationale: "Preview builds are pre-release software and are not suited to managed production systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage updates offered from Windows Update\\Manage preview builds = Enabled: Disable preview builds. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\ManagePreviewBuildsPolicyValue = 1 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0421:
+  title: "Select when Preview Builds and Feature Updates are received: 180 or more days"
+  description: "Defers Windows feature updates for the stated number of days after release."
+  rationale: "Deferring feature updates gives time to test major changes before they reach production systems."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage updates offered from Windows Update\\Select when Preview Builds and Feature Updates are received = Enabled: General Availability Channel, 180 or more days. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\DeferFeatureUpdates = 1; HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\DeferFeatureUpdatesPeriodInDays = 180 or more."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0422:
+  title: "Select when Quality Updates are received: 0 days"
+  description: "Turns on the quality update deferral policy with a deferral of zero days, so security updates install as soon as they are released."
+  rationale: "Quality updates carry security fixes; installing them without delay shortens exposure."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage updates offered from Windows Update\\Select when Quality Updates are received = Enabled: 0 days. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\DeferQualityUpdates = 1; HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\DeferQualityUpdatesPeriodInDays = 0."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0423:
+  title: "Accounts: Guest account status: Disabled"
+  description: "Controls whether the built-in local Guest account (the account whose SID ends in -501) is enabled."
+  rationale: "The Guest account allows unauthenticated, anonymous-like access to the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Guest account status = Disabled. Command: the built-in local account with SID ending -501 must be disabled (for example: Disable-LocalUser -SID <machine SID>-501, or net user Guest /active:no)."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0424:
+  title: "Audit: Force audit policy subcategory settings to override audit policy category settings: Enabled"
+  description: "Makes Windows apply the detailed (subcategory) audit policy instead of the legacy category-level audit policy."
+  rationale: "Subcategory auditing gives precise control of which events are logged; without this the legacy settings can override it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Audit: Force audit policy subcategory settings (Windows Vista or later) to override audit policy category settings = Enabled. Registry: HKLM\\System\\CurrentControlSet\\Control\\Lsa\\SCENoApplyLegacyAuditPolicy = 1."
+  compliance: { nist_800_53: ["AU-2", "AU-12"], pci_dss: ["10.2.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0425:
+  title: "Network security: Configure encryption types allowed for Kerberos: AES128, AES256 and future types (RC4 optional)"
+  description: "Sets which encryption types Kerberos may use; the accepted values allow AES128, AES256 and future encryption types, with or without RC4, and never DES."
+  rationale: "DES is broken and RC4 is weak; limiting Kerberos to AES protects tickets from offline cracking."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Configure encryption types allowed for Kerberos = AES128_HMAC_SHA1, AES256_HMAC_SHA1, Future encryption types. Registry: HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\SupportedEncryptionTypes = 2147483644 or 2147483640."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0426:
+  title: "Network security: Minimum session security for NTLM SSP based (including secure RPC) clients: Require NTLMv2 session security, Require 128-bit encryption"
+  description: "Sets the minimum protection that NTLM clients require for their sessions; the value requires both NTLMv2 session security and 128-bit encryption."
+  rationale: "Requiring strong NTLM session security protects against downgrade and eavesdropping."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Minimum session security for NTLM SSP based (including secure RPC) clients = Require NTLMv2 session security, Require 128-bit encryption. Registry: HKLM\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\NTLMMinClientSec = 537395200."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0427:
+  title: "Network security: Minimum session security for NTLM SSP based (including secure RPC) servers: Require NTLMv2 session security, Require 128-bit encryption"
+  description: "Sets the minimum protection that NTLM servers require for their sessions; the value requires both NTLMv2 session security and 128-bit encryption."
+  rationale: "Requiring strong NTLM session security protects against downgrade and eavesdropping."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Minimum session security for NTLM SSP based (including secure RPC) servers = Require NTLMv2 session security, Require 128-bit encryption. Registry: HKLM\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\NTLMMinServerSec = 537395200."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0428:
+  title: "Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers: Audit all or Deny all"
+  description: "Controls outgoing NTLM authentication from this computer; 1 audits every attempt and 2 blocks them."
+  rationale: "NTLM is open to relay and hash attacks; auditing or blocking it supports moving to Kerberos."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers = Audit all (or Deny all). Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0\\RestrictSendingNTLMTraffic = 1 or 2."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0429:
+  title: "User Account Control: Behavior of the elevation prompt for administrators in Admin Approval Mode: Prompt for consent on the secure desktop"
+  description: "Sets what administrators see when an action needs elevation; value 2 asks for consent on the secure desktop."
+  rationale: "The secure desktop prevents other programs from interacting with or spoofing the elevation prompt."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\User Account Control: Behavior of the elevation prompt for administrators in Admin Approval Mode = Prompt for consent on the secure desktop. Registry: HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\ConsentPromptBehaviorAdmin = 2."
+  compliance: { nist_800_53: ["AC-6", "CM-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(i)"], iso_27001: ["8.2"] }
+S0430:
+  title: "Peer Name Resolution Protocol (PNRPsvc) service: Disabled"
+  description: "Sets the startup type of the Peer Name Resolution Protocol service, which resolves names for peer-to-peer apps without DNS."
+  rationale: "Unneeded peer-to-peer services add network listeners and attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Name Resolution Protocol = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\PNRPsvc\\Start = 4."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0431:
+  title: "Peer Networking Grouping (p2psvc) service: Disabled"
+  description: "Sets the startup type of the Peer Networking Grouping service, which supports multi-party peer-to-peer communication."
+  rationale: "Unneeded peer-to-peer services add network listeners and attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Networking Grouping = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\p2psvc\\Start = 4."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0432:
+  title: "Peer Networking Identity Manager (p2pimsvc) service: Disabled"
+  description: "Sets the startup type of the Peer Networking Identity Manager service, which provides identities for peer-to-peer networking."
+  rationale: "Unneeded peer-to-peer services add attack surface."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\Peer Networking Identity Manager = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\p2pimsvc\\Start = 4."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0433:
+  title: "PNRP Machine Name Publication Service (PNRPAutoReg): Disabled"
+  description: "Sets the startup type of the service that publishes the computer name using the Peer Name Resolution Protocol."
+  rationale: "Publishing the computer name to peers is not needed and discloses information."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\System Services\\PNRP Machine Name Publication Service = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\PNRPAutoReg\\Start = 4."
+  compliance: { nist_800_53: ["CM-6", "CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9"] }
+S0434:
+  title: "MSS: (DisableIPSourceRouting IPv6) IP source routing protection level: Highest protection, source routing is completely disabled"
+  description: "Controls how the IPv6 stack handles source-routed packets, which name the route they should take."
+  rationale: "Source routing lets an attacker steer traffic around network controls."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (DisableIPSourceRouting IPv6) IP source routing protection level = Highest protection, source routing is completely disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters\\DisableIPSourceRouting = 2."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0435:
+  title: "MSS: (DisableIPSourceRouting) IP source routing protection level: Highest protection, source routing is completely disabled"
+  description: "Controls how the IPv4 stack handles source-routed packets, which name the route they should take."
+  rationale: "Source routing lets an attacker steer traffic around network controls."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (DisableIPSourceRouting) IP source routing protection level = Highest protection, source routing is completely disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\DisableIPSourceRouting = 2."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0436:
+  title: "MSS: (ScreenSaverGracePeriod) The time in seconds before the screen saver grace period expires: 5 or fewer seconds (or not configured)"
+  description: "Sets the delay between the screen saver starting and the console actually locking, during which a key press unlocks without a password."
+  rationale: "A long grace period lets someone resume a session without signing in."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (ScreenSaverGracePeriod) The time in seconds before the screen saver grace period expires = 5 or less. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\ScreenSaverGracePeriod = 5 or less (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-11", "AC-12"], pci_dss: ["8.2.8"], hipaa: ["164.312(a)(2)(iii)"], iso_27001: ["8.5"] }
+S0437:
+  title: "MSS: (WarningLevel) Percentage threshold for the security event log at which the system will generate a warning: 90% or less (or not configured)"
+  description: "Sets how full the Security log can get before Windows writes a warning event."
+  rationale: "An early warning gives time to archive the log before events are lost."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\MSS (Legacy)\\MSS: (WarningLevel) Percentage threshold for the security event log at which the system will generate a warning = 90% or less. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Eventlog\\Security\\WarningLevel = 90 or less (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["8.15"] }
+S0438:
+  title: "Configure DNS over HTTPS (DoH) name resolution: Allow DoH or Require DoH"
+  description: "Controls whether the DNS client uses encrypted DNS over HTTPS; 2 allows it and 3 requires it."
+  rationale: "Encrypted DNS stops name lookups from being read or forged on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\DNS Client\\Configure DNS over HTTPS (DoH) name resolution = Enabled: Allow DoH (or Require DoH). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\\DoHPolicy = 2 or 3."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0439:
+  title: "Configure NetBIOS settings: Disable NetBIOS name resolution, or disable it on public networks (or not configured)"
+  description: "Controls NetBIOS name resolution by the DNS client; 0 turns it off and 2 turns it off on public networks."
+  rationale: "NetBIOS name queries are broadcast and can be answered by an attacker to capture credentials."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\DNS Client\\Configure NetBIOS settings = Enabled: Disable NetBIOS name resolution (or on public networks). Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\\EnableNetbios = 0 or 2 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0440:
+  title: "Hardened UNC Paths: NETLOGON and SYSVOL require mutual authentication, integrity and privacy"
+  description: "Requires that connections to the NETLOGON and SYSVOL shares on any server use mutual authentication, integrity and privacy (encryption)."
+  rationale: "Group Policy and logon scripts come from these shares; hardening stops an attacker on the network from serving malicious copies."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Network Provider\\Hardened UNC Paths = Enabled with \\\\*\\NETLOGON and \\\\*\\SYSVOL set to RequireMutualAuthentication=1, RequireIntegrity=1, RequirePrivacy=1. Registry: under HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths, values \\\\*\\NETLOGON and \\\\*\\SYSVOL = RequireMutualAuthentication=1, RequireIntegrity=1, RequirePrivacy=1."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0441:
+  title: "Minimize the number of simultaneous connections to the Internet or a Windows Domain: Prevent Wi-Fi when on Ethernet"
+  description: "Controls whether Windows keeps several network connections at once; value 3 disconnects Wi-Fi while a wired connection is in use."
+  rationale: "A computer connected to both a wired corporate network and Wi-Fi can bridge the two networks."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\Windows Connection Manager\\Minimize the number of simultaneous connections to the Internet or a Windows Domain = Enabled: 3 = Prevent Wi-Fi when on Ethernet. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy\\fMinimizeConnections = 3."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0442:
+  title: "Allow Windows to automatically connect to suggested open hotspots, to networks shared by contacts, and to hotspots offering paid services: Disabled"
+  description: "Controls whether Wi-Fi Sense connects automatically to suggested open hotspots and networks shared by contacts."
+  rationale: "Automatic connection to open or shared networks puts the device on networks the organisation does not control."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Network\\WLAN Service\\WLAN Settings\\Allow Windows to automatically connect to suggested open hotspots, to networks shared by contacts, and to hotspots offering paid services = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config\\AutoConnectAllowedOEM = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0443:
+  title: "Configure RPC connection settings: Protocol to use for outgoing RPC connections: RPC over TCP"
+  description: "Sets the protocol the print spooler uses for outgoing RPC connections to print servers; value 0 uses RPC over TCP."
+  rationale: "RPC over TCP supports stronger authentication and encryption than named pipes for printing."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC connection settings = Enabled: RPC over TCP. Registry: HKLM\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC\\RpcUseNamedPipeProtocol = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0444:
+  title: "Configure RPC connection settings: Use authentication for outgoing RPC connections: Default"
+  description: "Sets whether the print spooler authenticates outgoing RPC connections; value 0 uses the default, which authenticates."
+  rationale: "Authenticated print connections protect against spoofed print servers."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC connection settings = Enabled, Use authentication for outgoing RPC over named pipes connections: Default. Registry: HKLM\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC\\RpcAuthentication = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0445:
+  title: "Configure RPC listener settings: Protocols to allow for incoming RPC connections: RPC over TCP"
+  description: "Sets the protocols the print spooler accepts for incoming RPC connections; value 5 accepts RPC over TCP only."
+  rationale: "Accepting only RPC over TCP removes the older named-pipe path and its weaker protections."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC listener settings = Enabled: RPC over TCP. Registry: HKLM\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC\\RpcProtocols = 5."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0446:
+  title: "Configure RPC listener settings: Authentication protocol to use for incoming RPC connections: Negotiate or Kerberos"
+  description: "Sets the authentication protocol the print spooler requires for incoming RPC connections; 0 is Negotiate and 1 is Kerberos."
+  rationale: "Requiring authenticated connections stops anonymous access to the print spooler."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC listener settings = Enabled, Authentication protocol: Negotiate (or Kerberos). Registry: HKLM\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC\\ForceKerberosForRpc = 0 or 1."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0447:
+  title: "Configure RPC over TCP port: 0"
+  description: "Sets the TCP port the print spooler uses for RPC over TCP; 0 means a dynamically assigned port."
+  rationale: "Using the default dynamic port keeps the spooler configuration standard and supported."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Configure RPC over TCP port = Enabled: 0. Registry: HKLM\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC\\RpcTcpPort = 0."
+  compliance: { nist_800_53: ["SC-7", "SC-8", "CM-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "8.21"] }
+S0448:
+  title: "Limits print driver installation to Administrators: Enabled"
+  description: "Allows only administrators to install print drivers, including through Point and Print."
+  rationale: "Print driver installation runs code with system rights and has been abused for privilege escalation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Printers\\Limits print driver installation to Administrators = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\\RestrictDriverInstallationToAdministrators = 1."
+  compliance: { nist_800_53: ["AC-6", "CM-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(i)"], iso_27001: ["8.2"] }
+S0449:
+  title: "Remove Personalized Website Recommendations from the Recommended section in the Start Menu: Enabled"
+  description: "Stops the Start menu from showing personalised website recommendations."
+  rationale: "This removes internet content and browsing-based suggestions from the managed desktop."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Start Menu and Taskbar\\Remove Personalized Website Recommendations from the Recommended section in the Start Menu = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\HideRecommendedPersonalizedSites = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0450:
+  title: "Kernel-mode Hardware-enforced Stack Protection: Enabled in enforcement mode"
+  description: "Turns on hardware-enforced shadow stacks for kernel-mode code in enforcement mode on supported processors."
+  rationale: "Shadow stacks block return-oriented programming attacks against the kernel."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Guard\\Turn On Virtualization Based Security = Enabled, Kernel-mode Hardware-enforced Stack Protection: Enabled in enforcement mode. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\\ConfigureKernelShadowStacksLaunch = 1."
+  compliance: { nist_800_53: ["SI-16", "SI-3"], pci_dss: ["5.2.1", "6.4.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0451:
+  title: "Prevent installation of devices that match any of these device IDs: Enabled, blocking PCI\\CC_0C0A"
+  description: "Blocks installation of devices whose hardware or compatible ID is in the list; the list must contain PCI\\CC_0C0A, the class code for Thunderbolt controllers."
+  rationale: "Blocking Thunderbolt controllers prevents DMA-capable external devices from being added and used to read memory."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices that match any of these device IDs = Enabled, with PCI\\CC_0C0A in the list. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDs = 1, and HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDs\\1 = PCI\\CC_0C0A (the check reads the key HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDs\\1 and a value named PCI\\CC_0C0A)."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0452:
+  title: "Prevent installation of devices that match any of these device IDs: Also apply to matching devices that are already installed"
+  description: "Makes the device ID block list apply retroactively, removing matching devices that were installed before the policy."
+  rationale: "Without retroactive enforcement, a blocked device that is already installed keeps working."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices that match any of these device IDs = Enabled, Also apply to matching devices that are already installed checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDsRetroactive = 1 (the check reads the key HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceIDsRetroactive and a value named 1)."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0453:
+  title: "Prevent installation of devices using drivers that match these device setup classes: Enabled with a class list"
+  description: "Blocks installation of devices whose driver belongs to one of the listed device setup classes (GUIDs), such as IEEE 1394 controllers."
+  rationale: "Blocking classes of DMA-capable or otherwise risky devices stops them from being used to attack the computer."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices using drivers that match these device setup classes = Enabled, with the required class GUIDs listed. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClasses present, and the key HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClasses holds class entries."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0454:
+  title: "Prevent installation of devices using drivers that match these device setup classes: Also apply to matching devices that are already installed"
+  description: "Makes the device setup class block list apply retroactively, removing matching devices that were installed before the policy."
+  rationale: "Without retroactive enforcement, devices of a blocked class that are already installed keep working."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Device Installation\\Device Installation Restrictions\\Prevent installation of devices using drivers that match these device setup classes = Enabled, Also apply to matching devices that are already installed checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClassesRetroactive set (the check reads the key HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions\\DenyDeviceClassesRetroactive and expects a value in it)."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0455:
+  title: "LAPS Password Settings: Do not allow password expiration time longer than required by policy: Enabled"
+  description: "Stops the expiration time of the managed local administrator password from being set beyond the age the policy allows."
+  rationale: "A password that never rotates loses the main benefit of the local administrator password solution."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Configure password backup directory and Password Settings = Enabled; Do not allow password expiration time longer than required by policy = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PwdExpirationProtectionEnabled = 1."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0456:
+  title: "LAPS Password Settings: Password Length: 15 characters"
+  description: "Sets the length of the managed local administrator password; the check expects exactly 15."
+  rationale: "Long random passwords for the local administrator account resist guessing and offline cracking."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\LAPS\\Password Settings = Enabled, Password Length: 15. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS\\PasswordLength = 15."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0457:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: 48-digit recovery password required or allowed"
+  description: "Sets whether a 48-digit recovery password may be used to recover BitLocker-protected fixed data drives; 1 requires it and 2 allows it."
+  rationale: "A recovery password lets the organisation recover the data when the normal unlock method is lost."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, 48-digit recovery password set to Allow or Require. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVRecoveryPassword = 1 or 2."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0458:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Omit recovery options from the BitLocker setup wizard"
+  description: "Hides the recovery option choices from users in the BitLocker setup wizard for fixed data drives, so policy decides them."
+  rationale: "Letting policy rather than users choose recovery options keeps recovery consistent and centrally managed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, Omit recovery options from the BitLocker setup wizard checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVHideRecoveryPage = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0459:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Save recovery information to AD DS"
+  description: "Saves BitLocker recovery information for fixed data drives to Active Directory Domain Services."
+  rationale: "Escrow in AD DS means encrypted data can still be recovered by the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, Save BitLocker recovery information to AD DS for fixed data drives checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVActiveDirectoryBackup = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0460:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Store recovery passwords and key packages"
+  description: "Sets which recovery information is stored in AD DS for fixed data drives; value 1 stores both the recovery password and the key package."
+  rationale: "Keeping the key package as well as the password improves the chance of recovering data from a damaged drive."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, Configure storage of BitLocker recovery information to AD DS: Backup recovery passwords and key packages. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVActiveDirectoryInfoToStore = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0461:
+  title: "Choose how BitLocker-protected fixed drives can be recovered: Do not wait for AD DS backup before enabling"
+  description: "Controls whether BitLocker on fixed data drives waits until recovery information is stored in AD DS before encrypting."
+  rationale: "Not waiting lets encryption start even when a domain controller is not reachable."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Fixed Data Drives\\Choose how BitLocker-protected fixed drives can be recovered = Enabled, Do not enable BitLocker until recovery information is stored to AD DS for fixed data drives unchecked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\FDVRequireActiveDirectoryBackup = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0462:
+  title: "Allow enhanced PINs for startup: Enabled"
+  description: "Allows BitLocker startup PINs to contain letters, symbols and spaces as well as digits."
+  rationale: "Enhanced PINs have far more possible values and are harder to guess."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Allow enhanced PINs for startup = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseEnhancedPin = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0463:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Require 48-digit recovery password"
+  description: "Requires a 48-digit recovery password to be available for the BitLocker-protected operating system drive."
+  rationale: "A recovery password ensures the system drive can be recovered when the TPM or PIN cannot unlock it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, 48-digit recovery password: Require. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSRecoveryPassword = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0464:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Do not allow 256-bit recovery key"
+  description: "Prevents a 256-bit recovery key file from being used to recover the operating system drive."
+  rationale: "Recovery key files are often stored on removable media that can be lost alongside the device."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, 256-bit recovery key: Do not allow. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSRecoveryKey = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0465:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Omit recovery options from the BitLocker setup wizard"
+  description: "Hides recovery option choices from users in the BitLocker setup wizard for the operating system drive."
+  rationale: "Letting policy rather than users choose recovery options keeps recovery consistent and centrally managed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, Omit recovery options from the BitLocker setup wizard checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSHideRecoveryPage = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0466:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Save recovery information to AD DS"
+  description: "Saves BitLocker recovery information for the operating system drive to Active Directory Domain Services."
+  rationale: "Escrow in AD DS means the system drive can still be recovered by the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, Save BitLocker recovery information to AD DS for operating system drives checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSActiveDirectoryBackup = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0467:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Store recovery passwords and key packages"
+  description: "Sets which recovery information is stored in AD DS for the operating system drive; value 1 stores both the recovery password and the key package."
+  rationale: "Keeping the key package as well as the password improves the chance of recovering data from a damaged drive."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, Configure storage of BitLocker recovery information to AD DS: Store recovery passwords and key packages. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSActiveDirectoryInfoToStore = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0468:
+  title: "Choose how BitLocker-protected operating system drives can be recovered: Do not enable BitLocker until recovery information is stored in AD DS"
+  description: "Makes BitLocker wait until recovery information for the operating system drive has been stored in AD DS before encrypting."
+  rationale: "This guarantees a recovery path exists before the system drive is encrypted."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Choose how BitLocker-protected operating system drives can be recovered = Enabled, Do not enable BitLocker until recovery information is stored to AD DS for operating system drives checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\OSRequireActiveDirectoryBackup = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0469:
+  title: "Require additional authentication at startup: Configure TPM startup: Do not allow TPM"
+  description: "Prevents TPM-only unlocking of the operating system drive, so an additional factor such as a PIN is needed."
+  rationale: "TPM-only unlock starts the system for anyone who has the device; adding a PIN protects a stolen device."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled, Configure TPM startup: Do not allow TPM. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseTPM = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0470:
+  title: "Require additional authentication at startup: Configure TPM startup PIN: Require startup PIN with TPM"
+  description: "Requires a startup PIN together with the TPM to unlock the operating system drive."
+  rationale: "A PIN means possession of the device alone is not enough to boot and decrypt it."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled, Configure TPM startup PIN: Require startup PIN with TPM. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseTPMPIN = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0471:
+  title: "Require additional authentication at startup: Configure TPM startup key: Do not allow startup key with TPM"
+  description: "Prevents a USB startup key together with the TPM from unlocking the operating system drive."
+  rationale: "Startup keys on USB drives are easily lost or left with the device."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled, Configure TPM startup key: Do not allow startup key with TPM. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseTPMKey = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0472:
+  title: "Require additional authentication at startup: Configure TPM startup key and PIN: Do not allow startup key and PIN with TPM"
+  description: "Prevents the combination of TPM, USB startup key and PIN from being used, so the TPM plus PIN method is used."
+  rationale: "Keeping one well-understood unlock method simplifies management and avoids reliance on USB keys."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Operating System Drives\\Require additional authentication at startup = Enabled, Configure TPM startup key and PIN: Do not allow startup key and PIN with TPM. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\UseTPMKeyPIN = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0473:
+  title: "Allow access to BitLocker-protected removable data drives from earlier versions of Windows: Disabled"
+  description: "Controls whether FAT-formatted removable drives protected by BitLocker can be read on older Windows versions through the BitLocker To Go Reader."
+  rationale: "Disabling the discovery volume keeps encrypted portable drives from being opened through a less controlled reader."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Allow access to BitLocker-protected removable data drives from earlier versions of Windows = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVDiscoveryVolumeType = an empty string."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0474:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Enabled"
+  description: "Turns on the policy that defines the recovery methods available for BitLocker-protected removable data drives."
+  rationale: "Defining recovery up front ensures data on encrypted portable drives can be recovered by the organisation."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVRecovery = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0475:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Allow data recovery agent"
+  description: "Allows a data recovery agent certificate to be used to recover BitLocker-protected removable data drives."
+  rationale: "A data recovery agent gives the organisation a central way to recover encrypted portable drives."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, Allow data recovery agent checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVManageDRA = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0476:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Do not allow 48-digit recovery password"
+  description: "Prevents a 48-digit recovery password from being used for removable data drives, so recovery goes through the data recovery agent."
+  rationale: "A recovery password stored with or near a portable drive can be found and used by whoever finds the drive."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, 48-digit recovery password: Do not allow. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVRecoveryPassword = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0477:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Do not allow 256-bit recovery key"
+  description: "Prevents a 256-bit recovery key file from being used for removable data drives."
+  rationale: "Recovery key files are easily lost or kept with the drive they unlock."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, 256-bit recovery key: Do not allow. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVRecoveryKey = 0."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0478:
+  title: "Choose how BitLocker-protected removable drives can be recovered: Omit recovery options from the BitLocker setup wizard"
+  description: "Hides recovery option choices from users in the BitLocker setup wizard for removable data drives."
+  rationale: "Letting policy rather than users choose recovery options keeps recovery consistent and centrally managed."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Choose how BitLocker-protected removable drives can be recovered = Enabled, Omit recovery options from the BitLocker setup wizard checked. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVHideRecoveryPage = 1."
+  compliance: { nist_800_53: ["SC-28", "SC-12"], pci_dss: ["3.5.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["8.24"] }
+S0479:
+  title: "Deny write access to removable drives not protected by BitLocker: Enabled"
+  description: "Makes removable drives read-only unless they are protected by BitLocker."
+  rationale: "This stops organisational data being copied to unencrypted portable media."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\BitLocker Drive Encryption\\Removable Data Drives\\Deny write access to removable drives not protected by BitLocker = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\\RDVDenyWriteAccess = 1."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0480:
+  title: "Configure Authenticated Proxy usage for the Connected User Experience and Telemetry service: Disable Authenticated Proxy usage"
+  description: "Stops the telemetry service from using the user's credentials to authenticate to a proxy."
+  rationale: "This prevents diagnostic data from leaving through an authenticated proxy using the user's identity."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Data Collection and Preview Builds\\Configure Authenticated Proxy usage for the Connected User Experience and Telemetry service = Enabled: Disable Authenticated Proxy usage. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection\\DisableEnterpriseAuthProxy = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0481:
+  title: "Turn off account-based insights, recent, favorite, and recommended files in File Explorer: Enabled"
+  description: "Stops File Explorer from showing recent, favourite and recommended files drawn from the user's cloud account."
+  rationale: "This avoids cloud-sourced file lists and account data being shown on the device."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\File Explorer\\Turn off account-based insights, recent, favorite, and recommended files in File Explorer = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer\\DisableGraphRecentItems = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0482:
+  title: "Turn off Microsoft Defender Antivirus: Disabled (or not configured)"
+  description: "Controls whether Microsoft Defender Antivirus can be switched off by policy."
+  rationale: "Turning off the built-in antivirus without a replacement leaves the system unprotected."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Antivirus\\Turn off Microsoft Defender Antivirus = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\DisableAntiSpyware = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0483:
+  title: "Configure Microsoft Defender Application Guard clipboard settings: Enable clipboard operation from an isolated session to the host"
+  description: "Controls clipboard use between the Application Guard container and the host; value 1 allows copying only from the isolated session to the host."
+  rationale: "Blocking host-to-container copying stops corporate data being pasted into untrusted sites."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Microsoft Defender Application Guard\\Configure Microsoft Defender Application Guard clipboard settings = Enabled: Enable clipboard operation from an isolated session to the host. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\AppHVSI\\AppHVSIClipboardSettings = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0484:
+  title: "Disable Cloud Clipboard integration for server-to-client data transfer: Enabled"
+  description: "Prevents clipboard content copied in a remote session from being stored in the client's cloud clipboard history."
+  rationale: "This stops data from remote systems reaching the cloud clipboard and the user's other devices."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Connection Client\\Disable Cloud Clipboard integration for server-to-client data transfer = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\\Client\\DisableCloudClipboardIntegration = 1."
+  compliance: { nist_800_53: ["CM-7", "AC-4", "SC-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.9", "5.34"] }
+S0485:
+  title: "Only display the private store within the Microsoft Store: Enabled"
+  description: "Shows users only the organisation's private store in Microsoft Store."
+  rationale: "Users can then install only apps the organisation has approved."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Store\\Only display the private store within the Microsoft Store = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsStore\\RequirePrivateStoreOnly = 1."
+  compliance: { nist_800_53: ["CM-11", "CM-7"], pci_dss: ["2.2.4", "6.3.2"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.19"] }
+S0486:
+  title: "Enhanced Phishing Protection: Automatic Data Collection: Enabled"
+  description: "Lets Enhanced Phishing Protection collect information when a user enters a password into a suspicious site, for investigation."
+  rationale: "Collected data helps confirm and respond to credential phishing."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Enhanced Phishing Protection\\Automatic Data Collection = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WTDS\\Components\\CaptureThreatWindow = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0487:
+  title: "Enhanced Phishing Protection: Notify Malicious: Enabled"
+  description: "Warns users when they type their work or school password into a known phishing site or an app connected to one."
+  rationale: "Timely warnings stop users completing credential theft."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Enhanced Phishing Protection\\Notify Malicious = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WTDS\\Components\\NotifyMalicious = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0488:
+  title: "Enhanced Phishing Protection: Notify Password Reuse: Enabled"
+  description: "Warns users when they reuse their work or school password on another site or app."
+  rationale: "Reused passwords are exposed when other sites are breached."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Enhanced Phishing Protection\\Notify Password Reuse = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WTDS\\Components\\NotifyPasswordReuse = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0489:
+  title: "Enhanced Phishing Protection: Notify Unsafe App: Enabled"
+  description: "Warns users when they store their work or school password in an unsafe app such as Notepad or Word."
+  rationale: "Passwords kept in plain files are easily stolen."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Enhanced Phishing Protection\\Notify Unsafe App = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WTDS\\Components\\NotifyUnsafeApp = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0490:
+  title: "Enhanced Phishing Protection: Service Enabled: Enabled"
+  description: "Turns on Enhanced Phishing Protection in Microsoft Defender SmartScreen."
+  rationale: "The service detects work or school passwords being entered into phishing sites."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Defender SmartScreen\\Enhanced Phishing Protection\\Service Enabled = Enabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WTDS\\Components\\ServiceEnabled = 1."
+  compliance: { nist_800_53: ["SI-3", "SI-4"], pci_dss: ["5.2.1", "5.3.1"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["8.7"] }
+S0491:
+  title: "Enable ESS with Supported Peripherals: Enabled (or not configured)"
+  description: "Controls whether Windows Hello Enhanced Sign-in Security (ESS) stays on when supported external biometric peripherals are used."
+  rationale: "ESS isolates biometric matching from the operating system, protecting biometric data and sign-in from tampering."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Hello for Business\\Enable ESS with Supported Peripherals = Enabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Policies\\PassportForWork\\Biometrics\\EnableESSwithSupportedPeripherals unset passes; otherwise the check reads HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR\\EnableESSwithSupportedPeripherals = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0492:
+  title: "Configure the transmission of the user's password in the content of MPR notifications sent by winlogon: Disabled"
+  description: "Controls whether Winlogon passes the user's password to registered network provider (MPR) DLLs at sign-in."
+  rationale: "Malicious network providers have been used to capture passwords in clear text through these notifications."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\System\\Logon\\Configure the transmission of the user\\'s password in the content of MPR notifications sent by winlogon = Disabled. Registry: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableMPR = 0."
+  compliance: { nist_800_53: ["IA-5", "AC-6", "SC-39"], pci_dss: ["8.3.2"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0493:
+  title: "WinRM Client: Allow Basic authentication: Disabled (or not configured)"
+  description: "Controls whether the WinRM client uses Basic authentication, which sends credentials in an easily decoded form."
+  rationale: "Basic authentication exposes passwords if traffic is captured."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Client\\Allow Basic authentication = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client\\AllowBasic = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0494:
+  title: "WinRM Client: Allow unencrypted traffic: Disabled (or not configured)"
+  description: "Controls whether the WinRM client sends and receives unencrypted messages."
+  rationale: "Unencrypted management traffic can be read and altered on the network."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Remote Management (WinRM)\\WinRM Client\\Allow unencrypted traffic = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client\\AllowUnencryptedTraffic = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["AC-17", "SC-8"], pci_dss: ["2.2.7", "8.4.2"], hipaa: ["164.312(e)(1)"], iso_27001: ["8.20", "5.15"] }
+S0495:
+  title: "Enable features introduced via servicing that are off by default: Disabled (or not configured)"
+  description: "Controls whether new features delivered in monthly updates, which are normally off for managed devices, are turned on."
+  rationale: "Feature changes should arrive through the organisation's planned feature update process."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage end user experience\\Enable features introduced via servicing that are off by default = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AllowTemporaryEnterpriseFeatureControl = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0496:
+  title: "Enable optional updates: Disabled (or not configured)"
+  description: "Controls whether the device receives optional non-security updates and gradually rolled-out features."
+  rationale: "Optional updates are previews; production systems should receive tested releases only."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Administrative Templates\\Windows Components\\Windows Update\\Manage updates offered from Windows Update\\Enable optional updates = Disabled. Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AllowOptionalContent = 0 (leaving the value unset also passes)."
+  compliance: { nist_800_53: ["SI-2", "CM-6"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["8.8"] }
+S0497:
+  title: "Accounts: Limit local account use of blank passwords to console logon only: Enabled"
+  description: "Allows local accounts with blank passwords to sign in only at the physical console, not over the network."
+  rationale: "This stops remote attackers from using any account that has an empty password."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Accounts: Limit local account use of blank passwords to console logon only = Enabled. Registry: HKLM\\System\\CurrentControlSet\\Control\\Lsa\\LimitBlankPasswordUse = 1."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1"], hipaa: ["164.312(d)"], iso_27001: ["5.17", "8.5"] }
+S0498:
+  title: "Audit: Shut down system immediately if unable to log security audits: Disabled"
+  description: "Controls whether Windows halts when it cannot write security audit events."
+  rationale: "Halting on a full log lets an attacker cause a denial of service by filling the log."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Audit: Shut down system immediately if unable to log security audits = Disabled. Registry: HKLM\\System\\CurrentControlSet\\Control\\Lsa\\CrashOnAuditFail = 0."
+  compliance: { nist_800_53: ["AU-5", "CP-10"], pci_dss: ["10.7.2"], hipaa: ["164.308(a)(7)(i)"], iso_27001: ["8.14"] }
+S0499:
+  title: "Devices: Allowed to format and eject removable media: Administrators"
+  description: "Sets who may format and eject removable NTFS media; value 0 limits this to Administrators."
+  rationale: "Restricting this stops ordinary users from removing media that holds organisational data."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Devices: Allowed to format and eject removable media = Administrators. Registry: HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\AllocateDASD = 0."
+  compliance: { nist_800_53: ["MP-7", "CM-7", "SC-41"], pci_dss: ["2.2.4"], hipaa: ["164.310(d)(1)"], iso_27001: ["7.10", "8.9"] }
+S0500:
+  title: "Domain controller: Allow server operators to schedule tasks: Disabled"
+  description: "Controls whether members of the Server Operators group can create scheduled tasks on domain controllers."
+  rationale: "Scheduled tasks can run with high privileges, so this right lets server operators escalate."
+  remediation: "Group Policy: Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Local Policies\\Security Options\\Domain controller: Allow server operators to schedule tasks = Disabled. Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\SubmitControl = 0."
+  compliance: { nist_800_53: ["AC-6", "CM-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.308(a)(4)(i)"], iso_27001: ["8.2"] }

@@ -8,39 +8,58 @@
 //!   `logs/archives/archives.json` platform events, per agent tenant;
 //! * agent status, OS and version come from provigil-db's global database.
 //!
-//! Agents (`wazuh-agent.exe`, `provigil-agentd`) connect to remoted on 1514/tcp.
+//! Agents of the old protocol connect to remoted on 1514/tcp.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::Utc;
-use siem_core::{Agent, AgentAlertInfo, AgentStatus, Alert, DecodedFields, DecoderAlertInfo, EventSource, ManagerAlertInfo, MitreAttack, RawEvent, RuleAlertInfo};
+use siem_core::{
+    Agent, AgentAlertInfo, AgentStatus, Alert, DecodedFields, DecoderAlertInfo, EventSource,
+    ManagerAlertInfo, MitreAttack, RawEvent, RuleAlertInfo,
+};
 use siem_ipc::wdbc::WdbQuery;
 use tracing::{info, warn};
 
+use crate::agent_commands::{self, table, table::CommandRow};
 use crate::{tenancy, AppState};
 
 /// The daemons, in start order.
 #[cfg(not(unix))]
-const DAEMONS: [&str; 8] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd"];
+const DAEMONS: [&str; 4] = [
+    "provigil-db",
+    "provigil-analysisd",
+    "provigil-remoted",
+    "provigil-modulesd",
+];
 /// On Linux the manager also runs execd for responses with `<location>` local/server,
 /// and agentlessd (its expect scripts need a Unix shell).
 #[cfg(unix)]
-const DAEMONS: [&str; 10] = ["wazuh-db", "wazuh-analysisd", "wazuh-remoted", "wazuh-modulesd", "wazuh-monitord", "wazuh-maild", "wazuh-integratord", "wazuh-csyslogd", "wazuh-execd", "wazuh-agentlessd"];
+const DAEMONS: [&str; 6] = [
+    "provigil-db",
+    "provigil-analysisd",
+    "provigil-remoted",
+    "provigil-modulesd",
+    "provigil-execd",
+    "provigil-agentlessd",
+];
 /// The manager's own response programs (Linux).
 #[cfg(unix)]
 const MANAGER_AR: [&str; 1] = ["firewall-drop"];
 #[cfg(not(unix))]
 const MANAGER_AR: [&str; 0] = [];
-/// The integration scripts, all served by the `integrations` program.
-const INTEGRATIONS: [&str; 5] = ["slack", "pagerduty", "virustotal", "shuffle", "maltiverse"];
+/// The integration scripts (now handled in-process in siem-api soar_integrations).
+const INTEGRATIONS: [&str; 0] = [];
 
 /// Where the manager lives (`WAZUH_MANAGER_HOME`, else `data/manager`).
 pub fn home() -> PathBuf {
-    let p = match std::env::var("PROVIGIL_MANAGER_HOME").or_else(|_| std::env::var("WAZUH_MANAGER_HOME")) {
+    let p = match std::env::var("PROVIGIL_MANAGER_HOME")
+        .or_else(|_| std::env::var("WAZUH_MANAGER_HOME"))
+    {
         Ok(h) if !h.trim().is_empty() => PathBuf::from(h),
         _ => crate::data_file_path("manager"),
     };
@@ -49,7 +68,12 @@ pub fn home() -> PathBuf {
 
 /// Whether siem-api runs the manager (`WAZUH_MANAGER=0` turns it off).
 pub fn enabled() -> bool {
-    !matches!(std::env::var("PROVIGIL_MANAGER").or_else(|_| std::env::var("WAZUH_MANAGER")).as_deref(), Ok("0") | Ok("false") | Ok("no"))
+    !matches!(
+        std::env::var("PROVIGIL_MANAGER")
+            .or_else(|_| std::env::var("WAZUH_MANAGER"))
+            .as_deref(),
+        Ok("0") | Ok("false") | Ok("no")
+    )
 }
 
 fn keys_file(home: &Path) -> PathBuf {
@@ -59,13 +83,23 @@ fn keys_file(home: &Path) -> PathBuf {
 /// The upstream 4.14.7 source tree the ruleset is copied from.
 fn provigil_source() -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
-    if let Ok(s) = std::env::var("PROVIGIL_SOURCE_DIR").or_else(|_| std::env::var("WAZUH_SOURCE_DIR")) {
+    if let Ok(s) =
+        std::env::var("PROVIGIL_SOURCE_DIR").or_else(|_| std::env::var("WAZUH_SOURCE_DIR"))
+    {
         cands.push(PathBuf::from(s));
     }
-    for rel in ["../../wazuh/wazuh-4.14.7", "../wazuh/wazuh-4.14.7", "wazuh/wazuh-4.14.7", "../../../wazuh/wazuh-4.14.7"] {
+    for rel in [
+        "../../wazuh/wazuh-4.14.7",
+        "../wazuh/wazuh-4.14.7",
+        "wazuh/wazuh-4.14.7",
+        "../../../wazuh/wazuh-4.14.7",
+    ] {
         cands.push(PathBuf::from(rel));
     }
-    cands.into_iter().find(|p| p.join("ruleset").join("rules").is_dir() && p.join("etc").join("internal_options.conf").is_file())
+    cands.into_iter().find(|p| {
+        p.join("ruleset").join("rules").is_dir()
+            && p.join("etc").join("internal_options.conf").is_file()
+    })
 }
 
 fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -140,13 +174,35 @@ fn ossec_conf() -> String {
 /// Creates the manager home (once) and refreshes the default ruleset.
 fn prepare_home(home: &Path) -> Result<(), String> {
     for d in [
-        "bin", "etc/decoders", "etc/rules", "etc/lists", "etc/shared/default", "ruleset", "logs/alerts", "logs/archives", "logs/wazuh",
-        "logs/firewall", "queue/sockets", "queue/db", "queue/alerts", "queue/rids", "queue/diff", "queue/agentless", "queue/fts", "queue/tasks",
-        "var/run", "var/db", "var/multigroups", "var/download", "stats", "backup/db", "tmp",
+        "bin",
+        "etc/decoders",
+        "etc/rules",
+        "etc/lists",
+        "etc/shared/default",
+        "ruleset",
+        "logs/alerts",
+        "logs/archives",
+        "logs/firewall",
+        "queue/sockets",
+        "queue/db",
+        "queue/alerts",
+        "queue/rids",
+        "queue/diff",
+        "queue/agentless",
+        "queue/fts",
+        "queue/tasks",
+        "var/run",
+        "var/db",
+        "var/multigroups",
+        "var/download",
+        "stats",
+        "backup/db",
+        "tmp",
     ] {
         std::fs::create_dir_all(home.join(d)).map_err(|e| format!("{d}: {e}"))?;
     }
-    let src = provigil_source().ok_or("Upstream 4.14.7 source tree not found (set PROVIGIL_SOURCE_DIR)")?;
+    let src = provigil_source()
+        .ok_or("Upstream 4.14.7 source tree not found (set PROVIGIL_SOURCE_DIR)")?;
     // The default ruleset is replaced on every start, like a package upgrade.
     for d in ["decoders", "rules"] {
         let to = home.join("ruleset").join(d);
@@ -165,18 +221,39 @@ fn prepare_home(home: &Path) -> Result<(), String> {
         }
         Ok(())
     };
-    for l in ["audit-keys", "amazon", "security-eventchannel", "malicious-ioc"] {
-        once(src.join("ruleset").join("lists").join(l), &format!("etc/lists/{l}"))?;
+    for l in [
+        "audit-keys",
+        "amazon",
+        "security-eventchannel",
+        "malicious-ioc",
+    ] {
+        once(
+            src.join("ruleset").join("lists").join(l),
+            &format!("etc/lists/{l}"),
+        )?;
     }
-    once(src.join("etc").join("internal_options.conf"), "etc/internal_options.conf")?;
+    once(
+        src.join("etc").join("internal_options.conf"),
+        "etc/internal_options.conf",
+    )?;
     install_agentless_scripts(&src, home)?;
-    once(src.join("etc").join("local_decoder.xml"), "etc/decoders/local_decoder.xml")?;
-    once(src.join("etc").join("local_rules.xml"), "etc/rules/local_rules.xml")?;
+    once(
+        src.join("etc").join("local_decoder.xml"),
+        "etc/decoders/local_decoder.xml",
+    )?;
+    once(
+        src.join("etc").join("local_rules.xml"),
+        "etc/rules/local_rules.xml",
+    )?;
     let lio = home.join("etc").join("local_internal_options.conf");
     if !lio.exists() {
         let _ = std::fs::write(&lio, "# Local internal options\n");
     }
-    let agent_conf = home.join("etc").join("shared").join("default").join("agent.conf");
+    let agent_conf = home
+        .join("etc")
+        .join("shared")
+        .join("default")
+        .join("agent.conf");
     if !agent_conf.exists() {
         let _ = std::fs::write(&agent_conf, "<agent_config>\n\n</agent_config>\n");
     }
@@ -197,10 +274,14 @@ fn install_agentless_scripts(src: &Path, home: &Path) -> Result<(), String> {
     let from = src.join("src").join("agentlessd").join("scripts");
     let to = home.join("agentless");
     std::fs::create_dir_all(&to).map_err(|e| format!("agentless: {e}"))?;
-    for f in std::fs::read_dir(&from).map_err(|e| format!("{}: {e}", from.display()))?.flatten() {
+    for f in std::fs::read_dir(&from)
+        .map_err(|e| format!("{}: {e}", from.display()))?
+        .flatten()
+    {
         let dst = to.join(f.file_name());
         let _ = std::fs::remove_file(&dst); // the previous copy is read-only
-        std::fs::copy(f.path(), &dst).map_err(|e| format!("agentless/{}: {e}", f.file_name().to_string_lossy()))?;
+        std::fs::copy(f.path(), &dst)
+            .map_err(|e| format!("agentless/{}: {e}", f.file_name().to_string_lossy()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -213,9 +294,9 @@ fn install_agentless_scripts(src: &Path, home: &Path) -> Result<(), String> {
 /// The files of the Windows agent package (`/downloads/windows/<file>`).
 pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "provigil-agent.exe",
-    // active-responsein (siem-active-response)
+    // active-response\bin (siem-active-response)
     "netsh.exe",
-    "restart-wazuh.exe",
+    "restart-agent.exe",
     "route-null.exe",
     // EDR responses (siem-active-response, not in upstream)
     "kill-process.exe",
@@ -224,20 +305,6 @@ pub const WINDOWS_AGENT_FILES: &[&str] = &[
     "yara-scan.exe",
     "live-response.exe",
     "tamper-protect.exe",
-    "internal_options.conf",
-    "local_internal_options.conf",
-    "vista_sec.txt",
-    "help.txt",
-    "norm_config.json",
-    // rulesetsca: the MSI installs the one matching the OS (provigil-installer.wxs)
-    "cis_win10_enterprise.yml",
-    "cis_win11_enterprise.yml",
-    "cis_win2012r2.yml",
-    "cis_win2012_non_r2.yml",
-    "cis_win2016.yml",
-    "cis_win2019.yml",
-    "cis_win2022.yml",
-    "cis_win2025.yml",
 ];
 
 fn agent_dist_dir() -> PathBuf {
@@ -245,51 +312,50 @@ fn agent_dist_dir() -> PathBuf {
 }
 
 /// Where the build puts the package's programs (a Windows build, or the cross-build).
-const BUILD_OUTPUTS: [&str; 3] = ["target/x86_64-pc-windows-gnu/release", "target/release", "backend-rust/target/x86_64-pc-windows-gnu/release"];
+const BUILD_OUTPUTS: [&str; 6] = [
+    "target/x86_64-pc-windows-gnu/release",
+    "target/release",
+    "backend-rust/target/release",
+    "backend-rust/target/x86_64-pc-windows-gnu/release",
+    "target/debug",
+    "backend-rust/target/debug",
+];
 
 fn modified(p: &Path) -> Option<std::time::SystemTime> {
-    std::fs::metadata(p).ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok())
+    std::fs::metadata(p)
+        .ok()
+        .filter(|m| m.is_file())
+        .and_then(|m| m.modified().ok())
 }
 
 /// The newest of `cands` that exists.
 fn newest(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    cands.into_iter().filter_map(|p| modified(&p).map(|t| (t, p))).max_by_key(|(t, _)| *t).map(|(_, p)| p)
+    cands
+        .into_iter()
+        .filter_map(|p| modified(&p).map(|t| (t, p)))
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, p)| p)
 }
 
 /// Fills `data/agent-dist/windows`: the package's programs from the build output when
 /// it is newer (so the folder alone is a complete package to ship to a server without
-/// the build), and its text files (the MSI installs them next to `wazuh-agent.exe`).
+/// the build). The agent's configuration policies are compiled into `provigil-agent.exe`.
 fn prepare_agent_dist() {
     let dir = agent_dist_dir();
     let _ = std::fs::create_dir_all(&dir);
     for f in WINDOWS_AGENT_FILES.iter().filter(|f| f.ends_with(".exe")) {
         let dst = dir.join(f);
-        let Some(built) = newest(BUILD_OUTPUTS.iter().map(|o| PathBuf::from(o).join(f))) else { continue };
+        let Some(built) = newest(BUILD_OUTPUTS.iter().map(|o| PathBuf::from(o).join(f))) else {
+            continue;
+        };
         if modified(&built) > modified(&dst) {
             match std::fs::copy(&built, &dst) {
                 Ok(_) => info!("Agent package: {f} updated from {}", built.display()),
-                Err(e) => warn!("Agent package: {f} not copied from {}: {e}", built.display()),
+                Err(e) => warn!(
+                    "Agent package: {f} not copied from {}: {e}",
+                    built.display()
+                ),
             }
-        }
-    }
-    let Some(src) = provigil_source() else { return };
-    for (from, to) in [
-        (src.join("etc/internal_options.conf"), "internal_options.conf"),
-        (src.join("etc/local_internal_options-win.conf"), "local_internal_options.conf"),
-        (src.join("src/win32/vista_sec.txt"), "vista_sec.txt"),
-        (src.join("src/win32/help.txt"), "help.txt"),
-        // the MSI installs it as queue\syscollector\norm_config.json
-        (src.join("src/wazuh_modules/syscollector/norm_config.json"), "norm_config.json"),
-    ] {
-        let dst = dir.join(to);
-        if !dst.exists() {
-            let _ = std::fs::copy(from, dst);
-        }
-    }
-    for f in WINDOWS_AGENT_FILES.iter().filter(|f| f.ends_with(".yml")) {
-        let dst = dir.join(f);
-        if !dst.exists() {
-            let _ = std::fs::copy(src.join("ruleset/sca/windows").join(f), dst);
         }
     }
 }
@@ -307,20 +373,60 @@ pub fn windows_agent_file(name: &str) -> Option<PathBuf> {
     newest(cands)
 }
 
+type Hashed = (std::time::SystemTime, u64, String);
+
+/// SHA-256 of a file; hashed again only when its time or size changes.
+fn cached_sha256(path: &std::path::Path, cache: &mut std::collections::HashMap<PathBuf, Hashed>) -> Option<String> {
+    use sha2::Digest;
+    let meta = std::fs::metadata(path).ok()?;
+    let (time, len) = (meta.modified().ok()?, meta.len());
+    if let Some((t, l, hash)) = cache.get(path) {
+        if (*t, *l) == (time, len) {
+            return Some(hash.clone());
+        }
+    }
+    let mut sha = sha2::Sha256::new();
+    std::io::copy(&mut std::fs::File::open(path).ok()?, &mut sha).ok()?;
+    let hash: String = sha.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    cache.insert(path.to_path_buf(), (time, len, hash.clone()));
+    Some(hash)
+}
+
+/// `{name: sha256}` of the published Windows agent files (`/api/server-info`; the install
+/// script checks each download against it). Blocking: the first call hashes the package.
+pub fn agent_files() -> std::collections::BTreeMap<String, String> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Hashed>>> = std::sync::OnceLock::new();
+    let mut cache = CACHE.get_or_init(Default::default).lock().unwrap();
+    WINDOWS_AGENT_FILES
+        .iter()
+        .filter_map(|name| Some((name.to_string(), cached_sha256(&windows_agent_file(name)?, &mut cache)?)))
+        .collect()
+}
+
 /// The Windows agent's `ossec.conf`: the MSI's default (`src/win32/ossec.conf`)
 /// with the manager address (`WAZUH_MANAGER`) set. The key comes from the
 /// enrollment API, so the agent does not enroll on 1515 itself.
 pub fn windows_agent_conf(manager: &str) -> Option<String> {
     let manager = manager.trim_start_matches('[').trim_end_matches(']');
     // "localhost" resolves to ::1 first on Windows, and remoted listens on IPv4 (0.0.0.0)
-    let manager = if manager.eq_ignore_ascii_case("localhost") || manager == "::1" { "127.0.0.1" } else { manager };
-    let ok =!manager.is_empty() && manager.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '_'));
+    let manager = if manager.eq_ignore_ascii_case("localhost") || manager == "::1" {
+        "127.0.0.1"
+    } else {
+        manager
+    };
+    let ok = !manager.is_empty()
+        && manager
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '_'));
     if !ok {
         return None;
     }
     let src = provigil_source()?;
     let t = std::fs::read_to_string(src.join("src/win32/ossec.conf")).ok()?;
-    let t = t.replace("<address>0.0.0.0</address>", &format!("<address>{manager}</address>"));
+    let t = t.replace(
+        "<address>0.0.0.0</address>",
+        &format!("<address>{manager}</address>"),
+    );
     let t = t.replacen(
         "<crypto_method>aes</crypto_method>",
         "<crypto_method>aes</crypto_method>\r\n    <enrollment>\r\n      <enabled>no</enabled>\r\n    </enrollment>",
@@ -329,29 +435,19 @@ pub fn windows_agent_conf(manager: &str) -> Option<String> {
     Some(t)
 }
 
-/// The program file of a daemon or tool: siem-api names them as the ported daemons name
-/// themselves (`provigil-analysisd`: their log tags, state files), the files are `provigil-*`.
+/// The program file of a daemon or tool.
 pub(crate) fn exe_name(d: &str) -> String {
-    let d = program_name(d);
     if cfg!(windows) {
         format!("{d}.exe")
     } else {
-        d
-    }
-}
-
-/// A daemon's ProVigil name, as programs and the console show it.
-pub(crate) fn program_name(d: &str) -> String {
-    match d.strip_prefix("wazuh-") {
-        Some(rest) => format!("provigil-{rest}"),
-        None => d.to_string(),
+        d.to_string()
     }
 }
 
 /// Copies the daemons built next to siem-api into `<home>/bin` (provigil-db
 /// finds its home from there, like an installed manager).
 /// Command-line tools of the manager (installed in `bin/`, not supervised).
-const MANAGER_TOOLS: &[&str] = &["wazuh-reportd"];
+const MANAGER_TOOLS: &[&str] = &[];
 
 fn install_binaries(home: &Path) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -361,16 +457,39 @@ fn install_binaries(home: &Path) -> Result<(), String> {
         search.push(t.join("release"));
         search.push(t.join("debug"));
     }
-    let targets = DAEMONS.iter().map(|d| (exe_name(d), home.join("bin").join(exe_name(d)))).chain(
-        INTEGRATIONS.iter().map(|i| (exe_name("integrations"), home.join("integrations").join(exe_name(i)))),
-    ).chain(MANAGER_AR.iter().map(|a| (exe_name(a), home.join("active-response/bin").join(exe_name(a)))))
-    .chain(MANAGER_TOOLS.iter().map(|t| (exe_name(t), home.join("bin").join(exe_name(t)))));
+    let targets = DAEMONS
+        .iter()
+        .map(|d| (exe_name(d), home.join("bin").join(exe_name(d))))
+        .chain(INTEGRATIONS.iter().map(|i| {
+            (
+                exe_name("integrations"),
+                home.join("integrations").join(exe_name(i)),
+            )
+        }))
+        .chain(MANAGER_AR.iter().map(|a| {
+            (
+                exe_name(a),
+                home.join("active-response/bin").join(exe_name(a)),
+            )
+        }))
+        .chain(
+            MANAGER_TOOLS
+                .iter()
+                .map(|t| (exe_name(t), home.join("bin").join(exe_name(t)))),
+        );
     for (n, dst) in targets {
-        let found = search.iter().map(|s| s.join(&n)).filter(|p| p.is_file()).max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
+        let found = search
+            .iter()
+            .map(|s| s.join(&n))
+            .filter(|p| p.is_file())
+            .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {
-            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
+            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
         };
-        let newer = match (src.metadata().and_then(|m| m.modified()), dst.metadata().and_then(|m| m.modified())) {
+        let newer = match (
+            src.metadata().and_then(|m| m.modified()),
+            dst.metadata().and_then(|m| m.modified()),
+        ) {
             (Ok(a), Ok(b)) => a > b,
             _ => true,
         };
@@ -399,15 +518,28 @@ fn build_mitre_db(home: &Path) {
     }
     let Some(src) = provigil_source() else { return };
     let json = src.join("ruleset/mitre/enterprise-attack.json");
-    let Some(tool) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(exe_name("wazuh-mitredb")))).filter(|p| p.is_file()) else {
+    let Some(tool) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(exe_name("provigil-mitredb"))))
+        .filter(|p| p.is_file())
+    else {
         warn!("ProVigil manager: provigil-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
         return;
     };
     // built under another name: a half-built file must not look finished
     let tmp = db.with_extension("db.tmp");
     let _ = std::fs::remove_file(&tmp);
-    match Command::new(tool).arg("-d").arg(&tmp).arg("-j").arg(&json).stdout(Stdio::null()).status() {
-        Ok(s) if s.success() && std::fs::rename(&tmp, &db).is_ok() => info!("ProVigil manager: built {}", db.display()),
+    match Command::new(tool)
+        .arg("-d")
+        .arg(&tmp)
+        .arg("-j")
+        .arg(&json)
+        .stdout(Stdio::null())
+        .status()
+    {
+        Ok(s) if s.success() && std::fs::rename(&tmp, &db).is_ok() => {
+            info!("ProVigil manager: built {}", db.display())
+        }
         other => warn!("ProVigil manager: building mitre.db failed: {other:?}"),
     }
 }
@@ -422,15 +554,27 @@ fn kill_stale(home: &Path) {
             #[cfg(windows)]
             for image in ["provigil-*", "wazuh-*"] {
                 let _ = Command::new("taskkill")
-                    .args(["/F", "/PID", &pid.to_string(), "/FI", &format!("IMAGENAME eq {image}")])
+                    .args([
+                        "/F",
+                        "/PID",
+                        &pid.to_string(),
+                        "/FI",
+                        &format!("IMAGENAME eq {image}"),
+                    ])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .status();
             }
             // after a reboot the pid may belong to another program
             #[cfg(unix)]
-            if std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.starts_with("wazuh-") || c.starts_with("provigil-")) {
-                let _ = Command::new("kill").args(["-9", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            if std::fs::read_to_string(format!("/proc/{pid}/comm"))
+                .is_ok_and(|c| c.starts_with("wazuh-") || c.starts_with("provigil-"))
+            {
+                let _ = Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
             }
         }
     }
@@ -446,7 +590,10 @@ fn kill_stale(home: &Path) {
         }
     }
     if n > 0 {
-        info!("ProVigil manager: {n} stale pid file(s) removed from {}", run.display());
+        info!(
+            "ProVigil manager: {n} stale pid file(s) removed from {}",
+            run.display()
+        );
     }
 }
 
@@ -456,15 +603,30 @@ static CHILDREN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
 fn read_state_file(path: &Path) -> serde_json::Value {
     let mut m = serde_json::Map::new();
     for line in std::fs::read_to_string(path).unwrap_or_default().lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         if line.starts_with('#') {
             continue;
         }
         let v = v.trim().trim_matches('\'');
-        let val = v.parse::<f64>().map(serde_json::Value::from).unwrap_or_else(|_| serde_json::Value::String(v.to_string()));
+        let val = v
+            .parse::<f64>()
+            .map(serde_json::Value::from)
+            .unwrap_or_else(|_| serde_json::Value::String(v.to_string()));
         m.insert(k.trim().to_string(), val);
     }
     serde_json::Value::Object(m)
+}
+
+/// A daemon's counter file; for one release the file of its old name when the new one is missing.
+fn counter_file(run: &Path, daemon: &str) -> PathBuf {
+    let new = run.join(format!("provigil-{daemon}.state"));
+    if new.exists() {
+        new
+    } else {
+        run.join(format!("wazuh-{daemon}.state"))
+    }
 }
 
 /// What the manager is doing: running daemons and the remoted / analysisd counters
@@ -476,22 +638,37 @@ pub fn daemons() -> &'static [&'static str] {
 
 /// The daemons running now.
 pub fn running() -> Vec<String> {
-    CHILDREN.lock().unwrap().iter().map(|(n, _)| n.clone()).collect()
+    CHILDREN
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(n, _)| n.clone())
+        .collect()
 }
 
 pub fn status() -> serde_json::Value {
     let run = home().join("var/run");
-    let daemons: Vec<serde_json::Value> = CHILDREN.lock().unwrap().iter().map(|(n, p)| serde_json::json!({ "name": n, "pid": p })).collect();
+    let daemons: Vec<serde_json::Value> = CHILDREN
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(n, p)| serde_json::json!({ "name": n, "pid": p }))
+        .collect();
     serde_json::json!({
         "enabled": enabled(),
         "daemons": daemons,
-        "remoted": read_state_file(&run.join("wazuh-remoted.state")),
-        "analysisd": read_state_file(&run.join("wazuh-analysisd.state")),
+        "remoted": read_state_file(&counter_file(&run, "remoted")),
+        "analysisd": read_state_file(&counter_file(&run, "analysisd")),
     })
 }
 
 fn record_children(home: &Path) {
-    let pids: Vec<String> = CHILDREN.lock().unwrap().iter().map(|(_, p)| p.to_string()).collect();
+    let pids: Vec<String> = CHILDREN
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(_, p)| p.to_string())
+        .collect();
     let _ = std::fs::write(home.join("var/run/siem-api-children.pids"), pids.join(" "));
 }
 
@@ -499,8 +676,8 @@ fn record_children(home: &Path) {
 fn ready_marker(home: &Path, d: &str) -> Option<PathBuf> {
     let suffix = if cfg!(unix) { "" } else { ".port" };
     match d {
-        "wazuh-db" => Some(home.join(format!("queue/db/wdb{suffix}"))),
-        "wazuh-analysisd" => Some(home.join(format!("queue/sockets/queue{suffix}"))),
+        "provigil-db" => Some(home.join(format!("queue/db/wdb{suffix}"))),
+        "provigil-analysisd" => Some(home.join(format!("queue/sockets/queue{suffix}"))),
         _ => None,
     }
 }
@@ -509,24 +686,38 @@ fn spawn(home: &Path, d: &str) -> std::io::Result<Child> {
     let mut c = Command::new(home.join("bin").join(exe_name(d)));
     c.current_dir(home);
     match d {
-        "wazuh-db" | "wazuh-modulesd" | "wazuh-integratord" | "wazuh-csyslogd" => c.arg("-f"),
+        "provigil-db" | "provigil-modulesd" | "provigil-integratord" | "provigil-csyslogd" => c.arg("-f"),
         _ => c.arg("-f").arg("-D").arg(home),
     };
-    if matches!(d, "wazuh-remoted" | "wazuh-modulesd") {
+    if matches!(d, "provigil-remoted" | "provigil-modulesd") {
         if let Some((addr, token)) = KEYS_SERVICE.get() {
             c.env("SIEM_KEYS_ADDR", addr).env("SIEM_KEYS_TOKEN", token);
         }
     }
     // analysisd streams alerts and events, the scanner in modulesd its results
-    if matches!(d, "wazuh-analysisd" | "wazuh-modulesd") {
+    if matches!(d, "provigil-analysisd" | "provigil-modulesd") {
         if let Some((addr, token)) = STREAM.get() {
-            c.env("SIEM_STREAM_ADDR", addr).env("SIEM_STREAM_TOKEN", token);
+            c.env("SIEM_STREAM_ADDR", addr)
+                .env("SIEM_STREAM_TOKEN", token);
         }
     }
-    let log = |n: &str| std::fs::OpenOptions::new().create(true).append(true).open(home.join("logs").join(n));
+    let log = |n: &str| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(home.join("logs").join(n))
+    };
     c.stdin(Stdio::null());
-    c.stdout(log(&format!("{d}.out")).map(Stdio::from).unwrap_or(Stdio::null()));
-    c.stderr(log(&format!("{d}.out")).map(Stdio::from).unwrap_or(Stdio::null()));
+    c.stdout(
+        log(&format!("{d}.out"))
+            .map(Stdio::from)
+            .unwrap_or(Stdio::null()),
+    );
+    c.stderr(
+        log(&format!("{d}.out"))
+            .map(Stdio::from)
+            .unwrap_or(Stdio::null()),
+    );
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -552,12 +743,15 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     c.push((d.to_string(), pid));
                 }
                 record_children(&home);
-                info!("ProVigil manager: {} started (pid {pid})", program_name(d));
+                info!("ProVigil manager: {d} started (pid {pid})");
                 if let Some(tx) = first.take() {
                     // The next daemon starts once this one listens.
                     if let Some(m) = ready_marker(&home, d) {
                         for _ in 0..300 {
-                            if m.metadata().and_then(|x| x.modified()).is_ok_and(|t| t >= spawned) {
+                            if m.metadata()
+                                .and_then(|x| x.modified())
+                                .is_ok_and(|t| t >= spawned)
+                            {
                                 break;
                             }
                             std::thread::sleep(Duration::from_millis(100));
@@ -570,8 +764,12 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                 CHILDREN.lock().unwrap().retain(|(n, _)| n != d);
                 record_children(&home);
                 // maild / integratord / csyslogd / agentlessd exit 0 when not configured: start again once ossec.conf changes
-                if matches!(d, "wazuh-maild" | "wazuh-integratord" | "wazuh-csyslogd" | "wazuh-agentlessd") && st.as_ref().is_ok_and(|s| s.success()) {
-                    info!("ProVigil manager: {} idle (not configured)", program_name(d));
+                if matches!(
+                    d,
+                    "provigil-maild" | "provigil-integratord" | "provigil-csyslogd" | "provigil-agentlessd"
+                ) && st.as_ref().is_ok_and(|s| s.success())
+                {
+                    info!("ProVigil manager: {d} idle (not configured)");
                     let conf = home.join("etc/ossec.conf");
                     let mtime = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();
                     let seen = mtime(&conf);
@@ -580,10 +778,10 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
                     }
                     continue;
                 }
-                warn!("ProVigil manager: {} exited ({st:?}); restarting in 5s (see {}/logs/ossec.log)", program_name(d), home.display());
+                warn!("ProVigil manager: {d} exited ({st:?}); restarting in 5s (see {}/logs/ossec.log)", home.display());
             }
             Err(e) => {
-                warn!("ProVigil manager: cannot start {}: {e}", program_name(d));
+                warn!("ProVigil manager: cannot start {d}: {e}");
                 if let Some(tx) = first.take() {
                     let _ = tx.send(());
                 }
@@ -597,9 +795,17 @@ fn supervise(home: PathBuf, d: &'static str, first: std::sync::mpsc::Sender<()>)
 fn used_rule_ids(home: &Path) -> std::collections::HashSet<u32> {
     let mut ids = std::collections::HashSet::new();
     for dir in ["ruleset/rules", "etc/rules"] {
-        for e in std::fs::read_dir(home.join(dir)).into_iter().flatten().flatten() {
+        for e in std::fs::read_dir(home.join(dir))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             if let Ok(t) = std::fs::read_to_string(e.path()) {
-                ids.extend(t.split("<rule id=\"").skip(1).filter_map(|p| p.split('"').next()?.parse::<u32>().ok()));
+                ids.extend(
+                    t.split("<rule id=\"")
+                        .skip(1)
+                        .filter_map(|p| p.split('"').next()?.parse::<u32>().ok()),
+                );
             }
         }
     }
@@ -635,12 +841,31 @@ fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<
     })();
     let main_conf = std::fs::read_to_string(home.join("etc/ossec.conf")).unwrap_or_default();
     const RULE_DIR: &str = "<rule_dir>etc/rules</rule_dir>";
-    if staged.is_err() || main_conf.matches(RULE_DIR).count() != 1 || std::fs::write(&conf, main_conf.replace(RULE_DIR, "<rule_dir>etc/rules.staging</rule_dir>")).is_err() {
+    if staged.is_err()
+        || main_conf.matches(RULE_DIR).count() != 1
+        || std::fs::write(
+            &conf,
+            main_conf.replace(RULE_DIR, "<rule_dir>etc/rules.staging</rule_dir>"),
+        )
+        .is_err()
+    {
         cleanup();
-        return Err(format!("Could not stage the rules for checking ({})", staged.err().map(|e| e.to_string()).unwrap_or_else(|| "ossec.conf".into())));
+        return Err(format!(
+            "Could not stage the rules for checking ({})",
+            staged
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "ossec.conf".into())
+        ));
     }
-    let mut c = Command::new(home.join("bin").join(exe_name("wazuh-analysisd")));
-    c.arg("-t").arg("-c").arg("etc/ossec.staging.conf").arg("-D").arg(home).current_dir(home).stdin(Stdio::null());
+    let mut c = Command::new(home.join("bin").join(exe_name("provigil-analysisd")));
+    c.arg("-t")
+        .arg("-c")
+        .arg("etc/ossec.staging.conf")
+        .arg("-D")
+        .arg(home)
+        .current_dir(home)
+        .stdin(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -650,36 +875,59 @@ fn replace_rules_file(home: &Path, file: &str, content: Option<&str>) -> Result<
     cleanup();
     let (ok, log) = match checked {
         Ok(o) => {
-            let log = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
-            let bad = log.lines().any(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"));
+            let log = format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            );
+            let bad = log
+                .lines()
+                .any(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"));
             (o.status.success() && !bad, log)
         }
         Err(e) => (false, format!("provigil-analysisd -t: {e}")),
     };
     if !ok {
-        let why = log.lines().find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)")).unwrap_or(log.trim()).to_string();
+        let why = log
+            .lines()
+            .find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("(7612)"))
+            .unwrap_or(log.trim())
+            .to_string();
         return Err(format!("provigil-analysisd rejected the rules: {why}"));
     }
     let path = rules.join(file);
     match content {
         Some(c) => std::fs::write(&path, c),
-        None => std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
+        None => std::fs::remove_file(&path).or_else(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }),
     }
     .map_err(|e| format!("{}: {e}", path.display()))?;
-    restart_daemons(&["wazuh-analysisd"]);
+    restart_daemons(&["provigil-analysisd"]);
     Ok(())
 }
 
 /// Adds a rule group to `etc/rules/<file>`, its `<rule id>` set to a free id of `ids`;
 /// returns the id and the XML as deployed.
-pub fn deploy_rule_group(file: &str, xml: &str, ids: std::ops::RangeInclusive<u32>) -> Result<(u32, String), String> {
+pub fn deploy_rule_group(
+    file: &str,
+    xml: &str,
+    ids: std::ops::RangeInclusive<u32>,
+) -> Result<(u32, String), String> {
     if !enabled() {
         return Err("The ProVigil manager is not running".into());
     }
     let _g = RULES_LOCK.lock().unwrap();
     let home = home();
     let used = used_rule_ids(&home);
-    let id = ids.into_iter().find(|i| !used.contains(i)).ok_or("No free rule id left in the Red Swarm range")?;
+    let id = ids
+        .into_iter()
+        .find(|i| !used.contains(i))
+        .ok_or("No free rule id left in the Red Swarm range")?;
     let start = xml.find("<rule id=\"").ok_or("The rule has no <rule id>")? + "<rule id=\"".len();
     let end = start + xml[start..].find('"').ok_or("Malformed <rule id>")?;
     let xml = format!("{}{id}{}", &xml[..start], &xml[end..]);
@@ -695,30 +943,52 @@ pub fn remove_rule_group(file: &str, id: u32) -> Result<(), String> {
     }
     let _g = RULES_LOCK.lock().unwrap();
     let home = home();
-    let cur = std::fs::read_to_string(home.join("etc/rules").join(file)).map_err(|_| "No rule of this kind is deployed".to_string())?;
+    let cur = std::fs::read_to_string(home.join("etc/rules").join(file))
+        .map_err(|_| "No rule of this kind is deployed".to_string())?;
     let rest = without_group(&cur, id)?;
-    replace_rules_file(&home, file, (!rest.trim().is_empty()).then_some(rest.as_str()))
+    replace_rules_file(
+        &home,
+        file,
+        (!rest.trim().is_empty()).then_some(rest.as_str()),
+    )
 }
 
 /// A rules file without the `<group name=…>` holding `<rule id="id">`.
 fn without_group(cur: &str, id: u32) -> Result<String, String> {
-    let at = cur.find(&format!("<rule id=\"{id}\"")).ok_or("The rule is no longer deployed")?;
+    let at = cur
+        .find(&format!("<rule id=\"{id}\""))
+        .ok_or("The rule is no longer deployed")?;
     // the group around the rule (the rule has a <group> element of its own inside)
-    let start = cur[..at].rfind("<group name=").ok_or("Malformed rules file")?;
+    let start = cur[..at]
+        .rfind("<group name=")
+        .ok_or("Malformed rules file")?;
     let after_rule = at + cur[at..].find("</rule>").ok_or("Malformed rules file")?;
-    let end = after_rule + cur[after_rule..].find("</group>").ok_or("Malformed rules file")? + "</group>".len();
-    Ok(format!("{}{}", &cur[..start], cur[end..].trim_start_matches(['\r', '\n'])))
+    let end = after_rule
+        + cur[after_rule..]
+            .find("</group>")
+            .ok_or("Malformed rules file")?
+        + "</group>".len();
+    Ok(format!(
+        "{}{}",
+        &cur[..start],
+        cur[end..].trim_start_matches(['\r', '\n'])
+    ))
 }
 
 #[cfg(test)]
 mod rule_file_tests {
     #[test]
     fn removes_the_whole_group_of_a_rule() {
-        let g = |id: u32| format!("<group name=\"rs,m\">\n  <!-- c -->\n  <rule id=\"{id}\" level=\"8\">\n    <match>x</match>\n    <group>attack,purple_team</group>\n  </rule>\n</group>\n");
+        let g = |id: u32| {
+            format!("<group name=\"rs,m\">\n  <!-- c -->\n  <rule id=\"{id}\" level=\"8\">\n    <match>x</match>\n    <group>attack,purple_team</group>\n  </rule>\n</group>\n")
+        };
         let file = format!("{}{}", g(119000), g(119001));
         assert_eq!(super::without_group(&file, 119000).unwrap(), g(119001));
         assert_eq!(super::without_group(&file, 119001).unwrap(), g(119000));
-        assert!(super::without_group(&g(119000), 119000).unwrap().trim().is_empty());
+        assert!(super::without_group(&g(119000), 119000)
+            .unwrap()
+            .trim()
+            .is_empty());
         assert!(super::without_group(&file, 5).is_err());
     }
 
@@ -727,10 +997,22 @@ mod rule_file_tests {
     #[test]
     fn edr_commands_in_ossec_conf() {
         let k = super::ar_conf_section("kill-process", "kill-process.exe", false);
-        assert!(k.contains("<timeout_allowed>no</timeout_allowed>") && !k.contains("<timeout>") && k.matches("<active-response>").count() == 1, "{k}");
+        assert!(
+            k.contains("<timeout_allowed>no</timeout_allowed>")
+                && !k.contains("<timeout>")
+                && k.matches("<active-response>").count() == 1,
+            "{k}"
+        );
         let i = super::ar_conf_section("isolate-host", "isolate-host.exe", true);
         assert_eq!(i.matches("<timeout>").count(), super::AR_TIMEOUTS.len());
-        assert!(super::AR_COMMANDS.iter().filter(|c| c.1 == "isolate-host.exe").count() == 2, "isolate and release");
+        assert!(
+            super::AR_COMMANDS
+                .iter()
+                .filter(|c| c.1 == "isolate-host.exe")
+                .count()
+                == 2,
+            "isolate and release"
+        );
     }
 }
 
@@ -741,9 +1023,17 @@ pub(crate) fn restart_daemons(names: &[&str]) {
             continue;
         }
         #[cfg(windows)]
-        let _ = Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        let _ = Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
         #[cfg(unix)]
-        let _ = Command::new("kill").arg(pid.to_string()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        let _ = Command::new("kill")
+            .arg(pid.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
 }
 
@@ -751,30 +1041,59 @@ pub(crate) fn restart_daemons(names: &[&str]) {
 /// `<alerts><email_alert_level>` (each element on its own line, as written here).
 fn ossec_conf_with_mail(t: &str, s: &crate::mail_settings::MailSettings) -> String {
     let mut lines: Vec<String> = t.lines().map(String::from).collect();
-    let starts = |l: &str, tags: &[&str]| tags.iter().any(|g| l.trim_start().starts_with(&format!("<{g}>")));
+    let starts = |l: &str, tags: &[&str]| {
+        tags.iter()
+            .any(|g| l.trim_start().starts_with(&format!("<{g}>")))
+    };
     let section = |lines: &Vec<String>, name: &str| -> Option<(usize, usize)> {
         let a = lines.iter().position(|l| l.trim() == format!("<{name}>"))?;
-        let b = lines[a..].iter().position(|l| l.trim() == format!("</{name}>"))? + a;
+        let b = lines[a..]
+            .iter()
+            .position(|l| l.trim() == format!("</{name}>"))?
+            + a;
         Some((a, b))
     };
-    let mut global = vec![format!("<email_notification>{}</email_notification>", if s.alert_enabled { "yes" } else { "no" })];
+    let mut global = vec![format!(
+        "<email_notification>{}</email_notification>",
+        if s.alert_enabled { "yes" } else { "no" }
+    )];
     if !s.host.is_empty() {
         global.push(format!("<smtp_server>{}</smtp_server>", s.host));
     }
     if !s.user.is_empty() {
         global.push(format!("<email_from>{}</email_from>", s.user));
     }
-    global.extend(s.alert_to.iter().map(|t| format!("<email_to>{t}</email_to>")));
-    global.push(format!("<email_maxperhour>{}</email_maxperhour>", s.max_per_hour));
-    let gtags = ["email_notification", "smtp_server", "email_from", "email_to", "email_maxperhour"];
+    global.extend(
+        s.alert_to
+            .iter()
+            .map(|t| format!("<email_to>{t}</email_to>")),
+    );
+    global.push(format!(
+        "<email_maxperhour>{}</email_maxperhour>",
+        s.max_per_hour
+    ));
+    let gtags = [
+        "email_notification",
+        "smtp_server",
+        "email_from",
+        "email_to",
+        "email_maxperhour",
+    ];
     match section(&lines, "global") {
         Some((a, b)) => {
-            let mut body: Vec<String> = lines[a + 1..b].iter().filter(|l| !starts(l, &gtags)).cloned().collect();
+            let mut body: Vec<String> = lines[a + 1..b]
+                .iter()
+                .filter(|l| !starts(l, &gtags))
+                .cloned()
+                .collect();
             body.extend(global);
             lines.splice(a + 1..b, body);
         }
         None => {
-            let end = lines.iter().rposition(|l| l.trim() == "</ossec_config>").unwrap_or(lines.len());
+            let end = lines
+                .iter()
+                .rposition(|l| l.trim() == "</ossec_config>")
+                .unwrap_or(lines.len());
             let mut blk = vec!["<global>".to_string()];
             blk.extend(global);
             blk.push("</global>".into());
@@ -784,19 +1103,31 @@ fn ossec_conf_with_mail(t: &str, s: &crate::mail_settings::MailSettings) -> Stri
     let level = format!("<email_alert_level>{}</email_alert_level>", s.alert_level);
     match section(&lines, "alerts") {
         Some((a, b)) => {
-            let mut body: Vec<String> = lines[a + 1..b].iter().filter(|l| !starts(l, &["email_alert_level"])).cloned().collect();
+            let mut body: Vec<String> = lines[a + 1..b]
+                .iter()
+                .filter(|l| !starts(l, &["email_alert_level"]))
+                .cloned()
+                .collect();
             body.push(level);
             lines.splice(a + 1..b, body);
         }
         None => {
-            let end = lines.iter().rposition(|l| l.trim() == "</ossec_config>").unwrap_or(lines.len());
-            lines.splice(end..end, ["<alerts>".to_string(), level, "</alerts>".into()]);
+            let end = lines
+                .iter()
+                .rposition(|l| l.trim() == "</ossec_config>")
+                .unwrap_or(lines.len());
+            lines.splice(
+                end..end,
+                ["<alerts>".to_string(), level, "</alerts>".into()],
+            );
         }
     }
     let mut out = lines.join("\n");
     out.push('\n');
     out
 }
+
+pub const SMTP_AUTH_FILE: &str = "etc/smtp_auth.conf";
 
 /// Writes the platform SMTP settings into the manager (`ossec.conf` and the
 /// TLS/login file `etc/smtp_auth.conf`) and restarts what reads them.
@@ -813,7 +1144,7 @@ pub fn apply_mail_settings(s: &crate::mail_settings::MailSettings) {
             changed |= std::fs::write(&conf, n).is_ok();
         }
     }
-    let auth = home.join(siem_maild::smtp_ext::SMTP_AUTH_FILE);
+    let auth = home.join(SMTP_AUTH_FILE);
     if s.host.is_empty() {
         changed |= std::fs::remove_file(&auth).is_ok();
     } else {
@@ -831,16 +1162,25 @@ pub fn apply_mail_settings(s: &crate::mail_settings::MailSettings) {
         }
     }
     if changed {
-        info!("ProVigil manager: mail settings applied (alerts by e-mail: {})", if s.alert_enabled { "on" } else { "off" });
+        info!(
+            "ProVigil manager: mail settings applied (alerts by e-mail: {})",
+            if s.alert_enabled { "on" } else { "off" }
+        );
         // analysisd decides which alerts are mailed; maild and monitord send them
-        restart_daemons(&["wazuh-analysisd", "wazuh-maild", "wazuh-monitord"]);
+        restart_daemons(&["provigil-analysisd", "provigil-maild", "provigil-monitord"]);
     }
 }
 
 static WDB: std::sync::OnceLock<siem_ipc::wdbc::WdbcSocket> = std::sync::OnceLock::new();
 
-fn wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
+pub(crate) fn wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
     WDB.get_or_init(|| siem_ipc::wdbc::WdbcSocket::new(home().join("queue/db/wdb")))
+}
+
+/// The connection of removals: a mass removal queues here, not in front of enrollments.
+fn purge_wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
+    static CONN: std::sync::OnceLock<siem_ipc::wdbc::WdbcSocket> = std::sync::OnceLock::new();
+    CONN.get_or_init(|| siem_ipc::wdbc::WdbcSocket::new(home().join("queue/db/wdb")))
 }
 
 /// What authd does for a new key (`wdb_insert_agent` + `wdb_set_agent_groups_csv`):
@@ -850,7 +1190,11 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
         return;
     }
     let Ok(n) = id.parse::<i64>() else { return };
-    let group = if groups.trim().is_empty() { "default" } else { groups.trim() };
+    let group = if groups.trim().is_empty() {
+        "default"
+    } else {
+        groups.trim()
+    };
     // A re-enrollment replaces the row (manage_agents -r, then the insert).
     let _ = wdb().query(&format!("global delete-agent {n}")).await;
     let row = serde_json::json!({
@@ -867,7 +1211,11 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
         Ok(r) => warn!("ProVigil manager: insert-agent {id}: {r}"),
         Err(e) => warn!("ProVigil manager: insert-agent {id}: {e}"),
     }
-    let groups: Vec<&str> = group.split(',').map(str::trim).filter(|g| !g.is_empty()).collect();
+    let groups: Vec<&str> = group
+        .split(',')
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+        .collect();
     let set = serde_json::json!({ "mode": "override", "sync_status": "synced", "data": [{ "id": n, "groups": groups }] });
     if let Ok(r) = wdb().query(&format!("global set-agent-groups {set}")).await {
         if !r.starts_with("ok") {
@@ -878,7 +1226,9 @@ pub async fn register_agent(id: &str, name: &str, ip: &str, raw_key: &str, group
 
 /// ProVigil API `set_agent_group_relationship` (override): the agent's whole group list.
 pub async fn set_agent_groups(id: &str, groups: &[String]) -> bool {
-    let Ok(n) = id.parse::<i64>() else { return false };
+    let Ok(n) = id.parse::<i64>() else {
+        return false;
+    };
     let set = serde_json::json!({ "mode": "override", "sync_status": "syncreq", "data": [{ "id": n, "groups": groups }] });
     match wdb().query(&format!("global set-agent-groups {set}")).await {
         Ok(r) if r.starts_with("ok") => true,
@@ -896,7 +1246,11 @@ pub async fn set_agent_groups(id: &str, groups: &[String]) -> bool {
 /// What wm_database does when it finds a new or removed `etc/shared` folder
 /// (`wdb_insert_group` / `wdb_remove_group_db`), done now instead of on its next sync.
 pub async fn sync_group(name: &str, exists: bool) -> bool {
-    let cmd = if exists { "insert-agent-group" } else { "delete-group" };
+    let cmd = if exists {
+        "insert-agent-group"
+    } else {
+        "delete-group"
+    };
     match wdb().query(&format!("global {cmd} {name}")).await {
         Ok(r) if r.starts_with("ok") => true,
         r => {
@@ -913,17 +1267,22 @@ pub async fn remove_agent(id: &str) -> bool {
     if !enabled() {
         return false;
     }
-    let Ok(n) = id.parse::<u32>() else { return false };
+    let Ok(n) = id.parse::<u32>() else {
+        return false;
+    };
     if n == 0 {
         return false; // the manager itself
     }
-    let row = wdb().query(&format!("global delete-agent {n}")).await;
-    let file = wdb().query(&format!("wazuhdb remove {n:03}")).await;
+    let row = purge_wdb().query(&format!("global delete-agent {n}")).await;
+    let file = purge_wdb().query(&format!("wazuhdb remove {n:03}")).await;
     // OS_RemoveCounter (only a well-formed id names a file under queue/rids)
     let _ = std::fs::remove_file(home().join("queue/rids").join(format!("{n:03}")));
-    let ok = row.as_deref().is_ok_and(|r| r.starts_with("ok")) && file.as_deref().is_ok_and(|r| r.starts_with("ok"));
+    let ok = row.as_deref().is_ok_and(|r| r.starts_with("ok"))
+        && file.as_deref().is_ok_and(|r| r.starts_with("ok"));
     if !ok {
-        warn!("ProVigil manager: agent {n:03} not fully removed from provigil-db: {row:?} / {file:?}");
+        warn!(
+            "ProVigil manager: agent {n:03} not fully removed from provigil-db: {row:?} / {file:?}"
+        );
     }
     ok
 }
@@ -934,14 +1293,19 @@ pub async fn purge_removed(ids: Vec<String>) {
     if !enabled() || ids.is_empty() {
         return;
     }
+    let known = |k: u32| async move { purge_wdb().query(&format!("global get-agent-info {k}")).await.is_ok_and(|r| r.starts_with("ok [{")) };
     for _ in 0..60 {
-        if is_provigil_agent("0").await {
+        if known(0).await {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     let file = |k: u32| home().join("queue/db").join(format!("{k:03}.db"));
-    let ids: Vec<u32> = ids.iter().filter_map(|i| i.parse::<u32>().ok()).filter(|k| *k > 0).collect();
+    let ids: Vec<u32> = ids
+        .iter()
+        .filter_map(|i| i.parse::<u32>().ok())
+        .filter(|k| *k > 0)
+        .collect();
     let mut removed = std::collections::BTreeSet::new();
     // checked again, and removed again, every 30 s, at least 3 times: a file another
     // process still has open is only gone once it closes it (Windows), and a manager
@@ -949,7 +1313,7 @@ pub async fn purge_removed(ids: Vec<String>) {
     for pass in 0..20 {
         let mut left = Vec::new();
         for &k in &ids {
-            if file(k).exists() || is_provigil_agent(&k.to_string()).await {
+            if file(k).exists() || known(k).await {
                 left.push(k);
             }
         }
@@ -962,7 +1326,11 @@ pub async fn purge_removed(ids: Vec<String>) {
         }
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     }
-    let still: Vec<String> = removed.iter().filter(|k| file(**k).exists()).map(|k| format!("{k:03}")).collect();
+    let still: Vec<String> = removed
+        .iter()
+        .filter(|k| file(**k).exists())
+        .map(|k| format!("{k:03}"))
+        .collect();
     if !removed.is_empty() {
         info!("ProVigil manager: {} removed agent(s) also removed from provigil-db (row and database file)", removed.len() - still.len());
     }
@@ -975,32 +1343,480 @@ pub async fn purge_removed(ids: Vec<String>) {
 pub(crate) async fn agent_sql(id: &str, sql: &str) -> Option<Vec<serde_json::Value>> {
     let r = wdb().query(&format!("agent {id} sql {sql}")).await.ok()?;
     let json = r.strip_prefix("ok ")?;
-    serde_json::from_str::<serde_json::Value>(json).ok()?.as_array().cloned()
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()?
+        .as_array()
+        .cloned()
+}
+
+/// Events of a ProVigil agent (HTTPS) handed to analysisd exactly as remoted hands an old
+/// agent's: `<queue>:[<id>] (<name>) <ip>-><location>:<message>`. analysisd then decodes,
+/// matches the rules, archives and alerts as for any agent. `events`: (queue id, location,
+/// message), e.g. (`f`, `EventChannel`, `{"Message":..,"Event":..}`).
+pub async fn send_agent_events(agent_id: &str, name: &str, ip: &str, events: &[(u8, String, String)]) -> Result<(), String> {
+    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let s = siem_ipc::local::DatagramSender::connect(home().join(siem_ipc::mq::DEFAULTQUEUE)).await.map_err(|e| format!("analysisd queue: {e}"))?;
+    let ip = if ip.is_empty() { "any" } else { ip };
+    let locmsg = format!("[{id}] ({name}) {ip}");
+    for (q, location, message) in events {
+        // the agent's own SendMSG: `<q>:<location, ':' and '|' escaped>:<message>`
+        let mut agent_msg = vec![*q, b':'];
+        agent_msg.extend(siem_ipc::mq::wstr_escape(location.as_bytes(), b'|', b':', 8193));
+        agent_msg.push(b':');
+        agent_msg.extend_from_slice(message.as_bytes());
+        let Some(mut m) = siem_ipc::mq::format_msg(&agent_msg, &locmsg, siem_ipc::mq::queues::SECURE_MQ) else { continue };
+        m.insert(0, siem_ipc::platform_stream::FROM_API);
+        s.send(&m).await.map_err(|e| format!("analysisd queue: {e}"))?;
+        ANALYSISD_SENT.fetch_add(1, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+/// Datagrams handed to analysisd since siem-api started.
+static ANALYSISD_SENT: AtomicU64 = AtomicU64::new(0);
+/// analysisd is behind: agent ingest answers 429 and the agents keep their batches.
+static ANALYSISD_BEHIND: AtomicBool = AtomicBool::new(false);
+/// Datagrams analysisd may be behind, well inside its input channel and receive buffer.
+const ANALYSISD_LAG_MAX: u64 = 2_000;
+/// How full its fullest decoder queue may get. The queues hold 16,384 messages, and between two
+/// readings at the 20,000 messages/s siem-api can pass on, 10,000 more come.
+const ANALYSISD_QUEUE_MAX: f64 = 0.25;
+/// How often siem-api asks.
+const ANALYSISD_LOAD_EVERY: Duration = Duration::from_millis(500);
+/// The analysis thread answers between two messages: longer than this, it is stuck behind.
+const ANALYSISD_LOAD_TIMEOUT: Duration = Duration::from_secs(1);
+
+pub(crate) fn analysisd_behind() -> bool {
+    ANALYSISD_BEHIND.load(Ordering::Relaxed)
+}
+
+/// The datagrams sent to analysisd and not yet received by it, from readings of both counters.
+#[derive(Default)]
+struct AnalysisdLag {
+    last: Option<(u64, u64)>,
+    lag: u64,
+}
+
+impl AnalysisdLag {
+    fn observe(&mut self, sent: u64, received: u64) -> u64 {
+        if let Some((s, r)) = self.last {
+            let new = sent - s;
+            // a lower count: analysisd restarted and what it held is gone
+            let got = if received < r { self.lag = 0; received } else { received - r };
+            // nothing moved: the rest was lost on the way, it is not waiting to be read
+            self.lag = if new == 0 && got == 0 { 0 } else { (self.lag + new).saturating_sub(got) };
+        }
+        self.last = Some((sent, received));
+        self.lag
+    }
+}
+
+/// analysisd's load: how full its fullest queue is (0 to 1) and siem-api's datagrams it read.
+/// Err(true): it took too long to answer. Err(false): it is not there.
+async fn analysisd_load(path: &Path) -> Result<(f64, u64), bool> {
+    use siem_ipc::{framing, local::LocalStream};
+    let mut s = LocalStream::connect(path).await.map_err(|_| false)?;
+    let asked = async {
+        framing::send(&mut s, b"{\"command\":\"getload\"}").await.ok()?;
+        framing::recv(&mut s, 4096).await.ok()
+    };
+    let r = tokio::time::timeout(ANALYSISD_LOAD_TIMEOUT, asked).await.map_err(|_| true)?.ok_or(false)?;
+    let v: serde_json::Value = serde_json::from_slice(&r).map_err(|_| false)?;
+    Ok((v["data"]["queue_usage"].as_f64().ok_or(false)?, v["data"]["received"].as_f64().ok_or(false)? as u64))
+}
+
+/// Asks analysisd for its load and keeps `ANALYSISD_BEHIND` right, so that agents are refused
+/// before its queues are full.
+async fn analysisd_lag_loop() {
+    let path = home().join("queue/sockets/analysis");
+    let mut lag = AnalysisdLag::default();
+    loop {
+        tokio::time::sleep(ANALYSISD_LOAD_EVERY).await;
+        let behind = match analysisd_load(&path).await {
+            Ok((usage, received)) => {
+                let n = lag.observe(ANALYSISD_SENT.load(Ordering::Relaxed), received);
+                let behind = n > ANALYSISD_LAG_MAX || usage > ANALYSISD_QUEUE_MAX;
+                if behind != analysisd_behind() {
+                    warn!("analysisd is {n} message(s) behind, fullest queue {:.0}%: agent ingest {}", usage * 100.0, if behind { "answers 429" } else { "open again" });
+                }
+                behind
+            }
+            Err(busy) => {
+                if busy != analysisd_behind() {
+                    warn!("analysisd {}: agent ingest {}", if busy { "did not answer within 1 s" } else { "is not running" }, if busy { "answers 429" } else { "open again" });
+                }
+                busy
+            }
+        };
+        ANALYSISD_BEHIND.store(behind, Ordering::Relaxed);
+    }
+}
+
+/// `global sql <statement>` on global.db; whether it was applied.
+pub(crate) async fn global_sql(sql: &str) -> bool {
+    let ok = wdb()
+        .query(&format!("global sql {sql}"))
+        .await
+        .is_ok_and(|r| r.starts_with("ok"));
+    if !ok {
+        warn!(
+            "global.db statement not applied: {}",
+            &sql[..sql.len().min(160)]
+        );
+    }
+    ok
+}
+
+#[cfg(test)]
+pub(crate) async fn wdb_raw(q: &str) -> String {
+    wdb().query(q).await.unwrap_or_else(|e| format!("error {e}"))
+}
+
+/// `global sql <select>`: the rows.
+#[cfg(test)]
+pub(crate) async fn global_rows(sql: &str) -> Option<serde_json::Value> {
+    let r = wdb().query(&format!("global sql {sql}")).await.ok()?;
+    serde_json::from_str(r.strip_prefix("ok ")?).ok()
 }
 
 /// Whether the id is an agent of the ProVigil manager (it has a row in global.db).
 pub async fn is_provigil_agent(agent_id: &str) -> bool {
-    let Ok(n) = agent_id.parse::<u32>() else { return false };
-    enabled() && wdb().query(&format!("global get-agent-info {n}")).await.is_ok_and(|r| r.starts_with("ok [{"))
+    let Ok(n) = agent_id.parse::<u32>() else {
+        return false;
+    };
+    enabled()
+        && wdb()
+            .query(&format!("global get-agent-info {n}"))
+            .await
+            .is_ok_and(|r| r.starts_with("ok [{"))
 }
 
 /// One message to remoted's active-response queue (`queue/alerts/ar`), as
 /// the ProVigil API's `WazuhQueue.send_msg_to_agent` writes it.
 async fn send_ar_queue(msg: &str) -> Result<(), String> {
-    let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar")).await.map_err(|e| format!("remoted active-response queue: {e}"))?;
-    s.send(msg.as_bytes()).await.map_err(|e| format!("remoted active-response queue: {e}"))
+    route_ar(msg, "console").await
+}
+
+/// A ProVigil agent (HTTPS) gets the message on its next keepalive, other agents through remoted.
+async fn route_ar(msg: &str, origin: &str) -> Result<(), String> {
+    if let Some((id, payload)) = ar_target(msg) {
+        if is_http_agent(&id) {
+            queue_http_command(&id, payload, origin);
+            return Ok(());
+        }
+    }
+    let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar"))
+        .await
+        .map_err(|e| format!("remoted active-response queue: {e}"))?;
+    s.send(msg.as_bytes())
+        .await
+        .map_err(|e| format!("remoted active-response queue: {e}"))
+}
+
+/// The responses the engine sends for ProVigil agents become their commands.
+async fn engine_responses(home: PathBuf) {
+    let rx = match siem_ipc::local::DatagramReceiver::bind(home.join(siem_ipc::mq::PROVIGIL_ARQUEUE)).await {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("Engine responses cannot reach ProVigil agents: {e}");
+            return;
+        }
+    };
+    loop {
+        match rx.recv(siem_ipc::OS_MAXSTR).await {
+            Ok(m) => {
+                let text = String::from_utf8_lossy(&m);
+                if let Err(e) = route_ar(text.trim_end_matches('\0'), "engine").await {
+                    warn!("engine response not delivered: {e}");
+                }
+            }
+            Err(e) => {
+                warn!("engine response queue: {e}");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    }
+}
+
+/// Agents that talk to the manager over HTTPS (the ProVigil agent, `provigil-agent`): they never
+/// connect to remoted, so their commands wait for their next keepalive. ClickHouse holds the
+/// lasting copy of both (`agent_commands`).
+static HTTP_AGENTS: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+static HTTP_COMMANDS: Mutex<Option<HashMap<String, Vec<CommandRow>>>> = Mutex::new(None);
+
+/// The marks and waiting commands ClickHouse holds, at start.
+pub(crate) fn restore_http_queue(marks: Vec<String>, rows: Vec<CommandRow>) {
+    HTTP_AGENTS.lock().unwrap().get_or_insert_with(Default::default).extend(marks);
+    let mut q = HTTP_COMMANDS.lock().unwrap();
+    let q = q.get_or_insert_with(Default::default);
+    for r in rows {
+        q.entry(r.agent_id.clone()).or_default().push(r);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn forget_http_queue() {
+    *HTTP_AGENTS.lock().unwrap() = None;
+    *HTTP_COMMANDS.lock().unwrap() = None;
+}
+
+/// A row in a new state, written whole (the last version wins).
+fn into_state(mut r: CommandRow, state: &str) -> CommandRow {
+    r.state = state.to_string();
+    r.state_at = agent_commands::now_ms();
+    r.version = agent_commands::next_version();
+    r
+}
+
+fn agent_key(id: &str) -> String {
+    id.parse::<u32>()
+        .map(|n| format!("{n:03}"))
+        .unwrap_or_else(|_| id.to_string())
+}
+
+/// Marks an agent as an HTTPS agent (it sent a keepalive with its own key).
+pub fn mark_http_agent(id: &str) {
+    let key = agent_key(id);
+    let new = HTTP_AGENTS.lock().unwrap().get_or_insert_with(Default::default).insert(key.clone());
+    if new {
+        agent_commands::save_mark(&key);
+    }
+}
+
+pub fn is_http_agent(id: &str) -> bool {
+    HTTP_AGENTS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|s| s.contains(&agent_key(id)))
+}
+
+/// The commands waiting for an HTTPS agent (taken: each is handed out once); an expired one
+/// never is.
+pub fn take_http_commands(id: &str) -> Vec<serde_json::Value> {
+    let rows = HTTP_COMMANDS.lock().unwrap().as_mut().and_then(|m| m.remove(&agent_key(id))).unwrap_or_default();
+    let now = agent_commands::now_ms();
+    let mut out = Vec::with_capacity(rows.len());
+    for mut r in rows {
+        if r.expires_at <= now {
+            agent_commands::save(into_state(r, table::EXPIRED));
+            continue;
+        }
+        if let Ok(cmd) = serde_json::from_str(&r.command) {
+            out.push(cmd);
+        }
+        r.gateway = "siem-api".to_string();
+        r.attempts += 1;
+        agent_commands::save(into_state(r, table::HANDED));
+    }
+    out
+}
+
+/// Queues a remote upgrade for a ProVigil agent (HTTPS): the published `provigil-agent.exe`
+/// and its SHA-256; the agent downloads, verifies and replaces itself.
+pub fn queue_http_upgrade(id: &str) -> Result<String, String> {
+    use sha2::Digest;
+    let path = windows_agent_file("provigil-agent.exe").ok_or("provigil-agent.exe is not published")?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let hex = |b: &[u8]| -> String { sha2::Sha256::digest(b).iter().map(|b| format!("{b:02x}")).collect() };
+    let sha = hex(&bytes);
+    let version = exe_version(&bytes).ok_or("provigil-agent.exe carries no version mark (rebuild it)")?;
+    // the agent and every published response program; `url` and `sha256` for agents before `files`
+    let files: Vec<serde_json::Value> = WINDOWS_AGENT_FILES
+        .iter()
+        .filter_map(|name| {
+            let bytes = std::fs::read(windows_agent_file(name)?).ok()?;
+            Some(serde_json::json!({ "name": name, "url": format!("/downloads/windows/{name}"), "sha256": hex(&bytes) }))
+        })
+        .collect();
+    push_http_command(id, serde_json::json!({ "command_id": uuid::Uuid::new_v4().to_string(), "type": "upgrade", "url": "/downloads/provigil-agent.exe", "sha256": sha, "version": version, "files": files }));
+    Ok(sha)
+}
+
+/// The published provigil-agent.exe's version (read again only when the file changes).
+pub fn published_agent_version() -> Option<String> {
+    static CACHE: std::sync::Mutex<Option<(PathBuf, Option<std::time::SystemTime>, String)>> = std::sync::Mutex::new(None);
+    let path = windows_agent_file("provigil-agent.exe")?;
+    let mtime = modified(&path);
+    let mut c = CACHE.lock().unwrap();
+    if let Some((p, t, v)) = c.as_ref() {
+        if *p == path && *t == mtime {
+            return Some(v.clone());
+        }
+    }
+    let v = exe_version(&std::fs::read(&path).ok()?)?;
+    *c = Some((path, mtime, v.clone()));
+    Some(v)
+}
+
+/// The version the agent build writes into its exe (`provigil-agent-version:<x.y.z>`).
+pub(crate) fn exe_version(exe: &[u8]) -> Option<String> {
+    const MARK: &[u8] = b"provigil-agent-version:";
+    let at = exe.windows(MARK.len()).position(|w| w == MARK)? + MARK.len();
+    let v: String = exe[at..].iter().take(32).take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')).map(|&b| b as char).collect();
+    (!v.is_empty()).then_some(v)
+}
+
+/// `(msg_to_agent) [] <flags> <id> <payload>` (the engine: `(local_source) []`): the agent and
+/// the payload.
+fn ar_target(msg: &str) -> Option<(String, &str)> {
+    let rest = msg.strip_prefix("(msg_to_agent) [] ").or_else(|| msg.strip_prefix("(local_source) [] "))?;
+    let (_flags, rest) = rest.split_once(' ')?;
+    let (id, payload) = rest.split_once(' ')?;
+    Some((agent_key(id), payload))
+}
+
+/// One queued command: `{"type":"scan"}` for `syscheck restart`, else the response
+/// message (`{"type":"ar","message":{...}}`, the JSON before any trailing text).
+fn http_command(payload: &str) -> Option<serde_json::Value> {
+    let id = uuid::Uuid::new_v4().to_string();
+    if payload.trim() == "syscheck restart" {
+        return Some(serde_json::json!({ "command_id": id, "type": "scan" }));
+    }
+    let message = serde_json::Deserializer::from_str(payload)
+        .into_iter::<serde_json::Value>()
+        .next()?
+        .ok()?;
+    Some(serde_json::json!({ "command_id": id, "type": "ar", "message": message }))
+}
+
+fn queue_http_command(id: &str, payload: &str, origin: &str) {
+    let Some(cmd) = http_command(payload) else {
+        warn!("command for agent {id} not understood, not queued: {payload}");
+        return;
+    };
+    let ttl = agent_commands::ttl_ms(&cmd);
+    enqueue(id, cmd, origin, ttl);
+}
+
+pub(crate) fn push_http_command(id: &str, cmd: serde_json::Value) {
+    let ttl = agent_commands::ttl_ms(&cmd);
+    enqueue(id, cmd, "console", ttl);
+}
+
+fn enqueue(id: &str, mut cmd: serde_json::Value, origin: &str, ttl_ms: u64) {
+    let agent = agent_key(id);
+    if cmd["command_id"].as_str().is_none() {
+        cmd["command_id"] = uuid::Uuid::new_v4().to_string().into();
+    }
+    let now = agent_commands::now_ms();
+    let row = CommandRow {
+        tenant_id: agent_commands::tenant_of(&agent),
+        command_id: cmd["command_id"].as_str().unwrap_or_default().to_string(),
+        agent_id: agent.clone(),
+        command: cmd.to_string(),
+        origin: origin.to_string(),
+        created_at: now,
+        expires_at: now.saturating_add(ttl_ms),
+        state: table::QUEUED.to_string(),
+        state_at: now,
+        gateway: String::new(),
+        attempts: 0,
+        result: String::new(),
+        version: agent_commands::next_version(),
+    };
+    agent_commands::save(row.clone());
+    let mut q = HTTP_COMMANDS.lock().unwrap();
+    let list = q.get_or_insert_with(Default::default).entry(agent).or_default();
+    if list.len() >= table::MAX_PER_AGENT {
+        let oldest = list.remove(0);
+        warn!("agent {id}: more than {} commands waiting, the oldest expired", table::MAX_PER_AGENT);
+        agent_commands::save(into_state(oldest, table::EXPIRED));
+    }
+    list.push(row);
+}
+
+type LiveAnswer = tokio::sync::oneshot::Sender<serde_json::Value>;
+
+/// Live queries waiting for their result: command id -> the agent asked, where the answer goes.
+static LIVE_QUERIES: Mutex<std::collections::BTreeMap<String, (String, LiveAnswer)>> = Mutex::new(std::collections::BTreeMap::new());
+
+/// One live query (command id, agent): ended by its answer, its timeout or a caller that left.
+struct LiveQuery(String, String);
+
+impl Drop for LiveQuery {
+    fn drop(&mut self) {
+        LIVE_QUERIES.lock().unwrap().remove(&self.0);
+        // not asked for yet: an agent that is away must not have queries push out real commands
+        if let Some(list) = HTTP_COMMANDS.lock().unwrap().as_mut().and_then(|m| m.get_mut(&self.1)) {
+            if let Some(at) = list.iter().position(|c| c.command_id == self.0) {
+                agent_commands::save(into_state(list.remove(at), table::CANCELLED));
+            }
+        }
+    }
+}
+
+/// Queues `{"type": kind}` for a ProVigil agent and waits up to `wait` for the result of that
+/// command id; `None` when none came.
+pub async fn live_query(id: &str, kind: &str, wait: Duration) -> Option<serde_json::Value> {
+    let (command_id, agent) = (uuid::Uuid::new_v4().to_string(), agent_key(id));
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    LIVE_QUERIES.lock().unwrap().insert(command_id.clone(), (agent.clone(), tx));
+    let _query = LiveQuery(command_id.clone(), agent);
+    enqueue(id, serde_json::json!({ "command_id": command_id, "type": kind }), "console", table::LIVE_TTL_MS);
+    tokio::time::timeout(wait, rx).await.ok()?.ok()
+}
+
+/// A command result from agent `id`: handed to the live query waiting for it, if that query was
+/// put to this agent.
+pub fn on_command_result(id: &str, result: &serde_json::Value) {
+    let Some(command_id) = result["command_id"].as_str() else { return };
+    agent_commands::save_result(&agent_key(id), result);
+    let mut waiting = LIVE_QUERIES.lock().unwrap();
+    if waiting.get(command_id).is_some_and(|(agent, _)| *agent == agent_key(id)) {
+        if let Some((_, tx)) = waiting.remove(command_id) {
+            let _ = tx.send(result.clone());
+        }
+    }
+}
+
+/// The response programs' result lines a ProVigil agent sends (its
+/// `active-response\active-responses.log`), handled like the old agents' lines: live
+/// response results, tamper protection, YARA results and their alerts.
+pub async fn on_agent_ar_lines(
+    state: &AppState,
+    agent_id: &str,
+    name: &str,
+    ip: &str,
+    lines: Vec<String>,
+) {
+    let now = Utc::now().to_rfc3339();
+    let vs: Vec<serde_json::Value> = lines
+        .into_iter()
+        .map(|l| {
+            serde_json::json!({
+                "timestamp": now,
+                "agent": { "id": agent_key(agent_id), "name": name, "ip": ip },
+                "location": "active-response\\active-responses.log",
+                "decoder": { "name": "ar_log_json" },
+                "full_log": l,
+            })
+        })
+        .collect();
+    if !vs.is_empty() {
+        on_events(state.clone(), vs).await;
+    }
 }
 
 /// `send_restart_command` (agents >= 4.2: the JSON `restart-wazuh0` message).
 pub async fn restart_agent(agent_id: &str) -> Result<(), String> {
-    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let id = format!(
+        "{:03}",
+        agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
+    );
     let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-wazuh0", "parameters": {"extra_args": [], "alert": {}}}"#;
-    send_ar_queue(&format!("(msg_to_agent) [] NNS {id} {m} - null (from_the_server) (no_rule_id)")).await
+    send_ar_queue(&format!(
+        "(msg_to_agent) [] NNS {id} {m} - null (from_the_server) (no_rule_id)"
+    ))
+    .await
 }
 
 /// `PUT /syscheck` / `PUT /rootcheck`: `syscheck restart` runs a FIM and a rootcheck scan.
 pub async fn syscheck_restart(agent_id: &str) -> Result<(), String> {
-    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let id = format!(
+        "{:03}",
+        agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
+    );
     send_ar_queue(&format!("(msg_to_agent) [] N!S {id} syscheck restart")).await
 }
 
@@ -1011,9 +1827,22 @@ pub const AR_TIMEOUTS: [u64; 3] = [600, 3600, 86400];
 /// `PUT /active-response`: block `ip` on the agent's firewall (firewall-drop
 /// on Unix, netsh on Windows) for `timeout` seconds; the agent's execd removes
 /// the rule when it expires.
-pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64, method: Option<&str>) -> Result<String, String> {
-    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
-    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
+pub async fn block_ip(
+    agent_id: &str,
+    windows: bool,
+    ip: &str,
+    timeout: u64,
+    method: Option<&str>,
+) -> Result<String, String> {
+    let id = format!(
+        "{:03}",
+        agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
+    );
+    let timeout = AR_TIMEOUTS
+        .iter()
+        .copied()
+        .find(|t| *t >= timeout)
+        .unwrap_or(86400);
     // Windows: a firewall rule (netsh) or a null route; Linux: firewall-drop
     let name = match (windows, method) {
         (true, Some("route-null")) => "route-null",
@@ -1034,7 +1863,10 @@ pub async fn block_ip(agent_id: &str, windows: bool, ip: &str, timeout: u64, met
 /// One EDR command to a Windows agent (`extra_args` as `key=value` items, see
 /// siem-active-response's edr.rs).
 async fn send_edr(agent_id: &str, command: &str, extra_args: &[String]) -> Result<(), String> {
-    let id = format!("{:03}", agent_id.parse::<u32>().map_err(|_| "invalid agent id")?);
+    let id = format!(
+        "{:03}",
+        agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
+    );
     let m = serde_json::json!({
         "version": 1,
         "origin": { "name": serde_json::Value::Null, "module": "api" },
@@ -1057,7 +1889,12 @@ pub async fn yara_scan(agent_id: &str, path: &str) -> Result<(), String> {
 }
 
 /// EDR live response: request `id` (`live_response.rs`), `action` with its `path`.
-pub async fn live_response(agent_id: &str, id: &str, action: &str, path: &str) -> Result<(), String> {
+pub async fn live_response(
+    agent_id: &str,
+    id: &str,
+    action: &str,
+    path: &str,
+) -> Result<(), String> {
     let mut args = vec![format!("id={id}"), format!("action={action}")];
     if !path.is_empty() {
         args.push(format!("path={path}"));
@@ -1077,8 +1914,17 @@ pub async fn tamper_off(agent_id: &str) -> Result<(), String> {
 
 /// EDR tamper protection: maintenance window `window` for `secs` (the agent locks again at its end).
 pub async fn tamper_window(agent_id: &str, window: &str, secs: u64) -> Result<(), String> {
-    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= secs).unwrap_or(86400);
-    send_edr(agent_id, &format!("tamper-unlock{timeout}"), &[format!("window={window}")]).await
+    let timeout = AR_TIMEOUTS
+        .iter()
+        .copied()
+        .find(|t| *t >= secs)
+        .unwrap_or(86400);
+    send_edr(
+        agent_id,
+        &format!("tamper-unlock{timeout}"),
+        &[format!("window={window}")],
+    )
+    .await
 }
 
 /// EDR: moves `path` into the agent's quarantine folder.
@@ -1094,9 +1940,15 @@ pub async fn restore_file(agent_id: &str, id: &str) -> Result<(), String> {
 /// The manager addresses an isolated host keeps reaching: `SIEM_LAN_IP` (else
 /// `MANAGER_IP`) and `EDR_ISOLATION_ALLOW` (comma-separated, e.g. a NAT address).
 pub fn isolation_allow() -> Vec<std::net::Ipv4Addr> {
-    let own = std::env::var("SIEM_LAN_IP").or_else(|_| std::env::var("MANAGER_IP")).unwrap_or_default();
+    let own = std::env::var("SIEM_LAN_IP")
+        .or_else(|_| std::env::var("MANAGER_IP"))
+        .unwrap_or_default();
     let extra = std::env::var("EDR_ISOLATION_ALLOW").unwrap_or_default();
-    let mut v: Vec<std::net::Ipv4Addr> = own.split(',').chain(extra.split(',')).filter_map(|a| a.trim().parse().ok()).collect();
+    let mut v: Vec<std::net::Ipv4Addr> = own
+        .split(',')
+        .chain(extra.split(','))
+        .filter_map(|a| a.trim().parse().ok())
+        .collect();
     v.dedup();
     v
 }
@@ -1108,10 +1960,23 @@ pub async fn isolate_agent(agent_id: &str, timeout: u64) -> Result<(String, u64)
     if allow.is_empty() {
         return Err("Set SIEM_LAN_IP (the manager address the agents connect to) first: an isolated host must keep reaching the manager".into());
     }
-    let timeout = AR_TIMEOUTS.iter().copied().find(|t| *t >= timeout).unwrap_or(86400);
+    let timeout = AR_TIMEOUTS
+        .iter()
+        .copied()
+        .find(|t| *t >= timeout)
+        .unwrap_or(86400);
     let iso = uuid::Uuid::new_v4().simple().to_string();
-    let allow = allow.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",");
-    send_edr(agent_id, &format!("isolate-host{timeout}"), &[format!("id={iso}"), format!("allow={allow}")]).await?;
+    let allow = allow
+        .iter()
+        .map(|a| a.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    send_edr(
+        agent_id,
+        &format!("isolate-host{timeout}"),
+        &[format!("id={iso}"), format!("allow={allow}")],
+    )
+    .await?;
     Ok((iso, timeout))
 }
 
@@ -1143,7 +2008,9 @@ const AR_COMMANDS: [(&str, &str, bool); 11] = [
 fn ar_conf_section(name: &str, exe: &str, timed: bool) -> String {
     let allowed = if timed { "yes" } else { "no" };
     let mut s = format!("  <command>\n    <name>{name}</name>\n    <executable>{exe}</executable>\n    <timeout_allowed>{allowed}</timeout_allowed>\n  </command>\n");
-    let ar = |t: &str| format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n{t}  </active-response>\n");
+    let ar = |t: &str| {
+        format!("  <active-response>\n    <command>{name}</command>\n    <location>local</location>\n    <level>20</level>\n{t}  </active-response>\n")
+    };
     if timed {
         for t in AR_TIMEOUTS {
             s.push_str(&ar(&format!("    <timeout>{t}</timeout>\n")));
@@ -1156,7 +2023,9 @@ fn ar_conf_section(name: &str, exe: &str, timed: bool) -> String {
 
 /// Adds the console's active-response commands an existing ossec.conf lacks.
 fn ensure_ar_commands(conf: &Path) {
-    let Ok(t) = std::fs::read_to_string(conf) else { return };
+    let Ok(t) = std::fs::read_to_string(conf) else {
+        return;
+    };
     let missing: String = AR_COMMANDS
         .iter()
         .filter(|(name, _, _)| !t.contains(&format!("<name>{name}</name>")))
@@ -1174,7 +2043,11 @@ fn ensure_ar_commands(conf: &Path) {
 
 fn ts(v: Option<&serde_json::Value>) -> serde_json::Value {
     match v.and_then(|x| x.as_i64()) {
-        Some(t) => serde_json::Value::String(chrono::DateTime::from_timestamp(t, 0).map(|d| d.to_rfc3339()).unwrap_or_default()),
+        Some(t) => serde_json::Value::String(
+            chrono::DateTime::from_timestamp(t, 0)
+                .map(|d| d.to_rfc3339())
+                .unwrap_or_default(),
+        ),
         None => serde_json::Value::Null,
     }
 }
@@ -1187,7 +2060,12 @@ pub async fn agent_fim(agent_id: &str) -> Option<serde_json::Value> {
 /// The agent's FIM entries, the `max` most recently changed (`total`: all of them).
 pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Value> {
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
-    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;").await?.first().and_then(|x| x.get("n")).and_then(|n| n.as_u64()).unwrap_or(0);
+    let total = agent_sql(&id, "SELECT count(*) AS n FROM fim_entry;")
+        .await?
+        .first()
+        .and_then(|x| x.get("n"))
+        .and_then(|n| n.as_u64())
+        .unwrap_or(0);
     let rows = crate::inventory_store::paged(&id, "SELECT full_path, file, type, date, changes, arch, value_name, size, uname, gname, md5, sha1, sha256, mtime FROM fim_entry ORDER BY date DESC", max).await;
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
@@ -1196,7 +2074,10 @@ pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Va
             r["date"] = d;
             r["mtime"] = m;
             // registry entries are keyed by a hash; `file` is the key path (and `value_name` the value)
-            let path = match (r["file"].as_str().unwrap_or(""), r["value_name"].as_str().unwrap_or("")) {
+            let path = match (
+                r["file"].as_str().unwrap_or(""),
+                r["value_name"].as_str().unwrap_or(""),
+            ) {
                 ("", _) => None,
                 (f, "") => Some(f.to_string()),
                 (f, v) => Some(format!("{f}\\{v}")),
@@ -1208,7 +2089,9 @@ pub async fn agent_fim_upto(agent_id: &str, max: usize) -> Option<serde_json::Va
             r
         })
         .collect();
-    Some(serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "provigil-db" }))
+    Some(
+        serde_json::json!({ "agent_id": agent_id, "total": total, "entries": entries, "source": "provigil-db" }),
+    )
 }
 
 /// The latest SCA scan of a ProVigil agent (`sca_scan_info` / `sca_check` in its provigil-db database).
@@ -1217,18 +2100,40 @@ pub async fn agent_sca(agent_id: &str) -> Option<serde_json::Value> {
     let scan = agent_sql(&id, "SELECT policy_id, pass, fail, invalid, score, end_scan FROM sca_scan_info ORDER BY end_scan DESC LIMIT 1;").await?.into_iter().next()?;
     let policy = scan.get("policy_id")?.as_str()?.to_string();
     let q = policy.replace('\'', "''");
-    let name = agent_sql(&id, &format!("SELECT name FROM sca_policy WHERE id = '{q}';")).await.and_then(|r| r.first().and_then(|x| x["name"].as_str().map(String::from)));
+    let name = agent_sql(
+        &id,
+        &format!("SELECT name FROM sca_policy WHERE id = '{q}';"),
+    )
+    .await
+    .and_then(|r| r.first().and_then(|x| x["name"].as_str().map(String::from)));
     // each check's frameworks as the agent sent them (`sca_check_compliance`: one row per
     // framework, its requirement ids comma-separated)
-    let mut compliance: HashMap<String, serde_json::Map<String, serde_json::Value>> = HashMap::new();
-    for r in crate::inventory_store::paged(&id, "SELECT id_check, key, value FROM sca_check_compliance ORDER BY id_check", 50_000).await {
+    let mut compliance: HashMap<String, serde_json::Map<String, serde_json::Value>> =
+        HashMap::new();
+    for r in crate::inventory_store::paged(
+        &id,
+        "SELECT id_check, key, value FROM sca_check_compliance ORDER BY id_check",
+        50_000,
+    )
+    .await
+    {
         let check = match &r["id_check"] {
             serde_json::Value::String(s) => s.clone(),
             v => v.to_string(),
         };
-        let (Some(key), Some(value)) = (r["key"].as_str(), r["value"].as_str()) else { continue };
-        let ids: Vec<serde_json::Value> = value.split(',').map(str::trim).filter(|v| !v.is_empty()).map(|v| serde_json::Value::String(v.into())).collect();
-        compliance.entry(check).or_default().insert(key.to_string(), serde_json::Value::Array(ids));
+        let (Some(key), Some(value)) = (r["key"].as_str(), r["value"].as_str()) else {
+            continue;
+        };
+        let ids: Vec<serde_json::Value> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| serde_json::Value::String(v.into()))
+            .collect();
+        compliance
+            .entry(check)
+            .or_default()
+            .insert(key.to_string(), serde_json::Value::Array(ids));
     }
     let checks: Vec<serde_json::Value> = crate::inventory_store::paged(&id, &format!("SELECT id, title, result, reason, description, rationale, remediation FROM sca_check WHERE policy_id = '{q}' ORDER BY id"), 5000)
         .await
@@ -1267,7 +2172,9 @@ pub async fn agent_rootcheck(agent_id: &str) -> Option<serde_json::Value> {
             r
         })
         .collect();
-    Some(serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "provigil-db" }))
+    Some(
+        serde_json::json!({ "agent_id": agent_id, "total": events.len(), "events": events, "source": "provigil-db" }),
+    )
 }
 
 /// The inventory syscollector reported for an agent, from provigil-db, in the
@@ -1277,9 +2184,15 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
         return None;
     }
     let id = format!("{:03}", agent_id.parse::<u32>().ok()?);
-    let os = agent_sql(&id, "SELECT hostname, os_name, os_version, architecture FROM sys_osinfo LIMIT 1;").await?;
+    let os = agent_sql(
+        &id,
+        "SELECT hostname, os_name, os_version, architecture FROM sys_osinfo LIMIT 1;",
+    )
+    .await?;
     let os = os.first()?.clone();
-    let hw = agent_sql(&id, "SELECT cpu_cores, ram_total FROM sys_hwinfo LIMIT 1;").await.unwrap_or_default();
+    let hw = agent_sql(&id, "SELECT cpu_cores, ram_total FROM sys_hwinfo LIMIT 1;")
+        .await
+        .unwrap_or_default();
     let hw = hw.first().cloned().unwrap_or_default();
     let count = |t: &'static str| {
         let id = id.clone();
@@ -1292,7 +2205,15 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
     };
     let list = |sql: &'static str, f: fn(&serde_json::Value) -> String| {
         let id = id.clone();
-        async move { agent_sql(&id, sql).await.unwrap_or_default().iter().map(f).filter(|x| !x.trim().is_empty()).collect::<Vec<String>>() }
+        async move {
+            agent_sql(&id, sql)
+                .await
+                .unwrap_or_default()
+                .iter()
+                .map(f)
+                .filter(|x| !x.trim().is_empty())
+                .collect::<Vec<String>>()
+        }
     };
     let txt = |v: &serde_json::Value, k: &str| match v.get(k) {
         Some(serde_json::Value::String(x)) => x.clone(),
@@ -1308,21 +2229,57 @@ pub async fn agent_inventory(agent_id: &str) -> Option<serde_json::Value> {
         format!("{}/{}:{} ({})", t("protocol"), t("local_ip"), t("local_port"), t("process").trim())
     })
     .await;
-    let processes = list("SELECT DISTINCT name FROM sys_processes ORDER BY name LIMIT 500;", |r| r.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string()).await;
-    let software = list("SELECT name, version FROM sys_programs ORDER BY name LIMIT 500;", |r| {
-        let n = r.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let v = r.get("version").and_then(|v| v.as_str()).unwrap_or("").trim();
-        if v.is_empty() { n.to_string() } else { format!("{n} {v}") }
-    })
+    let processes = list(
+        "SELECT DISTINCT name FROM sys_processes ORDER BY name LIMIT 500;",
+        |r| {
+            r.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        },
+    )
     .await;
-    let services = list("SELECT service_id, service_state FROM sys_services WHERE service_state = 'RUNNING' ORDER BY service_id LIMIT 500;", |r| {
+    let software = list(
+        "SELECT name, version FROM sys_programs ORDER BY name LIMIT 500;",
+        |r| {
+            let n = r.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let v = r
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if v.is_empty() {
+                n.to_string()
+            } else {
+                format!("{n} {v}")
+            }
+        },
+    )
+    .await;
+    let services = list("SELECT service_id, service_state FROM sys_services WHERE UPPER(service_state) = 'RUNNING' ORDER BY service_id LIMIT 500;", |r| {
         r.get("service_id").and_then(|v| v.as_str()).unwrap_or("").to_string()
     })
     .await;
-    let users = list("SELECT user_name FROM sys_users ORDER BY user_name LIMIT 500;", |r| r.get("user_name").and_then(|v| v.as_str()).unwrap_or("").to_string()).await;
-    let adapters = list("SELECT iface, address FROM sys_netaddr ORDER BY iface LIMIT 500;", |r| {
-        format!("{} {}", r.get("iface").and_then(|v| v.as_str()).unwrap_or(""), r.get("address").and_then(|v| v.as_str()).unwrap_or(""))
-    })
+    let users = list(
+        "SELECT user_name FROM sys_users ORDER BY user_name LIMIT 500;",
+        |r| {
+            r.get("user_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        },
+    )
+    .await;
+    let adapters = list(
+        "SELECT iface, address FROM sys_netaddr ORDER BY iface LIMIT 500;",
+        |r| {
+            format!(
+                "{} {}",
+                r.get("iface").and_then(|v| v.as_str()).unwrap_or(""),
+                r.get("address").and_then(|v| v.as_str()).unwrap_or("")
+            )
+        },
+    )
     .await;
     let ram_kb = hw.get("ram_total").and_then(|v| v.as_u64()).unwrap_or(0);
     Some(serde_json::json!({
@@ -1362,7 +2319,10 @@ pub fn forget_keys_file() {
     let path = keys_file(&home());
     if platform_keys() && path.exists() {
         match std::fs::remove_file(&path) {
-            Ok(()) => info!("Agent keys are read from ClickHouse: {} removed", path.display()),
+            Ok(()) => info!(
+                "Agent keys are read from ClickHouse: {} removed",
+                path.display()
+            ),
             Err(e) => warn!("{} not removed: {e}", path.display()),
         }
     }
@@ -1383,7 +2343,10 @@ pub fn save_keys(state: &AppState) {
     let ks = state.auth_keystore.read().unwrap().clone();
     let path = keys_file(&home());
     let tmp = path.with_extension("keys.tmp");
-    if let Err(e) = ks.save_file(&tmp).and_then(|_| std::fs::rename(&tmp, &path)) {
+    if let Err(e) = ks
+        .save_file(&tmp)
+        .and_then(|_| std::fs::rename(&tmp, &path))
+    {
         warn!("ProVigil manager: cannot write {}: {e}", path.display());
     }
 }
@@ -1430,20 +2393,27 @@ pub fn start(state: AppState, keys_in_clickhouse: bool) {
             info!("Alerts, events and vulnerability results stream to {addr}, straight into ClickHouse (no alerts / archives / result files)");
             crate::vulnerability::fill_if_empty(state.clone());
         }
-        Err(e) => warn!("Alert stream not started ({e}): analysisd writes no alerts until siem-api restarts"),
+        Err(e) => warn!(
+            "Alert stream not started ({e}): analysisd writes no alerts until siem-api restarts"
+        ),
     }
     let h = home.clone();
     std::thread::spawn(move || {
         for d in DAEMONS {
             let (tx, rx) = std::sync::mpsc::channel();
             let hh = h.clone();
-            std::thread::Builder::new().name(format!("supervise-{d}")).spawn(move || supervise(hh, d, tx)).ok();
+            std::thread::Builder::new()
+                .name(format!("supervise-{d}"))
+                .spawn(move || supervise(hh, d, tx))
+                .ok();
             let _ = rx.recv_timeout(Duration::from_secs(60));
         }
     });
 
     let s = state.clone();
     tokio::spawn(async move { agent_status_loop(s).await });
+    tokio::spawn(analysisd_lag_loop());
+    tokio::spawn(engine_responses(home));
     // the stored SMTP settings win over the files (a fresh manager home gets them too)
     let s = state.clone();
     tokio::spawn(async move {
@@ -1462,7 +2432,8 @@ static KEYS_SERVICE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock
 /// The keys' version for the daemons: changes with every key change and every start.
 fn keys_version() -> u64 {
     static EPOCH: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
-    *EPOCH.get_or_init(|| chrono::Utc::now().timestamp_millis().max(0) as u64) + crate::agent_keys_store::VERSION.load(std::sync::atomic::Ordering::SeqCst)
+    *EPOCH.get_or_init(|| chrono::Utc::now().timestamp_millis().max(0) as u64)
+        + crate::agent_keys_store::VERSION.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Serves the agent keys (`client.keys` lines, from the platform keystore that
@@ -1478,13 +2449,19 @@ fn start_keys_service(state: AppState) -> std::io::Result<String> {
     let _ = KEYS_SERVICE.set((addr.clone(), token.clone()));
     tokio::spawn(async move {
         loop {
-            let Ok((mut sock, peer)) = listener.accept().await else { continue };
+            let Ok((mut sock, peer)) = listener.accept().await else {
+                continue;
+            };
             if !peer.ip().is_loopback() {
                 continue;
             }
             let (state, token) = (state.clone(), token.clone());
             tokio::spawn(async move {
-                let Ok(Ok((kind, t))) = tokio::time::timeout(Duration::from_secs(10), read_frame(&mut sock)).await else { return };
+                let Ok(Ok((kind, t))) =
+                    tokio::time::timeout(Duration::from_secs(10), read_frame(&mut sock)).await
+                else {
+                    return;
+                };
                 let payload = if t != token.as_bytes() || !matches!(kind, KEYS_REQ | VERSION_REQ) {
                     warn!("key service: request refused (wrong token or kind)");
                     vec![b'X']
@@ -1509,11 +2486,16 @@ fn start_keys_service(state: AppState) -> std::io::Result<String> {
     Ok(addr)
 }
 
-/// Frames of the stream: `[u32 LE length][kind][JSON]`.
+/// Frames of the stream: `[u32 LE length][kind][u64 LE sequence][JSON]`.
 const STREAM_MAX_FRAME: usize = 16 * 1024 * 1024;
-/// Lines handed to the pipeline at once (or what came within `STREAM_LINGER`).
-const STREAM_BATCH: usize = 500;
+/// Lines handed to the pipeline at once (or what came within `STREAM_LINGER`): one
+/// ClickHouse INSERT costs about the same for 300 rows as for 5,000.
+const STREAM_BATCH: usize = 5_000;
 const STREAM_LINGER: Duration = Duration::from_millis(200);
+/// Batches of alerts and events stored at the same time per connection.
+const STREAM_INFLIGHT: usize = 4;
+/// Stored batches remembered per stream: more than can be stored and not yet acknowledged.
+const STREAM_MARKS: usize = 16;
 
 /// Opens the loopback listener analysisd streams its alerts and events to.
 fn start_stream(state: AppState) -> std::io::Result<String> {
@@ -1525,7 +2507,9 @@ fn start_stream(state: AppState) -> std::io::Result<String> {
     let _ = STREAM.set((addr.clone(), token.clone()));
     tokio::spawn(async move {
         loop {
-            let Ok((sock, peer)) = listener.accept().await else { continue };
+            let Ok((sock, peer)) = listener.accept().await else {
+                continue;
+            };
             if !peer.ip().is_loopback() {
                 continue;
             }
@@ -1547,7 +2531,10 @@ async fn read_frame(r: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Res
     r.read_exact(&mut len).await?;
     let n = u32::from_le_bytes(len) as usize;
     if n == 0 || n > STREAM_MAX_FRAME {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("frame of {n} bytes")));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("frame of {n} bytes"),
+        ));
     }
     let mut b = vec![0u8; n];
     r.read_exact(&mut b).await?;
@@ -1556,22 +2543,71 @@ async fn read_frame(r: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Res
     Ok((kind, b))
 }
 
-/// One analysisd connection: the token first, then alerts (`A`) and events (`E`) in
-/// batches to the pipeline (`on_alerts` / `on_events`, which store them in ClickHouse).
-/// Frames are read by their own task, so a batch timeout never cuts one in half; while
-/// the pipeline waits for ClickHouse the bounded channel stops the reading, and
-/// analysisd keeps the lines in its own queue.
-async fn stream_conn(state: AppState, sock: tokio::net::TcpStream, token: &str) -> std::io::Result<()> {
-    let mut r = tokio::io::BufReader::new(sock);
-    let (kind, t) = read_frame(&mut r).await?;
-    if kind != b'H' || t != token.as_bytes() {
-        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "wrong token"));
+/// A stream frame: its kind, sequence and JSON.
+async fn read_line(r: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<(u8, u64, Vec<u8>)> {
+    let (kind, mut b) = read_frame(r).await?;
+    let Some(seq) = b.get(..8).and_then(|s| s.try_into().ok()).map(u64::from_le_bytes) else {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "frame without a sequence"));
+    };
+    b.drain(..8);
+    Ok((kind, seq, b))
+}
+
+/// The batches a daemon's stream had stored lately, (first, last) sequence, oldest first.
+static STREAM_STORED: Mutex<Option<StreamMarks>> = Mutex::new(None);
+type StreamMarks = HashMap<String, Vec<(u64, u64)>>;
+
+/// What is stored of `source`'s stream, here and in ClickHouse (siem-api restarted).
+async fn stream_stored(state: &AppState, source: &str) -> Vec<(u64, u64)> {
+    let mut ranges = state.db.stream_marks(source, STREAM_MARKS).await;
+    ranges.extend(STREAM_STORED.lock().unwrap().get_or_insert_with(HashMap::new).get(source).into_iter().flatten());
+    ranges
+}
+
+/// Notes a stored batch, before its acknowledgement: in a replay it is skipped.
+async fn stream_mark(state: &AppState, source: &str, first: u64, last: u64) {
+    {
+        let mut m = STREAM_STORED.lock().unwrap();
+        let ranges = m.get_or_insert_with(HashMap::new).entry(source.to_string()).or_default();
+        ranges.push((first, last));
+        if ranges.len() > STREAM_MARKS {
+            ranges.remove(0);
+        }
     }
-    info!("analysisd stream connected");
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u8, Vec<u8>)>(2 * STREAM_BATCH);
+    state.db.add_stream_mark(source, first, last).await;
+}
+
+/// One daemon's connection: the token and its name first, then alerts (`A`), events (`E`)
+/// and vulnerability results (`V`) in batches to the pipeline (`on_alerts` / `on_events` /
+/// `vulnerability::ingest`, which store them in ClickHouse). Frames are read by their own
+/// task, so a batch timeout never cuts one in half; while the pipeline waits for ClickHouse
+/// the bounded channel stops the reading, and the lines wait in the daemon's spool.
+/// `stored up to N` (u64 LE) goes back once every batch up to N is stored; a line of a
+/// batch stored before (a replay) is skipped.
+async fn stream_conn(
+    state: AppState,
+    sock: tokio::net::TcpStream,
+    token: &str,
+) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let (r, mut acks) = sock.into_split();
+    let mut r = tokio::io::BufReader::new(r);
+    let (kind, _, hello) = read_line(&mut r).await?;
+    let hello = String::from_utf8_lossy(&hello).into_owned();
+    let (t, source) = hello.split_once(' ').unwrap_or((&hello, ""));
+    if kind != b'H' || t != token || source.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "wrong token",
+        ));
+    }
+    let source = source.to_string();
+    let stored = stream_stored(&state, &source).await;
+    info!("{source} stream connected");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u8, u64, Vec<u8>)>(2 * STREAM_BATCH);
     let reader = tokio::spawn(async move {
         loop {
-            match read_frame(&mut r).await {
+            match read_line(&mut r).await {
                 Ok(f) => {
                     if tx.send(f).await.is_err() {
                         return Ok(());
@@ -1582,35 +2618,95 @@ async fn stream_conn(state: AppState, sock: tokio::net::TcpStream, token: &str) 
             }
         }
     });
-    let (mut alerts, mut events, mut vulns) = (Vec::new(), Vec::new(), Vec::new());
+    // alerts and events: up to STREAM_INFLIGHT batches stored at once, acknowledged in order;
+    // vulnerability results in order (a delete must find what was stored before it)
+    let inflight = std::sync::Arc::new(tokio::sync::Semaphore::new(STREAM_INFLIGHT));
+    let mut storing: std::collections::VecDeque<(u64, tokio::task::JoinHandle<()>)> = Default::default();
+    let mut batch: Vec<(u8, Vec<u8>)> = Vec::new();
+    // the sequences of this batch and how many lines, skipped ones too
+    let mut span: Option<(u64, u64)> = None;
+    let mut lines = 0;
     loop {
-        let next = if alerts.is_empty() && events.is_empty() && vulns.is_empty() { rx.recv().await } else { tokio::time::timeout(STREAM_LINGER, rx.recv()).await.unwrap_or(Some((0, Vec::new()))) };
+        let mut done = None;
+        // shortcut: a batch that panicked counts as done (the panics are in the work after the inserts, and sending it again would stop the stream at it), until a panic can lose rows
+        while storing.front().is_some_and(|(_, h)| h.is_finished()) {
+            done = storing.pop_front().map(|b| b.0);
+        }
+        if let Some(n) = done {
+            let _ = acks.write_all(&n.to_le_bytes()).await;
+        }
+        let next = match (span, storing.front_mut()) {
+            (Some(_), _) => tokio::time::timeout(STREAM_LINGER, rx.recv())
+                .await
+                .unwrap_or(Some((0, 0, Vec::new()))),
+            (None, Some((_, h))) => tokio::select! {
+                f = rx.recv() => f,
+                _ = h => continue,
+            },
+            (None, None) => rx.recv().await,
+        };
         let closed = next.is_none();
-        if let Some((kind, json)) = next.filter(|(k, _)| *k != 0) {
-            match serde_json::from_slice::<serde_json::Value>(&json) {
-                Ok(v) if kind == b'A' => alerts.push(v),
-                Ok(v) if kind == b'E' => events.push(v),
-                Ok(v) if kind == b'V' => vulns.push(v),
-                Ok(_) => {}
-                Err(e) => warn!("analysisd stream: line not JSON ({e})"),
+        if let Some((kind, seq, json)) = next.filter(|(k, _, _)| *k != 0) {
+            span = Some((span.map_or(seq, |s| s.0), seq));
+            lines += 1;
+            if !stored.iter().any(|r| (r.0..=r.1).contains(&seq)) {
+                batch.push((kind, json));
             }
-            if !closed && alerts.len() + events.len() + vulns.len() < STREAM_BATCH {
+            if lines < STREAM_BATCH {
                 continue;
             }
         }
-        if !alerts.is_empty() {
-            on_alerts(state.clone(), std::mem::take(&mut alerts)).await;
-        }
-        if !events.is_empty() {
-            on_events(state.clone(), std::mem::take(&mut events)).await;
-        }
-        if !vulns.is_empty() {
-            crate::vulnerability::ingest(&state, std::mem::take(&mut vulns)).await;
+        if let Some((first, last)) = span.take() {
+            lines = 0;
+            let frames = std::mem::take(&mut batch);
+            let any = !frames.is_empty();
+            let (alerts, events, vulns) = tokio::task::spawn_blocking(move || parse_frames(frames))
+                .await
+                .unwrap_or_default();
+            let permit = inflight.clone().acquire_owned().await;
+            if !vulns.is_empty() {
+                crate::vulnerability::ingest(&state, vulns).await;
+            }
+            let (s, src) = (state.clone(), source.clone());
+            storing.push_back((
+                last,
+                tokio::spawn(async move {
+                    if !alerts.is_empty() || !events.is_empty() {
+                        tokio::join!(on_alerts(s.clone(), alerts), on_events(s.clone(), events));
+                    }
+                    drop(permit);
+                    if any {
+                        stream_mark(&s, &src, first, last).await;
+                    }
+                }),
+            ));
         }
         if closed {
+            // the batches still being stored finish before the connection counts as done
+            for (n, h) in storing.drain(..) {
+                let _ = h.await;
+                let _ = acks.write_all(&n.to_le_bytes()).await;
+            }
             return reader.await.unwrap_or(Ok(()));
         }
     }
+}
+
+type Lines = Vec<serde_json::Value>;
+
+/// A batch of stream frames as alerts, events and vulnerability results.
+fn parse_frames(frames: Vec<(u8, Vec<u8>)>) -> (Lines, Lines, Lines) {
+    let (mut alerts, mut events, mut vulns) = (Vec::new(), Vec::new(), Vec::new());
+    for (kind, json) in frames {
+        match serde_json::from_slice::<serde_json::Value>(&json) {
+            Ok(v) if kind == b'A' => alerts.push(v),
+            Ok(v) if kind == b'E' => events.push(v),
+            Ok(v) if kind == b'V' => vulns.push(v),
+            Ok(_) => {}
+            Err(e) => warn!("analysisd stream: line not JSON ({e})"),
+        }
+    }
+    (alerts, events, vulns)
 }
 
 fn s(v: &serde_json::Value, path: &[&str]) -> String {
@@ -1630,7 +2726,9 @@ fn s(v: &serde_json::Value, path: &[&str]) -> String {
 
 fn timestamp(v: &serde_json::Value) -> chrono::DateTime<Utc> {
     let t = s(v, &["timestamp"]);
-    chrono::DateTime::parse_from_str(&t, "%Y-%m-%dT%H:%M:%S%.f%z").map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now())
+    chrono::DateTime::parse_from_str(&t, "%Y-%m-%dT%H:%M:%S%.f%z")
+        .map(|d| d.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now())
 }
 
 fn tenant_of(state: &AppState, agent_id: &str) -> String {
@@ -1658,7 +2756,10 @@ fn flat(data: &serde_json::Value) -> HashMap<String, String> {
 /// ("-" is Windows for none; ProVigil doubles the backslash of DOMAIN\user).
 fn windows_user(v: &serde_json::Value) -> Option<String> {
     ["targetUserName", "subjectUserName"].iter().find_map(|k| {
-        v.pointer(&format!("/data/win/eventdata/{k}")).and_then(|x| x.as_str()).map(|u| u.replace("\\\\", "\\")).filter(|u| !u.is_empty() && u != "-")
+        v.pointer(&format!("/data/win/eventdata/{k}"))
+            .and_then(|x| x.as_str())
+            .map(|u| u.replace("\\\\", "\\"))
+            .filter(|u| !u.is_empty() && u != "-")
     })
 }
 
@@ -1672,7 +2773,11 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
                 None => return String::new(),
             }
         }
-        cur.as_array().and_then(|a| a.first()).and_then(|x| x.as_str()).unwrap_or_default().to_string()
+        cur.as_array()
+            .and_then(|a| a.first())
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string()
     };
     let mitre_id = first(&["rule", "mitre", "id"]);
     let mitre = (!mitre_id.is_empty()).then(|| MitreAttack {
@@ -1683,12 +2788,24 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
     let agent_id = s(v, &["agent", "id"]);
     let mut agent_ip = s(v, &["agent", "ip"]);
     if agent_ip.is_empty() {
-        agent_ip = state.agents.read().unwrap().get(&agent_id).map(|a| a.ip.clone()).unwrap_or_else(|| "any".into());
+        agent_ip = state
+            .agents
+            .read()
+            .unwrap()
+            .get(&agent_id)
+            .map(|a| a.ip.clone())
+            .unwrap_or_else(|| "any".into());
     }
     let sport = |k: &str| s(&data, &[k]).parse::<u16>().ok();
     let opt = |k: &str| Some(s(&data, &[k])).filter(|x| !x.is_empty());
-    let mut alert_data: HashMap<String, serde_json::Value> = data.as_object().map(|o| o.clone().into_iter().collect()).unwrap_or_default();
-    alert_data.insert("wazuh_alert_id".into(), serde_json::Value::String(s(v, &["id"])));
+    let mut alert_data: HashMap<String, serde_json::Value> = data
+        .as_object()
+        .map(|o| o.clone().into_iter().collect())
+        .unwrap_or_default();
+    alert_data.insert(
+        "wazuh_alert_id".into(),
+        serde_json::Value::String(s(v, &["id"])),
+    );
     if let Some(r) = v.get("rule") {
         alert_data.insert("wazuh_rule".into(), r.clone());
     }
@@ -1701,18 +2818,34 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
         timestamp: timestamp(v),
         rule: RuleAlertInfo {
             id: s(v, &["rule", "id"]).parse().unwrap_or(0),
-            level: v.pointer("/rule/level").and_then(|x| x.as_u64()).unwrap_or(0).min(15) as u8,
+            level: v
+                .pointer("/rule/level")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0)
+                .min(15) as u8,
             description: s(v, &["rule", "description"]),
             groups: v
                 .pointer("/rule/groups")
                 .and_then(|g| g.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
             mitre,
         },
-        agent: AgentAlertInfo { id: agent_id, name: s(v, &["agent", "name"]), ip: agent_ip },
-        manager: Some(ManagerAlertInfo { name: s(v, &["manager", "name"]) }),
-        decoder: Some(DecoderAlertInfo { name: s(v, &["decoder", "name"]) }),
+        agent: AgentAlertInfo {
+            id: agent_id,
+            name: s(v, &["agent", "name"]),
+            ip: agent_ip,
+        },
+        manager: Some(ManagerAlertInfo {
+            name: s(v, &["manager", "name"]),
+        }),
+        decoder: Some(DecoderAlertInfo {
+            name: s(v, &["decoder", "name"]),
+        }),
         full_log: s(v, &["full_log"]),
         decoded: DecodedFields {
             decoder_name: s(v, &["decoder", "name"]),
@@ -1720,7 +2853,9 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
             dst_ip: opt("dstip"),
             src_port: sport("srcport"),
             dst_port: sport("dstport"),
-            user: opt("dstuser").or_else(|| opt("srcuser")).or_else(|| windows_user(v)),
+            user: opt("dstuser")
+                .or_else(|| opt("srcuser"))
+                .or_else(|| windows_user(v)),
             program_name: Some(s(v, &["predecoder", "program_name"])).filter(|x| !x.is_empty()),
             process_id: None,
             file_path: Some(s(v, &["syscheck", "path"])).filter(|x| !x.is_empty()),
@@ -1760,14 +2895,27 @@ pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_
             break;
         }
         pending.retain(|a| {
-            let tenant = a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT);
+            let tenant = a
+                .data
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(tenancy::DEFAULT_TENANT);
             failed.iter().any(|t| t == tenant)
         });
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MAX);
     }
     // stored above either way; a suppressed alert is not shown live, kept, or acted on
-    let tenants: Vec<String> = alerts.iter().map(|a| a.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(tenancy::DEFAULT_TENANT).to_string()).collect();
+    let tenants: Vec<String> = alerts
+        .iter()
+        .map(|a| {
+            a.data
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(tenancy::DEFAULT_TENANT)
+                .to_string()
+        })
+        .collect();
     let mut shown = Vec::with_capacity(alerts.len());
     let mut soar = Vec::with_capacity(alerts.len());
     for ((a, v), t) in alerts.into_iter().zip(soar_json).zip(tenants) {
@@ -1780,6 +2928,8 @@ pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_
     }
     // each tenant's SOAR playbooks, on the original ProVigil alert
     crate::soar::on_alerts(state, soar);
+    // each tenant's alert e-mails (alert_mail.rs)
+    crate::alert_mail::on_alerts(&shown);
     crate::keep_alerts(state, shown);
 }
 
@@ -1790,17 +2940,22 @@ const RETRY_MAX: Duration = Duration::from_secs(30);
 fn event_source(location: &str, decoder: &str) -> EventSource {
     match (location, decoder) {
         ("EventChannel", _) | (_, "windows_eventchannel") => EventSource::WindowsEvent,
-        ("syscheck", _) | (_, "syscheck_integrity_changed") | (_, "syscheck_new_entry") | (_, "syscheck_deleted") => EventSource::Fim,
+        ("syscheck", _)
+        | (_, "syscheck_integrity_changed")
+        | (_, "syscheck_new_entry")
+        | (_, "syscheck_deleted") => EventSource::Fim,
         ("syscollector", _) => EventSource::Syscollector,
         ("sca", _) => EventSource::Sca,
         ("active-response", _) | (_, "ar_log_json") => EventSource::ActiveResponse,
-        (_, d) if d.starts_with("sshd") || d == "pam" || d == "sudo" || d == "su" => EventSource::Auth,
+        (_, d) if d.starts_with("sshd") || d == "pam" || d == "sudo" || d == "su" => {
+            EventSource::Auth
+        }
         _ => EventSource::Syslog,
     }
 }
 
 /// One `archives.json` line (every event analysisd received) as a platform event.
-async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
+pub(crate) async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     // an agent's SCA results changed: copied for the compliance audit within seconds
     for v in &vs {
         if v["location"].as_str() == Some("sca") {
@@ -1825,7 +2980,11 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
             break;
         }
         pending.retain(|e| {
-            let tenant = e.metadata.get("tenant_id").map(String::as_str).unwrap_or(tenancy::DEFAULT_TENANT);
+            let tenant = e
+                .metadata
+                .get("tenant_id")
+                .map(String::as_str)
+                .unwrap_or(tenancy::DEFAULT_TENANT);
             failed.iter().any(|t| t == tenant)
         });
         tokio::time::sleep(wait).await;
@@ -1833,7 +2992,15 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     }
     // Sigma rules (sigma.rs) and file reputation (file_reputation.rs) on every archived event,
     // besides the ProVigil ruleset
-    let tagged: Vec<(serde_json::Value, String)> = vs.into_iter().zip(events.iter().map(|e| e.metadata.get("tenant_id").cloned().unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string()))).collect();
+    let tagged: Vec<(serde_json::Value, String)> = vs
+        .into_iter()
+        .zip(events.iter().map(|e| {
+            e.metadata
+                .get("tenant_id")
+                .cloned()
+                .unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string())
+        }))
+        .collect();
     let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
         let mut m = crate::sigma::check(&tagged);
         let mut tamper = crate::tamper::check(&tagged);
@@ -1867,35 +3034,34 @@ async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
 }
 
 fn to_event(state: &AppState, v: &serde_json::Value) -> RawEvent {
-    let v = v.clone();
-    let agent_id = s(&v, &["agent", "id"]);
+    let agent_id = s(v, &["agent", "id"]);
     let tenant = tenant_of(state, &agent_id);
-    let location = s(&v, &["location"]);
-    let decoder = s(&v, &["decoder", "name"]);
+    let location = s(v, &["location"]);
+    let decoder = s(v, &["decoder", "name"]);
     let mut metadata: HashMap<String, String> = HashMap::new();
     metadata.insert("tenant_id".into(), tenant);
-    metadata.insert("hostname".into(), s(&v, &["agent", "name"]));
+    metadata.insert("hostname".into(), s(v, &["agent", "name"]));
     metadata.insert("decoder".into(), decoder.clone());
     metadata.insert("pipeline".into(), "provigil-manager".into());
     if let Some(d) = v.get("data") {
         metadata.insert("data_json".into(), d.to_string());
     }
-    let rule = s(&v, &["rule", "id"]);
+    let rule = s(v, &["rule", "id"]);
     if !rule.is_empty() {
         metadata.insert("rule_id".into(), rule);
-        metadata.insert("rule_level".into(), s(&v, &["rule", "level"]));
+        metadata.insert("rule_level".into(), s(v, &["rule", "level"]));
     }
-    let ip = s(&v, &["agent", "ip"]);
+    let ip = s(v, &["agent", "ip"]);
     if !ip.is_empty() {
         metadata.insert("ip".into(), ip);
     }
     RawEvent {
         id: uuid::Uuid::new_v4(),
-        timestamp: timestamp(&v),
+        timestamp: timestamp(v),
         agent_id,
         source: event_source(&location, &decoder),
         location,
-        message: s(&v, &["full_log"]),
+        message: s(v, &["full_log"]),
         metadata,
     }
 }
@@ -1911,17 +3077,37 @@ fn display_version(v: &str) -> String {
 
 /// Agent status, OS, version and keepalive from provigil-db's global.db.
 async fn agent_status_loop(state: AppState) {
+    // the database socket takes 64 KiB a message, so the rows come in pages
+    const PAGE: usize = 200;
     let wdb = wdb();
     let mut last_saved: HashMap<String, (AgentStatus, i64)> = HashMap::new();
     loop {
         tokio::time::sleep(Duration::from_secs(10)).await;
-        let q ="global sql SELECT id, name, ip, register_ip, os_name, os_version, os_platform, version, last_keepalive, connection_status FROM agent WHERE id > 0;";
-        let Ok(resp) = wdb.query(q).await else { continue };
-        let Some(json) = resp.strip_prefix("ok ") else { continue };
-        let Ok(serde_json::Value::Array(rows)) = serde_json::from_str::<serde_json::Value>(json) else { continue };
+        let mut rows: Vec<serde_json::Value> = Vec::new();
+        loop {
+            let after = rows.last().and_then(|r| r.get("id")).and_then(|x| x.as_i64()).unwrap_or(0);
+            let q = format!("global sql SELECT id, name, ip, register_ip, os_name, os_version, os_platform, version, last_keepalive, connection_status FROM agent WHERE id > {after} ORDER BY id LIMIT {PAGE};");
+            let Ok(resp) = wdb.query(&q).await else {
+                break;
+            };
+            let Some(json) = resp.strip_prefix("ok ") else {
+                break;
+            };
+            let Ok(serde_json::Value::Array(page)) = serde_json::from_str::<serde_json::Value>(json) else {
+                break;
+            };
+            let full = page.len() == PAGE;
+            rows.extend(page);
+            if !full {
+                break;
+            }
+        }
         for r in rows {
             let id = format!("{:03}", r.get("id").and_then(|x| x.as_i64()).unwrap_or(0));
-            let ka = r.get("last_keepalive").and_then(|x| x.as_i64()).unwrap_or(0);
+            let ka = r
+                .get("last_keepalive")
+                .and_then(|x| x.as_i64())
+                .unwrap_or(0);
             let status = match s(&r, &["connection_status"]).as_str() {
                 "active" => AgentStatus::Active,
                 "pending" => AgentStatus::Pending,
@@ -1931,7 +3117,10 @@ async fn agent_status_loop(state: AppState) {
             if ka == 0 && status == AgentStatus::Pending {
                 continue;
             }
-            let os = [s(&r, &["os_name"]), s(&r, &["os_version"])].join(" ").trim().to_string();
+            let os = [s(&r, &["os_name"]), s(&r, &["os_version"])]
+                .join(" ")
+                .trim()
+                .to_string();
             let platform = s(&r, &["os_platform"]);
             let os_type = match platform.as_str() {
                 "windows" => "windows",
@@ -1939,7 +3128,9 @@ async fn agent_status_loop(state: AppState) {
                 "" => "",
                 _ => "linux",
             };
-            let ip = Some(s(&r, &["ip"])).filter(|x| !x.is_empty()).unwrap_or_else(|| s(&r, &["register_ip"]));
+            let ip = Some(s(&r, &["ip"]))
+                .filter(|x| !x.is_empty())
+                .unwrap_or_else(|| s(&r, &["register_ip"]));
             let last_keepalive = chrono::DateTime::from_timestamp(ka, 0).unwrap_or_else(Utc::now);
             let agent = {
                 let mut agents = state.agents.write().unwrap();
@@ -1970,10 +3161,13 @@ async fn agent_status_loop(state: AppState) {
                 a.last_keepalive = last_keepalive;
                 a.clone()
             };
-            let changed = last_saved.get(&id).map(|(st, k)| *st != status || *k != ka).unwrap_or(true);
+            let changed = last_saved
+                .get(&id)
+                .map(|(st, k)| *st != status || *k != ka)
+                .unwrap_or(true);
             if changed {
                 let tenant = tenant_of(&state, &id);
-                state.db.insert_or_update_agent(&tenant, &agent).await;
+                state.db.save_agent_row(&tenant, &agent);
                 last_saved.insert(id, (status, ka));
             }
         }
@@ -1988,12 +3182,35 @@ mod windows_user_tests {
     #[test]
     fn windows_events_give_their_user() {
         let ev = |ed: serde_json::Value| json!({ "data": { "win": { "eventdata": ed } } });
-        assert_eq!(windows_user(&ev(json!({ "targetUserName": "alice", "subjectUserName": "SYSTEM" }))).as_deref(), Some("alice"));
+        assert_eq!(
+            windows_user(&ev(
+                json!({ "targetUserName": "alice", "subjectUserName": "SYSTEM" })
+            ))
+            .as_deref(),
+            Some("alice")
+        );
         // 4625 at the lock screen: no target name, the subject acted
-        assert_eq!(windows_user(&ev(json!({ "targetUserName": "", "subjectUserName": "EVOFOX$" }))).as_deref(), Some("EVOFOX$"));
-        assert_eq!(windows_user(&ev(json!({ "targetUserName": "LAB\\\\bob" }))).as_deref(), Some("LAB\\bob"));
-        assert_eq!(windows_user(&ev(json!({ "targetUserName": "-", "subjectUserName": "-" }))), None);
-        assert_eq!(windows_user(&json!({ "data": { "srcip": "1.2.3.4" } })), None);
+        assert_eq!(
+            windows_user(&ev(
+                json!({ "targetUserName": "", "subjectUserName": "EVOFOX$" })
+            ))
+            .as_deref(),
+            Some("EVOFOX$")
+        );
+        assert_eq!(
+            windows_user(&ev(json!({ "targetUserName": "LAB\\\\bob" }))).as_deref(),
+            Some("LAB\\bob")
+        );
+        assert_eq!(
+            windows_user(&ev(
+                json!({ "targetUserName": "-", "subjectUserName": "-" })
+            )),
+            None
+        );
+        assert_eq!(
+            windows_user(&json!({ "data": { "srcip": "1.2.3.4" } })),
+            None
+        );
     }
 }
 
@@ -2005,7 +3222,14 @@ mod mail_conf_tests {
     #[test]
     fn edits_global_and_alerts() {
         let t = "<ossec_config>\n<global>\n<jsonout_output>yes</jsonout_output>\n<email_notification>no</email_notification>\n<email_to>old@x.com</email_to>\n</global>\n<alerts>\n<log_alert_level>3</log_alert_level>\n</alerts>\n</ossec_config>\n";
-        let s = MailSettings { host: "smtp.gmail.com".into(), user: "a@gmail.com".into(), alert_enabled: true, alert_to: vec!["soc@x.com".into(), "b@x.com".into()], alert_level: 10, ..Default::default() };
+        let s = MailSettings {
+            host: "smtp.gmail.com".into(),
+            user: "a@gmail.com".into(),
+            alert_enabled: true,
+            alert_to: vec!["soc@x.com".into(), "b@x.com".into()],
+            alert_level: 10,
+            ..Default::default()
+        };
         let n = ossec_conf_with_mail(t, &s);
         assert_eq!(
             n,
@@ -2013,5 +3237,361 @@ mod mail_conf_tests {
         );
         // applying again changes nothing
         assert_eq!(ossec_conf_with_mail(&n, &s), n);
+    }
+}
+
+#[cfg(test)]
+mod https_agent_tests {
+    use super::{
+        ar_target, exe_version, http_command, is_http_agent, live_query, mark_http_agent, on_command_result,
+        queue_http_command, take_http_commands,
+    };
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn live_query_takes_its_own_agents_answer_and_leaves_nothing_behind() {
+        let wait = Duration::from_millis(300);
+        let q = tokio::spawn(live_query("778", "getstate", Duration::from_secs(5)));
+        let cmd = loop {
+            match take_http_commands("778").pop() {
+                Some(c) => break c,
+                None => tokio::time::sleep(Duration::from_millis(5)).await,
+            }
+        };
+        assert_eq!(cmd["type"], "getstate");
+        let id = cmd["command_id"].as_str().unwrap();
+        let answer = serde_json::json!({ "command_id": id, "status": "done", "state": {} });
+        on_command_result("779", &answer);
+        on_command_result("778", &serde_json::json!({ "command_id": "another", "status": "done" }));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!q.is_finished(), "only that agent's answer to that command");
+        on_command_result("0778", &answer);
+        assert_eq!(q.await.unwrap(), Some(answer));
+
+        // an agent that never asks: nothing is answered and the query does not stay queued
+        assert_eq!(live_query("780", "getconfig", wait).await, None);
+        assert!(take_http_commands("780").is_empty());
+        assert!(!super::LIVE_QUERIES.lock().unwrap().values().any(|(a, _)| a == "780"));
+    }
+
+    #[test]
+    fn upgrade_version_read_from_the_exe() {
+        assert_eq!(exe_version(b"MZ..provigil-agent-version:1.2.3\0rest").as_deref(), Some("1.2.3"));
+        assert_eq!(exe_version(b"MZ no mark"), None);
+    }
+
+    #[test]
+    fn https_agents_get_the_old_channel_messages() {
+        let restart = r#"(msg_to_agent) [] NNS 058 {"version": 1, "origin": {"module": "api"}, "command": "restart-wazuh0", "parameters": {"extra_args": [], "alert": {}}} - null (from_the_server) (no_rule_id)"#;
+        let (id, payload) = ar_target(restart).unwrap();
+        assert_eq!(id, "058");
+        let c = http_command(payload).unwrap();
+        assert_eq!(
+            (c["type"].as_str(), c["message"]["command"].as_str()),
+            (Some("ar"), Some("restart-wazuh0"))
+        );
+        let (id, payload) = ar_target("(msg_to_agent) [] N!S 58 syscheck restart").unwrap();
+        assert_eq!(
+            (id.as_str(), http_command(payload).unwrap()["type"].as_str()),
+            ("058", Some("scan"))
+        );
+        assert!(ar_target("garbage").is_none());
+        // queued per agent, handed out once
+        assert!(!is_http_agent("777"));
+        mark_http_agent("777");
+        assert!(is_http_agent("0777") && is_http_agent("777"));
+        queue_http_command(
+            "777",
+            r#"{"version":1,"origin":{},"command":"kill-process0","parameters":{"extra_args":["pid=42"],"alert":{}}}"#,
+            "console",
+        );
+        let got = take_http_commands("777");
+        assert_eq!(
+            (
+                got.len(),
+                got[0]["message"]["parameters"]["extra_args"][0].as_str()
+            ),
+            (1, Some("pid=42"))
+        );
+        assert!(take_http_commands("777").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod agent_files_tests {
+    use super::cached_sha256;
+
+    #[test]
+    fn hashed_again_only_when_the_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("provigil-agent.exe");
+        std::fs::write(&f, "abc").unwrap();
+        let mut cache = Default::default();
+        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert_eq!(cached_sha256(&f, &mut cache).as_deref(), Some(abc));
+        // the same time and size: the stored answer, the file is not read
+        cache.get_mut(&f).unwrap().2 = "stored".to_string();
+        assert_eq!(cached_sha256(&f, &mut cache).as_deref(), Some("stored"));
+        std::fs::write(&f, "abcd").unwrap();
+        assert_eq!(cached_sha256(&f, &mut cache).as_deref(), Some("88d4266fd4e6338d13b845fcf289579d209c897823b9217da3e161936f031589"));
+        assert_eq!(cached_sha256(&dir.path().join("missing"), &mut cache), None);
+    }
+}
+
+#[cfg(test)]
+#[path = "provigil_stream_bench.rs"]
+mod stream_bench;
+
+#[cfg(test)]
+mod stream_tests {
+    use siem_ipc::platform_stream::{frame, EVENT, HELLO};
+    use std::io::{Read, Write};
+
+    /// A daemon's connection: the lines (sequence, n), then the acknowledgements.
+    async fn connection(state: &crate::AppState, source: &str, lines: &[(u64, u32)]) -> Vec<u64> {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let mut wire = frame(HELLO, 0, format!("t0k {source}").as_bytes());
+        for (seq, n) in lines {
+            wire.extend(frame(EVENT, *seq, format!("{{\"agent\":{{\"id\":\"001\"}},\"location\":\"x\",\"full_log\":\"line {n}\"}}").as_bytes()));
+        }
+        let daemon = std::thread::spawn(move || {
+            let mut c = std::net::TcpStream::connect(addr).unwrap();
+            c.write_all(&wire).unwrap();
+            // with the connection open: the batch finishes while siem-api waits for more lines
+            let mut b = vec![0u8; 8];
+            c.read_exact(&mut b).unwrap();
+            c.shutdown(std::net::Shutdown::Write).unwrap();
+            c.read_to_end(&mut b).unwrap();
+            b.chunks(8).map(|a| u64::from_le_bytes(a.try_into().unwrap())).collect::<Vec<u64>>()
+        });
+        let (sock, _) = l.accept().await.unwrap();
+        super::stream_conn(state.clone(), sock, "t0k").await.unwrap();
+        daemon.join().unwrap()
+    }
+
+    fn stored(state: &crate::AppState) -> Vec<String> {
+        let mut v: Vec<String> = state.events.read().unwrap().iter().map(|e| e.message.clone()).collect();
+        v.sort();
+        v
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_replay_stores_each_line_once_and_acknowledges_up_to_the_end() {
+        let state = crate::analyst_tests::state().await;
+        let source = uuid::Uuid::new_v4().simple().to_string();
+        assert_eq!(connection(&state, &source, &[(11, 1), (12, 2)]).await, [12]);
+        assert_eq!(stored(&state), ["line 1", "line 2"]);
+        // the same lines again (the answer was lost), then a new one
+        assert_eq!(connection(&state, &source, &[(11, 1), (12, 2), (13, 3)]).await, [13]);
+        assert_eq!(stored(&state), ["line 1", "line 2", "line 3"]);
+        // only a replay: nothing to store, and the daemon may still drop the lines
+        assert_eq!(connection(&state, &source, &[(11, 1), (12, 2), (13, 3)]).await, [13]);
+        assert_eq!(stored(&state).len(), 3);
+    }
+
+    /// A slow analysisd: reads 1,000 of the 3,000 sent every reading; ingest stops until it
+    /// caught up.
+    #[test]
+    fn a_slow_engine_stops_ingest_until_it_caught_up() {
+        let mut lag = super::AnalysisdLag::default();
+        let (mut sent, mut received) = (70_000u64, 500u64); // other counters before this start
+        assert_eq!(lag.observe(sent, received), 0, "the first reading is the base");
+        let mut samples = 0;
+        while lag.lag <= super::ANALYSISD_LAG_MAX {
+            sent += 3_000;
+            received += 1_000;
+            lag.observe(sent, received);
+            samples += 1;
+        }
+        assert_eq!(samples, 2);
+        // nothing sent (429): the engine reads what is waiting
+        received += 1_000;
+        assert_eq!(lag.observe(sent, received), 3_000);
+        received += 3_000;
+        assert_eq!(lag.observe(sent, received), 0);
+    }
+
+    /// What analysisd answers `getload`; the socket gone, or an analysis thread that does not
+    /// answer, are told apart.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn analysisd_load_is_read_from_its_socket() {
+        use siem_ipc::{framing, local::StreamListener};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("analysis");
+        let l = StreamListener::bind(&path).await.unwrap();
+        let server = tokio::spawn(async move {
+            let mut s = l.accept().await.unwrap();
+            let q = framing::recv(&mut s, 4096).await.unwrap();
+            assert_eq!(q, b"{\"command\":\"getload\"}");
+            framing::send(&mut s, br#"{"error":0,"message":"ok","data":{"queue_usage":0.5,"received":70000}}"#).await.unwrap();
+            // the next one stays unanswered
+            let mut stuck = l.accept().await.unwrap();
+            let _ = framing::recv(&mut stuck, 4096).await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        });
+        let (usage, received) = super::analysisd_load(&path).await.unwrap();
+        assert!(usage > super::ANALYSISD_QUEUE_MAX, "its queues filling closes ingest");
+        assert_eq!(received, 70_000);
+        assert_eq!(super::analysisd_load(&path).await, Err(true));
+        server.abort();
+        assert_eq!(super::analysisd_load(&dir.path().join("gone")).await, Err(false));
+    }
+
+    #[test]
+    fn lost_datagrams_do_not_keep_ingest_closed() {
+        let mut lag = super::AnalysisdLag::default();
+        lag.observe(0, 0);
+        assert_eq!(lag.observe(9_000, 1_000), 8_000);
+        // no more to read: the 8,000 never reached analysisd
+        assert_eq!(lag.observe(9_000, 1_000), 0);
+        // a restarted analysisd counts from zero
+        assert_eq!(lag.observe(9_100, 100), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refused_batch_is_taken_when_sent_again() {
+        let state = crate::analyst_tests::state().await;
+        let headers = axum::http::HeaderMap::new();
+        let ev = serde_json::json!({ "event_type": "backpressure", "agent": { "id": "7801", "name": "pc" }, "message": "hello" });
+        let batch = serde_json::json!({ "agent_id": "7801", "batch_id": "b-429", "events": [ev] });
+        let r = crate::ingest_unless(true, &state, &headers, batch.clone()).await;
+        assert_eq!(r.err(), Some(axum::http::StatusCode::TOO_MANY_REQUESTS));
+        let seen = || crate::RECENT_BATCHES.lock().unwrap().get("7801").is_some_and(|b| b.iter().any(|i| i == "b-429"));
+        assert!(!seen(), "not remembered: the agent keeps the batch and its retry is processed");
+        crate::ingest_unless(false, &state, &headers, batch).await.unwrap();
+        assert!(seen());
+    }
+}
+
+/// A rule with an active response fires in the real engine for a ProVigil agent: the agent's next
+/// keepalive carries the command.
+#[cfg(test)]
+mod engine_responses_tests {
+    use super::*;
+    use axum::http::HeaderMap;
+    use siem_analysisd::daemon::{run, Analysis, Logger, StderrLogger};
+    use siem_analysisd::daemon_config::AnalysisdConfig;
+    use siem_ipc::{framing, local::StreamListener};
+    use std::sync::Arc;
+
+    const CONF: &str = r#"<ossec_config>
+  <ruleset><decoder_dir>ruleset/decoders</decoder_dir><rule_dir>ruleset/rules</rule_dir></ruleset>
+  <command><name>firewall-drop</name><executable>firewall-drop</executable><timeout_allowed>yes</timeout_allowed></command>
+  <active-response><command>firewall-drop</command><location>local</location><rules_id>100101</rules_id><timeout>600</timeout></active-response>
+</ossec_config>"#;
+
+    fn write(home: &Path, file: &str, text: &str) {
+        let p = home.join(file);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    fn make_home(home: &Path) {
+        write(home, "etc/ossec.conf", CONF);
+        std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../../etc/internal_options.conf"), home.join("etc/internal_options.conf")).unwrap();
+        write(home, "etc/local_internal_options.conf", "");
+        write(home, "ruleset/decoders/d.xml", "<decoder name=\"d\"><prematch>^never</prematch></decoder>");
+        write(home, "ruleset/rules/r.xml", "<group name=\"t,\"><rule id=\"1\" level=\"0\" noalert=\"1\"><category>syslog</category><description>any</description></rule><rule id=\"100101\" level=\"7\"><if_sid>1</if_sid><match>block this</match><description>t</description></rule></group>");
+        for dir in ["logs/alerts", "logs/archives", "logs/firewall", "queue/alerts", "queue/fts", "queue/sockets", "queue/db", "var/run", "stats"] {
+            std::fs::create_dir_all(home.join(dir)).unwrap();
+        }
+    }
+
+    /// provigil-db as the engine asks it about an agent: what siem-api's flush wrote for it.
+    async fn agent_db(home: &Path) {
+        let l = StreamListener::bind(home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK)).await.unwrap();
+        tokio::spawn(async move {
+            while let Ok(mut s) = l.accept().await {
+                tokio::spawn(async move {
+                    while let Ok(q) = framing::recv(&mut s, 65536).await {
+                        let answer: &[u8] = if q.starts_with(b"global get-agent-info") {
+                            br#"ok [{"id":783,"version":"ProVigil v0.1.0"}]"#
+                        } else {
+                            b"ok []"
+                        };
+                        if framing::send(&mut s, answer).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    #[test]
+    fn the_counter_file_of_the_old_name_is_read_until_the_new_one_exists() {
+        let run = tempfile::tempdir().unwrap();
+        let old = run.path().join("wazuh-analysisd.state");
+        std::fs::write(&old, "events_dropped='3'
+").unwrap();
+        assert_eq!(counter_file(run.path(), "analysisd"), old);
+        assert_eq!(read_state_file(&counter_file(run.path(), "analysisd"))["events_dropped"], 3.0);
+        let new = run.path().join("provigil-analysisd.state");
+        std::fs::write(&new, "events_dropped='0'
+").unwrap();
+        assert_eq!(counter_file(run.path(), "analysisd"), new);
+    }
+
+    #[test]
+    fn a_full_queue_expires_its_oldest_and_an_expired_command_is_never_handed_out() {
+        for n in 0..=table::MAX_PER_AGENT {
+            enqueue("784", serde_json::json!({ "command_id": format!("c{n}"), "type": "scan" }), "console", 60_000);
+        }
+        let got = take_http_commands("784");
+        assert_eq!(got.len(), table::MAX_PER_AGENT);
+        assert_eq!(got[0]["command_id"], "c1");
+
+        enqueue("785", serde_json::json!({ "command_id": "old", "type": "scan" }), "console", 0);
+        enqueue("785", serde_json::json!({ "type": "scan" }), "console", 60_000);
+        let got = take_http_commands("785");
+        assert_eq!(got.len(), 1);
+        assert!(got[0]["command_id"].as_str().is_some_and(|c| c != "old" && !c.is_empty()), "every command has an id to answer by");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_rule_reaches_the_agents_next_keepalive() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().to_path_buf();
+        make_home(&home);
+        agent_db(&home).await;
+        let state = crate::agent_grpc::bench::state_with(crate::db::ClickHouseDb::for_test("http://127.0.0.1:1"));
+        state.auth_keystore.write().unwrap().add_key(siem_crypto::keys::ClientKey::new("783".into(), "pc".into(), "any".into(), "k783".into()));
+        let mut h = HeaderMap::new();
+        h.insert("authorization", "Bearer k783".parse().unwrap());
+        // its first keepalive marks it, as a running agent is
+        assert!(crate::agent_keepalive(&state, "783", &h, b"{}").await.unwrap().is_empty());
+        assert!(is_http_agent("783"));
+
+        tokio::spawn(engine_responses(home.clone()));
+        let cfg = AnalysisdConfig::load(&home, &home.join("etc/ossec.conf"), false).expect("config");
+        let log: Arc<dyn Logger> = Arc::new(StderrLogger);
+        let analysis = Analysis::new(cfg, &*log, false).expect("ruleset");
+        std::thread::spawn(move || run(analysis, log));
+
+        let t = std::time::Instant::now();
+        let sender = loop {
+            if let Ok(s) = siem_ipc::local::DatagramSender::connect(home.join(siem_ipc::mq::DEFAULTQUEUE)).await {
+                break s;
+            }
+            assert!(t.elapsed() < Duration::from_secs(30), "the engine did not start");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        let command = loop {
+            sender.send(b"1:[783] (pc) any->/var/log/app:block this").await.unwrap();
+            let mut got = crate::agent_keepalive(&state, "783", &h, b"{}").await.unwrap();
+            if let Some(c) = got.pop() {
+                break c;
+            }
+            let counters = || std::fs::read_to_string(home.join("var/run/provigil-analysisd.state")).unwrap_or_default();
+            assert!(t.elapsed() < Duration::from_secs(30), "no command reached the keepalive; the engine's counters:
+{}", counters());
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+        assert_eq!(command["type"], "ar", "{command}");
+        assert_eq!(command["message"]["command"], "firewall-drop600", "{command}");
+        assert_eq!(command["message"]["origin"]["module"], "provigil-analysisd");
+        assert_eq!(command["message"]["parameters"]["alert"]["rule"]["id"], "100101", "{command}");
+        assert!(command["command_id"].as_str().is_some_and(|c| !c.is_empty()));
     }
 }

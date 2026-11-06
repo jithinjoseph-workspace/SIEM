@@ -77,6 +77,15 @@ pub async fn reload(state: &AppState) -> Result<usize, String> {
     Ok(n)
 }
 
+/// Rules from YAML texts, as `reload` loads them (the stream bench).
+#[cfg(test)]
+pub(crate) fn load_for_test(contents: &[String]) -> usize {
+    let rules: Vec<_> = contents.iter().filter_map(|c| parse_rule_content(c).ok()).map(|mut r| { r.tenant_id = "*".into(); r }).collect();
+    let n = rules.len();
+    engine().write().unwrap().set_rules(rules, HashMap::new());
+    n
+}
+
 async fn stored(state: &AppState) -> u64 {
     state.db.root().query("SELECT count() FROM ndr.sigma_rules FINAL").fetch_one::<u64>().await.unwrap_or(0)
 }

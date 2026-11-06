@@ -7,7 +7,7 @@ use siem_analysisd::daemon::{run, Analysis, Logger};
 use siem_analysisd::daemon_config::AnalysisdConfig;
 use siem_log::WLog;
 
-const ARGV0: &str = "wazuh-analysisd";
+const ARGV0: &str = "provigil-analysisd";
 const USER: &str = "wazuh";
 const GROUPGLOBAL: &str = "wazuh";
 const OSSECCONF: &str = "etc/ossec.conf";
@@ -19,7 +19,7 @@ fn print_out(s: &str) {
 /// `print_version`
 fn print_version() -> ! {
     print_out(" ");
-    print_out("Wazuh v4.14.7 - Wazuh Inc.");
+    print_out("ProVigil v4.14.7");
     print_out(" ");
     print_out(
         "This program is free software; you can redistribute it and/or modify\n\
@@ -33,8 +33,7 @@ fn print_version() -> ! {
 /// `help_analysisd`
 fn help(home: &str) -> ! {
     print_out(" ");
-    print_out("Wazuh v4.14.7 - Wazuh Inc. (info@wazuh.com)");
-    print_out("http://www.wazuh.com");
+    print_out("ProVigil v4.14.7");
     print_out(&format!("  {ARGV0}: -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]"));
     print_out("    -V          Version and license message");
     print_out("    -h          This help message");
@@ -169,7 +168,7 @@ fn main() {
         }
     }
     let log: Arc<dyn Logger> = wlog.clone();
-    log.log("DEBUG", &format!("Wazuh home directory: {home}"));
+    log.log("DEBUG", &format!("ProVigil home directory: {home}"));
 
     // Check if the user/group given are valid
     #[cfg(unix)]
@@ -244,7 +243,7 @@ fn main() {
     log.log("DEBUG", &format!("Chrooted to directory: {home}, using user: {}", o.user));
 
     if !o.test {
-        siem_daemon::start_sig(ARGV0, wlog.clone());
+        siem_daemon::start_sig2(ARGV0, wlog.clone(), siem_analysisd::stream::flush_at_exit);
         if siem_daemon::create_pid(ARGV0, std::process::id(), &wlog).is_err() {
             log.log("CRITICAL", "(1212): Unable to create PID file.");
             std::process::exit(1);

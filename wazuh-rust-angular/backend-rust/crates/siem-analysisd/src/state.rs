@@ -8,7 +8,7 @@ use std::path::Path;
 
 use siem_cjson::Json;
 
-pub const ARGV0: &str = "wazuh-analysisd";
+pub const ARGV0: &str = "provigil-analysisd";
 /// `ASYS_MAX_NUM_AGENTS_STATS`
 pub const ASYS_MAX_NUM_AGENTS_STATS: usize = 75;
 
@@ -174,9 +174,9 @@ impl Component {
         use Component::*;
         match m {
             b"wazuh-agent" => Agent,
-            b"wazuh-agentlessd" => Agentless,
-            b"wazuh-monitord" => Monitor,
-            b"wazuh-remoted" => Remote,
+            b"provigil-agentlessd" | b"wazuh-agentlessd" => Agentless,
+            b"provigil-monitord" | b"wazuh-monitord" => Monitor,
+            b"provigil-remoted" | b"wazuh-remoted" => Remote,
             b"virustotal" => Virustotal,
             b"aws-s3" | b"Wazuh-AWS" => Aws,
             b"azure-logs" | b"Azure" => Azure,

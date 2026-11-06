@@ -15,10 +15,13 @@ original (see `AGENTD_PORT_PROGRESS.md`).
   Needs a package installed or removed on the agent PC (e.g. an old Python
   library with known CVEs), then check the Vulnerabilities page and the
   manager log for the new detection.
-- **Rotate the agent keys.** The keys were in git history until 2026-10-22
-  (`data/manager/etc/client.keys` is no longer tracked; the keys live
-  encrypted in ClickHouse `ndr.agent_keys`). New keys mean every agent
-  re-enrolls once. Needs the owner's go-ahead.
+- **Leaked agent keys — DONE 2026-11-03 (sprint 1, T1).** The keys were in git history
+  until 2026-10-22 (013, 016, 017, 021, 024, 030, 034, 038, 040, 042, 043). Every one of
+  those agents is now removed: 017 and 021 (the last active ones) through the API on
+  2026-11-03, the others earlier. Their keys are marked deleted in `ndr.agent_keys`, their
+  ids stay reserved in the registry, their rows and database files are gone from the
+  ProVigil DB. Active keys now: 044 and 049, neither in the history, so no full key
+  rotation is needed.
 
 ## A. Manager self-monitoring (agent 000)
 
@@ -508,8 +511,8 @@ ClickHouse, with no files and no file copies. Only three things stay files: wazu
 - **Still open:** the manager-level
   maild / integratord / csyslogd read alerts.json, so they get no alerts now — the
   per-tenant SOAR integrations, syslog forwarding and e-mail (fed by the stream) replace
-  them, and per-tenant alert e-mails (section 2) finish that; `wazuh-reportd` reads alert
-  files (the PDF reports of section 3 come from ClickHouse); the old alert / archive files
+  them, and per-tenant alert e-mails (section 2, done) finish that; `wazuh-reportd` reads alert
+  files (the PDF reports of section 3, done, come from ClickHouse); the old alert / archive files
   (about 9 GB, already in ClickHouse) and the scanner's old `queue/indexer` file are still
   on disk until the owner agrees to delete them; siem-agents (the old Linux prototype)
   still have siem-api's in-memory store as a fallback.
@@ -638,24 +641,40 @@ What changed:
   the old `bin/wazuh-*.exe` files in the manager home are left over; the database tables
   and Rust crate names (`siem-*`) carry no Wazuh name already.
 
-## 2. Per-tenant alert e-mails
+## 2. Per-tenant alert e-mails — DONE 2026-11-03
 
-- **Have:** `wazuh-maild` sends alert e-mails platform-wide (super-admin SMTP
-  settings).
-- **Missing:** each tenant admin sets recipients and minimum level for its own
-  agents only. maild knows nothing about tenants, so this belongs in siem-api
-  (it maps agents to tenants), sending through the same SMTP settings.
-- **Check:** an alert of tenant A's agent reaches A's recipients and not B's.
-- **Partly covered since 2026-10-23:** a tenant can add an Email integration
-  (its own SMTP) and an `email` playbook in SOAR; not yet through the platform SMTP.
+- **Built** (`alert_mail.rs`): each tenant admin sets recipients, lowest level, optional
+  rule groups and e-mails per hour (`GET|PUT /api/v1/tenant/alert-mail`,
+  `POST /api/v1/tenant/alert-mail/test`; UI: tenant admin Settings, "Alert E-mails").
+  Alerts reach it after suppression (`provigil_manager.rs` `deliver`), already tagged with
+  their tenant; every 30 s each tenant's queue goes out as one e-mail (one alert, or a
+  digest of up to 50, highest level first) through the platform SMTP account
+  (`mail_settings.rs`, `smtp_ext.rs` `send_mail`: several recipients, UTF-8, attachments).
+  Over the hourly limit the alerts are counted and told in the next e-mail; a failed send
+  is retried next flush. Settings: `siem_alert_mail` in the tenant's database.
+- **Checked:** unit tests (tenant A's queue never holds B's alerts, levels, groups, hourly
+  limit, digest text, MIME message with no header injection); the live test
+  `analyst_tests.rs` `tenant_reports_and_alert_mail` (two scratch tenants in ClickHouse:
+  A's settings saved, B keeps its defaults, an analyst cannot save).
+- **Open:** a real send through the platform account (needs the SMTP account set and the
+  siem-api restarted with this build).
 
-## 3. PDF reports with charts
+## 3. PDF reports with charts — DONE 2026-11-03
 
-- **Have:** maild / monitord daily reports as plain text e-mails.
-- **Missing:** a PDF (summary, charts of alerts by level / rule / agent,
-  top vulnerabilities, explanations), per tenant, scheduled and on demand,
-  e-mailed and downloadable.
-- **Check:** generate for one tenant and compare the numbers with the console.
+- **Built** (`tenant_reports.rs`, `pdf.rs`, no new dependency): summary tiles and plain
+  sentences, alerts by severity, per day (per hour for 24 h), top rules, top agents, MITRE
+  techniques, top vulnerabilities (critical first, with the fixing version), and how to
+  read it. Counted by ClickHouse with the same queries as the console's dashboard.
+  `GET /api/v1/reports/pdf?hours=168` (any user, own tenant; UI: "PDF report" on the SIEM
+  console overview, and tenant admin Settings, "PDF Reports"); schedule
+  `GET|PUT /api/v1/reports/schedule` (daily / Monday / 1st of month at an hour UTC) and
+  `POST /api/v1/reports/schedule/send-now`, e-mailed with the PDF attached. Turning the
+  schedule on starts with the next period; one siem-api sends it when several share
+  Valkey; a failed send is retried after an hour. Schedule: `siem_report_schedule`.
+- **Checked:** the live test compares the report's numbers with the console's (`history.rs`
+  counts and top rules) for a scratch tenant, and tenant B's report holds only B's alert;
+  the default tenant's real week rendered (2 pages, 84 alerts, same as the dashboard).
+- **Open:** a scheduled send seen in a real mailbox (same restart as section 2).
 
 ## 4. wazuh-reportd — DONE 2026-10-22 (see AGENTD_PORT_PROGRESS.md)
 

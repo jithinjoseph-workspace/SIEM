@@ -393,13 +393,13 @@ fn main() {
             "-d" | "--database" => database = args.next().map(PathBuf::from),
             "-j" | "--json" => json = args.next().map(PathBuf::from),
             "-h" | "--help" => {
-                println!("usage: wazuh-mitredb [-h] [--database DATABASE] [--json JSON]");
+                println!("usage: provigil-mitredb [-h] [--database DATABASE] [--json JSON]");
                 println!();
                 println!("This script installs mitre.db in a directory.");
                 return;
             }
             other => {
-                eprintln!("wazuh-mitredb: error: unrecognized arguments: {other}");
+                eprintln!("provigil-mitredb: error: unrecognized arguments: {other}");
                 std::process::exit(2);
             }
         }

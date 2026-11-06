@@ -19,6 +19,8 @@ pub mod queues {
 
 /// Default analysisd queue path relative to the ProVigil home (`DEFAULTQUEUE`).
 pub const DEFAULTQUEUE: &str = "queue/sockets/queue";
+/// Active responses for ProVigil agents, which siem-api reads and queues for their keepalive.
+pub const PROVIGIL_ARQUEUE: &str = "queue/alerts/provigil-ar";
 
 /// `wstr_escape(dst, size, str, escape, match)`: prefixes `escape` and `match`
 /// characters with `escape`. Output is bounded to `dst_size - 1` bytes.

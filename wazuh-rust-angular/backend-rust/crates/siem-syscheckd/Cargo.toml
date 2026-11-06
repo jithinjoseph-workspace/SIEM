@@ -7,9 +7,9 @@ description = "ProVigil File Integrity Monitoring (FIM) daemon (provigil-syschec
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }
 siem-config = { path = "../siem-config" }
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-xml = { path = "../siem-xml" }
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-log = { path = "../siem-log" }
 siem-dbsync = { path = "../siem-dbsync" }
 siem-njson = { path = "../siem-njson" }

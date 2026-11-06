@@ -150,7 +150,7 @@ impl DynamicParserRegistry {
             }
             Err(e) => {
                 error!("Failed to synthesize parser for 0x{:x}: {}", fingerprint, e);
-                self.accumulator.mark_synthesizing(fingerprint, false);
+                self.accumulator.mark_failed(fingerprint);
                 Err(e)
             }
         }

@@ -269,7 +269,7 @@ impl Remoted {
                 self.agent_versions.lock().unwrap().remove(&key.id);
                 let mut srcmsg = format!("[{}] ({}) {}", key.id, key.name, key.ip);
                 crate::truncate_bytes(&mut srcmsg, 255);
-                let mut msg = format!("1:wazuh-remoted:ossec: Agent stopped: '{}->{}'.", key.name, key.ip);
+                let mut msg = format!("1:provigil-remoted:ossec: Agent stopped: '{}->{}'.", key.name, key.ip);
                 crate::truncate_bytes(&mut msg, 1023);
                 self.mq.send_msg(msg.as_bytes(), &srcmsg, SECURE_MQ).await;
             }

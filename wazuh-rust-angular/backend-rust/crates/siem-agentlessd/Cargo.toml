@@ -10,11 +10,9 @@ siem-cjson = { path = "../siem-cjson" }
 siem-ipc = { path = "../siem-ipc" }
 siem-log = { path = "../siem-log" }
 siem-daemon = { path = "../siem-daemon" }
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-xml = { path = "../siem-xml" }
-siem-fileop = { path = "../siem-fileop" }
-siem-maild = { path = "../siem-maild" }
-siem-monitord = { path = "../siem-monitord" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-execd = { path = "../siem-execd" }
 tokio = { version = "1.40", features = ["full"] }
 

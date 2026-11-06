@@ -4,8 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Terminal, RefreshCw, Monitor, Copy, CheckCircle2, Download, Play } from 'lucide-angular';
 import { SiemService } from '../../services/siem/siem.service';
 import {
-  AgentDeployService, DeployOs, DeployParams, WinInstallMode,
-  defaultManagerUrl, fetchManagerUrl, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
+  AgentDeployService, DeployOs, DeployParams, ServerInfo, WinInstallMode,
+  canDeploy, defaultManagerUrl, fetchManagerUrl, fetchServerInfo, downloadText, generateAgentName, installCommand, isLoopbackManager, isValidAgentName,
   linuxDeployScript, startCommand, windowsBatScript,
 } from '../../services/siem/agent-deploy';
 
@@ -41,6 +41,7 @@ export class AgentDeploy implements OnInit {
   groups = signal<{ name: string }[]>([]);
   deployOs = signal<DeployOs>('linux');
   deployManagerUrl = signal<string>(defaultManagerUrl());
+  private serverInfo = signal<ServerInfo | null>(null);
   deployManagerLoopback = computed(() => isLoopbackManager(this.deployManagerUrl()));
   deployAgentName = signal<string>('');
   deployGroup = signal<string>('default');
@@ -57,6 +58,7 @@ export class AgentDeploy implements OnInit {
 
   private deployParams = computed<DeployParams>(() => ({
     os: this.deployOs(),
+    server: this.serverInfo(),
     managerUrl: this.deployManagerUrl(),
     agentName: this.deployAgentName(),
     group: this.deployGroup(),
@@ -68,11 +70,14 @@ export class AgentDeploy implements OnInit {
   }));
   deployNameValid = computed(() => isValidAgentName(this.deployAgentName().trim()));
   deployNameTaken = computed(() => this.agentNames().includes(this.deployAgentName().trim().toLowerCase()));
+  /** The manager gave its TLS details (and for Windows the agent is published). */
+  deployReady = computed(() => canDeploy(this.deployParams()));
   deployInstallCommand = computed(() => (this.deployNameValid() ? installCommand(this.deployParams()) : ''));
   deployStartCommand = computed(() => startCommand(this.deployParams()));
 
   ngOnInit() {
     fetchManagerUrl().then(url => this.deployManagerUrl.set(url));
+    fetchServerInfo().then(info => this.serverInfo.set(info));
     this.deploy.tenantKey().subscribe(r => {
       this.deployTenantKey.set(r.key);
       this.deployTenantId.set(r.tenant);

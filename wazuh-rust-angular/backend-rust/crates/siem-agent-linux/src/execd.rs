@@ -269,7 +269,7 @@ pub fn spawn_active_response_worker(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let handler = LinuxActiveResponseHandler::new(agent_id.clone());
-        let client = reqwest::Client::builder()
+        let client = crate::enroll::http_builder()
             .timeout(Duration::from_secs(4))
             .build()
             .unwrap_or_default();

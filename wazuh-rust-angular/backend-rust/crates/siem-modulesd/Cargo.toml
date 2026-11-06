@@ -9,9 +9,9 @@ siem-log = { path = "../siem-log" }
 siem-config = { path = "../siem-config" }
 siem-ipc = { path = "../siem-ipc" }
 siem-daemon = { path = "../siem-daemon" }
-siem-crypto = { path = "../siem-crypto" }
-siem-regex = { path = "../siem-regex" }
-siem-fileop = { path = "../siem-fileop" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-xml = { path = "../siem-xml" }
 siem-remoted = { path = "../siem-remoted" }
 siem-cjson = { path = "../siem-cjson" }

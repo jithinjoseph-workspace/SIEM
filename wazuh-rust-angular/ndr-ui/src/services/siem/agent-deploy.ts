@@ -6,18 +6,29 @@ import { Observable, catchError, map, of } from 'rxjs';
  * Agent deployment commands (the ProVigil agent, provigil-agent.exe, on Windows;
  * siem-agent-linux + install.sh on Linux).
  *
- * Every command passes the manager URL, the agent name, the group and the
- * tenant's agent key. On first start the agent enrolls with the manager
- * (POST /api/v1/agents/enroll), gets an agent id that is unique across all
- * tenants and keeps it in client.keys; the tenant key puts it in the right
- * tenant. Re-running the command on the same host keeps the same id.
+ * Every command carries the manager's addresses, its CA certificate (public), the
+ * agent name, the group and the tenant's agent key. The agent enrolls itself over TLS
+ * with that CA at its first start, and gets an agent id that is unique across all
+ * tenants; the tenant key puts it in the right tenant. Re-running the command on the
+ * same host keeps the same id, with a new key.
  */
 
 export type DeployOs = 'linux' | 'windows' | 'macos';
 export type WinInstallMode = 'auto-elevate' | 'admin-ps';
 
+/** What the commands need from `/api/server-info`. */
+export interface ServerInfo {
+  https_url: string;
+  grpc_url: string;
+  ca_pem: string;
+  /** `{name: sha256}` of the published Windows agent files. */
+  agent_files: Record<string, string>;
+}
+
 export interface DeployParams {
   os: DeployOs;
+  /** Without it no command is generated: an agent needs the CA to reach the manager. */
+  server: ServerInfo | null;
   managerUrl: string;
   agentName: string;
   group: string;
@@ -58,7 +69,7 @@ function windowsLoggingSteps(p: DeployParams): string[] {
     );
   }
   if (p.winAuditPolicy) {
-    // subcategory settings override the legacy category ones (CIS 26013), else they may not apply
+    // subcategory settings override the legacy category ones, else they may not apply
     const sets = AUDIT_SUBCATEGORIES.map(([guid, , ok, fail]) =>
       `& auditpol /set /subcategory:"${guid}"${ok ? ' /success:enable' : ''}${fail ? ' /failure:enable' : ''} | Out-Null; if ($LASTEXITCODE -ne 0) { throw "auditpol ${guid} exited with $LASTEXITCODE" }; `).join('');
     steps.push(
@@ -119,12 +130,24 @@ export async function fetchManagerUrl(): Promise<string> {
     const res = await fetch(`${base}/api/server-info`);
     if (res.ok) {
       const data = await res.json();
-      if (data?.manager_url) return data.manager_url as string;
+      // a manager that does not know its LAN address: the address this console is reached at
+      if (data?.manager_url && (isLoopbackManager(base) || !isLoopbackManager(data.manager_url))) return data.manager_url as string;
     }
   } catch {
     // network error — fall back to current origin
   }
   return defaultManagerUrl();
+}
+
+/** The manager's TLS addresses and CA; null when it has none (TLS failed at its start). */
+export async function fetchServerInfo(): Promise<ServerInfo | null> {
+  try {
+    const res = await fetch(`${defaultManagerUrl()}/api/server-info`);
+    const data = res.ok ? await res.json() : null;
+    return data?.https_url && data?.grpc_url && data?.ca_pem ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** True when the manager URL points at this machine (localhost, 127.x, ::1): the
@@ -169,20 +192,28 @@ const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 /** Double-quote for PowerShell. */
 const pq = (s: string) => `"${s.replace(/[`"$]/g, m => '`' + m)}"`;
 
+/** An address of the manager on the host the console is reached at (its scheme and port stay). */
+function onConsoleHost(url: string, consoleUrl: string): string {
+  try {
+    const host = new URL(consoleUrl).hostname;
+    return url.replace(/^(\w+:\/\/).*(:\d+)$/, (_, scheme, port) => scheme + host + port);
+  } catch {
+    return url;
+  }
+}
+
 /** Install directory of the Windows agent (the MSI's default). */
 export const WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ProVigil Agent';
 
-/** The files of the Windows agent package served by the manager. */
-const WINDOWS_AGENT_FILES = ['provigil-agent.exe', 'internal_options.conf', 'local_internal_options.conf', 'vista_sec.txt', 'help.txt'];
+/** The files of the Windows agent package served by the manager: the agent alone (its settings
+ *  are written by this script into provigil-agent.json; no upstream configuration files). */
+const WINDOWS_AGENT_FILES = ['provigil-agent.exe'];
 
 /** The active-response programs installed in active-response\bin. */
-const WINDOWS_AR_FILES = ['netsh.exe', 'restart-wazuh.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe', 'yara-scan.exe', 'live-response.exe', 'tamper-protect.exe'];
+const WINDOWS_AR_FILES = ['netsh.exe', 'restart-agent.exe', 'route-null.exe', 'kill-process.exe', 'quarantine-file.exe', 'isolate-host.exe', 'yara-scan.exe', 'live-response.exe', 'tamper-protect.exe'];
 
-/** The directories the MSI creates under the install directory. */
-const WINDOWS_AGENT_DIRS = [
-  'active-response\\bin', 'bookmarks', 'incoming', 'logs', 'queue\\diff', 'queue\\fim\\db', 'queue\\syscollector\\db',
-  'queue\\logcollector', 'rids', 'ruleset\\sca', 'shared', 'syscheck', 'tmp', 'upgrade', 'wodles',
-];
+/** The folders the ProVigil agent uses under its install directory. */
+const WINDOWS_AGENT_DIRS = ['active-response\\bin', 'bookmarks', 'data', 'logs', 'shared', 'upgrade'];
 
 /** `icacls` steps of the MSI (S-1-5-32-544 Administrators, S-1-5-18 SYSTEM, S-1-5-11 Authenticated Users). */
 const WINDOWS_AGENT_ACLS = [
@@ -193,60 +224,69 @@ const WINDOWS_AGENT_ACLS = [
   `icacls "$d\\*" /grant '*S-1-5-11:(OI)(CI)RX' /q | Out-Null`,
   `icacls "$d\\*" /grant '*S-1-5-11:RX' /q | Out-Null`,
   `icacls "$d" /grant '*S-1-5-11:RX' /q | Out-Null`,
-  `icacls "$d\\*ossec.conf" /remove '*S-1-5-11' /q | Out-Null`,
-  `icacls "$d\\client.keys" /remove '*S-1-5-11' /q | Out-Null`,
+  `icacls "$d\\provigil-agent.json" /remove '*S-1-5-11' /q | Out-Null`,
 ];
 
 /**
  * The PowerShell that installs the ProVigil agent (`provigil-agent.exe`, the
  * `ProVigilSvc` service) like the MSI does, and starts it (needs admin). An agent
  * installed before the rename (`WazuhSvc`, `ossec-agent`) is replaced: its service is
- * removed and its `client.keys` kept, so the host keeps its agent id.
- * downloads the package, enrolls through the manager API (the tenant key
- * picks the tenant), writes `client.keys` and `ossec.conf` (manager address
- * = the console host, port 1514/tcp), installs and starts the service.
+ * removed, and the host keeps its agent name, so its agent id.
+ * Each download is checked against the SHA-256 from the manager (Windows PowerShell 5.1 cannot
+ * pin a CA for one request, so they may come over plain HTTP) before anything is changed. It
+ * then writes the CA and `provigil-agent.json`, starts the service, and waits for the agent to
+ * enroll itself over TLS: no key is ever handled here.
  */
 export function windowsInstallScript(p: DeployParams): string {
   const c = clean(p);
+  const s = p.server!;
+  const files = [...WINDOWS_AGENT_FILES, ...WINDOWS_AR_FILES].filter(f => s.agent_files[f]);
+  // a double-quoted string on one line: the script may be pasted
+  const caPem = pq(s.ca_pem).replace(/\r?\n/g, '`n');
   return [
     `$ErrorActionPreference = 'Stop'`,
     `$ProgressPreference = 'SilentlyContinue'`,
     `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`,
     `$u = ${pq(c.url)}`,
     `$d = "${WINDOWS_AGENT_DIR}"`,
+    `$m = ${pq(onConsoleHost(s.https_url, c.url))}`,
+    `$hash = @{ ${files.map(f => `'${f}' = '${s.agent_files[f]}'`).join('; ')} }`,
+    `$t = Join-Path $env:TEMP ('provigil-' + [guid]::NewGuid()); New-Item -ItemType Directory -Path $t | Out-Null`,
+    // all checked before the service stops: a bad file leaves the installed agent as it was
+    `foreach ($f in $hash.Keys) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$t\\$f"; if ((Get-FileHash -Algorithm SHA256 -LiteralPath "$t\\$f").Hash -ne $hash[$f]) { Remove-Item -Recurse -Force $t; throw "$f does not match the manager's SHA-256: nothing was installed. If the agent was published again, generate this command again." } }`,
     `if (Get-Service ${WINDOWS_SERVICE} -ErrorAction SilentlyContinue) { Stop-Service ${WINDOWS_SERVICE} -Force -ErrorAction SilentlyContinue }`,
     // the agent from before the rename: removed (with tamper protection on, open a maintenance window first)
     `if (Get-Service ${LEGACY_WINDOWS_SERVICE} -ErrorAction SilentlyContinue) { Stop-Service ${LEGACY_WINDOWS_SERVICE} -Force -ErrorAction SilentlyContinue; sc.exe delete ${LEGACY_WINDOWS_SERVICE} | Out-Null }`,
     `foreach ($s in @(${WINDOWS_AGENT_DIRS.map(x => `'${x}'`).join(',')})) { New-Item -ItemType Directory -Force -Path "$d\\$s" | Out-Null }`,
     `if (-not (Test-Path "$d\\active-response\\active-responses.log")) { New-Item -ItemType File -Path "$d\\active-response\\active-responses.log" | Out-Null }`,
-    `foreach ($f in @(${WINDOWS_AGENT_FILES.map(x => `'${x}'`).join(',')})) { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\$f" }`,
+    `Move-Item -Force -LiteralPath "$t\\provigil-agent.exe" -Destination "$d\\provigil-agent.exe"`,
     // the active responses the manager can run on the agent (netsh firewall block, restart)
-    `foreach ($f in @(${WINDOWS_AR_FILES.map(x => `'${x}'`).join(',')})) { try { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$f" -OutFile "$d\\active-response\\bin\\$f" } catch { Write-Warning "Active response $f not available from the manager" } }`,
-    // where the MSI installs the syscollector normalizer
-    `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/norm_config.json" -OutFile "$d\\queue\\syscollector\\norm_config.json"`,
-    // the CIS policy the MSI installs for this OS (wazuh-installer.wxs: build number, workstation or server)
-    `$os = Get-CimInstance Win32_OperatingSystem; $b = [int]$os.BuildNumber`,
-    `$sca = if ($os.ProductType -eq 1) { if ($b -ge 22000) { 'cis_win11_enterprise.yml' } elseif ($b -ge 10240) { 'cis_win10_enterprise.yml' } } else { @{ 9200 = 'cis_win2012_non_r2.yml'; 9600 = 'cis_win2012r2.yml'; 14393 = 'cis_win2016.yml'; 17763 = 'cis_win2019.yml'; 20348 = 'cis_win2022.yml'; 26100 = 'cis_win2025.yml' }[$b] }`,
-    // optional: a manager without the policy still installs the agent
-    `if ($sca) { try { Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/$sca" -OutFile "$d\\ruleset\\sca\\$sca" } catch { Write-Warning "SCA policy $sca not available from the manager" } }`,
-    `$m = ([Uri]$u).Host`,
-    `Invoke-WebRequest -UseBasicParsing -Uri "$u/downloads/windows/ossec.conf?manager=$m" -OutFile "$d\\ossec.conf"`,
-    // enroll last, so a failed download leaves no never-connected agent; a reinstall keeps
-    // the host's agent name (and so its id) instead of adding a second agent
+    `Get-ChildItem -LiteralPath $t | Move-Item -Force -Destination "$d\\active-response\\bin"`,
+    `Remove-Item -Recurse -Force $t`,
+    // a reinstall keeps the host's agent name (and so its id) instead of adding a second agent
     `$n = ${pq(c.name)}`,
     `$old = "${LEGACY_WINDOWS_AGENT_DIR}"`,
-    `if (-not (Test-Path "$d\\client.keys") -and (Test-Path "$old\\client.keys")) { Copy-Item "$old\\client.keys" "$d\\client.keys" }`,
-    `if (Test-Path "$d\\client.keys") { $k = ((Get-Content "$d\\client.keys" -TotalCount 1) -split ' '); if ($k.Count -ge 4 -and $k[1]) { $n = $k[1] } }`,
-    `$h = @{}`,
-    c.key ? `$h['X-Tenant-Key'] = ${pq(c.key)}` : `$null = $h`,
-    `$b = @{ name = $n; groups = ${pq(c.group)}; os_type = 'windows'; force = $true } | ConvertTo-Json`,
-    `$r = Invoke-RestMethod -Method Post -Uri "$u/api/v1/agents/enroll" -Headers $h -ContentType 'application/json' -Body $b`,
-    `[IO.File]::WriteAllText("$d\\client.keys", "$($r.agent_id) $($r.agent_name) $($r.agent_ip) $($r.raw_key)` + '`n' + `")`,
+    `foreach ($f in @("$old\\client.keys", "$d\\client.keys")) { if (Test-Path $f) { $k = ((Get-Content $f -TotalCount 1) -split ' '); if ($k.Count -ge 4 -and $k[1]) { $n = $k[1] } } }`,
+    `$id = "$d\\data\\agent-identity.json"`,
+    `if (Test-Path $id) { try { $i = Get-Content -Raw $id | ConvertFrom-Json; if ($i.agent_name) { $n = $i.agent_name } } catch { } }`,
+    // the agent enrolls again, for a new key: nothing of the old enrollment stays
+    `Remove-Item -Force -ErrorAction SilentlyContinue $id, "$d\\data\\force-enroll-used", "$d\\client.keys", "$d\\data\\client.keys"`,
+    // UTF-8 without BOM (WriteAllText)
+    `[IO.File]::WriteAllText("$d\\ca.pem", ${caPem})`,
+    // the agent's settings: the manager's addresses on the host this console is reached at
+    // (never a fixed IP), its CA, the tenant key and the name
+    `$cfg = @{ manager_url = $m; grpc_url = ${pq(onConsoleHost(s.grpc_url, c.url))}; ca_file = "$d\\ca.pem"; agent_name = $n; groups = ${pq(c.group)}; force_enroll = $true }`,
+    c.key ? `$cfg['tenant_key'] = ${pq(c.key)}` : `$null = $cfg`,
+    `[IO.File]::WriteAllText("$d\\provigil-agent.json", ($cfg | ConvertTo-Json))`,
     // the MSI's permissions (InstallerScripts.vbs): only Administrators and SYSTEM may read the key
     ...WINDOWS_AGENT_ACLS,
     `& "$d\\provigil-agent.exe" install-service | Out-Null`,
     `Start-Service -Name ${WINDOWS_SERVICE}`,
-    `Write-Host "ProVigil agent $($r.agent_id) ($($r.agent_name)) installed; manager $($m):1514"`,
+    // the agent writes its identity once the manager enrolled it over TLS
+    `$w = 0; while (-not (Test-Path $id) -and $w -lt 60) { Start-Sleep -Seconds 2; $w += 2 }`,
+    `if (-not (Test-Path $id)) { throw "The agent did not enroll with $m within 60 s. Check that this computer reaches that address, that it is one the manager's certificate names, and the tenant key; the reason is in $d\\logs\\provigil-agent.log" }`,
+    `Start-Sleep -Seconds 1; $r = Get-Content -Raw $id | ConvertFrom-Json`,
+    `Write-Host "ProVigil agent $($r.agent_id) ($($r.agent_name)) installed; connected to $m"`,
     ...windowsLoggingSteps(p),
     `Get-Service ${WINDOWS_SERVICE}`,
   ].join('; ');
@@ -264,9 +304,27 @@ function encodePs(script: string): string {
   return btoa(bin);
 }
 
-/** The command to paste on the endpoint. */
-export function installCommand(p: DeployParams): string {
+/** The Linux agent's settings for install.sh: its CA in `$t/ca.pem`. */
+function linuxEnv(p: DeployParams): string[] {
   const c = clean(p);
+  return [
+    `SIEM_MANAGER_URL=${sq(onConsoleHost(p.server!.https_url, c.url))}`,
+    `SIEM_CA_FILE="$t/ca.pem"`,
+    `SIEM_AGENT_NAME=${sq(c.name)}`,
+    `SIEM_AGENT_GROUP=${sq(c.group)}`,
+    `SIEM_TENANT_KEY=${sq(c.key)}`,
+  ];
+}
+
+/** Writes the CA to a new `$t`, then fetches install.sh from the manager over TLS with it. */
+function linuxFetch(p: DeployParams): string {
+  const url = onConsoleHost(p.server!.https_url, clean(p).url);
+  return `t=$(mktemp -d) && printf %s ${sq(btoa(p.server!.ca_pem))} | base64 -d > "$t/ca.pem" && curl -fsSL --cacert "$t/ca.pem" ${sq(url + '/downloads/install.sh')} -o "$t/install.sh"`;
+}
+
+/** The command to paste on the endpoint ('' until the manager's TLS details are known). */
+export function installCommand(p: DeployParams): string {
+  if (!canDeploy(p)) return '';
   if (p.os === 'windows') {
     const script = windowsInstallScript(p);
     if (p.winMode === 'admin-ps') return script;
@@ -274,15 +332,14 @@ export function installCommand(p: DeployParams): string {
     return `Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -NoExit -ExecutionPolicy Bypass -EncodedCommand ${encodePs(script)}'`;
   }
   if (p.os === 'linux') {
-    const env = [
-      `SIEM_MANAGER_URL=${sq(c.url)}`,
-      `SIEM_AGENT_NAME=${sq(c.name)}`,
-      `SIEM_AGENT_GROUP=${sq(c.group)}`,
-      `SIEM_TENANT_KEY=${sq(c.key)}`,
-    ].join(' ');
-    return `curl -sSL ${sq(c.url + '/downloads/install.sh')} | sudo ${env} bash`;
+    return `${linuxFetch(p)} && sudo ${linuxEnv(p).join(' ')} bash "$t/install.sh"; rm -rf "$t"`;
   }
   return '';
+}
+
+/** The manager's TLS details are there, and for Windows the agent program is published. */
+export function canDeploy(p: DeployParams): boolean {
+  return !!p.server && (p.os !== 'windows' || !!p.server.agent_files['provigil-agent.exe']);
 }
 
 /** The command that (re)starts the agent service and shows its state. */
@@ -311,17 +368,14 @@ export function windowsBatScript(p: DeployParams): string {
 
 /** Linux deployment script (same as the one-liner, as a file). */
 export function linuxDeployScript(p: DeployParams): string {
-  const c = clean(p);
   return [
     '#!/bin/bash',
-    '# SIEM agent deployment: downloads install.sh from the manager, enrolls the agent and starts it.',
+    '# SIEM agent deployment: downloads install.sh from the manager over TLS, enrolls the agent and starts it.',
     'set -e',
-    `export SIEM_MANAGER_URL=${sq(c.url)}`,
-    `export SIEM_AGENT_NAME=${sq(c.name)}`,
-    `export SIEM_AGENT_GROUP=${sq(c.group)}`,
-    `export SIEM_TENANT_KEY=${sq(c.key)}`,
-    'if [ "$EUID" -ne 0 ]; then exec sudo -E bash "$0" "$@"; fi',
-    `curl -sSL "$SIEM_MANAGER_URL/downloads/install.sh" | bash`,
+    'if [ "$EUID" -ne 0 ]; then exec sudo bash "$0" "$@"; fi',
+    linuxFetch(p),
+    `trap 'rm -rf "$t"' EXIT`,
+    `${linuxEnv(p).join(' ')} bash "$t/install.sh"`,
     '',
   ].join('\n');
 }

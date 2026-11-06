@@ -5,11 +5,6 @@
 //! agent's own are never moved (`edr::quarantine_refusal`).
 
 #[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
-
-#[cfg(windows)]
 use siem_active_response::{edr::*, *};
 
 #[cfg(windows)]
@@ -25,7 +20,7 @@ fn main() {
 #[cfg(windows)]
 fn win_main() -> i32 {
     // This must be always the first instruction
-    dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
+    dll_guard::enable();
     let argv0 = argv0();
     let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
     if action != Action::Add {
@@ -58,7 +53,7 @@ fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()
 }
 
 #[cfg(windows)]
-fn quarantine(input: &siem_cjson::Json) -> Result<String, String> {
+fn quarantine(input: &serde_json::Value) -> Result<String, String> {
     use sha2::{Digest, Sha256};
 
     let path = extra_arg(input, "path").map(|p| p.trim().to_string()).ok_or("A file (path=<full path>) is required")?;
@@ -97,7 +92,7 @@ fn restore(id: &str) -> Result<String, String> {
     }
     let rec_path = std::path::Path::new(QUARANTINE_DIR).join(format!("{id}.json"));
     let rec = std::fs::read(&rec_path).map_err(|_| format!("No quarantined file {id}"))?;
-    let (j, _) = siem_cjson::parse_with_opts(&rec, false).map_err(|_| format!("The record of {id} is damaged"))?;
+    let j: serde_json::Value = serde_json::from_slice(&rec).map_err(|_| format!("The record of {id} is damaged"))?;
     let path = j.get("path").and_then(|p| p.as_str()).map(|p| p.to_string()).ok_or(format!("The record of {id} has no path"))?;
     let dst = std::path::Path::new(&path);
     if dst.exists() {

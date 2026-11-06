@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use siem_cjson::Json;
 
 use crate::daemon::Env;
-use crate::decoders::Decoders;
+use crate::decoders::{DecoderInfo, Decoders};
 use crate::event::{Event, F_LOCATION};
 use crate::internal::syscheck_op::*;
 use crate::syscheck_json::fim;
@@ -224,21 +224,21 @@ impl Fim {
     /// The syscheck decoder thread: `decode_fim_event` for JSON messages,
     /// `DecodeSyscheck` otherwise. True when the event goes on to the rules.
     #[allow(clippy::too_many_arguments)]
-    pub fn decode(&mut self, env: &mut dyn Env, decs: &mut Decoders, dec: usize, ids: &FimIds, cfg: &FimConfig, ev: &mut Event) -> bool {
+    pub fn decode(&mut self, env: &mut dyn Env, info: &mut DecoderInfo, dec: usize, ids: &FimIds, cfg: &FimConfig, ev: &mut Event) -> bool {
         ev.decoder = dec;
         let agent = cstr(ev.agent_id.as_deref().unwrap_or(b"")).to_vec();
         let mut c = Ctx { env, agent };
         if ev.log().first() == Some(&b'{') {
-            self.decode_json(&mut c, decs, dec, ids, ev)
+            self.decode_json(&mut c, info, ids, ev)
         } else {
-            self.decode_legacy(&mut c, decs, dec, ids, cfg, ev) == 1
+            self.decode_legacy(&mut c, info, ids, cfg, ev) == 1
         }
     }
 
     /* ------------------------------------------------------- legacy */
 
     /// `DecodeSyscheck`
-    fn decode_legacy(&mut self, c: &mut Ctx, decs: &mut Decoders, dec: usize, ids: &FimIds, cfg: &FimConfig, ev: &mut Event) -> i32 {
+    fn decode_legacy(&mut self, c: &mut Ctx, info: &mut DecoderInfo, ids: &FimIds, cfg: &FimConfig, ev: &mut Event) -> i32 {
         let log = ev.log().to_vec();
         let Some(sp) = wstr_chr(&log, b' ') else {
             return match self.control_msg(c, &log, ev.time.sec) {
@@ -265,7 +265,7 @@ impl Fim {
             Some(p) => (&full[..p], Some(&full[p + 1..])),
             None => (full, None),
         };
-        self.db_search(c, decs, dec, ids, cfg, ev, &f_name, c_sum, w_sum, vals)
+        self.db_search(c, info, ids, cfg, ev, &f_name, c_sum, w_sum, vals)
     }
 
     /// `fim_db_search`
@@ -273,8 +273,7 @@ impl Fim {
     fn db_search(
         &mut self,
         c: &mut Ctx,
-        decs: &mut Decoders,
-        dec: usize,
+        info: &mut DecoderInfo,
         ids: &FimIds,
         cfg: &FimConfig,
         ev: &mut Event,
@@ -388,7 +387,7 @@ impl Fim {
             return 0;
         }
         sk_fill_event(&mut vals, f_name, &newsum);
-        if fim_alert(decs, dec, ids, ev, f_name, &mut oldsum, &newsum, event_type, &mut vals) == -1 {
+        if fim_alert(info, ids, ev, f_name, &mut oldsum, &newsum, event_type, &mut vals) == -1 {
             return 0;
         }
         set_fields(ev, vals);
@@ -456,7 +455,7 @@ impl Fim {
     /* --------------------------------------------------------- JSON */
 
     /// `decode_fim_event`
-    fn decode_json(&mut self, c: &mut Ctx, decs: &mut Decoders, dec: usize, ids: &FimIds, ev: &mut Event) -> bool {
+    fn decode_json(&mut self, c: &mut Ctx, info: &mut DecoderInfo, ids: &FimIds, ev: &mut Event) -> bool {
         let log = ev.log().to_vec();
         let Ok((mut root, _)) = siem_cjson::parse_with_opts(&log, false) else {
             c.err(b"Malformed FIM JSON event");
@@ -473,7 +472,7 @@ impl Fim {
         let data = root.get_mut("data").unwrap();
         match &ty[..] {
             b"event" => {
-                if process_alert(c, decs, dec, ids, ev, data) == -1 {
+                if process_alert(c, info, ids, ev, data) == -1 {
                     c.err(&cat(&[b"Can't generate fim alert for event: '", &log, b"'"]));
                     return false;
                 }
@@ -581,8 +580,7 @@ fn adjust_checksum(newsum: &Sum, c_sum: &[u8]) -> B {
 /// `fim_alert`: -1 when nothing changed.
 #[allow(clippy::too_many_arguments)]
 fn fim_alert(
-    decs: &mut Decoders,
-    dec: usize,
+    info: &mut DecoderInfo,
     ids: &FimIds,
     ev: &mut Event,
     f_name: &[u8],
@@ -598,20 +596,20 @@ fn fim_alert(
         (B::new(), B::new(), B::new(), B::new(), B::new(), B::new(), B::new(), B::new(), B::new(), B::new());
     let msg_type: &[u8] = match event_type {
         EventType::Deleted => {
-            decs.infos[dec].id = ids.delete[0];
-            decs.infos[dec].name = Some(FIM_DEL.into());
+            info.id = ids.delete[0];
+            info.name = Some(FIM_DEL.into());
             changes = true;
             b"was deleted."
         }
         EventType::Added => {
-            decs.infos[dec].id = ids.add[0];
-            decs.infos[dec].name = Some(FIM_NEW.into());
+            info.id = ids.add[0];
+            info.name = Some(FIM_NEW.into());
             changes = true;
             b"was added."
         }
         EventType::Modified => {
-            decs.infos[dec].id = ids.modify[0];
-            decs.infos[dec].name = Some(FIM_MOD.into());
+            info.id = ids.modify[0];
+            info.name = Some(FIM_MOD.into());
             let ch = &mut vals[fim::CHFIELDS].clone();
             let mut chf = ch.take();
             if let (Some(o), Some(n)) = (&oldsum.size, &newsum.size) {
@@ -730,7 +728,7 @@ fn fim_alert(
             b"checksum changed."
         }
     };
-    ev.decoder_syscheck_id = decs.infos[dec].id;
+    ev.decoder_syscheck_id = info.id;
     let sym = match newsum.symbolic_path.as_ref().filter(|p| !p.is_empty()) {
         Some(p) => fl(cat(&[b"Symbolic path: '", p, b"'.\n"])),
         None => B::new(),
@@ -759,7 +757,7 @@ fn fim_alert(
 }
 
 /// `fim_process_alert`
-fn process_alert(c: &mut Ctx, decs: &mut Decoders, dec: usize, ids: &FimIds, ev: &mut Event, event: &mut Json) -> i32 {
+fn process_alert(c: &mut Ctx, info: &mut DecoderInfo, ids: &FimIds, ev: &mut Event, event: &mut Json) -> i32 {
     let mut vals: Vec<Option<B>> = vec![None; fim::NFIELDS];
     let mut attributes: Option<Json> = None;
     let mut old_attributes: Option<Json> = None;
@@ -839,8 +837,8 @@ fn process_alert(c: &mut Ctx, decs: &mut Decoders, dec: usize, ids: &FimIds, ev:
         b"deleted" => (EventType::Deleted, NAMES_DEL[d], ids.delete[d]),
         _ => return -1,
     };
-    decs.infos[dec].name = Some(name.into());
-    decs.infos[dec].id = id;
+    info.name = Some(name.into());
+    info.id = id;
     ev.decoder_syscheck_id = id;
 
     if let Some(text) = generate_alert(&mut vals, event_type, attributes.as_ref(), old_attributes.as_ref(), audit.as_ref()) {

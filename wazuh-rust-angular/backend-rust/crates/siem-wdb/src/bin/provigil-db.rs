@@ -18,7 +18,7 @@ mod portable {
     use siem_wdb::wdb::threads::{run_backup, run_gc, run_up};
     use siem_wdb::wdb::*;
 
-    const ARGV0: &str = "wazuh-db";
+    const ARGV0: &str = "provigil-db";
     const OSSECCONF: &str = "etc/ossec.conf";
 
     fn early_exit(msg: &str) -> ! {
@@ -64,7 +64,7 @@ mod portable {
             }
             Err(LoadError::Config(e)) => {
                 wlog.error(e.0.as_bytes());
-                wlog.critical("Invalid configuration block for Wazuh-DB.");
+                wlog.critical("Invalid configuration block for provigil-db.");
                 std::process::exit(1);
             }
         };
@@ -76,7 +76,7 @@ mod portable {
                 wlog.now_debug();
             }
         }
-        wlog.debug1(format!("Wazuh home directory: {}", home_path.display()));
+        wlog.debug1(format!("ProVigil home directory: {}", home_path.display()));
         if test_config {
             std::process::exit(0);
         }
@@ -160,7 +160,7 @@ mod linux {
     use siem_wdb::wdb::daemon::*;
     use siem_wdb::wdb::*;
 
-    const ARGV0: &str = "wazuh-db";
+    const ARGV0: &str = "provigil-db";
     const USER: &str = "wazuh";
     const GROUPGLOBAL: &str = "wazuh";
     const OSSECCONF: &str = "etc/ossec.conf";
@@ -172,15 +172,14 @@ mod linux {
     /// `print_header`
     fn print_header() {
         print_out("");
-        print_out("Wazuh v4.14.7 - Wazuh Inc. (info@wazuh.com)");
-        print_out("http://www.wazuh.com");
+        print_out("ProVigil v4.14.7");
         print_out("");
     }
 
     /// `print_version`
     fn print_version() -> ! {
         print_out("");
-        print_out("Wazuh v4.14.7 - Wazuh Inc.");
+        print_out("ProVigil v4.14.7");
         print_out("");
         print_out(
             "This program is free software; you can redistribute it and/or modify\n\
@@ -258,7 +257,7 @@ mod linux {
             }
             Err(LoadError::Config(e)) => {
                 wlog.error(e.0.as_bytes());
-                wlog.critical("Invalid configuration block for Wazuh-DB.");
+                wlog.critical("Invalid configuration block for provigil-db.");
                 std::process::exit(1);
             }
         };
@@ -270,7 +269,7 @@ mod linux {
                 wlog.now_debug();
             }
         }
-        wlog.debug1(format!("Wazuh home directory: {}", home_path.display()));
+        wlog.debug1(format!("ProVigil home directory: {}", home_path.display()));
         if test_config {
             std::process::exit(0);
         }

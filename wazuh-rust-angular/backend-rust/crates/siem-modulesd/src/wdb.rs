@@ -33,14 +33,14 @@ pub async fn query_parse_json(db: &dyn WdbQuery, log: &WLog, query: &str) -> Opt
             return None;
         }
         Err(_) => {
-            log.error("No response from wazuh-db.");
+            log.error("No response from provigil-db.");
             return None;
         }
     };
     match parse_result(&resp) {
         (WdbcResult::Ok, arg) => serde_json::from_str(arg).ok(),
         (WdbcResult::Error, arg) => {
-            log.error(format!("Bad response from wazuh-db: {arg}"));
+            log.error(format!("Bad response from provigil-db: {arg}"));
             None
         }
         _ => None,
@@ -109,7 +109,7 @@ pub async fn remove_agent(db: &dyn WdbQuery, log: &WLog, id: i32) -> i32 {
 /// None on error.
 pub async fn get_agent_name(db: &dyn WdbQuery, log: &WLog, id: i32) -> Option<String> {
     let Some(root) = query_parse_json(db, log, &format!("global select-agent-name {id}")).await else {
-        log.error(format!("Error querying Wazuh DB to get the agent's {id} name."));
+        log.error(format!("Error querying provigil-db to get the agent's {id} name."));
         return None;
     };
     Some(root.get(0).and_then(|a| a.get("name")).and_then(|n| n.as_str()).unwrap_or("").to_string())
@@ -154,7 +154,7 @@ pub async fn get_all_agents(db: &dyn WdbQuery, log: &WLog, include_manager: bool
         match status {
             WdbcResult::Due => continue,
             WdbcResult::Error => {
-                log.error("Error querying Wazuh DB to get agent's IDs.");
+                log.error("Error querying provigil-db to get agent's IDs.");
                 return None;
             }
             _ => return Some(tree),
@@ -165,7 +165,7 @@ pub async fn get_all_agents(db: &dyn WdbQuery, log: &WLog, include_manager: bool
 /// `wdb_find_group`: the group id, or -1.
 pub async fn find_group(db: &dyn WdbQuery, log: &WLog, name: &str) -> i32 {
     let Some(root) = query_parse_json(db, log, &format!("global find-group {name}")).await else {
-        log.error("Error querying Wazuh DB to get the agent group id.");
+        log.error("Error querying provigil-db to get the agent group id.");
         return OS_INVALID;
     };
     root.get(0).and_then(|g| g.get("id")).and_then(|i| i.as_i64()).map(|i| i as i32).unwrap_or(OS_INVALID)
@@ -206,7 +206,7 @@ pub async fn set_agent_groups(db: &dyn WdbQuery, log: &WLog, id: i32, groups: &[
 /// gone and inserts the folders the DB does not have.
 pub async fn update_groups(db: &dyn WdbQuery, log: &WLog, dirname: &str) -> i32 {
     let Some(root) = query_parse_json(db, log, "global select-groups").await else {
-        log.error("Error querying Wazuh DB to update groups.");
+        log.error("Error querying provigil-db to update groups.");
         return OS_INVALID;
     };
     if let Some(a) = root.as_array() {

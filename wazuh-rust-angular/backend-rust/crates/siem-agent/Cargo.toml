@@ -5,6 +5,7 @@ edition = "2021"
 description = "High-performance endpoint telemetry and log collection agent in Rust"
 
 [dependencies]
+quick-xml = { version = "0.36", features = ["serialize"] }
 siem-core = { path = "../siem-core" }
 tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
@@ -19,3 +20,13 @@ hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_System_Services",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+] }

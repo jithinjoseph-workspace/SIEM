@@ -75,7 +75,7 @@ impl RuleSynthesizer {
 
         // Logtest: run the drafted rule itself on the sample log
         let logtest_passed = siem_engine::parse_rules_xml(&rule_xml).first().is_some_and(|r| {
-            r.matches(sample_log, "", None, &[], &[], &std::collections::HashMap::new(), None, "", None, None)
+            r.matches_log(sample_log)
         });
 
         let logtest_output = if logtest_passed {
@@ -118,7 +118,7 @@ mod tests {
     use crate::catalog::find_technique;
 
     fn fires(xml: &str, log: &str) -> bool {
-        siem_engine::parse_rules_xml(xml)[0].matches(log, "", None, &[], &[], &Default::default(), None, "", None, None)
+        siem_engine::parse_rules_xml(xml)[0].matches_log(log)
     }
 
     #[test]

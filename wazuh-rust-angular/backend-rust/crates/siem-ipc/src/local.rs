@@ -72,6 +72,15 @@ impl DatagramReceiver {
                 Err(_) => tokio::net::UdpSocket::bind("127.0.0.1:0").await?,
             };
             write_port(&path, sock.local_addr()?.port())?;
+            // Windows' default UDP receive buffer is small: a burst of agent messages (a
+            // batch of 100 configuration checks) overflowed it and was dropped without trace
+            {
+                use std::os::windows::io::AsRawSocket;
+                use windows_sys::Win32::Networking::WinSock::{setsockopt, SOCKET, SOL_SOCKET, SO_RCVBUF};
+                let size: i32 = 16 * 1024 * 1024;
+                // SAFETY: a live socket and a 4-byte option value
+                unsafe { setsockopt(sock.as_raw_socket() as SOCKET, SOL_SOCKET, SO_RCVBUF, (&size as *const i32).cast(), 4) };
+            }
             Ok(Self { sock, path })
         }
     }
@@ -233,6 +242,24 @@ impl tokio::io::AsyncWrite for LocalStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A burst sent before the receiver reads (2,000 messages of 1.5 KB) arrives complete.
+    #[tokio::test]
+    async fn a_burst_is_not_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let qpath = dir.path().join("queue/sockets/queue");
+        let rx = DatagramReceiver::bind(&qpath).await.unwrap();
+        let tx = DatagramSender::connect(&qpath).await.unwrap();
+        let msg = vec![b'x'; 1500];
+        for _ in 0..2000 {
+            tx.send(&msg).await.unwrap();
+        }
+        let mut n = 0;
+        while let Ok(Ok(_)) = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv(65536)).await {
+            n += 1;
+        }
+        assert_eq!(n, 2000);
+    }
 
     #[tokio::test]
     async fn datagram_and_stream_roundtrip() {

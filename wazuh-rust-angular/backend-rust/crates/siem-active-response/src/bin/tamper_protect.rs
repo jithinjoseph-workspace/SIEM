@@ -5,11 +5,6 @@
 //! only when that window is still the open one.
 
 #[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
-
-#[cfg(windows)]
 use siem_active_response::{edr::*, tamper::*, *};
 
 fn main() {
@@ -25,7 +20,7 @@ const STATE_FILE: &str = "active-response\\tamper.state";
 #[cfg(windows)]
 fn win_main() -> i32 {
     // This must be always the first instruction
-    dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
+    dll_guard::enable();
     let argv0 = argv0();
     let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
     let window = extra_arg(&input, "window").unwrap_or_default();

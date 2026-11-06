@@ -15,19 +15,19 @@ const REVISION: &str = "rc1";
 const TYPE: &str = "server";
 
 const DAEMONS: &[&str] = &[
-    "wazuh-db",
+    "provigil-db",
     "wazuh-authd",
-    "wazuh-execd",
-    "wazuh-analysisd",
+    "provigil-execd",
+    "provigil-analysisd",
     "wazuh-syscheckd",
-    "wazuh-remoted",
+    "provigil-remoted",
     "wazuh-logcollector",
-    "wazuh-monitord",
-    "wazuh-modulesd",
-    "wazuh-maild",
-    "wazuh-agentlessd",
-    "wazuh-integratord",
-    "wazuh-csyslogd",
+    "provigil-monitord",
+    "provigil-modulesd",
+    "provigil-maild",
+    "provigil-agentlessd",
+    "provigil-integratord",
+    "provigil-csyslogd",
     "wazuh-apid",
 ];
 

@@ -6,9 +6,17 @@
 //! The home needs etc/ (ossec.conf, internal options), ruleset/ and a writable logs/.
 //! With "profile", the hottest functions (self and inclusive) are printed via addr2line;
 //! build with CARGO_PROFILE_RELEASE_DEBUG=1 for names.
+//! BENCH_STREAM=1: stream to an in-process stand-in for siem-api (write-ahead on), as the
+//! daemon runs. BENCH_SCA=n: every n-th message is an SCA message of a 62-message scan
+//! (needs "live", first run of an agent = the insert path). BENCH_WORKERS=n: decoder worker
+//! threads (default 0: inline).
 
+use std::io::{BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
-use std::time::Instant;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use siem_analysisd::ar::{AgentVersion, ArBackend};
 use siem_analysisd::daemon::{Analysis, Env};
@@ -63,6 +71,47 @@ fn agent(n: usize) -> usize {
 fn syslog(n: usize) -> Vec<u8> {
     format!("1:[{a:03}] (bench-{a}) any->/var/log/auth.log:Oct 16 00:00:00 host sshd[{n}]: Failed password for invalid user u{n} from 10.0.0.{b} port 22 ssh2", a = 100 + n % 50, b = n % 250)
         .into_bytes()
+}
+
+/// One agent's SCA scan as the agent sends it (the load tool's `sca_events`).
+fn sca_scan(agent: usize) -> Vec<Vec<u8>> {
+    let line = |m: String| format!("p:[{agent:03}] (bench-{agent}) any->sca:{m}").into_bytes();
+    let mut out = vec![line(r#"{"type":"policies","policies":["bench"]}"#.into())];
+    for i in 0..60 {
+        out.push(line(format!(r#"{{"type":"check","id":7,"policy":"Bench policy","policy_id":"bench","check":{{"id":{id},"title":"Ensure setting {i} is enabled","description":"A setting.","remediation":"Enable it.","compliance":{{"cis":"1.{i}"}},"rules":["r:HKLM -> Setting{i} -> 1"],"condition":"all","result":"{r}"}}}}"#, id = 90000 + i, r = if i % 3 == 0 { "failed" } else { "passed" })));
+    }
+    out.push(line(format!(r#"{{"type":"summary","scan_id":7,"name":"Bench policy","policy_id":"bench","file":"bench.yml","start_time":1,"end_time":2,"passed":40,"failed":20,"invalid":0,"total_checks":60,"score":66,"hash":"{:040x}","hash_file":"{:064x}","first_scan":1}}"#, 7, 1)));
+    out
+}
+
+/// Stands in for siem-api: takes the stream, acknowledges every 1,000 lines, counts them.
+fn stream_sink() -> Arc<AtomicU64> {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    std::env::set_var("SIEM_STREAM_ADDR", l.local_addr().unwrap().to_string());
+    std::env::set_var("SIEM_STREAM_TOKEN", "bench");
+    let lines = Arc::new(AtomicU64::new(0));
+    let n = lines.clone();
+    std::thread::spawn(move || {
+        let (c, _) = l.accept().unwrap();
+        let mut acks = c.try_clone().unwrap();
+        let mut r = BufReader::with_capacity(1 << 20, c);
+        let mut f = Vec::new();
+        loop {
+            let mut len = [0u8; 4];
+            if r.read_exact(&mut len).is_err() {
+                return;
+            }
+            f.resize(u32::from_le_bytes(len) as usize, 0);
+            if r.read_exact(&mut f).is_err() {
+                return;
+            }
+            let seq = u64::from_le_bytes(f[1..9].try_into().unwrap());
+            if seq != 0 && n.fetch_add(1, Ordering::Relaxed) % 1000 == 999 {
+                let _ = acks.write_all(&seq.to_le_bytes());
+            }
+        }
+    });
+    lines
 }
 
 #[cfg(target_os = "linux")]
@@ -174,6 +223,7 @@ fn main() {
     let kind = a.get(3).map(String::as_str).unwrap_or("winevt");
     let profile = a.get(4).map(|s| s == "profile").unwrap_or(false);
     let live = a.get(4).map(|s| s == "live").unwrap_or(false);
+    let sink = std::env::var("BENCH_STREAM").is_ok().then(stream_sink);
     let mut cfg = AnalysisdConfig::load(home, &home.join("etc/ossec.conf"), false).expect("config");
     cfg.global.stats = 0;
     cfg.global.forwarders_list.clear();
@@ -186,8 +236,14 @@ fn main() {
         let wdb: std::sync::Arc<dyn siem_ipc::wdbc::WdbQuery> =
             std::sync::Arc::new(siem_ipc::wdbc::WdbcSocket::new(wdb_home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK)));
         let log: std::sync::Arc<dyn siem_analysisd::daemon::Logger> = std::sync::Arc::new(siem_analysisd::daemon::StderrLogger);
-        let ctx = siem_analysisd::daemon::Ctx { home: home.to_path_buf(), rt: rt.handle().clone(), wdb, log };
-        Box::new(analysis.live_env(ctx))
+        let ctx = |wdb| siem_analysisd::daemon::Ctx { home: home.to_path_buf(), rt: rt.handle().clone(), wdb, log: log.clone() };
+        let workers = std::env::var("BENCH_WORKERS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        if workers > 0 {
+            let conn = || -> std::sync::Arc<dyn siem_ipc::wdbc::WdbQuery> { std::sync::Arc::new(siem_ipc::wdbc::WdbcSocket::new(wdb_home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK))) };
+            let envs = (0..workers).map(|_| analysis.live_env(ctx(conn()))).collect();
+            analysis.start_db_workers(envs);
+        }
+        Box::new(analysis.live_env(ctx(wdb)))
     } else {
         Box::new(BenchEnv)
     };
@@ -195,7 +251,22 @@ fn main() {
     analysis.init_decoders(env);
     eprintln!("ruleset loaded in {:.1} s", t0.elapsed().as_secs_f64());
     let gen: fn(usize) -> Vec<u8> = if kind == "syslog" { syslog } else { winevt };
-    let msgs: Vec<Vec<u8>> = (0..count + 500).map(gen).collect();
+    let sca_every = std::env::var("BENCH_SCA").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+    let mut msgs: Vec<Vec<u8>> = (0..count + 500).map(gen).collect();
+    if let Some(per) = count.checked_div(sca_every) {
+        for i in 0..count {
+            let n = agent(i);
+            if i >= std::env::var("BENCH_AGENTS").ok().and_then(|v| v.parse().ok()).unwrap_or(50) {
+                break;
+            }
+            let q = format!(r#"global insert-agent {{"id":{n},"name":"bench-{n}","ip":null,"register_ip":"any","internal_key":"k","group":"default","date_add":1}}"#);
+            let _ = env.wdb_query_ex(q.as_bytes(), 65536);
+        }
+        let scans = (0..per.div_ceil(62)).flat_map(|i| sca_scan(agent(i)));
+        for (m, sca) in msgs[500..].iter_mut().skip(sca_every - 1).step_by(sca_every).zip(scans) {
+            *m = sca;
+        }
+    }
     for m in &msgs[..500] {
         analysis.handle_message(env, m);
     }
@@ -206,7 +277,11 @@ fn main() {
     let t = Instant::now();
     for m in &msgs[500..] {
         analysis.handle_message(env, m);
+        while analysis.input_full() {
+            analysis.pump(env);
+        }
     }
+    analysis.finish_decoding(env);
     let el = t.elapsed();
     #[cfg(target_os = "linux")]
     if profile {
@@ -214,6 +289,15 @@ fn main() {
     }
     analysis.files.flush();
     println!("{count} {kind} events in {:.2} s: {:.0} events/s, {:.1} us/event", el.as_secs_f64(), count as f64 / el.as_secs_f64(), el.as_micros() as f64 / count as f64);
+    if let Some(lines) = sink {
+        // the stream's reader catches up
+        let mut last = u64::MAX;
+        while last != lines.load(Ordering::Relaxed) {
+            last = lines.load(Ordering::Relaxed);
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        println!("stream: {last} lines, all sent {:.2} s after the start", t.elapsed().as_secs_f64() - 0.5);
+    }
     #[cfg(target_os = "linux")]
     if profile {
         prof::report();

@@ -12,10 +12,10 @@ path = "src/bin/provigil-execd.rs"
 siem-log = { path = "../siem-log" }
 siem-config = { path = "../siem-config" }
 siem-ipc = { path = "../siem-ipc" }
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-daemon = { path = "../siem-daemon" }
 siem-cjson = { path = "../siem-cjson" }
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-xml = { path = "../siem-xml" }
 flate2 = "1"
 

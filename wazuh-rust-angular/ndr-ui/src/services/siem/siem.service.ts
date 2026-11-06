@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, of, catchError, Subject, map } from 'rxjs';
 import {
   Agent,
@@ -194,14 +194,14 @@ export class SiemService {
     return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/api/v1/agents/${encodeURIComponent(agentId)}/tamper`, { action, minutes, reason });
   }
 
-  /** FIM entries of an agent (wazuh-db fim_entry). */
+  /** FIM entries of an agent (provigil-db fim_entry). */
   getAgentFim(agentId: string): Observable<{ total: number; entries: any[] }> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/fim`).pipe(
       catchError(() => of({ total: 0, entries: [] }))
     );
   }
 
-  /** Rootcheck findings of an agent (wazuh-db pm_event). */
+  /** Rootcheck findings of an agent (provigil-db pm_event). */
   getAgentRootcheck(agentId: string): Observable<{ total: number; events: any[] }> {
     return this.http.get<any>(`${this.apiUrl}/api/v1/agents/${agentId}/rootcheck`).pipe(
       catchError(() => of({ total: 0, events: [] }))
@@ -228,6 +228,53 @@ export class SiemService {
   /** New agent key for the caller's tenant (agents enrolled before keep working). */
   rotateTenantAgentKey(): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/tenant/agent-key/rotate`, {});
+  }
+
+  /** The tenant's own alert e-mails (tenant admin): recipients, minimum level, groups, hourly limit. */
+  getAlertMail(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/tenant/alert-mail`);
+  }
+
+  saveAlertMail(settings: any): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/tenant/alert-mail`, settings);
+  }
+
+  testAlertMail(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/tenant/alert-mail/test`, {});
+  }
+
+  /** Downloads the tenant's PDF security report of the last `hours`, narrowed by the optional
+   *  filters (group, rule, level, location, srcip, user, file, agent, by, samples, title). */
+  downloadReportPdf(hours = 168, filters: Record<string, string | boolean> = {}): Observable<void> {
+    let params = new HttpParams().set('hours', hours);
+    for (const [k, v] of Object.entries(filters)) {
+      if (v === true) params = params.set(k, '1');
+      else if (typeof v === 'string' && v.trim()) params = params.set(k, v.trim());
+    }
+    return this.http.get(`${this.apiUrl}/api/v1/reports/pdf`, { params, responseType: 'blob' }).pipe(
+      map(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `provigil-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      })
+    );
+  }
+
+  /** The tenant's scheduled PDF report e-mail (tenant admin). */
+  getReportSchedule(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/reports/schedule`);
+  }
+
+  saveReportSchedule(schedule: any): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/reports/schedule`, schedule);
+  }
+
+  sendReportNow(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/reports/schedule/send-now`, {});
   }
 
   /** Agent groups of the tenant (centralized agent.conf). */
@@ -322,6 +369,24 @@ export class SiemService {
   getVulnerabilities(severity?: string): Observable<VulnerabilitiesResponse> {
     const url = severity ? `${this.apiUrl}/api/v1/vulnerabilities?severity=${severity}` : `${this.apiUrl}/api/v1/vulnerabilities`;
     return this.http.get<VulnerabilitiesResponse>(url);
+  }
+
+  /** Saves the Excel report; empty lists mean all agents, severities and the default columns.
+   *  Fetched with the auth header, so no token goes in the URL. */
+  downloadVulnerabilityReport(filters: { agents: string[]; severity: string[]; columns: string[] }): Observable<void> {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(filters)) if (v.length) params = params.set(k, v.join(','));
+    return this.http.get(`${this.apiUrl}/api/v1/vulnerabilities/report.xlsx`, { params, responseType: 'blob', observe: 'response' }).pipe(
+      map(res => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(res.body!);
+        a.download = res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] ?? `ProVigil-Vulnerabilities-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      })
+    );
   }
 
   /** Checks the packages the agents reported against the CVE feed again (all agents of the tenant without an id). */

@@ -4,6 +4,7 @@
 //! looked up again on a ruleset hot reload (`*HotReload`).
 
 pub mod ciscat;
+pub mod db_worker;
 pub mod dbsync;
 pub mod hostinfo;
 pub mod rootcheck;

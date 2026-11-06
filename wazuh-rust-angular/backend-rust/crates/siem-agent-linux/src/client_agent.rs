@@ -57,7 +57,7 @@ impl ClientAgent {
         ];
 
         for keys_path in &client_keys_candidates {
-            if let Some((id, name, _ip, key)) = siem_core::parse_client_keys(keys_path) {
+            if let Some((id, name, _ip, key)) = crate::config_parser::parse_client_keys(keys_path) {
                 crate::enroll::export_agent_key(&key);
                 cfg.agent_id = id;
                 cfg.agent_name = name;
@@ -69,7 +69,7 @@ impl ClientAgent {
         }
 
         // 2. Check official Wazuh ossec.conf XML configuration
-        let ossec_conf = siem_core::OssecConfig::find_and_load();
+        let ossec_conf = crate::config_parser::OssecConfig::find_and_load();
         let ossec_addr = ossec_conf.get_manager_address();
         if ossec_addr != "http://127.0.0.1:8088" || ossec_conf.client.is_some() {
             cfg.manager_url = ossec_addr;

@@ -100,7 +100,7 @@ impl LifecycleCoordinator {
 
     /// Fetch latest state from manager
     pub async fn fetch_state(&self) -> Option<AgentLifecycleState> {
-        let client = reqwest::Client::builder()
+        let client = crate::enroll::http_builder()
             .timeout(Duration::from_secs(5))
             .build()
             .ok()?;

@@ -64,34 +64,27 @@ if not exist "%FRONTEND_DIR%\node_modules" (
   popd
 )
 
-rem ?? Build the backend from the current sources (a running exe cannot be replaced) ??
+rem -- Build the backend and agent from current sources --
 echo [*] Stopping running backend processes before the build...
 taskkill /F /IM siem-api.exe >nul 2>&1
 taskkill /F /IM auth-service.exe >nul 2>&1
-for %%p in (wazuh-db wazuh-analysisd wazuh-remoted wazuh-modulesd wazuh-monitord wazuh-maild wazuh-integratord wazuh-csyslogd) do taskkill /F /IM %%p.exe >nul 2>&1
-echo [*] Building backend (auth-service, siem-api, wazuh manager daemons)...
+taskkill /F /IM provigil-agent.exe >nul 2>&1
+for %%p in (provigil-db provigil-analysisd provigil-remoted provigil-modulesd) do taskkill /F /IM %%p.exe >nul 2>&1
+echo [*] Building backend and Windows agent (auth-service, siem-api, provigil-agent, manager daemons)...
 pushd "%BACKEND_DIR%"
-cargo build --release -p auth-service -p siem-api -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-monitord -p siem-maild -p siem-integratord -p siem-csyslogd
+cargo build --release -p auth-service -p siem-api -p provigil-agent -p siem-active-response -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd
 if errorlevel 1 (
   popd
   echo [FAIL] Backend build failed. Fix the errors above, the old binaries were not started.
   pause
   exit /b 1
 )
-popd
-echo [OK] Backend built.
-
-rem The Windows agent (wazuh-agent.exe) is cross-built in WSL; skipped when WSL is not available.
-wsl -d Ubuntu-20.04 -- true >nul 2>&1
-if errorlevel 1 (
-  echo [WARN] WSL Ubuntu-20.04 not found: the Windows agent download keeps its previous build.
-) else (
-  echo [*] Building the Windows agent in WSL...
-  pushd "%BACKEND_DIR%"
-  wsl -d Ubuntu-20.04 -- bash tools/build-winagent.sh
-  if errorlevel 1 echo [WARN] Windows agent build failed: the download keeps its previous build.
-  popd
+if exist "target\release\provigil-agent.exe" (
+  if not exist "data\agent-dist\windows" mkdir "data\agent-dist\windows" >nul 2>&1
+  copy /y "target\release\provigil-agent.exe" "data\agent-dist\windows\provigil-agent.exe" >nul 2>&1
 )
+popd
+echo [OK] Backend and ProVigil Windows Agent built.
 
 call :port_open 3011
 if errorlevel 1 (
@@ -138,6 +131,7 @@ echo [OK] SIEM is ready!
 echo      LAN URL:   http://%SIEM_LAN_IP%:4200
 echo      Local URL: http://localhost:4200
 echo      API URL:   http://%SIEM_LAN_IP%:8088
+echo      Agents:    https://%SIEM_LAN_IP%:8443  and  grpcs://%SIEM_LAN_IP%:8089
 echo      Logs:      %LOG_DIR%
 echo ==============================================================================
 start http://%SIEM_LAN_IP%:4200

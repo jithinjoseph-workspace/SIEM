@@ -298,7 +298,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (ag of filteredAgents(); track ag.id) {
+            @for (ag of shownAgents(); track ag.id) {
               <tr class="rise" [style.--i]="$index < 12 ? $index : 12" (click)="openAgentDetails(ag)" data-agent-open>
                 <td>
                   <div class="flex items-center gap-3 min-w-[180px]">
@@ -382,7 +382,7 @@
 
   <!-- ── Cards (always below 1400px; on wide screens when chosen) ── -->
   <section class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4" [ngClass]="{ 'min-[1400px]:hidden': viewMode() === 'table' }" aria-label="Agents">
-    @for (ag of filteredAgents(); track ag.id) {
+    @for (ag of shownAgents(); track ag.id) {
       <article class="panel kpi-card rise p-4 cursor-pointer min-w-0" [style.--i]="$index < 12 ? $index : 12" style="--accent: #06b6d4"
         tabindex="0" role="button" [attr.aria-label]="'Open ' + ag.name" (click)="openAgentDetails(ag)" (keydown.enter)="openAgentDetails(ag)" data-agent-open>
         <div class="flex items-start justify-between gap-3">
@@ -452,6 +452,13 @@
       </article>
     }
   </section>
+
+  @if (filteredAgents().length > agentLimit()) {
+    <button type="button" (click)="agentLimit.set(agentLimit() + agentPage)"
+      class="w-full px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition">
+      Show {{ agentPage }} more ({{ shownAgents().length }} of {{ filteredAgents().length }})
+    </button>
+  }
 
   @if (filteredAgents().length === 0) {
     <div class="panel p-10 text-center text-sm text-slate-500">
@@ -708,7 +715,7 @@
                   <span class="text-sm font-bold font-mono text-white">{{ sca.score | number:'1.0-0' }}%</span>
                 </div>
                 <div class="min-w-0 flex-1 space-y-2">
-                  <div class="text-sm font-semibold text-white break-words">{{ sca.policy_name || 'CIS benchmark' }}</div>
+                  <div class="text-sm font-semibold text-white break-words">{{ sca.policy_name || 'Configuration policy' }}</div>
                   <div class="text-xs text-slate-500 break-words">Policy {{ sca.policy_id || '—' }}@if (sca.scanned_at) { · scanned {{ sca.scanned_at | date:'medium' }} } · runs on the agent's SCA schedule and at agent start</div>
                   @let scaTotal = sca.passed + sca.failed + sca.not_applicable;
                   @if (scaTotal) {
@@ -829,7 +836,7 @@
                   <div class="text-xs text-slate-200 break-words">{{ ev.log }}</div>
                   <div class="text-[11px] text-slate-500">
                     First {{ ev.date_first | date:'short' }} · last {{ ev.date_last | date:'short' }}
-                    @if (ev.pci_dss) { <span> · PCI DSS {{ ev.pci_dss }}</span> }@if (ev.cis) { <span> · CIS {{ ev.cis }}</span> }
+                    @if (ev.pci_dss) { <span> · PCI DSS {{ ev.pci_dss }}</span> }@if (ev.cis) { <span> · Ref {{ ev.cis }}</span> }
                   </div>
                 </div>
               } @empty {
@@ -863,6 +870,12 @@
           @if (canUpgrade) {
             <div class="tab-panel space-y-4">
               <div class="text-xs text-slate-400">Current version: <span class="text-white font-mono">{{ sa.version || '—' }}</span> · manager <span class="font-mono">{{ managerVersion }}</span></div>
+              @if ((sa.version || '').startsWith('ProVigil')) {
+                <div class="p-3 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-300 space-y-1">
+                  <div>The agent downloads the agent published on this server{{ provigilAgentVersion() ? ' (v' + provigilAgentVersion() + ')' : '' }}, checks its SHA-256 (and signature), swaps it in and restarts; if the new version does not start, it rolls back by itself.</div>
+                  @if (provigilAgentVersion() && sa.version === 'ProVigil v' + provigilAgentVersion()) { <div class="text-amber-300">This agent already runs the published version: the upgrade reinstalls it.</div> }
+                </div>
+              } @else {
               <div class="flex flex-wrap gap-2">
                 <button type="button" class="chip" [class.on]="upgradeMode() === 'repo'" (click)="upgradeMode.set('repo')">From the WPK repository</button>
                 <button type="button" class="chip" [class.on]="upgradeMode() === 'custom'" (click)="upgradeMode.set('custom')">Custom WPK</button>
@@ -871,8 +884,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Version (empty = the manager's)</span>
                     <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="v4.14.7" [ngModel]="upgradeVersion()" (ngModelChange)="upgradeVersion.set($event)" /></label>
-                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Repository (empty = packages.wazuh.com)</span>
-                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="packages.wazuh.com/4.x/wpk/" [ngModel]="upgradeRepo()" (ngModelChange)="upgradeRepo.set($event)" /></label>
+                  <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Repository (empty = the default repository)</span>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="host/path/" [ngModel]="upgradeRepo()" (ngModelChange)="upgradeRepo.set($event)" /></label>
                   <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Linux package type</span>
                     <select class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100" [ngModel]="upgradePackageType()" (ngModelChange)="upgradePackageType.set($event)">
                       <option value="">Detect</option><option value="deb">deb</option><option value="rpm">rpm</option>
@@ -889,6 +902,7 @@
                   <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Installer in the package (empty = upgrade.bat / upgrade.sh)</span>
                     <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" [ngModel]="upgradeInstaller()" (ngModelChange)="upgradeInstaller.set($event)" /></label>
                 </div>
+              }
               }
               <div class="flex flex-wrap items-center gap-3">
                 <button type="button" (click)="startUpgrade()" [disabled]="upgradeBusy() || sa.status !== 'active'" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-semibold disabled:opacity-40">Upgrade agent</button>

@@ -17,7 +17,7 @@ use crate::task_general::*;
 /// `TASK_MANAGER_WM_NAME`
 pub const NAME: &str = "task-manager";
 /// `WM_TASK_MANAGER_LOGTAG`
-const LOGTAG: &str = "wazuh-modulesd:task-manager";
+const LOGTAG: &str = "provigil-modulesd:task-manager";
 /// `TASK_QUEUE`
 pub const TASK_QUEUE: &str = "queue/tasks/task";
 /// `WM_TASK_CLEANUP_DB_SLEEP_TIME`

@@ -253,7 +253,7 @@ pub fn is_tamper_command(cmd: &str) -> bool {
 /// Our own processes run sc.exe on the agent service (lock, unlock).
 fn ours(parent: &str) -> bool {
     let p = parent.to_lowercase();
-    ["\\tamper-protect.exe", "\\provigil-agent.exe", "\\wazuh-agent.exe", "\\restart-wazuh.exe"].iter().any(|n| p.ends_with(n))
+    ["\\tamper-protect.exe", "\\provigil-agent.exe", "\\wazuh-agent.exe", "\\restart-wazuh.exe", "\\restart-agent.exe"].iter().any(|n| p.ends_with(n))
 }
 
 fn alert(v: &Value, rule: u32, level: u8, description: String, full_log: String) -> siem_core::Alert {

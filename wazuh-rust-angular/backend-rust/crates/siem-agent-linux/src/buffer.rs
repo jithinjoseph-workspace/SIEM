@@ -1,4 +1,3 @@
-use reqwest::Client;
 use siem_core::RawEvent;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -24,7 +23,7 @@ impl AgentBuffer {
         let dropped_count = Arc::new(AtomicUsize::new(0));
 
         let worker = tokio::spawn(async move {
-            let client = Client::builder()
+            let client = crate::enroll::http_builder()
                 .timeout(Duration::from_secs(5))
                 .default_headers(tenant_headers())
                 .build()
@@ -69,7 +68,7 @@ impl AgentBuffer {
                     let to_send = std::mem::take(&mut batch);
                     let count = to_send.len();
 
-                    match client.post(&endpoint).json(&to_send).send().await {
+                    match client.post(&endpoint).header("x-agent-key", std::env::var("SIEM_AGENT_KEY").unwrap_or_default().trim()).json(&to_send).send().await {
                         Ok(res) if res.status().is_success() => {
                             debug!("AgentBuffer: Dispatched {} events to Manager", count);
                         }

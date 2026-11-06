@@ -116,7 +116,7 @@ impl Paths {
     pub fn remote_local_sock(&self) -> String { self.j("queue/sockets/remote") }
     pub fn key_request_sock(&self) -> String { self.j("queue/sockets/krequest") }
     pub fn wdb_sock(&self) -> String { self.j("queue/db/wdb") }
-    pub fn state_file(&self) -> String { self.j("var/run/wazuh-remoted.state") }
+    pub fn state_file(&self) -> String { self.j("var/run/provigil-remoted.state") }
 }
 
 /// Everything remoted reads at startup.

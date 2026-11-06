@@ -3,7 +3,7 @@
 //! `AGENT_KEYS_SECRET`. ClickHouse is the master copy: it is loaded at
 //! start and `etc/client.keys` (what remoted reads) is written from it.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -78,9 +78,9 @@ async fn ensure_table(state: &AppState) -> bool {
     state.db.root().query(&q).execute().await.map_err(|e| warn!("agent_keys: {e}")).is_ok()
 }
 
-/// Adds the stored keys to the platform keystore; returns the stored agent ids
+/// Adds the stored keys to the platform keystore; returns the stored keys by agent id
 /// (None: ClickHouse or AGENT_KEYS_SECRET unavailable, the file stays the only copy).
-pub async fn load(state: &AppState) -> Option<BTreeSet<String>> {
+pub async fn load(state: &AppState) -> Option<BTreeMap<String, String>> {
     if !state.db.is_connected() {
         return None;
     }
@@ -104,7 +104,7 @@ pub async fn load(state: &AppState) -> Option<BTreeSet<String>> {
             return None;
         }
     };
-    let mut ids = BTreeSet::new();
+    let mut stored = BTreeMap::new();
     let mut added = 0;
     {
         let mut ks = state.auth_keystore.write().unwrap();
@@ -113,29 +113,40 @@ pub async fn load(state: &AppState) -> Option<BTreeSet<String>> {
                 warn!("agent_keys: cannot decrypt the key of agent {} (AGENT_KEYS_SECRET changed?)", r.agent_id);
                 continue;
             };
-            ids.insert(r.agent_id.clone());
             if let Some(k) = KeyStore::parse_line(&line) {
                 if ks.find_by_id(&k.id).is_none() {
                     ks.add_key(k);
                     added += 1;
                 }
             }
+            stored.insert(r.agent_id.clone(), line);
         }
     }
     info!("Loaded {} agent keys from ClickHouse ({added} not in memory yet)", rows.len());
-    Some(ids)
+    Some(stored)
 }
 
-async fn save(state: &AppState, c: &LessSafeKey, stored: &mut BTreeSet<String>) -> bool {
+/// The keys to write and the agents to mark deleted, to bring `stored` to `current`.
+fn changes<'a>(stored: &'a BTreeMap<String, String>, current: &'a BTreeMap<String, String>) -> (Vec<(&'a String, &'a String)>, Vec<&'a String>) {
+    let changed = current.iter().filter(|(id, line)| stored.get(*id) != Some(line)).collect();
+    let gone = stored.keys().filter(|id| !current.contains_key(*id)).collect();
+    (changed, gone)
+}
+
+/// Writes the keys that changed since `stored` (a change costs its own key, not the fleet's).
+async fn save(state: &AppState, c: &LessSafeKey, stored: &mut BTreeMap<String, String>) -> bool {
     let at = chrono::Utc::now().timestamp_millis() as u64;
-    let lines: Vec<(String, String)> = state.auth_keystore.read().unwrap().keys.iter().map(|k| (k.id.clone(), k.to_key_line())).collect();
-    let current: BTreeSet<String> = lines.iter().map(|(id, _)| id.clone()).collect();
-    let mut rows = Vec::new();
-    for (id, line) in &lines {
+    let current: BTreeMap<String, String> = state.auth_keystore.read().unwrap().keys.iter().map(|k| (k.id.clone(), k.to_key_line())).collect();
+    let (changed, gone) = changes(stored, &current);
+    let mut rows = Vec::with_capacity(changed.len() + gone.len());
+    for (id, line) in changed {
         let Some(enc) = encrypt(c, line) else { return false };
         rows.push(KeyRow { agent_id: id.clone(), key_enc: enc, deleted: 0, updated_at: at });
     }
-    rows.extend(stored.difference(&current).map(|id| KeyRow { agent_id: id.clone(), key_enc: String::new(), deleted: 1, updated_at: at }));
+    rows.extend(gone.into_iter().map(|id| KeyRow { agent_id: id.clone(), key_enc: String::new(), deleted: 1, updated_at: at }));
+    if rows.is_empty() {
+        return true;
+    }
     let client = state.db.root().clone().with_database(DEFAULT_DB);
     let mut ins = match client.insert("agent_keys") {
         Ok(i) => i,
@@ -160,7 +171,7 @@ async fn save(state: &AppState, c: &LessSafeKey, stored: &mut BTreeSet<String>) 
 
 /// Writes the keystore to ClickHouse when it changed: right away (`CHANGED`), checked every
 /// 5 s too (a failed write is retried), and once at start.
-pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
+pub fn spawn_sync(state: AppState, mut stored: BTreeMap<String, String>) {
     let Some(c) = cipher() else { return };
     tokio::spawn(async move {
         let mut saved = None;
@@ -176,7 +187,10 @@ pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
                 // ClickHouse has every key now: an old etc/client.keys is not needed any more
                 crate::provigil_manager::forget_keys_file();
             }
-            let _ = tokio::time::timeout(Duration::from_secs(5), CHANGED.notified()).await;
+            if tokio::time::timeout(Duration::from_secs(5), CHANGED.notified()).await.is_ok() {
+                // a mass enrollment: one insert for many keys, not one ClickHouse part per key
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
         }
     });
 }
@@ -184,6 +198,18 @@ pub fn spawn_sync(state: AppState, mut stored: BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_touches_only_its_own_key() {
+        let map = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeMap<_, _>>();
+        let stored = map(&[("001", "001 a any k1"), ("002", "002 b any k2"), ("003", "003 c any k3")]);
+        let current = map(&[("001", "001 a any k1"), ("002", "002 b any NEW"), ("004", "004 d any k4")]);
+        let (changed, gone) = changes(&stored, &current);
+        assert_eq!(changed.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["002", "004"]);
+        assert_eq!(gone, ["003"]);
+        let (changed, gone) = changes(&current, &current);
+        assert!(changed.is_empty() && gone.is_empty());
+    }
 
     #[test]
     fn roundtrip() {

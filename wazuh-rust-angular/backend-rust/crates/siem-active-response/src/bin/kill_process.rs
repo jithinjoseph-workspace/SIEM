@@ -4,11 +4,6 @@
 //! agent are never killed (`edr::kill_refusal`).
 
 #[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
-
-#[cfg(windows)]
 use siem_active_response::{edr::*, *};
 
 fn main() {
@@ -21,7 +16,7 @@ fn main() {
 #[cfg(windows)]
 fn win_main() -> i32 {
     // This must be always the first instruction
-    dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
+    dll_guard::enable();
     let argv0 = argv0();
     let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
     if action != Action::Add {
@@ -40,7 +35,7 @@ fn win_main() -> i32 {
 
 /// The killed process (`"pid":..,"image":..`), or why it was not killed.
 #[cfg(windows)]
-fn kill(input: &siem_cjson::Json) -> Result<String, String> {
+fn kill(input: &serde_json::Value) -> Result<String, String> {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE};
 

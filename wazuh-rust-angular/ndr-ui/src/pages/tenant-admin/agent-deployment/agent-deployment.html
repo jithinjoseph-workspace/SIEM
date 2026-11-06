@@ -18,7 +18,11 @@
     </div>
 
     <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-5 space-y-3 self-start">
-      <h3 class="text-base font-semibold text-white">Your agents</h3>
+      <div class="flex items-center gap-2">
+        <h3 class="text-base font-semibold text-white">Your agents</h3>
+        <button type="button" (click)="load()" class="ml-auto text-xs text-cyan-300 hover:underline">Refresh</button>
+      </div>
+      <p *ngIf="published()" class="text-xs text-slate-400">Published agent: <span class="font-mono text-slate-200">ProVigil v{{ published() }}</span></p>
       <div *ngIf="error()" role="alert" class="text-sm text-rose-300">{{ error() }}</div>
       <div class="flex gap-4 text-sm">
         <div><span class="text-2xl font-bold text-white">{{ agents().length }}</span><span class="text-slate-400">&nbsp;enrolled</span></div>
@@ -26,12 +30,21 @@
       </div>
       <p *ngIf="!error() && agents().length === 0" class="text-sm text-slate-500">No agent yet.</p>
       <ul class="divide-y divide-slate-800 text-sm max-h-[520px] overflow-y-auto">
-        <li *ngFor="let a of agents()" class="py-2 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full shrink-0" [class.bg-emerald-400]="a.status === 'active'" [class.bg-slate-600]="a.status !== 'active'"
-            [attr.aria-label]="a.status"></span>
-          <span class="font-medium text-slate-200 truncate">{{ a.name }}</span>
-          <span class="text-[11px] text-slate-500">{{ a.os_type }}</span>
-          <span class="ml-auto text-[11px] text-slate-500 whitespace-nowrap">{{ a.status === 'active' ? 'active' : 'last seen ' + when(a.last_keepalive) }}</span>
+        <li *ngFor="let a of agents()" class="py-2 space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full shrink-0" [class.bg-emerald-400]="a.status === 'active'" [class.bg-slate-600]="a.status !== 'active'"
+              [attr.aria-label]="a.status"></span>
+            <span class="font-medium text-slate-200 truncate">{{ a.name }}</span>
+            <span class="text-[11px] text-slate-500">{{ a.id }} · {{ a.os_type }}</span>
+            <span class="ml-auto text-[11px] text-slate-500 whitespace-nowrap">{{ a.status === 'active' ? 'active' : 'last seen ' + when(a.last_keepalive) }}</span>
+          </div>
+          <div class="flex items-center gap-2 pl-4 text-[11px]">
+            <span class="font-mono" [class.text-amber-300]="outdated(a)" [class.text-slate-400]="!outdated(a)">{{ a.version || '—' }}{{ outdated(a) ? ' (outdated)' : '' }}</span>
+            <button *ngIf="(a.version || '').startsWith('ProVigil')" type="button" (click)="upgrade(a)" [disabled]="a.status !== 'active'"
+              [title]="a.status !== 'active' ? 'The agent must be connected' : 'Install the published version on this agent'"
+              class="ml-auto px-2.5 py-1 rounded-md bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold">Upgrade</button>
+          </div>
+          <div *ngIf="upgradeNote()[a.id] as n" class="pl-4 text-[11px] text-cyan-300 break-words">{{ n }}</div>
         </li>
       </ul>
     </div>

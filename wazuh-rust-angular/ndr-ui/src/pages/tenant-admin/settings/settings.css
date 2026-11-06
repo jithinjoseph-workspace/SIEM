@@ -1015,3 +1015,15 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .cancel-btn:hover { color: #c8d0e0; border-color: rgba(110,117,136,0.4); }
+
+/* alert e-mail and PDF report forms */
+.report-filters { display: flex; flex-direction: column; gap: 8px; }
+.report-filters summary { cursor: pointer; font-size: 0.85rem; opacity: 0.85; margin: 4px 0; }
+.report-filters[open] { display: flex; }
+.report-filters input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, rgba(148, 163, 184, 0.35)); background: transparent; color: inherit; font: inherit; }
+.mail-form { display: flex; flex-direction: column; gap: 8px; }
+.mail-form input[type="number"], .mail-form input[type="text"], .mail-form select {
+  width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+  background: transparent; color: inherit; font: inherit;
+}
+.mail-form select option { color: #0f172a; }

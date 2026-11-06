@@ -44,10 +44,10 @@ pub fn parse_result(response: &str) -> (WdbcResult, &str) {
 #[derive(Debug, thiserror::Error)]
 pub enum WdbcError {
     /// -2: cannot connect / send.
-    #[error("unable to connect to wazuh-db: {0}")]
+    #[error("unable to connect to provigil-db: {0}")]
     Connect(String),
     /// -1: no or bad response.
-    #[error("no response from wazuh-db: {0}")]
+    #[error("no response from provigil-db: {0}")]
     Response(String),
     /// -1: the reply does not fit the caller's buffer.
     #[error("Cannot receive message: response size is bigger than expected")]
@@ -156,7 +156,7 @@ impl WdbQuery for WdbcSocket {
             Ok(r) => r,
             Err(_) => {
                 // EPIPE: reconnect once and retry.
-                tracing::error!("Connection with wazuh-db lost. Reconnecting.");
+                tracing::error!("Connection with provigil-db lost. Reconnecting.");
                 *guard = Some(self.connect().await?);
                 let s = guard.as_mut().unwrap();
                 Self::roundtrip(s, query).await.map_err(|e| WdbcError::Response(e.to_string()))?
@@ -178,7 +178,7 @@ impl WdbQuery for WdbcSocket {
             Ok(r) => r,
             Err(RtError::TooBig) => return Err(WdbcError::TooBig),
             Err(RtError::Io(_)) => {
-                tracing::error!("Connection with wazuh-db lost. Reconnecting.");
+                tracing::error!("Connection with provigil-db lost. Reconnecting.");
                 *guard = Some(self.connect().await?);
                 let s = guard.as_mut().unwrap();
                 match Self::roundtrip_bytes(s, q, len).await {
@@ -204,7 +204,7 @@ pub async fn query_parse_json(db: &dyn WdbQuery, query: &str) -> Option<serde_js
     match parse_result(&resp) {
         (WdbcResult::Ok, p) => serde_json::from_str(p).ok(),
         (WdbcResult::Error, p) => {
-            tracing::error!("Bad response from wazuh-db: {p}");
+            tracing::error!("Bad response from provigil-db: {p}");
             None
         }
         _ => None,

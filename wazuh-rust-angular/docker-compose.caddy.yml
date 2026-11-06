@@ -57,8 +57,15 @@ services:
       dockerfile: Dockerfile
     container_name: xdr-siem-api
     restart: always
+    ports:
+      - "8444:8444"   # agents: HTTPS (Caddy holds host port 8443 for the console)
+      - "8089:8089"   # agents: gRPC over TLS
+    volumes:
+      - siem_data:/app/data # the agent CA: a new one would cut off every agent
     environment:
       - SIEM_PORT=8088
+      - SIEM_TLS_PORT=8444
+      - SIEM_LAN_IP=${SIEM_LAN_IP:-} # the address agents use: it goes in the TLS certificate
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_DB=ndr
       - CLICKHOUSE_USER=default
@@ -79,6 +86,8 @@ services:
   #     - CLICKHOUSE_DB=ndr
 
 volumes:
+  siem_data:
+    driver: local
   clickhouse_data:
     driver: local
   caddy_data:

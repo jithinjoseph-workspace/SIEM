@@ -12,7 +12,7 @@ path = "src/main.rs"
 siem-log = { path = "../siem-log" }
 siem-config = { path = "../siem-config" }
 siem-ipc = { path = "../siem-ipc" }
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-agentd = { path = "../siem-agentd" }
 siem-logcollector = { path = "../siem-logcollector" }
 siem-execd = { path = "../siem-execd" }

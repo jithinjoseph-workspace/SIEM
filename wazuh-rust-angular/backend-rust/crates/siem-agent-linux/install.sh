@@ -72,6 +72,8 @@ MANAGER_URL="${MANAGER_URL%/}"
 AGENT_NAME=${SIEM_AGENT_NAME:-${WAZUH_AGENT_NAME:-$(hostname)}}
 AGENT_GROUP=${SIEM_AGENT_GROUP:-${WAZUH_AGENT_GROUP:-"default"}}
 TENANT_KEY=${SIEM_TENANT_KEY:-${WAZUH_TENANT_KEY:-""}}
+# The manager's CA certificate (the console's command writes it): trusted for its HTTPS address.
+CA_SOURCE=${SIEM_CA_FILE:-""}
 INSTALL_DIR="/var/ossec"
 USER="wazuh"
 GROUP="wazuh"
@@ -86,9 +88,11 @@ else
 fi
 echo "[+] Installation Prefix:         ${INSTALL_DIR}"
 
-# HTTP helper: curl or wget
+# HTTP helper: curl or wget; with the manager's CA when there is one
+CURL_CA=()
+WGET_CA=()
 http_get() {
-    if command -v curl > /dev/null 2>&1; then curl -fsSL "$1" -o "$2"; else wget -q "$1" -O "$2"; fi
+    if command -v curl > /dev/null 2>&1; then curl -fsSL "${CURL_CA[@]}" "$1" -o "$2"; else wget -q "${WGET_CA[@]}" "$1" -O "$2"; fi
 }
 
 # 3. Create dedicated system group and user
@@ -122,6 +126,19 @@ mkdir -p "${INSTALL_DIR}/queue"
 mkdir -p "${INSTALL_DIR}/quarantine"
 mkdir -p "${INSTALL_DIR}/ruleset/sca"
 mkdir -p "${INSTALL_DIR}/var/run"
+
+# The agent reads the CA here (agent.env, or the default of its own)
+CA_FILE=""
+if [ -n "${CA_SOURCE}" ]; then
+    CA_FILE="${INSTALL_DIR}/etc/ca.pem"
+    if [ "${CA_SOURCE}" != "${CA_FILE}" ]; then
+        cp "${CA_SOURCE}" "${CA_FILE}"
+    fi
+    chmod 644 "${CA_FILE}"
+    export SIEM_CA_FILE="${CA_FILE}"
+    CURL_CA=(--cacert "${CA_FILE}")
+    WGET_CA=(--ca-certificate="${CA_FILE}")
+fi
 
 # Fetch matching distribution CIS benchmark policy
 case "${DIST_NAME}" in
@@ -255,20 +272,25 @@ cat <<EOF > "${INSTALL_DIR}/etc/ossec.conf"
 EOF
 
 # Enrollment: the manager assigns an agent id that is unique across tenants.
-# A re-install keeps an existing enrollment (client.keys from a previous run).
+# A re-install keeps an existing enrollment (client.keys from a previous run); over TLS it gets
+# a new key under the same name (the old one may have crossed the network in clear text).
 KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
-if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
+if [ -z "${CA_FILE}" ] && [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
     echo "[+] Keeping existing enrollment: $(cut -d' ' -f1,2 "${KEYS_FILE}" | head -1)"
 else
+    if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
+        OLD_NAME=$(head -1 "${KEYS_FILE}" | cut -d' ' -f2)
+        AGENT_NAME=${OLD_NAME:-${AGENT_NAME}}
+    fi
     rm -f "${KEYS_FILE}" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted"
     BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
     RESP=""
     if command -v curl > /dev/null 2>&1; then
-        RESP=$(curl -fsS -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
+        RESP=$(curl -fsS "${CURL_CA[@]}" -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
             -H "Content-Type: application/json" ${TENANT_KEY:+-H "X-Tenant-Key: ${TENANT_KEY}"} \
             -d "${BODY}" 2>/dev/null || true)
     else
-        RESP=$(wget -qO- --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
+        RESP=$(wget -qO- "${WGET_CA[@]}" --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
             --post-data="${BODY}" "${MANAGER_URL}/api/v1/agents/enroll" 2>/dev/null || true)
     fi
     NEW_ID=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_id":"\([^"]*\)".*/\1/p')
@@ -299,6 +321,7 @@ SIEM_MANAGER_URL="${MANAGER_URL}"
 SIEM_AGENT_NAME="${AGENT_NAME}"
 SIEM_AGENT_GROUP="${AGENT_GROUP}"
 SIEM_TENANT_KEY="${TENANT_KEY}"
+SIEM_CA_FILE="${CA_FILE}"
 EOF
 
 # 7. Apply hardened file permissions

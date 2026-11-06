@@ -4,7 +4,7 @@ const dgram = require('dgram'), fs = require('fs');
 const HOME = require('path').join(__dirname, '../../data/manager');
 const port = +fs.readFileSync(`${HOME}/queue/sockets/queue.port`, 'utf8').trim();
 const [id, name, rates, secs] = [process.argv[2], process.argv[3], process.argv[4].split(',').map(Number), +process.argv[5]];
-const st = () => Object.fromEntries(fs.readFileSync(`${HOME}/var/run/wazuh-analysisd.state`, 'utf8').split('\n').filter(l => l.includes("='")).map(l => { const [k, v] = l.split("='"); return [k, v.replace(/'$/, '')]; }));
+const st = () => Object.fromEntries(fs.readFileSync(`${HOME}/var/run/${fs.existsSync(`${HOME}/var/run/provigil-analysisd.state`) ? 'provigil' : 'wazuh'}-analysisd.state`, 'utf8').split('\n').filter(l => l.includes("='")).map(l => { const [k, v] = l.split("='"); return [k, v.replace(/'$/, '')]; }));
 const ev = (n, err) => `f:[${id}] (${name}) any->EventChannel:{"Message":"m #${n}","Event":"<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='LoadTest'/><EventID Qualifiers='0'>${err ? 1000 : 1001}</EventID><Version>0</Version><Level>${err ? 2 : 4}</Level><Task>0</Task><Opcode>0</Opcode><Keywords>0x80000000000000</Keywords><TimeCreated SystemTime='2026-10-16T00:00:00.0000000Z'/><EventRecordID>${n}</EventRecordID><Correlation/><Execution ProcessID='4' ThreadID='0'/><Channel>Application</Channel><Computer>${name}</Computer><Security/></System><EventData><Data>m #${n}</Data></EventData></Event>"}\0`;
 const sock = dgram.createSocket('udp4');
 sock.connect(port, '127.0.0.1', async () => {

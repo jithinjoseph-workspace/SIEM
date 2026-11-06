@@ -164,7 +164,7 @@
         {{ copied() ? '✓ Copied!' : 'Copy Command' }}
       </button>
     </div>
-    <pre class="p-3 bg-slate-900/90 border border-slate-800 rounded-lg font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap break-all select-all">{{ deployInstallCommand() || 'Fix the agent name to generate the command.' }}</pre>
+    <pre class="p-3 bg-slate-900/90 border border-slate-800 rounded-lg font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap break-all select-all">{{ deployInstallCommand() || (deployReady() ? 'Fix the agent name to generate the command.' : 'Waiting for the manager\'s TLS details: if this stays, check that siem-api issued its certificate and that the agent is published.') }}</pre>
   </div>
 
   <!-- 4. Start / status command with copy -->
@@ -192,12 +192,12 @@
   <!-- 1-Click Downloads & Actions -->
   <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
     <div class="flex items-center gap-2">
-      <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployNameValid()"
+      <button *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()" [disabled]="!deployInstallCommand()"
         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/30 transition disabled:opacity-40">
         <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
         Download 1-Click install.bat
       </button>
-      <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployNameValid()"
+      <button *ngIf="deployOs() === 'linux'" (click)="downloadDeployScript()" [disabled]="!deployInstallCommand()"
         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/30 transition disabled:opacity-40">
         <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
         Download install.sh Script

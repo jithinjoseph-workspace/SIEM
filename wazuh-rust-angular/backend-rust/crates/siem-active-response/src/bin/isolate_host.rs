@@ -5,11 +5,6 @@
 //! the isolation only when it is still the same one (`id`), not a newer one.
 
 #[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
-
-#[cfg(windows)]
 use siem_active_response::{edr::*, *};
 
 /// The isolation in force: `id=<id>` and the firewall profiles it turned on (`restore_off=`).
@@ -28,7 +23,7 @@ fn main() {
 #[cfg(windows)]
 fn win_main() -> i32 {
     // This must be always the first instruction
-    dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
+    dll_guard::enable();
     let argv0 = argv0();
     let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
     let (netsh_found, netsh) = get_binary_path("netsh.exe");

@@ -1,12 +1,3 @@
-//! Daemon logging (shared/debug_op.c): `logs/ossec.log` (plain) and
-//! `logs/ossec.json` (JSON) under the ProVigil home, the format chosen by
-//! `<logging><log_format>` in `etc/ossec.conf`, plus stderr unless the
-//! daemon went to the background.
-//!
-//! Plain line: `YYYY/MM/DD hh:mm:ss <tag>: <LEVEL>: <message>`; with debug
-//! on, `<tag>[<pid>] <file>:<line> at <func>(): ` replaces `<tag>: `.
-//! JSON: `{"timestamp","tag",["pid","file","line","routine"],"level","description"}`.
-//! The C file/line/function become the Rust caller's location.
 
 use std::fs::OpenOptions;
 use std::io::Write;

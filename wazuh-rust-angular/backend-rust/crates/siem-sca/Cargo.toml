@@ -10,9 +10,9 @@ path = "src/bin/sca-yaml2json.rs"
 
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }
-siem-regex = { path = "../siem-regex" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 siem-log = { path = "../siem-log" }
-siem-fileop = { path = "../siem-fileop" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-xml = { path = "../siem-xml" }
 siem-execd = { path = "../siem-execd" }
 siem-ipc = { path = "../siem-ipc" }

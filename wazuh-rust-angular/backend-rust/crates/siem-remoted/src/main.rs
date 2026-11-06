@@ -5,14 +5,14 @@ use siem_remoted::{Deps, Remoted};
 
 fn usage() -> ! {
     eprintln!(
-        "  wazuh-remoted: -[Vhdtf] [-c config] [-D dir]\n\
+        "  provigil-remoted: -[Vhdtf] [-c config] [-D dir]\n\
          \x20   -V          Version and license message\n\
          \x20   -h          This help message\n\
          \x20   -d          Execute in debug mode (can be repeated)\n\
          \x20   -t          Test configuration\n\
          \x20   -f          Run in foreground (always the case here)\n\
          \x20   -c <config> Configuration file to use (default: etc/ossec.conf)\n\
-         \x20   -D <dir>    Wazuh home directory (default: /var/ossec)\n\
+         \x20   -D <dir>    ProVigil home directory (default: /var/ossec)\n\
          \x20   -m          Avoid creating shared merged file (read only)"
     );
     std::process::exit(1);
@@ -29,7 +29,7 @@ async fn main() {
     while let Some(a) = args.next() {
         match a.as_str() {
             "-V" => {
-                println!("Wazuh {} - wazuh-remoted (Rust port)", siem_remoted::config::OSSEC_VERSION);
+                println!("ProVigil {} - provigil-remoted", siem_remoted::config::OSSEC_VERSION);
                 return;
             }
             "-h" => usage(),
@@ -47,7 +47,7 @@ async fn main() {
     let settings = match RemotedSettings::load(&home, cfg.as_deref(), nocmerged) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("wazuh-remoted: CRITICAL: {e}");
+            eprintln!("provigil-remoted: CRITICAL: {e}");
             std::process::exit(1);
         }
     };

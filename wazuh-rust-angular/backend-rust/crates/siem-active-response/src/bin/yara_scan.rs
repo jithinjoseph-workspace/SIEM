@@ -3,18 +3,13 @@
 //! file's SHA-256 and the rule set's version, for the manager to alert on and cache.
 //! extra_args: `path=<full path>`. Runs at below-normal priority; files over 64 MB are skipped.
 
-#[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
-
 use siem_active_response::{edr::*, yara, *};
 
 fn main() {
     #[cfg(windows)]
     {
         // This must be always the first instruction
-        dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
+        dll_guard::enable();
         // a scan is background work: the user's programs come first
         use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS};
         unsafe { SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) };

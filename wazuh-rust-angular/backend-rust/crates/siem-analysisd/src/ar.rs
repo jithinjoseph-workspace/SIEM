@@ -38,6 +38,10 @@ pub trait ArBackend {
     /// Send to `queue/alerts/execq` (local) or `queue/alerts/ar` (remote).
     fn send_exec(&mut self, msg: &[u8]);
     fn send_ar(&mut self, msg: &[u8]);
+    /// Send to siem-api's queue: a ProVigil agent never connects to remoted.
+    fn send_provigil_ar(&mut self, msg: &[u8]) {
+        self.send_ar(msg)
+    }
 }
 
 /// AR whitelists (`Config.white_list`, `Config.hostname_white_list`).
@@ -105,7 +109,7 @@ pub fn ar_json(
     msg.add("version", Json::number(1.0));
     let mut origin = Json::object();
     origin.add("name", Json::string(node_name));
-    origin.add("module", Json::string("wazuh-analysisd"));
+    origin.add("module", Json::string("provigil-analysisd"));
     msg.add("origin", origin);
     msg.add("command", Json::string(&ar.name));
     let mut params = Json::object();
@@ -249,11 +253,19 @@ pub fn os_exec(
             let ver = match backend.agent_version(id) {
                 AgentVersion::Found(v) => v,
                 AgentVersion::NoInfo => {
-                    log.error(format!("Failed to get agent '{id}' information from Wazuh DB."));
+                    log.error(format!("Failed to get agent '{id}' information from provigil-db."));
                     return;
                 }
                 AgentVersion::NoVersion => return,
             };
+            // siem-api writes this version for its agents; their numbers are their own, not the
+            // old agents' (the message is always JSON)
+            if ver.starts_with("ProVigil") {
+                let node = backend.node_name();
+                let msg = ar_json(eng, ev, ar, cmd.extra_args.as_deref(), &node, false, log);
+                backend.send_provigil_ar(&exec_msg(ar, &c_id, &msg));
+                return;
+            }
             let msg = match parse_agent_version(&ver) {
                 None => {
                     log.error("Unable to read agent version.");

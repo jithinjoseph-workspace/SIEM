@@ -17,8 +17,7 @@ const LESSD_LOCAL_SOCK: &str = "queue/sockets/agentless";
 fn help(home: &str) -> ! {
     for l in [
         " ".to_string(),
-        "Wazuh v4.14.7 - Wazuh Inc. (info@wazuh.com)".into(),
-        "http://www.wazuh.com".into(),
+        "ProVigil v4.14.7".into(),
         format!("  {ARGV0}: -[Vhdtf] [-u user] [-g group] [-c config] [-D dir]"),
         "    -V          Version and license message".into(),
         "    -h          This help message".into(),
@@ -47,7 +46,7 @@ fn fatal(log: &WLog, msg: &str) -> ! {
 /// `lessdcom_main`
 fn lessdcom_start(list: Vec<Entry>, log: Arc<WLog>) {
     use siem_ipc::framing::{self, FrameError};
-    siem_maild::log_thread_start(&log);
+    siem_agentlessd::log_thread_start(&log);
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
         rt.block_on(async move {
@@ -55,7 +54,7 @@ fn lessdcom_start(list: Vec<Entry>, log: Arc<WLog>) {
             let l = match siem_ipc::local::StreamListener::bind(LESSD_LOCAL_SOCK).await {
                 Ok(l) => l,
                 Err(e) => {
-                    log.error(format!("Unable to bind to socket '{LESSD_LOCAL_SOCK}': ({}) {}.", e.raw_os_error().unwrap_or(0), siem_maild::strerror(&e)));
+                    log.error(format!("Unable to bind to socket '{LESSD_LOCAL_SOCK}': ({}) {}.", e.raw_os_error().unwrap_or(0), siem_agentlessd::strerror(&e)));
                     return;
                 }
             };
@@ -68,7 +67,7 @@ fn lessdcom_start(list: Vec<Entry>, log: Arc<WLog>) {
                     }
                     Ok(_) | Err(FrameError::Closed) => log.debug1("Empty message from local client."),
                     Err(FrameError::TooBig(..)) => log.error("At lessdcom_main(): OS_RecvSecureTCP(): response size is bigger than expected"),
-                    Err(FrameError::Io(e)) => log.error(format!("At lessdcom_main(): OS_RecvSecureTCP(): {}", siem_maild::strerror(&e))),
+                    Err(FrameError::Io(e)) => log.error(format!("At lessdcom_main(): OS_RecvSecureTCP(): {}", siem_agentlessd::strerror(&e))),
                 }
             }
         });
@@ -99,7 +98,7 @@ fn main() {
         while j < chars.len() {
             match chars[j] {
                 'V' => {
-                    eprintln!("\nWazuh v4.14.7 - Wazuh Inc.\n");
+                    eprintln!("\nProVigil v4.14.7\n");
                     std::process::exit(0);
                 }
                 'h' => help(&home),
@@ -131,20 +130,20 @@ fn main() {
     }
     if std::env::set_current_dir(&home).is_err() {
         let e = std::io::Error::last_os_error();
-        eprintln!("{ARGV0}: CRITICAL: (1133): Unable to chdir to directory '{home}' due to [({})-({})].", e.raw_os_error().unwrap_or(0), siem_maild::strerror(&e));
+        eprintln!("{ARGV0}: CRITICAL: (1133): Unable to chdir to directory '{home}' due to [({})-({})].", e.raw_os_error().unwrap_or(0), siem_agentlessd::strerror(&e));
         std::process::exit(1);
     }
     let base = PathBuf::new();
     let log = Arc::new(WLog::new_server(ARGV0, &base));
-    siem_maild::set_logger(log.clone());
+    siem_agentlessd::set_logger(log.clone());
     for _ in 0..debug {
         log.now_debug();
     }
-    log.debug1(format!("Wazuh home directory: {home}"));
+    log.debug1(format!("ProVigil home directory: {home}"));
     #[cfg(unix)]
     if siem_daemon::get_user(&user).is_none() || siem_daemon::get_group(&group).is_none() {
         let e = std::io::Error::last_os_error();
-        fatal(&log, &format!("(1203): Invalid user '{user}' or group '{group}' given: {} ({})", siem_maild::strerror(&e), e.raw_os_error().unwrap_or(0)));
+        fatal(&log, &format!("(1203): Invalid user '{user}' or group '{group}' given: {} ({})", siem_agentlessd::strerror(&e), e.raw_os_error().unwrap_or(0)));
     }
     let mut msgs = Vec::new();
     let r = config::read_agentless_conf(&base, &cfg, &mut msgs);
@@ -180,7 +179,7 @@ fn main() {
 
     // Wait a few seconds to settle
     std::thread::sleep(std::time::Duration::from_secs(2));
-    let queue = siem_monitord::mq::Queue::start();
+    let queue = siem_agentlessd::mq::Queue::start();
     lessdcom_start(entries.clone(), log.clone());
     Lessd { queue, entries }.run();
 }

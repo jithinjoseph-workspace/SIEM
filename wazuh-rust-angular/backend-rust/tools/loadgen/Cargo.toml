@@ -8,7 +8,7 @@ description = "Simulated Windows agents for manager load tests (see docs/LOAD_TE
 [workspace]
 
 [dependencies]
-siem-crypto = { path = "../../crates/siem-crypto" }
+siem-crypto = { package = "provigil-crypto", path = "../../crates/provigil-crypto" }
 tokio = { version = "1.40", features = ["full"] }
 rand = "0.8"
 md-5 = "0.10"

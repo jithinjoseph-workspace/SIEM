@@ -21,7 +21,8 @@ use tracing::{info, warn};
 
 pub const RULE_MATCH: u32 = 940102;
 
-const SOURCE: &str = "https://github.com/YARAHQ/yara-forge/releases/latest/download/yara-forge-rules-core.zip";
+const SOURCE: &str =
+    "https://github.com/YARAHQ/yara-forge/releases/latest/download/yara-forge-rules-core.zip";
 const SHARED_NAME: &str = "siem-yara.rules";
 const MAX_DOWNLOAD: usize = 64 * 1024 * 1024;
 const SCANS_PER_WINDOW: usize = 20;
@@ -45,13 +46,25 @@ fn rule_set() -> &'static RwLock<RuleSet> {
 
 /// The rule set's version, as the agent computes it (the first 8 bytes of its SHA-256).
 pub fn version_of(text: &str) -> String {
-    Sha256::digest(text.as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(text.as_bytes())[..8]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// The rule set is kept in ClickHouse (`siem_yara_rules`, encoded); when ClickHouse is not
 /// reachable at start, the default group's copy (what the agents download) is used.
+/// The rule file as the agents keep it (`shared/siem-yara.rules`, encoded).
+pub fn agent_file() -> Option<Vec<u8>> {
+    std::fs::read(store()).ok()
+}
+
 fn store() -> PathBuf {
-    crate::provigil_manager::home().join("etc").join("shared").join("default").join(SHARED_NAME)
+    crate::provigil_manager::home()
+        .join("etc")
+        .join("shared")
+        .join("default")
+        .join(SHARED_NAME)
 }
 
 /// Writes the rules where remoted sends them from: every group's shared folder (only when
@@ -59,7 +72,10 @@ fn store() -> PathBuf {
 fn install(text: &str) -> Result<(), String> {
     let stored = siem_active_response::yara::encode_rules(text);
     let shared = crate::provigil_manager::home().join("etc").join("shared");
-    for d in std::fs::read_dir(&shared).map_err(|e| format!("{}: {e}", shared.display()))?.flatten() {
+    for d in std::fs::read_dir(&shared)
+        .map_err(|e| format!("{}: {e}", shared.display()))?
+        .flatten()
+    {
         if !d.path().is_dir() {
             continue;
         }
@@ -75,7 +91,12 @@ fn install(text: &str) -> Result<(), String> {
 
 /// The core rules of the YARA Forge release zip with the test rule, compiled to check them.
 async fn fetch() -> Result<(String, usize), String> {
-    let resp = reqwest::Client::new().get(SOURCE).timeout(Duration::from_secs(180)).send().await.map_err(|e| format!("download: {e}"))?;
+    let resp = reqwest::Client::new()
+        .get(SOURCE)
+        .timeout(Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| format!("download: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("download: HTTP {}", resp.status().as_u16()));
     }
@@ -83,27 +104,56 @@ async fn fetch() -> Result<(String, usize), String> {
     if bytes.len() > MAX_DOWNLOAD {
         return Err("download larger than 64 MB".into());
     }
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| format!("zip: {e}"))?;
-    let name = zip.file_names().find(|n| n.ends_with(".yar")).map(String::from).ok_or("no .yar file in the release")?;
+    let mut zip =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| format!("zip: {e}"))?;
+    let name = zip
+        .file_names()
+        .find(|n| n.ends_with(".yar"))
+        .map(String::from)
+        .ok_or("no .yar file in the release")?;
     let mut core = String::new();
-    std::io::Read::read_to_string(&mut std::io::Read::take(zip.by_name(&name).map_err(|e| format!("zip: {e}"))?, MAX_DOWNLOAD as u64), &mut core).map_err(|e| format!("zip: {e}"))?;
+    std::io::Read::read_to_string(
+        &mut std::io::Read::take(
+            zip.by_name(&name).map_err(|e| format!("zip: {e}"))?,
+            MAX_DOWNLOAD as u64,
+        ),
+        &mut core,
+    )
+    .map_err(|e| format!("zip: {e}"))?;
     let text = format!("{core}\n{}", siem_active_response::yara::TEST_RULE);
     let checked = text.clone();
-    let rules = tokio::task::spawn_blocking(move || siem_active_response::yara::compile(&checked).map(|s| s.rules().count()))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("the rules do not compile: {e}"))?;
+    let rules = tokio::task::spawn_blocking(move || {
+        siem_active_response::yara::compile(&checked).map(|s| s.rules().count())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("the rules do not compile: {e}"))?;
     Ok((text, rules))
 }
 
 fn set(text: &str, rules: usize, source: &str) {
-    *rule_set().write().unwrap() = RuleSet { version: version_of(text), rules, updated_at: chrono::Utc::now().timestamp().max(0) as u64, source: source.into(), last_error: None };
+    *rule_set().write().unwrap() = RuleSet {
+        version: version_of(text),
+        rules,
+        updated_at: chrono::Utc::now().timestamp().max(0) as u64,
+        source: source.into(),
+        last_error: None,
+    };
 }
 
 /// Whether the rule set was stored in ClickHouse.
 async fn save(state: &crate::AppState, text: &str) -> bool {
     let doc = json!({ "rules": siem_active_response::yara::encode_rules(text), "version": version_of(text) }).to_string();
-    match state.db.put_doc(crate::tenancy::DEFAULT_TENANT, crate::db::DocTable::YaraRules, "current", &doc).await {
+    match state
+        .db
+        .put_doc(
+            crate::tenancy::DEFAULT_TENANT,
+            crate::db::DocTable::YaraRules,
+            "current",
+            &doc,
+        )
+        .await
+    {
         Ok(()) => true,
         Err(e) => {
             warn!("YARA rules not stored in ClickHouse: {e}");
@@ -114,11 +164,25 @@ async fn save(state: &crate::AppState, text: &str) -> bool {
 
 /// The stored rule set (ClickHouse, else the default group's copy) and whether ClickHouse had it.
 async fn load(state: &crate::AppState) -> Option<(String, bool)> {
-    let doc = state.db.doc(crate::tenancy::DEFAULT_TENANT, crate::db::DocTable::YaraRules, "current").await.ok().flatten();
-    let from_db = doc.and_then(|d| serde_json::from_str::<Value>(&d).ok()).and_then(|v| v["rules"].as_str().map(String::from));
+    let doc = state
+        .db
+        .doc(
+            crate::tenancy::DEFAULT_TENANT,
+            crate::db::DocTable::YaraRules,
+            "current",
+        )
+        .await
+        .ok()
+        .flatten();
+    let from_db = doc
+        .and_then(|d| serde_json::from_str::<Value>(&d).ok())
+        .and_then(|v| v["rules"].as_str().map(String::from));
     let in_db = from_db.is_some();
     let stored = from_db.or_else(|| std::fs::read_to_string(store()).ok())?;
-    Some((siem_active_response::yara::decode_rules(&stored).ok()?, in_db))
+    Some((
+        siem_active_response::yara::decode_rules(&stored).ok()?,
+        in_db,
+    ))
 }
 
 /// Installs the stored rule set at start, then a new one every day (an hour after a failure).
@@ -145,7 +209,10 @@ pub fn spawn(state: crate::AppState) {
                                 in_db = save(&state, &text).await;
                             }
                             if changed {
-                                info!("YARA rules: {rules} rules (version {}) sent to the agents", version_of(&text));
+                                info!(
+                                    "YARA rules: {rules} rules (version {}) sent to the agents",
+                                    version_of(&text)
+                                );
                             }
                             Duration::from_secs(24 * 3600)
                         }
@@ -184,16 +251,28 @@ struct Memory {
 
 fn memory() -> &'static Mutex<Memory> {
     static M: OnceLock<Mutex<Memory>> = OnceLock::new();
-    M.get_or_init(|| Mutex::new(Memory { verdicts: HashMap::new(), asked: HashMap::new(), recent: HashMap::new() }))
+    M.get_or_init(|| {
+        Mutex::new(Memory {
+            verdicts: HashMap::new(),
+            asked: HashMap::new(),
+            recent: HashMap::new(),
+        })
+    })
 }
 
 /// Folders a user (or malware without admin rights) can write to.
 fn user_writable(path: &str) -> bool {
     let p = path.to_ascii_lowercase();
-    p.contains("\\users\\") || p.contains("\\$recycle.bin\\") || ["c:\\programdata\\", "c:\\windows\\temp\\", "c:\\perflogs\\"].iter().any(|r| p.starts_with(r))
+    p.contains("\\users\\")
+        || p.contains("\\$recycle.bin\\")
+        || ["c:\\programdata\\", "c:\\windows\\temp\\", "c:\\perflogs\\"]
+            .iter()
+            .any(|r| p.starts_with(r))
 }
 
-const SCANNED_EXT: [&str; 11] = ["exe", "dll", "scr", "sys", "ps1", "vbs", "js", "jse", "hta", "bat", "msi"];
+const SCANNED_EXT: [&str; 11] = [
+    "exe", "dll", "scr", "sys", "ps1", "vbs", "js", "jse", "hta", "bat", "msi",
+];
 
 /// The file a Sysmon event asks to scan: (path, sha256 if known).
 fn candidate(v: &Value) -> Option<(String, Option<String>)> {
@@ -219,7 +298,13 @@ fn candidate(v: &Value) -> Option<(String, Option<String>)> {
     if path.is_empty() || !user_writable(&path) {
         return None;
     }
-    let sha = ed["hashes"].as_str().and_then(|h| h.split(',').find_map(|p| p.trim().strip_prefix("SHA256=").map(|x| x.to_ascii_lowercase())));
+    let sha = ed["hashes"].as_str().and_then(|h| {
+        h.split(',').find_map(|p| {
+            p.trim()
+                .strip_prefix("SHA256=")
+                .map(|x| x.to_ascii_lowercase())
+        })
+    });
     Some((path, sha))
 }
 
@@ -235,7 +320,12 @@ fn result_of(v: &Value) -> Option<Value> {
 
 /// Per batch of archived events: the alerts (scan results that matched, and files already
 /// known to match) and the scans to ask for (tenant, agent, path).
-pub fn check(events: &[(Value, String)]) -> (Vec<(siem_core::Alert, String)>, Vec<(String, String, String)>) {
+pub fn check(
+    events: &[(Value, String)],
+) -> (
+    Vec<(siem_core::Alert, String)>,
+    Vec<(String, String, String)>,
+) {
     let current = rule_set().read().unwrap().version.clone();
     let mut alerts = Vec::new();
     let mut scans = Vec::new();
@@ -247,28 +337,72 @@ pub fn check(events: &[(Value, String)]) -> (Vec<(siem_core::Alert, String)>, Ve
             continue;
         }
         if let Some(r) = result_of(v) {
-            let (Some(sha), Some(version)) = (r["sha256"].as_str(), r["rules_version"].as_str()) else { continue };
-            let rules: Vec<String> = r["rules"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+            let (Some(sha), Some(version)) = (r["sha256"].as_str(), r["rules_version"].as_str())
+            else {
+                continue;
+            };
+            let rules: Vec<String> = r["rules"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
             if m.verdicts.len() >= MAX_CACHE {
                 // shortcut: a full cache starts again (files get scanned once more)
                 m.verdicts.clear();
             }
-            m.verdicts.insert((tenant.clone(), sha.to_string()), (version.to_string(), rules.clone()));
-            if !rules.is_empty() && !crate::file_reputation::reported_recently(tenant, &agent, &format!("{sha}:yara")) {
-                alerts.push((alert_for(v, r["path"].as_str().unwrap_or(""), sha, &rules), tenant.clone()));
+            m.verdicts.insert(
+                (tenant.clone(), sha.to_string()),
+                (version.to_string(), rules.clone()),
+            );
+            if !rules.is_empty()
+                && !crate::file_reputation::reported_recently(
+                    tenant,
+                    &agent,
+                    &format!("{sha}:yara"),
+                )
+            {
+                alerts.push((
+                    alert_for(v, r["path"].as_str().unwrap_or(""), sha, &rules),
+                    tenant.clone(),
+                ));
             }
             continue;
         }
-        let Some((path, sha)) = candidate(v) else { continue };
-        if let Some((version, rules)) = sha.as_ref().and_then(|h| m.verdicts.get(&(tenant.clone(), h.clone()))).filter(|(ver, _)| *ver == current) {
+        let Some((path, sha)) = candidate(v) else {
+            continue;
+        };
+        if let Some((version, rules)) = sha
+            .as_ref()
+            .and_then(|h| m.verdicts.get(&(tenant.clone(), h.clone())))
+            .filter(|(ver, _)| *ver == current)
+        {
             let _ = version;
-            if !rules.is_empty() && !crate::file_reputation::reported_recently(tenant, &agent, &format!("{}:yara", sha.as_deref().unwrap_or(""))) {
-                alerts.push((alert_for(v, &path, sha.as_deref().unwrap_or(""), &rules.clone()), tenant.clone()));
+            if !rules.is_empty()
+                && !crate::file_reputation::reported_recently(
+                    tenant,
+                    &agent,
+                    &format!("{}:yara", sha.as_deref().unwrap_or("")),
+                )
+            {
+                alerts.push((
+                    alert_for(v, &path, sha.as_deref().unwrap_or(""), &rules.clone()),
+                    tenant.clone(),
+                ));
             }
             continue;
         }
-        let key = (tenant.clone(), agent.clone(), sha.clone().unwrap_or_else(|| path.to_ascii_lowercase()));
-        if m.asked.get(&key).is_some_and(|t| now.duration_since(*t) < RESCAN_AFTER) {
+        let key = (
+            tenant.clone(),
+            agent.clone(),
+            sha.clone().unwrap_or_else(|| path.to_ascii_lowercase()),
+        );
+        if m.asked
+            .get(&key)
+            .is_some_and(|t| now.duration_since(*t) < RESCAN_AFTER)
+        {
             continue;
         }
         let q = m.recent.entry(agent.clone()).or_default();
@@ -290,10 +424,21 @@ pub fn check(events: &[(Value, String)]) -> (Vec<(siem_core::Alert, String)>, Ve
 
 fn alert_for(v: &Value, path: &str, sha: &str, rules: &[String]) -> siem_core::Alert {
     let s = |x: &Value| x.as_str().unwrap_or("").to_string();
-    let name = path.rsplit(['\\', '/']).next().filter(|n| !n.is_empty()).unwrap_or(sha);
+    let name = path
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|n| !n.is_empty())
+        .unwrap_or(sha);
     let shown: Vec<&str> = rules.iter().take(3).map(String::as_str).collect();
-    let more = if rules.len() > 3 { format!(" and {} more", rules.len() - 3) } else { String::new() };
-    let mut data: HashMap<String, Value> = v["data"].as_object().map(|o| o.iter().map(|(k, x)| (k.clone(), x.clone())).collect()).unwrap_or_default();
+    let more = if rules.len() > 3 {
+        format!(" and {} more", rules.len() - 3)
+    } else {
+        String::new()
+    };
+    let mut data: HashMap<String, Value> = v["data"]
+        .as_object()
+        .map(|o| o.iter().map(|(k, x)| (k.clone(), x.clone())).collect())
+        .unwrap_or_default();
     data.insert("yara".into(), json!({ "rules": rules, "path": path, "sha256": sha, "rules_version": rule_set().read().unwrap().version }));
     siem_core::Alert {
         id: uuid::Uuid::new_v4(),
@@ -303,12 +448,23 @@ fn alert_for(v: &Value, path: &str, sha: &str, rules: &[String]) -> siem_core::A
             level: 13,
             description: format!("YARA match in {name}: {}{more}", shown.join(", ")),
             groups: vec!["edr".into(), "malware".into(), "yara".into()],
-            mitre: Some(siem_core::MitreAttack { id: "T1204.002".into(), tactic: "Execution".into(), technique: "Malicious File".into() }),
+            mitre: Some(siem_core::MitreAttack {
+                id: "T1204.002".into(),
+                tactic: "Execution".into(),
+                technique: "Malicious File".into(),
+            }),
         },
-        agent: siem_core::AgentAlertInfo { id: s(&v["agent"]["id"]), name: s(&v["agent"]["name"]), ip: s(&v["agent"]["ip"]) },
+        agent: siem_core::AgentAlertInfo {
+            id: s(&v["agent"]["id"]),
+            name: s(&v["agent"]["name"]),
+            ip: s(&v["agent"]["ip"]),
+        },
         manager: None,
         decoder: None,
-        full_log: format!("YARA rules {} matched {path} (sha256 {sha})", rules.join(", ")),
+        full_log: format!(
+            "YARA rules {} matched {path} (sha256 {sha})",
+            rules.join(", ")
+        ),
         decoded: siem_core::DecodedFields {
             decoder_name: "yara".into(),
             src_ip: None,
@@ -344,21 +500,44 @@ mod tests {
     #[test]
     fn scans_once_alerts_on_match_and_on_known_files() {
         let sha = "ab".repeat(32);
-        let ev = |agent: &str| sysmon(agent, "1", json!({ "image": "C:\\\\Users\\\\a\\\\Downloads\\\\x.exe", "hashes": format!("MD5={},SHA256={}", "1".repeat(32), sha.to_uppercase()) }));
+        let ev = |agent: &str| {
+            sysmon(
+                agent,
+                "1",
+                json!({ "image": "C:\\\\Users\\\\a\\\\Downloads\\\\x.exe", "hashes": format!("MD5={},SHA256={}", "1".repeat(32), sha.to_uppercase()) }),
+            )
+        };
         let t = "yara-test-tenant".to_string();
         // first sight: one scan asked, not twice
         let (a, s) = check(&[(ev("101"), t.clone()), (ev("101"), t.clone())]);
         assert!(a.is_empty());
-        assert_eq!(s, [(t.clone(), "101".to_string(), "C:\\Users\\a\\Downloads\\x.exe".to_string())]);
+        assert_eq!(
+            s,
+            [(
+                t.clone(),
+                "101".to_string(),
+                "C:\\Users\\a\\Downloads\\x.exe".to_string()
+            )]
+        );
         // Windows' own folders are not scanned
-        let sys = sysmon("101", "1", json!({ "image": "C:\\\\Windows\\\\System32\\\\notepad.exe", "hashes": "SHA256=cd" }));
+        let sys = sysmon(
+            "101",
+            "1",
+            json!({ "image": "C:\\\\Windows\\\\System32\\\\notepad.exe", "hashes": "SHA256=cd" }),
+        );
         assert!(check(&[(sys, t.clone())]).1.is_empty());
         // the agent reports a match: an alert, with the file to quarantine
         let version = rule_set().read().unwrap().version.clone();
-        let res = ar("101", json!({ "path": "C:\\Users\\a\\Downloads\\x.exe", "sha256": sha, "rules": ["Evil_Rule"], "rules_version": version, "status": "match", "script": "yara-scan" }));
+        let res = ar(
+            "101",
+            json!({ "path": "C:\\Users\\a\\Downloads\\x.exe", "sha256": sha, "rules": ["Evil_Rule"], "rules_version": version, "status": "match", "script": "yara-scan" }),
+        );
         let (a, _) = check(&[(res, t.clone())]);
         assert_eq!(a.len(), 1);
-        assert_eq!((a[0].0.rule.id, a[0].0.decoded.file_path.as_deref()), (RULE_MATCH, Some("C:\\Users\\a\\Downloads\\x.exe")));
+        assert_eq!(
+            (a[0].0.rule.id, a[0].0.decoded.file_path.as_deref()),
+            (RULE_MATCH, Some("C:\\Users\\a\\Downloads\\x.exe"))
+        );
         // the same file on another agent: an alert at once, no scan
         let (a, s) = check(&[(ev("102"), t.clone())]);
         assert_eq!((a.len(), s.len()), (1, 0));
@@ -369,9 +548,24 @@ mod tests {
         let t = "yara-rate-tenant".to_string();
         let evs: Vec<(Value, String)> = (0..30).map(|i| (sysmon("201", "29", json!({ "targetFilename": format!("C:\\\\Users\\\\a\\\\f{i}.exe"), "hashes": format!("SHA256={:064x}", i) })), t.clone())).collect();
         assert_eq!(check(&evs).1.len(), SCANS_PER_WINDOW);
-        let other = sysmon("202", "11", json!({ "targetFilename": "C:\\\\ProgramData\\\\x\\\\run.ps1" }));
-        assert_eq!(check(&[(other, t.clone())]).1.len(), 1, "another agent has its own budget; scripts without a hash too");
-        let txt = sysmon("202", "11", json!({ "targetFilename": "C:\\\\Users\\\\a\\\\notes.txt" }));
-        assert!(check(&[(txt, t)]).1.is_empty(), "not an executable or script");
+        let other = sysmon(
+            "202",
+            "11",
+            json!({ "targetFilename": "C:\\\\ProgramData\\\\x\\\\run.ps1" }),
+        );
+        assert_eq!(
+            check(&[(other, t.clone())]).1.len(),
+            1,
+            "another agent has its own budget; scripts without a hash too"
+        );
+        let txt = sysmon(
+            "202",
+            "11",
+            json!({ "targetFilename": "C:\\\\Users\\\\a\\\\notes.txt" }),
+        );
+        assert!(
+            check(&[(txt, t)]).1.is_empty(),
+            "not an executable or script"
+        );
     }
 }

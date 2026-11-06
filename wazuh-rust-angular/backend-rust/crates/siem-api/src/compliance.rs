@@ -1,5 +1,5 @@
 //! Regulatory compliance as upstream computes it, from the tenant's own data only:
-//! * configuration: the frameworks of each CIS / SCA check as the agent reports them (provigil-db
+//! * configuration: the frameworks of each configuration (SCA) check as the agent reports them (provigil-db
 //!   `sca_check_compliance`, copied to `siem_sca_checks.compliance`). A requirement passes
 //!   when its checks pass on every agent; the framework's score is the passed share of its
 //!   checks' results;
@@ -49,14 +49,15 @@ struct Framework {
     alert_key: &'static str,
 }
 
-/// The frameworks the ProVigil ruleset and the CIS policies tag (older policies use
-/// `nist_800_53`, `tsc` and `gdpr_IV`).
-const FRAMEWORKS: [Framework; 5] = [
-    Framework { name: "PCI_DSS", full_name: "Payment Card Industry Data Security Standard", sca_keys: &["pci_dss_v4.0", "pci_dss_4.0"], alert_key: "pci_dss" },
+/// The frameworks the ProVigil rules and the agents' configuration policies tag (ProVigil's
+/// policies use `pci_dss`, `hipaa`, `nist_800_53`, `iso_27001`; older ones other keys).
+const FRAMEWORKS: [Framework; 6] = [
+    Framework { name: "PCI_DSS", full_name: "Payment Card Industry Data Security Standard", sca_keys: &["pci_dss", "pci_dss_v4.0", "pci_dss_4.0"], alert_key: "pci_dss" },
     Framework { name: "HIPAA", full_name: "Health Insurance Portability and Accountability Act", sca_keys: &["hipaa"], alert_key: "hipaa" },
     Framework { name: "NIST_800_53", full_name: "NIST SP 800-53 Security and Privacy Controls", sca_keys: &["nist_sp_800-53", "nist_800_53"], alert_key: "nist_800_53" },
     Framework { name: "GDPR", full_name: "General Data Protection Regulation", sca_keys: &["gdpr_IV"], alert_key: "gdpr" },
     Framework { name: "SOC_2", full_name: "Trust Services Criteria (SOC 2)", sca_keys: &["soc_2", "tsc"], alert_key: "tsc" },
+    Framework { name: "ISO_27001", full_name: "ISO/IEC 27001:2022 Information Security Controls", sca_keys: &["iso_27001"], alert_key: "iso_27001" },
 ];
 
 /// The tenant's compliance profile.
@@ -190,7 +191,7 @@ fn sca_requirements_sql(fw: &Framework) -> String {
 fn alert_requirements_sql(fw: &Framework, scoped: bool) -> String {
     format!(
         "SELECT req, count(), max(rule_level), groupUniqArray(10)((rule_id, rule_description)) FROM siem_alerts \
-         ARRAY JOIN JSONExtract(alert_json, 'data', 'wazuh_rule', '{}', 'Array(String)') AS req WHERE timestamp >= ?{} GROUP BY req",
+         ARRAY JOIN JSONExtract(alert_json, 'data', 'wazuh_rule', '{}', 'Array(String)') AS req WHERE timestamp >= ?          AND NOT has(JSONExtract(alert_json, 'data', 'wazuh_rule', 'groups', 'Array(String)'), 'sca'){} GROUP BY req",
         fw.alert_key,
         if scoped { " AND has(?, agent_id)" } else { "" }
     )
@@ -328,7 +329,7 @@ pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
         let scored = checks_passed + checks_failed > 0;
         frameworks.push(json!({
             "name": fw.name, "full_name": fw.full_name,
-            "version": if fw.sca_keys.is_empty() { "ProVigil rules".to_string() } else { format!("{} (CIS checks) · ProVigil rules", fw.sca_keys[0]) },
+            "version": if fw.sca_keys.is_empty() { "ProVigil rules".to_string() } else { format!("{} (configuration checks) · ProVigil rules", fw.sca_keys[0]) },
             // the share of passed configuration check results; none when no check maps it
             "score_percent": if scored { json!(((checks_passed as f64 / (checks_passed + checks_failed) as f64) * 1000.0).round() / 10.0) } else { Value::Null },
             "total_requirements": requirements.len(), "passed_count": passed_count, "alert_count": alert_count,
@@ -513,6 +514,8 @@ mod tests {
     #[test]
     fn check_tags_map_frameworks() {
         assert_eq!(check_frameworks(r#"{"cis":["1.1"],"pci_dss_v4.0":["8.3.6"],"tsc":["CC6.1"],"nist_800_53":["IA.5"]}"#), vec!["PCI_DSS", "NIST_800_53", "SOC_2"]);
+        // ProVigil's own policies
+        assert_eq!(check_frameworks(r#"{"pci_dss":["2.2"],"hipaa":["164.312(d)"],"nist_800_53":["IA-5"],"iso_27001":["5.17"]}"#), vec!["PCI_DSS", "HIPAA", "NIST_800_53", "ISO_27001"]);
         assert_eq!(check_frameworks("{}"), Vec::<&str>::new());
     }
 }

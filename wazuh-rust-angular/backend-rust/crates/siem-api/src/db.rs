@@ -1,8 +1,10 @@
 use clickhouse::Client;
 use serde::{Deserialize, Serialize};
-use siem_core::{Alert, RawEvent};
+use siem_core::{Agent, AgentStatus, Alert, RawEvent};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, clickhouse::Row, Serialize, Deserialize)]
@@ -56,7 +58,9 @@ impl WindowCounts {
     }
     /// Alerts with a level in `lo..=hi`.
     pub fn band(&self, lo: u8, hi: u8) -> u64 {
-        self.levels[lo.min(16) as usize..=hi.min(16) as usize].iter().sum()
+        self.levels[lo.min(16) as usize..=hi.min(16) as usize]
+            .iter()
+            .sum()
     }
     pub fn critical(&self) -> u64 {
         self.band(12, 16)
@@ -137,7 +141,8 @@ pub fn event_is_network(source: &str, location: &str) -> bool {
 }
 
 /// Columns added to an existing table (every tenant database, at start and provisioning).
-pub const ALERT_COLUMNS: [&str; 1] = ["ALTER TABLE siem_alerts ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''"];
+pub const ALERT_COLUMNS: [&str; 1] =
+    ["ALTER TABLE siem_alerts ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''"];
 
 #[derive(Debug, Clone, clickhouse::Row, Serialize, Deserialize)]
 pub struct ClickHouseUserRow {
@@ -173,7 +178,8 @@ impl ClickHouseAlertRow {
         }
         Alert {
             id: uuid::Uuid::parse_str(&self.id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
-            timestamp: chrono::DateTime::from_timestamp_millis(self.timestamp as i64).unwrap_or_else(chrono::Utc::now),
+            timestamp: chrono::DateTime::from_timestamp_millis(self.timestamp as i64)
+                .unwrap_or_else(chrono::Utc::now),
             rule: siem_core::RuleAlertInfo {
                 id: self.rule_id,
                 level: self.rule_level,
@@ -201,11 +207,23 @@ impl ClickHouseAlertRow {
             full_log: self.full_log.clone(),
             decoded: siem_core::DecodedFields {
                 decoder_name: String::new(),
-                src_ip: if !self.src_ip.is_empty() { Some(self.src_ip.clone()) } else { None },
-                dst_ip: if !self.dst_ip.is_empty() { Some(self.dst_ip.clone()) } else { None },
+                src_ip: if !self.src_ip.is_empty() {
+                    Some(self.src_ip.clone())
+                } else {
+                    None
+                },
+                dst_ip: if !self.dst_ip.is_empty() {
+                    Some(self.dst_ip.clone())
+                } else {
+                    None
+                },
                 src_port: None,
                 dst_port: None,
-                user: if !self.user.is_empty() { Some(self.user.clone()) } else { None },
+                user: if !self.user.is_empty() {
+                    Some(self.user.clone())
+                } else {
+                    None
+                },
                 program_name: None,
                 process_id: None,
                 file_path: None,
@@ -237,7 +255,8 @@ impl ClickHouseEventRow {
         };
         RawEvent {
             id: uuid::Uuid::parse_str(&self.id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
-            timestamp: chrono::DateTime::from_timestamp_millis(self.timestamp as i64).unwrap_or_else(chrono::Utc::now),
+            timestamp: chrono::DateTime::from_timestamp_millis(self.timestamp as i64)
+                .unwrap_or_else(chrono::Utc::now),
             agent_id: self.agent_id.clone(),
             source: src,
             location: self.location.clone(),
@@ -261,9 +280,11 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 22] = [
+pub const ANALYST_DDL: [&str; 25] = [
     // the vulnerability scanner's current results, streamed (vulnerability.rs)
     crate::vulnerability::DDL,
+    // each agent's intent dossier (intent_store.rs)
+    crate::intent_store::DDL,
     // EDR tamper protection: the tenant's setting and each agent's lock state (tamper.rs)
     crate::tamper::DDL,
     // EDR live response requests and their results (live_response.rs)
@@ -281,6 +302,9 @@ pub const ANALYST_DDL: [&str; 22] = [
     crate::response::DDL[1],
     "CREATE TABLE IF NOT EXISTS siem_swarm_matches (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id",
     crate::org_memory::DDL,
+    // per-tenant alert e-mail settings and report schedule
+    crate::alert_mail::DDL,
+    crate::tenant_reports::DDL,
     // each agent's latest SCA results, for the compliance audit (posture_store.rs); the
     // rest of an agent's state (inventory, FIM, rootcheck) is read from provigil-db, not copied
     crate::posture_store::DDL[0],
@@ -297,8 +321,17 @@ pub const ANALYST_DDL: [&str; 22] = [
 /// How long events and alerts are kept, in days (0: for ever):
 /// `SIEM_EVENTS_RETENTION_DAYS` (90) and `SIEM_ALERTS_RETENTION_DAYS` (365).
 pub fn retention_days() -> (u32, u32) {
-    let get = |k: &str, d: u32| std::env::var(k).ok().and_then(|v| v.trim().parse().ok()).unwrap_or(d);
-    (get("SIEM_EVENTS_RETENTION_DAYS", 90), get("SIEM_ALERTS_RETENTION_DAYS", 365))
+    let get = |k: &str, d: u32| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(d)
+    };
+    (
+        // raw events are for hunting and correlation (look-backs of hours, retro scans of days); alerts stay
+        get("SIEM_EVENTS_RETENTION_DAYS", 7),
+        get("SIEM_ALERTS_RETENTION_DAYS", 365),
+    )
 }
 
 /// The ALTER giving `db.table` (its `create` query) a retention of `days`; None when it has it.
@@ -329,7 +362,11 @@ pub async fn apply_retention(root: &Client) {
     };
     let mut changed = 0;
     for (db, table, create) in &rows {
-        let days = if table == "siem_events" { events } else { alerts };
+        let days = if table == "siem_events" {
+            events
+        } else {
+            alerts
+        };
         if let Some(sql) = retention_sql(db, table, days, create) {
             match root.query(&sql).execute().await {
                 Ok(()) => changed += 1,
@@ -345,15 +382,28 @@ pub async fn apply_retention(root: &Client) {
 /// disk, and `SYSTEM RESTORE REPLICA` rebuilds the metadata from it. Only tried
 /// while Keeper is connected; on a table whose metadata exists it just fails.
 pub async fn restore_lost_replicas(root: &Client) -> Vec<String> {
-    let connected = root.query("SELECT count() FROM system.zookeeper_connection").fetch_one::<u64>().await.unwrap_or(0) > 0;
+    let connected = root
+        .query("SELECT count() FROM system.zookeeper_connection")
+        .fetch_one::<u64>()
+        .await
+        .unwrap_or(0)
+        > 0;
     if !connected {
         return Vec::new();
     }
-    let readonly = root.query("SELECT database, table FROM system.replicas WHERE is_readonly").fetch_all::<(String, String)>().await.unwrap_or_default();
+    let readonly = root
+        .query("SELECT database, table FROM system.replicas WHERE is_readonly")
+        .fetch_all::<(String, String)>()
+        .await
+        .unwrap_or_default();
     let mut restored = Vec::new();
     for (db, table) in readonly {
         let name = format!("`{}`.`{}`", db.replace('`', ""), table.replace('`', ""));
-        match root.query(&format!("SYSTEM RESTORE REPLICA {name}")).execute().await {
+        match root
+            .query(&format!("SYSTEM RESTORE REPLICA {name}"))
+            .execute()
+            .await
+        {
             Ok(()) => {
                 warn!("{name} had lost its Keeper metadata (read-only); restored from the data on disk");
                 restored.push(format!("{db}.{table}"));
@@ -402,12 +452,43 @@ impl DocTable {
     }
 }
 
+/// An unchanged agent's `siem_agents` row is written again this often.
+const AGENT_ROW_EVERY: Duration = Duration::from_secs(60);
+/// Queued `siem_agents` rows go out together this often (ClickHouse makes a part per insert).
+const AGENT_ROW_FLUSH: Duration = Duration::from_secs(1);
+/// Rows of one `siem_agents` INSERT.
+const AGENT_ROW_CHUNK: usize = 1000;
+
+/// The `siem_agents` rows on their way to ClickHouse ([`ClickHouseDb::save_agent_row`]).
+#[derive(Default)]
+struct AgentRows {
+    /// Per agent, what was last queued: status, name, IP, version, and when.
+    last: HashMap<String, (AgentStatus, String, String, String, Instant)>,
+    /// Per agent, the newest row to write and its tenant.
+    queued: HashMap<String, (String, Agent)>,
+    writer_started: bool,
+}
+
+impl AgentRows {
+    /// Queues the row when it changed or its last one is [`AGENT_ROW_EVERY`] old.
+    fn offer(&mut self, tenant: &str, a: &Agent, now: Instant) {
+        let same = self.last.get(&a.id).is_some_and(|(status, name, ip, version, at)| {
+            *status == a.status && *name == a.name && *ip == a.ip && *version == a.version && now.duration_since(*at) < AGENT_ROW_EVERY
+        });
+        if !same {
+            self.last.insert(a.id.clone(), (a.status.clone(), a.name.clone(), a.ip.clone(), a.version.clone(), now));
+            self.queued.insert(a.id.clone(), (tenant.to_string(), a.clone()));
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ClickHouseDb {
     client: Client,
     /// Client without a default database (`db.table` names, DDL).
     root: Client,
     is_available: Arc<AtomicBool>,
+    agent_rows: Arc<Mutex<AgentRows>>,
 }
 
 /// The statements of a ClickHouse SQL script: `--` comments dropped, split
@@ -441,7 +522,10 @@ fn sql_statements(sql: &str) -> Vec<String> {
         }
     }
     out.push(cur);
-    out.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    out.into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// The global `ndr` schema of the NDR install (`<INSTALL_DIR>/config/clickhouse/init.sql`,
@@ -449,8 +533,15 @@ fn sql_statements(sql: &str) -> Vec<String> {
 /// `ndr.settings`, `ndr.announcements`, ... from it. Idempotent (IF NOT EXISTS).
 async fn apply_ndr_init_sql(root: &Client) {
     let dir = std::env::var("INSTALL_DIR").unwrap_or_else(|_| ".".into());
-    let paths = [format!("{dir}/config/clickhouse/init.sql"), "./config/clickhouse/init.sql".into(), "../../ndr/config/clickhouse/init.sql".into()];
-    let Some((path, sql)) = paths.iter().find_map(|p| std::fs::read_to_string(p).ok().map(|s| (p.clone(), s))) else {
+    let paths = [
+        format!("{dir}/config/clickhouse/init.sql"),
+        "./config/clickhouse/init.sql".into(),
+        "../../ndr/config/clickhouse/init.sql".into(),
+    ];
+    let Some((path, sql)) = paths
+        .iter()
+        .find_map(|p| std::fs::read_to_string(p).ok().map(|s| (p.clone(), s)))
+    else {
         warn!("NDR init.sql not found (INSTALL_DIR={dir}); global ndr tables such as ndr.settings may be missing");
         return;
     };
@@ -460,7 +551,10 @@ async fn apply_ndr_init_sql(root: &Client) {
             Ok(_) => ok += 1,
             Err(e) => {
                 failed += 1;
-                warn!("init.sql statement failed: {}: {e}", stmt.lines().next().unwrap_or(""));
+                warn!(
+                    "init.sql statement failed: {}: {e}",
+                    stmt.lines().next().unwrap_or("")
+                );
             }
         }
     }
@@ -469,12 +563,16 @@ async fn apply_ndr_init_sql(root: &Client) {
 
 impl ClickHouseDb {
     pub async fn init() -> Self {
-        let url = std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into());
+        let url =
+            std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into());
         let user = std::env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".into());
         let password = std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default();
         let database = std::env::var("CLICKHOUSE_DB").unwrap_or_else(|_| "ndr".into());
 
-        info!("Initializing ClickHouse connection: url={}, database={}", url, database);
+        info!(
+            "Initializing ClickHouse connection: url={}, database={}",
+            url, database
+        );
 
         let mut root_client = Client::default()
             .with_url(&url)
@@ -488,7 +586,11 @@ impl ClickHouseDb {
         let is_available = Arc::new(AtomicBool::new(false));
 
         // Attempt to create database if it doesn't exist
-        match root_client.query(&format!("CREATE DATABASE IF NOT EXISTS {}", database)).execute().await {
+        match root_client
+            .query(&format!("CREATE DATABASE IF NOT EXISTS {}", database))
+            .execute()
+            .await
+        {
             Ok(_) => {
                 info!("Database '{}' verified on ClickHouse", database);
             }
@@ -498,6 +600,7 @@ impl ClickHouseDb {
                     client: root_client.clone().with_database(database),
                     root: root_client,
                     is_available,
+                    agent_rows: Default::default(),
                 };
             }
         };
@@ -507,7 +610,10 @@ impl ClickHouseDb {
         }
 
         // Ensure global ndr.tenants table schema has ai_enabled and updated_at columns
-        let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").execute().await;
+        let _ = root_client
+            .query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1")
+            .execute()
+            .await;
         let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
 
         let client = root_client.clone().with_database(&database);
@@ -551,12 +657,22 @@ impl ClickHouseDb {
 
         if let Err(e) = client.query(create_events_sql).execute().await {
             error!("Failed to create siem_events table: {}", e);
-            return Self { client, root: root_client, is_available };
+            return Self {
+                client,
+                root: root_client,
+                is_available,
+                agent_rows: Default::default(),
+            };
         }
 
         if let Err(e) = client.query(create_alerts_sql).execute().await {
             error!("Failed to create siem_alerts table: {}", e);
-            return Self { client, root: root_client, is_available };
+            return Self {
+                client,
+                root: root_client,
+                is_available,
+                agent_rows: Default::default(),
+            };
         }
 
         // Create xdr_incidents table for cross-source NDR + SIEM correlation
@@ -595,6 +711,11 @@ impl ClickHouseDb {
             ORDER BY (ioc_type, ioc_value);
         "#;
         let _ = client.query(create_threat_intel_sql).execute().await;
+        // the batches of the daemons' streams already stored: a replay skips them
+        let _ = client
+            .query("CREATE TABLE IF NOT EXISTS siem_stream_marks (source LowCardinality(String), first_seq UInt64, last_seq UInt64, at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY (source, last_seq) TTL at + INTERVAL 7 DAY")
+            .execute()
+            .await;
 
         // Remaining SIEM data tables: every tenant database gets a copy of them.
         // active responses, vulnerability detections, queued agent commands
@@ -690,7 +811,11 @@ impl ClickHouseDb {
             .execute()
             .await;
 
-        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()).chain(ALERT_COLUMNS.iter()) {
+        for sql in SOAR_DDL
+            .iter()
+            .chain(ANALYST_DDL.iter())
+            .chain(ALERT_COLUMNS.iter())
+        {
             if let Err(e) = client.query(sql).execute().await {
                 warn!("SOAR table not created: {e}");
             }
@@ -705,19 +830,57 @@ impl ClickHouseDb {
             client,
             root: root_client,
             is_available,
+            agent_rows: Default::default(),
         }
     }
 
     /// Client bound to a tenant's database (`ndr` for the default tenant).
     pub fn tenant_client(&self, tenant_id: &str) -> Client {
-        self.root.clone().with_database(crate::tenancy::tenant_db_name(tenant_id))
+        self.root
+            .clone()
+            .with_database(crate::tenancy::tenant_db_name(tenant_id))
+    }
+
+    /// The last `n` batches stored of a daemon's stream, (first, last) sequence.
+    pub async fn stream_marks(&self, source: &str, n: usize) -> Vec<(u64, u64)> {
+        if !self.is_connected() {
+            return Vec::new();
+        }
+        self.client
+            .query(&format!("SELECT first_seq, last_seq FROM siem_stream_marks WHERE source = ? ORDER BY last_seq DESC LIMIT {n}"))
+            .bind(source)
+            .fetch_all::<(u64, u64)>()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("stream marks of {source} not read (a replay may store lines twice): {e}");
+                Vec::new()
+            })
+    }
+
+    pub async fn add_stream_mark(&self, source: &str, first: u64, last: u64) {
+        if !self.is_connected() {
+            return;
+        }
+        let r = self.client.query("INSERT INTO siem_stream_marks (source, first_seq, last_seq) VALUES (?, ?, ?)").bind(source).bind(first).bind(last).execute().await;
+        if let Err(e) = r {
+            warn!("stream mark of {source} not stored (a replay may store lines twice): {e}");
+        }
     }
 
     /// Stores a document (a new version replaces the row with the same id).
-    pub async fn put_doc(&self, tenant_id: &str, t: DocTable, id: &str, doc: &str) -> Result<(), String> {
+    pub async fn put_doc(
+        &self,
+        tenant_id: &str,
+        t: DocTable,
+        id: &str,
+        doc: &str,
+    ) -> Result<(), String> {
         let version = chrono::Utc::now().timestamp_micros().max(0) as u64;
         self.tenant_client(tenant_id)
-            .query(&format!("INSERT INTO {} (id, doc, version) VALUES (?, ?, ?)", t.name()))
+            .query(&format!(
+                "INSERT INTO {} (id, doc, version) VALUES (?, ?, ?)",
+                t.name()
+            ))
             .bind(id)
             .bind(doc)
             .bind(version)
@@ -727,18 +890,34 @@ impl ClickHouseDb {
     }
 
     /// The latest version of every document, newest first.
-    pub async fn docs(&self, tenant_id: &str, t: DocTable, limit: u32) -> Result<Vec<String>, String> {
+    pub async fn docs(
+        &self,
+        tenant_id: &str,
+        t: DocTable,
+        limit: u32,
+    ) -> Result<Vec<String>, String> {
         self.tenant_client(tenant_id)
-            .query(&format!("SELECT doc FROM {} FINAL ORDER BY version DESC LIMIT {limit}", t.name()))
+            .query(&format!(
+                "SELECT doc FROM {} FINAL ORDER BY version DESC LIMIT {limit}",
+                t.name()
+            ))
             .fetch_all::<String>()
             .await
             .map_err(|e| e.to_string())
     }
 
-    pub async fn doc(&self, tenant_id: &str, t: DocTable, id: &str) -> Result<Option<String>, String> {
+    pub async fn doc(
+        &self,
+        tenant_id: &str,
+        t: DocTable,
+        id: &str,
+    ) -> Result<Option<String>, String> {
         let rows = self
             .tenant_client(tenant_id)
-            .query(&format!("SELECT doc FROM {} FINAL WHERE id = ? LIMIT 1", t.name()))
+            .query(&format!(
+                "SELECT doc FROM {} FINAL WHERE id = ? LIMIT 1",
+                t.name()
+            ))
             .bind(id)
             .fetch_all::<String>()
             .await
@@ -748,7 +927,10 @@ impl ClickHouseDb {
 
     pub async fn delete_doc(&self, tenant_id: &str, t: DocTable, id: &str) -> Result<(), String> {
         self.tenant_client(tenant_id)
-            .query(&format!("ALTER TABLE {} DELETE WHERE id = ? SETTINGS mutations_sync = 1", t.name()))
+            .query(&format!(
+                "ALTER TABLE {} DELETE WHERE id = ? SETTINGS mutations_sync = 1",
+                t.name()
+            ))
             .bind(id)
             .execute()
             .await
@@ -789,12 +971,20 @@ impl ClickHouseDb {
             }
         }
         let tc = self.tenant_client(tenant_id);
-        for sql in SOAR_DDL.iter().chain(ANALYST_DDL.iter()).chain(ALERT_COLUMNS.iter()) {
+        for sql in SOAR_DDL
+            .iter()
+            .chain(ANALYST_DDL.iter())
+            .chain(ALERT_COLUMNS.iter())
+        {
             if let Err(e) = tc.query(sql).execute().await {
                 warn!("SOAR table not created in {db}: {e}");
             }
         }
-        tracing::debug!("Provisioned tenant database '{}' ({} tables)", db, crate::tenancy::TENANT_TABLES.len());
+        tracing::debug!(
+            "Provisioned tenant database '{}' ({} tables)",
+            db,
+            crate::tenancy::TENANT_TABLES.len()
+        );
         Ok(db)
     }
 
@@ -805,6 +995,13 @@ impl ClickHouseDb {
 
     pub fn is_connected(&self) -> bool {
         self.is_available.load(Ordering::SeqCst)
+    }
+
+    /// A connected database at `url` (a test's stand-in for ClickHouse).
+    #[cfg(test)]
+    pub(crate) fn for_test(url: &str) -> Self {
+        let root = Client::default().with_url(url);
+        Self { client: root.clone(), root, is_available: Arc::new(AtomicBool::new(true)), agent_rows: Default::default() }
     }
 
     pub async fn insert_event(&self, event: &RawEvent) {
@@ -818,9 +1015,13 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return failed;
         }
-        let mut by_tenant: std::collections::BTreeMap<&str, Vec<ClickHouseEventRow>> = std::collections::BTreeMap::new();
+        let mut by_tenant: std::collections::BTreeMap<&str, Vec<ClickHouseEventRow>> =
+            std::collections::BTreeMap::new();
         for event in events {
-            let source_str = serde_json::to_string(&event.source).unwrap_or_default().trim_matches('"').to_string();
+            let source_str = serde_json::to_string(&event.source)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string();
             let row = ClickHouseEventRow {
                 id: event.id.to_string(),
                 timestamp: event.timestamp.timestamp_millis() as u64,
@@ -830,7 +1031,11 @@ impl ClickHouseDb {
                 message: event.message.clone(),
                 raw_metadata: serde_json::to_string(&event.metadata).unwrap_or_default(),
             };
-            let tenant = event.metadata.get("tenant_id").map(|s| s.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT);
+            let tenant = event
+                .metadata
+                .get("tenant_id")
+                .map(|s| s.as_str())
+                .unwrap_or(crate::tenancy::DEFAULT_TENANT);
             by_tenant.entry(tenant).or_default().push(row);
         }
         for (tenant, rows) in by_tenant {
@@ -866,7 +1071,9 @@ impl ClickHouseDb {
 
     /// false when ClickHouse is in use and the row could not be written.
     pub async fn insert_alert(&self, alert: &Alert) -> bool {
-        self.insert_alerts(std::slice::from_ref(alert)).await.is_empty()
+        self.insert_alerts(std::slice::from_ref(alert))
+            .await
+            .is_empty()
     }
 
     /// One INSERT per tenant for the whole batch. The tenants whose rows
@@ -876,10 +1083,19 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return failed;
         }
-        let mut by_tenant: std::collections::BTreeMap<String, Vec<ClickHouseAlertRow>> = std::collections::BTreeMap::new();
+        let mut by_tenant: std::collections::BTreeMap<String, Vec<ClickHouseAlertRow>> =
+            std::collections::BTreeMap::new();
         for alert in alerts {
-            let tenant = alert.data.get("tenant_id").and_then(|v| v.as_str()).unwrap_or(crate::tenancy::DEFAULT_TENANT).to_string();
-            by_tenant.entry(tenant).or_default().push(Self::alert_row(alert));
+            let tenant = alert
+                .data
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(crate::tenancy::DEFAULT_TENANT)
+                .to_string();
+            by_tenant
+                .entry(tenant)
+                .or_default()
+                .push(Self::alert_row(alert));
         }
         for (tenant, rows) in by_tenant {
             let client = self.tenant_client(&tenant);
@@ -922,9 +1138,24 @@ impl ClickHouseDb {
             rule_id: alert.rule.id,
             rule_level: alert.rule.level,
             rule_description: alert.rule.description.clone(),
-            mitre_id: alert.rule.mitre.as_ref().map(|m| m.id.clone()).unwrap_or_default(),
-            mitre_tactic: alert.rule.mitre.as_ref().map(|m| m.tactic.clone()).unwrap_or_default(),
-            mitre_technique: alert.rule.mitre.as_ref().map(|m| m.technique.clone()).unwrap_or_default(),
+            mitre_id: alert
+                .rule
+                .mitre
+                .as_ref()
+                .map(|m| m.id.clone())
+                .unwrap_or_default(),
+            mitre_tactic: alert
+                .rule
+                .mitre
+                .as_ref()
+                .map(|m| m.tactic.clone())
+                .unwrap_or_default(),
+            mitre_technique: alert
+                .rule
+                .mitre
+                .as_ref()
+                .map(|m| m.technique.clone())
+                .unwrap_or_default(),
             full_log: alert.full_log.clone(),
             src_ip: alert.decoded.src_ip.clone().unwrap_or_default(),
             dst_ip: alert.decoded.dst_ip.clone().unwrap_or_default(),
@@ -936,7 +1167,12 @@ impl ClickHouseDb {
 
     /// A tenant's alerts since `since_ms` (newest first, at most `limit`): the
     /// history the dashboard, MITRE, compliance, FIM and report pages read.
-    pub async fn alerts_since(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<Alert>> {
+    pub async fn alerts_since(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        limit: usize,
+    ) -> Option<Vec<Alert>> {
         if !self.is_connected() {
             return None;
         }
@@ -958,7 +1194,13 @@ impl ClickHouseDb {
 
     /// A tenant's alerts since `since_ms` whose stored alert contains `needle` (ClickHouse
     /// filters them, so only those rows are sent), newest first, at most `limit`.
-    pub async fn alerts_since_containing(&self, tenant_id: &str, since_ms: u64, limit: usize, needle: &str) -> Option<Vec<Alert>> {
+    pub async fn alerts_since_containing(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        limit: usize,
+        needle: &str,
+    ) -> Option<Vec<Alert>> {
         if !self.is_connected() {
             return None;
         }
@@ -975,7 +1217,12 @@ impl ClickHouseDb {
     }
 
     /// Counts of a tenant's window, computed by ClickHouse (no rows are sent).
-    pub async fn window_counts(&self, tenant_id: &str, since_ms: u64, hour_ago_ms: u64) -> Option<WindowCounts> {
+    pub async fn window_counts(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        hour_ago_ms: u64,
+    ) -> Option<WindowCounts> {
         if !self.is_connected() {
             return None;
         }
@@ -1003,7 +1250,11 @@ impl ClickHouseDb {
             .fetch_all::<Level>();
         match tokio::join!(ev, al) {
             (Ok(e), Ok(levels)) => {
-                let mut w = WindowCounts { events: e.events, events_1h: e.events_1h, ..Default::default() };
+                let mut w = WindowCounts {
+                    events: e.events,
+                    events_1h: e.events_1h,
+                    ..Default::default()
+                };
                 for l in levels {
                     w.levels[l.level.min(16) as usize] += l.n;
                     w.alerts_1h += l.n_1h;
@@ -1018,7 +1269,12 @@ impl ClickHouseDb {
     }
 
     /// Alerts per (rule id, description) since `since_ms`, most frequent first.
-    pub async fn top_rules(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<(u32, String, u64)>> {
+    pub async fn top_rules(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        limit: usize,
+    ) -> Option<Vec<(u32, String, u64)>> {
         if !self.is_connected() {
             return None;
         }
@@ -1040,7 +1296,13 @@ impl ClickHouseDb {
     }
 
     /// Alerts per non-empty value of `field` since `since_ms`, most frequent first.
-    pub async fn top_values(&self, tenant_id: &str, since_ms: u64, field: AlertField, limit: usize) -> Option<Vec<(String, u64)>> {
+    pub async fn top_values(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        field: AlertField,
+        limit: usize,
+    ) -> Option<Vec<(String, u64)>> {
         if !self.is_connected() {
             return None;
         }
@@ -1062,7 +1324,11 @@ impl ClickHouseDb {
     }
 
     /// Alerts per MITRE technique id since `since_ms`: (id, alerts, highest level).
-    pub async fn mitre_counts(&self, tenant_id: &str, since_ms: u64) -> Option<Vec<(String, u64, u8)>> {
+    pub async fn mitre_counts(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+    ) -> Option<Vec<(String, u64, u8)>> {
         if !self.is_connected() {
             return None;
         }
@@ -1083,7 +1349,11 @@ impl ClickHouseDb {
     }
 
     /// Events since `since_ms` per protocol (most frequent first), and how many came from network sensors.
-    pub async fn event_breakdown(&self, tenant_id: &str, since_ms: u64) -> Option<(Vec<(String, u64)>, u64)> {
+    pub async fn event_breakdown(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+    ) -> Option<(Vec<(String, u64)>, u64)> {
         if !self.is_connected() {
             return None;
         }
@@ -1109,7 +1379,13 @@ impl ClickHouseDb {
 
     /// Alerts in `buckets` time slices of `bucket_ms` ending at `now_ms`, oldest first:
     /// [critical 12+, high 8-11, medium 4-7, low 0-3] per slice.
-    pub async fn alert_buckets(&self, tenant_id: &str, now_ms: u64, bucket_ms: u64, buckets: usize) -> Option<Vec<[u64; 4]>> {
+    pub async fn alert_buckets(
+        &self,
+        tenant_id: &str,
+        now_ms: u64,
+        bucket_ms: u64,
+        buckets: usize,
+    ) -> Option<Vec<[u64; 4]>> {
         if !self.is_connected() {
             return None;
         }
@@ -1139,7 +1415,10 @@ impl ClickHouseDb {
             .ok()?;
         let mut out = vec![[0u64; 4]; buckets];
         for r in rows {
-            if let Some(slot) = (r.ago as usize).checked_add(1).and_then(|a| buckets.checked_sub(a)) {
+            if let Some(slot) = (r.ago as usize)
+                .checked_add(1)
+                .and_then(|a| buckets.checked_sub(a))
+            {
                 out[slot] = [r.critical, r.high, r.medium, r.low];
             }
         }
@@ -1147,7 +1426,13 @@ impl ClickHouseDb {
     }
 
     /// Events in `buckets` time slices of `bucket_ms` ending at `now_ms`, oldest first.
-    pub async fn event_buckets(&self, tenant_id: &str, now_ms: u64, bucket_ms: u64, buckets: usize) -> Option<Vec<u64>> {
+    pub async fn event_buckets(
+        &self,
+        tenant_id: &str,
+        now_ms: u64,
+        bucket_ms: u64,
+        buckets: usize,
+    ) -> Option<Vec<u64>> {
         if !self.is_connected() {
             return None;
         }
@@ -1170,7 +1455,10 @@ impl ClickHouseDb {
             .ok()?;
         let mut out = vec![0u64; buckets];
         for r in rows {
-            if let Some(slot) = (r.ago as usize).checked_add(1).and_then(|a| buckets.checked_sub(a)) {
+            if let Some(slot) = (r.ago as usize)
+                .checked_add(1)
+                .and_then(|a| buckets.checked_sub(a))
+            {
                 out[slot] = r.n;
             }
         }
@@ -1179,7 +1467,13 @@ impl ClickHouseDb {
 
     /// The newest alerts since `since_ms` (newest first, at most `limit`); with `ip`, only
     /// those whose source or destination is that IP.
-    pub async fn recent_alerts(&self, tenant_id: &str, since_ms: u64, limit: usize, ip: Option<&str>) -> Option<Vec<Alert>> {
+    pub async fn recent_alerts(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        limit: usize,
+        ip: Option<&str>,
+    ) -> Option<Vec<Alert>> {
         if !self.is_connected() {
             return None;
         }
@@ -1200,7 +1494,12 @@ impl ClickHouseDb {
 
     /// Per compliance tag of the ProVigil rules (`pci_dss`, `hipaa`, ...): the alerts since
     /// `since_ms` that carry it and how many distinct requirements they name.
-    pub async fn compliance_tag_counts(&self, tenant_id: &str, since_ms: u64, tags: &[&'static str]) -> Option<Vec<(&'static str, u64, u64)>> {
+    pub async fn compliance_tag_counts(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        tags: &[&'static str],
+    ) -> Option<Vec<(&'static str, u64, u64)>> {
         if !self.is_connected() {
             return None;
         }
@@ -1234,16 +1533,35 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return None;
         }
-        self.tenant_client(tenant_id).query("SELECT ?fields FROM siem_events WHERE id = ? LIMIT 1").bind(id).fetch_all::<ClickHouseEventRow>().await.ok()?.first().map(|r| r.to_raw_event())
+        self.tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_events WHERE id = ? LIMIT 1")
+            .bind(id)
+            .fetch_all::<ClickHouseEventRow>()
+            .await
+            .ok()?
+            .first()
+            .map(|r| r.to_raw_event())
     }
 
     /// One alert of the tenant by id.
     pub async fn alert_by_id(&self, tenant_id: &str, id: &str) -> Option<Alert> {
-        self.tenant_client(tenant_id).query("SELECT ?fields FROM siem_alerts WHERE id = ? LIMIT 1").bind(id).fetch_all::<ClickHouseAlertRow>().await.ok()?.first().map(|r| r.to_alert())
+        self.tenant_client(tenant_id)
+            .query("SELECT ?fields FROM siem_alerts WHERE id = ? LIMIT 1")
+            .bind(id)
+            .fetch_all::<ClickHouseAlertRow>()
+            .await
+            .ok()?
+            .first()
+            .map(|r| r.to_alert())
     }
 
     /// A tenant's events since `since_ms` (newest first, at most `limit`).
-    pub async fn events_since(&self, tenant_id: &str, since_ms: u64, limit: usize) -> Option<Vec<siem_core::RawEvent>> {
+    pub async fn events_since(
+        &self,
+        tenant_id: &str,
+        since_ms: u64,
+        limit: usize,
+    ) -> Option<Vec<siem_core::RawEvent>> {
         if !self.is_connected() {
             return None;
         }
@@ -1276,7 +1594,12 @@ impl ClickHouseDb {
         let q = "SELECT toUInt64(ifNull((SELECT count() FROM siem_events), 0)) AS events, count() AS alerts, \
                  countIf(rule_level >= 12) AS critical, countIf(rule_level BETWEEN 8 AND 11) AS high, \
                  countIf(rule_level BETWEEN 4 AND 7) AS medium, countIf(rule_level <= 3) AS low FROM siem_alerts";
-        match self.tenant_client(tenant_id).query(q).fetch_one::<Totals>().await {
+        match self
+            .tenant_client(tenant_id)
+            .query(q)
+            .fetch_one::<Totals>()
+            .await
+        {
             Ok(t) => Some((t.events, t.alerts, t.critical, t.high, t.medium, t.low)),
             Err(e) => {
                 warn!("Failed to query totals from ClickHouse: {}", e);
@@ -1285,7 +1608,12 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn fetch_alerts(&self, tenant_id: &str, limit: usize, min_level: u8) -> Option<Vec<ClickHouseAlertRow>> {
+    pub async fn fetch_alerts(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+        min_level: u8,
+    ) -> Option<Vec<ClickHouseAlertRow>> {
         if !self.is_connected() {
             return None;
         }
@@ -1295,7 +1623,12 @@ impl ClickHouseDb {
             min_level, limit
         );
 
-        match self.tenant_client(tenant_id).query(&query).fetch_all::<ClickHouseAlertRow>().await {
+        match self
+            .tenant_client(tenant_id)
+            .query(&query)
+            .fetch_all::<ClickHouseAlertRow>()
+            .await
+        {
             Ok(rows) => Some(rows),
             Err(e) => {
                 warn!("Failed to query alerts from ClickHouse: {}", e);
@@ -1304,7 +1637,11 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn fetch_events(&self, tenant_id: &str, limit: usize) -> Option<Vec<ClickHouseEventRow>> {
+    pub async fn fetch_events(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Option<Vec<ClickHouseEventRow>> {
         if !self.is_connected() {
             return None;
         }
@@ -1314,7 +1651,12 @@ impl ClickHouseDb {
             limit
         );
 
-        match self.tenant_client(tenant_id).query(&query).fetch_all::<ClickHouseEventRow>().await {
+        match self
+            .tenant_client(tenant_id)
+            .query(&query)
+            .fetch_all::<ClickHouseEventRow>()
+            .await
+        {
             Ok(rows) => Some(rows),
             Err(e) => {
                 warn!("Failed to query events from ClickHouse: {}", e);
@@ -1343,7 +1685,11 @@ impl ClickHouseDb {
 
     /// `raw_metadata` of the agent's latest syscollector event in its tenant database.
     pub async fn fetch_latest_inventory(&self, tenant_id: &str, agent_id: &str) -> Option<String> {
-        if !self.is_connected() || !agent_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        if !self.is_connected()
+            || !agent_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
             return None;
         }
         #[derive(clickhouse::Row, Deserialize)]
@@ -1353,10 +1699,20 @@ impl ClickHouseDb {
         let q = format!(
             "SELECT raw_metadata FROM siem_events WHERE agent_id = '{agent_id}' AND source = 'syscollector' AND position(raw_metadata, 'inventory_json') > 0 ORDER BY timestamp DESC LIMIT 1"
         );
-        self.tenant_client(tenant_id).query(&q).fetch_optional::<Row>().await.ok().flatten().map(|r| r.raw_metadata)
+        self.tenant_client(tenant_id)
+            .query(&q)
+            .fetch_optional::<Row>()
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.raw_metadata)
     }
 
-    pub async fn fetch_incidents(&self, tenant_id: &str, limit: usize) -> Option<Vec<ClickHouseIncidentRow>> {
+    pub async fn fetch_incidents(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Option<Vec<ClickHouseIncidentRow>> {
         if !self.is_connected() {
             return None;
         }
@@ -1364,7 +1720,12 @@ impl ClickHouseDb {
             "SELECT * FROM xdr_incidents ORDER BY timestamp DESC LIMIT {}",
             limit
         );
-        match self.tenant_client(tenant_id).query(&query).fetch_all::<ClickHouseIncidentRow>().await {
+        match self
+            .tenant_client(tenant_id)
+            .query(&query)
+            .fetch_all::<ClickHouseIncidentRow>()
+            .await
+        {
             Ok(rows) => Some(rows),
             Err(e) => {
                 warn!("Failed to query incidents from ClickHouse: {}", e);
@@ -1374,11 +1735,16 @@ impl ClickHouseDb {
     }
 
     /// Many entries in one INSERT (one ClickHouse part); the number written.
-    pub async fn insert_threat_intel_entries(&self, entries: &[provigil_common::threat_intel::ThreatIntelEntry]) -> usize {
+    pub async fn insert_threat_intel_entries(
+        &self,
+        entries: &[provigil_common::threat_intel::ThreatIntelEntry],
+    ) -> usize {
         if entries.is_empty() || !self.is_connected() {
             return 0;
         }
-        let Ok(mut insert) = self.client.insert("siem_threat_intel") else { return 0 };
+        let Ok(mut insert) = self.client.insert("siem_threat_intel") else {
+            return 0;
+        };
         for e in entries {
             let row = ClickHouseThreatIntelRow {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -1404,30 +1770,75 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn insert_or_update_agent(&self, tenant_id: &str, agent: &siem_core::Agent) {
+    pub async fn insert_or_update_agent(&self, tenant_id: &str, agent: &Agent) {
+        if self.is_connected() {
+            self.insert_agents(tenant_id, std::slice::from_ref(agent)).await;
+        }
+    }
+
+    /// One INSERT of these agents' rows, strictly into the tenant's database.
+    async fn insert_agents(&self, tenant_id: &str, agents: &[Agent]) {
+        let values: Vec<String> = agents
+            .iter()
+            .map(|agent| {
+                let status_str = match agent.status {
+                    AgentStatus::Active => "Active",
+                    AgentStatus::Disconnected => "Disconnected",
+                    AgentStatus::Pending => "Pending",
+                };
+                format!(
+                    "('{}', '{}', '{}', '{}', '{}', '{}', fromUnixTimestamp64Milli({}), '{}')",
+                    agent.id.replace('\'', "''"),
+                    agent.name.replace('\'', "''"),
+                    agent.ip.replace('\'', "''"),
+                    agent.os.replace('\'', "''"),
+                    agent.version.replace('\'', "''"),
+                    status_str,
+                    agent.last_keepalive.timestamp_millis(),
+                    agent.os_type.replace('\'', "''"),
+                )
+            })
+            .collect();
+        let sql = format!("INSERT INTO siem_agents (id, name, ip, os, version, status, last_keepalive, os_type) VALUES {}", values.join(", "));
+        if let Err(e) = self.tenant_client(tenant_id).query(&sql).execute().await {
+            warn!("{} siem_agents row(s) of tenant '{tenant_id}' not stored: {e}", agents.len());
+        }
+    }
+
+    /// The agent's `siem_agents` row, written in the background: at most every 60 s, or right
+    /// away when its status, name, IP or version changed. Never waits for ClickHouse.
+    pub fn save_agent_row(&self, tenant_id: &str, agent: &Agent) {
         if !self.is_connected() {
             return;
         }
-        let status_str = match agent.status {
-            siem_core::AgentStatus::Active => "Active",
-            siem_core::AgentStatus::Disconnected => "Disconnected",
-            siem_core::AgentStatus::Pending => "Pending",
+        let start_writer = {
+            let mut rows = self.agent_rows.lock().unwrap();
+            rows.offer(tenant_id, agent, Instant::now());
+            !std::mem::replace(&mut rows.writer_started, true)
         };
-        let ms = agent.last_keepalive.timestamp_millis();
-        let sql = format!(
-            "INSERT INTO siem_agents (id, name, ip, os, version, status, last_keepalive, os_type) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', fromUnixTimestamp64Milli({}), '{}')",
-            agent.id.replace('\'', "''"),
-            agent.name.replace('\'', "''"),
-            agent.ip.replace('\'', "''"),
-            agent.os.replace('\'', "''"),
-            agent.version.replace('\'', "''"),
-            status_str,
-            ms,
-            agent.os_type.replace('\'', "''"),
-        );
+        if start_writer {
+            let db = self.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(AGENT_ROW_FLUSH).await;
+                    db.flush_agent_rows().await;
+                }
+            });
+        }
+    }
 
-        // Insert strictly into tenant database
-        let _ = self.tenant_client(tenant_id).query(&sql).execute().await;
+    /// Writes the queued rows: one INSERT per tenant and chunk.
+    pub(crate) async fn flush_agent_rows(&self) {
+        let queued = std::mem::take(&mut self.agent_rows.lock().unwrap().queued);
+        let mut by_tenant: BTreeMap<String, Vec<Agent>> = BTreeMap::new();
+        for (tenant, agent) in queued.into_values() {
+            by_tenant.entry(tenant).or_default().push(agent);
+        }
+        for (tenant, agents) in by_tenant {
+            for chunk in agents.chunks(AGENT_ROW_CHUNK) {
+                self.insert_agents(&tenant, chunk).await;
+            }
+        }
     }
 
     pub async fn fetch_agents(&self, tenant_id: &str) -> Option<Vec<ClickHouseAgentRow>> {
@@ -1449,14 +1860,29 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return;
         }
+        // a row still queued must not bring the agent back
+        {
+            let mut rows = self.agent_rows.lock().unwrap();
+            rows.queued.remove(agent_id);
+            rows.last.remove(agent_id);
+        }
         let c = self.tenant_client(tenant_id);
         // the agent's state: its fleet row, vulnerabilities, tamper protection state (its
         // SCA rows: posture_store::forget); alerts, events, cases and live response results
         // stay as the tenant's history until their retention ends
         for (sql, id) in [
-            ("ALTER TABLE siem_agents DELETE WHERE id = ?", agent_id.to_string()),
-            ("DELETE FROM siem_vulnerability_state WHERE agent_id = ?", agent_id.to_string()),
-            ("DELETE FROM siem_tamper WHERE id = ?", format!("agent:{agent_id}")),
+            (
+                "ALTER TABLE siem_agents DELETE WHERE id = ?",
+                agent_id.to_string(),
+            ),
+            (
+                "DELETE FROM siem_vulnerability_state WHERE agent_id = ?",
+                agent_id.to_string(),
+            ),
+            (
+                "DELETE FROM siem_tamper WHERE id = ?",
+                format!("agent:{agent_id}"),
+            ),
         ] {
             if let Err(e) = c.query(sql).bind(id).execute().await {
                 tracing::warn!("removed agent {agent_id}: {sql}: {e}");
@@ -1504,7 +1930,12 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return None;
         }
-        match self.client.query("SELECT ?fields FROM agent_registry FINAL").fetch_all::<AgentRegistryRow>().await {
+        match self
+            .client
+            .query("SELECT ?fields FROM agent_registry FINAL")
+            .fetch_all::<AgentRegistryRow>()
+            .await
+        {
             Ok(rows) => Some(rows),
             Err(e) => {
                 warn!("Failed to load agent_registry: {}", e);
@@ -1517,7 +1948,12 @@ impl ClickHouseDb {
         if !self.is_connected() {
             return None;
         }
-        match self.client.query("SELECT * FROM tenant_agent_keys FINAL").fetch_all::<ClickHouseAgentKeyRow>().await {
+        match self
+            .client
+            .query("SELECT * FROM tenant_agent_keys FINAL")
+            .fetch_all::<ClickHouseAgentKeyRow>()
+            .await
+        {
             Ok(rows) => Some(rows),
             Err(_) => None,
         }
@@ -1587,13 +2023,17 @@ pub struct ClickHouseIncidentRow {
     pub status: String,
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
     fn sql_statements_skip_comment_semicolons() {
-        let s = super::sql_statements("-- a; b\nCREATE x (a String, -- c; d\n b String DEFAULT 'x;y');\nINSERT 1;");
-        assert_eq!(s, vec!["CREATE x (a String, \n b String DEFAULT 'x;y')", "INSERT 1"]);
+        let s = super::sql_statements(
+            "-- a; b\nCREATE x (a String, -- c; d\n b String DEFAULT 'x;y');\nINSERT 1;",
+        );
+        assert_eq!(
+            s,
+            vec!["CREATE x (a String, \n b String DEFAULT 'x;y')", "INSERT 1"]
+        );
     }
 
     #[test]
@@ -1604,9 +2044,75 @@ mod tests {
             super::retention_sql("ndr", "siem_events", 90, none).as_deref(),
             Some("ALTER TABLE `ndr`.`siem_events` MODIFY TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay(90)")
         );
-        assert_eq!(super::retention_sql("ndr", "siem_events", 90, ninety), None, "already set");
-        assert!(super::retention_sql("ndr", "siem_events", 30, ninety).unwrap().contains("toIntervalDay(30)"));
-        assert_eq!(super::retention_sql("ndr", "siem_events", 0, ninety).as_deref(), Some("ALTER TABLE `ndr`.`siem_events` REMOVE TTL"));
-        assert_eq!(super::retention_sql("ndr", "siem_events", 0, none), None, "kept for ever already");
+        assert_eq!(
+            super::retention_sql("ndr", "siem_events", 90, ninety),
+            None,
+            "already set"
+        );
+        assert!(super::retention_sql("ndr", "siem_events", 30, ninety)
+            .unwrap()
+            .contains("toIntervalDay(30)"));
+        assert_eq!(
+            super::retention_sql("ndr", "siem_events", 0, ninety).as_deref(),
+            Some("ALTER TABLE `ndr`.`siem_events` REMOVE TTL")
+        );
+        assert_eq!(
+            super::retention_sql("ndr", "siem_events", 0, none),
+            None,
+            "kept for ever already"
+        );
     }
 }
+
+#[cfg(test)]
+mod agent_row_tests {
+    use super::*;
+
+    fn agent(id: &str) -> Agent {
+        Agent { id: id.into(), name: "pc".into(), ip: "10.0.0.1".into(), os: "w".into(), version: "1".into(), status: AgentStatus::Active, last_keepalive: chrono::Utc::now(), os_type: "windows".into() }
+    }
+
+    /// Whether the row was queued; takes it off the queue.
+    fn taken(rows: &mut AgentRows) -> bool {
+        !std::mem::take(&mut rows.queued).is_empty()
+    }
+
+    #[test]
+    fn at_most_every_60_s_or_on_a_change() {
+        let mut rows = AgentRows::default();
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        let mut a = agent("1");
+        rows.offer("t", &a, t0);
+        assert!(taken(&mut rows), "the first keepalive writes");
+        rows.offer("t", &a, at(10));
+        rows.offer("t", &a, at(59));
+        assert!(!taken(&mut rows), "nothing within 60 s");
+        rows.offer("t", &a, at(60));
+        assert!(taken(&mut rows), "60 s later");
+        a.last_keepalive += chrono::Duration::seconds(1);
+        rows.offer("t", &a, at(61));
+        assert!(!taken(&mut rows), "a newer keepalive alone is no change");
+
+        type Change = fn(&mut Agent);
+        let changes: [Change; 4] = [|a| a.status = AgentStatus::Disconnected, |a| a.name = "other".into(), |a| a.ip = "10.0.0.2".into(), |a| a.version = "2".into()];
+        for (i, change) in changes.iter().enumerate() {
+            change(&mut a);
+            rows.offer("t", &a, at(62 + i as u64));
+            assert!(taken(&mut rows), "change {i} writes at once");
+        }
+    }
+
+    #[test]
+    fn the_newest_row_of_an_agent_goes_out_once() {
+        let mut rows = AgentRows::default();
+        let t0 = Instant::now();
+        let mut a = agent("1");
+        rows.offer("t", &a, t0);
+        a.status = AgentStatus::Disconnected;
+        rows.offer("t", &a, t0);
+        assert_eq!(rows.queued.len(), 1);
+        assert_eq!(rows.queued["1"].1.status, AgentStatus::Disconnected);
+    }
+}
+

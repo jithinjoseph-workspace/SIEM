@@ -48,6 +48,12 @@ impl Kind {
         self as usize
     }
 
+    /// Whether decoding a message of queue character `c` waits on provigil-db or a local
+    /// socket: such a message belongs on a worker thread (internal/db_worker.rs).
+    pub fn waits(c: u8) -> bool {
+        c == CISCAT_MQ || matches!(Kind::of(c), Kind::Syscheck | Kind::Rootcheck | Kind::Sca | Kind::Syscollector | Kind::Dbsync | Kind::Upgrade)
+    }
+
     /// The warning logged (once) when the queue is full.
     pub fn full_warning(self) -> &'static str {
         match self {
@@ -83,6 +89,9 @@ impl Kind {
 #[derive(Debug, Default)]
 pub struct InQueues {
     fifo: VecDeque<(Kind, Vec<u8>)>,
+    /// What `Kind::waits` when workers take it (`split`), so it never holds up the rest.
+    slow: VecDeque<(Kind, Vec<u8>)>,
+    pub split: bool,
     count: [usize; KINDS],
     size: [usize; KINDS],
     /// `reported_<queue>`: the full warning was logged.
@@ -115,7 +124,8 @@ impl InQueues {
             return false;
         }
         self.count[k.idx()] += 1;
-        self.fifo.push_back((k, msg));
+        let q = if self.split && Kind::waits(msg[0]) { &mut self.slow } else { &mut self.fifo };
+        q.push_back((k, msg));
         true
     }
 
@@ -129,8 +139,33 @@ impl InQueues {
         Some((k, m))
     }
 
+    /// The next message for a worker thread.
+    pub fn pop_slow(&mut self) -> Option<(Kind, Vec<u8>)> {
+        let (k, m) = self.slow.pop_front()?;
+        self.count[k.idx()] -= 1;
+        Some((k, m))
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.fifo.is_empty()
+        self.fifo.is_empty() && self.slow.is_empty()
+    }
+
+    pub fn has_fast(&self) -> bool {
+        !self.fifo.is_empty()
+    }
+
+    pub fn has_slow(&self) -> bool {
+        !self.slow.is_empty()
+    }
+
+    /// A queue that cannot take another message.
+    pub fn any_full(&self) -> bool {
+        (0..KINDS).any(|i| self.count[i] + 1 >= self.size[i])
+    }
+
+    /// How full the fullest queue is, 0 to 1.
+    pub fn max_usage(&self) -> f32 {
+        (0..KINDS).map(|i| self.count[i] as f32 / (self.size[i] as f32 - 1.0).max(1.0)).fold(0.0, f32::max)
     }
 
     pub fn stat(&self, k: Kind) -> QueueStat {

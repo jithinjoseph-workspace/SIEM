@@ -18,7 +18,7 @@ use siem_remoted::agent_info::{parse_uname_string, truncated_uname, AgentInfoDat
 use crate::wdb::*;
 
 /// `WM_DATABASE_LOGTAG`
-pub const WM_DATABASE_LOGTAG: &str = "wazuh-modulesd:database";
+pub const WM_DATABASE_LOGTAG: &str = "provigil-modulesd:database";
 /// `KEYS_FILE`
 pub const KEYS_FILE: &str = "etc/client.keys";
 /// `SHAREDCFG_DIR`
@@ -286,7 +286,7 @@ impl Database {
     /// `wm_clean_agent_artifacts`
     async fn clean_agent_artifacts(&self, agent_id: i32, agent_name: Option<&str>) {
         if query_ex(self.db(), &self.log, &format!("wazuhdb remove {agent_id}")).await.is_err() {
-            self.debug1(format!("Could not remove the wazuh-db DB of the agent {agent_id}."));
+            self.debug1(format!("Could not remove the provigil-db DB of the agent {agent_id}."));
         }
         delete_diff(agent_name);
     }

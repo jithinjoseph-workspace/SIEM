@@ -77,7 +77,7 @@ pub const OS_FLSIZE: usize = 256;
 /// `PATH_MAX`
 pub const PATH_MAX: usize = 4096;
 
-pub const ARGV0: &str = "wazuh-db";
+pub const ARGV0: &str = "provigil-db";
 pub const WDB_DIR: &str = "var/db";
 pub const WDB2_DIR: &str = "queue/db";
 pub const WDB_GLOB_NAME: &str = "global";

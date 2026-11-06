@@ -61,6 +61,32 @@ pub fn sanitize_name(name: &str) -> String {
     if s.len() < 2 { format!("agent-{s}") } else { s }
 }
 
+/// The manager's CA certificate, when none is named in `SIEM_CA_FILE` (install.sh puts it here).
+const CA_FILE: &str = "/var/ossec/etc/ca.pem";
+
+/// A client for the manager: it also trusts the manager's private CA.
+pub fn http_builder() -> reqwest::ClientBuilder {
+    with_ca(reqwest::Client::builder().use_rustls_tls(), &std::env::var("SIEM_CA_FILE").unwrap_or_else(|_| CA_FILE.to_string()))
+}
+
+/// A missing or bad file adds nothing: an HTTPS manager with a private CA is then refused.
+fn with_ca(b: reqwest::ClientBuilder, file: &str) -> reqwest::ClientBuilder {
+    let pem = match std::fs::read(file) {
+        Ok(pem) => pem,
+        Err(e) => {
+            tracing::debug!("No CA certificate {file}: {e}");
+            return b;
+        }
+    };
+    match reqwest::Certificate::from_pem(&pem) {
+        Ok(c) => b.add_root_certificate(c),
+        Err(e) => {
+            tracing::error!("CA certificate {file} not usable: {e}");
+            b
+        }
+    }
+}
+
 /// One enrollment request.
 pub async fn enroll(
     manager_url: &str,
@@ -69,7 +95,7 @@ pub async fn enroll(
     os_type: &str,
     tenant_key: Option<&str>,
 ) -> Result<Enrollment, String> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
+    let client = http_builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
     let url = format!("{}/api/v1/agents/enroll", manager_url.trim_end_matches('/'));
     let mut req = client.post(&url).json(&serde_json::json!({
         "name": sanitize_name(name),
@@ -139,7 +165,7 @@ pub fn write_client_keys(path: &Path, e: &Enrollment) -> std::io::Result<()> {
 /// deactivated, None when the manager cannot be reached.
 #[allow(dead_code)]
 pub async fn agent_state(manager_url: &str, agent_id: &str) -> Option<bool> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().ok()?;
+    let client = http_builder().timeout(Duration::from_secs(10)).build().ok()?;
     let url = format!("{}/api/v1/agent/state?agent_id={}", manager_url.trim_end_matches('/'), agent_id);
     let body: serde_json::Value = client.get(&url).send().await.ok()?.json().await.ok()?;
     match body.get("state").and_then(|v| v.as_str()) {
@@ -186,6 +212,16 @@ mod tests {
         assert_eq!(sanitize_name("web server #1"), "web-server--1");
         assert_eq!(sanitize_name("x"), "agent-x");
         assert_eq!(sanitize_name("linux-node-01"), "linux-node-01");
+    }
+
+    #[test]
+    fn ca_file_problems_do_not_stop_the_client() {
+        let dir = std::env::temp_dir();
+        assert!(with_ca(reqwest::Client::builder(), "/nonexistent/ca.pem").build().is_ok());
+        let bad = dir.join(format!("agent-ca-test-{}.pem", std::process::id()));
+        std::fs::write(&bad, "not a certificate").unwrap();
+        assert!(with_ca(reqwest::Client::builder(), bad.to_str().unwrap()).build().is_ok());
+        let _ = std::fs::remove_file(&bad);
     }
 
     #[test]

@@ -1,5 +1,8 @@
 mod active_response;
 mod buffer;
+// upstream config readers, moved out of siem-core; deleted with this prototype agent
+#[allow(dead_code)]
+mod config_parser;
 mod enroll;
 mod eventchannel;
 mod fim;
@@ -18,7 +21,7 @@ use tracing::info;
 
 /// Core asynchronous agent loop that spawns and manages all ProVigil telemetry workers.
 pub async fn run_agent_loop() {
-    // 0. Enable DLL verification (matching ProVigil win_utils.c: enable_dll_verification to prevent DLL hijacking)
+    // 0. Enable DLL verification (matching ProVigil )
     #[cfg(windows)]
     unsafe {
         #[link(name = "kernel32")]
@@ -42,7 +45,7 @@ pub async fn run_agent_loop() {
         ];
         let mut creds = (None, None);
         for cand in client_keys_candidates.into_iter().flatten() {
-            if let Some((id, name, _, key)) = siem_core::parse_client_keys(&cand) {
+            if let Some((id, name, _, key)) = crate::config_parser::parse_client_keys(&cand) {
                 enroll::export_agent_key(&key);
                 creds = (Some(id), Some(name));
                 break;
@@ -52,7 +55,7 @@ pub async fn run_agent_loop() {
     };
 
     // Load official ossec.conf XML
-    let ossec_conf = siem_core::OssecConfig::find_and_load();
+    let ossec_conf = crate::config_parser::OssecConfig::find_and_load();
     let ossec_url = ossec_conf.get_manager_address();
     let (buf_cap, buf_eps) = if let Some(buf) = &ossec_conf.client_buffer {
         (buf.queue_size, buf.events_per_second)

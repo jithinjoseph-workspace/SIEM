@@ -479,7 +479,7 @@ export class UsersSection implements OnInit, OnDestroy, AfterViewInit {
     { key: 'siem-parsers',         label: 'Dynamic Parsers',  description: 'Learned log parsers',           icon: Cpu,         requiredFeatures: ['siem'] },
     { key: 'siem-mitre',           label: 'MITRE ATT&CK',     description: 'Technique coverage matrix',     icon: Shield,      requiredFeatures: ['siem'] },
     { key: 'siem-vulnerabilities', label: 'Vulnerabilities',  description: 'CVE detections per host',       icon: Bug,         requiredFeatures: ['siem'] },
-    { key: 'siem-compliance',      label: 'Compliance Audit', description: 'SCA / CIS results',             icon: ShieldCheck, requiredFeatures: ['siem'] },
+    { key: 'siem-compliance',      label: 'Compliance Audit', description: 'Configuration assessment results',             icon: ShieldCheck, requiredFeatures: ['siem'] },
     { key: 'siem-fim',             label: 'FIM Syscheck',     description: 'File integrity monitoring',     icon: FileCheck,   requiredFeatures: ['siem'] },
     { key: 'siem-active-response', label: 'Active Response',  description: 'Block / unblock actions',       icon: Zap,         requiredFeatures: ['siem'] },
     { key: 'siem-logtest',         label: 'Logtest Console',  description: 'Rule & decoder testing',        icon: Terminal,    requiredFeatures: ['siem'] },

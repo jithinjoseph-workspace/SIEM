@@ -1,85 +1,75 @@
-//! `src/active-response/route-null.c` (Windows): blocks an IP with a route
-//! to the default gateway (`route -p ADD <ip> MASK 255.255.255.255 <gw>`).
-
-#[cfg(windows)]
-#[path = "../../../siem-winagent/src/dll_verify.rs"]
-#[allow(dead_code)]
-mod dll_verify;
+//! Blocks (add) or unblocks (delete) the alert's attacker IPv4 address with a persistent
+//! host route to the default gateway. Windows only.
 
 #[cfg(windows)]
 use siem_active_response::*;
 
 fn main() {
     #[cfg(windows)]
-    std::process::exit(win_main());
+    {
+        dll_guard::enable();
+        std::process::exit(win_main());
+    }
     #[cfg(not(windows))]
     std::process::exit(-1);
 }
 
-/// `IPSIZE` (`INET6_ADDRSTRLEN`, 65 with mingw): the gateway buffer holds 65 bytes.
-#[cfg(windows)]
-const IPSIZE: usize = 65;
+/// The gateway of a `0.0.0.0` destination in `route print 0.0.0.0` output (the first one).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn default_gateway(route_print: &str) -> Option<String> {
+    route_print.lines().find_map(|l| {
+        let t: Vec<&str> = l.split_whitespace().collect();
+        (t.len() >= 3 && t[0] == "0.0.0.0" && t[1] == "0.0.0.0" && t[2].parse::<std::net::Ipv4Addr>().is_ok()).then(|| t[2].to_string())
+    })
+}
 
 #[cfg(windows)]
 fn win_main() -> i32 {
-    // This must be always the first instruction
-    dll_verify::enable_dll_verification(&std::sync::Arc::new(siem_log::WLog::new("unset", std::path::Path::new("."))));
     let argv0 = argv0();
-    let Some((action, input)) = setup_and_check_message(&argv0) else { return -1 };
-    let Some(srcip) = get_srcip_from_json(&input) else {
-        write_debug_file(&argv0, b"Cannot read 'srcip' from data");
+    let Some((action, msg)) = setup_and_check_message(&argv0) else { return -1 };
+    let Some(ip) = alert_ip(&msg) else {
+        write_debug_file(&argv0, b"Cannot read a valid attacker IP from the alert");
         return -1;
     };
+    // a 255.255.255.255 host route only exists for IPv4
+    if ip_version(&ip) != Some(4) {
+        write_debug_file(&argv0, format!("route-null blocks IPv4 addresses only, not {ip}").as_bytes());
+        return -1;
+    }
     if action == Action::Add {
-        if let Err(code) = check_keys(&argv0, &srcip) {
+        if let Err(code) = check_keys(&argv0, &ip) {
             return code;
         }
     }
     let (found, route) = get_binary_path("route.exe");
     if !found {
-        write_debug_file(&argv0, format!("Binary '{route}' not found in default paths, the full path will not be used.").as_bytes());
+        write_debug_file(&argv0, format!("Binary '{route}' not found in the PATH").as_bytes());
     }
     if action == Action::Add {
-        let regex = ".*Default Gateway.*[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*";
-        let tmp_file = "default-gateway.txt";
-        // system(): cmd.exe expands %WINDIR% and runs the pipe
-        let cmd = format!("%WINDIR%\\system32\\ipconfig.exe | %WINDIR%\\system32\\findstr.exe /R /C:\"{regex}\" > {tmp_file}");
-        let _ = system(&cmd);
-        let mut gateway = Vec::new();
-        if let Ok(data) = std::fs::read(tmp_file) {
-            // text-mode fgets: "\r\n" reads as "\n"; the last matching line wins
-            for line in data.split_inclusive(|&c| c == b'\n') {
-                let line = if line.ends_with(b"\r\n") { [&line[..line.len() - 2], b"\n"].concat() } else { line.to_vec() };
-                if let Some(p) = line.iter().position(|&c| c == b':') {
-                    // snprintf(gateway, IPSIZE + 1, "%s", ptr + 2): the newline stays
-                    let mut g = line.get(p + 2..).unwrap_or_default().to_vec();
-                    g.truncate(IPSIZE);
-                    gateway = g;
+        match run_output(&route, &["print", "0.0.0.0"]).and_then(|o| default_gateway(&String::from_utf8_lossy(&o))) {
+            None => write_debug_file(&argv0, b"Unable to find the default gateway"),
+            Some(gw) => {
+                if !run(&route, &["-p", "ADD", &ip, "MASK", "255.255.255.255", &gw]) {
+                    write_debug_file(&argv0, b"Unable to run route.exe to add the route");
                 }
             }
         }
-        let _ = std::fs::remove_file(tmp_file);
-        if gateway.is_empty() {
-            write_debug_file(&argv0, b"Couldn't get default gateway");
-            return -1;
-        }
-        // Deliberate difference from C 4.14.7: C passes the gateway with its trailing newline
-        // ("192.168.1.1\n"), which route.exe does not accept, so the route is never added.
-        let gw = String::from_utf8_lossy(&gateway).trim().to_string();
-        if !run(&route, &["-p", "ADD", &srcip, "MASK", "255.255.255.255", &gw]) {
-            write_debug_file(&argv0, format!("Unable to run {route}, action: 'ADD'").as_bytes());
-        }
-    } else if !run(&route, &["DELETE", &srcip]) {
-        write_debug_file(&argv0, format!("Unable to run {route}, action: 'DELETE'").as_bytes());
+    } else if !run(&route, &["DELETE", &ip]) {
+        write_debug_file(&argv0, b"Unable to run route.exe to delete the route");
     }
     write_debug_file(&argv0, b"Ended");
     0
 }
 
-/// `system(cmd)`: `cmd.exe /c <cmd>`.
-#[cfg(windows)]
-fn system(cmd: &str) -> i32 {
-    use std::os::windows::process::CommandExt;
-    let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into());
-    std::process::Command::new(comspec).raw_arg(format!("/c {cmd}")).status().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gateway_from_the_route_table() {
+        let out = "===========================================================================\r\nIPv4 Route Table\r\n===========================================================================\r\nActive Routes:\r\nNetwork Destination        Netmask          Gateway       Interface  Metric\r\n          0.0.0.0          0.0.0.0      192.168.1.1    192.168.1.20     25\r\n          0.0.0.0          0.0.0.0         10.0.0.1       10.0.0.9      50\r\n";
+        assert_eq!(default_gateway(out).as_deref(), Some("192.168.1.1"));
+        assert_eq!(default_gateway("          0.0.0.0          0.0.0.0         On-link     10.0.0.9   50"), None);
+        assert_eq!(default_gateway("Persistent Routes:\r\n  None\r\n"), None);
+    }
 }

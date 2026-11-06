@@ -705,7 +705,7 @@ const SECTIONS: &[&str] = &[
     "out/messages.log",
     "etc/shared/ar.conf",
     "out/state.json",
-    "var/run/wazuh-analysisd.state",
+    "var/run/provigil-analysisd.state",
     "queue/fts/fts-queue",
     "out/getconfig.json",
     "out/asyscom.log",
@@ -1081,7 +1081,7 @@ fn analysisd_matches_c() {
     r.insert("out/messages.log", env.log.borrow().clone());
     r.insert("etc/shared/ar.conf", read("etc/shared/ar.conf"));
     r.insert("out/state.json", state_json);
-    r.insert("var/run/wazuh-analysisd.state", read("var/run/wazuh-analysisd.state"));
+    r.insert("var/run/provigil-analysisd.state", read("var/run/provigil-analysisd.state"));
     r.insert("queue/fts/fts-queue", read("queue/fts/fts-queue"));
     {
         use siem_analysisd::config_json as cj;

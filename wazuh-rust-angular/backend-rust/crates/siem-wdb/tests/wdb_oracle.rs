@@ -651,5 +651,5 @@ fn wdb_matches_c_oracle() {
     let n = rust.len().max(oracle.len());
     let diffs = compare(&rust, &oracle, &c.lines);
     eprintln!("{} requests, {n} output lines, {diffs} diffs", c.reqs.len());
-    assert_eq!(diffs, 0, "the Rust wazuh-db differs from the C oracle");
+    assert_eq!(diffs, 0, "the Rust provigil-db differs from the C oracle");
 }

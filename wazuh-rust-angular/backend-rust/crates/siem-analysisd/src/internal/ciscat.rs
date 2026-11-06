@@ -5,7 +5,6 @@
 use siem_cjson::Json;
 
 use crate::daemon::Env;
-use crate::decoders::Decoders;
 use crate::event::{Event, F_LOCATION};
 
 /// `CISCAT_MOD`
@@ -54,9 +53,9 @@ fn strtoul_int(s: &[u8]) -> i32 {
 }
 
 /// `DecodeCiscat`: false when the event goes no further.
-pub fn decode(env: &mut dyn Env, decs: &mut Decoders, dec: usize, order_size: usize, ev: &mut Event) -> bool {
-    // JSON_Decoder_Exec(lf, NULL, NULL) with the null decoder
-    crate::plugins::json_decoder(decs, ev, order_size);
+/// (`JSON_Decoder_Exec(lf, NULL, NULL)` with the null decoder ran before: it needs the
+/// decoder table, which stays on the analysis thread.)
+pub fn decode(env: &mut dyn Env, dec: usize, ev: &mut Event) -> bool {
     ev.decoder = dec;
 
     let loc = ev.f[F_LOCATION].clone().unwrap_or_default();

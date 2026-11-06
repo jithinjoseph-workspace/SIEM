@@ -54,6 +54,9 @@
   <main class="siem-main">
     <!-- ==================== TAB 1: SOC OVERVIEW ==================== -->
     <section *ngIf="activeTab() === 'dashboard'" class="tab-content">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-outline text-xs" (click)="downloadReport()" [disabled]="reportBusy()" title="Security report of the last 7 days with charts (PDF)">{{ reportBusy() ? 'Making report...' : 'PDF report (7 days)' }}</button>
+      </div>
       <!-- 4 Top KPI Cards -->
       <div class="kpi-grid">
         <div class="card kpi-card">

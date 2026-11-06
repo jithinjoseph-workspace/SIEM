@@ -1,5 +1,5 @@
 //! The analysis socket (`queue/sockets/analysis`, analysisd/asyscom.c):
-//! `getstats`, `getagentsstats`, `getconfig` and `reload-ruleset`.
+//! `getstats`, `getagentsstats`, `getconfig`, `reload-ruleset` (`getload`, for siem-api, is answered in daemon.rs without the analysis thread).
 
 use siem_cjson::Json;
 

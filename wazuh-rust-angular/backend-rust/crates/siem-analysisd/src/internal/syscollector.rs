@@ -511,27 +511,27 @@ impl Syscollector {
         c.fill(ev, "type", &msg_type);
         let t = &msg_type[..];
         let (r, what): (i32, &[u8]) = if t == b"port" || t == b"port_end" {
-            (self.decode_port(&mut c, ev, &root), b"Unable to send ports information to Wazuh DB.")
+            (self.decode_port(&mut c, ev, &root), b"Unable to send ports information to provigil-db.")
         } else if t == b"program" || t == b"program_end" {
-            (self.decode_package(&mut c, ev, &root), b"Unable to send packages information to Wazuh DB.")
+            (self.decode_package(&mut c, ev, &root), b"Unable to send packages information to provigil-db.")
         } else if t == b"hotfix" || t == b"hotfix_end" {
-            (decode_hotfix(&mut c, ev, &root), b"Unable to send hotfixes information to Wazuh DB.")
+            (decode_hotfix(&mut c, ev, &root), b"Unable to send hotfixes information to provigil-db.")
         } else if t == b"hardware" {
-            (decode_hardware(&mut c, ev, &root), b"Unable to send hardware information to Wazuh DB.")
+            (decode_hardware(&mut c, ev, &root), b"Unable to send hardware information to provigil-db.")
         } else if t == b"OS" {
-            (decode_osinfo(&mut c, ev, &root), b"Unable to send osinfo message to Wazuh DB.")
+            (decode_osinfo(&mut c, ev, &root), b"Unable to send osinfo message to provigil-db.")
         } else if t == b"network" || t == b"network_end" {
             if decode_netinfo(&mut c, ev, &root) < 0 {
-                c.log("ERROR", b"Unable to send netinfo message to Wazuh DB.");
+                c.log("ERROR", b"Unable to send netinfo message to provigil-db.");
                 return false;
             }
             (0, b"")
         } else if t == b"process" || t == b"process_end" {
-            (self.decode_process(&mut c, ev, &root), b"Unable to send processes information to Wazuh DB.")
+            (self.decode_process(&mut c, ev, &root), b"Unable to send processes information to provigil-db.")
         } else if t.starts_with(b"dbsync_") {
             (
                 decode_dbsync(&mut c, ev, has_agent, t, &mut root),
-                b"(9201): Unable to send dbsync information to Wazuh DB.",
+                b"(9201): Unable to send dbsync information to provigil-db.",
             )
         } else {
             c.log("DEBUG", &cat(&[b"Invalid message type: ", t, b"."]));
@@ -1040,14 +1040,14 @@ fn decode_dbsync(c: &mut Ctx, ev: &mut Event, has_agent: bool, msg_type: &[u8], 
     match c.env.wdb_query_ex(&msg, OS_SIZE_1024) {
         Ok(r) => {
             if r.starts_with(b"err") {
-                c.log("DEBUG", b"(1286): Wazuh-db query error, check wdb logs.");
+                c.log("DEBUG", b"(1286): provigil-db query error, check wdb logs.");
             } else if !r.starts_with(b"ok ") {
                 c.log("ERROR", b"(1285): Response with unexpected content.");
             }
             0
         }
         Err(code) => {
-            c.log("DEBUG2", b"(1288): Wazuh-db query execution error.");
+            c.log("DEBUG2", b"(1288): provigil-db query execution error.");
             code
         }
     }

@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { SiemService } from './core/services/siem.service';
+import { SiemService as TenantSiemService } from '../../services/siem/siem.service';
 import { Agent, Alert, RawEvent, Rule, SiemStats, AiAnalysisResponse, AiAnalysisRequest, AiChatMessage, ProcessNode } from './core/models/siem.models';
 import { CyberThreatGlobeComponent } from './components/cyber-threat-globe/cyber-threat-globe.component';
 
@@ -30,6 +31,8 @@ export class SiemConsole implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private reports = inject(TenantSiemService);
+  reportBusy = signal(false);
   /** Opened as a single ndr-ui page (route data `tab`): no banner, no tab bar. */
   embedded = signal<boolean>(false);
   private subs = new Subscription();
@@ -156,6 +159,12 @@ export class SiemConsole implements OnInit, OnDestroy {
       }
     }, 4000);
     this.subs.add({ unsubscribe: () => clearInterval(intervalId) });
+  }
+
+  /** The tenant's PDF security report of the last 7 days. */
+  downloadReport() {
+    this.reportBusy.set(true);
+    this.reports.downloadReportPdf(168).subscribe({ next: () => this.reportBusy.set(false), error: () => this.reportBusy.set(false) });
   }
 
   ngOnDestroy() {

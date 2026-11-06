@@ -19,7 +19,7 @@ use crate::task_general::{cat, cstr, OS_MAXSTR};
 /// `WM_DOWNLOAD_SOCK`
 pub const WM_DOWNLOAD_SOCK: &str = "queue/sockets/download";
 /// `WM_DOWNLOAD_LOGTAG`
-const LOGTAG: &str = "wazuh-modulesd:download";
+const LOGTAG: &str = "provigil-modulesd:download";
 /// `PATH_MAX`
 const PATH_MAX: usize = 4096;
 pub const OS_FILERR: i32 = -3;

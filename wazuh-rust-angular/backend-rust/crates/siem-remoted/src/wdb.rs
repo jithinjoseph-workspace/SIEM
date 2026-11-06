@@ -78,7 +78,7 @@ pub async fn update_agent_status_code(
 pub async fn get_agent_group(db: &dyn WdbQuery, id: i64) -> Option<String> {
     let root = query_parse_json(db, &format!("global select-agent-group {id}")).await;
     let Some(root) = root else {
-        tracing::error!("Error querying Wazuh DB to get the agent's {id} group.");
+        tracing::error!("Error querying provigil-db to get the agent's {id} group.");
         return None;
     };
     // cJSON_GetObjectItem(root->child, "group")
@@ -156,14 +156,14 @@ pub async fn get_distinct_agent_groups(db: &dyn WdbQuery) -> Option<Vec<Value>> 
     loop {
         let resp = db.query(&format!("global get-distinct-groups {last_hash}")).await.ok();
         let Some(resp) = resp else {
-            tracing::error!("Error querying Wazuh DB to get agent's groups.");
+            tracing::error!("Error querying provigil-db to get agent's groups.");
             return None;
         };
         let (st, payload) = parse_result(&resp);
         match st {
             WdbcResult::Ok | WdbcResult::Due => {
                 let Ok(Value::Array(a)) = serde_json::from_str::<Value>(payload) else {
-                    tracing::error!("Error querying Wazuh DB to get agent's groups.");
+                    tracing::error!("Error querying provigil-db to get agent's groups.");
                     return None;
                 };
                 if let Some(h) = a.last().and_then(|x| x.get("group_hash")).and_then(|h| h.as_str()) {
@@ -175,7 +175,7 @@ pub async fn get_distinct_agent_groups(db: &dyn WdbQuery) -> Option<Vec<Value>> 
                 }
             }
             _ => {
-                tracing::error!("Error querying Wazuh DB to get agent's groups.");
+                tracing::error!("Error querying provigil-db to get agent's groups.");
                 return None;
             }
         }

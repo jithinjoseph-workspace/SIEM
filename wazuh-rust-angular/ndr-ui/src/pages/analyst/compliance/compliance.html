@@ -10,7 +10,7 @@
         Regulatory Compliance & Audit Frameworks
       </h1>
       <p class="text-sm text-slate-400 mt-1.5 flex items-center gap-2">
-        <span>Automated control verification against PCI-DSS, HIPAA, NIST SP 800-53, GDPR and SOC 2, from your agents' CIS configuration checks (the score) and the compliance tags of ProVigil's rules (the alerts)</span>
+        <span>Automated control verification against PCI-DSS, HIPAA, NIST SP 800-53, GDPR and SOC 2, from your agents' configuration checks (the score) and the compliance tags of ProVigil's rules (the alerts)</span>
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="text-xs text-emerald-400 font-mono">Live Auditing Active</span>
       </p>
@@ -225,7 +225,7 @@
 
       <!-- Footer Info -->
       <div class="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-        <span [title]="fw.score_percent === null ? 'No CIS check maps this framework: alerts only' : fw.checks_passed + ' passed / ' + fw.checks_failed + ' failed configuration check results'">
+        <span [title]="fw.score_percent === null ? 'No configuration check maps this framework: alerts only' : fw.checks_passed + ' passed / ' + fw.checks_failed + ' failed configuration check results'">
           {{ fw.score_percent === null ? 'no config score' : fw.checks_failed + ' checks failing' }}
         </span>
         <span [class.text-rose-400]="fw.alert_count > 0" [class.text-slate-500]="fw.alert_count === 0">

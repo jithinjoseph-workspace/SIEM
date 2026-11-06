@@ -5,6 +5,7 @@ edition = "2021"
 description = "Dedicated Wazuh Next-Gen Linux Endpoint Agent in Rust mirroring Wazuh core architecture"
 
 [dependencies]
+quick-xml = { version = "0.36", features = ["serialize"] }
 siem-core = { path = "../siem-core" }
 tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

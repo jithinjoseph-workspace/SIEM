@@ -39,7 +39,7 @@ fn daemon_end_to_end() {
     std::fs::write(home.join("etc/ossec.conf"), "<ossec_config>\n  <logging><log_format>plain</log_format></logging>\n</ossec_config>\n").unwrap();
     std::env::set_current_dir(&home).unwrap();
     let base = PathBuf::new();
-    let wlog = Arc::new(WLog::new("wazuh-db", &base));
+    let wlog = Arc::new(WLog::new("provigil-db", &base));
 
     // the broker (provigil-modulesd's side) and a remote subscriber
     router_initialize(wlog.clone());

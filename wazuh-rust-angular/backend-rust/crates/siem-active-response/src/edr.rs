@@ -4,19 +4,17 @@
 
 use std::net::Ipv4Addr;
 
-use siem_cjson::Json;
+use serde_json::Value;
 
 /// One `extra_args` item `key=value` (whole, spaces included: a path can hold them).
-pub fn extra_arg(input: &Json, key: &str) -> Option<String> {
-    let args = input.get("parameters")?.get("extra_args").filter(|a| a.is_array())?;
+pub fn extra_arg(input: &Value, key: &str) -> Option<String> {
     let prefix = format!("{key}=");
-    args.children().into_iter().find_map(|a| a.as_str().and_then(|s| s.strip_prefix(prefix.as_str()).map(String::from)))
+    input["parameters"]["extra_args"].as_array()?.iter().find_map(|a| a.as_str()?.strip_prefix(prefix.as_str()).map(String::from))
 }
 
 /// Whether `extra_args` holds the bare item `flag`.
-pub fn has_extra_flag(input: &Json, flag: &str) -> bool {
-    let Some(args) = input.get("parameters").and_then(|p| p.get("extra_args")).filter(|a| a.is_array()) else { return false };
-    args.children().into_iter().any(|a| a.as_str().is_some_and(|s| *s == *flag))
+pub fn has_extra_flag(input: &Value, flag: &str) -> bool {
+    input["parameters"]["extra_args"].as_array().is_some_and(|args| args.iter().any(|a| a.as_str() == Some(flag)))
 }
 
 /// A JSON string literal (for the result lines the programs log).
@@ -169,9 +167,9 @@ pub fn valid_quarantine_id(id: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn msg(args: &str) -> Json {
+    fn msg(args: &str) -> Value {
         let m = format!(r#"{{"version":1,"origin":{{}},"command":"add","parameters":{{"extra_args":{args}}}}}"#);
-        siem_cjson::parse_with_opts(m.as_bytes(), false).unwrap().0
+        serde_json::from_str(&m).unwrap()
     }
 
     #[test]

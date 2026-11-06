@@ -183,7 +183,7 @@ export interface MitreMatrixResponse {
 }
 
 // --- Regulatory Compliance ---
-/** One CIS / SCA check a requirement maps (the agent's own text and results). */
+/** One configuration (SCA) check a requirement maps (the agent's own text and results). */
 export interface ComplianceCheck {
   check_id: string;
   title: string;
@@ -312,6 +312,11 @@ export interface VulnerabilityDetectionItem {
   description?: string;
   reference?: string;
   category?: string;
+  os?: string;
+  package_path?: string;
+  published_at?: string;
+  /** The fixed version may use another numbering than the installed one: check it by hand. */
+  needs_review?: boolean;
 }
 
 export interface VulnerabilitiesResponse {

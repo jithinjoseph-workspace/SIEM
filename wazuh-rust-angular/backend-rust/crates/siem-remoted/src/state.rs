@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub const ARGV0: &str = "wazuh-remoted";
+pub const ARGV0: &str = "provigil-remoted";
 /// `REM_MAX_NUM_AGENTS_STATS`
 pub const REM_MAX_NUM_AGENTS_STATS: usize = 150;
 

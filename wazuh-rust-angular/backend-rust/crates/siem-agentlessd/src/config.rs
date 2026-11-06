@@ -33,7 +33,7 @@ fn num(n: &XmlNode, c: &str) -> siem_config::Result<i32> {
     if !siem_regex::str_is_num(c) {
         return Err(ConfigError::new(xml_valueerr(&n.element, c)));
     }
-    Ok(siem_maild::alert::atoi(c.as_bytes()) as i32)
+    Ok(c.trim().parse::<i32>().unwrap_or(0))
 }
 
 /// `snprintf(buf, 1024, ...)`: at most 1023 bytes.
@@ -162,7 +162,7 @@ pub fn lessdcom_dispatch(list: &[Entry], command: &[u8]) -> String {
         Some((c, a)) => (c, Some(a)),
         None => (command.as_ref(), None),
     };
-    let log = siem_maild::log();
+    let log = crate::log();
     if cmd != "getconfig" {
         log.debug1(format!("LESSDCOM Unrecognized command '{cmd}'."));
         return "err Unrecognized command".into();

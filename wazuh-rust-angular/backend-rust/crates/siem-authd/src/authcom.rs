@@ -1,10 +1,10 @@
-//! Remote Request & IPC Control Listener (`src/os_auth/authcom.c`)
+//! Remote Request & IPC Control Listener 
 //!
-//! Handles `getconfig auth` IPC commands returning the serialized JSON configuration.
+//! Handles IPC commands returning the serialized JSON configuration.
 
 use crate::config::AuthdConfig;
 
-/// Dispatches an incoming plain text management command matching `authcom_dispatch`.
+/// Dispatches an incoming plain text management command matching.
 pub fn authcom_dispatch(command: &str, config: &AuthdConfig) -> String {
     let trimmed = command.trim();
     let mut parts = trimmed.splitn(2, ' ');

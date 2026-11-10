@@ -1,0 +1,169 @@
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="search-wrap">
+      <lucide-icon [name]="SearchIcon" class="search-icon w-4 h-4"></lucide-icon>
+      <input type="text" [(ngModel)]="searchText" (input)="onSearchInput()" (keydown)="onSearch($event)"
+        (blur)="closeSearch()" placeholder="Search IPs, alerts, rules, and logs" />
+
+      <div *ngIf="showSuggestions" class="suggestions-panel">
+        <button *ngFor="let s of filteredSuggestions" (mousedown)="selectSuggestion(s)" class="suggestion-row">
+          <span class="suggestion-icon">{{ s.label.charAt(0) }}</span>
+          <span>
+            <strong>{{ s.label }}</strong>
+            <small>{{ s.hint }}</small>
+          </span>
+        </button>
+
+        <div class="quick-links">
+          <span>Quick Navigate</span>
+          <div>
+            <button *ngFor="let s of permittedSuggestions.slice(0, 4)" (mousedown)="selectSuggestion(s)">
+              {{ s.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <app-sensor-scope-banner *ngIf="showSensorScope" [sensorIds]="sensorIds"></app-sensor-scope-banner>
+  </div>
+
+  <div class="topbar-actions">
+
+    <button *ngIf="canViewTutorial" class="icon-button tutorial-btn" aria-label="Start Tutorial"
+      title="Interactive Guided Tour" (click)="startTutorial()">
+      <lucide-icon [name]="HelpCircleIcon" class="w-5 h-5"></lucide-icon>
+    </button>
+
+    <div *ngIf="currentUser?.role !== 'admin' && currentUser?.role !== 'tenant_admin'" class="system-card">
+      <span>System Status</span>
+      <strong [class.degraded]="systemStatus !== 'OPERATIONAL'">
+        <i></i>
+        {{ systemStatus }}
+      </strong>
+    </div>
+
+    <div *ngIf="canShowNotifications" class="notification-wrap">
+      <button class="icon-button" aria-label="Notifications" (click)="openNotifications()">
+        <lucide-icon [name]="BellIcon" class="w-5 h-5"></lucide-icon>
+        <span *ngIf="notificationCount > 0">{{ notificationCount > 9 ? '9+' : notificationCount }}</span>
+      </button>
+
+      <div *ngIf="showNotifications" class="notification-panel">
+        <div class="notification-head">
+          <strong>Notifications</strong>
+          <small>{{ notificationCount }} active</small>
+        </div>
+
+        <div *ngIf="!hasNotificationItems" class="notification-empty">
+          No notifications yet
+        </div>
+
+        <div *ngIf="activeAnnouncements.length > 0" class="notification-section-title">
+          Announcements
+        </div>
+
+        <div *ngIf="activeAnnouncements.length > 0" class="notification-list">
+          <div *ngFor="let announcement of activeAnnouncements" class="notification-row announcement-notification"
+            [class.unread-announcement]="!announcement.read" (click)="toggleAnnouncementExpand(announcement.id)"
+            style="cursor:pointer">
+            <div class="announcement-card-inner">
+              <div class="announcement-card-header">
+                <span [class]="'announcement-badge ' + announcementTypeClass(announcement.type)">
+                  {{ announcementTypeLabel(announcement.type) }}
+                </span>
+                <span *ngIf="!announcement.read" class="unread-dot" title="Unread"></span>
+              </div>
+              <strong class="announcement-card-title">{{ announcement.title }}</strong>
+              <p class="announcement-card-body" [class.expanded]="isAnnouncementExpanded(announcement.id)">{{
+                announcement.message }}</p>
+              <div class="announcement-card-footer">
+                <em *ngIf="announcement.starts_at || announcement.start_at">
+                  Starts {{ (announcement.starts_at || announcement.start_at) | date:'MMM d, h:mm a' }}
+                </em>
+                <em *ngIf="!announcement.starts_at && !announcement.start_at">
+                  {{ announcement.created_at | date:'MMM d, h:mm a' }}
+                </em>
+                <em class="expand-hint">{{ isAnnouncementExpanded(announcement.id) ? 'Click to collapse' : 'Click to
+                  read more' }}</em>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="canViewAlerts" class="notification-section-title">
+          Threat Alerts
+        </div>
+
+        <div *ngIf="canViewAlerts && recentAlerts.length === 0" class="notification-empty compact">
+          No threat alerts yet
+        </div>
+
+        <div *ngIf="canViewAlerts && recentAlerts.length > 0" class="notification-list">
+          <div *ngFor="let alert of recentAlerts" class="notification-row">
+            <div>
+              <strong>{{ alert.message }}</strong>
+              <span>{{ alert.src_ip }} -> {{ alert.dst_ip }}</span>
+              <em>{{ alert.hits }} {{ alert.hits === 1 ? 'hit' : 'hits' }} · Latest {{ alert.time }}</em>
+            </div>
+            <small>
+              <span>Score</span>
+              <b>{{ alert.score.toFixed(0) }}</b>
+            </small>
+          </div>
+        </div>
+
+        <button *ngIf="canViewAlerts" class="notification-link" (mousedown)="viewThreatIntel()">
+          View Threat Intel
+        </button>
+      </div>
+    </div>
+
+    <!-- Profile button: dropdown is a SIBLING of the button, not nested inside it -->
+    <div class="profile-wrap">
+      <button class="profile-button" (click)="showUserMenu=!showUserMenu">
+        <span class="avatar">
+          <lucide-icon [name]="UserIcon" class="w-5 h-5"></lucide-icon>
+        </span>
+        <span class="profile-copy">
+          <strong>{{ currentUser?.username || 'User' }}</strong>
+          <small>{{ currentUser?.role || 'analyst' }}</small>
+        </span>
+        <lucide-icon [name]="ChevronDownIcon" class="w-3 h-3 chevron-icon"
+          [style.transform]="showUserMenu ? 'rotate(180deg)' : 'none'"
+          style="transition: transform 200ms ease"></lucide-icon>
+      </button>
+
+      <!-- Click-away backdrop -->
+      <div *ngIf="showUserMenu" class="dropdown-backdrop" (click)="showUserMenu=false"></div>
+
+      <!-- Dropdown menu — sibling of button, both inside .profile-wrap -->
+      <div *ngIf="showUserMenu" class="user-dropdown-menu">
+        <div class="dropdown-header">
+          <div class="dropdown-avatar">
+            <lucide-icon [name]="UserIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div class="dropdown-user-info">
+            <strong>{{ currentUser?.username || 'User' }}</strong>
+            <small>{{ currentUser?.email || currentUser?.role || 'analyst' }}</small>
+          </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <button *ngIf="canViewSettings" (click)="showUserMenu=false; goToSettings()" class="dropdown-item">
+          <lucide-icon [name]="SettingsIcon" class="w-4 h-4"></lucide-icon>
+          <span>Settings</span>
+        </button>
+        <button (click)="showUserMenu=false; goToSupport()" class="dropdown-item">
+          <lucide-icon [name]="HelpCircleIcon" class="w-4 h-4"></lucide-icon>
+          <span>Support</span>
+        </button>
+        <div class="dropdown-divider"></div>
+        <button (click)="showUserMenu=false; logout()" class="dropdown-item logout-item">
+          <lucide-icon [name]="LogOutIcon" class="w-4 h-4"></lucide-icon>
+          <span>Logout</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</header>

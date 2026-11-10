@@ -1,0 +1,23 @@
+[package]
+name = "provigil-loadtest"
+version = "0.1.0"
+edition = "2021"
+description = "Simulated ProVigil agents against a manager, over the agent's own gRPC and HTTPS links"
+
+[dependencies]
+# the agent's links and payload builders: what the tool sends is what an agent sends
+provigil-agent = { path = "../provigil-agent" }
+tokio = { version = "1.40", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+uuid = { version = "1.10", features = ["v4"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sysinfo = "0.30"
+
+[dev-dependencies]
+provigil-proto = { path = "../provigil-proto" }
+tonic = { version = "0.12", default-features = false, features = ["transport"] }
+axum = "0.7"
+tempfile = "3"

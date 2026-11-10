@@ -1,0 +1,304 @@
+<section class="admin-panel tc-panel">
+
+  <!-- Ambient Glows -->
+  <div class="tc-ambient-glow glow--cyan" aria-hidden="true"></div>
+  <div class="tc-ambient-glow glow--emerald" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="trustedCloudSaved" class="admin-message success">
+    <lucide-icon [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+    <span>Trusted cloud perimeter configuration updated and committed.</span>
+  </div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="tc-hero-strip">
+    <div class="tc-hero-left">
+      <div class="tc-system-badge">
+        <span class="tc-pulse-dot"></span>
+        <span>CLOUD PERIMETER / NOISE FILTER</span>
+        <span class="tc-badge-sep">/</span>
+        <span class="tc-badge-status">{{ totalCloudRules }} ACTIVE RULES</span>
+      </div>
+      <h1 class="tc-headline">Trusted Cloud <em>Perimeter</em> &amp; Bypass</h1>
+      <p class="tc-tagline">Exclude legitimate hyperscaler infrastructure (AWS, GCP, Azure, Cloudflare) from threat alerts with automated AI discovery.</p>
+    </div>
+
+    <div class="tc-hero-controls">
+      <!-- Save Action -->
+      <button type="button" class="tc-action-btn btn--primary" (click)="saveTrustedCloud()" [disabled]="trustedCloudSaving">
+        <lucide-icon [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+        <span>{{ trustedCloudSaving ? 'Committing...' : 'Commit Changes' }}</span>
+      </button>
+
+      <!-- Refresh Action -->
+      <button type="button" class="tc-action-btn" (click)="loadTrustedCloud()" title="Refresh trusted cloud rules">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingTrustedCloud"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="tc-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <div class="tc-clock-text">
+          <span class="tc-clock-time">{{ clock.currentTime() }}</span>
+          <span class="tc-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. Cloud Perimeter Diagnostic Deck (4 Unique Cards) ────── -->
+  <section class="cloud-perimeter-deck" aria-label="Cloud Perimeter Diagnostic Deck">
+
+    <!-- Card 1: ASN Keyword Filter Matrix -->
+    <div class="tc-deck-card tc-deck--keywords">
+      <div class="tc-card-glow cyan"></div>
+      <div class="tc-card-top">
+        <div class="tc-card-tag">
+          <lucide-icon [name]="ShieldIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>ORGANIZATION KEYWORDS</span>
+        </div>
+        <span class="tc-status-pill cyan">{{ trustedCloud.keywords.length }} ASN TOKENS</span>
+      </div>
+
+      <div class="tc-keywords-body">
+        <div class="kw-stat-lead">
+          <span class="kw-num text-cyan-400 font-mono">{{ trustedCloud.keywords.length }}</span>
+          <span class="kw-desc">ACTIVE ASN FILTERS</span>
+        </div>
+
+        <div class="kw-sample-tags">
+          <span *ngFor="let kw of trustedCloud.keywords.slice(0, 4)" class="kw-mini-chip font-mono">{{ kw }}</span>
+          <span *ngIf="trustedCloud.keywords.length > 4" class="kw-more-chip">+{{ trustedCloud.keywords.length - 4 }} more</span>
+        </div>
+
+        <div class="kw-meta-line">
+          <span class="m-lbl">MATCH PROTOCOL:</span>
+          <span class="m-val font-mono text-cyan-300">Case-Insensitive Substring</span>
+        </div>
+      </div>
+
+      <div class="tc-card-footer">
+        <span class="tc-chip">BGP / ASN SCOPED</span>
+        <span class="tc-chip">ZERO LATENCY</span>
+        <span class="tc-chip cyan">ENFORCED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Whitelisted Cloud Domains -->
+    <div class="tc-deck-card tc-deck--domains">
+      <div class="tc-card-glow emerald"></div>
+      <div class="tc-card-top">
+        <div class="tc-card-tag">
+          <lucide-icon [name]="CloudIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>EXEMPT CLOUD DOMAINS</span>
+        </div>
+        <span class="tc-status-pill emerald">{{ trustedCloud.domains.length }} DOMAINS</span>
+      </div>
+
+      <div class="tc-domains-body">
+        <div class="dom-stat-lead">
+          <span class="dom-num text-emerald-400 font-mono">{{ trustedCloud.domains.length }}</span>
+          <span class="dom-desc">WHITELISTED FQDNS</span>
+        </div>
+
+        <div class="dom-sample-tags">
+          <span *ngFor="let d of trustedCloud.domains.slice(0, 3)" class="dom-mini-chip font-mono">{{ d }}</span>
+          <span *ngIf="trustedCloud.domains.length > 3" class="dom-more-chip">+{{ trustedCloud.domains.length - 3 }} more</span>
+        </div>
+
+        <div class="dom-meta-line">
+          <span class="m-lbl">DNS BYPASS:</span>
+          <span class="m-val font-mono text-emerald-300">Direct Suffix Matching</span>
+        </div>
+      </div>
+
+      <div class="tc-card-footer">
+        <span class="tc-chip">DNS RESOLUTION</span>
+        <span class="tc-chip">MULTICLOUD</span>
+        <span class="tc-chip success">ARMED</span>
+      </div>
+    </div>
+
+    <!-- Card 3: AI Cloud Discovery Engine -->
+    <div class="tc-deck-card tc-deck--ai">
+      <div class="tc-card-glow amber"></div>
+      <div class="tc-card-top">
+        <div class="tc-card-tag">
+          <lucide-icon [name]="SparklesIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>AI DISCOVERY HEURISTIC</span>
+        </div>
+        <span class="tc-status-pill amber">{{ aiSuggestionsCount }} PENDING</span>
+      </div>
+
+      <div class="tc-ai-body">
+        <div class="ai-stat-lead">
+          <span class="ai-num text-amber-400 font-mono">{{ aiSuggestionsCount }}</span>
+          <span class="ai-desc">DETECTED CANDIDATES</span>
+        </div>
+
+        <div class="ai-cadence-box">
+          <span class="ai-cadence-lbl">SCAN CADENCE:</span>
+          <span class="ai-cadence-val font-mono text-slate-200">15-Min Continuous Discovery</span>
+        </div>
+
+        <div class="ai-heuristic-meta">
+          <span class="m-lbl">CLASSIFIER:</span>
+          <span class="m-val font-mono text-amber-300">Zero-Threat Heuristic Filter</span>
+        </div>
+      </div>
+
+      <div class="tc-card-footer">
+        <span class="tc-chip">AUTOMATED 15m</span>
+        <span class="tc-chip">ONE-CLICK APPROVE</span>
+        <span class="tc-chip amber">ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Suppressed Traffic & Noise Reduction -->
+    <div class="tc-deck-card tc-deck--reduction">
+      <div class="tc-card-glow purple"></div>
+      <div class="tc-card-top">
+        <div class="tc-card-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>NOISE REDUCTION SCORE</span>
+        </div>
+        <span class="tc-status-pill purple">SOC OPTIMIZED</span>
+      </div>
+
+      <div class="tc-reduction-body">
+        <div class="red-stat-lead">
+          <span class="red-num text-purple-400 font-mono">{{ totalHitsSuppressed | number }}</span>
+          <span class="red-desc">SUPPRESSED CONNS / 24H</span>
+        </div>
+
+        <div class="red-ratio-bar">
+          <div class="red-bar-fill" [style.width]="(totalHitsSuppressed > 0 ? '100%' : '0%')"></div>
+        </div>
+
+        <div class="red-meta-line">
+          <span class="m-lbl">ALERT LOAD:</span>
+          <span class="m-val font-mono" [class.text-emerald-400]="totalHitsSuppressed > 0" [class.text-slate-400]="totalHitsSuppressed === 0">{{ totalHitsSuppressed > 0 ? (totalHitsSuppressed + ' Events Filtered') : 'Zero Noise Detected' }}</span>
+        </div>
+      </div>
+
+      <div class="tc-card-footer">
+        <span class="tc-chip">ZERO FP DRIFT</span>
+        <span class="tc-chip">REALTIME DROP</span>
+        <span class="tc-chip purple">OPTIMAL</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. AI Suggestions Queue ─────────────────────────────────── -->
+  <section class="tc-card glass-card tc-ai-section" *ngIf="trustedCloud.suggestions.length > 0">
+    <div class="tc-card-head">
+      <div>
+        <div class="tc-tag amber">AI AUTOMATED DISCOVERY</div>
+        <h2 class="tc-card-title">Pending Cloud Infrastructure Suggestions</h2>
+        <p class="tc-card-desc">AI heuristic engine analyzed high-frequency ASN traffic with zero threat triggers. Approving instantly excludes this organization without restarting engines.</p>
+      </div>
+      <span class="tc-pending-badge">{{ trustedCloud.suggestions.length }} Candidates Available</span>
+    </div>
+
+    <div class="tc-suggestion-grid">
+      <div *ngFor="let s of trustedCloud.suggestions" class="tc-suggestion-blade">
+        <div class="sugg-blade-left">
+          <div class="sugg-avatar">{{ s.org.charAt(0).toUpperCase() }}</div>
+          <div class="sugg-info">
+            <strong class="sugg-org font-mono">{{ s.org }}</strong>
+            <span class="sugg-stats">
+              <span class="sugg-hits text-amber-400 font-mono">{{ s.hits | number }}</span> connections in 24h · <span class="text-emerald-400">Zero threats verified</span>
+            </span>
+          </div>
+        </div>
+        <div class="sugg-blade-actions">
+          <button type="button" class="tc-btn-approve" (click)="approveSuggestion(s.org)" title="Approve and add to trusted keywords">
+            <lucide-icon [name]="ApproveIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Approve</span>
+          </button>
+          <button type="button" class="tc-btn-reject" (click)="rejectSuggestion(s.org)" title="Reject suggestion">
+            <lucide-icon [name]="RejectIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Dismiss</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Empty Suggestions Strip -->
+  <div class="tc-empty-box glass-card" *ngIf="trustedCloud.suggestions.length === 0">
+    <div class="empty-icon-wrap">
+      <lucide-icon [name]="SparklesIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+    </div>
+    <div class="empty-content">
+      <strong>No Pending AI Cloud Suggestions</strong>
+      <span>Heuristic scanner runs in background every 15 minutes. Legitimate hyperscaler ASNs with high volume and zero flags will populate here for one-click approval.</span>
+    </div>
+  </div>
+
+  <!-- ── 4. Two-Column Configuration Matrix: Keywords & Domains ─── -->
+  <div class="tc-dual-grid">
+
+    <!-- Column 1: Organization Keywords Console -->
+    <section class="tc-card glass-card">
+      <div class="tc-card-head">
+        <div>
+          <div class="tc-tag cyan">PERIMETER RULESET</div>
+          <h2 class="tc-card-title">Trusted Organization Keywords</h2>
+          <p class="tc-card-desc">Any ASN organization name containing these substrings will be excluded from alert generation.</p>
+        </div>
+        <span class="tc-count-chip cyan font-mono">{{ trustedCloud.keywords.length }} Active</span>
+      </div>
+
+      <!-- Quick Add Keyword Form -->
+      <form (submit)="addKeyword(); $event.preventDefault()" class="tc-add-form">
+        <input [(ngModel)]="newKeyword" name="newKeyword" placeholder="e.g. MICROSOFT, CLOUDFLARE, AKAMAI" class="tc-input uppercase font-mono" />
+        <button type="submit" class="tc-add-btn cyan" [disabled]="!newKeyword.trim()">
+          <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Add Keyword</span>
+        </button>
+      </form>
+
+      <!-- Chips Rack -->
+      <div class="tc-chips-rack">
+        <span *ngFor="let kw of trustedCloud.keywords" class="tc-chip-badge cyan">
+          <span class="kw-text font-mono">{{ kw }}</span>
+          <button type="button" class="chip-rm-btn" (click)="removeKeyword(kw)" title="Remove {{ kw }}">×</button>
+        </span>
+      </div>
+    </section>
+
+    <!-- Column 2: Trusted Cloud Domains Console -->
+    <section class="tc-card glass-card">
+      <div class="tc-card-head">
+        <div>
+          <div class="tc-tag emerald">DNS ALLOWLIST</div>
+          <h2 class="tc-card-title">Trusted Cloud Domains</h2>
+          <p class="tc-card-desc">Legitimate cloud domain suffixes excluded from DNS beaconing and C2 surveillance detectors.</p>
+        </div>
+        <span class="tc-count-chip emerald font-mono">{{ trustedCloud.domains.length }} Active</span>
+      </div>
+
+      <!-- Quick Add Domain Form -->
+      <form (submit)="addDomain(); $event.preventDefault()" class="tc-add-form">
+        <input [(ngModel)]="newDomain" name="newDomain" placeholder="e.g. 1e100.net, amazonaws.com" class="tc-input font-mono" />
+        <button type="submit" class="tc-add-btn emerald" [disabled]="!newDomain.trim()">
+          <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Add Domain</span>
+        </button>
+      </form>
+
+      <!-- Chips Rack -->
+      <div class="tc-chips-rack">
+        <span *ngFor="let d of trustedCloud.domains" class="tc-chip-badge emerald">
+          <span class="kw-text font-mono">{{ d }}</span>
+          <button type="button" class="chip-rm-btn" (click)="removeDomain(d)" title="Remove {{ d }}">×</button>
+        </span>
+      </div>
+    </section>
+
+  </div>
+
+</section>

@@ -1,0 +1,13 @@
+[package]
+name = "provigil-regex"
+version = "0.1.0"
+edition = "2021"
+description = "Log pattern matchers, IP helpers and string helpers"
+
+[dependencies]
+pcre2 = "0.2"
+thiserror = "1"
+
+[dev-dependencies]
+hex = "0.4"
+serde_json = "1"

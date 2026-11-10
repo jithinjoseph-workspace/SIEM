@@ -1,0 +1,4331 @@
+[
+ {
+  "id": "S0501",
+  "condition": "all",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> VulnerableChannelAllowList"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0502",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LdapEnforceChannelBinding",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LdapEnforceChannelBinding -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0503",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\NTDS\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerIntegrity -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0504",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0505",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RequireSignOrSeal",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RequireSignOrSeal -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0506",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> SealSecureChannel",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> SealSecureChannel -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0507",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> SignSecureChannel",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> SignSecureChannel -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0508",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> DisablePasswordChange",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> DisablePasswordChange -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0509",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> n:^(\\d+) compare <= 30"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0510",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RequireStrongKey",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RequireStrongKey -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0511",
+  "condition": "all",
+  "rules": [
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system",
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system -> legalnoticetext",
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system -> legalnoticetext-> r:\\w+"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0512",
+  "condition": "all",
+  "rules": [
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system",
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system -> legalnoticecaption",
+   "r:HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\system -> legalnoticecaption -> r:\\w+"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0513",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> PasswordExpiryWarning",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> PasswordExpiryWarning -> n:^(\\d+) compare >= 5 && n:^(\\d+) compare <= 14"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0514",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> ForceUnlockLogon",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> ForceUnlockLogon -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0515",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnableSecuritySignature",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnableSecuritySignature -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0516",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnablePlainTextPassword",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnablePlainTextPassword -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0517",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> AutoDisconnect",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> AutoDisconnect -> 0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> AutoDisconnect -> n:^(\\d+) compare <= 15"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0518",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnableForcedLogOff",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnableForcedLogOff -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0519",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> SMBServerNameHardeningLevel",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters -> SMBServerNameHardeningLevel -> n:^(\\d+) compare >= 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0520",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> TurnOffAnonymousBlock",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> TurnOffAnonymousBlock -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0521",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> RestrictAnonymousSAM",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> RestrictAnonymousSAM -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0522",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> RestrictAnonymous ",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> RestrictAnonymous -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0523",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> DisableDomainCreds",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> DisableDomainCreds -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0524",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> EveryoneIncludesAnonymous",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> EveryoneIncludesAnonymous -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0525",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> EveryoneIncludesAnonymous",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:LSARPC && r:NETLOGON && r:SAMR"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0526",
+  "condition": "all",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:\\S+"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0527",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths -> Machine",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths -> Machine -> r:System\\\\CurrentControlSet\\\\Control\\\\ProductOptions|System\\\\CurrentControlSet\\\\Control\\\\Server Applications|Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0528",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine -> r:Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Print|Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Windows|System\\\\CurrentControlSet\\\\Control\\\\Print\\\\Printers|System\\\\CurrentControlSet\\\\Services\\\\Eventlog|Software\\\\Microsoft\\\\OLAP Server|System\\\\CurrentControlSet\\\\Control\\\\ContentIndex|System\\\\CurrentControlSet\\\\Control\\\\Terminal Server|System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\UserConfig|System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\DefaultUserConfiguration|Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Perflib|System\\\\CurrentControlSet\\\\Services\\\\SysmonLog|System\\\\CurrentControlSet\\\\Services\\\\CertSvc|System\\\\CurrentControlSet\\\\Services\\\\WINS"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0529",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> RestrictNullSessAccess",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> RestrictNullSessAccess -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0530",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> restrictremotesam",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> restrictremotesam -> O:BAG:BAD:(A;;RC;;;BA)"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0531",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionShares",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionShares -> r:\\."
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0532",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> UseMachineId",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> UseMachineId -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0533",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> NoLMHash",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> NoLMHash -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0534",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters -> EnableForcedLogOff",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters -> EnableForcedLogOff -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0535",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity -> n:(\\d+) compare >= 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0536",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ShutdownWithoutLogon",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ShutdownWithoutLogon -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0537",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager\\Kernel",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager\\Kernel -> ObCaseInsensitive",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager\\Kernel -> ObCaseInsensitive -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0538",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager -> ProtectionMode",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager -> ProtectionMode -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0539",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SubSystems",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SubSystems -> Optional",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SubSystems -> Optional -> r:\\w+"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0540",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableSecureUIAPaths",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableSecureUIAPaths -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0541",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableLUA",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableLUA -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0542",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> PromptOnSecureDesktop",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> PromptOnSecureDesktop -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0543",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableVirtualization",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> EnableVirtualization -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0544",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> EnableFirewall",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> EnableFirewall -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0545",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> DefaultInboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> DefaultInboundAction -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0546",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> DefaultOutboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile -> DefaultOutboundAction -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0547",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> EnableFirewall",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> EnableFirewall -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0548",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> DefaultInboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> DefaultInboundAction -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0549",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> DefaultOutboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile -> DefaultOutboundAction -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0550",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> EnableFirewall",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> EnableFirewall -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0551",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultInboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultInboundAction -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0552",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultOutboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultOutboundAction -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0553",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Credential Validation\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0554",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Kerberos Authentication Service\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0555",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Kerberos Service Ticket Operations\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0556",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Application Group Management\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0557",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Computer Account Management\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0558",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Distribution Group Management\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0559",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Other Account Management Events\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0560",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Security Group Management\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0561",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"User Account Management\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0562",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Process Creation\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0563",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Directory Service Access\" -> r:Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0564",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Directory Service Changes\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0565",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Account Lockout\" -> r:Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0566",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Logoff\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0567",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Logon\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0568",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Other Logon/Logoff Events\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0569",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Special Logon\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0570",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Detailed File Share\" -> r:Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0571",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"File Share\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0572",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Audit Other Object Access Events\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0573",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Removable Storage\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0574",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Audit Policy Change\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0575",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Authentication Policy Change\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0576",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Authorization Policy Change\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0577",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"MPSSVC Rule-Level Policy Change\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0578",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Other Policy Change Events\" -> r:Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0579",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Sensitive Privilege Use\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0580",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"IPsec Driver\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0581",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Other System Events\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0582",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Security State Change\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0583",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Security System Extension\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0584",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"System Integrity\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0585",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\GPExtensions\\{D76B9641-3288-4f75-942D-087DE603E3EA}",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\GPExtensions\\{D76B9641-3288-4f75-942D-087DE603E3EA} -> DllName"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0586",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PwdExpirationProtectionEnabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PwdExpirationProtectionEnabled -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0587",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> AdmPwdEnabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> AdmPwdEnabled -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0588",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordComplexity",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordComplexity -> 4"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0589",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordLength",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordLength -> n:^(\\d+) compare >= 15"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0590",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordAgeDays",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft Services\\AdmPwd -> PasswordAgeDays -> n:^(\\d+) compare <= 30"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0591",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> LocalAccountTokenFilterPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> LocalAccountTokenFilterPolicy -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0592",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation -> DependOnService",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation -> DependOnService -> r:Bowser MRxSmb20 NSI"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0593",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\mrxsmb10",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\mrxsmb10 -> Start",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\mrxsmb10 -> Start -> 4"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0594",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters -> SMB1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters -> SMB1 -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0595",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest -> UseLogonCredential",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest -> UseLogonCredential -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0596",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> AutoAdminLogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> AutoAdminLogon -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0597",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters -> NoNameReleaseOnDemand",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters -> NoNameReleaseOnDemand -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0598",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager -> SafeDllSearchMode",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager -> SafeDllSearchMode -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0599",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> ScreenSaverGracePeriod",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> ScreenSaverGracePeriod -> n:^(\\d+) compare <= 5"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0600",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Eventlog\\Security",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Eventlog\\Security -> WarningLevel",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Eventlog\\Security -> WarningLevel -> n:^(\\d+) compare <= 90"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0601",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableNetbios",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableNetbios -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0602",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableMulticast",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableMulticast -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0603",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnPublicNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableLLTDIO -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitLLTDIOOnPrivateNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0604",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnPublicNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableRspndr -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitRspndrOnPrivateNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0605",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\NETLOGON",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\SYSVOL",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\NETLOGON -> r:RequireMutualAuthentication=1 && r:RequireIntegrity=1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\SYSVOL -> r:RequireMutualAuthentication=1 && r:RequireIntegrity=1"
+  ],
+  "used_by": [
+   "provigil_win2012"
+  ]
+ },
+ {
+  "id": "S0606",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy -> fMinimizeConnections",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy -> fMinimizeConnections -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0607",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> RegisterSpoolerRemoteRpcEndPoint",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> RegisterSpoolerRemoteRpcEndPoint -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0608",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> RestrictDriverInstallationToAdministrators",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> RestrictDriverInstallationToAdministrators -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0609",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> NoWarningNoElevationOnInstall",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> NoWarningNoElevationOnInstall -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0610",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> UpdatePromptSettings",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> UpdatePromptSettings -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0611",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters -> AllowEncryptionOracle",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters -> AllowEncryptionOracle -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0612",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> DisableBkGndGroupPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> DisableBkGndGroupPolicy -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0613",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System -> EnumerateLocalUsers",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System -> EnumerateLocalUsers -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0614",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System -> AllowDomainPINLogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System -> AllowDomainPINLogon -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0615",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51 -> DCSettingIndex",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51 -> DCSettingIndex -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0616",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51 -> ACSettingIndex",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51 -> ACSettingIndex -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0617",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> fAllowUnsolicited",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> fAllowUnsolicited -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0618",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc -> RestrictRemoteClients",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc -> RestrictRemoteClients -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0619",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpServer -> Enabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpServer -> Enabled -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0620",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI -> EnumerateAdministrators",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI -> EnumerateAdministrators -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0621",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\EMET"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0622",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> AntiDetours",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> BannedFunctions",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings-> DeepHooks",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> ExploitAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> AntiDetours -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> BannedFunctions -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings-> DeepHooks -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> ExploitAction -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0623",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Internet Explorer\\iexplore.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Internet Explorer\\iexplore.exe -> +EAF+ eaf_modules:mshtml.dll;flash*.ocx;jscript*.dll;vbscript.dll;vgx.dll +ASR asr_modules:npjpi*.dll;jp2iexp.dll;vgx.dll;msxml4*.dll;wshom.ocx;scrrun.dll;vbscript.dll asr_zones:1;2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0624",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\7-Zip\\7z.exe -> -EAF",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\7-Zip\\7zG.exe -> -EAF",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\7-Zip\\7zFM.exe -> -EAF",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Adobe\\Adobe Photoshop CS*\\Photoshop.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Foxit Reader\\Foxit Reader.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Google\\Chrome\\Application\\chrome.exe -> +EAF+ eaf_modules:chrome_child.dll",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Google\\Google Talk\\googletalk.exe -> -DEP",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\iTunes\\iTunes.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Windows Live\\Writer\\WindowsLiveWriter.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Microsoft Lync\\communicator.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Windows Live\\Photo Gallery\\WLXPhotoGallery.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\SkyDrive\\SkyDrive.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\mIRC\\mirc.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Mozilla Firefox\\firefox.exe -> +EAF+ eaf_modules:mozjs.dll;xul.dll",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Mozilla Firefox\\plugin-container.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Mozilla Thunderbird\\thunderbird.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Opera\\opera.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Opera\\*\\opera.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Pidgin\\pidgin.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\QuickTime\\QuickTimePlayer.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Real\\RealPlayer\\realconverter.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Safari\\Safari.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Skype\\Phone\\Skype.exe -> -EAF",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\VideoLAN\\VLC\\vlc.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Winamp\\winamp.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Windows Live\\Mail\\wlmail.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Windows Media Player\\wmplayer.exe -> -EAF -MandatoryASLR",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\WinRAR\\winrar.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\WinRAR\\rar.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\WinRAR\\unrar.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\WinZip\\winzip32.exe",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\WinZip\\winzip64.exe"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0625",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Adobe\\Acrobat*\\Acrobat\\Acrobat.exe -> +EAF+ eaf_modules:AcroRd32.dll;Acrofx32.dll;AcroForm.api",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Adobe\\*\\Reader\\AcroRd32.exe -> +EAF+ eaf_modules:AcroRd32.dll;Acrofx32.dll;AcroForm.api",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\OUTLOOK.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\WINWORD.EXE -> +ASR asr_modules:flash*.ocx",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\EXCEL.EXE -> +ASR asr_modules:flash*.ocx",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\POWERPNT.EXE -> +ASR asr_modules:flash*.ocx",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\MSACCESS.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\MSPUB.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\INFOPATH.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\VISIO.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\VPREVIEW.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\LYNC.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\PPTVIEW.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\OFFICE1*\\OIS.EXE",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Java\\jre*\\bin\\java.exe -> -HeapSpray",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Java\\jre*\\bin\\javaw.exe -> -HeapSpray",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Java\\jre*\\bin\\javaws.exe -> -HeapSpray",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\Defaults -> *\\Windows NT\\Accessories\\wordpad.exe"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0626",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> ASLR",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> ASLR -> 3"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0627",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> DEP",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> DEP -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0628",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> SEHOP",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\EMET\\SysSettings -> SEHOP -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0629",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application -> Retention",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application -> Retention -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0630",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security -> Retention",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security -> Retention -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0631",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup -> Retention",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup -> Retention -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0632",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System -> Retention",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System -> Retention -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0633",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> NoDataExecutionPrevention",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> NoDataExecutionPrevention -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0634",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> NoHeapTerminationOnCorruption",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> NoHeapTerminationOnCorruption -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0635",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer -> PreXPSP2ShellProtocolBehavior",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer -> PreXPSP2ShellProtocolBehavior -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0636",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors -> DisableWindowsLocationProvider",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors -> DisableWindowsLocationProvider -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0637",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> LocalSettingOverrideSpynetReporting",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> LocalSettingOverrideSpynetReporting -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0638",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0639",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableIOAVProtection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableIOAVProtection -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0640",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableRealtimeMonitoring",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableRealtimeMonitoring -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0641",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableBehaviorMonitoring",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableBehaviorMonitoring -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0642",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableScriptScanning",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-TimeProtection -> DisableScriptScanning -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0643",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender -> DisableAntiSpyware",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender -> DisableAntiSpyware -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0644",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> fSingleSessionPerUser",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> fSingleSessionPerUser -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0645",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> UserAuthentication",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> UserAuthentication -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0646",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> MinEncryptionLevel",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> MinEncryptionLevel -> 3"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0647",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> DeleteTempDirsOnExit",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> DeleteTempDirsOnExit -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0648",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> PerSessionTempDir",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> PerSessionTempDir -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0649",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Error Reporting\\Consent",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Error Reporting\\Consent -> DefaultConsent",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Error Reporting\\Consent -> DefaultConsent -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0650",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging -> EnableScriptBlockLogging",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging -> EnableScriptBlockLogging -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0651",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowBasic",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowBasic -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0652",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowUnencryptedTraffic",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowUnencryptedTraffic -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0653",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowBasic",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowBasic -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0654",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowAutoConfig",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowAutoConfig -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0655",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowUnencryptedTraffic",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service -> AllowUnencryptedTraffic -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0656",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> NoAutoRebootWithLoggedOnUsers",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> NoAutoRebootWithLoggedOnUsers -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0657",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> NoAutoUpdate",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> NoAutoUpdate -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0658",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> ScheduledInstallDay",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU -> ScheduledInstallDay -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012",
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0659",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> LimitBlankPasswordUse",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> LimitBlankPasswordUse -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0660",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> AllocateDASD",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> AllocateDASD -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0661",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> SubmitControl",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> SubmitControl -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0662",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> VulnerableChannelAllowList"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0663",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerIntegrity -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0664",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0665",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 30"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0666",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> CachedLogonsCount",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> CachedLogonsCount -> n:^(\\d+) compare <= 4"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0667",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> AutoDisconnect",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> AutoDisconnect -> n:^(\\d+) compare <= 15"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0668",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> EnableForcedLogOff",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> EnableForcedLogOff -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0669",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:LSARPC",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:NETLOGON",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:SAMR"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0670",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine -> r:System\\\\CurrentControlSet\\\\Control\\\\Print\\\\Printers System\\\\CurrentControlSet\\\\Services\\\\Eventlog Software\\\\Microsoft\\\\OLAP Server|Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Print Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Windows System\\\\CurrentControlSet\\\\Control\\\\ContentIndex System\\\\CurrentControlSet\\\\Control\\\\Terminal Server System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\UserConfig System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\DefaultUserConfiguration Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Perflib System\\\\CurrentControlSet\\\\Services\\\\SysmonLog"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0671",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> restrictremotesam",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa -> restrictremotesam -> r:O:BAG:BAD:\\(A;;RC;;;BA\\)"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0672",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ShutdownWithoutLogon -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0673",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ConsentPromptBehaviorAdmin",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ConsentPromptBehaviorAdmin -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0674",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Kerberos Authentication Service\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0675",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Kerberos Service Ticket Operations\" -> r:Success and Failure"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0676",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Computer Account Management\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0677",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Distribution Group Management\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0678",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Other Account Management Events\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0679",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Directory Service Access\" -> r:Failure"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0680",
+  "condition": "all",
+  "rules": [
+   "c:auditpol.exe /get /subcategory:\"Directory Service Changes\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0681",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> LocalAccountTokenFilterPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> LocalAccountTokenFilterPolicy -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0682",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel -> DisableExceptionChainValidation",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel -> DisableExceptionChainValidation -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0683",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters -> EnableICMPRedirect",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters -> EnableICMPRedirect -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0684",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters -> PerformRouterDiscovery",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters -> PerformRouterDiscovery -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0685",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableNetbios",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableNetbios -> 2"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0686",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> NoWarningNoElevationOnInstall",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> NoWarningNoElevationOnInstall -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0687",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> PerSessionTempDir",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> PerSessionTempDir -> 1"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0688",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> AllowIndexingEncryptedStoresOrItems",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> AllowIndexingEncryptedStoresOrItems -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2",
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0689",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> ConnectedSearchPrivacy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> ConnectedSearchPrivacy -> 3"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0690",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting -> AutoApproveOSDumps",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting -> AutoApproveOSDumps -> 0"
+  ],
+  "used_by": [
+   "provigil_win2012r2"
+  ]
+ },
+ {
+  "id": "S0691",
+  "condition": "all",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> n:^(\\d+) compare <= 365"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0692",
+  "condition": "none",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> VulnerableChannelAllowList"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0693",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> RefusePasswordChange -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0694",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnablePlainTextPassword",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters -> EnablePlainTextPassword -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0695",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> allownullsessionfallback",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> allownullsessionfallback -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0696",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\pku2u",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\pku2u -> AllowOnlineID",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\pku2u -> AllowOnlineID -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0697",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultOutboundAction -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0698",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"PNP Activity\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0699",
+  "condition": "all",
+  "rules": [
+   "c:auditpol /get /subcategory:\"Group Membership\" -> r:Success"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0700",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print -> RpcAuthnLevelPrivacyEnabled",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print -> RpcAuthnLevelPrivacyEnabled -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0701",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnPublicNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableLLTDIO -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitLLTDIOOnPrivateNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0702",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnPublicNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableRspndr -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitRspndrOnPrivateNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0703",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections -> NC_ShowSharedAccessUI",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections -> NC_ShowSharedAccessUI -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0704",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\NETLOGON -> r:RequireMutualAuthentication=1 && r:RequireIntegrity=1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\SYSVOL -> r:RequireMutualAuthentication=1 && r:RequireIntegrity=1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0705",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars -> EnableRegistrars -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars -> DisableUPnPRegistrar -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars -> DisableInBand802DOT11Registrar -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars -> DisableFlashConfigRegistrar -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars -> DisableWPDRegistrar -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0706",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcUseNamedPipeProtocol",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcUseNamedPipeProtocol -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0707",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcAuthentication",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcAuthentication -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0708",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcProtocols",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> RpcProtocols -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0709",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> ForceKerberosForRpc",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\RPC -> ForceKerberosForRpc -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0710",
+  "condition": "any",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> RequirePlatformSecurityFeatures -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> RequirePlatformSecurityFeatures -> 3"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0711",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags -> 3"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0712",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0713",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> ConfigureSystemGuardLaunch",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> ConfigureSystemGuardLaunch -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0714",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters -> DevicePKInitBehavior",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters -> DevicePKInitBehavior -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters -> DevicePKInitEnabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\kerberos\\parameters -> DevicePKInitEnabled -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016",
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0715",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamNGCKeyROCAValidation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamNGCKeyROCAValidation -> n:(\\d+) compare >= 1"
+  ],
+  "used_by": [
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0716",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateManager",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateManager -> AllowSharedLocalAppData",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateManager -> AllowSharedLocalAppData -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0717",
+  "condition": "any",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection -> AllowTelemetry -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection -> AllowTelemetry -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0718",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0719",
+  "condition": "any",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace -> AllowWindowsInkWorkspace -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace -> AllowWindowsInkWorkspace -> 1"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0720",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> EnableUserControl",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> EnableUserControl -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0721",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> AlwaysInstallElevated",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> AlwaysInstallElevated -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0722",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> SafeForScripting",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer -> SafeForScripting -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0723",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> ManagePreviewBuildsPolicyValue",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> ManagePreviewBuildsPolicyValue -> 0"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0724",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferFeatureUpdates -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferFeatureUpdatesPeriodInDays -> n:^(\\d+) compare >= 180"
+  ],
+  "used_by": [
+   "provigil_win2016"
+  ]
+ },
+ {
+  "id": "S0725",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"MaximumPasswordAge\"; Remove-Item $env:TEMP\\secpol.cfg -> n:MaximumPasswordAge = (\\d+) compare <= 365",
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"MaximumPasswordAge\"; Remove-Item $env:TEMP\\secpol.cfg -> n:MaximumPasswordAge = (\\d+) compare > 0"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0726",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"MinimumPasswordAge\"; Remove-Item $env:TEMP\\secpol.cfg -> n:MinimumPasswordAge = (\\d+) compare >= 1"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0727",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"MinimumPasswordLength\"; Remove-Item $env:TEMP\\secpol.cfg -> n:MinimumPasswordLength = (\\d+) compare >= 14"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0728",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"LockoutDuration\"; Remove-Item $env:TEMP\\secpol.cfg -> n:LockoutDuration = (\\d+) compare >= 15"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0729",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"LockoutBadCount\"; Remove-Item $env:TEMP\\secpol.cfg -> n:LockoutBadCount = (\\d+) compare <= 5",
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"LockoutBadCount\"; Remove-Item $env:TEMP\\secpol.cfg -> n:LockoutBadCount = (\\d+) compare > 0"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0730",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell secedit /export /cfg $env:TEMP\\secpol.cfg; Get-Content $env:TEMP\\secpol.cfg | Select-String \"ResetLockoutCount\"; Remove-Item $env:TEMP\\secpol.cfg -> n:ResetLockoutCount = (\\d+) compare >= 15"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0731",
+  "condition": "all",
+  "rules": [
+   "c:%WINDIR%\\SysNative\\WindowsPowerShell\\v1.0\\powershell -NoProfile -Command \"[bool](Get-CimInstance -Query 'SELECT * FROM Win32_UserAccount WHERE LocalAccount = TRUE AND SID LIKE ''S-1-5-21-%-501''' | Where-Object -Property Disabled)\" -> r:True"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0732",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters -> VulnerableChannelAllowList"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0733",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 30",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0734",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedPaths -> Machine -> r:System\\\\CurrentControlSet\\\\Control\\\\Print\\\\Printers System\\\\CurrentControlSet\\\\Services\\\\Eventlog Software\\\\Microsoft\\\\OLAP Server|Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Print Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Windows System\\\\CurrentControlSet\\\\Control\\\\ContentIndex System\\\\CurrentControlSet\\\\Control\\\\Terminal Server System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\UserConfig System\\\\CurrentControlSet\\\\Control\\\\Terminal Server\\\\DefaultUserConfiguration Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Perflib System\\\\CurrentControlSet\\\\Services\\\\SysmonLog"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0735",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> NtlmMinClientSec",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> NtlmMinClientSec -> 536870912"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0736",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Spooler",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Spooler -> Start",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Spooler -> Start -> 4"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0737",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> RpcAuthentication",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> RpcAuthentication -> 1"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0738",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard -> LsaCfgFlags -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0739",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableAppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds ->EnableAppInstaller -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0740",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableExperimentalFeatures",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds -> EnableExperimentalFeatures -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0741",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableHashOverride",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds -> EnableHashOverride -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0742",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableMSAppInstallerProtocol",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds -> EnableMSAppInstallerProtocol -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0743",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowDigest",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client -> AllowDigest -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0744",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> ManagePreviewBuildsPolicyValue",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> ManagePreviewBuildsPolicyValue -> 1"
+  ],
+  "used_by": [
+   "provigil_win2019"
+  ]
+ },
+ {
+  "id": "S0745",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferQualityUpdates",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferQualityUpdates -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferQualityUpdatesPeriodInDays",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate -> DeferQualityUpdatesPeriodInDays -> 0"
+  ],
+  "used_by": [
+   "provigil_win2019",
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0746",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> n:^(\\d+) compare <= 30",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> MaximumPasswordAge -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0747",
+  "condition": "all",
+  "rules": [
+   "c:reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v legalnoticetext -> r:legalnoticetext\\s*\\t*reg_sz\\s*\\t*\\w+"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0748",
+  "condition": "all",
+  "rules": [
+   "c:reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v legalnoticecaption -> r:legalnoticecaption\\s*\\t*reg_sz\\s*\\t*\\w+"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0749",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon -> ForceUnlockLogon -> 1"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0750",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters -> SMBServerNameHardeningLevel",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters -> SMBServerNameHardeningLevel -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0751",
+  "condition": "all",
+  "rules": [
+   "c:powershell \"$null = secedit /export /cfg $env:temp/secexport.cfg; $(gc $env:temp/secexport.cfg | Select-String \\\"LSAAnonymousNameLookup\\\").ToString().Split(\\\"=\\\")[1].Trim()\" -> r:0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0752",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> !r:LSARPC|NETLOGON|SAMR|BROWSER"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0753",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> !r:HydraLSPipe|TermServLicensing|BROWSER"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0754",
+  "condition": "all",
+  "rules": [
+   "c:reg query HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths /v Machine -> r:System\\\\CurrentControlSet\\\\Control && r:System\\\\CurrentControlSet\\\\Control && r:Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0755",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionShares",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionShares -> r:\\S+"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0756",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters -> SupportedEncryptionTypes",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters -> SupportedEncryptionTypes -> r:2147483640"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0757",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity -> r:1|2"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0758",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> NtlmMinClientSec",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> NtlmMinClientSec -> 537395200"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0759",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -> ShutdownWithoutLogon -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0760",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultOutboundAction",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile -> DefaultOutboundAction -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0761",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\GPExtensions",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\GPExtensions\\{D76B9641-3288-4f75-942D-087DE603E3EA}"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0762",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableLLTDIO",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableLLTDIO -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitLLTDIOOnPrivateNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowLLTDIOOnPublicNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0763",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableRspndr",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableRspndr -> 1"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0764",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\NETLOGON",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\SYSVOL",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\NETLOGON -> r:RequireMutualAuthentication=1, RequireIntegrity=1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider\\HardenedPaths -> \\\\*\\SYSVOL -> r:RequireMutualAuthentication=1, RequireIntegrity=1"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0765",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> ForceKerberosForRpc",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers -> ForceKerberosForRpc -> 1"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0766",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+   "not r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> UpdatePromptSettings",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint -> UpdatePromptSettings -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0767",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamNGCKeyROCAValidation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamNGCKeyROCAValidation -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0768",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Spynet -> SpynetReporting -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0769",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender -> DisableAntiSpyware",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsDefender -> DisableAntiSpyware -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022"
+  ]
+ },
+ {
+  "id": "S0770",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> AllowIndexingEncryptedStoresOrItems",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search -> AllowIndexingEncryptedStoresOrItems -> 0"
+  ],
+  "used_by": [
+   "provigil_win2022",
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0771",
+  "condition": "all",
+  "rules": [
+   "not c:net user -> r:Administrator|Администратор|Amministratore|Beheerder|Järjestelmänvalvoja|Správce|Rendszergazda|Yönetici |Διαχειριστής|管理者|管理员|系統管理員|관리자|مسؤول | מנהל |ผู้ดูแลระบบ"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0772",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> SCENoApplyLegacyAuditPolicy",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa -> SCENoApplyLegacyAuditPolicy -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0773",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerForceIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters -> LDAPServerForceIntegrity -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0774",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+   "not r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters -> NullSessionPipes -> r:HydraLSPipe|TermServLicensing|BROWSER",
+   "c:reg query \"HKLM\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters\" /v NullSessionPipes -> r:NullSessionPipes\\s*\\t*REG_MULTI_SZ && !r:NullSessionPipes\\s*\\t*REG_MULTI_SZ\\s*\\t*\\w+"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0775",
+  "condition": "all",
+  "rules": [
+   "c:reg query HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurePipeServers\\Winreg\\AllowedExactPaths /v Machine -> r:System\\\\CurrentControlSet\\\\Control\\\\ProductOptions && r:System\\\\CurrentControlSet\\\\Control\\\\Server && r:Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0776",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientConfidentiality",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientConfidentiality -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0777",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\LDAP -> LDAPClientIntegrity -> r:1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0778",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> AuditReceivingNTLMTraffic",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> AuditReceivingNTLMTraffic -> 2"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0779",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> AuditNTLMInDomain",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services\\Netlogon\\Parameters -> AuditNTLMInDomain -> 7"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0780",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> RestrictSendingNTLMTraffic",
+   "r:HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Lsa\\MSV1_0 -> RestrictSendingNTLMTraffic -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0781",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging -> LogFilePath",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging -> LogFilePath -> r:System32\\\\logfiles\\\\firewall\\\\domainfw\\.log"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0782",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging -> LogFilePath",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging -> LogFilePath -> r:System32\\\\logfiles\\\\firewall\\\\privatefw\\.log"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0783",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging -> LogFilePath",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging -> LogFilePath -> r:System32\\\\logfiles\\\\firewall\\\\publicfw\\.log"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0784",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography\\Wintrust\\Config",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography\\Wintrust\\Config -> EnableCertPaddingCheck",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography\\Wintrust\\Config -> EnableCertPaddingCheck -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0785",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableMDNS",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> EnableMDNS -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0786",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> DisableIPv6DefaultDnsServers",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient -> DisableIPv6DefaultDnsServers -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0787",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditClientDoesNotSupportEncryption",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditClientDoesNotSupportEncryption -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0788",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditClientDoesNotSupportSigning",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditClientDoesNotSupportSigning -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0789",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditInsecureGuestLogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> AuditInsecureGuestLogon -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0790",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Bowser",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Bowser -> EnableMailslots",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Bowser -> EnableMailslots -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0791",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> MinSmb2Dialect",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> MinSmb2Dialect -> 785"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0792",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> InvalidAuthenticationDelayTimeInMs",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> InvalidAuthenticationDelayTimeInMs -> 2000"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0793",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditInsecureGuestLogon",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditInsecureGuestLogon -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0794",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditServerDoesNotSupportEncryption",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditServerDoesNotSupportEncryption -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0795",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditServerDoesNotSupportSigning",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> AuditServerDoesNotSupportSigning -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0796",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> EnableAuthRateLimiter",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanServer -> EnableAuthRateLimiter -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0797",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider -> EnableMailslots",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\NetworkProvider -> EnableMailslots -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0798",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> MinSmb2Dialect",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> MinSmb2Dialect -> 785"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0799",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> RequireEncryption",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation -> RequireEncryption -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0800",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnDomain",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnDomain -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> AllowRspndrOnPublicNet -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> EnableRspndr -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\LLTD -> ProhibitRspndrOnPrivateNet -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0801",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\WPP",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\WPP -> WindowsProtectedPrintGroupPolicyState",
+   "r:HKEY_LOCAL_MACHINE\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\WPP -> WindowsProtectedPrintGroupPolicyState -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0802",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting -> Disabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting -> Disabled -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\PCHealth\\ErrorReporting -> DoReport -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0803",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> ADPasswordEncryptionEnabled",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> ADPasswordEncryptionEnabled -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0804",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PasswordComplexity",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PasswordComplexity -> 4"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0805",
+  "condition": "any",
+  "rules": [
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PasswordAgeDays",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PasswordAgeDays -> n:^(\\d+) compare <= 30"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0806",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PostAuthenticationResetDelay",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PostAuthenticationResetDelay -> n:^(\\d+) compare <= 8",
+   "not r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS -> PostAuthenticationResetDelay -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0807",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Netlogon\\Parameters",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Netlogon\\Parameters -> BlockNetbiosDiscovery",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Netlogon\\Parameters -> BlockNetbiosDiscovery -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0808",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamrChangeUserPasswordApiPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamrChangeUserPasswordApiPolicy -> 2"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0809",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamrChangeUserPasswordApiPolicy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\SAM -> SamrChangeUserPasswordApiPolicy -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0810",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Appx",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Appx -> DisablePerUserUnsignedPackagesByDefault",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Appx -> DisablePerUserUnsignedPackagesByDefault -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0811",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableAppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller ->EnableAppInstaller -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0812",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableLocalArchiveMalwareScanOverride",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableLocalArchiveMalwareScanOverride -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0813",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableMSAppInstallerProtocol",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller ->EnableMSAppInstallerProtocol -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0814",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableBypassCertificatePinningForMicrosoftStore",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableBypassCertificatePinningForMicrosoftStore -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0815",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableWindowsPackageManagerCommandLineInterfaces",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller -> EnableWindowsPackageManagerCommandLineInterfaces -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0816",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> DisableMotWOnInsecurePathCopy",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer -> DisableMotWOnInsecurePathCopy -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0817",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Features",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Features -> PassiveRemediation",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\MicrosoftAccount -> PassiveRemediation -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0818",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\NIS",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\NIS -> EnableConvertWarnToBlock",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\NIS -> EnableConvertWarnToBlock -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0819",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection -> OobeEnableRtpAndSigUpdate",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection -> OobeEnableRtpAndSigUpdate -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0820",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection -> BruteForceProtectionAggressiveness",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection -> BruteForceProtectionAggressiveness -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0821",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection -> BruteForceProtectionConfiguredState",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Brute Force Protection -> BruteForceProtectionConfiguredState -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0822",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Remote Encryption Protection",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Remote Encryption Protection -> RemoteEncryptionProtectionAggressiveness",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Remediation\\Behavioral Network Blocks\\Remote Encryption Protection -> RemoteEncryptionProtectionAggressiveness -> r:^1$|^2$"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0823",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> QuickScanIncludeExclusions",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> QuickScanIncludeExclusions -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0824",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> DisablePackedExeScanning",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> DisablePackedExeScanning -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0825",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> DaysUntilAggressiveCatchupQuickScan",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan -> DaysUntilAggressiveCatchupQuickScan -> 7"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0826",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender -> HideExclusionsFromLocalUsers",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender -> HideExclusionsFromLocalUsers -> 1"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0827",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> SCClipLevel",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services -> SCClipLevel -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ },
+ {
+  "id": "S0828",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds -> AllowBasicAuthInClear",
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds -> AllowBasicAuthInClear -> 0"
+  ],
+  "used_by": [
+   "provigil_win2025"
+  ]
+ }
+]

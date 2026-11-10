@@ -1,0 +1,77 @@
+[package]
+name = "siem-api"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Axum REST & WebSocket SIEM Manager Server in Rust"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-engine = { path = "../siem-engine" }
+siem-config = { path = "../siem-config" }
+siem-xml = { path = "../siem-xml" }
+# the ProVigil agent's central configuration (agent_config.rs)
+quick-xml = "0.36"
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1.40", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+regex = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", features = ["json"] }
+clickhouse = { version = "0.13", features = ["time", "uuid"] }
+provigil-common = { path = "../provigil-common", features = ["soar"] }
+redis = { version = "0.23", features = ["tokio-comp", "connection-manager"] }
+siem-sqlite = { path = "../siem-sqlite" }
+provigil-agent-server = { path = "../provigil-agent-server" }
+siem-wdb = { path = "../siem-wdb" }
+siem-cdb = { path = "../siem-cdb" }
+siem-parser-gen = { path = "../siem-parser-gen" }
+siem-authd = { path = "../siem-authd" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
+siem-ipc = { path = "../siem-ipc" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ai = { path = "../siem-ai" }
+siem-triage = { path = "../siem-triage" }
+siem-suppression = { path = "../siem-suppression" }
+siem-retro = { path = "../siem-retro" }
+siem-predict = { path = "../siem-predict" }
+siem-analyst-insight = { path = "../siem-analyst-insight" }
+siem-org-memory = { path = "../siem-org-memory" }
+siem-swarm = { path = "../siem-swarm" }
+siem-decision = { path = "../siem-decision" }
+rand = "0.8"
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+async-trait = "0.1"
+anyhow = "1"
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-native-tls", "builder", "smtp-transport"] }
+tempfile = "3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+sha2 = "0.10"
+# EDR YARA: the rule engine (shared with the agent program) and the YARA Forge release zip
+siem-active-response = { path = "../siem-active-response" }
+# live response results: gzip + base64 chunks from the agent
+flate2 = "1"
+base64 = "0.22"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+ring = "0.17"
+local-ip-address = "0.6"
+sysinfo = "0.30"
+siem-risk-fabric = { path = "../siem-risk-fabric" }
+siem-redswarm = { path = "../siem-redswarm" }
+siem-intent-engine = { path = "../siem-intent-engine" }
+siem-deception = { path = "../siem-deception" }
+# the vulnerability report (vuln_report.rs)
+rust_xlsxwriter = "0.102"
+
+[dev-dependencies]
+# the internal API tests call the router directly
+tower = { version = "0.5", features = ["util"] }
+# the real engine, for the test of its active responses
+siem-analysisd = { path = "../siem-analysisd" }

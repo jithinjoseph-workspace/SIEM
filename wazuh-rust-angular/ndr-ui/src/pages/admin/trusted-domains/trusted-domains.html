@@ -1,0 +1,389 @@
+<section class="admin-panel td-panel">
+
+  <!-- Ambient Glows -->
+  <div class="td-ambient-glow glow--cyan" aria-hidden="true"></div>
+  <div class="td-ambient-glow glow--purple" aria-hidden="true"></div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="td-hero-strip">
+    <div class="td-hero-left">
+      <div class="td-system-badge">
+        <span class="td-pulse-dot"></span>
+        <span>DNS ALLOWLIST / BEACON EXEMPTION</span>
+        <span class="td-badge-sep">/</span>
+        <span class="td-badge-status">{{ trustedDomains().length }} DOMAINS EXEMPT</span>
+      </div>
+      <h1 class="td-headline">Trusted Domains &amp; <em>DNS</em> Whitelist</h1>
+      <p class="td-tagline">Exempt verified SaaS FQDNs from periodic beaconing alarms, DGA detection, and threat intelligence alerts.</p>
+    </div>
+
+    <div class="td-hero-controls">
+      <!-- AI Suggest Action -->
+      <button type="button" class="td-action-btn btn--primary" (click)="runAiSuggest()" [disabled]="tdAiLoading()">
+        <lucide-icon [name]="SparklesIcon" class="w-4 h-4" [class.spinning]="tdAiLoading()"></lucide-icon>
+        <span>{{ tdAiLoading() ? 'Analyzing Traffic…' : 'AI Heuristic Scan' }}</span>
+      </button>
+
+      <!-- Refresh -->
+      <button type="button" class="td-action-btn" (click)="loadTrustedDomains()" title="Refresh trusted domains">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingTrustedDomains()"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="td-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <div class="td-clock-text">
+          <span class="td-clock-time">{{ clock.currentTime() }}</span>
+          <span class="td-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. DNS Governance Deck (4 Unique Cards) ────────────────── -->
+  <section class="dns-governance-deck" aria-label="DNS Governance Diagnostic Deck">
+
+    <!-- Card 1: Global Allowed FQDNs -->
+    <div class="td-deck-card td-deck--global">
+      <div class="td-card-glow cyan"></div>
+      <div class="td-card-top">
+        <div class="td-card-tag">
+          <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>GLOBAL ALLOWLIST</span>
+        </div>
+        <span class="td-status-pill cyan">{{ globalDomains().length }} ALL-TENANT</span>
+      </div>
+
+      <div class="td-global-body">
+        <div class="g-stat-lead">
+          <span class="g-num text-cyan-400 font-mono">{{ globalDomains().length }}</span>
+          <span class="g-desc">SYSTEM-WIDE FQDNS</span>
+        </div>
+
+        <div class="g-scope-bar">
+          <div class="g-fill" [style.width.%]="trustedDomains().length ? Math.round((globalDomains().length / trustedDomains().length) * 100) : 0"></div>
+        </div>
+
+        <div class="g-meta-row">
+          <span class="m-lbl">SCOPE:</span>
+          <span class="m-val text-cyan-300 font-mono">Applies to All Organizations</span>
+        </div>
+      </div>
+
+      <div class="td-card-footer">
+        <span class="td-chip">DNS BEACON EXEMPT</span>
+        <span class="td-chip">CROSS-TENANT</span>
+        <span class="td-chip cyan">ARMED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Tenant Namespace Scopes -->
+    <div class="td-deck-card td-deck--tenant">
+      <div class="td-card-glow emerald"></div>
+      <div class="td-card-top">
+        <div class="td-card-tag">
+          <lucide-icon [name]="BuildingIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>TENANT SCOPES</span>
+        </div>
+        <span class="td-status-pill emerald">{{ tenantDomains().length }} ORG RULES</span>
+      </div>
+
+      <div class="td-tenant-body">
+        <div class="t-stat-lead">
+          <span class="t-num text-emerald-400 font-mono">{{ tenantDomains().length }}</span>
+          <span class="t-desc">ORGANIZATION BOUND</span>
+        </div>
+
+        <div class="t-scope-bar">
+          <div class="t-fill" [style.width.%]="trustedDomains().length ? Math.round((tenantDomains().length / trustedDomains().length) * 100) : 0"></div>
+        </div>
+
+        <div class="t-meta-row">
+          <span class="m-lbl">ISOLATION:</span>
+          <span class="m-val text-emerald-300 font-mono">Hardwall RBAC Boundary</span>
+        </div>
+      </div>
+
+      <div class="td-card-footer">
+        <span class="td-chip">STRICT RBAC</span>
+        <span class="td-chip">TENANT SPECIFIC</span>
+        <span class="td-chip success">ISOLATED</span>
+      </div>
+    </div>
+
+    <!-- Card 3: AI Beacon Classifier -->
+    <div class="td-deck-card td-deck--ai">
+      <div class="td-card-glow amber"></div>
+      <div class="td-card-top">
+        <div class="td-card-tag">
+          <lucide-icon [name]="SparklesIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>AI BEACON CLASSIFIER</span>
+        </div>
+        <span class="td-status-pill amber">{{ tdAiSuggestions().length }} CANDIDATES</span>
+      </div>
+
+      <div class="td-ai-body">
+        <div class="ai-stat-lead">
+          <span class="ai-num text-amber-400 font-mono">{{ tdAiSuggestions().length }}</span>
+          <span class="ai-desc">DETECTED HIGH-FREQ FQDNS</span>
+        </div>
+
+        <div class="ai-status-row">
+          <span class="ai-pill-state" [class.ready]="tdAiAvailable() !== false">
+            {{ tdAiAvailable() === false ? 'AI Engine Unconfigured' : 'Neural Classifier Armed' }}
+          </span>
+        </div>
+
+        <div class="ai-meta-row">
+          <span class="m-lbl">ALGORITHM:</span>
+          <span class="m-val font-mono text-amber-300">Fast Fourier &amp; Heuristic DGA</span>
+        </div>
+      </div>
+
+      <div class="td-card-footer">
+        <span class="td-chip">PERIODIC CHECK</span>
+        <span class="td-chip">ZERO DGA FALSE</span>
+        <span class="td-chip amber">ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Category Distribution -->
+    <div class="td-deck-card td-deck--category">
+      <div class="td-card-glow purple"></div>
+      <div class="td-card-top">
+        <div class="td-card-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>EXEMPTION CATEGORIES</span>
+        </div>
+        <span class="td-status-pill purple">TAXONOMY</span>
+      </div>
+
+      <div class="td-category-body">
+        <div class="cat-split-grid">
+          <div class="cat-box">
+            <span class="cat-num text-purple-400 font-mono">{{ beaconCategoryCount }}</span>
+            <span class="cat-lbl">DNS BEACON</span>
+          </div>
+          <div class="cat-box">
+            <span class="cat-num text-cyan-400 font-mono">{{ threatIntelCategoryCount }}</span>
+            <span class="cat-lbl">THREAT INTEL</span>
+          </div>
+        </div>
+
+        <div class="cat-meta-row">
+          <span class="m-lbl">ENGINES:</span>
+          <span class="m-val text-slate-300 font-mono">Agent-S &amp; Agent-Z Exemption</span>
+        </div>
+      </div>
+
+      <div class="td-card-footer">
+        <span class="td-chip">AGENT-Z EXEMPT</span>
+        <span class="td-chip">AGENT-S BYPASS</span>
+        <span class="td-chip purple">FILTERED</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. AI Suggestions Stream ────────────────────────────────── -->
+  <section class="td-card glass-card td-ai-section" *ngIf="tdAiSuggestions().length > 0">
+    <div class="td-card-head">
+      <div>
+        <div class="td-tag amber">AUTOMATED TRAFFIC CLASSIFICATION</div>
+        <h2 class="td-card-title">Pending AI Domain Suggestions</h2>
+        <p class="td-card-desc">AI heuristic engine analyzed high-frequency network queries. Approve legitimate SaaS endpoints to suppress repetitive beaconing alerts.</p>
+      </div>
+      <span class="td-pending-badge">{{ tdAiSuggestions().length }} Candidates Available</span>
+    </div>
+
+    <div class="td-suggestion-grid">
+      <div *ngFor="let s of tdAiSuggestions()" class="td-sugg-blade" [class.trusted]="s.verdict === 'TRUSTED'" [class.suspicious]="s.verdict !== 'TRUSTED'">
+        <div class="sugg-left">
+          <div class="sugg-icon-box" [class.trusted]="s.verdict === 'TRUSTED'">
+            <lucide-icon [name]="GlobeIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div class="sugg-text">
+            <strong class="font-mono text-slate-100">{{ s.domain }}</strong>
+            <span class="sugg-sub text-slate-400">
+              <span class="text-amber-400 font-mono font-bold">{{ s.cnt | number }}</span> queries · {{ s.reason }}
+            </span>
+          </div>
+        </div>
+
+        <div class="sugg-actions">
+          <button *ngIf="s.verdict === 'TRUSTED'" type="button" class="td-btn-approve" (click)="approveTdSuggestion(s)">
+            <lucide-icon [name]="ApproveIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Add Global</span>
+          </button>
+          <button type="button" class="td-btn-dismiss" (click)="dismissTdSuggestion(s.domain)">
+            <lucide-icon [name]="DismissIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Dismiss</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. Add Domain Entry Console ─────────────────────────────── -->
+  <section class="td-card glass-card">
+    <div class="td-card-head">
+      <div>
+        <div class="td-tag cyan">ENTRY PROVISIONING</div>
+        <h2 class="td-card-title">Add Trusted Domain Exemption</h2>
+        <p class="td-card-desc">Add a fully-qualified domain name (FQDN) or wildcard suffix to suppress detection noise.</p>
+      </div>
+    </div>
+
+    <form (submit)="addTrustedDomain(); $event.preventDefault()" class="td-provision-form">
+      <div class="td-form-grid">
+        <!-- Domain -->
+        <div class="td-form-field">
+          <label>DOMAIN NAME (FQDN)</label>
+          <input [ngModel]="tdNewDomain()" (ngModelChange)="tdNewDomain.set($event)" name="domain" placeholder="e.g. telemetry.microsoft.com" class="td-input font-mono" />
+        </div>
+
+        <!-- Category -->
+        <div class="td-form-field">
+          <label>EXEMPTION CATEGORY</label>
+          <select [ngModel]="tdNewCategory()" (ngModelChange)="tdNewCategory.set($event)" name="category" class="td-input">
+            <option value="dns_beacon">DNS Beaconing Alarm Bypass</option>
+            <option value="threat_intel">Threat Intel IOC Exemption</option>
+          </select>
+        </div>
+
+        <!-- Scope -->
+        <div class="td-form-field">
+          <label>GOVERNANCE SCOPE</label>
+          <select [ngModel]="tdNewScope()" (ngModelChange)="tdNewScope.set($event)" name="scope" class="td-input">
+            <option value="">Global (All Tenants)</option>
+            <option *ngFor="let t of tenants()" [value]="t.id">{{ t.name }} ({{ t.id }})</option>
+          </select>
+        </div>
+
+        <!-- Note -->
+        <div class="td-form-field">
+          <label>AUDIT NOTE (OPTIONAL)</label>
+          <input [ngModel]="tdNewNote()" (ngModelChange)="tdNewNote.set($event)" name="note" placeholder="e.g. Approved SOC agent telemetry" class="td-input" />
+        </div>
+
+        <!-- Submit -->
+        <div class="td-form-submit">
+          <button type="submit" class="td-submit-btn" [disabled]="tdSaving() || !tdNewDomain().trim()">
+            <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+            <span>{{ tdSaving() ? 'Saving Rule...' : 'Add Exemption' }}</span>
+          </button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- ── 5. Domain Directory Cyber Matrix Table ──────────────────── -->
+  <section class="td-card glass-card">
+    <div class="td-card-head">
+      <div>
+        <div class="td-tag emerald">DIRECTORY</div>
+        <h2 class="td-card-title">Registered Trusted Domains</h2>
+        <p class="td-card-desc">Active allowlist entries monitored across network ingestion pipelines.</p>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="td-toolbar">
+        <div class="td-scope-tabs">
+          <button type="button" class="td-tab" [class.active]="scopeFilter === 'all'" (click)="scopeFilter = 'all'">
+            All ({{ trustedDomains().length }})
+          </button>
+          <button type="button" class="td-tab" [class.active]="scopeFilter === 'global'" (click)="scopeFilter = 'global'">
+            Global ({{ globalDomains().length }})
+          </button>
+          <button type="button" class="td-tab" [class.active]="scopeFilter === 'tenant'" (click)="scopeFilter = 'tenant'">
+            Tenant ({{ tenantDomains().length }})
+          </button>
+        </div>
+
+        <div class="td-search-box">
+          <lucide-icon [name]="SearchIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <input [(ngModel)]="domainSearch" placeholder="Filter domains, categories, notes..." class="td-search-input" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loadingTrustedDomains()" class="td-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Retrieving domain allowlist matrix...</span>
+    </div>
+
+    <!-- Empty -->
+    <div *ngIf="!loadingTrustedDomains() && filteredDomains.length === 0" class="td-empty-state">
+      <lucide-icon [name]="GlobeIcon" class="w-8 h-8 text-slate-500"></lucide-icon>
+      <strong>No Domains Match Filters</strong>
+      <span>Provision a domain exemption above or click "AI Heuristic Scan" to discover candidates.</span>
+    </div>
+
+    <!-- Cyber Table -->
+    <div *ngIf="!loadingTrustedDomains() && filteredDomains.length > 0" class="td-table-wrap">
+      <table class="td-cyber-table">
+        <thead>
+          <tr>
+            <th class="col-domain">Domain Name</th>
+            <th class="col-scope">Scope Allocation</th>
+            <th class="col-cat">Exemption Category</th>
+            <th class="col-note">Audit Note</th>
+            <th class="col-created">Registered</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let d of filteredDomains">
+            <!-- Domain Name -->
+            <td class="col-domain">
+              <div class="domain-cell">
+                <div class="domain-icon-box" [class.global]="d.scope === 'global'">
+                  <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5" [class.text-cyan-400]="d.scope === 'global'" [class.text-emerald-400]="d.scope === 'tenant'"></lucide-icon>
+                </div>
+                <strong class="domain-name font-mono">{{ d.domain }}</strong>
+              </div>
+            </td>
+
+            <!-- Scope -->
+            <td class="col-scope">
+              <span *ngIf="d.scope === 'global'" class="scope-pill global">
+                <span>Global System</span>
+              </span>
+              <span *ngIf="d.scope === 'tenant'" class="scope-pill tenant">
+                <lucide-icon [name]="BuildingIcon" class="w-3 h-3 text-emerald-400"></lucide-icon>
+                <span>{{ tenantName(d.tenant_id) }}</span>
+              </span>
+            </td>
+
+            <!-- Category -->
+            <td class="col-cat">
+              <span class="cat-pill font-mono" [class.beacon]="d.category === 'dns_beacon'" [class.intel]="d.category === 'threat_intel'">
+                {{ d.category === 'dns_beacon' ? 'DNS Beacon' : (d.category === 'threat_intel' ? 'Threat Intel' : d.category) }}
+              </span>
+            </td>
+
+            <!-- Note -->
+            <td class="col-note">
+              <span class="note-text text-slate-400">{{ d.note || '—' }}</span>
+            </td>
+
+            <!-- Registered Date -->
+            <td class="col-created">
+              <span class="font-mono text-xs text-slate-400">{{ d.created_at ? (d.created_at | date:'mediumDate') : 'System Provisioned' }}</span>
+            </td>
+
+            <!-- Actions -->
+            <td class="col-actions">
+              <button type="button" class="td-danger-btn" (click)="deleteTrustedDomain(d.domain, d.tenant_id)" title="Remove domain exemption">
+                <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</section>

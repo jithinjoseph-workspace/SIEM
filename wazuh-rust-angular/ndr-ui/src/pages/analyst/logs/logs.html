@@ -1,0 +1,139 @@
+<div class="network-shell">
+
+  <!-- ── Tabs ─────────────────────────── -->
+  <div class="network-tabs-container">
+    <div class="network-tabs">
+      <button [class.active]="activeTab === 'logs'" (click)="activeTab = 'logs'" class="tab-btn">
+        <lucide-icon [name]="FileTextIcon" class="tab-icon"></lucide-icon>
+        <span>Network Logs</span>
+      </button>
+      <button [class.active]="activeTab === 'live'" (click)="activeTab = 'live'" class="tab-btn">
+        <lucide-icon [name]="ActivityIcon" class="tab-icon"></lucide-icon>
+        <span>Live Stream</span>
+        <span class="tab-pulse-dot" *ngIf="activeTab !== 'live'"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Logs view ─────────────────────── -->
+  <div *ngIf="activeTab === 'logs'" class="network-content">
+
+    <div class="logs-header">
+      <div class="logs-header-left">
+        <div class="eyebrow">Network Telemetry</div>
+        <h2 class="logs-title">Network Logs</h2>
+        <p class="logs-subtitle">Deep packet inspection — Agent-Z &amp; Agent-S</p>
+
+        <div class="logs-status-strip">
+          <div class="status-box">
+            <span class="status-label">Visible</span>
+            <strong>{{ filteredLogs.length }}</strong>
+          </div>
+          <div class="status-box">
+            <span class="status-label">Buffer</span>
+            <strong>{{ logs.length }}</strong>
+          </div>
+          <div class="sensor-pills" *ngIf="sensorIds.length">
+            <span class="sensor-pill" *ngFor="let sid of sensorIds">{{ sid }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="logs-header-right">
+        <div class="logs-actions">
+          <label class="logs-search">
+            <lucide-icon [name]="SearchIcon" class="search-icon"></lucide-icon>
+            <input type="text" [(ngModel)]="searchText" (ngModelChange)="onSearch()"
+              placeholder="Filter IP, protocol, source" />
+          </label>
+
+          <button (click)="loadLogs()" class="refresh-button" title="Refresh" aria-label="Refresh logs">
+            <lucide-icon [name]="RefreshIcon" class="action-icon"></lucide-icon>
+          </button>
+
+          <div class="export-group">
+            <select [(ngModel)]="timeRange" (change)="onTimeRangeChange()" class="clean-select">
+              <option [ngValue]="24">1 Day</option>
+              <option [ngValue]="168">7 Days</option>
+            </select>
+            <div class="export-divider"></div>
+            <select [(ngModel)]="exportFormat" class="clean-select">
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+              <option value="pdf">PDF</option>
+            </select>
+            <button (click)="exportLogs()" class="export-btn" [title]="'Export as ' + exportFormat.toUpperCase()">
+              <lucide-icon [name]="DownloadIcon" class="action-icon"></lucide-icon>
+              Export
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Terminal panel ─────────────────── -->
+    <section class="logs-terminal">
+      <!-- HUD corners -->
+      <span class="hud hud-tl" aria-hidden="true"></span>
+      <span class="hud hud-tr" aria-hidden="true"></span>
+      <span class="hud hud-bl" aria-hidden="true"></span>
+      <span class="hud hud-br" aria-hidden="true"></span>
+      <!-- scan sweep -->
+      <div class="term-scan" aria-hidden="true"></div>
+
+      <div class="terminal-topbar">
+        <div class="terminal-title">
+          <lucide-icon [name]="TerminalIcon" class="terminal-icon"></lucide-icon>
+          <span>NDR_EVENTS &nbsp;/&nbsp; LIVE STREAM</span>
+        </div>
+        <span class="live-pill"><i></i>LIVE</span>
+      </div>
+
+      <div *ngIf="loading" class="logs-state">
+        <lucide-icon [name]="TerminalIcon" class="state-icon pulse"></lucide-icon>
+        <strong>Loading network events</strong>
+        <span>Fetching latest captured traffic…</span>
+      </div>
+
+      <div *ngIf="!loading" class="logs-table-wrap">
+        <div class="log-grid log-heading">
+          <span>Time</span>
+          <span>Source</span>
+          <span>Proto</span>
+          <span>Source IP</span>
+          <span>Destination IP</span>
+          <span>Event</span>
+        </div>
+
+        <div class="log-list">
+          <div *ngFor="let log of filteredLogs; trackBy: trackByLog"
+               [class]="getRowClass(log)">
+            <span class="log-time">{{ log.ts }}</span>
+            <span [class]="getSourceClass(log.source)">
+              {{ log.source === 'agent-z' ? 'AGENT-Z' : log.source === 'agent-s' ? 'AGENT-S' : (log.source || '-')?.toUpperCase() }}
+            </span>
+            <span [class]="getProtoClass(log.proto)">{{ log.proto || '–' }}</span>
+            <span class="ip-value src-ip">{{ log.src || '–' }}</span>
+            <span class="ip-value dst-ip">{{ log.dst || '–' }}</span>
+            <span [class]="getEventBadgeClass(log.event_type)">{{ (log.event_type || 'conn').toUpperCase() }}</span>
+          </div>
+
+          <div *ngIf="filteredLogs.length === 0" class="logs-state compact">
+            <lucide-icon [name]="SearchIcon" class="state-icon"></lucide-icon>
+            <strong>No matching logs</strong>
+            <span>Try a different IP, protocol, or source filter.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="terminal-footer">
+        <span>{{ filteredLogs.length }} / {{ logs.length }} entries</span>
+        <span class="footer-ws"><i></i> WebSocket connected</span>
+      </div>
+    </section>
+  </div>
+
+  <div *ngIf="activeTab === 'live'" class="network-content embedded-live">
+    <app-live></app-live>
+  </div>
+</div>

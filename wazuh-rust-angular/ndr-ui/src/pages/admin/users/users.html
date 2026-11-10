@@ -1,0 +1,772 @@
+<section class="admin-panel users-panel">
+  <div *ngIf="msg" [class]="'admin-message ' + (msgType === 'success' ? 'success' : 'error')">{{ msg }}</div>
+
+  <!-- Cyber Hero Strip -->
+  <div class="cyber-hero-strip">
+    <div class="hero-brand">
+      <div class="hero-status-pill">
+        <span class="pulse-dot"></span>
+        <span class="status-text">IAM ACCESS DIRECTORY · GOVERNANCE ONLINE</span>
+      </div>
+      <h2 class="hero-title">Identity &amp; Access Governance</h2>
+      <p class="hero-subtext">
+        Multi-tenant RBAC enforcement, delegated tenant administrator scopes, and security analyst credential management.
+      </p>
+    </div>
+
+    <div class="hero-actions">
+      <div class="system-time-pill" title="Synchronized Platform Time">
+        <lucide-icon [name]="ClockIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+        <span>{{ clock.currentTime() || 'SYNCING' }}</span>
+        <span class="date-sep">·</span>
+        <span class="date-text">{{ clock.currentDate() }}</span>
+      </div>
+
+      <button class="cyber-btn cyber-btn-ghost" type="button" (click)="loadUsers(); loadTenants()" title="Reload user directory">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingUsers"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <button class="cyber-btn cyber-btn-primary" type="button" (click)="showAddUser = true">
+        <lucide-icon [name]="UserPlusIcon" class="w-4 h-4"></lucide-icon>
+        <span>Add Identity</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── 2. IAM & RBAC Security Governance Deck (Distinctive Style) ── -->
+  <section class="iam-governance-deck" aria-label="IAM Security Governance Deck">
+
+    <!-- Card 1: RBAC Privilege Spectrum & Role Breakdown -->
+    <div class="iam-deck-card iam-deck--spectrum">
+      <div class="iam-card-glow purple"></div>
+      <div class="iam-card-top">
+        <div class="iam-card-tag">
+          <lucide-icon [name]="ShieldCheckIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>RBAC PRIVILEGE SPECTRUM</span>
+        </div>
+        <span class="iam-status-pill purple">{{ totalUsersCount }} IDENTITIES</span>
+      </div>
+
+      <div class="iam-spectrum-body">
+        <div class="spectrum-lead-row">
+          <span class="spectrum-lead-num font-mono text-purple-300">{{ totalUsersCount }}</span>
+          <span class="spectrum-lead-sub">ACCOUNTS ASSIGNED</span>
+        </div>
+
+        <!-- Segmented Role Distribution Spectrum Bar -->
+        <div class="spectrum-bar-track" title="Segmented RBAC Role Distribution">
+          <div class="spec-segment seg-admin" [style.width.%]="adminPercent" [title]="'Admins: ' + superAdminCount"></div>
+          <div class="spec-segment seg-tenant-adm" [style.width.%]="tenantAdminPercent" [title]="'Tenant Admins: ' + tenantAdminCount"></div>
+          <div class="spec-segment seg-analyst" [style.width.%]="analystPercent" [title]="'Analysts: ' + analystCount"></div>
+          <div class="spec-segment seg-other" [style.width.%]="otherPercent" [title]="'Other Roles: ' + otherRolesCount"></div>
+        </div>
+
+        <div class="spectrum-legend-grid">
+          <div class="leg-item"><span class="leg-dot purple"></span><span>{{ superAdminCount }} Admin</span></div>
+          <div class="leg-item"><span class="leg-dot cyan"></span><span>{{ tenantAdminCount }} Org Adm</span></div>
+          <div class="leg-item"><span class="leg-dot emerald"></span><span>{{ analystCount }} Analyst</span></div>
+          <div class="leg-item"><span class="leg-dot slate"></span><span>{{ otherRolesCount }} Other</span></div>
+        </div>
+      </div>
+
+      <div class="iam-card-footer">
+        <span class="iam-chip">LEAST PRIVILEGE</span>
+        <span class="iam-chip">RBAC BOUND</span>
+        <span class="iam-chip purple">ENFORCED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Identity Verification & Security Posture Shield -->
+    <div class="iam-deck-card iam-deck--posture">
+      <div class="iam-card-glow emerald"></div>
+      <div class="iam-card-top">
+        <div class="iam-card-tag">
+          <lucide-icon [name]="CheckCircle2Icon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>IDENTITY POSTURE</span>
+        </div>
+        <span class="iam-status-pill emerald">{{ activePercent }}% VERIFIED</span>
+      </div>
+
+      <div class="iam-posture-body">
+        <div class="posture-shield-row">
+          <div class="posture-score-box">
+            <span class="score-val text-emerald-400 font-mono">{{ activePercent }}%</span>
+            <span class="score-lbl">ACTIVE RATIO</span>
+          </div>
+          <div class="posture-meta-box">
+            <div class="posture-line">
+              <span class="p-lbl">Verified Active:</span>
+              <span class="p-val font-mono text-emerald-300 font-bold">{{ activeUsersCount }} users</span>
+            </div>
+            <div class="posture-line">
+              <span class="p-lbl">Suspended:</span>
+              <span class="p-val font-mono text-rose-400">{{ disabledCount }} users</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="posture-encryption-badge">
+          <span class="pulse-dot-green"></span>
+          <span>Credential Security: Bcrypt / Argon2 Hashed</span>
+        </div>
+      </div>
+
+      <div class="iam-card-footer">
+        <span class="iam-chip">HASHED SECRETS</span>
+        <span class="iam-chip">ZERO PLAINTEXT</span>
+        <span class="iam-chip success">VERIFIED</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Delegated Governance Mesh -->
+    <div class="iam-deck-card iam-deck--delegation">
+      <div class="iam-card-glow blue"></div>
+      <div class="iam-card-top">
+        <div class="iam-card-tag">
+          <lucide-icon [name]="Building2Icon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>TENANT DELEGATION</span>
+        </div>
+        <span class="iam-status-pill cyan">{{ tenantAdminCount }} ORG ADMINS</span>
+      </div>
+
+      <div class="iam-delegation-body">
+        <div class="delegation-lead-row">
+          <span class="del-num text-cyan-400 font-mono">{{ tenantAdminCount }}</span>
+          <div class="del-lead-sub">
+            <span class="del-title">DELEGATED SCOPES</span>
+            <span class="del-caption">Active in {{ tenants.length }} Managed Organizations</span>
+          </div>
+        </div>
+
+        <div class="delegation-matrix-box">
+          <div class="del-matrix-item">
+            <span class="m-lbl">CROSS-TENANT ACCESS</span>
+            <span class="m-val text-rose-400 font-mono">RESTRICTED</span>
+          </div>
+          <div class="del-matrix-item">
+            <span class="m-lbl">ORG BOUNDARY</span>
+            <span class="m-val text-cyan-300 font-mono">STRICT ISOLATION</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="iam-card-footer">
+        <span class="iam-chip">DELEGATED RBAC</span>
+        <span class="iam-chip">TENANT-LOCKED</span>
+        <span class="iam-chip cyan">ISOLATED</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Current Operator Session & Audit Capsule -->
+    <div class="iam-deck-card iam-deck--session">
+      <div class="iam-card-glow amber"></div>
+      <div class="iam-card-top">
+        <div class="iam-card-tag">
+          <lucide-icon [name]="ClockIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>OPERATOR SESSION</span>
+        </div>
+        <span class="iam-status-pill amber">JWT AUTHENTICATED</span>
+      </div>
+
+      <div class="iam-session-body">
+        <div class="session-user-capsule">
+          <div class="session-avatar">
+            {{ (currentUser?.username || 'A').charAt(0).toUpperCase() }}
+          </div>
+          <div class="session-meta">
+            <span class="session-name font-mono font-bold text-amber-300">{{ currentUser?.username || 'super_admin' }}</span>
+            <span class="session-role">{{ currentUser?.role || 'Platform Administrator' }}</span>
+          </div>
+        </div>
+
+        <div class="session-audit-badge">
+          <span class="audit-dot"></span>
+          <span>ClickHouse Audit Trail Logging Active</span>
+        </div>
+      </div>
+
+      <div class="iam-card-footer">
+        <span class="iam-chip">BEARER TOKEN</span>
+        <span class="iam-chip">ACTIVE JWT</span>
+        <span class="iam-chip amber">SIGNED</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Refined Filter Toolbar & Quick Role Tabs -->
+  <div class="cyber-toolbar-card">
+    <div class="toolbar-left">
+      <div class="cyber-search-box">
+        <lucide-icon [name]="SearchIcon" class="search-icon w-4 h-4"></lucide-icon>
+        <input [(ngModel)]="userSearch" (ngModelChange)="onFilterChange()" type="search" placeholder="Search usernames, roles, tenant IDs, email..." />
+        <button *ngIf="userSearch" type="button" class="search-clear-btn" (click)="userSearch = ''; onFilterChange()">
+          <lucide-icon [name]="XIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="cyber-select-wrapper">
+        <select [(ngModel)]="selectedTenant" (ngModelChange)="onFilterChange()" class="cyber-select">
+          <option value="all">All Organization Tenancy ({{ tenants.length }})</option>
+          <option *ngFor="let tenant of tenants" [value]="tenant.id">
+            {{ tenant.name }} ({{ tenant.active ? 'Active' : 'Inactive' }})
+          </option>
+        </select>
+      </div>
+
+      <!-- View Switcher (Table View vs Cards Grid vs By Org) -->
+      <div class="view-mode-toggle" role="group" aria-label="Display View">
+        <button type="button" class="mode-btn" [class.active]="viewMode === 'flat'" (click)="setViewMode('flat')" title="Master Data Table">
+          <lucide-icon [name]="UsersIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Table ({{ allFilteredUsers.length }})</span>
+        </button>
+        <button type="button" class="mode-btn" [class.active]="viewMode === 'cards'" (click)="setViewMode('cards')" title="Interactive Cyber Cards Grid">
+          <lucide-icon [name]="LayersIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Cards</span>
+        </button>
+        <button type="button" class="mode-btn" [class.active]="viewMode === 'grouped'" (click)="setViewMode('grouped')" title="Group users by Organization">
+          <lucide-icon [name]="Building2Icon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>By Org</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Role Filter Tabs + Per-Page Control -->
+    <div class="toolbar-right-row">
+      <div class="role-filter-tabs">
+        <button type="button" class="filter-tab-btn" [class.active]="selectedRoleFilter === 'all'" (click)="setRoleFilter('all')">
+          All ({{ totalUsersCount }})
+        </button>
+        <button type="button" class="filter-tab-btn" [class.active]="selectedRoleFilter === 'tenant_admin'" (click)="setRoleFilter('tenant_admin')">
+          Tenant Admins ({{ tenantAdminCount }})
+        </button>
+        <button type="button" class="filter-tab-btn" [class.active]="selectedRoleFilter === 'admin'" (click)="setRoleFilter('admin')">
+          Admins ({{ superAdminCount }})
+        </button>
+        <button type="button" class="filter-tab-btn" [class.active]="selectedRoleFilter === 'analyst'" (click)="setRoleFilter('analyst')">
+          Analysts ({{ analystCount }})
+        </button>
+        <button *ngIf="disabledCount > 0" type="button" class="filter-tab-btn danger" [class.active]="selectedRoleFilter === 'disabled'" (click)="setRoleFilter('disabled')">
+          Inactive ({{ disabledCount }})
+        </button>
+      </div>
+
+      <!-- Tenant Page Size Selector (When in Grouped View) -->
+      <div class="page-size-selector" *ngIf="viewMode === 'grouped'">
+        <span class="ps-label">Orgs per page:</span>
+        <div class="ps-pills">
+          <button type="button" class="ps-pill" [class.active]="tenantsPerPage === 2" (click)="setTenantsPerPage(2)">2</button>
+          <button type="button" class="ps-pill" [class.active]="tenantsPerPage === 3" (click)="setTenantsPerPage(3)">3</button>
+          <button type="button" class="ps-pill" [class.active]="tenantsPerPage === 5" (click)="setTenantsPerPage(5)">5</button>
+          <button type="button" class="ps-pill" [class.active]="tenantsPerPage === 999" (click)="setTenantsPerPage(999)">All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scope Banner -->
+  <div class="cyber-scope-banner" *ngIf="selectedTenant !== 'all' || selectedRoleFilter !== 'all'">
+    <div class="scope-info">
+      <lucide-icon [name]="LayersIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+      <span>Filter Scope: <strong>{{ selectedTenantName }}</strong> · Showing <strong>{{ allFilteredUsers.length }}</strong> match{{ allFilteredUsers.length !== 1 ? 'es' : '' }}</span>
+    </div>
+    <div *ngIf="selectedTenantIsInactive" class="tenant-warning-pill">
+      <lucide-icon [name]="AlertTriangleIcon" class="w-3.5 h-3.5"></lucide-icon>
+      Tenant is Inactive — users blocked
+    </div>
+  </div>
+
+  <!-- Inactive Tenant Warning Banner -->
+  <div *ngIf="selectedTenantIsInactive" class="tenant-blocked-banner">
+    <lucide-icon [name]="AlertTriangleIcon" class="w-4 h-4"></lucide-icon>
+    <span>This tenant is marked inactive. Users assigned to this organization cannot authenticate into the platform.</span>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loadingUsers" class="cyber-loading-box">
+    <lucide-icon [name]="RefreshIcon" class="w-7 h-7 spinning text-cyan-400"></lucide-icon>
+    <div class="loading-label">Synchronizing User Directory...</div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loadingUsers && allFilteredUsers.length === 0" class="cyber-empty-card">
+    <div class="empty-icon-ring">
+      <lucide-icon [name]="UsersIcon" class="w-8 h-8"></lucide-icon>
+    </div>
+    <h4>No User Identities Found</h4>
+    <p>No platform or tenant accounts matched your current search and role filters.</p>
+    <button class="cyber-btn cyber-btn-ghost" type="button" (click)="userSearch = ''; selectedTenant = 'all'; selectedRoleFilter = 'all'; onFilterChange()">
+      Clear Filter Query
+    </button>
+  </div>
+
+  <!-- ── VIEW 1: Grouped by Tenant Cards (Primary Preferred Mode) ── -->
+  <div *ngIf="!loadingUsers && allFilteredUsers.length > 0 && viewMode === 'grouped'" class="tenant-pods-container">
+    
+    <!-- Each Tenant Card -->
+    <div *ngFor="let group of usersByTenant" class="tenant-pod glass-card">
+      
+      <!-- Tenant Card Header -->
+      <div class="tenant-pod-header" (click)="toggleTenantGroup(group.tenantId)">
+        <div class="pod-tenant-identity">
+          <div class="pod-tenant-avatar" [class.inactive]="!group.isActive">
+            <span>{{ (group.tenantName || group.tenantId).charAt(0).toUpperCase() }}</span>
+          </div>
+          <div class="pod-tenant-details">
+            <div class="pod-name-row">
+              <h3 class="pod-org-name">{{ group.tenantName }}</h3>
+              <span class="pod-id-chip font-mono">#{{ group.tenantId }}</span>
+              <span class="pod-db-chip font-mono">
+                <lucide-icon [name]="LayersIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+                <span>ndr_{{ group.tenantId.replace('-', '_') }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pod-meta-cluster">
+          <span class="pod-member-count font-mono">
+            <lucide-icon [name]="UsersIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+            <span>{{ group.users.length }} {{ group.users.length === 1 ? 'member' : 'members' }}</span>
+          </span>
+
+          <span class="pod-status-pill" [class.active]="group.isActive" [class.inactive]="!group.isActive">
+            <span class="status-dot-pulse" *ngIf="group.isActive"></span>
+            <span class="status-dot" *ngIf="!group.isActive"></span>
+            <span>{{ group.isActive ? 'Active Tenant' : 'Suspended' }}</span>
+          </span>
+
+          <button type="button" class="pod-accordion-btn" [class.expanded]="!isGroupCollapsed(group.tenantId)">
+            <lucide-icon [name]="ChevronDownIcon" class="w-4 h-4"></lucide-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- Inside Tenant Card: Member Roster Table -->
+      <div *ngIf="!isGroupCollapsed(group.tenantId)" class="tenant-pod-content">
+        <!-- Roster Column Guide -->
+        <div class="pod-roster-header font-mono">
+          <span class="col-user">MEMBER &amp; CREDENTIALS</span>
+          <span class="col-role">ASSIGNED ROLE</span>
+          <span class="col-scope">SECURITY CLEARANCE</span>
+          <span class="col-status">ACCOUNT STATUS</span>
+          <span class="col-actions">ACCESS CONTROLS</span>
+        </div>
+
+        <!-- User Rows inside Tenant -->
+        <div class="pod-roster-rows">
+          <div *ngFor="let user of group.users" class="pod-user-row">
+            <!-- Identity -->
+            <div class="col-user user-info-box">
+              <div class="pod-user-avatar" [ngClass]="getUserAvatarClass(user)">
+                {{ user.username.charAt(0).toUpperCase() }}
+              </div>
+              <div class="user-meta-stack">
+                <div class="user-title-line">
+                  <strong class="user-name">{{ user.username }}</strong>
+                  <span *ngIf="user.role === 'super_admin' || user.role === 'admin'" class="root-neon-badge">ROOT</span>
+                </div>
+                <div class="user-sub-line font-mono">
+                  <span class="user-email" *ngIf="user.gmail">{{ user.gmail }}</span>
+                  <span class="user-date">
+                    <span *ngIf="user.gmail">· </span>{{ user.created_at ? (user.created_at | date:'mediumDate') : 'System Provisioned' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Role -->
+            <div class="col-role">
+              <span class="role-capsule" [ngClass]="getRolePillClass(user.role)">
+                <lucide-icon *ngIf="user.role === 'super_admin' || user.role === 'admin'" [name]="ShieldIcon" class="w-3.5 h-3.5"></lucide-icon>
+                <lucide-icon *ngIf="user.role === 'tenant_admin'" [name]="KeyRoundIcon" class="w-3.5 h-3.5"></lucide-icon>
+                <lucide-icon *ngIf="user.role === 'analyst' || user.role === 'senior_analyst'" [name]="ZapIcon" class="w-3.5 h-3.5"></lucide-icon>
+                <span>{{ roleLabel(user.role) }}</span>
+              </span>
+            </div>
+
+            <!-- Scope -->
+            <div class="col-scope">
+              <span class="scope-chip font-mono" [class.scope--root]="user.role === 'super_admin' || user.role === 'admin'">
+                <lucide-icon [name]="ShieldCheckIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+                <span>{{ getPermissionsCount(user) }}</span>
+              </span>
+            </div>
+
+            <!-- Status -->
+            <div class="col-status">
+              <span class="status-capsule" [ngClass]="userStatusClass(user)">
+                <span class="status-dot-pulse" *ngIf="user.active !== false && !isTenantInactive(user.tenant_id)"></span>
+                <span class="status-dot" *ngIf="user.active === false || isTenantInactive(user.tenant_id)"></span>
+                <span>{{ userStatusLabel(user) }}</span>
+              </span>
+            </div>
+
+            <!-- Actions -->
+            <div class="col-actions">
+              <div class="pod-actions-group">
+                <button class="cyber-action-btn edit" type="button" title="Edit user permissions &amp; password" (click)="openEditUser(user)">
+                  <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
+                  <span>Edit</span>
+                </button>
+                <button *ngIf="user.username !== currentUser?.username" 
+                  class="cyber-action-btn toggle" 
+                  [class.reactivate]="user.active === false"
+                  type="button"
+                  (click)="setUserActive(user, user.active === false)">
+                  <span>{{ user.active === false ? 'Reactivate' : 'Deactivate' }}</span>
+                </button>
+                <button *ngIf="user.username !== currentUser?.username" 
+                  class="cyber-action-btn delete" 
+                  type="button" 
+                  title="Delete account"
+                  (click)="requestDeleteUser(user)">
+                  <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+                </button>
+                <span *ngIf="user.username === currentUser?.username" class="active-session-pill">
+                  Current Session
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty state inside tenant -->
+          <div *ngIf="group.users.length === 0" class="pod-empty-row font-mono">
+            <lucide-icon [name]="UserIcon" class="w-4 h-4 text-slate-500"></lucide-icon>
+            <span>No accounts provisioned in this tenant yet.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tenant Group Pagination Controls -->
+    <div class="tenant-pagination-bar" *ngIf="allUsersByTenant.length > tenantsPerPage">
+      <div class="pagination-info font-mono">
+        Showing Organizations <strong>{{ (currentTenantPage - 1) * tenantsPerPage + 1 }} - {{ Math.min(currentTenantPage * tenantsPerPage, allUsersByTenant.length) }}</strong> of <strong>{{ allUsersByTenant.length }}</strong>
+      </div>
+      <div class="pagination-controls">
+        <button type="button" class="page-nav-btn" [disabled]="currentTenantPage === 1" (click)="prevTenantPage()">
+          <lucide-icon [name]="ChevronLeftIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Prev</span>
+        </button>
+        <span class="page-indicator font-mono">{{ currentTenantPage }} / {{ totalTenantPages }}</span>
+        <button type="button" class="page-nav-btn" [disabled]="currentTenantPage === totalTenantPages" (click)="nextTenantPage()">
+          <span>Next</span>
+          <lucide-icon [name]="ChevronRightIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── VIEW 2: Cyber Identity Cards Grid ── -->
+  <div *ngIf="!loadingUsers && allFilteredUsers.length > 0 && viewMode === 'cards'" class="cyber-cards-deck">
+    <div *ngFor="let user of pagedFlatUsers" class="cyber-user-card glass-card">
+      <div class="user-card-head">
+        <div class="user-card-avatar" [ngClass]="getUserAvatarClass(user)">
+          {{ user.username.charAt(0).toUpperCase() }}
+        </div>
+        <div class="user-card-title">
+          <div class="card-user-name">
+            <strong>{{ user.username }}</strong>
+            <span *ngIf="user.role === 'super_admin' || user.role === 'admin'" class="root-badge">ROOT</span>
+          </div>
+          <span class="card-org font-mono">
+            🏢 {{ tenantName(user.tenant_id) }}
+          </span>
+        </div>
+        <div class="user-card-status">
+          <span class="user-status-pill" [ngClass]="userStatusClass(user)">
+            <span class="user-status-dot-pulse" *ngIf="user.active !== false && !isTenantInactive(user.tenant_id)"></span>
+            <span class="user-status-dot" *ngIf="user.active === false || isTenantInactive(user.tenant_id)"></span>
+            <span>{{ userStatusLabel(user) }}</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="user-card-body">
+        <div class="card-meta-row" *ngIf="user.gmail">
+          <lucide-icon [name]="MailIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span class="card-email font-mono">{{ user.gmail }}</span>
+        </div>
+        <div class="card-pills-row">
+          <span class="role-pill" [ngClass]="getRolePillClass(user.role)">
+            <lucide-icon *ngIf="user.role === 'super_admin' || user.role === 'admin'" [name]="ShieldIcon" class="w-3 h-3"></lucide-icon>
+            <lucide-icon *ngIf="user.role === 'tenant_admin'" [name]="KeyRoundIcon" class="w-3 h-3"></lucide-icon>
+            <lucide-icon *ngIf="user.role === 'analyst' || user.role === 'senior_analyst'" [name]="ZapIcon" class="w-3 h-3"></lucide-icon>
+            <span>{{ roleLabel(user.role) }}</span>
+          </span>
+          <span class="scope-pill font-mono" [class.scope--root]="user.role === 'super_admin' || user.role === 'admin'">
+            <lucide-icon [name]="ShieldCheckIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+            <span>{{ getPermissionsCount(user) }}</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="user-card-footer">
+        <span class="card-date font-mono">
+          <lucide-icon [name]="ClockIcon" class="w-3 h-3 text-slate-500"></lucide-icon>
+          {{ user.created_at ? (user.created_at | date:'mediumDate') : 'System Provisioned' }}
+        </span>
+
+        <div class="action-buttons-group">
+          <button class="action-btn edit-btn" type="button" title="Edit user permissions &amp; password" (click)="openEditUser(user)">
+            <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Edit</span>
+          </button>
+          <button *ngIf="user.username !== currentUser?.username" 
+            class="action-btn toggle-btn" 
+            [class.reactivate-btn]="user.active === false"
+            type="button"
+            (click)="setUserActive(user, user.active === false)">
+            <span>{{ user.active === false ? 'Reactivate' : 'Deactivate' }}</span>
+          </button>
+          <button *ngIf="user.username !== currentUser?.username" 
+            class="action-btn delete-btn" 
+            type="button" 
+            title="Permanently delete account"
+            (click)="requestDeleteUser(user)">
+            <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+          </button>
+          <span *ngIf="user.username === currentUser?.username" class="active-session-pill">
+            Current Session
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── VIEW 3: Master Identity Directory Table ── -->
+  <div *ngIf="!loadingUsers && allFilteredUsers.length > 0 && viewMode === 'flat'" class="master-users-deck glass-card">
+    <div class="master-table-header">
+      <div class="master-title-row">
+        <lucide-icon [name]="UsersIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <h3>Master Identity Directory</h3>
+        <span class="master-badge font-mono">{{ allFilteredUsers.length }} Accounts Registered</span>
+      </div>
+      <div class="master-page-size font-mono">
+        <span>Display rows:</span>
+        <button type="button" class="ps-pill" [class.active]="flatUsersPerPage === 5" (click)="setFlatUsersPerPage(5)">5</button>
+        <button type="button" class="ps-pill" [class.active]="flatUsersPerPage === 10" (click)="setFlatUsersPerPage(10)">10</button>
+        <button type="button" class="ps-pill" [class.active]="flatUsersPerPage === 25" (click)="setFlatUsersPerPage(25)">25</button>
+      </div>
+    </div>
+
+    <div class="iam-master-table">
+      <div class="iam-master-head">
+        <span class="col-user">IDENTITY &amp; CREDENTIALS</span>
+        <span class="col-tenant">ORGANIZATION</span>
+        <span class="col-role">ROLE &amp; CLEARANCE</span>
+        <span class="col-perms">ACCESS SCOPE</span>
+        <span class="col-status">ACCOUNT STATUS</span>
+        <span class="col-actions">ACTIONS &amp; CONTROLS</span>
+      </div>
+
+      <div *ngFor="let user of pagedFlatUsers" class="iam-master-row">
+        <div class="col-user user-info-cell">
+          <div class="user-avatar" [ngClass]="getUserAvatarClass(user)">
+            {{ user.username.charAt(0).toUpperCase() }}
+          </div>
+          <div class="user-text-meta">
+            <div class="user-primary-row">
+              <strong class="user-username">{{ user.username }}</strong>
+              <span *ngIf="user.role === 'super_admin' || user.role === 'admin'" class="root-badge">ROOT</span>
+            </div>
+            <div class="user-secondary-row font-mono">
+              <span class="user-date">{{ user.created_at ? (user.created_at | date:'mediumDate') : 'System Provisioned' }}</span>
+              <span *ngIf="user.gmail" class="user-email">· {{ user.gmail }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-tenant">
+          <span class="tenant-chip font-mono">
+            🏢 {{ tenantName(user.tenant_id) }}
+            <small class="text-cyan-400">#{{ user.tenant_id || 'default' }}</small>
+          </span>
+        </div>
+
+        <div class="col-role">
+          <span class="role-pill" [ngClass]="getRolePillClass(user.role)">
+            <lucide-icon *ngIf="user.role === 'super_admin' || user.role === 'admin'" [name]="ShieldIcon" class="w-3 h-3"></lucide-icon>
+            <lucide-icon *ngIf="user.role === 'tenant_admin'" [name]="KeyRoundIcon" class="w-3 h-3"></lucide-icon>
+            <lucide-icon *ngIf="user.role === 'analyst' || user.role === 'senior_analyst'" [name]="ZapIcon" class="w-3 h-3"></lucide-icon>
+            <span>{{ roleLabel(user.role) }}</span>
+          </span>
+        </div>
+
+        <div class="col-perms font-mono">
+          <span class="scope-pill font-mono" [class.scope--root]="user.role === 'super_admin' || user.role === 'admin'">
+            <lucide-icon [name]="ShieldCheckIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+            <span>{{ getPermissionsCount(user) }}</span>
+          </span>
+        </div>
+
+        <div class="col-status">
+          <span class="user-status-pill" [ngClass]="userStatusClass(user)">
+            <span class="user-status-dot-pulse" *ngIf="user.active !== false && !isTenantInactive(user.tenant_id)"></span>
+            <span class="user-status-dot" *ngIf="user.active === false || isTenantInactive(user.tenant_id)"></span>
+            <span>{{ userStatusLabel(user) }}</span>
+          </span>
+        </div>
+
+        <div class="col-actions">
+          <div class="action-buttons-group">
+            <button class="action-btn edit-btn" type="button" title="Edit user permissions &amp; password" (click)="openEditUser(user)">
+              <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
+              <span>Edit</span>
+            </button>
+            <button *ngIf="user.username !== currentUser?.username" 
+              class="action-btn toggle-btn" 
+              [class.reactivate-btn]="user.active === false"
+              type="button"
+              (click)="setUserActive(user, user.active === false)">
+              <span>{{ user.active === false ? 'Reactivate' : 'Deactivate' }}</span>
+            </button>
+            <button *ngIf="user.username !== currentUser?.username" 
+              class="action-btn delete-btn" 
+              type="button" 
+              title="Permanently delete account"
+              (click)="requestDeleteUser(user)">
+              <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+            <span *ngIf="user.username === currentUser?.username" class="active-session-pill">
+              Current Session
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flat Table Pagination Controls -->
+    <div class="tenant-pagination-bar" *ngIf="allFilteredUsers.length > flatUsersPerPage">
+      <div class="pagination-info font-mono">
+        Showing Users <strong>{{ (currentFlatPage - 1) * flatUsersPerPage + 1 }} - {{ Math.min(currentFlatPage * flatUsersPerPage, allFilteredUsers.length) }}</strong> of <strong>{{ allFilteredUsers.length }}</strong>
+      </div>
+      <div class="pagination-controls">
+        <button type="button" class="page-nav-btn" [disabled]="currentFlatPage === 1" (click)="prevFlatPage()">
+          <lucide-icon [name]="ChevronLeftIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Prev</span>
+        </button>
+        <span class="page-indicator font-mono">{{ currentFlatPage }} / {{ totalFlatPages }}</span>
+        <button type="button" class="page-nav-btn" [disabled]="currentFlatPage === totalFlatPages" (click)="nextFlatPage()">
+          <span>Next</span>
+          <lucide-icon [name]="ChevronRightIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Add User Modal -->
+<div *ngIf="showAddUser" class="modal-backdrop">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div><h3>Add User</h3><p>Create a platform user or a tenant admin.</p></div>
+      <button type="button" class="icon-button" (click)="showAddUser=false">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <label class="form-field">
+      <span>Username</span>
+      <input [(ngModel)]="newUser.username" placeholder="admin username" maxlength="50" />
+      <small *ngIf="newUserUsernameError">{{ newUserUsernameError }}</small>
+    </label>
+    <label class="form-field">
+      <span>Password</span>
+      <input [(ngModel)]="newUser.password" type="password" placeholder="temporary password" />
+      <small *ngFor="let error of newUserPasswordErrors">{{ error }}</small>
+    </label>
+    <label class="form-field">
+      <span>Role</span>
+      <select [(ngModel)]="newUser.role" (ngModelChange)="onNewUserRoleChange()">
+        <option *ngFor="let option of createUserRoleOptions" [value]="option.value">{{ option.label }}</option>
+      </select>
+      <small *ngIf="newUserRoleError">{{ newUserRoleError }}</small>
+    </label>
+    <label class="form-field" *ngIf="newUser.role === 'tenant_admin'">
+      <span>Recovery Email (Gmail)</span>
+      <input [(ngModel)]="newUser.gmail" type="email" placeholder="Required for password reset (e.g. user@gmail.com)" />
+    </label>
+    <label class="form-field">
+      <span>Tenant</span>
+      <select [(ngModel)]="newUser.tenant_id" [disabled]="newUser.role === 'default_user'">
+        <option value="" [hidden]="newUser.role === 'default_user'">Select tenant</option>
+        <option *ngFor="let tenant of tenants" [value]="tenant.id"
+          [hidden]="(newUser.role === 'tenant_admin' && tenant.id === 'default') || (newUser.role === 'default_user' && tenant.id !== 'default')"
+          [disabled]="(newUser.role === 'tenant_admin' && tenant.id === 'default') || (newUser.role === 'default_user' && tenant.id !== 'default')">
+          {{ tenant.name }}
+        </option>
+      </select>
+      <small *ngIf="newUserTenantError">{{ newUserTenantError }}</small>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" [disabled]="savingUser || !canCreateUser" (click)="addUser()">
+        {{ savingUser ? 'Creating...' : 'Create User' }}
+      </button>
+      <button class="secondary-action" type="button" (click)="showAddUser=false">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div *ngIf="editingUser" class="modal-backdrop">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div><h3>Edit User</h3><p>{{ editingUser.username }}</p></div>
+      <button type="button" class="icon-button" (click)="closeEditUser()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <label class="form-field">
+      <span>Role</span>
+      <select [(ngModel)]="userForm.role" (ngModelChange)="onEditUserRoleChange()">
+        <option *ngFor="let option of roleOptions" [value]="option.value">{{ option.label }}</option>
+      </select>
+      <small *ngIf="editUserRoleError">{{ editUserRoleError }}</small>
+    </label>
+    <label class="form-field">
+      <span>Tenant</span>
+      <select [(ngModel)]="userForm.tenant_id" [disabled]="userForm.role === 'default_user'">
+        <option *ngFor="let tenant of tenants" [value]="tenant.id"
+          [hidden]="(userForm.role === 'tenant_admin' && tenant.id === 'default') || (userForm.role === 'default_user' && tenant.id !== 'default')"
+          [disabled]="(userForm.role === 'tenant_admin' && tenant.id === 'default') || (userForm.role === 'default_user' && tenant.id !== 'default')">
+          {{ tenant.name }}
+        </option>
+      </select>
+      <small *ngIf="editUserTenantError">{{ editUserTenantError }}</small>
+    </label>
+    <label class="form-field">
+      <span>New Password</span>
+      <input [(ngModel)]="userForm.password" type="password" placeholder="Leave blank to keep current password" />
+      <small *ngFor="let error of editUserPasswordErrors">{{ error }}</small>
+    </label>
+    <label class="toggle-field">
+      <input [(ngModel)]="userForm.active" type="checkbox" />
+      <span>User is active</span>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" [disabled]="!canSaveUserEdit" (click)="saveUserEdit()">Save User</button>
+      <button class="secondary-action" type="button" (click)="closeEditUser()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete User Modal -->
+<div *ngIf="pendingDeleteUser" class="modal-backdrop">
+  <div class="modal-panel compact">
+    <div class="modal-head">
+      <div><h3>Delete User</h3><p>This removes {{ pendingDeleteUser.username }} from the system.</p></div>
+      <button type="button" class="icon-button" (click)="cancelDeleteUser()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <div class="warning-box">
+      Deactivation is safer for audit history. Delete only when this account should be removed permanently.
+    </div>
+    <div class="modal-actions">
+      <button class="danger-action solid" type="button" (click)="confirmDeleteUser()">Delete User</button>
+      <button class="secondary-action" type="button" (click)="cancelDeleteUser()">Cancel</button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,22 @@
+.redswarm-page {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kpi-card {
+  background: rgba(13, 19, 34, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.55);
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(244, 63, 94, 0.4) !important;
+  box-shadow: 0 10px 32px -4px rgba(0, 0, 0, 0.75), 0 0 20px rgba(244, 63, 94, 0.2);
+}

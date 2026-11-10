@@ -1,0 +1,122 @@
+services:
+  # Caddy Unified Edge Reverse Proxy & Automatic HTTPS
+  caddy:
+    image: caddy:alpine
+    container_name: xdr-caddy-proxy
+    restart: always
+    ports:
+      - "8081:80"     # HTTP and WebSocket entrypoint (avoids host port 80 conflict)
+      - "9443:443"   # console HTTPS (host port 8443 is the agents', on provigil-gateway)
+      - "9443:443/udp" # HTTP/3 QUIC
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SITE_DOMAIN=localhost # Set to your domain (e.g. siem.company.com) in production
+      - SIEM_UPSTREAM=host.docker.internal:8088
+      - AUTH_UPSTREAM=host.docker.internal:3011
+      - NDR_UPSTREAM=host.docker.internal:8088
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dist/frontend-angular:/usr/share/caddy/html:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - clickhouse
+
+  # Shared ClickHouse Big Data Engine (NDR + SIEM)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: xdr-clickhouse
+    restart: always
+    environment:
+      CLICKHOUSE_DB: ndr
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "127.0.0.1:8123:8123" # HTTP API port
+      - "127.0.0.1:9000:9000" # Native TCP client port
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./clickhouse/ndr-cluster.xml:/etc/clickhouse-server/config.d/ndr-cluster.xml:ro
+      - ./clickhouse/ndr-compat-profile.xml:/etc/clickhouse-server/users.d/ndr-compat-profile.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Rust SIEM Microservice (AnalysisEngine + Event Processing + WebSocket Bus)
+  siem-api:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile
+    container_name: xdr-siem-api
+    restart: always
+    volumes:
+      - siem_data:/app/data # the agent CA: a new one would cut off every agent
+    environment:
+      - SIEM_PORT=8088
+      - SIEM_API_INTERNAL_ADDR=0.0.0.0:9102 # the gateway's calls; not published outside the compose network
+      - "GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:?set GATEWAY_INTERNAL_TOKEN in .env}"
+      - SIEM_LAN_IP=${SIEM_LAN_IP:-} # the address agents use: it goes in the TLS certificate
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DB=ndr
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  # Agent gateway: every agent connection (gRPC 8089, HTTPS 8443); shares siem-api's data volume
+  # (the agent CA, the published package, the manager's sockets)
+  provigil-gateway:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile
+    container_name: xdr-provigil-gateway
+    restart: always
+    command: ["/app/provigil-gateway"]
+    ports:
+      - "8443:8443"   # agents: HTTPS (TLS with the private CA in siem_data)
+      - "8089:8089"   # agents: gRPC over TLS
+    volumes:
+      - siem_data:/app/data
+    environment:
+      - GATEWAY_GRPC_PORT=8089
+      - GATEWAY_TLS_PORT=8443
+      - GATEWAY_PUBLIC_HOSTS=${SIEM_LAN_IP:-}
+      - SIEM_API_INTERNAL_URL=http://siem-api:9102
+      - "GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:?set GATEWAY_INTERNAL_TOKEN in .env}"
+      - "AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:?set AGENT_KEYS_SECRET in .env}"
+      - PROVIGIL_MANAGER_HOME=/app/data/manager
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    depends_on:
+      - siem-api
+
+  # Rust NDR Microservice (Network Detection & Response)
+  # When running in production alongside NDR probe:
+  # ndr-api:
+  #   image: your-ndr-backend:latest
+  #   container_name: xdr-ndr-api
+  #   restart: always
+  #   environment:
+  #     - NDR_PORT=8090
+  #     - CLICKHOUSE_URL=http://clickhouse:8123
+  #     - CLICKHOUSE_DB=ndr
+
+volumes:
+  siem_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

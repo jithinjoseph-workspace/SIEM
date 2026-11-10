@@ -1,0 +1,164 @@
+<div class="p-6 w-full max-w-[1500px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="ScanIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      Investigation
+    </h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      Everything about one IP address, host, user, file hash or domain in one place: alerts and log events, threat intel,
+      the threat swarm, SOAR cases and playbooks, AI decisions, triage, the host's vulnerabilities, and what your team
+      decided about similar activity before.
+    </p>
+  </div>
+
+  <form (ngSubmit)="submit()" class="flex flex-col sm:flex-row gap-2">
+    <label for="inv-q" class="sr-only">What to investigate</label>
+    <input id="inv-q" name="q" [(ngModel)]="q" placeholder="IP address, host name, user, file hash or domain" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono">
+    <label for="inv-days" class="sr-only">Period</label>
+    <select id="inv-days" name="days" [(ngModel)]="days" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+      <option [ngValue]="1">Last 24 hours</option>
+      <option [ngValue]="7">Last 7 days</option>
+      <option [ngValue]="30">Last 30 days</option>
+      <option [ngValue]="90">Last 90 days</option>
+    </select>
+    <button type="submit" [disabled]="loading()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
+      <lucide-angular [img]="SearchIcon" class="w-4 h-4"></lucide-angular> {{ loading() ? 'Correlating…' : 'Investigate' }}
+    </button>
+  </form>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+
+  <ng-container *ngIf="data() as d">
+    <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-lg text-white break-all">{{ d.query }}</span>
+        <span class="text-xs uppercase px-2 py-0.5 rounded border border-slate-700 text-slate-300">{{ d.kind }}</span>
+        <span class="text-xs uppercase font-semibold px-2 py-0.5 rounded border" [ngClass]="verdictCls(d.summary.verdict)">{{ d.summary.verdict }}</span>
+        <span class="text-sm text-slate-400">last {{ d.days }} day(s)</span>
+        <span *ngIf="d.geo as g" class="text-sm text-slate-300">{{ g.city ? g.city + ', ' : '' }}{{ g.country }}<span *ngIf="g.org" class="text-slate-400"> · AS{{ g.asn }} {{ g.org }}</span></span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+        <div><div class="text-xs text-slate-400">Alerts</div><div class="text-xl font-bold text-white">{{ d.summary.alerts }}{{ d.summary.alerts_capped ? '+' : '' }}</div></div>
+        <div><div class="text-xs text-slate-400">Log events</div><div class="text-xl font-bold text-white">{{ d.summary.events }}{{ d.summary.events >= 100 ? '+' : '' }}</div></div>
+        <div><div class="text-xs text-slate-400">Highest level</div><div class="text-xl font-bold" [class.text-rose-300]="d.summary.max_level >= 12" [class.text-white]="d.summary.max_level < 12">{{ d.summary.max_level }}</div></div>
+        <div><div class="text-xs text-slate-400">Threat intel</div><div class="text-xl font-bold" [class.text-rose-300]="d.intel.length" [class.text-white]="!d.intel.length">{{ d.intel.length }}</div></div>
+        <div><div class="text-xs text-slate-400">First seen</div><div class="text-slate-200">{{ when(d.summary.first_seen) }}</div></div>
+        <div><div class="text-xs text-slate-400">Last seen</div><div class="text-slate-200">{{ when(d.summary.last_seen) }}</div></div>
+      </div>
+      <div *ngIf="d.summary.hosts.length" class="text-sm text-slate-400">Hosts:
+        <button *ngFor="let h of d.summary.hosts" (click)="pivot(h)" class="ml-1 font-mono text-cyan-300 hover:underline">{{ h }}</button>
+      </div>
+      <div *ngIf="techniques(d.summary.techniques).length" class="flex flex-wrap gap-1.5">
+        <span *ngFor="let t of techniques(d.summary.techniques)" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 border border-slate-700">{{ t[0] }} ×{{ t[1] }}</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- the timeline -->
+      <div class="xl:col-span-2 bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+        <div class="flex flex-wrap items-center gap-2 mb-3" role="tablist" aria-label="Timeline filter">
+          <h3 class="text-base font-semibold text-white mr-2">Timeline</h3>
+          <button *ngFor="let t of types" role="tab" [attr.aria-selected]="show() === t.key" (click)="show.set(t.key)"
+            class="text-xs px-2.5 py-1 rounded-full border transition"
+            [class.border-cyan-500]="show() === t.key" [class.text-cyan-200]="show() === t.key" [class.border-slate-700]="show() !== t.key" [class.text-slate-400]="show() !== t.key">
+            {{ t.label }}<span *ngIf="t.key !== 'all'"> {{ count($any(t.key)) }}</span>
+          </button>
+        </div>
+        <p *ngIf="timeline().length === 0" class="text-sm text-slate-500 py-6 text-center">Nothing in this period.</p>
+        <ol class="relative border-l border-slate-800 ml-2 space-y-3">
+          <li *ngFor="let e of timeline()" class="ml-4">
+            <span class="absolute -left-1.5 w-3 h-3 rounded-full mt-1.5" [ngClass]="typeCls(e.type)" [attr.aria-label]="e.type"></span>
+            <div class="text-[11px] text-slate-500">{{ when(e.ts) }} · {{ e.type }}<span *ngIf="e.level !== undefined"> · level {{ e.level }}</span><span *ngIf="e.mitre"> · {{ e.mitre }} {{ e.tactic }}</span><span *ngIf="e.outcome"> · {{ e.outcome }}</span></div>
+            <div class="text-sm text-slate-100">{{ e.title }}</div>
+            <div class="text-xs text-slate-400 break-words">{{ e.detail }}</div>
+          </li>
+        </ol>
+      </div>
+
+      <!-- what it is correlated with -->
+      <div class="space-y-4">
+        <div class="bg-slate-900/60 rounded-xl border p-4 text-sm" [class.border-rose-900]="d.intel.length" [class.border-slate-800]="!d.intel.length">
+          <h3 class="text-base font-semibold text-white mb-2">Threat intel</h3>
+          <p *ngIf="!d.intel.length" class="text-slate-500">On no feed{{ d.kind === 'host' || d.kind === 'user' ? ', nor any address it dealt with' : '' }}.</p>
+          <div *ngFor="let i of d.intel" class="border-t border-slate-800/60 py-1.5">
+            <button (click)="pivot(i.value)" class="font-mono text-rose-300 hover:underline">{{ i.value }}</button>
+            <span *ngIf="i.geo as g" class="text-xs text-slate-400"> {{ g.country_code }}{{ g.org ? ' · ' + g.org : '' }}</span>
+            <div class="text-xs text-slate-400">{{ sources(i.hits) }} · {{ i.hits[0].attack_type }} · {{ i.hits[0].description }}</div>
+          </div>
+        </div>
+
+        <div *ngIf="d.swarm.length" class="bg-slate-900/60 rounded-xl border border-emerald-900/60 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">Threat swarm</h3>
+          <div *ngFor="let m of d.swarm" class="border-t border-slate-800/60 py-1.5">
+            <span class="font-mono text-emerald-300">{{ m.value }}</span>&nbsp;seen by {{ m.feed.orgs }} other organisation(s)
+            <div class="text-xs text-slate-400">{{ m.rule_description }}</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">SOAR</h3>
+          <p *ngIf="!d.cases.length && !d.playbook_runs.length" class="text-slate-500">No case or playbook run.</p>
+          <div *ngFor="let c of d.cases" class="border-t border-slate-800/60 py-1.5">
+            <span class="font-mono text-amber-300">{{ c.case_number }}</span>&nbsp;{{ c.title }}
+            <div class="text-xs text-slate-400">{{ c.severity }} · {{ c.status }} · {{ when(c.created_at) }}</div>
+          </div>
+          <div *ngFor="let r of d.playbook_runs" class="border-t border-slate-800/60 py-1.5">
+            <span class="text-violet-300">{{ r.playbook }}</span><span class="text-xs text-slate-400"> · {{ r.status }}</span>
+            <div class="text-xs text-slate-500 break-words">{{ r.detail }}</div>
+          </div>
+          <a *ngIf="d.cases.length || d.playbook_runs.length" routerLink="/analyst/soar" class="text-xs text-cyan-300 hover:underline">Open SOAR →</a>
+        </div>
+
+        <div *ngIf="d.decisions.length" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">AI decisions</h3>
+          <div *ngFor="let x of d.decisions" class="border-t border-slate-800/60 py-1.5">
+            <span class="text-cyan-300">{{ x.action }}</span><span class="text-xs text-slate-400"> · {{ x.outcome }} · #{{ x.seq }}</span>
+            <div class="text-xs text-slate-400">{{ x.summary }}</div>
+          </div>
+          <a routerLink="/analyst/siem-decisions" class="text-xs text-cyan-300 hover:underline">Open the AI Decision Audit →</a>
+        </div>
+
+        <div *ngIf="d.triage.length || d.suppressions.length" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">Triage and suppressions</h3>
+          <div *ngFor="let t of d.triage" class="border-t border-slate-800/60 py-1.5">
+            Rule {{ t.rule_id }} {{ t.rule }} <span class="text-xs text-slate-400">· {{ t.verdict }} ({{ t.source }}, {{ t.confidence }}%) · {{ t.status }}</span>
+          </div>
+          <div *ngFor="let s of d.suppressions" class="border-t border-slate-800/60 py-1.5 text-amber-200">
+            Hidden: rule {{ s.rule_id ?? 'any' }} {{ s.rule }} <span class="text-xs text-slate-400">until {{ when(s.expires_at) }} · by {{ s.by }}</span>
+          </div>
+        </div>
+
+        <div *ngIf="d.host" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">Host</h3>
+          <div *ngIf="d.host.agent as a" class="text-slate-300">{{ a.name }} · {{ a.ip }} · {{ a.os }} · <span [class.text-emerald-300]="a.status === 'active'">{{ a.status }}</span></div>
+          <div *ngIf="d.host.inventory as i" class="text-xs text-slate-400 mt-1">{{ i.packages }} packages · {{ i.ports }} open ports · {{ i.processes }} processes</div>
+          <div class="mt-2 text-slate-300">{{ d.host.vulnerabilities.length }} vulnerabilit{{ d.host.vulnerabilities.length === 1 ? 'y' : 'ies' }}</div>
+          <div *ngFor="let v of d.host.vulnerabilities.slice(0, 15)" class="border-t border-slate-800/60 py-1 text-xs">
+            <span class="font-mono">{{ v.cve }}</span> {{ v.package }} {{ v.version }} · {{ v.severity }}
+            <span *ngIf="v.known_exploited" class="ml-1 px-1.5 rounded bg-rose-900/60 text-rose-200 border border-rose-700">exploited in the wild</span>
+          </div>
+        </div>
+
+        <div *ngIf="d.memory.length" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 text-sm">
+          <h3 class="text-base font-semibold text-white mb-2">Decided before</h3>
+          <div *ngFor="let m of d.memory" class="border-t border-slate-800/60 py-1.5">
+            {{ m.title }} <span class="text-xs text-slate-400">· {{ m.outcome }} · {{ m.score }}% similar</span>
+            <div class="text-xs text-slate-500">{{ m.reasons.join(', ') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+      <button (click)="showEvents.set(!showEvents())" [attr.aria-expanded]="showEvents()" class="text-sm font-semibold text-white">
+        {{ showEvents() ? '▾' : '▸' }} Log events ({{ d.events.length }})
+      </button>
+      <div *ngIf="showEvents()" class="mt-3 space-y-1 max-h-[480px] overflow-y-auto">
+        <p *ngIf="!d.events.length" class="text-sm text-slate-500">No log line mentions it.</p>
+        <div *ngFor="let e of d.events" class="text-xs font-mono text-slate-300 border-t border-slate-800/60 pt-1 break-all">
+          <span class="text-slate-500">{{ when(e.ts) }} {{ e.location }}</span> {{ e.message }}
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</div>

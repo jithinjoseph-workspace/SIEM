@@ -1,0 +1,1008 @@
+S0829:
+  title: "WebDAV modules (dav_module, dav_fs_module, dav_lock_module): not loaded"
+  description: "WebDAV extends HTTP so clients can create, change and move files on the server. The check lists loaded modules with 'httpd -M' and expects no dav_* module."
+  rationale: "Remote file authoring is rarely needed on a public site and gives attackers a way to write content to the server."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the 'LoadModule dav_module', 'LoadModule dav_fs_module' and 'LoadModule dav_lock_module' line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0830:
+  title: "Server status module (status_module): not loaded"
+  description: "mod_status publishes a live page with current requests, client addresses and worker state. The check expects status_module to be absent from 'httpd -M'."
+  rationale: "The status page leaks internal activity and client details that help an attacker plan an attack."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the 'LoadModule status_module modules/mod_status.so' line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0831:
+  title: "Directory listing module (autoindex_module): not loaded"
+  description: "mod_autoindex generates a file list for any directory that has no index page. The check expects autoindex_module to be absent from 'httpd -M'."
+  rationale: "Automatic listings expose backup files, scripts and other content that was never meant to be linked."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the 'LoadModule autoindex_module modules/mod_autoindex.so' line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0832:
+  title: "Proxy modules (proxy_*): not loaded"
+  description: "mod_proxy and its protocol modules let httpd forward requests to other servers. The check expects no module whose name contains 'proxy_' in 'httpd -M'."
+  rationale: "A server that is not meant to be a proxy should not be able to relay traffic; a misconfigured proxy can be abused to reach internal hosts or hide attack traffic."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the LoadModule lines for proxy_module and every proxy_*_module (usually 00-proxy.conf), unless the server is a deliberate reverse proxy, line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0833:
+  title: "User directory module (userdir_module): not loaded"
+  description: "mod_userdir maps URLs such as /~name to a directory in each user's home. The check expects the userdir module to be absent from the 'httpd -M' output."
+  rationale: "Publishing home directories exposes account names and personal files and widens the content the server serves."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the 'LoadModule userdir_module modules/mod_userdir.so' line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0834:
+  title: "Server information module (info_module): not loaded"
+  description: "mod_info shows the full server configuration, including loaded modules and directives, on a web page. The check expects info_module to be absent from 'httpd -M'."
+  rationale: "Showing the configuration to visitors hands an attacker a map of the server and its weak points."
+  remediation: "In /etc/httpd/conf.modules.d/ (or httpd.conf) comment out the 'LoadModule info_module modules/mod_info.so' line(s), then run 'apachectl configtest' and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0835:
+  title: "apache account shell: /sbin/nologin or /dev/null"
+  description: "The account that runs the httpd worker processes is listed in /etc/passwd. The check expects its login shell to end in /sbin/nologin or /dev/null."
+  rationale: "A service account with no usable shell cannot be used for an interactive login if its password or keys are ever obtained."
+  remediation: "usermod -s /sbin/nologin apache"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0836:
+  title: "apache account password: locked"
+  description: "'passwd -S apache' reports whether the service account password is usable. The check expects the status L / LK or 'Password locked'."
+  rationale: "A locked password stops anyone from logging in as the web server account with a guessed or reused password."
+  remediation: "passwd -l apache"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0837:
+  title: "AllowOverride: None in httpd.conf and conf.d files; AllowOverrideList absent from conf.d and present in httpd.conf"
+  description: "AllowOverride and AllowOverrideList decide which directives .htaccess files may change. The check expects an active 'AllowOverride None' line in httpd.conf and in the conf.d / modsecurity.d files, no AllowOverrideList in those directories, and an AllowOverrideList line in httpd.conf."
+  rationale: "With overrides off, a file uploaded into the web tree cannot change access rules or handlers; all policy stays in the main configuration."
+  remediation: "Inside every <Directory> block set 'AllowOverride None'; remove AllowOverrideList from conf.d files and keep 'AllowOverrideList None' in httpd.conf."
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0838:
+  title: "Options directive: Includes not enabled"
+  description: "The Includes option turns on server-side includes, which can run commands from within served pages. The check expects no active Options line naming Includes (or IncludesNOEXEC) in httpd.conf or conf.d."
+  rationale: "Server-side includes let page content trigger processing on the server and are a known path for command execution."
+  remediation: "Remove Includes and IncludesNOEXEC from every Options directive, for example 'Options None' or 'Options -Includes'."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0839:
+  title: "Default content: no index.html in /var/www or /var/www/html, no manual.conf / apache2-doc.conf, no SetHandler for server-* or perl handlers"
+  description: "A fresh install ships a welcome page, the online manual and sample handlers such as server-status, server-info and perl-status. The check expects none of these in the web root or configuration."
+  rationale: "Default pages confirm the product and version and sample handlers expose internals; neither belongs on a production server."
+  remediation: "Delete the default index.html, remove manual.conf / apache2-doc.conf, and delete <Location> blocks with 'SetHandler server-status', 'server-info' or perl-status / perl-script handlers."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0840:
+  title: "printenv CGI script: removed"
+  description: "printenv is a sample CGI script that prints every environment variable of the request. The check expects no printenv file in /var/www/cgi-bin or /usr/lib/cgi-bin."
+  rationale: "The script discloses server paths, software versions and request data, and samples are not maintained as production code."
+  remediation: "rm -f /var/www/cgi-bin/printenv /usr/lib/cgi-bin/printenv"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0841:
+  title: "test-cgi script: removed"
+  description: "test-cgi is a sample script that echoes server and request variables. The check expects no test-cgi file in /var/www/cgi-bin or /usr/lib/cgi-bin."
+  rationale: "Sample scripts disclose details about the server and some old versions had injection flaws."
+  remediation: "rm -f /var/www/cgi-bin/test-cgi /usr/lib/cgi-bin/test-cgi"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0842:
+  title: "TraceEnable: off"
+  description: "TraceEnable controls whether the server answers HTTP TRACE requests, which echo the request back to the client. The check expects an active 'TraceEnable off' line in httpd.conf."
+  rationale: "TRACE can reflect cookies and headers back to a script, which has been used to steal session data (cross-site tracing)."
+  remediation: "Add 'TraceEnable off' to httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0843:
+  title: "Listen: bound to specific IP addresses (no bare port, no 0.0.0.0)"
+  description: "The Listen directive sets the address and port httpd accepts connections on. The check fails when any active Listen line gives only a port or uses 0.0.0.0."
+  rationale: "Binding to named addresses keeps the service off interfaces where it is not meant to be reachable, such as management or backup networks."
+  remediation: "Write each Listen with an address, for example 'Listen 10.0.0.5:80' and 'Listen 10.0.0.5:443'."
+  compliance: { nist_800_53: ["CM-7", "SC-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.9", "A.8.20"] }
+S0844:
+  title: "X-Frame-Options header: 'Header always append X-Frame-Options SAMEORIGIN' (or DENY)"
+  description: "X-Frame-Options tells browsers whether the site's pages may be shown inside a frame on another site. The check expects httpd.conf to append the header with SAMEORIGIN or DENY."
+  rationale: "Blocking framing by other sites defeats clickjacking, where a hidden frame tricks users into clicking controls."
+  remediation: "Add 'Header always append X-Frame-Options SAMEORIGIN' to httpd.conf (requires mod_headers) and restart httpd."
+  compliance: { nist_800_53: ["SC-8", "SC-23"], pci_dss: ["4.2.1", "6.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+S0845:
+  title: "SSLInsecureRenegotiation: not on"
+  description: "SSLInsecureRenegotiation allows TLS renegotiation with clients that lack the secure renegotiation extension. The check fails when ssl.conf has an active line setting it to on."
+  rationale: "Legacy renegotiation lets a man-in-the-middle splice their own data into the start of a victim's TLS session."
+  remediation: "Set 'SSLInsecureRenegotiation off' (or remove the line) in /etc/httpd/conf.d/ssl.conf."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0846:
+  title: "SSLCompression: not on"
+  description: "SSLCompression enables compression at the TLS layer. The check fails when ssl.conf has an active line setting it to on."
+  rationale: "TLS compression makes encrypted traffic open to length-based attacks such as CRIME that recover cookies."
+  remediation: "Set 'SSLCompression off' (or remove the line) in /etc/httpd/conf.d/ssl.conf."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0847:
+  title: "ServerTokens: Prod"
+  description: "ServerTokens decides how much product and version detail goes into the Server response header. The check expects an active 'ServerTokens Prod' (or ProductOnly) line in the conf.d files."
+  rationale: "Hiding the version and module list makes it harder for scanners to match the server to known vulnerabilities."
+  remediation: "Add 'ServerTokens Prod' to a file in /etc/httpd/conf.d/ and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0848:
+  title: "ServerSignature: not On"
+  description: "ServerSignature adds a footer with the server name and version to generated pages such as error pages and listings. The check fails when a conf.d file sets it On."
+  rationale: "The footer discloses software and version details to anyone who triggers an error."
+  remediation: "Set 'ServerSignature Off' in the conf.d configuration and restart httpd."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0849:
+  title: "Timeout: 10 seconds or less"
+  description: "Timeout sets how long httpd waits for I/O events such as receiving a request or sending a response. The check expects an active Timeout value of 10 or lower in httpd.conf."
+  rationale: "A short timeout limits how long slow clients can hold connections open, which blunts slow-request denial of service."
+  remediation: "Set 'Timeout 10' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0850:
+  title: "KeepAlive: On (not Off)"
+  description: "KeepAlive lets a client send several requests over one TCP connection. The check fails when httpd.conf has an active 'KeepAlive Off' line."
+  rationale: "Reusing connections cuts connection setup work, so the server copes better with load and connection floods."
+  remediation: "Set 'KeepAlive On' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0851:
+  title: "MaxKeepAliveRequests: 100 or more"
+  description: "MaxKeepAliveRequests caps how many requests one persistent connection may carry. The check fails when httpd.conf sets a value below 100."
+  rationale: "A very low cap forces constant reconnects and wastes server resources; 100 or more keeps the benefit of persistent connections."
+  remediation: "Set 'MaxKeepAliveRequests 100' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0852:
+  title: "KeepAliveTimeout: 15 seconds or less"
+  description: "KeepAliveTimeout sets how long an idle persistent connection waits for the next request. The check expects a value of 15 or lower in httpd.conf."
+  rationale: "Idle connections tie up workers; a short wait stops a client from holding them open cheaply."
+  remediation: "Set 'KeepAliveTimeout 15' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0853:
+  title: "RequestReadTimeout header: 40 seconds or less (or mod_reqtimeout loaded in httpd.conf)"
+  description: "mod_reqtimeout limits how long a client may take to send the request headers. The check passes when httpd.conf loads mod_reqtimeout or an active RequestReadTimeout sets the header maximum to 40 seconds or less."
+  rationale: "Limiting header read time defeats attacks that trickle headers slowly to keep connections busy."
+  remediation: "Load mod_reqtimeout and set 'RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500' in httpd.conf."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0854:
+  title: "RequestReadTimeout body: 20 seconds or less (or mod_reqtimeout loaded in httpd.conf)"
+  description: "mod_reqtimeout also limits how long a client may take to send the request body. The check passes when httpd.conf loads mod_reqtimeout or an active RequestReadTimeout sets body to 20 seconds or less."
+  rationale: "Limiting body read time defeats attacks that send POST data very slowly to exhaust workers."
+  remediation: "Load mod_reqtimeout and set 'RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500' in httpd.conf."
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0855:
+  title: "LimitRequestLine: 512 bytes or less"
+  description: "LimitRequestLine caps the size of the HTTP request line (method, URL and protocol). The check expects an active value of 512 or lower in httpd.conf."
+  rationale: "Small limits reject oversized URLs used in buffer overflow and resource exhaustion attempts."
+  remediation: "Set 'LimitRequestLine 512' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0856:
+  title: "LimitRequestFields: 100 or less"
+  description: "LimitRequestFields caps the number of header fields in one request. The check expects an active value of 100 or lower in httpd.conf."
+  rationale: "Capping header count stops requests with thousands of headers from consuming memory and CPU."
+  remediation: "Set 'LimitRequestFields 100' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0857:
+  title: "LimitRequestFieldSize: 1024 bytes or less"
+  description: "LimitRequestFieldSize caps the size of each request header line. The check expects an active value of 1024 or lower in httpd.conf."
+  rationale: "Small header limits reject oversized headers used to exhaust memory or exploit parser bugs."
+  remediation: "Set 'LimitRequestFieldSize 1024' in httpd.conf and restart httpd."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0858:
+  title: "LimitRequestBody: 102400 bytes or less"
+  description: "LimitRequestBody caps the size of a request body the server will accept. The check expects an active value of 102400 or lower in httpd.conf."
+  rationale: "A body limit keeps large uploads from filling disk or memory; raise it only in the locations that need uploads."
+  remediation: "Set 'LimitRequestBody 102400' in httpd.conf (and a larger value only in specific <Location> blocks that need it)."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0859:
+  title: "Web content location: not on the system drive"
+  description: "IIS virtual directories map URLs to physical folders. The check fails when 'appcmd list vdir' shows a physical path under %SystemDrive%."
+  rationale: "Keeping content off the system volume means a path traversal flaw or a full content disk cannot reach or fill the operating system partition."
+  remediation: "Move the content to another volume and repoint it, e.g. appcmd set vdir \"Default Web Site/\" -physicalPath:D:\\inetpub\\wwwroot"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0860:
+  title: "Directory browsing: disabled (directoryBrowse enabled=\"false\")"
+  description: "Directory browsing makes IIS return a file list for folders without a default document. The check expects the directoryBrowse section to report enabled=\"false\"."
+  rationale: "File lists reveal backups, configuration files and scripts that are not linked from the site."
+  remediation: "%systemroot%\\system32\\inetsrv\\appcmd set config /section:directoryBrowse /enabled:false"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0861:
+  title: "Application pool identity: ApplicationPoolIdentity"
+  description: "Each IIS application pool runs its worker processes under an identity. The check expects the applicationPools section to show processModel identityType=\"ApplicationPoolIdentity\"."
+  rationale: "A per-pool virtual account has only the rights it is given, so one compromised site cannot use a shared or privileged account."
+  remediation: "%systemroot%\\system32\\inetsrv\\appcmd set config /section:applicationPools /applicationPoolDefaults.processModel.identityType:ApplicationPoolIdentity"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0862:
+  title: "Application pool assignment: an application listed on DefaultAppPool"
+  description: "'appcmd list app' shows each application and the pool it runs in. The check passes when an application is reported with applicationPool:DefaultAppPool."
+  rationale: "Knowing which applications share the default pool is the starting point for isolating sites; applications that share a pool share a process and identity."
+  remediation: "Review 'appcmd list app'; give each site its own pool, e.g. appcmd add apppool /name:Site1Pool and appcmd set app \"Site1/\" /applicationPool:Site1Pool"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0863:
+  title: "Anonymous authentication: enabled=\"true\" reported by 'appcmd list app'"
+  description: "Anonymous authentication lets IIS serve requests without credentials, using a configured identity. The check passes when the 'appcmd list app' output contains anonymousAuthentication enabled=\"true\"."
+  rationale: "When anonymous access is on, it should run as the application pool identity rather than a shared IUSR account so each site keeps its own rights."
+  remediation: "appcmd set config -section:system.webServer/security/authentication/anonymousAuthentication /userName:\"\" /commit:apphost (uses the pool identity)"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0864:
+  title: "WebDAV Publishing role service: not installed (state Available)"
+  description: "Web-DAV-Publishing is the IIS role service that adds WebDAV authoring. The check expects Get-WindowsFeature to report it as Available, meaning not installed."
+  rationale: "WebDAV lets clients write and move files on the server; without a business need it is extra attack surface."
+  remediation: "Uninstall-WindowsFeature Web-DAV-Publishing"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0865:
+  title: "Global authorization: allow-all rule removed, only Administrators allowed"
+  description: "The IIS URL authorization section holds the server-wide allow and deny rules. The check expects the default allow rule for all users (users=\"*\") to be removed and an allow rule for the Administrators role."
+  rationale: "Starting from deny-by-default means each site must grant access on purpose instead of inheriting access for everyone."
+  remediation: "appcmd set config -section:system.webServer/security/authorization /-\"[users='*',roles='',verbs='']\" and appcmd set config -section:system.webServer/security/authorization /+\"[accessType='Allow',roles='Administrators']\""
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0866:
+  title: "Forms authentication: cookieless=\"UseCookies\" and requireSSL=\"true\""
+  description: "ASP.NET forms authentication can carry the ticket in a cookie or in the URL, and can restrict the cookie to HTTPS. The check expects both cookieless=\"UseCookies\" and requireSSL=\"true\" on one line."
+  rationale: "Tickets in URLs leak through logs and referrers, and cookies sent over plain HTTP can be sniffed."
+  remediation: "appcmd set config -section:system.web/authentication /forms.cookieless:UseCookies /forms.requireSSL:true"
+  compliance: { nist_800_53: ["SC-8", "SC-23"], pci_dss: ["4.2.1", "6.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+S0867:
+  title: "Forms authentication cookie: requireSSL=\"true\""
+  description: "requireSSL marks the forms authentication cookie as secure so browsers send it only over HTTPS. The check expects requireSSL=\"true\" in system.web/authentication."
+  rationale: "A secure-only cookie cannot be captured from an unencrypted request."
+  remediation: "appcmd set config -section:system.web/authentication /forms.requireSSL:true"
+  compliance: { nist_800_53: ["SC-8", "SC-23"], pci_dss: ["4.2.1", "6.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+S0868:
+  title: "Forms authentication ticket: cookieless=\"UseCookies\""
+  description: "The cookieless attribute decides whether the forms ticket may travel in the URL. The check expects cookieless=\"UseCookies\" in system.web/authentication."
+  rationale: "Tickets in URLs end up in logs, browser history and Referer headers where others can reuse them."
+  remediation: "appcmd set config -section:system.web/authentication /forms.cookieless:UseCookies"
+  compliance: { nist_800_53: ["SC-8", "SC-23"], pci_dss: ["4.2.1", "6.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.5", "A.8.24"] }
+S0869:
+  title: "Machine key validation (.NET 3.5): SHA1 or AES"
+  description: "machineKey sets the algorithm ASP.NET uses to protect view state and forms tickets from tampering. The check expects the root web.config to use validation=\"SHA1\" or \"AES\"."
+  rationale: "Weak validation such as MD5 lets attackers forge or alter protected data."
+  remediation: "%systemroot%\\system32\\inetsrv\\appcmd set config /commit:WEBROOT /section:machineKey /validation:SHA1"
+  compliance: { nist_800_53: ["SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["A.8.24"] }
+S0870:
+  title: "Machine key validation (.NET 4.5): HMACSHA256"
+  description: "In .NET 4.5 and later machineKey supports HMAC-SHA2 validation. The check expects the root web.config to use validation=\"HMACSHA256\"."
+  rationale: "HMAC-SHA256 is the strongest commonly supported choice and resists forgery of view state and tickets."
+  remediation: "%systemroot%\\system32\\inetsrv\\appcmd set config /commit:WEBROOT /section:machineKey /validation:HMACSHA256"
+  compliance: { nist_800_53: ["SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["A.8.24"] }
+S0871:
+  title: ".NET trust level: Low or Medium"
+  description: "The trust element sets the code access security level for ASP.NET applications. The check expects the root web.config to set level=\"Low\" or \"Medium\"."
+  rationale: "Partial trust stops application code from reaching the file system, registry and network beyond what it needs."
+  remediation: "%systemroot%\\system32\\inetsrv\\appcmd set config /commit:WEBROOT /section:trust /level:Medium"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0872:
+  title: "X-Powered-By header: not sent"
+  description: "IIS adds a custom X-Powered-By header naming the framework by default. The check fails when the httpProtocol custom headers still contain name=\"X-Powered-By\"."
+  rationale: "The header advertises the technology stack and helps attackers pick exploits."
+  remediation: "appcmd set config -section:system.webServer/httpProtocol /-\"customHeaders.[name='X-Powered-By']\""
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0873:
+  title: "Server header: removed (removeServerHeader=\"true\")"
+  description: "Request filtering can strip the Server header that names IIS and its version. The check expects removeServerHeader=\"true\"."
+  rationale: "Hiding the product and version slows down automated vulnerability matching."
+  remediation: "appcmd set config -section:system.webServer/security/requestFiltering /removeServerHeader:true"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0874:
+  title: "Request filtering maxAllowedContentLength: 30000000 bytes or less"
+  description: "maxAllowedContentLength is the largest request body IIS accepts. The check expects the value to be 30000000 or lower."
+  rationale: "Capping body size limits uploads that would exhaust disk, memory or bandwidth."
+  remediation: "appcmd set config /section:requestfiltering /requestLimits.maxAllowedContentLength:30000000"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0875:
+  title: "Request filtering maxUrl: 4096 bytes or less"
+  description: "maxUrl is the longest URL path IIS accepts. The check expects the value to be 4096 or lower."
+  rationale: "Rejecting long URLs blocks overflow and resource exhaustion attempts that rely on oversized paths."
+  remediation: "appcmd set config /section:requestfiltering /requestLimits.maxUrl:4096"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0876:
+  title: "Request filtering maxQueryString: 2048 bytes or less"
+  description: "maxQueryString is the longest query string IIS accepts. The check expects the value to be 2048 or lower."
+  rationale: "Rejecting long query strings blocks oversized injection payloads and parser abuse."
+  remediation: "appcmd set config /section:requestfiltering /requestLimits.maxQueryString:2048"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0877:
+  title: "Request filtering high-bit characters: denied (allowHighBitCharacters=\"false\")"
+  description: "allowHighBitCharacters decides whether IIS accepts non-ASCII bytes in URLs. The check expects allowHighBitCharacters=\"false\"."
+  rationale: "Unexpected byte values in URLs are a common way to slip past filters through encoding tricks."
+  remediation: "appcmd set config /section:requestfiltering /allowHighBitCharacters:false"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0878:
+  title: "Request filtering double escaping: denied (allowDoubleEscaping=\"false\")"
+  description: "allowDoubleEscaping decides whether IIS accepts URLs that are still encoded after one round of decoding. The check expects allowDoubleEscaping=\"false\"."
+  rationale: "Double encoding is used to hide path traversal and injection strings from filters."
+  remediation: "appcmd set config /section:requestfiltering /allowDoubleEscaping:false"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0879:
+  title: "Request filtering TRACE verb: denied (verb=\"TRACE\" allowed=\"false\")"
+  description: "Request filtering can deny specific HTTP verbs. The check expects a rule that denies TRACE."
+  rationale: "TRACE echoes requests back, which can expose cookies and headers through cross-site tracing."
+  remediation: "appcmd set config /section:requestfiltering /+verbs.[verb='TRACE',allowed='false']"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0880:
+  title: "Request filtering file extensions: unlisted extensions denied (allowUnlisted=\"false\")"
+  description: "The fileExtensions list in request filtering can work as an allow list. The check expects fileExtensions allowUnlisted=\"false\"."
+  rationale: "Serving only known extensions stops requests for backups, source and configuration files with unexpected suffixes."
+  remediation: "appcmd set config /section:requestfiltering /fileExtensions.allowUnlisted:false, then add allowed extensions with /+fileExtensions.[fileExtension='.html',allowed='true']"
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0881:
+  title: "Handler access policy: Read, Script"
+  description: "The handlers accessPolicy decides whether handlers may read, run scripts, run executables or write. The check expects accessPolicy=\"Read, Script\"."
+  rationale: "Never combining Write with Script or Execute stops an uploaded file from being run on the server."
+  remediation: "appcmd set config /section:handlers /accessPolicy:Read,Script"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0882:
+  title: "Unlisted ISAPI modules: not allowed (notListedIsapisAllowed=\"false\")"
+  description: "ISAPI and CGI restrictions list the extensions IIS may load. The check expects notListedIsapisAllowed=\"false\"."
+  rationale: "Only explicitly approved ISAPI DLLs should ever run inside the web server process."
+  remediation: "appcmd set config -section:system.webServer/security/isapiCgiRestriction /notListedIsapisAllowed:false"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0883:
+  title: "Unlisted CGI programs: not allowed (notListedCgisAllowed=\"false\")"
+  description: "The same restriction list covers CGI executables. The check expects notListedCgisAllowed=\"false\"."
+  rationale: "Only explicitly approved CGI programs should be started by the web server."
+  remediation: "appcmd set config -section:system.webServer/security/isapiCgiRestriction /notListedCgisAllowed:false"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0884:
+  title: "Dynamic IP restrictions: deny by concurrent requests and by request rate enabled"
+  description: "Dynamic IP Security blocks clients that open too many connections at once or send requests too fast. The check expects denyByConcurrentRequests and denyByRequestRate both enabled=\"true\"."
+  rationale: "Throttling abusive clients helps the site stay available during floods and brute-force attempts."
+  remediation: "appcmd set config -section:system.webServer/security/dynamicIpSecurity /denyByConcurrentRequests.enabled:true /denyByRequestRate.enabled:true"
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0885:
+  title: "Site log location: not the default %SystemDrive%\\inetpub\\logs\\LogFiles"
+  description: "Each IIS site writes request logs to a configured directory. The check fails when a site still logs to %SystemDrive%\\inetpub\\logs\\LogFiles."
+  rationale: "Logs on a separate volume cannot fill the system drive and are easier to protect and forward."
+  remediation: "appcmd set config -section:system.applicationHost/sites -siteDefaults.logFile.directory:D:\\IISLogs"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0886:
+  title: "FTP over TLS: required on control and data channels (SslRequire)"
+  description: "IIS FTP can require TLS separately for the command channel and the data channel. The check expects controlChannelPolicy=\"SslRequire\" and dataChannelPolicy=\"SslRequire\"."
+  rationale: "Plain FTP sends credentials and files in clear text that anyone on the path can read."
+  remediation: "appcmd set config -section:system.applicationHost/sites /siteDefaults.ftpServer.security.ssl.controlChannelPolicy:SslRequire /siteDefaults.ftpServer.security.ssl.dataChannelPolicy:SslRequire"
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0887:
+  title: "FTP logon attempt restrictions: enabled (denyByFailure enabled=\"true\")"
+  description: "FTP logon attempt restrictions block a client address after repeated failed logons. The check expects denyByFailure enabled=\"true\"."
+  rationale: "Blocking repeated failures slows password guessing against FTP accounts."
+  remediation: "appcmd set config -section:system.ftpServer/security/authentication /denyByFailure.enabled:true /denyByFailure.maxFailure:4 /denyByFailure.entryExpiration:00:00:30"
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0888:
+  title: "Strict-Transport-Security header: sent with max-age greater than 0"
+  description: "HSTS tells browsers to reach the site only over HTTPS for max-age seconds. The check expects a custom header named Strict-Transport-Security with a positive max-age."
+  rationale: "HSTS stops downgrade and SSL-stripping attacks after the first visit."
+  remediation: "appcmd set config -section:system.webServer/httpProtocol /+\"customHeaders.[name='Strict-Transport-Security',value='max-age=31536000']\""
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0889:
+  title: "SSL 2.0 protocol (server and client): disabled (Enabled = 0, DisabledByDefault = 1)"
+  description: "Schannel reads per-protocol keys to decide whether Windows offers SSL 2.0 as a server and as a client. The check expects Enabled = 0 and DisabledByDefault = 1 under both the Server and Client keys."
+  rationale: "SSL 2.0 is broken by design and must never be negotiated."
+  remediation: "Set REG_DWORD Enabled = 0 and DisabledByDefault = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Server and ...\\SSL 2.0\\Client, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0890:
+  title: "SSL 3.0 protocol (server and client): disabled (Enabled = 0, DisabledByDefault = 1)"
+  description: "Schannel reads per-protocol keys to decide whether Windows offers SSL 3.0 as a server and as a client. The check expects Enabled = 0 and DisabledByDefault = 1 under both the Server and Client keys."
+  rationale: "SSL 3.0 is broken (POODLE) and is no longer an approved protocol."
+  remediation: "Set REG_DWORD Enabled = 0 and DisabledByDefault = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Server and ...\\SSL 3.0\\Client, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0891:
+  title: "TLS 1.0 protocol (server and client): disabled (Enabled = 0, DisabledByDefault = 1)"
+  description: "Schannel reads per-protocol keys to decide whether Windows offers TLS 1.0 as a server and as a client. The check expects Enabled = 0 and DisabledByDefault = 1 under both the Server and Client keys."
+  rationale: "TLS 1.0 relies on outdated constructions and is not accepted for protecting card or health data."
+  remediation: "Set REG_DWORD Enabled = 0 and DisabledByDefault = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server and ...\\TLS 1.0\\Client, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0892:
+  title: "TLS 1.1 protocol (server and client): disabled (Enabled = 0, DisabledByDefault = 1)"
+  description: "Schannel reads per-protocol keys to decide whether Windows offers TLS 1.1 as a server and as a client. The check expects Enabled = 0 and DisabledByDefault = 1 under both the Server and Client keys."
+  rationale: "TLS 1.1 lacks modern cipher suites and is deprecated by the IETF."
+  remediation: "Set REG_DWORD Enabled = 0 and DisabledByDefault = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Server and ...\\TLS 1.1\\Client, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0893:
+  title: "TLS 1.2 protocol (server): enabled (Enabled = 1, DisabledByDefault = 0)"
+  description: "Schannel reads the TLS 1.2 Server key to decide whether the server offers TLS 1.2. The check expects Enabled = 1 and DisabledByDefault = 0."
+  rationale: "With older protocols off, TLS 1.2 (or newer) must be on so clients can still connect securely."
+  remediation: "Set REG_DWORD Enabled = 1 and DisabledByDefault = 0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Server, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0894:
+  title: "NULL cipher: disabled (Enabled = 0)"
+  description: "Schannel reads a key per cipher to decide whether it may be used in TLS. The check expects Enabled = 0 under Ciphers\\NULL."
+  rationale: "NULL ciphers send data with no encryption at all."
+  remediation: "Set REG_DWORD Enabled = 0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\NULL, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0895:
+  title: "DES 56/56 cipher: disabled (Enabled = 0)"
+  description: "Schannel reads a key per cipher to decide whether it may be used in TLS. The check expects Enabled = 0 under Ciphers\\DES 56/56."
+  rationale: "56-bit DES can be brute-forced quickly with commodity hardware."
+  remediation: "Set REG_DWORD Enabled = 0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\DES 56/56, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0896:
+  title: "RC4 ciphers (40/128, 56/128, 64/128, 128/128): disabled (Enabled = 0)"
+  description: "Schannel reads a key per RC4 key size. The check expects Enabled = 0 under each of the four RC4 cipher keys."
+  rationale: "RC4 has known keystream biases that allow plaintext recovery and is prohibited for TLS by RFC 7465."
+  remediation: "Set REG_DWORD Enabled = 0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 40/128, RC4 56/128, RC4 64/128 and RC4 128/128, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0897:
+  title: "AES 128/128 cipher: disabled (Enabled = 0)"
+  description: "Schannel reads a key per cipher to decide whether it may be used in TLS. The check expects Enabled = 0 under Ciphers\\AES 128/128."
+  rationale: "Leaving only AES-256 enabled keeps every session on the strongest key size the policy allows."
+  remediation: "Set REG_DWORD Enabled = 0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\AES 128/128, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0898:
+  title: "AES 256/256 cipher: enabled (Enabled = 1)"
+  description: "Schannel reads the AES 256/256 key to decide whether AES-256 may be used. The check expects Enabled = 1."
+  rationale: "With weaker ciphers off, AES-256 must stay on so clients can still negotiate a strong cipher."
+  remediation: "Set REG_DWORD Enabled = 1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\AES 256/256, then reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0899:
+  title: "TLS cipher suite order: only the eight ECDHE AES suites, in the listed order"
+  description: "The SSL Cipher Suite Order policy sets which suites Windows offers and in what order. The check expects the Functions value to equal exactly: ECDHE-ECDSA and ECDHE-RSA with AES-256-GCM-SHA384 and AES-128-GCM-SHA256, then the same with AES-256-CBC-SHA384 and AES-128-CBC-SHA256."
+  rationale: "Offering only forward-secret AES suites, GCM first, prevents negotiation of weak or non-forward-secret ciphers."
+  remediation: "Group Policy: Computer Configuration > Administrative Templates > Network > SSL Configuration Settings > SSL Cipher Suite Order, enabled with the list TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 (stored in HKLM\\SOFTWARE\\Policies\\Microsoft\\Cryptography\\Configuration\\SSL\\00010002, value Functions); reboot."
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0900:
+  title: "MySQL client history (.mysql_history): none in /home or /root"
+  description: "The mysql client saves typed statements in ~/.mysql_history. The check fails when such a file exists under /home or /root."
+  rationale: "Statements in the history can include passwords (for example in CREATE USER or SET PASSWORD) readable by anyone who gets the file."
+  remediation: "Remove the files and stop new ones: rm ~/.mysql_history; ln -s /dev/null ~/.mysql_history (or export MYSQL_HISTFILE=/dev/null)."
+  compliance: { nist_800_53: ["IA-5", "SC-28"], pci_dss: ["8.3.2", "8.6.2"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17"] }
+S0901:
+  title: "mysql account shell: /bin/false or /sbin/nologin"
+  description: "The operating system account that runs mysqld is listed by 'getent passwd mysql'. The check expects its shell to be /bin/false or /sbin/nologin."
+  rationale: "A service account without a login shell cannot be used for interactive access."
+  remediation: "usermod -s /sbin/nologin mysql"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0902:
+  title: "MYSQL_PWD: not set in user profile files"
+  description: "MySQL clients read a password from the MYSQL_PWD environment variable. The check fails when a .profile, .bashrc or .bash_profile under /home sets MYSQL_PWD."
+  rationale: "Environment variables can be read by other processes and leak into logs and core files; MySQL documents this method as insecure."
+  remediation: "Remove MYSQL_PWD lines from shell profiles; store client credentials with mysql_config_editor or in ~/.my.cnf with mode 600."
+  compliance: { nist_800_53: ["IA-5", "SC-28"], pci_dss: ["8.3.2", "8.6.2"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17"] }
+S0903:
+  title: "allow-suspicious-udfs: not set"
+  description: "allow-suspicious-udfs lets mysqld load user-defined functions whose library has only a main symbol. The check fails when 'my_print_defaults mysqld' lists the option."
+  rationale: "Without the safeguard, any shared library could be loaded as a function and run code inside the server."
+  remediation: "Remove allow-suspicious-udfs from every option file (or set allow-suspicious-udfs=OFF) and restart MySQL."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0904:
+  title: "local_infile: 0"
+  description: "local_infile controls whether clients may use LOAD DATA LOCAL to send files from the client host. The check expects 'local-infile = 0' in the MySQL option files."
+  rationale: "A malicious server or SQL injection can use LOAD DATA LOCAL to read files from the client machine."
+  remediation: "Add 'local-infile = 0' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0905:
+  title: "skip-grant-tables: FALSE"
+  description: "skip-grant-tables starts mysqld without loading privilege tables, so anyone can connect with full rights. The check expects 'skip-grant-tables = FALSE' in the option files."
+  rationale: "Running without grant tables removes all authentication and authorization."
+  remediation: "Add 'skip-grant-tables = FALSE' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0906:
+  title: "skip_symbolic_links: YES"
+  description: "This option stops MySQL from following symbolic links for table files. The check expects 'skip_symbolic_links = YES' in the option files."
+  rationale: "Following links lets someone with file privileges point table files at other locations and overwrite system files."
+  remediation: "Add 'skip_symbolic_links = YES' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0907:
+  title: "secure_file_priv: set to a directory"
+  description: "secure_file_priv limits LOAD DATA, SELECT ... INTO OUTFILE and LOAD_FILE() to one directory. The check expects 'secure_file_priv = <value>' in the option files."
+  rationale: "Without a limit, users with the FILE privilege can read and write any file the mysqld account can reach."
+  remediation: "Add 'secure_file_priv = /var/lib/mysql-files' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0908:
+  title: "sql_mode: includes STRICT_ALL_TABLES"
+  description: "STRICT_ALL_TABLES makes MySQL reject invalid or out-of-range values instead of silently adjusting them. The check expects STRICT_ALL_TABLES in the option files."
+  rationale: "Silent data truncation can corrupt data and hide input that should have been rejected."
+  remediation: "Add STRICT_ALL_TABLES to 'sql_mode = ...' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0909:
+  title: "log_error: set to a file"
+  description: "log_error names the file where mysqld writes startup, shutdown and error messages. The check expects 'log_error = <path>' in the option files."
+  rationale: "An error log is needed to spot crashes, failed logins and tampering."
+  remediation: "Add 'log_error = /var/log/mysql/error.log' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0910:
+  title: "log_bin: not located in /, /var or /usr"
+  description: "log_bin turns on the binary log and sets its base path. The check fails when an option line points log_bin at /, /var or /usr themselves."
+  rationale: "Binary logs in a system directory can fill the operating system partition and mix database data with system files."
+  remediation: "Point the binary log to a dedicated path, e.g. 'log_bin = /var/lib/mysql-binlog/mysql-bin' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0911:
+  title: "log_warnings: 2"
+  description: "log_warnings sets how much warning detail goes to the error log; 2 also records aborted connections and access-denied errors. The check expects an active 'log_warnings = 2' line."
+  rationale: "Recording failed and aborted connections helps detect brute force and network issues."
+  remediation: "Add 'log_warnings = 2' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0912:
+  title: "log-raw: OFF"
+  description: "log-raw writes statements to the general and slow logs without rewriting passwords. The check expects an active 'log-raw OFF' line."
+  rationale: "With log-raw on, passwords in statements appear in clear text in the logs."
+  remediation: "Add 'log-raw = OFF' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-5", "SC-28"], pci_dss: ["8.3.2", "8.6.2"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17"] }
+S0913:
+  title: "old_passwords: not 1 / ON"
+  description: "old_passwords selects the hashing method for new passwords; 1 means the pre-4.1 hash. The check fails when an active line sets old_passwords = 1 or ON."
+  rationale: "The pre-4.1 hash is weak and easily cracked."
+  remediation: "Remove the line or set 'old_passwords = 0' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0914:
+  title: "secure_auth: ON"
+  description: "secure_auth makes the server refuse clients that use the old pre-4.1 password protocol. The check expects 'secure_auth = ON'."
+  rationale: "Refusing the old protocol stops weak password hashes from being used or exposed."
+  remediation: "Add 'secure_auth = ON' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0915:
+  title: "Passwords in option files: none"
+  description: "MySQL option files may contain password= entries for clients. The check fails when an active line beginning with password exists in the server option files."
+  rationale: "Passwords stored in shared configuration files can be read by anyone with access to those files."
+  remediation: "Remove password lines from /etc/mysql option files; use mysql_config_editor or per-user ~/.my.cnf with mode 600 if needed."
+  compliance: { nist_800_53: ["IA-5", "SC-28"], pci_dss: ["8.3.2", "8.6.2"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17"] }
+S0916:
+  title: "sql_mode: NO_AUTO_CREATE_USER (last item on the line)"
+  description: "NO_AUTO_CREATE_USER stops GRANT from silently creating an account without a password. The check expects an active line ending in no_auto_create_user."
+  rationale: "Accounts created implicitly by GRANT may have no password at all."
+  remediation: "Add NO_AUTO_CREATE_USER at the end of 'sql_mode = ...' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0917:
+  title: "Password validation plugin: loaded permanently, length 14 or more, 1+ mixed case, digit and special character, policy MEDIUM or STRONG"
+  description: "The validate_password plugin checks new passwords against a strength policy. The check expects plugin-load = validate_password.so, validate-password = FORCE_PLUS_PERMANENT, validate_password_length >= 14, mixed_case_count, number_count and special_char_count >= 1, and validate_password_policy MEDIUM or STRONG."
+  rationale: "Enforced complexity and length make database passwords much harder to guess or crack."
+  remediation: "In [mysqld] add: plugin-load = validate_password.so, validate-password = FORCE_PLUS_PERMANENT, validate_password_length = 14, validate_password_mixed_case_count = 1, validate_password_number_count = 1, validate_password_special_char_count = 1, validate_password_policy = MEDIUM; restart MySQL."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0918:
+  title: "master_info_repository: TABLE"
+  description: "master_info_repository decides where a replica stores its connection details for the source, including the replication password. The check expects 'master_info_repository = TABLE'."
+  rationale: "In FILE mode the replication password sits in a plain text file in the data directory; a table can be protected with database privileges."
+  remediation: "Add 'master_info_repository = TABLE' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["IA-5", "SC-28"], pci_dss: ["8.3.2", "8.6.2"], hipaa: ["164.312(a)(2)(iv)", "164.312(d)"], iso_27001: ["A.5.17"] }
+S0919:
+  title: "audit_log_connection_policy: not NONE"
+  description: "In MySQL Enterprise Audit, audit_log_connection_policy decides which connection events are logged. The check fails when an active line sets it to NONE."
+  rationale: "Logons and logoffs must be recorded to trace who accessed the database."
+  remediation: "Set 'audit_log_connection_policy = ALL' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0920:
+  title: "audit_log_exclude_accounts: NULL"
+  description: "audit_log_exclude_accounts lists accounts whose activity is not audited. The check expects an active line setting it to NULL."
+  rationale: "Excluding accounts creates blind spots, often for the most privileged users."
+  remediation: "Set 'audit_log_exclude_accounts = NULL' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0921:
+  title: "audit_log_include_accounts: NULL"
+  description: "audit_log_include_accounts limits auditing to the listed accounts only. The check expects an active line setting it to NULL so all accounts are audited."
+  rationale: "An include list silently drops every account not named in it."
+  remediation: "Set 'audit_log_include_accounts = NULL' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0922:
+  title: "audit_log_policy: ALL or LOGINS"
+  description: "audit_log_policy picks the event classes MySQL Enterprise Audit writes. The check expects an active line setting ALL or LOGINS."
+  rationale: "At minimum all logins must be recorded so access can be reviewed."
+  remediation: "Set 'audit_log_policy = ALL' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0923:
+  title: "audit_log_statement_policy: ALL"
+  description: "audit_log_statement_policy decides which statement events are audited. The check expects 'audit_log_statement_policy = ALL'."
+  rationale: "Full statement auditing records what each user did, not just that they connected."
+  remediation: "Set 'audit_log_statement_policy = ALL' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0924:
+  title: "audit_log_strategy: SYNCHRONOUS or SEMISYNCHRONOUS"
+  description: "audit_log_strategy sets how the audit plugin writes to disk. The check expects SYNCHRONOUS or SEMISYNCHRONOUS."
+  rationale: "Synchronous writing makes sure audit records survive a crash instead of being lost from a buffer."
+  remediation: "Set 'audit_log_strategy = SEMISYNCHRONOUS' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0925:
+  title: "audit_log plugin: FORCE_PLUS_PERMANENT"
+  description: "Loading the audit plugin with FORCE_PLUS_PERMANENT stops the server from starting without it and blocks UNINSTALL PLUGIN at run time. The check expects a line 'audit_log = FORCE_PLUS_PERMANENT'."
+  rationale: "An attacker with admin rights cannot quietly unload auditing to hide activity."
+  remediation: "Add 'audit_log = FORCE_PLUS_PERMANENT' in the [mysqld] section of /etc/mysql/my.cnf (or a file in /etc/mysql/conf.d/), then restart MySQL."
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0926:
+  title: "PostgreSQL service: enabled in the default systemd target"
+  description: "systemd starts units that the default target depends on at boot. The check expects a postgres unit in the dependency tree of the default target."
+  rationale: "A database that starts automatically after a reboot keeps the service and its logging available."
+  remediation: "systemctl enable postgresql-13 (use the unit name of your installation)"
+  compliance: { nist_800_53: ["CM-6", "CP-10"], pci_dss: ["2.2.1"], hipaa: ["164.308(a)(7)(i)"], iso_27001: ["A.8.9"] }
+S0927:
+  title: "log_destination: stderr (policy variable $log_destination)"
+  description: "log_destination selects where server messages go: stderr, csvlog, syslog or eventlog. The check expects SHOW log_destination to return the site value, stderr by default."
+  rationale: "A defined log destination makes sure server events are captured where the site collects them."
+  remediation: "ALTER SYSTEM SET log_destination = 'stderr'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0928:
+  title: "logging_collector: on"
+  description: "logging_collector starts a background process that captures stderr output into log files. The check expects SHOW logging_collector to return on."
+  rationale: "Without the collector, messages sent to stderr may be lost instead of written to managed log files."
+  remediation: "ALTER SYSTEM SET logging_collector = 'on'; then restart PostgreSQL."
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0929:
+  title: "log_directory: log (policy variable $log_directory)"
+  description: "log_directory sets where the logging collector writes files, relative to the data directory unless absolute. The check expects SHOW log_directory to return the site value, log by default."
+  rationale: "A known log location lets the logs be protected, rotated and forwarded."
+  remediation: "ALTER SYSTEM SET log_directory = 'log'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0930:
+  title: "log_filename: postgresql-%Y-%m-%d_%H%M%S.log (policy variable $log_filename)"
+  description: "log_filename is the strftime pattern used to name log files. The check expects SHOW log_filename to return the site pattern, postgresql-%Y-%m-%d_%H%M%S.log by default."
+  rationale: "Time-stamped names keep each period in its own file so logs are not overwritten and are easy to retain."
+  remediation: "ALTER SYSTEM SET log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0931:
+  title: "log_file_mode: 0600"
+  description: "log_file_mode sets the permissions of new log files written by the collector. The check compares SHOW log_file_mode with the expected mode, 0600."
+  rationale: "Logs can contain statements and data; only the database owner should be able to read them."
+  remediation: "ALTER SYSTEM SET log_file_mode = '0600'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0932:
+  title: "log_truncate_on_rotation: on"
+  description: "With time-based rotation, this decides whether an existing file with the same name is truncated instead of appended to. The check expects SHOW log_truncate_on_rotation to return on."
+  rationale: "Truncating on reuse keeps log size bounded in a fixed rotation scheme instead of letting files grow without limit."
+  remediation: "ALTER SYSTEM SET log_truncate_on_rotation = 'on'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0933:
+  title: "log_rotation_age: 1d (policy variable $log_rotation_age)"
+  description: "log_rotation_age is the maximum lifetime of one log file before a new one is started. The check expects SHOW log_rotation_age to return the site value, 1d by default."
+  rationale: "Regular rotation keeps files manageable and supports retention and review."
+  remediation: "ALTER SYSTEM SET log_rotation_age = '1d'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0934:
+  title: "log_rotation_size: 10MB (policy variable $log_rotation_size)"
+  description: "log_rotation_size starts a new log file once the current one reaches this size. The check expects SHOW log_rotation_size to return the site value, 10MB by default."
+  rationale: "Size-based rotation keeps any one file from growing until the disk is full."
+  remediation: "ALTER SYSTEM SET log_rotation_size = '10MB'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0935:
+  title: "syslog_facility: local0 (policy variable $syslog_facility)"
+  description: "syslog_facility sets the syslog facility used when log_destination includes syslog. The check expects SHOW syslog_facility to return the site value, local0 by default."
+  rationale: "A dedicated facility lets syslog route database messages to their own protected file or collector."
+  remediation: "ALTER SYSTEM SET syslog_facility = 'local0'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0936:
+  title: "syslog_ident: postgres (policy variable $syslog_ident)"
+  description: "syslog_ident is the program name that tags PostgreSQL messages in syslog. The check expects SHOW syslog_ident to return the site value, postgres by default."
+  rationale: "A consistent tag makes database messages easy to find and filter."
+  remediation: "ALTER SYSTEM SET syslog_ident = 'postgres'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0937:
+  title: "log_min_messages: warning or more detailed (not error, log, fatal or panic)"
+  description: "log_min_messages sets the lowest message severity written to the server log. The check fails when SHOW log_min_messages returns error, log, fatal or panic."
+  rationale: "Levels above warning drop warnings that often point to misuse or problems."
+  remediation: "ALTER SYSTEM SET log_min_messages = 'warning'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0938:
+  title: "log_min_error_statement: error or more detailed (not log, fatal or panic)"
+  description: "log_min_error_statement sets the severity at which the statement that caused the message is also logged. The check fails when SHOW log_min_error_statement returns log, fatal or panic."
+  rationale: "Logging the statement behind each error helps trace injection attempts and faulty applications."
+  remediation: "ALTER SYSTEM SET log_min_error_statement = 'error'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0939:
+  title: "debug_print_parse: off"
+  description: "debug_print_parse writes the parse tree of every query to the log. The check expects SHOW debug_print_parse to return off."
+  rationale: "Debug output floods the logs and can expose query contents; it is for development only."
+  remediation: "ALTER SYSTEM SET debug_print_parse = 'off'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0940:
+  title: "debug_print_rewritten: off"
+  description: "debug_print_rewritten writes the rewritten query tree to the log. The check expects SHOW debug_print_rewritten to return off."
+  rationale: "Debug output floods the logs and can expose query contents; it is for development only."
+  remediation: "ALTER SYSTEM SET debug_print_rewritten = 'off'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0941:
+  title: "debug_print_plan: off"
+  description: "debug_print_plan writes each execution plan to the log. The check expects SHOW debug_print_plan to return off."
+  rationale: "Debug output floods the logs and can expose query contents; it is for development only."
+  remediation: "ALTER SYSTEM SET debug_print_plan = 'off'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0942:
+  title: "debug_pretty_print: on"
+  description: "debug_pretty_print indents debug output so it is readable. The check expects SHOW debug_pretty_print to return on."
+  rationale: "If debug output is ever turned on for troubleshooting, readable output reduces mistakes in review."
+  remediation: "ALTER SYSTEM SET debug_pretty_print = 'on'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0943:
+  title: "log_connections: on"
+  description: "log_connections writes a line for each connection attempt and successful authentication. The check expects SHOW log_connections to return on."
+  rationale: "Connection records are needed to trace who accessed the database and to spot brute force."
+  remediation: "ALTER SYSTEM SET log_connections = 'on'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0944:
+  title: "log_disconnections: on"
+  description: "log_disconnections writes a line with session duration when a session ends. The check expects SHOW log_disconnections to return on."
+  rationale: "Session end records complete the picture of each access for investigations."
+  remediation: "ALTER SYSTEM SET log_disconnections = 'on'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0945:
+  title: "log_error_verbosity: verbose"
+  description: "log_error_verbosity controls how much detail each logged message carries; verbose adds the source location. The check expects SHOW log_error_verbosity to return verbose."
+  rationale: "More detail per message makes incidents easier to analyse."
+  remediation: "ALTER SYSTEM SET log_error_verbosity = 'verbose'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0946:
+  title: "log_hostname: off"
+  description: "log_hostname makes the server resolve and log client host names instead of only addresses. The check expects SHOW log_hostname to return off."
+  rationale: "Reverse DNS lookups slow every connection and DNS answers can be spoofed; IP addresses are more reliable."
+  remediation: "ALTER SYSTEM SET log_hostname = 'off'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0947:
+  title: "log_line_prefix: '%m [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '"
+  description: "log_line_prefix adds fields such as time, process, database, user, application and client to every log line. The check expects the prefix '%m [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h'."
+  rationale: "Without user, database and client on each line, log entries cannot be tied to who did what."
+  remediation: "ALTER SYSTEM SET log_line_prefix = '%m [%p]: [%l-1] db=%d,user=%u,app=%a,client=%h '; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0948:
+  title: "log_statement: ddl"
+  description: "log_statement decides which SQL statements are logged: none, ddl, mod or all. The check expects SHOW log_statement to return ddl."
+  rationale: "Logging schema changes records who created, altered or dropped objects."
+  remediation: "ALTER SYSTEM SET log_statement = 'ddl'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0949:
+  title: "log_timezone: America/New_York (policy variable $log_timezone)"
+  description: "log_timezone sets the time zone used for timestamps in the server log. The check expects SHOW log_timezone to return the site value, America/New_York by default."
+  rationale: "Consistent time zones let database events be lined up with other systems during an investigation."
+  remediation: "ALTER SYSTEM SET log_timezone = 'America/New_York'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0950:
+  title: "shared_preload_libraries: includes pgaudit"
+  description: "pgAudit is an extension that writes detailed session and object audit records; it must be preloaded at server start. The check expects SHOW shared_preload_libraries to include pgaudit."
+  rationale: "Standard statement logging lacks the structured audit detail that compliance reviews need."
+  remediation: "Install pgAudit, ALTER SYSTEM SET shared_preload_libraries = 'pgaudit'; restart PostgreSQL; CREATE EXTENSION pgaudit;"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0951:
+  title: "pg_permissions extension: available"
+  description: "pg_permissions provides views that list the privileges granted on database objects. The check expects pg_available_extensions to return a pg_permissions row."
+  rationale: "A simple privilege inventory makes it practical to review and correct excess grants."
+  remediation: "Install the pg_permissions package for PostgreSQL 13, then CREATE EXTENSION pg_permissions;"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0952:
+  title: "set_user extension: available"
+  description: "set_user lets administrators switch to a privileged role with the change logged, instead of logging in as the superuser. The check expects pg_available_extensions to return a set_user row."
+  rationale: "Audited escalation keeps superuser use traceable to a named person."
+  remediation: "Install the set_user package, add set_user to shared_preload_libraries, restart, then CREATE EXTENSION set_user;"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0953:
+  title: "FIPS mode: enabled"
+  description: "FIPS mode restricts the system crypto libraries to validated algorithms. The check expects 'fips-mode-setup --check' to report that FIPS mode is enabled."
+  rationale: "Validated cryptography is required for many regulated workloads and rules out weak algorithms."
+  remediation: "fips-mode-setup --enable, then reboot."
+  compliance: { nist_800_53: ["SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(a)(2)(iv)"], iso_27001: ["A.8.24"] }
+S0954:
+  title: "ssl: on"
+  description: "The ssl setting lets PostgreSQL accept TLS-encrypted client connections. The check expects SHOW ssl to return on."
+  rationale: "Without TLS, passwords and query results travel the network in clear text."
+  remediation: "ALTER SYSTEM SET ssl = 'on'; SELECT pg_reload_conf();"
+  compliance: { nist_800_53: ["SC-8", "SC-13"], pci_dss: ["4.2.1"], hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"], iso_27001: ["A.8.24"] }
+S0955:
+  title: "pgBackRest: installed"
+  description: "pgBackRest is a backup and restore tool for PostgreSQL. The check fails when running pgbackrest reports 'command not found'."
+  rationale: "A dedicated backup tool with verification and retention makes recovery from failure or ransomware possible."
+  remediation: "Install pgBackRest from the PostgreSQL package repository and configure a stanza, e.g. pgbackrest --stanza=main stanza-create"
+  compliance: { nist_800_53: ["CP-9"], pci_dss: ["12.10.1"], hipaa: ["164.308(a)(7)(ii)(A)"], iso_27001: ["A.8.13"] }
+S0956:
+  title: "Ad Hoc Distributed Queries: 0 (configured and in use)"
+  description: "This option allows OPENROWSET and OPENDATASOURCE to reach external data sources without a linked server. The check expects sys.configurations to show 'Ad Hoc Distributed Queries' with value and value_in_use both 0."
+  rationale: "Ad hoc remote queries can be abused to read or send data to other servers."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'Ad Hoc Distributed Queries', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0957:
+  title: "clr enabled: 0 (configured and in use)"
+  description: "This option lets SQL Server run user assemblies written for the .NET CLR. The check expects sys.configurations to show 'clr enabled' with value and value_in_use both 0."
+  rationale: "CLR assemblies run managed code inside the database engine, which widens the attack surface."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'clr enabled', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0958:
+  title: "cross db ownership chaining: 0 (configured and in use)"
+  description: "This option lets ownership chains span databases on the instance. The check expects sys.configurations to show 'cross db ownership chaining' with value and value_in_use both 0."
+  rationale: "Cross-database chains can let a user in one database reach objects in another without explicit permission."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'cross db ownership chaining', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0959:
+  title: "Database Mail XPs: 0 (configured and in use)"
+  description: "This option turns on the Database Mail stored procedures used to send e-mail from SQL Server. The check expects sys.configurations to show 'Database Mail XPs' with value and value_in_use both 0."
+  rationale: "Sending mail from the engine can be used to exfiltrate data."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'Database Mail XPs', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0960:
+  title: "Ole Automation Procedures: 0 (configured and in use)"
+  description: "This option lets Transact-SQL create and use OLE automation objects. The check expects sys.configurations to show 'Ole Automation Procedures' with value and value_in_use both 0."
+  rationale: "OLE automation runs code outside SQL Server with the service account's rights."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'Ole Automation Procedures', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0961:
+  title: "remote access: 0 (configured and in use)"
+  description: "This deprecated option allows stored procedures to be run from remote servers. The check expects sys.configurations to show 'remote access' with value and value_in_use both 0."
+  rationale: "Remote procedure execution can be used to push work or attacks between servers."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'remote access', 0; RECONFIGURE; Restart the service."
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0962:
+  title: "remote admin connections: 0 (or the instance is clustered)"
+  description: "This option lets the dedicated administrator connection be used from other computers. The check expects value and value_in_use 0, or no row because the instance is clustered."
+  rationale: "The dedicated administrator connection is the most powerful way in; on a standalone server it should be local only."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'remote admin connections', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7", "SC-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.9", "A.8.20"] }
+S0963:
+  title: "scan for startup procs: 0 (configured and in use)"
+  description: "This option makes SQL Server run stored procedures marked for automatic execution at startup. The check expects sys.configurations to show 'scan for startup procs' with value and value_in_use both 0."
+  rationale: "Startup procedures are a persistence point for malicious code."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'scan for startup procs', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0964:
+  title: "TRUSTWORTHY: off in every database except msdb"
+  description: "The TRUSTWORTHY property lets code in a database act outside it with the owner's rights. The check expects no database other than msdb with is_trustworthy_on = 1."
+  rationale: "A trustworthy database owned by a privileged login allows privilege escalation to sysadmin."
+  remediation: "ALTER DATABASE [<name>] SET TRUSTWORTHY OFF;"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0965:
+  title: "SQL Server TCP port: not 1433"
+  description: "The TCP port for all IP addresses is stored in the SuperSocketNetLib\\Tcp\\IPAll key. The check fails when that port is 1433."
+  rationale: "Moving off the well-known port reduces automated scanning and attack noise against the instance."
+  remediation: "SQL Server Configuration Manager > SQL Server Network Configuration > Protocols > TCP/IP > IP Addresses > IPAll > TCP Port: set a non-default port; restart the service."
+  compliance: { nist_800_53: ["CM-7", "SC-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.9", "A.8.20"] }
+S0966:
+  title: "Built-in sa login (SID 0x01): disabled"
+  description: "The sa login is the built-in SQL authentication system administrator and is identified by SID 0x01. The check expects no enabled login with that SID."
+  rationale: "sa is the first account attackers try; disabling it removes a well-known sysadmin target."
+  remediation: "ALTER LOGIN [sa] DISABLE; (use the current name of the SID 0x01 login)"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0967:
+  title: "Built-in sa login (SID 0x01): renamed to a name not containing 'sa'"
+  description: "The login with SID 0x01 can be renamed. The check fails when its name still contains 'sa'."
+  rationale: "Brute-force tools target the name sa; a different name forces an attacker to guess the account too."
+  remediation: "ALTER LOGIN [sa] WITH NAME = [<new_name>];"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0968:
+  title: "xp_cmdshell: 0 (configured and in use)"
+  description: "This option enables xp_cmdshell, which runs operating system commands from Transact-SQL. The check expects sys.configurations to show 'xp_cmdshell' with value and value_in_use both 0."
+  rationale: "xp_cmdshell gives anyone who reaches it an operating system shell with the service account's rights."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7"], pci_dss: ["2.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0969:
+  title: "Contained databases: AUTO_CLOSE off"
+  description: "AUTO_CLOSE closes a database when the last user disconnects. The check expects no contained database with is_auto_close_on = 1."
+  rationale: "Contained databases authenticate users themselves; repeated open and close makes authentication costly and can be used for denial of service."
+  remediation: "ALTER DATABASE [<name>] SET AUTO_CLOSE OFF;"
+  compliance: { nist_800_53: ["SC-5", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.6", "A.8.9"] }
+S0970:
+  title: "Login named sa: none"
+  description: "A login called sa can exist even after the built-in account is renamed. The check expects sys.server_principals to return no login named 'sa'."
+  rationale: "A new login named sa would attract the same brute-force attempts the rename was meant to avoid."
+  remediation: "Rename or drop any login named sa: ALTER LOGIN [sa] WITH NAME = [<new_name>]; or DROP LOGIN [sa];"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0971:
+  title: "Server authentication: Windows Authentication mode only"
+  description: "SQL Server can accept Windows logins only, or Windows and SQL logins (mixed mode). The check expects SERVERPROPERTY('IsIntegratedSecurityOnly') = 1."
+  rationale: "Windows authentication uses domain password policy and Kerberos and avoids passwords stored in SQL Server."
+  remediation: "SSMS > Server Properties > Security > Server authentication: Windows Authentication mode; restart the service."
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0972:
+  title: "public server role: only the default permissions"
+  description: "Every login is a member of the public server role. The check expects no GRANT to public beyond VIEW ANY DATABASE and CONNECT on the default endpoints."
+  rationale: "Anything granted to public is granted to every login on the instance."
+  remediation: "REVOKE <permission> FROM public; for each extra permission found."
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0973:
+  title: "Local Windows groups: no SQL Server logins with permissions"
+  description: "Logins can be created for local Windows groups of the server. The check expects no WINDOWS_GROUP login whose name starts with the machine name to hold server permissions."
+  rationale: "Local group membership is managed on the host, so a local administrator could grant themselves database access."
+  remediation: "Replace with domain groups, then DROP LOGIN [<MACHINE>\\<Group>];"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0974:
+  title: "Privileged SQL logins: CHECK_EXPIRATION on"
+  description: "CHECK_EXPIRATION applies the Windows password age policy to a SQL login. The check expects no sysadmin or CONTROL SERVER SQL login without expiration checking."
+  rationale: "Admin passwords that never expire stay useful to an attacker indefinitely."
+  remediation: "ALTER LOGIN [<name>] WITH CHECK_EXPIRATION = ON;"
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0975:
+  title: "SQL logins: CHECK_POLICY on"
+  description: "CHECK_POLICY applies the Windows password complexity and lockout policy to a SQL login. The check expects no SQL login with is_policy_checked = 0."
+  rationale: "Without policy, SQL logins can have weak passwords and no lockout against guessing."
+  remediation: "ALTER LOGIN [<name>] WITH CHECK_POLICY = ON;"
+  compliance: { nist_800_53: ["IA-2", "IA-5"], pci_dss: ["8.3.1", "8.3.6"], hipaa: ["164.308(a)(5)(ii)(D)", "164.312(d)"], iso_27001: ["A.5.17", "A.8.5"] }
+S0976:
+  title: "Error log files kept: 12 or more"
+  description: "NumErrorLogs sets how many SQL Server error log files are kept before the oldest is recycled. The check expects the value to be 12 or higher."
+  rationale: "The default of six can be lost within days if the service restarts often, erasing evidence."
+  remediation: "SSMS > Management > SQL Server Logs > Configure: limit to 12 or more; or EXEC xp_instance_regwrite N'HKEY_LOCAL_MACHINE', N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', N'NumErrorLogs', REG_DWORD, 12;"
+  compliance: { nist_800_53: ["AU-4", "AU-9", "AU-11"], pci_dss: ["10.3.2", "10.5.1"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0977:
+  title: "default trace enabled: 1 (configured and in use)"
+  description: "The default trace records configuration changes, login failures and other server events. The check expects value and value_in_use both 1."
+  rationale: "The default trace is a low-cost record of security-relevant changes."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'default trace enabled', 1; RECONFIGURE;"
+  compliance: { nist_800_53: ["AU-2", "AU-3", "AU-12"], pci_dss: ["10.2.1", "10.2.2"], hipaa: ["164.312(b)"], iso_27001: ["A.8.15"] }
+S0978:
+  title: "User CLR assemblies: SAFE (no EXTERNAL_ACCESS or UNSAFE)"
+  description: "Each CLR assembly has a permission set: SAFE, EXTERNAL_ACCESS or UNSAFE. The check fails when a user-defined assembly uses EXTERNAL_ACCESS or UNSAFE."
+  rationale: "Non-safe assemblies can reach files, network and unmanaged code from inside the engine."
+  remediation: "ALTER ASSEMBLY [<name>] WITH PERMISSION_SET = SAFE;"
+  compliance: { nist_800_53: ["AC-3", "AC-6"], pci_dss: ["7.2.1", "7.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.3"] }
+S0979:
+  title: "remote admin connections: 0 (configured and in use, non-clustered instance)"
+  description: "This option lets the dedicated administrator connection be used from other computers. The check expects sys.configurations to show 'remote admin connections' with value and value_in_use both 0."
+  rationale: "The dedicated administrator connection is the most powerful way in; on a standalone server it should be local only."
+  remediation: "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'remote admin connections', 0; RECONFIGURE;"
+  compliance: { nist_800_53: ["CM-7", "SC-7"], pci_dss: ["1.2.5", "2.2.4"], hipaa: ["164.312(e)(1)"], iso_27001: ["A.8.9", "A.8.20"] }
+S0980:
+  title: "Built-in sa login (SID 0x01): renamed to a name not starting with 'sa'"
+  description: "The login with SID 0x01 can be renamed. The check fails when its name starts with 'sa'."
+  rationale: "Brute-force tools target the name sa; a different name forces an attacker to guess the account too."
+  remediation: "ALTER LOGIN [sa] WITH NAME = [<new_name>];"
+  compliance: { nist_800_53: ["AC-2", "AC-6"], pci_dss: ["2.2.2", "8.2.2"], hipaa: ["164.312(a)(1)"], iso_27001: ["A.5.15", "A.8.2"] }
+S0981:
+  title: "register_globals: Off"
+  description: "register_globals turned request variables into PHP global variables automatically (removed in PHP 5.4). The check expects a line 'register_globals = Off' in /etc/php.ini."
+  rationale: "Automatic globals let attackers set internal variables of a script from the URL."
+  remediation: "Set 'register_globals = Off' in /etc/php.ini, then restart the web server or PHP-FPM."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0982:
+  title: "expose_php: Off"
+  description: "expose_php adds an X-Powered-By header with the PHP version to responses. The check expects a line 'expose_php = Off' in /etc/php.ini."
+  rationale: "Advertising the PHP version helps attackers choose exploits."
+  remediation: "Set 'expose_php = Off' in /etc/php.ini, then restart the web server or PHP-FPM."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0983:
+  title: "allow_url_fopen: Off"
+  description: "allow_url_fopen lets file functions such as fopen and include open remote URLs. The check expects a line 'allow_url_fopen = Off' in /etc/php.ini."
+  rationale: "Remote file access turns file inclusion bugs into remote code execution."
+  remediation: "Set 'allow_url_fopen = Off' in /etc/php.ini, then restart the web server or PHP-FPM."
+  compliance: { nist_800_53: ["SI-10", "CM-6"], pci_dss: ["6.2.4"], hipaa: ["164.312(c)(1)"], iso_27001: ["A.8.9", "A.8.28"] }
+S0984:
+  title: "display_errors: Off"
+  description: "display_errors prints PHP errors in the page sent to the browser. The check expects a line 'display_errors = Off' in /etc/php.ini."
+  rationale: "Error output reveals paths, queries and code details; errors belong in the log instead."
+  remediation: "Set 'display_errors = Off' in /etc/php.ini, then restart the web server or PHP-FPM."
+  compliance: { nist_800_53: ["CM-7", "SI-11"], pci_dss: ["2.2.4", "6.2.4"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.9"] }
+S0985:
+  title: "Suspicious file '.yop' in the web root: none"
+  description: "Files named .yop inside a web tree are a known trace left by web shells and intrusion kits. The check fails when a file with this name exists under /var/www."
+  rationale: "Hidden files with odd names in the web root usually mean an attacker has planted tools there."
+  remediation: "Investigate any '.yop' file under /var/www (find /var/www -name '.yop'), treat the host as possibly compromised, remove the file and restore content from a trusted source."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0986:
+  title: "Suspicious file 'id' in the web root: none"
+  description: "Files named id inside a web tree are a known trace left by web shells and intrusion kits. The check fails when a file with this name exists under /var/www."
+  rationale: "A file named id in the web root is a typical leftover from testing command execution on a compromised site."
+  remediation: "Investigate any 'id' file under /var/www (find /var/www -name 'id'), treat the host as possibly compromised, remove the file and restore content from a trusted source."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0987:
+  title: "Suspicious file '.ssh' in the web root: none"
+  description: "Files named .ssh inside a web tree are a known trace left by web shells and intrusion kits. The check fails when a file with this name exists under /var/www."
+  rationale: "An .ssh entry under the web root suggests planted keys or tools and may expose credentials over HTTP."
+  remediation: "Investigate any '.ssh' file under /var/www (find /var/www -name '.ssh'), treat the host as possibly compromised, remove the file and restore content from a trusted source."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0988:
+  title: "Suspicious file '...' in the web root: none"
+  description: "Files named ... inside a web tree are a known trace left by web shells and intrusion kits. The check fails when a file with this name exists under /var/www."
+  rationale: "A file named with three dots is a classic way to hide attacker tools from casual directory listings."
+  remediation: "Investigate any '...' file under /var/www (find /var/www -name '...'), treat the host as possibly compromised, remove the file and restore content from a trusted source."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0989:
+  title: "Suspicious file '.shell' in the web root: none"
+  description: "Files named .shell inside a web tree are a known trace left by web shells and intrusion kits. The check fails when a file with this name exists under /var/www."
+  rationale: "A hidden file with this name in the web root usually holds a web shell or its output."
+  remediation: "Investigate any '.shell' file under /var/www (find /var/www -name '.shell'), treat the host as possibly compromised, remove the file and restore content from a trusted source."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0990:
+  title: "WordPress 4.4.2: not installed"
+  description: "WordPress records its release in wp-includes/version.php. The check fails when a version.php under /var/www declares wp_version 4.4.2."
+  rationale: "Old releases of web applications have published, actively exploited vulnerabilities."
+  remediation: "Update WordPress to the current release (Dashboard > Updates or wp core update) and keep it patched."
+  compliance: { nist_800_53: ["SI-2", "RA-5"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.8"] }
+S0991:
+  title: "Joomla 3.4.8: not installed"
+  description: "Joomla records its release in a version.php file. The check fails when a version.php under /var/www declares RELEASE 3.4.8."
+  rationale: "Old releases of web applications have published, actively exploited vulnerabilities."
+  remediation: "Update Joomla to a supported release and keep it patched."
+  compliance: { nist_800_53: ["SI-2", "RA-5"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.8"] }
+S0992:
+  title: "osCommerce 2.2: not installed"
+  description: "osCommerce 2.2 identifies itself in includes/application_top.php. The check fails when such a file under /var/www names osCommerce 2.2."
+  rationale: "Old releases of web applications have published, actively exploited vulnerabilities."
+  remediation: "Replace osCommerce 2.2 with a supported release or another maintained platform."
+  compliance: { nist_800_53: ["SI-2", "RA-5"], pci_dss: ["6.3.3"], hipaa: ["164.308(a)(1)(ii)(B)"], iso_27001: ["A.8.8"] }
+S0993:
+  title: "Obfuscated PHP (eval(base64_decode(\"aWYo...): none"
+  description: "Encoded code passed to eval is a common way to hide a web shell. The check fails when a .php file under /var/www contains eval(base64_decode( followed by a quoted string starting with aWYo (base64 for 'if(')."
+  rationale: "This pattern is a known signature of injected malicious code."
+  remediation: "Find the files (grep -rl under /var/www), treat the site as compromised, remove the injected code and restore from a trusted source; then patch the entry point."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0994:
+  title: "PHP eval of POST data (eval(base64_decode($_POST...): none"
+  description: "A script that decodes and runs data straight from a POST request is a remote code backdoor. The check fails when a .php file under /var/www contains eval(base64_decode($_POST."
+  rationale: "Such code lets anyone send arbitrary PHP to the server."
+  remediation: "Find the files (grep -rl under /var/www), treat the site as compromised, remove the injected code and restore from a trusted source; then patch the entry point."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0995:
+  title: ".htaccess referrer redirect to search engines: none"
+  description: "Injected .htaccess rules can redirect visitors who come from search results to spam or malware sites. The check fails when an .htaccess file under /var/www has a RewriteCond on HTTP_REFERER(S) matching google."
+  rationale: "Search-referrer redirects are a known site compromise used for SEO spam and drive-by downloads."
+  remediation: "Find the files (grep -rl under /var/www), treat the site as compromised, remove the injected code and restore from a trusted source; then patch the entry point."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }
+S0996:
+  title: ".htaccess php_value auto_append_file: none"
+  description: "auto_append_file in .htaccess makes PHP run an extra file at the end of every script. The check fails when an .htaccess file under /var/www sets php_value auto_append_file."
+  rationale: "Attackers use this to inject code into every page without touching the site's own files."
+  remediation: "Find the files (grep -rl under /var/www), treat the site as compromised, remove the injected code and restore from a trusted source; then patch the entry point."
+  compliance: { nist_800_53: ["SI-3", "SI-4", "SI-7"], pci_dss: ["5.2.1", "11.5.2"], hipaa: ["164.308(a)(5)(ii)(B)"], iso_27001: ["A.8.7", "A.8.16"] }

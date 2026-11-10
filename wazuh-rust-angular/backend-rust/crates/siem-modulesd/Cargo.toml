@@ -1,0 +1,38 @@
+[package]
+name = "siem-modulesd"
+version = "0.1.0"
+edition = "2021"
+description = "Port of provigil-modulesd (wazuh_modules/): the manager modules database, agent-upgrade, task-manager and download"
+
+[dependencies]
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+siem-ipc = { path = "../siem-ipc" }
+siem-daemon = { path = "../siem-daemon" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+siem-xml = { path = "../siem-xml" }
+siem-cjson = { path = "../siem-cjson" }
+siem-execd = { path = "../siem-execd" }
+siem-vulnerability-scanner = { path = "../siem-vulnerability-scanner" }
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tokio = { version = "1.40", features = ["full"] }
+serde_json = "1.0"
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+siem-router = { path = "../siem-router" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "provigil-modulesd"
+path = "src/bin/provigil-modulesd.rs"

@@ -1,0 +1,15 @@
+[package]
+name = "siem-risk-fabric"
+version = "0.1.0"
+edition = "2021"
+description = "Business-Process Risk Fabric contextual scoring engine for AETHER SIEM & XDR"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+tracing = "0.1"
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1.40", features = ["full"] }

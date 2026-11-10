@@ -1,0 +1,12 @@
+<!--
+  ClickHouse 25+/26 answers compressed HTTP requests with ZSTD by default.
+  The clickhouse-rs 0.11 client used by auth-service / provigil-common only
+  decodes LZ4, so pin the network compression method for every profile.
+-->
+<clickhouse>
+    <profiles>
+        <default>
+            <network_compression_method>LZ4</network_compression_method>
+        </default>
+    </profiles>
+</clickhouse>

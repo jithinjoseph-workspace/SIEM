@@ -1,0 +1,106 @@
+<div class="siem-logs-container">
+  <!-- Header Bar -->
+  <div class="logs-header" *ngIf="!compactMode">
+    <div class="title-group">
+      <div class="badge-tag">ClickHouse Real-Time Ingestion</div>
+      <h3>Live Telemetry & Syslog Feed</h3>
+      <p>High-throughput raw event streaming from Wazuh agents, network syslog, and baseline checks.</p>
+    </div>
+    <div class="stream-controls">
+      <button class="stream-toggle" [class.paused]="!isStreaming()" (click)="toggleStreaming()">
+        <i-lucide [img]="isStreaming() ? PauseIcon : PlayIcon"></i-lucide>
+        {{ isStreaming() ? 'Pause Stream' : 'Resume Stream' }}
+      </button>
+      <div class="live-pill" [class.paused]="!isStreaming()">
+        <span class="pulse-dot"></span>
+        {{ isStreaming() ? 'LIVE INGESTION' : 'STREAM PAUSED' }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-toolbar">
+    <div class="search-box">
+      <i-lucide [img]="SearchIcon" class="icon"></i-lucide>
+      <input type="text" placeholder="Search event logs by keyword, host, message..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)">
+    </div>
+
+    <div class="source-filters">
+      <button [class.active]="selectedSource() === 'all'" (click)="selectedSource.set('all'); fetchLogs()">All Sources</button>
+      <button [class.active]="selectedSource() === 'syslog'" (click)="selectedSource.set('syslog'); fetchLogs()">Syslog</button>
+      <button [class.active]="selectedSource() === 'windows_event'" (click)="selectedSource.set('windows_event'); fetchLogs()">Windows</button>
+      <button [class.active]="selectedSource() === 'fim'" (click)="selectedSource.set('fim'); fetchLogs()">FIM</button>
+      <button [class.active]="selectedSource() === 'sca'" (click)="selectedSource.set('sca'); fetchLogs()">SCA</button>
+      <button class="refresh-btn" (click)="fetchLogs()" title="Refresh Logs">
+        <i-lucide [img]="RefreshIcon" [class.spin]="loading()"></i-lucide>
+      </button>
+    </div>
+  </div>
+
+  <!-- Terminal Style Logs View -->
+  <div class="logs-terminal-card">
+    <div class="terminal-bar">
+      <div class="term-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="term-title">ClickHouse Buffer: {{ filteredLogs().length }} Events</div>
+    </div>
+
+    <div class="logs-list">
+      <div *ngFor="let ev of filteredLogs()" class="log-row" (click)="selectEvent(ev)">
+        <span class="log-time">{{ ev.timestamp | date:'HH:mm:ss.SSS' }}</span>
+        <span class="log-source" [ngClass]="getSourceBadgeClass(ev.source)">{{ ev.source | uppercase }}</span>
+        <span class="log-agent">{{ ev.agent_id }}</span>
+        <span class="log-msg">{{ ev.message }}</span>
+      </div>
+
+      <div *ngIf="filteredLogs().length === 0 && !loading()" class="empty-state">
+        <p>No telemetry events match your criteria.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Detail Modal -->
+  <div *ngIf="selectedEvent()" class="modal-backdrop" (click)="closeModal()">
+    <div class="drawer-panel" (click)="$event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3>Telemetry Event Inspector</h3>
+          <span class="sub-id">ID: {{ selectedEvent()?.id }}</span>
+        </div>
+        <button class="close-btn" (click)="closeModal()">✕</button>
+      </div>
+
+      <div class="event-body">
+        <div class="detail-section">
+          <label>Event Message</label>
+          <p class="desc-text">{{ selectedEvent()?.message }}</p>
+        </div>
+
+        <div class="spec-grid">
+          <div class="spec-item">
+            <span class="label">Source Engine</span>
+            <span class="val">{{ selectedEvent()?.source }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Agent Host ID</span>
+            <span class="val">{{ selectedEvent()?.agent_id }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Log Channel / Path</span>
+            <span class="val">{{ selectedEvent()?.location }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Ingest Timestamp</span>
+            <span class="val">{{ selectedEvent()?.timestamp }}</span>
+          </div>
+        </div>
+
+        <div class="detail-section" *ngIf="selectedEvent()?.metadata">
+          <label>Decoded Metadata & Attributes</label>
+          <pre class="meta-block"><code>{{ selectedEvent()?.metadata | json }}</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

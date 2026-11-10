@@ -1,0 +1,67 @@
+<div class="toast-viewport" aria-live="assertive" aria-atomic="false" role="region" aria-label="Threat alerts">
+  <div
+    *ngFor="let toast of toasts; trackBy: trackById"
+    class="toast-card"
+    [class.toast-critical]="toast.severity === 'CRITICAL'"
+    [class.toast-high]="toast.severity === 'HIGH'"
+    [attr.data-id]="toast.id"
+  >
+
+    <!-- ── Top row: severity badge + dismiss ──────────────────────────── -->
+    <div class="toast-header">
+      <div class="toast-severity-wrap">
+        <span class="toast-pulse-dot"></span>
+        <span class="toast-severity-badge">{{ toast.severity }}</span>
+        <span class="toast-hit-pill" *ngIf="toast.hits > 1">{{ toast.hits }} hits</span>
+      </div>
+
+      <div class="toast-header-right">
+        <span class="toast-time">{{ toast.timestamp }}</span>
+        <button
+          class="toast-dismiss"
+          (click)="dismiss(toast.id)"
+          aria-label="Dismiss alert"
+          title="Dismiss"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Message ─────────────────────────────────────────────────────── -->
+    <p class="toast-message">{{ toast.message }}</p>
+
+    <!-- ── Flow row: src → dst ─────────────────────────────────────────── -->
+    <div class="toast-flow">
+      <span class="toast-ip-label">SRC</span>
+      <span class="toast-ip">{{ toast.src_ip }}</span>
+      <svg class="toast-arrow" width="14" height="10" viewBox="0 0 14 10" fill="none">
+        <path d="M0 5h11M8 1l4 4-4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="toast-ip-label">DST</span>
+      <span class="toast-ip">{{ toast.dst_ip }}</span>
+    </div>
+
+    <!-- ── Score + tags row ────────────────────────────────────────────── -->
+    <div class="toast-meta">
+      <span class="toast-score">
+        <span class="toast-score-label">SCORE</span>
+        <span class="toast-score-value">{{ toast.score }}</span>
+      </span>
+
+      <ng-container *ngIf="primaryTag(toast) as tag">
+        <span class="toast-divider"></span>
+        <span class="toast-tag">{{ tag }}</span>
+        <span class="toast-tag-more" *ngIf="extraTagCount(toast) > 0">+{{ extraTagCount(toast) }}</span>
+      </ng-container>
+    </div>
+
+    <!-- ── Progress bar ────────────────────────────────────────────────── -->
+    <div class="toast-progress-track">
+      <div *ngFor="let h of [toast.hits]" class="toast-progress-bar"></div>
+    </div>
+
+  </div>
+</div>

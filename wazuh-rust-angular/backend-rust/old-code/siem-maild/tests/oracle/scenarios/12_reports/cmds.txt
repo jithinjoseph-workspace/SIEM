@@ -1,0 +1,11 @@
+report logs/alerts/alerts.log -
+report logs/alerts/alerts.log Daily
+report logs/alerts/alerts.log SSH group=sshd rel:srcip=user rel:user=srcip showlogs
+report logs/alerts/alerts.log Rules rule=5716,5501 level=5
+report logs/alerts/alerts.log Loc location=web1
+report logs/alerts/alerts.log Src srcip=1.2.3
+report logs/alerts/alerts.log Usr user=root rel:level=location rel:rule=group rel:group=rule rel:location=srcip rel:filename=level
+report logs/alerts/alerts.log Files filename=a.txt rel:level=filename showlogs
+report logs/alerts/alerts.log None group=nomatch
+report logs/alerts/alerts.log Bad rel:level=bogus
+report logs/alerts/alerts.log BadRule rule=55x

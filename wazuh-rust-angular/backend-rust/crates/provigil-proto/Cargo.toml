@@ -1,0 +1,10 @@
+[package]
+name = "provigil-proto"
+version = "0.1.0"
+edition = "2021"
+description = "The gRPC service between the ProVigil agent and the manager API"
+
+[dependencies]
+# MIT: gRPC over HTTP/2 and its message encoding (derive macros, no .proto build step)
+tonic = { version = "0.12", default-features = false, features = ["transport", "codegen", "prost"] }
+prost = "0.13"

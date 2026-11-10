@@ -1,0 +1,223 @@
+<div class="siem-alerts-container" [class.compact]="compactMode">
+  <!-- Metrics Banner -->
+  <div class="metrics-row" *ngIf="!compactMode">
+    <div class="metric-card critical">
+      <div class="metric-icon">
+        <lucide-icon [name]="ShieldAlertIcon" class="w-5 h-5 text-red-400"></lucide-icon>
+      </div>
+      <div class="metric-data">
+        <span class="metric-val">{{ criticalCount() }}</span>
+        <span class="metric-lbl">Critical Host Alerts</span>
+      </div>
+    </div>
+
+    <div class="metric-card high">
+      <div class="metric-icon">
+        <lucide-icon [name]="AlertTriangleIcon" class="w-5 h-5 text-orange-400"></lucide-icon>
+      </div>
+      <div class="metric-data">
+        <span class="metric-val">{{ highCount() }}</span>
+        <span class="metric-lbl">High Severity</span>
+      </div>
+    </div>
+
+    <div class="metric-card medium">
+      <div class="metric-icon">
+        <lucide-icon [name]="ActivityIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+      </div>
+      <div class="metric-data">
+        <span class="metric-val">{{ mediumCount() }}</span>
+        <span class="metric-lbl">Medium / Warnings</span>
+      </div>
+    </div>
+
+    <div class="metric-card ws-status">
+      <div class="metric-icon">
+        <lucide-icon [name]="RadioIcon" class="w-5 h-5 text-emerald-400 animate-pulse"></lucide-icon>
+      </div>
+      <div class="metric-data">
+        <span class="metric-val text-emerald-400 font-mono text-sm">ONLINE</span>
+        <span class="metric-lbl">Wazuh Alert Stream</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Controls -->
+  <div class="controls-row">
+    <div class="search-box">
+      <lucide-icon [name]="SearchIcon" class="w-4 h-4 search-icon"></lucide-icon>
+      <input 
+        type="text" 
+        [ngModel]="searchQuery()" 
+        (ngModelChange)="searchQuery.set($event)"
+        placeholder="Filter by rule description, agent, MITRE tactic, or source IP..."
+        class="search-input"
+      />
+    </div>
+
+    <div class="filter-pills">
+      <button 
+        class="pill-btn" 
+        [class.active]="severityFilter() === 'all'"
+        (click)="severityFilter.set('all')">
+        All ({{ alerts().length }})
+      </button>
+      <button 
+        class="pill-btn crit" 
+        [class.active]="severityFilter() === 'critical'"
+        (click)="severityFilter.set('critical')">
+        Critical ({{ criticalCount() }})
+      </button>
+      <button 
+        class="pill-btn high" 
+        [class.active]="severityFilter() === 'high'"
+        (click)="severityFilter.set('high')">
+        High ({{ highCount() }})
+      </button>
+      <button 
+        class="pill-btn med" 
+        [class.active]="severityFilter() === 'medium'"
+        (click)="severityFilter.set('medium')">
+        Medium ({{ mediumCount() }})
+      </button>
+    </div>
+
+    <button class="refresh-btn" (click)="loadAlerts()" [title]="'Refresh Alerts'">
+      <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-icon>
+    </button>
+  </div>
+
+  <!-- Alerts Table -->
+  <div class="alerts-table-wrapper">
+    <div *ngIf="loading()" class="loading-state">
+      <lucide-icon [name]="RefreshIcon" class="w-6 h-6 animate-spin text-sky-400"></lucide-icon>
+      <span>Querying ClickHouse Wazuh SIEM alerts...</span>
+    </div>
+
+    <table class="alerts-table" *ngIf="!loading() && filteredAlerts().length > 0">
+      <thead>
+        <tr>
+          <th>SEVERITY</th>
+          <th>TIMESTAMP</th>
+          <th>AGENT / HOST</th>
+          <th>RULE &amp; DESCRIPTION</th>
+          <th>MITRE ATT&amp;CK</th>
+          <th>LOCATION / SOURCE</th>
+          <th>ACTION</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let alert of filteredAlerts()" (click)="selectAlert(alert)" class="alert-row">
+          <td>
+            <span class="severity-badge" [ngClass]="getSeverityBadge(alert.rule.level).class">
+              {{ getSeverityBadge(alert.rule.level).label }} ({{ alert.rule.level }})
+            </span>
+          </td>
+          <td class="font-mono text-xs text-slate-400">
+            {{ formatTimestamp(alert.timestamp) }}
+          </td>
+          <td>
+            <div class="agent-info">
+              <span class="agent-name">{{ alert.agent.name }}</span>
+              <span class="agent-ip font-mono text-xs text-slate-400">{{ alert.agent.ip }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="rule-info">
+              <span class="rule-id font-mono text-xs text-sky-400">#{{ alert.rule.id }}</span>
+              <span class="rule-desc">{{ alert.rule.description }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="mitre-tag" *ngIf="alert.rule.mitre">
+              <span class="mitre-id">{{ alert.rule.mitre.id }}</span>
+              <span class="mitre-name">{{ alert.rule.mitre.tactic }}</span>
+            </div>
+            <span *ngIf="!alert.rule.mitre" class="text-xs text-slate-500">—</span>
+          </td>
+          <td class="font-mono text-xs text-slate-400 location-cell" [title]="alert.location">
+            {{ alert.location }}
+          </td>
+          <td>
+            <button class="inspect-btn" (click)="$event.stopPropagation(); selectAlert(alert)">
+              Inspect
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div *ngIf="!loading() && filteredAlerts().length === 0" class="empty-state">
+      <lucide-icon [name]="ShieldCheckIcon" class="w-10 h-10 text-emerald-400"></lucide-icon>
+      <h3>No Host Alerts Matching Filter</h3>
+      <p>ClickHouse Wazuh detection engine has recorded no active alerts under this criteria.</p>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-backdrop" *ngIf="selectedAlert()" (click)="closeModal()">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="header-title">
+          <span class="severity-badge" [ngClass]="getSeverityBadge(selectedAlert()!.rule.level).class">
+            {{ getSeverityBadge(selectedAlert()!.rule.level).label }} (LEVEL {{ selectedAlert()!.rule.level }})
+          </span>
+          <h3>{{ selectedAlert()!.rule.description }}</h3>
+        </div>
+        <button class="close-btn" (click)="closeModal()">
+          <lucide-icon [name]="XIcon" class="w-5 h-5"></lucide-icon>
+        </button>
+      </div>
+
+      <!-- Action Feedback Banner -->
+      <div class="feedback-banner" *ngIf="actionFeedback()">
+        <lucide-icon [name]="CheckIcon" class="w-4 h-4 text-emerald-400"></lucide-icon>
+        <span>{{ actionFeedback() }}</span>
+      </div>
+
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Agent Host</span>
+            <span class="detail-val font-semibold text-white">{{ selectedAlert()!.agent.name }} ({{ selectedAlert()!.agent.ip }})</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Rule ID</span>
+            <span class="detail-val font-mono text-sky-400">#{{ selectedAlert()!.rule.id }}</span>
+          </div>
+          <div class="detail-item" *ngIf="selectedAlert()!.rule.mitre">
+            <span class="detail-label">MITRE ATT&amp;CK</span>
+            <span class="detail-val text-amber-300 font-mono">{{ selectedAlert()!.rule.mitre?.id }}: {{ selectedAlert()!.rule.mitre?.technique }} ({{ selectedAlert()!.rule.mitre?.tactic }})</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Source Location</span>
+            <span class="detail-val font-mono text-slate-300">{{ selectedAlert()!.location }}</span>
+          </div>
+          <div class="detail-item" *ngIf="selectedAlert()!.decoded.user">
+            <span class="detail-label">User Context</span>
+            <span class="detail-val font-mono text-pink-400">{{ selectedAlert()!.decoded.user }}</span>
+          </div>
+          <div class="detail-item" *ngIf="selectedAlert()!.decoded.src_ip">
+            <span class="detail-label">Attacker Source IP</span>
+            <span class="detail-val font-mono text-red-400">{{ selectedAlert()!.decoded.src_ip }}</span>
+          </div>
+        </div>
+
+        <div class="raw-log-section">
+          <h4>Raw Wazuh Log Entry</h4>
+          <pre class="raw-log-block">{{ selectedAlert()!.full_log }}</pre>
+        </div>
+
+        <div class="actions-section">
+          <h4>Host Active Response</h4>
+          <div class="action-buttons">
+            <button class="action-btn isolate" (click)="isolateHost(selectedAlert()!.agent.id)">
+              <lucide-icon [name]="LockIcon" class="w-4 h-4"></lucide-icon>
+              Isolate Host from Network
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

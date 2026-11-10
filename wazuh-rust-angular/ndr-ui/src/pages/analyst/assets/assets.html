@@ -1,0 +1,369 @@
+<div class="assets-page">
+  <div class="page-header">
+    <div class="title-group">
+      <h2>Asset Inventory</h2>
+      <p>Discovered devices, identities, and hostnames.</p>
+    </div>
+    
+    <div class="header-actions">
+      <div class="filter-group">
+        <div class="custom-dropdown-wrapper">
+          <div class="dropdown-backdrop" *ngIf="isDropdownOpen" (click)="isDropdownOpen = false"></div>
+          <div class="styled-dropdown" (click)="isDropdownOpen = !isDropdownOpen" [class.open]="isDropdownOpen">
+            <span>{{ getFilterLabel() }}</span>
+            <lucide-icon [name]="ChevronDownIcon" class="dropdown-arrow" [class.rotate]="isDropdownOpen"></lucide-icon>
+          </div>
+          
+          <div class="dropdown-menu" *ngIf="isDropdownOpen">
+            <div class="dropdown-item" 
+                 *ngFor="let option of deviceTypeOptions" 
+                 (click)="setFilter(option.value)"
+                 [class.active]="filterDeviceType === option.value">
+              {{ option.label }}
+            </div>
+          </div>
+        </div>
+        
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="filterLast24h" (ngModelChange)="filterAssets()">
+          <span>Seen in last 24h</span>
+        </label>
+      </div>
+
+      <div class="search-box">
+        <lucide-icon [name]="SearchIcon" class="w-4 h-4 text-slate-400"></lucide-icon>
+        <input type="text"
+               [(ngModel)]="searchTerm"
+               (ngModelChange)="filterAssets()"
+               placeholder="Search IPs, names, vendors...">
+      </div>
+
+      <div class="custom-dropdown-wrapper" *ngIf="subnets.length > 0">
+        <div class="dropdown-backdrop" *ngIf="isSubnetDropdownOpen" (click)="isSubnetDropdownOpen = false"></div>
+        <div class="styled-dropdown" (click)="isSubnetDropdownOpen = !isSubnetDropdownOpen" [class.open]="isSubnetDropdownOpen">
+          <span>{{ getSubnetLabel() }}</span>
+          <lucide-icon [name]="ChevronDownIcon" class="dropdown-arrow" [class.rotate]="isSubnetDropdownOpen"></lucide-icon>
+        </div>
+        <div class="dropdown-menu" *ngIf="isSubnetDropdownOpen">
+          <div class="dropdown-item" (click)="setSubnetFilter('all')" [class.active]="filterSubnet === 'all'">All Subnets</div>
+          <div class="dropdown-item" *ngFor="let s of subnets" (click)="setSubnetFilter(s.cidr)" [class.active]="filterSubnet === s.cidr">
+            {{ s.cidr }} &mdash; {{ s.used_ips }}/{{ s.total_ips }} used
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="dashboard-layout-row" *ngIf="!loading">
+    
+    <div class="top-dashboard" *ngIf="totalAssets > 0">
+      <div class="donut-container">
+        <div class="donut-header">
+          <div class="donut-title">Asset Type Distribution</div>
+          <div class="donut-subtitle">Total Assets</div>
+        </div>
+        <div class="donut-chart-wrapper sunburst-wrapper" #sunburstContainer>
+          <!-- ECharts pie will render here -->
+        </div>
+      </div>
+
+      <div class="stats-container">
+        <div class="stats-grid">
+          <div class="stat-card blue-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrapper blue">
+                <lucide-icon [name]="MonitorIcon" class="w-5 h-5"></lucide-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-title">Workstations</div>
+                <div class="stat-count">{{ stats.workstations.count }} assets</div>
+              </div>
+              <div class="stat-percent">{{ stats.workstations.percent }}%</div>
+            </div>
+            <div class="stat-bottom">
+              <div class="sparkline-wrapper">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                  <path class="sparkline-path blue" d="M0,25 C20,20 40,30 60,15 80,0 100,10 100,10" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-card red-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrapper red">
+                <lucide-icon [name]="ShieldCheckIcon" class="w-5 h-5"></lucide-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-title">IoT Devices</div>
+                <div class="stat-count">{{ stats.iot.count }} assets</div>
+              </div>
+              <div class="stat-percent">{{ stats.iot.percent }}%</div>
+            </div>
+            <div class="stat-bottom">
+              <div class="sparkline-wrapper">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                  <path class="sparkline-path red" d="M0,28 C25,28 50,25 75,18 90,15 100,12 100,12" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-card green-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrapper green">
+                <lucide-icon [name]="ServerIcon" class="w-5 h-5"></lucide-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-title">Servers</div>
+                <div class="stat-count">{{ stats.servers.count }} assets</div>
+              </div>
+              <div class="stat-percent">{{ stats.servers.percent }}%</div>
+            </div>
+            <div class="stat-bottom">
+              <div class="sparkline-wrapper">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                  <path class="sparkline-path green" d="M0,25 C30,22 45,28 65,15 85,5 100,10 100,10" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-card purple-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrapper purple">
+                <lucide-icon [name]="RouterIcon" class="w-5 h-5"></lucide-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-title">Networking</div>
+                <div class="stat-count">{{ stats.networking.count }} assets</div>
+              </div>
+              <div class="stat-percent">{{ stats.networking.percent }}%</div>
+            </div>
+            <div class="stat-bottom">
+              <div class="sparkline-wrapper">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                  <path class="sparkline-path purple" d="M0,28 C40,28 60,32 75,15 85,5 100,20 100,20" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subnet-stats-sidebar" [style.display]="subnets.length > 0 ? 'block' : 'none'">
+      <div class="subnet-card" *ngFor="let s of subnets" (click)="setSubnetFilter(s.cidr)" [class.active]="filterSubnet === s.cidr">
+        <div class="subnet-cidr">{{ s.cidr }}</div>
+        <div class="subnet-iface">{{ s.interface }}{{ s.sensor_id ? ' · ' + s.sensor_id : '' }}</div>
+        <div class="subnet-bar-wrap">
+          <div class="subnet-bar" [style.width.%]="s.total_ips ? (s.used_ips / s.total_ips * 100) : 0"></div>
+        </div>
+        <div class="subnet-counts">
+          <span class="used">{{ s.used_ips }} used</span>
+          <span class="free">{{ s.free_ips }} free</span>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="bottom-dashboards-row" *ngIf="!loading && (totalAssets > 0 || subnets.length > 0)">
+    <!-- Threat Landscape -->
+    <div class="threat-landscape-card" *ngIf="totalAssets > 0">
+      <div class="card-header">
+        <div class="header-left">
+          <div class="icon-wrap blue">
+            <lucide-icon [name]="ShieldCheckIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div class="title-group">
+            <h3>Threat Landscape</h3>
+            <p>Asset related alerts and activity over time</p>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="custom-dropdown-wrapper">
+            <div class="dropdown-backdrop" *ngIf="isTimeDropdownOpen" (click)="isTimeDropdownOpen = false"></div>
+            <div class="styled-dropdown time-dropdown" (click)="isTimeDropdownOpen = !isTimeDropdownOpen" [class.open]="isTimeDropdownOpen">
+              <span>{{ timeFilter === '24h' ? 'Last 24 hours' : timeFilter === '7d' ? 'Last 7 days' : 'Last 30 days' }}</span>
+              <lucide-icon [name]="ChevronDownIcon" class="w-4 h-4" [class.rotate]="isTimeDropdownOpen"></lucide-icon>
+            </div>
+            <div class="dropdown-menu" *ngIf="isTimeDropdownOpen">
+              <div class="dropdown-item" (click)="setTimeFilter('24h')" [class.active]="timeFilter === '24h'">Last 24 hours</div>
+              <div class="dropdown-item" (click)="setTimeFilter('7d')" [class.active]="timeFilter === '7d'">Last 7 days</div>
+              <div class="dropdown-item" (click)="setTimeFilter('30d')" [class.active]="timeFilter === '30d'">Last 30 days</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend-area">
+        <div class="legend-item"><span class="dot high"></span>High</div>
+        <div class="legend-item"><span class="dot medium"></span>Medium</div>
+        <div class="legend-item"><span class="dot low"></span>Low</div>
+        <div class="legend-item"><span class="dot info"></span>Info</div>
+      </div>
+      <div #threatLandscapeContainer class="echarts-landscape-container"></div>
+    </div>
+
+    <!-- Subnet Utilization Map -->
+    <div class="subnet-utilization-card" *ngIf="subnets.length > 0">
+      <div class="card-header">
+        <div class="header-left">
+          <div class="icon-wrap green">
+            <lucide-icon [name]="NetworkIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div class="title-group">
+            <h3>Subnet Utilization Map</h3>
+            <p>Asset distribution across subnets</p>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="custom-dropdown-wrapper">
+            <div class="dropdown-backdrop" *ngIf="isSubnetSortDropdownOpen" (click)="isSubnetSortDropdownOpen = false"></div>
+            <div class="styled-dropdown time-dropdown" (click)="isSubnetSortDropdownOpen = !isSubnetSortDropdownOpen" [class.open]="isSubnetSortDropdownOpen">
+              <span>{{ subnetSort === 'top' ? 'Top Subnets' : 'Least Used' }}</span>
+              <lucide-icon [name]="ChevronDownIcon" class="w-4 h-4" [class.rotate]="isSubnetSortDropdownOpen"></lucide-icon>
+            </div>
+            <div class="dropdown-menu" *ngIf="isSubnetSortDropdownOpen">
+              <div class="dropdown-item" (click)="setSubnetSort('top')" [class.active]="subnetSort === 'top'">Top Subnets</div>
+              <div class="dropdown-item" (click)="setSubnetSort('least')" [class.active]="subnetSort === 'least'">Least Used</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="subnet-utilization-grid">
+        <div class="subnet-grid-card" *ngFor="let s of enrichedSubnets | slice:0:4">
+          <div class="sg-cidr">{{ s.cidr }}</div>
+          <div class="sg-role">{{ (s.dominantRole || 'UNKNOWN') | uppercase }}</div>
+          <div class="sg-stats">
+            <div class="sg-count">{{ s.assetCount }}</div>
+            <div class="sg-label">Assets</div>
+            <div class="sg-bar-container">
+              <div class="sg-bar" [style.width.%]="s.assetPercent || 0"></div>
+            </div>
+            <div class="sg-pct">{{ s.assetPercent || 0 }}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="asset-workspace" [class.has-selection]="selectedAsset">
+  <div class="data-grid">
+    <div class="grid-header">
+      <div class="col-type">Type</div>
+      <div class="col-ip">IP Address</div>
+      <div class="col-name">Name</div>
+      <div class="col-vendor">Vendor</div>
+      <div class="col-os">OS</div>
+      <div class="col-role">Role</div>
+      <div class="col-criticality">Risk</div>
+      <div class="col-mac">MAC Address</div>
+      <div class="col-conns">Conns (24h)</div>
+      <div class="col-alerts">Alerts (24h)</div>
+      <div class="col-seen">Last Seen</div>
+      <div class="col-status">Status</div>
+      <div class="col-actions"></div>
+    </div>
+
+    <div class="loading-state" *ngIf="loading">
+      Loading assets...
+    </div>
+
+    <div class="empty-state" *ngIf="!loading && filteredAssets.length === 0">
+      <lucide-icon [name]="SearchIcon" class="empty-state-icon"></lucide-icon>
+      <h3>No assets found</h3>
+      <p>Try adjusting your search criteria or filters to see more devices.</p>
+    </div>
+
+    <div class="grid-body" *ngIf="!loading">
+      <div class="grid-row" *ngFor="let asset of filteredAssets" (click)="selectAsset(asset)" [class.selected]="selectedAsset?.ip === asset.ip">
+        <div class="col-type">
+          <div class="type-badge" [title]="asset.device_type">
+            <lucide-icon [name]="getDeviceIcon(asset.device_type)" class="w-4 h-4"></lucide-icon>
+          </div>
+        </div>
+        
+        <div class="col-ip">
+          <code>{{ asset.ip }}</code>
+        </div>
+        
+        <div class="col-name" (dblclick)="startEdit(asset)">
+          <div *ngIf="editingIp !== asset.ip" class="name-display">
+            <strong>{{ asset.custom_name || asset.hostname || asset.vendor || 'Unknown' }}</strong>
+            <button class="icon-btn edit-btn" (click)="startEdit(asset)">
+              <lucide-icon [name]="EditIcon" class="w-3 h-3"></lucide-icon>
+            </button>
+          </div>
+          <div *ngIf="editingIp === asset.ip" class="name-edit">
+            <input type="text" [(ngModel)]="editNameValue" (keyup.enter)="saveEdit(asset)" (keyup.escape)="cancelEdit()" autoFocus>
+            <button class="icon-btn success" (click)="saveEdit(asset)">
+              <lucide-icon [name]="CheckIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+            <button class="icon-btn danger" (click)="cancelEdit()">
+              <lucide-icon [name]="XIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+          </div>
+        </div>
+        
+        <div class="col-vendor">{{ asset.vendor || '--' }}</div>
+        <div class="col-os">{{ asset.ja3_os || asset.os_guess || '--' }}</div>
+
+        <div class="col-role">
+          <span *ngIf="asset.role" class="role-badge" [class]="getRoleClass(asset.role)" [title]="asset.subnet_role ? 'Subnet: ' + asset.subnet_role : ''">
+            {{ asset.role }}
+          </span>
+          <span *ngIf="!asset.role">--</span>
+        </div>
+
+        <div class="col-criticality">
+          <div *ngIf="asset.criticality > 0" class="criticality-bar-wrap" [title]="'Criticality: ' + asset.criticality + '/100'">
+            <div class="criticality-bar" [style.width.%]="asset.criticality" [class]="getCriticalityClass(asset.criticality)"></div>
+            <span class="criticality-val">{{ asset.criticality }}</span>
+          </div>
+          <span *ngIf="!asset.criticality || asset.criticality === 0">--</span>
+        </div>
+
+        <div class="col-mac">
+          <code>{{ asset.mac || '--' }}</code>
+        </div>
+        
+        <div class="col-conns">{{ asset.connections_24h || 0 }}</div>
+        <div class="col-alerts">
+            <span *ngIf="asset.alerts_24h > 0" class="alert-badge">{{ asset.alerts_24h }}</span>
+            <span *ngIf="!asset.alerts_24h || asset.alerts_24h === 0">0</span>
+        </div>
+
+        <div class="col-seen">{{ formatLastSeen(asset.last_seen) }}</div>
+
+        <div class="col-status">
+          <span *ngIf="asset.threat_flagged && !asset.trusted" class="threat-badge" title="Flagged in AI prediction">
+            <lucide-icon [name]="AlertTriangleIcon" class="w-3 h-3"></lucide-icon> Threat
+          </span>
+          <span *ngIf="asset.trusted" class="trusted-badge" title="Marked as trusted">
+            <lucide-icon [name]="ShieldCheckIcon" class="w-3 h-3"></lucide-icon> Trusted
+          </span>
+        </div>
+
+        <div class="col-actions" (click)="$event.stopPropagation()">
+          <button
+            class="trust-btn"
+            [class.is-trusted]="asset.trusted"
+            (click)="toggleTrusted(asset)"
+            [title]="asset.trusted ? 'Remove trusted' : 'Mark as trusted'">
+            <lucide-icon [name]="asset.trusted ? ShieldOffIcon : ShieldCheckIcon" class="w-4 h-4"></lucide-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <app-device-drawer
+    *ngIf="selectedAsset"
+    [node]="selectedAsset"
+    (closeDrawer)="closeDrawer()"
+    (focusRequested)="handleFocus($event)">
+  </app-device-drawer>
+
+  </div><!-- /asset-workspace -->
+</div>

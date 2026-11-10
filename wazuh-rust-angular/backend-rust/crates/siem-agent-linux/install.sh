@@ -1,0 +1,422 @@
+#!/bin/bash
+# ==============================================================================
+# Wazuh Next-Gen Linux Agent Universal Installer (Rust)
+# Full implementation mirroring official Wazuh installation & dist-detect.sh
+# ==============================================================================
+set -e
+
+echo "==============================================================="
+echo "   Wazuh Next-Gen Linux Endpoint Agent Universal Installer     "
+echo "==============================================================="
+
+# 1. Verify root privileges
+if [ "$EUID" -ne 0 ]; then
+    echo "[-] Error: This installation script must be executed as root (sudo)."
+    exit 1
+fi
+
+# 1.1 Stop any previous or zombie agent daemons (both C wazuh-agent and Rust agent)
+echo "[+] Stopping previous agent daemons..."
+systemctl stop wazuh-agent 2>/dev/null || true
+systemctl stop wazuh-rust-agent 2>/dev/null || true
+if [ -x "/var/ossec/bin/wazuh-control" ]; then
+    /var/ossec/bin/wazuh-control stop 2>/dev/null || true
+fi
+pkill -9 -f "wazuh-agentd" 2>/dev/null || true
+pkill -9 -f "wazuh-modulesd" 2>/dev/null || true
+pkill -9 -f "wazuh-logcollector" 2>/dev/null || true
+pkill -9 -f "wazuh-syscheckd" 2>/dev/null || true
+pkill -9 -f "siem-agent-linux" 2>/dev/null || true
+
+
+# 2. Distribution & OS Version Detection (Mirroring Wazuh dist-detect.sh)
+DIST_NAME="linux"
+DIST_VER="unknown"
+PKG_TYPE="tar"
+
+if [ -r "/etc/os-release" ]; then
+    . /etc/os-release
+    DIST_NAME=${ID:-"linux"}
+    DIST_VER=${VERSION_ID:-"unknown"}
+elif [ -r "/etc/redhat-release" ]; then
+    if grep -qi "centos" /etc/redhat-release; then
+        DIST_NAME="centos"
+    else
+        DIST_NAME="rhel"
+    fi
+elif [ -r "/etc/debian_version" ]; then
+    DIST_NAME="debian"
+elif [ -r "/etc/arch-release" ]; then
+    DIST_NAME="arch"
+elif [ -r "/etc/alpine-release" ]; then
+    DIST_NAME="alpine"
+fi
+
+case "${DIST_NAME}" in
+    ubuntu|debian|kali|linuxmint|pop)
+        PKG_TYPE="deb"
+        ;;
+    rhel|centos|rocky|almalinux|fedora|amzn|oracle)
+        PKG_TYPE="rpm"
+        ;;
+    suse|opensuse*)
+        PKG_TYPE="rpm-zypper"
+        ;;
+    alpine)
+        PKG_TYPE="apk"
+        ;;
+    arch|manjaro)
+        PKG_TYPE="pacman"
+        ;;
+    *)
+        PKG_TYPE="generic"
+        ;;
+esac
+
+echo "[+] Detected Linux Distribution: ${DIST_NAME} (Version: ${DIST_VER})"
+echo "[+] Target Package Family:       ${PKG_TYPE}"
+
+# Settings: SIEM_* names, or the official WAZUH_* deployment variables.
+MANAGER_URL=${SIEM_MANAGER_URL:-${WAZUH_MANAGER:-"http://127.0.0.1:8088"}}
+case "${MANAGER_URL}" in
+    http://*|https://*) ;;
+    *) MANAGER_URL="http://${MANAGER_URL}:${WAZUH_MANAGER_PORT:-8088}" ;;
+esac
+MANAGER_URL="${MANAGER_URL%/}"
+MANAGER_HOST=$(echo "${MANAGER_URL}" | sed -e 's|^[^/]*//||' -e 's|:.*||' -e 's|/.*||')
+MANAGER_PORT=$(echo "${MANAGER_URL}" | sed -e 's|^.*:||' -e 's|/.*||')
+if [ -z "${MANAGER_PORT}" ] || [ "${MANAGER_PORT}" = "${MANAGER_URL}" ] || [ "${MANAGER_PORT}" = "${MANAGER_HOST}" ]; then
+    MANAGER_PORT="8088"
+fi
+AGENT_NAME=${SIEM_AGENT_NAME:-${WAZUH_AGENT_NAME:-$(hostname)}}
+AGENT_GROUP=${SIEM_AGENT_GROUP:-${WAZUH_AGENT_GROUP:-"default"}}
+TENANT_KEY=${SIEM_TENANT_KEY:-${WAZUH_TENANT_KEY:-""}}
+# The manager's CA certificate (the console's command writes it): trusted for its HTTPS address.
+CA_SOURCE=${SIEM_CA_FILE:-""}
+INSTALL_DIR="/var/ossec"
+USER="wazuh"
+GROUP="wazuh"
+
+echo "[+] SIEM Manager Endpoint:       ${MANAGER_URL}"
+echo "[+] SIEM Remoted Host:           ${MANAGER_HOST}:1514"
+echo "[+] Agent Name:                  ${AGENT_NAME}"
+echo "[+] Agent Group:                 ${AGENT_GROUP}"
+if [ -n "${TENANT_KEY}" ]; then
+    echo "[+] Tenant Agent Key:            provided"
+else
+    echo "[!] Tenant Agent Key:            none (the agent joins the default tenant)"
+fi
+echo "[+] Installation Prefix:         ${INSTALL_DIR}"
+
+# HTTP helper: curl or wget; with the manager's CA when there is one
+CURL_CA=()
+WGET_CA=()
+http_get() {
+    if command -v curl > /dev/null 2>&1; then curl -fsSL "${CURL_CA[@]}" "$1" -o "$2"; else wget -q "${WGET_CA[@]}" "$1" -O "$2"; fi
+}
+
+# 3. Create dedicated system group and user
+if ! getent group ${GROUP} > /dev/null 2>&1; then
+    echo "[+] Creating system group '${GROUP}'..."
+    if command -v groupadd > /dev/null 2>&1; then
+        groupadd -r ${GROUP}
+    elif command -v addgroup > /dev/null 2>&1; then
+        addgroup --system ${GROUP}
+    fi
+fi
+
+if ! getent passwd ${USER} > /dev/null 2>&1; then
+    echo "[+] Creating system user '${USER}'..."
+    SHELL="/sbin/nologin"
+    if [ ! -f "${SHELL}" ] && [ -f "/bin/false" ]; then
+        SHELL="/bin/false"
+    fi
+    if command -v useradd > /dev/null 2>&1; then
+        useradd -r -g ${GROUP} -d ${INSTALL_DIR} -s ${SHELL} -c "Wazuh Security Agent" ${USER}
+    elif command -v adduser > /dev/null 2>&1; then
+        adduser --system --home ${INSTALL_DIR} --shell ${SHELL} --ingroup ${GROUP} ${USER}
+    fi
+fi
+
+# 4. Create standard Wazuh directory tree
+mkdir -p "${INSTALL_DIR}/bin"
+mkdir -p "${INSTALL_DIR}/etc"
+mkdir -p "${INSTALL_DIR}/logs"
+mkdir -p "${INSTALL_DIR}/queue"
+mkdir -p "${INSTALL_DIR}/quarantine"
+mkdir -p "${INSTALL_DIR}/ruleset/sca"
+mkdir -p "${INSTALL_DIR}/var/run"
+
+# The agent reads the CA here (agent.env, or the default of its own)
+CA_FILE=""
+if [ -n "${CA_SOURCE}" ]; then
+    CA_FILE="${INSTALL_DIR}/etc/ca.pem"
+    if [ "${CA_SOURCE}" != "${CA_FILE}" ]; then
+        cp "${CA_SOURCE}" "${CA_FILE}"
+    fi
+    chmod 644 "${CA_FILE}"
+    export SIEM_CA_FILE="${CA_FILE}"
+    CURL_CA=(--cacert "${CA_FILE}")
+    WGET_CA=(--ca-certificate="${CA_FILE}")
+fi
+
+# Fetch matching distribution CIS benchmark policy
+case "${DIST_NAME}" in
+    ubuntu)
+        case "${DIST_VER}" in
+            24.*) SCA_POLICY="cis_ubuntu24-04.yml" ;;
+            20.*) SCA_POLICY="cis_ubuntu20-04.yml" ;;
+            18.*) SCA_POLICY="cis_ubuntu18-04.yml" ;;
+            *)    SCA_POLICY="cis_ubuntu22-04.yml" ;;
+        esac
+        ;;
+    debian)
+        case "${DIST_VER}" in
+            11*) SCA_POLICY="cis_debian11.yml" ;;
+            10*) SCA_POLICY="cis_debian10.yml" ;;
+            *)   SCA_POLICY="cis_debian12.yml" ;;
+        esac
+        ;;
+    rhel|centos|rocky|almalinux)
+        case "${DIST_VER}" in
+            9*) SCA_POLICY="cis_rhel9_linux.yml" ;;
+            7*) SCA_POLICY="cis_rhel7_linux.yml" ;;
+            *)  SCA_POLICY="cis_rhel8_linux.yml" ;;
+        esac
+        ;;
+    *)
+        SCA_POLICY="cis_ubuntu22-04.yml"
+        ;;
+esac
+
+if http_get "${MANAGER_URL}/downloads/sca/${SCA_POLICY}" "${INSTALL_DIR}/ruleset/sca/${SCA_POLICY}" 2>/dev/null && [ -s "${INSTALL_DIR}/ruleset/sca/${SCA_POLICY}" ]; then
+    echo "[✓] Downloaded CIS Benchmark policy: ${SCA_POLICY}"
+fi
+
+# 5. Locate or compile the agent binary
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BINARY_CANDIDATES=(
+    "${SCRIPT_DIR}/../../target/release/siem-agent-linux"
+    "${SCRIPT_DIR}/../../target/debug/siem-agent-linux"
+    "${SCRIPT_DIR}/siem-agent-linux"
+    "./siem-agent-linux"
+)
+
+BINARY_FOUND=""
+for cand in "${BINARY_CANDIDATES[@]}"; do
+    if [ -f "${cand}" ]; then
+        BINARY_FOUND="${cand}"
+        break
+    fi
+done
+
+if [ -n "${BINARY_FOUND}" ]; then
+    echo "[+] Installing binary from '${BINARY_FOUND}'..."
+    cp "${BINARY_FOUND}" "${INSTALL_DIR}/bin/siem-agent-linux"
+elif http_get "${MANAGER_URL}/downloads/siem-agent-linux" "${INSTALL_DIR}/bin/siem-agent-linux.new" 2>/dev/null \
+     && [ -s "${INSTALL_DIR}/bin/siem-agent-linux.new" ]; then
+    echo "[+] Downloaded agent binary from ${MANAGER_URL}/downloads/siem-agent-linux"
+    mv -f "${INSTALL_DIR}/bin/siem-agent-linux.new" "${INSTALL_DIR}/bin/siem-agent-linux"
+elif command -v cargo > /dev/null 2>&1; then
+    rm -f "${INSTALL_DIR}/bin/siem-agent-linux.new"
+    echo "[+] Compiling siem-agent-linux in release mode via Cargo..."
+    cargo build --release --package siem-agent-linux --manifest-path "${SCRIPT_DIR}/../../Cargo.toml"
+    cp "${SCRIPT_DIR}/../../target/release/siem-agent-linux" "${INSTALL_DIR}/bin/siem-agent-linux"
+else
+    echo "[-] Error: siem-agent-linux binary not found and cargo compiler is not present."
+    echo "    Please place the compiled 'siem-agent-linux' binary in this directory and re-run."
+    exit 1
+fi
+
+chmod 750 "${INSTALL_DIR}/bin/siem-agent-linux"
+ln -sf "${INSTALL_DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-agentd
+ln -sf "${INSTALL_DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-control
+
+# 6. Write official ossec.conf & client.keys
+cat <<EOF > "${INSTALL_DIR}/etc/ossec.conf"
+<ossec_config>
+  <client>
+    <server>
+      <address>${MANAGER_HOST}</address>
+      <port>${MANAGER_PORT}</port>
+      <protocol>tcp</protocol>
+    </server>
+    <config-profile>${DIST_NAME}</config-profile>
+    <crypto_method>aes</crypto_method>
+  </client>
+
+  <client_buffer>
+    <disabled>no</disabled>
+    <queue_size>5000</queue_size>
+    <events_per_second>500</events_per_second>
+  </client_buffer>
+
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <directories>/etc,/usr/bin,/usr/sbin,/bin,/sbin</directories>
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+  </syscheck>
+
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>1h</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>yes</hardware>
+    <os>yes</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <ports>yes</ports>
+    <processes>yes</processes>
+  </wodle>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/auth.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/syslog</location>
+  </localfile>
+
+  <active-response>
+    <disabled>no</disabled>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <timeout>600</timeout>
+  </active-response>
+</ossec_config>
+EOF
+
+# Enrollment: the manager assigns an agent id that is unique across tenants.
+# On deployment, enroll with the manager (force: true) so client.keys holds a valid active key;
+# a re-install keeps the agent's name. Over TLS every request trusts the manager's CA.
+KEYS_FILE="${INSTALL_DIR}/etc/client.keys"
+if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS_FILE}"; then
+    OLD_NAME=$(head -1 "${KEYS_FILE}" | cut -d' ' -f2)
+    AGENT_NAME=${OLD_NAME:-${AGENT_NAME}}
+fi
+rm -f "${KEYS_FILE}" "${INSTALL_DIR}/.decommissioned" "${INSTALL_DIR}/client.keys.deleted" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted" /etc/wazuh-agent/.decommissioned /etc/wazuh-agent/client.keys.deleted
+BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
+RESP=""
+if command -v curl > /dev/null 2>&1; then
+    RESP=$(curl -fsS "${CURL_CA[@]}" -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
+        -H "Content-Type: application/json" ${TENANT_KEY:+-H "X-Tenant-Key: ${TENANT_KEY}"} \
+        -d "${BODY}" 2>/dev/null || true)
+else
+    RESP=$(wget -qO- "${WGET_CA[@]}" --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
+        --post-data="${BODY}" "${MANAGER_URL}/api/v1/agents/enroll" 2>/dev/null || true)
+fi
+NEW_ID=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_id"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_NAME=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_name"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_KEY=$(printf '%s' "${RESP}" | sed -n 's/.*"raw_key"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+NEW_TENANT=$(printf '%s' "${RESP}" | sed -n 's/.*"tenant_id"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+if [ -n "${NEW_ID}" ] && [ -n "${NEW_KEY}" ]; then
+    echo "${NEW_ID} ${NEW_NAME:-${AGENT_NAME}} any ${NEW_KEY}" > "${KEYS_FILE}"
+    echo "[✓] Enrolled as agent ${NEW_ID} (${NEW_NAME:-${AGENT_NAME}}) in tenant '${NEW_TENANT}'"
+else
+    echo "[-] Enrollment failed or did not return a valid key; the agent will enroll itself when it starts. Response: ${RESP}"
+fi
+
+cat <<EOF > "${INSTALL_DIR}/etc/agent-config.json"
+{
+  "manager_url": "${MANAGER_URL}",
+  "agent_name": "${AGENT_NAME}",
+  "agent_group": "${AGENT_GROUP}",
+  "tenant_key": "${TENANT_KEY}",
+  "buffer_capacity": 5000,
+  "events_per_second": 500
+}
+EOF
+cp -f "${INSTALL_DIR}/etc/agent-config.json" "${INSTALL_DIR}/agent-config.json" 2>/dev/null || true
+mkdir -p /etc/wazuh-agent 2>/dev/null || true
+cp -f "${INSTALL_DIR}/etc/agent-config.json" /etc/wazuh-agent/agent-config.json 2>/dev/null || true
+
+cat <<EOF > "${INSTALL_DIR}/etc/agent.env"
+SIEM_MANAGER_URL="${MANAGER_URL}"
+SIEM_AGENT_NAME="${AGENT_NAME}"
+SIEM_AGENT_GROUP="${AGENT_GROUP}"
+SIEM_TENANT_KEY="${TENANT_KEY}"
+SIEM_CA_FILE="${CA_FILE}"
+EOF
+
+# 7. Apply hardened file permissions
+chown root:${GROUP} "${INSTALL_DIR}"
+chmod 750 "${INSTALL_DIR}"
+chown -R root:${GROUP} "${INSTALL_DIR}/bin"
+chmod 750 "${INSTALL_DIR}/bin"
+chown root:${GROUP} "${INSTALL_DIR}/etc/ossec.conf"
+chmod 640 "${INSTALL_DIR}/etc/ossec.conf"
+if [ -f "${INSTALL_DIR}/etc/client.keys" ]; then
+    chown root:${GROUP} "${INSTALL_DIR}/etc/client.keys"
+    chmod 640 "${INSTALL_DIR}/etc/client.keys"
+fi
+chown root:${GROUP} "${INSTALL_DIR}/etc/agent-config.json"
+chmod 640 "${INSTALL_DIR}/etc/agent-config.json"
+chown root:${GROUP} "${INSTALL_DIR}/etc/agent.env"
+chmod 600 "${INSTALL_DIR}/etc/agent.env"
+chown -R ${USER}:${GROUP} "${INSTALL_DIR}/logs"
+chmod 750 "${INSTALL_DIR}/logs"
+chown -R ${USER}:${GROUP} "${INSTALL_DIR}/queue"
+chmod 750 "${INSTALL_DIR}/queue"
+chown -R root:${GROUP} "${INSTALL_DIR}/quarantine"
+chmod 700 "${INSTALL_DIR}/quarantine"
+chown -R root:${GROUP} "${INSTALL_DIR}/ruleset"
+chmod -R 750 "${INSTALL_DIR}/ruleset"
+
+# 8. Service Registration (Systemd / Init)
+SERVICE_SOURCE="${SCRIPT_DIR}/init/wazuh-rust-agent.service"
+# systemd only when it is actually running (containers / WSL often have the
+# directories but no running systemd).
+if [ -d /run/systemd/system ] && command -v systemctl > /dev/null 2>&1; then
+    echo "[+] Provisioning systemd daemon (wazuh-rust-agent.service)..."
+    if [ -f "${SERVICE_SOURCE}" ]; then
+        cp "${SERVICE_SOURCE}" /etc/systemd/system/wazuh-rust-agent.service
+    else
+        cat <<EOF > /etc/systemd/system/wazuh-rust-agent.service
+[Unit]
+Description=Wazuh Next-Gen Endpoint Security Agent (Rust)
+Documentation=https://wazuh.com
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=-${INSTALL_DIR}/etc/agent.env
+ExecStart=${INSTALL_DIR}/bin/siem-agent-linux --daemon
+Restart=always
+RestartSec=10
+RestartPreventExitStatus=42
+KillMode=process
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    fi
+    systemctl daemon-reload
+    systemctl enable wazuh-rust-agent.service
+    systemctl restart wazuh-rust-agent.service
+    systemctl stop wazuh-agent 2>/dev/null || true
+    systemctl disable wazuh-agent 2>/dev/null || true
+    echo "[✓] Service status: ACTIVE & ENABLED"
+else
+    echo "[i] systemd is not running: starting the agent in the background."
+    pkill -f "${INSTALL_DIR}/bin/siem-agent-linux" 2>/dev/null || true
+    ( cd "${INSTALL_DIR}" && nohup "${INSTALL_DIR}/bin/siem-agent-linux" --daemon < /dev/null >> "${INSTALL_DIR}/logs/agent.log" 2>&1 & )
+    echo "[✓] Agent started (log: ${INSTALL_DIR}/logs/agent.log). Add it to your init system to start on boot."
+fi
+
+echo "==============================================================="
+echo "   Wazuh Linux Agent Installed Successfully! [COMPLETE]        "
+echo "   Control CLI:   wazuh-control status-service                 "
+echo "   Binary Daemon: wazuh-agentd                                 "
+echo "   Logs:          /var/ossec/logs/                             "
+echo "==============================================================="

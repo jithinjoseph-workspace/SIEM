@@ -1,0 +1,20 @@
+<ng-container *ngIf="showShell; else loginView">
+  <div class="flex h-screen w-full bg-surface overflow-hidden">
+    <div class="flex flex-col flex-1 overflow-hidden z-10 w-full relative">
+      <app-navbar></app-navbar>
+      <main class="flex-1 overflow-auto relative">
+        <router-outlet></router-outlet>
+      </main>
+    </div>
+  </div>
+</ng-container>
+
+<ng-template #loginView>
+  <router-outlet></router-outlet>
+</ng-template>
+
+<!-- Global toast overlay — always in DOM, persists across route changes -->
+<app-toast-container></app-toast-container>
+
+<!-- ARIA floating bot — always in DOM when shell is shown -->
+<app-aria-bot *ngIf="showShell"></app-aria-bot>

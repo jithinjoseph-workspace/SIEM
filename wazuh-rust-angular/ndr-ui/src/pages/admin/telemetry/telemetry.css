@@ -1,0 +1,764 @@
+/* ── Platform Telemetry & Hardware Diagnostics Cyber Design System ── */
+
+@keyframes smoothAuraBreathe {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0.95;
+  }
+}
+
+@keyframes spinLoader {
+  to { transform: rotate(360deg); }
+}
+
+.telemetry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  position: relative;
+}
+
+/* ── Cyber Hero Strip ────────────────────────────────────────── */
+.cyber-hero-strip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+
+.hero-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hero-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(56, 189, 248, 0.07);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 9999px;
+  width: fit-content;
+}
+
+.hero-status-pill .pulse-dot {
+  position: relative;
+  display: inline-flex;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+}
+
+.hero-status-pill .pulse-dot::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.35);
+  animation: smoothAuraBreathe 2.4s ease-in-out infinite alternate;
+}
+
+.hero-status-pill .status-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #7dd3fc;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  margin: 0;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.hero-subtext {
+  font-size: 13.5px;
+  color: #94a3b8;
+  margin: 0;
+  max-width: 680px;
+  line-height: 1.5;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.system-time-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.system-time-pill .date-sep {
+  color: #475569;
+}
+
+.system-time-pill .date-text {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.sync-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 6px #34d399;
+}
+
+.cyber-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid transparent;
+}
+
+.cyber-btn-ghost {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(56, 189, 248, 0.2);
+  color: #94a3b8;
+}
+
+.cyber-btn-ghost:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #e2e8f0;
+}
+
+.spinning {
+  animation: spinLoader 1.2s linear infinite;
+}
+
+/* ── 2. Industrial Server Chassis Deck (Distinctive Layout) ── */
+.server-chassis-deck {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .server-chassis-deck {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .server-chassis-deck {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blade-slot {
+  position: relative;
+  overflow: hidden;
+  background: rgba(11, 19, 38, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.blade-slot:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.blade--cpu   { border-top: 3px solid #38bdf8; }
+.blade--ram   { border-top: 3px solid #a855f7; }
+.blade--ch    { border-top: 3px solid #10b981; }
+.blade--kafka { border-top: 3px solid #0ea5e9; }
+
+.blade--cpu:hover   { border-color: rgba(56, 189, 248, 0.35); }
+.blade--ram:hover   { border-color: rgba(168, 85, 247, 0.35); }
+.blade--ch:hover    { border-color: rgba(16, 185, 129, 0.35); }
+.blade--kafka:hover { border-color: rgba(14, 165, 233, 0.35); }
+
+.blade-glow {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(35px);
+}
+
+.blade-glow.cyan    { background: rgba(56, 189, 248, 0.15); }
+.blade-glow.purple  { background: rgba(168, 85, 247, 0.15); }
+.blade-glow.emerald { background: rgba(16, 185, 129, 0.15); }
+.blade-glow.blue    { background: rgba(14, 165, 233, 0.15); }
+
+.blade-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.blade-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.blade-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.blade-status.cyan {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+}
+
+.blade-status.purple {
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  color: #c084fc;
+}
+
+.blade-status.emerald {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+}
+
+.blade-status.blue {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  color: #38bdf8;
+}
+
+.blade-status.danger {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #f43f5e;
+}
+
+.blade-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.blade-big-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.blade-num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.blade-unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+}
+
+/* LED Meter Bar */
+.led-meter-bar {
+  display: flex;
+  gap: 4px;
+  height: 10px;
+  padding: 2px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+.led-block {
+  flex: 1;
+  height: 100%;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: all 0.2s ease;
+}
+
+.led-block.lit {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+}
+
+.led-block.lit.warn {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+}
+
+.led-block.lit.alert {
+  background: #f43f5e;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+}
+
+.blade-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.blade-sub-pill {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* RAM Split Bar */
+.ram-split-bar {
+  height: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ram-used-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #a855f7 0%, #ec4899 100%);
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.45);
+  transition: width 0.3s ease;
+}
+
+/* IO Box */
+.blade-io-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.io-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.io-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+}
+
+.io-val {
+  font-size: 10.5px;
+}
+
+/* Blade Footer Chips */
+.blade-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+}
+
+.blade-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #94a3b8;
+}
+
+.blade-chip.cyan {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.22);
+  color: #38bdf8;
+}
+
+.blade-chip.purple {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.22);
+  color: #c084fc;
+}
+
+.blade-chip.success {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.22);
+  color: #34d399;
+}
+
+/* ── 2x2 Telemetry Grid ──────────────────────────────────────── */
+.telemetry-dual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.telemetry-card {
+  background: rgba(11, 19, 38, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.2s;
+}
+
+.telemetry-card:hover {
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 14px;
+}
+
+.header-title-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.icon-chip {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon-chip.info { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25); }
+.icon-chip.accent { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.25); }
+.icon-chip.emerald { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+.icon-chip.blue { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); }
+
+.card-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.card-subtitle {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.live-tag .pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pill-badge.emerald {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+}
+
+.pill-badge.amber {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+}
+
+/* Radial Gauge Styling */
+.gauge-center-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.radial-gauge-container {
+  width: 170px;
+  height: 170px;
+  position: relative;
+}
+
+.circular-chart {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.circle-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 2.8;
+}
+
+.circle {
+  fill: none;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s ease;
+}
+
+.circle.cyan {
+  stroke: #38bdf8;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.45));
+}
+
+.circle.purple {
+  stroke: #c084fc;
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.45));
+}
+
+.circle.danger {
+  stroke: #f43f5e !important;
+  filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.6)) !important;
+}
+
+.percentage {
+  fill: #f8fafc;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 6.2px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.percentage.danger {
+  fill: #f43f5e;
+}
+
+/* Memory progress track */
+.memory-progress-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.memory-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #38bdf8 0%, #c084fc 100%);
+  transition: width 0.6s ease;
+  box-shadow: 0 0 10px rgba(192, 132, 252, 0.4);
+}
+
+.memory-bar-fill.danger {
+  background: #f43f5e;
+}
+
+/* Stats Counter Banner (for panels 3 & 4) */
+.stats-counter-banner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  border-radius: 10px;
+}
+
+.counter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.counter-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.counter-num-box {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.counter-big {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 24px;
+  font-weight: 800;
+  color: #f8fafc;
+  line-height: 1;
+}
+
+.counter-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Diagnostic Row list */
+.diagnostic-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+}
+
+.diag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.diag-label {
+  color: #94a3b8;
+}
+
+.diag-val {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+/* Loading Box */
+.cyber-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 60px 20px;
+  background: rgba(11, 19, 38, 0.4);
+  border: 1px dashed rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+}
+
+.loading-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* ── Responsive adjustments ──────────────────────────────────── */
+@media (max-width: 1100px) {
+  .cyber-metrics-ribbon {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .telemetry-dual-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .cyber-metrics-ribbon {
+    grid-template-columns: 1fr;
+  }
+  .stats-counter-banner {
+    grid-template-columns: 1fr;
+  }
+}

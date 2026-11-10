@@ -1,0 +1,221 @@
+-- ClickHouse Unified XDR Schema (NDR + SIEM Auto-Provisioning)
+-- One database per tenant: the default tenant uses `ndr` (NDR + SIEM), other
+-- tenants get ndr_<id> (created by auth-service; SIEM tables added by siem-api).
+CREATE DATABASE IF NOT EXISTS ndr;
+
+-- 1. Raw Telemetry Events Table
+CREATE TABLE IF NOT EXISTS ndr.siem_events (
+    id String,
+    timestamp UInt64,
+    agent_id LowCardinality(String),
+    source LowCardinality(String),
+    location String CODEC(ZSTD),
+    message String CODEC(ZSTD),
+    raw_metadata String CODEC(ZSTD)
+) ENGINE = MergeTree()
+ORDER BY (timestamp, agent_id);
+
+-- 2. Correlated Security Alerts Table
+CREATE TABLE IF NOT EXISTS ndr.siem_alerts (
+    id String,
+    timestamp UInt64,
+    agent_id LowCardinality(String),
+    agent_name LowCardinality(String),
+    agent_ip String,
+    rule_id UInt32,
+    rule_level UInt8,
+    rule_description String CODEC(ZSTD),
+    mitre_id LowCardinality(String),
+    mitre_tactic LowCardinality(String),
+    mitre_technique LowCardinality(String),
+    full_log String CODEC(ZSTD),
+    src_ip String,
+    dst_ip String,
+    user String,
+    location String
+) ENGINE = MergeTree()
+ORDER BY (rule_level, timestamp);
+
+-- 3. Agent Inventory & Heartbeats (ReplacingMergeTree deduplicates per agent)
+CREATE TABLE IF NOT EXISTS ndr.siem_agents (
+    id String,
+    name String,
+    ip String,
+    os String,
+    version String,
+    status LowCardinality(String),
+    last_keepalive DateTime64(3, 'UTC'),
+    os_type LowCardinality(String)
+) ENGINE = ReplacingMergeTree(last_keepalive)
+ORDER BY (id);
+
+-- 4. Active Response Remediation Audit Trail (a release re-inserts the row with a newer updated_at)
+--    Same definitions as siem-api's persist.rs, which also creates them in every tenant database.
+CREATE TABLE IF NOT EXISTS ndr.siem_active_responses (
+    id String,
+    triggered_at UInt64,
+    agent_id LowCardinality(String),
+    command LowCardinality(String),
+    target_ip String,
+    reason String,
+    duration_seconds UInt64,
+    status LowCardinality(String),
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY id;
+
+-- 4b. Vulnerability detections: a snapshot per agent scan, the latest one is current
+CREATE TABLE IF NOT EXISTS ndr.siem_vulnerabilities (
+    snapshot_at UInt64,
+    agent_id LowCardinality(String),
+    cve_id String,
+    package_name String,
+    severity LowCardinality(String),
+    status LowCardinality(String),
+    detection String
+) ENGINE = MergeTree
+ORDER BY (agent_id, snapshot_at)
+TTL toDateTime(intDiv(snapshot_at, 1000)) + INTERVAL 180 DAY;
+
+-- 4c. Commands queued for agents until they fetch them (delivered = 1)
+CREATE TABLE IF NOT EXISTS ndr.siem_agent_commands (
+    agent_id LowCardinality(String),
+    command_id String,
+    payload String,
+    created_at UInt64,
+    delivered UInt8,
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (agent_id, command_id);
+
+-- 5. NDR Network Flows (Zeek / Suricata / eBPF flow logs)
+CREATE TABLE IF NOT EXISTS ndr.ndr_network_flows (
+    id UUID DEFAULT generateUUIDv4(),
+    timestamp DateTime64(3, 'UTC'),
+    proto LowCardinality(String),
+    src_ip String,
+    src_port UInt16,
+    dst_ip String,
+    dst_port UInt16,
+    bytes_in UInt64,
+    bytes_out UInt64,
+    duration_ms UInt32,
+    service LowCardinality(String),
+    app_proto LowCardinality(String),
+    INDEX idx_src (src_ip) TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_dst (dst_ip) TYPE bloom_filter GRANULARITY 1
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (timestamp, src_ip, dst_ip)
+TTL toDateTime(timestamp) + INTERVAL 30 DAY;
+
+-- 6. NDR Network Threat Detections (C2 beaconing, port scanning, DNS tunneling, IDS alerts)
+CREATE TABLE IF NOT EXISTS ndr.ndr_threats (
+    id UUID DEFAULT generateUUIDv4(),
+    timestamp DateTime64(3, 'UTC'),
+    signature String,
+    category LowCardinality(String),
+    severity UInt8,
+    src_ip String,
+    dst_ip String,
+    dst_port UInt16,
+    proto LowCardinality(String),
+    mitre_id LowCardinality(String),
+    payload_snippet String CODEC(ZSTD),
+    INDEX idx_src (src_ip) TYPE bloom_filter GRANULARITY 1
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (severity, timestamp, src_ip)
+TTL toDateTime(timestamp) + INTERVAL 180 DAY;
+
+-- 7. Unified XDR Correlated Incidents (Fusing NDR network threat + SIEM endpoint event)
+CREATE TABLE IF NOT EXISTS ndr.xdr_incidents (
+    incident_id String,
+    timestamp UInt64,
+    title String,
+    severity LowCardinality(String),
+    host_ip String,
+    agent_id LowCardinality(String),
+    agent_name LowCardinality(String),
+    attacker_ip String,
+    ndr_threat_id String,
+    siem_alert_id String,
+    ndr_signature String,
+    siem_rule_description String,
+    status LowCardinality(String)
+) ENGINE = MergeTree()
+ORDER BY (timestamp, host_ip);
+
+-- SIEM global tables (all tenants): agent identities, tenant agent keys, feed IOCs
+CREATE TABLE IF NOT EXISTS ndr.agent_registry (
+    agent_id String,
+    name String,
+    tenant_id LowCardinality(String),
+    groups String,
+    os_type LowCardinality(String),
+    deleted UInt8,
+    enrolled_at UInt64,
+    updated_at UInt64
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY agent_id;
+
+CREATE TABLE IF NOT EXISTS ndr.tenant_agent_keys (
+    tenant_id LowCardinality(String),
+    agent_key String,
+    created_at UInt64
+) ENGINE = ReplacingMergeTree()
+ORDER BY tenant_id;
+
+CREATE TABLE IF NOT EXISTS ndr.siem_threat_intel (
+    id String,
+    source LowCardinality(String),
+    attack_type LowCardinality(String),
+    severity LowCardinality(String),
+    ioc_type LowCardinality(String),
+    ioc_value String,
+    description String,
+    threat_pattern String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ioc_type, ioc_value);
+
+-- 8. Multi-Tenant Auth & Users (Shared auth-service)
+CREATE DATABASE IF NOT EXISTS ndr;
+
+CREATE TABLE IF NOT EXISTS ndr.users (
+    id String DEFAULT generateUUIDv4(),
+    username String,
+    password_hash String,
+    role LowCardinality(String) DEFAULT 'analyst',
+    tenant_id LowCardinality(String) DEFAULT 'default',
+    permissions String DEFAULT 'dashboard,alerts,siem,ndr,rules,agents,sources',
+    active UInt8 DEFAULT 1,
+    gmail String DEFAULT '',
+    secret_code String DEFAULT '',
+    created_at DateTime DEFAULT now(),
+    last_login DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(created_at)
+ORDER BY username;
+
+CREATE TABLE IF NOT EXISTS ndr.tenants (
+    id String,
+    name String,
+    plan String DEFAULT 'enterprise',
+    features String DEFAULT 'siem,ndr',
+    active UInt8 DEFAULT 1,
+    ai_enabled UInt8 DEFAULT 1,
+    created_at DateTime DEFAULT now(),
+    updated_at DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY id;
+
+ALTER TABLE ndr.users ADD COLUMN IF NOT EXISTS last_login DateTime DEFAULT now();
+ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1;
+ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now();
+
+-- Pre-seed default organization & analyst user
+INSERT INTO ndr.tenants (id, name, plan, features, active) VALUES
+    ('default', 'Default Organization', 'enterprise', 'siem,ndr', 1);
+
+INSERT INTO ndr.users (id, username, password_hash, role, tenant_id, permissions, active) VALUES
+    ('u-admin', 'admin', '$2b$12$qB5uFqakHidExby4EbdH6.tFvW34sj7CAQFZdUCzk5YSi/kV3S09.', 'super_admin', 'default', 'dashboard,alerts,siem,ndr,rules,agents,sources,users,settings', 1),
+    ('u-analyst', 'analyst', '$2b$12$wi15kWc0KGLG6FEtIysJHuqRfT7PDvOoW2IC3oT3hfoQmtmygZ5h6', 'analyst', 'default', 'dashboard,alerts,siem,ndr,rules,agents', 1);

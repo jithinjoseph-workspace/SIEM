@@ -1,0 +1,32 @@
+[package]
+name = "siem-winagent"
+version = "0.1.0"
+edition = "2021"
+description = " (src/win32): the Windows agent process and service"
+
+[[bin]]
+name = "provigil-agent"
+path = "src/main.rs"
+
+[dependencies]
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+siem-ipc = { path = "../siem-ipc" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+siem-agentd = { path = "../siem-agentd" }
+siem-logcollector = { path = "../siem-logcollector" }
+siem-execd = { path = "../siem-execd" }
+siem-syscheckd = { path = "../siem-syscheckd" }
+siem-sca = { path = "../siem-sca" }
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+siem-syscollector = { path = "../siem-syscollector" }
+siem-sysinfo = { path = "../siem-sysinfo" }
+siem-cjson = { path = "../siem-cjson" }
+siem-xml = { path = "../siem-xml" }
+flate2 = "1"
+openssl = { version = "0.10", features = ["vendored"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Services", "Win32_System_Diagnostics_Debug", "Win32_System_Threading", "Win32_Security_WinTrust", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus"] }

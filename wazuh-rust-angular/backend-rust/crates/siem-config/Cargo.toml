@@ -1,0 +1,24 @@
+[package]
+name = "siem-config"
+version = "0.1.0"
+edition = "2021"
+description = "Port of the upstream configuration layer (src/config): ReadConfig, internal options and section readers"
+
+[dependencies]
+siem-cjson = { path = "../siem-cjson" }
+siem-xml = { path = "../siem-xml" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+thiserror = "1"
+tracing = "0.1"
+regex = "1.10"
+chrono = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+windows-sys = { version = "0.61", features = ["Win32_System_Environment"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,1462 @@
+<section class="admin-panel ov-panel">
+
+  <!-- Ambient Decorative Canvas & Backlights -->
+  <div #commandMesh class="ov-command-mesh" aria-hidden="true"></div>
+  <div class="ov-ambient-glow ov-glow--cyan" aria-hidden="true"></div>
+  <div class="ov-ambient-glow ov-glow--royal" aria-hidden="true"></div>
+
+  <!-- ── 1. Cyber Hero Bar ─────────────────────────────────────────── -->
+  <header class="ov-hero-strip">
+    <div class="ov-hero-left">
+      <div class="ov-system-badge">
+        <span class="ov-pulse-dot"></span>
+        <span>SUPER ADMIN / COMMAND CENTER</span>
+        <span class="ov-badge-sep">/</span>
+        <span class="ov-badge-status">{{ overallHealthScore >= 95 ? 'FABRIC OPERATIONAL' : 'SYSTEM HEALTH ' + overallHealthScore + '%' }}</span>
+      </div>
+      <h1 class="ov-headline">Platform <em>Resilience</em> &amp; Control</h1>
+      <p class="ov-tagline">Real-time telemetric observation of protected multi-tenant networks, relays, and engines.</p>
+    </div>
+
+    <div class="ov-hero-controls">
+      <!-- Time Range Switcher Pills -->
+      <div class="ov-filter-pills" role="radiogroup" aria-label="Time range selector">
+        <button type="button" class="ov-pill-btn" [class.active]="timeRange === 'realtime'" (click)="setTimeRange('realtime')">
+          <span class="ov-live-indicator"></span> Realtime
+        </button>
+        <button type="button" class="ov-pill-btn" [class.active]="timeRange === '1h'" (click)="setTimeRange('1h')">1H</button>
+        <button type="button" class="ov-pill-btn" [class.active]="timeRange === '24h'" (click)="setTimeRange('24h')">24H</button>
+        <button type="button" class="ov-pill-btn" [class.active]="timeRange === '7d'" (click)="setTimeRange('7d')">7D</button>
+      </div>
+
+      <!-- Quick Action: Refresh -->
+      <button type="button" class="ov-action-btn" (click)="triggerRefresh()" [disabled]="isRefreshing" title="Refresh Feeds">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="isRefreshing"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Live Digital Clock Capsule -->
+      <div class="ov-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 ov-clock-icon"></lucide-icon>
+        <div class="ov-clock-text">
+          <span class="ov-clock-time">{{ clock.currentTime() }}</span>
+          <span class="ov-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 1b. Live Cyber Marquee & SOC Telemetry Ticker Ribbon ──────── -->
+  <aside class="ov-ticker-ribbon" aria-label="Real-time SOC Platform Telemetry Ticker">
+    <div class="ticker-beacon-capsule">
+      <span class="live-dot pulse"></span>
+      <span class="ticker-label">SOC FEED</span>
+    </div>
+
+    <div class="ticker-track-wrap">
+      <div class="ticker-content">
+        <!-- Item 1: ClickHouse EPS -->
+        <div class="ticker-item">
+          <lucide-icon [name]="DatabaseIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span class="tk-lbl">CLICKHOUSE INGESTION:</span>
+          <span class="tk-val font-mono text-cyan-300">{{ eventsPerSec | number }} EPS</span>
+          <span class="tk-sub text-slate-400">({{ events1h | number }} pkts/1h)</span>
+        </div>
+
+        <span class="ticker-sep">/</span>
+
+        <!-- Item 2: Raft Leader -->
+        <div class="ticker-item">
+          <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span class="tk-lbl">RAFT THREAT LEADER:</span>
+          <span class="tk-val font-mono text-emerald-400">{{ leaderName }}</span>
+          <span class="tk-badge bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-mono" *ngIf="isLeaderActive">TTL {{ leaderTtl }}s</span>
+          <span class="tk-badge bg-slate-900 text-slate-400 border border-slate-700/40 font-mono" *ngIf="!isLeaderActive">Awaiting</span>
+        </div>
+
+        <span class="ticker-sep">/</span>
+
+        <!-- Item 3: Health Score -->
+        <div class="ticker-item">
+          <lucide-icon [name]="ShieldIcon" class="w-3.5 h-3.5 text-royal-400"></lucide-icon>
+          <span class="tk-lbl">PLATFORM RESILIENCE:</span>
+          <span class="tk-val font-mono text-royal-300">{{ overallHealthScore }}% HEALTH</span>
+          <span class="tk-sub text-emerald-400 font-bold">{{ activeEngines }}/{{ engines.length || 1 }} QUORUM</span>
+        </div>
+
+        <span class="ticker-sep">/</span>
+
+        <!-- Item 4: Hardware Probes -->
+        <div class="ticker-item">
+          <lucide-icon [name]="RadioIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span class="tk-lbl">SENSOR PROBES:</span>
+          <span class="tk-val font-mono text-amber-300">{{ activeSensorsCount }}/{{ sensorKeys.length }} ARMED</span>
+          <span class="tk-sub text-slate-400">({{ activeTenantsCount }} Org Boundaries)</span>
+        </div>
+
+        <span class="ticker-sep">/</span>
+
+        <!-- Item 5: Global Threat IOCs -->
+        <div class="ticker-item">
+          <lucide-icon [name]="ShieldAlertIcon" class="w-3.5 h-3.5 text-rose-400"></lucide-icon>
+          <span class="tk-lbl">GLOBAL IOC CACHE:</span>
+          <span class="tk-val font-mono text-rose-400">{{ totalThreatIps }} BLACKLISTED IPS</span>
+          <span class="tk-sub text-slate-400">(OTX / CISA / AbuseIPDB)</span>
+        </div>
+
+        <span class="ticker-sep">/</span>
+
+        <!-- Item 6: Engine Ingestion Bus -->
+        <div class="ticker-item">
+          <lucide-icon [name]="LayersIcon" class="w-3.5 h-3.5 text-violet-400"></lucide-icon>
+          <span class="tk-lbl">INGESTION BUS:</span>
+          <span class="tk-val font-mono text-violet-300">{{ totalPartitions }} PARTITIONS ({{ totalPartitions > 0 ? (kafkaData?.replication_factor || 1) + 'x ISR' : 'ONLINE' }})</span>
+          <span class="tk-sub" [class.text-emerald-400]="totalKafkaLag === 0" [class.text-amber-400]="totalKafkaLag > 0">{{ totalKafkaLag }} LAG</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Action / Diagnostic Filter Button -->
+    <div class="ticker-action">
+      <button type="button" class="ticker-quick-btn" (click)="loadLeaderStatus(); loadSeverityData(); onManualLeaderProbe()" title="Force Raft Leader Status Poll">
+        <lucide-icon [name]="RefreshIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+        <span>Probe Quorum</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── 2. Top Cyber SOC Mission Control Telemetry Ribbon ────────── -->
+  <section class="ov-cockpit-ribbon" aria-label="Cyber Platform Operations Command">
+
+    <!-- Mission Module 1: Compute Fabric & Engines -->
+    <div class="cockpit-module mod--emerald">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--emerald"></span>
+          <span class="mod-cat">COMPUTE FABRIC</span>
+        </div>
+        <span class="mod-status-pill pill--emerald">{{ activeEngines }}/{{ engines.length }} ENGINES UP</span>
+      </div>
+
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-emerald-400">{{ clusterAvailability | number:'1.0-2' }}%</div>
+          <div class="mod-hero-label">CLUSTER AVAILABILITY</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad-spark-emerald" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,22 Q12,8 24,18 T48,12 T72,20 T100,10 L100,28 L0,28 Z" fill="url(#grad-spark-emerald)"/>
+            <path d="M0,22 Q12,8 24,18 T48,12 T72,20 T100,10" fill="none" stroke="#10b981" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-emerald-400">{{ activeEngines > 0 ? ('LATENCY ' + (fleetNodes[0]?.latency || '< 1ms')) : 'OFFLINE' }}</span>
+        </div>
+      </div>
+
+      <!-- Real Fleet Node Heartbeat Indicators -->
+      <div class="mod-nodes-strip">
+        <div *ngFor="let node of fleetNodes.slice(0, 3)" class="mod-node-chip">
+          <span class="node-dot dot--emerald"></span>
+          <span class="node-name">{{ node.name }}</span>
+          <span class="node-stat text-emerald-400">ONLINE</span>
+        </div>
+        <div *ngIf="fleetNodes.length === 0" class="mod-node-chip">
+          <span class="node-dot dot--slate"></span>
+          <span class="node-name text-slate-400">No active engines</span>
+        </div>
+      </div>
+
+      <!-- Resource Telemetry Strip -->
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item">
+          <span>CPU LOAD</span>
+          <b class="text-slate-100 font-mono">{{ latestCpu | number:'1.0-0' }}%</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>MEMORY</span>
+          <b class="text-slate-100 font-mono">{{ memoryUsedGb | number:'1.1-1' }} GB</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>FAILOVER</span>
+          <b class="font-mono" [class.text-emerald-400]="isLeaderActive" [class.text-amber-400]="!isLeaderActive">{{ isLeaderActive ? 'READY' : 'ELECTING' }}</b>
+        </div>
+      </div>
+
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--emerald" [style.width]="clusterAvailability + '%'"></div>
+      </div>
+    </div>
+
+    <!-- Mission Module 2: Ingestion & Multi-Tenant Pipeline -->
+    <div class="cockpit-module mod--cyan">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--cyan"></span>
+          <span class="mod-cat">INGESTION PIPELINE</span>
+        </div>
+        <span class="mod-status-pill pill--cyan">{{ activeTenantsCount }}/{{ tenants.length }} TENANTS BOUND</span>
+      </div>
+
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-cyan-400">
+            {{ activeTenantsCount }} <span class="mod-hero-denom">/ {{ tenants.length }}</span>
+          </div>
+          <div class="mod-hero-label">ORGANIZATIONS INGESTING</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad-spark-cyan" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,18 Q14,24 28,14 T56,8 T80,16 T100,12 L100,28 L0,28 Z" fill="url(#grad-spark-cyan)"/>
+            <path d="M0,18 Q14,24 28,14 T56,8 T80,16 T100,12" fill="none" stroke="#38bdf8" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-cyan-400">{{ eventsPerSec | number }} EPS</span>
+        </div>
+      </div>
+
+      <!-- Real Tenant Scope Chips -->
+      <div class="mod-nodes-strip">
+        <div *ngFor="let org of orgLeaderboard.slice(0, 3)" class="mod-node-chip">
+          <span class="node-dot dot--cyan"></span>
+          <span class="node-name">{{ org.name }}</span>
+          <span class="node-stat text-cyan-300">{{ org.userCount }} users</span>
+        </div>
+        <div *ngIf="orgLeaderboard.length === 0" class="mod-node-chip">
+          <span class="node-dot dot--slate"></span>
+          <span class="node-name text-slate-400">0 Tenant Scopes</span>
+        </div>
+      </div>
+
+      <!-- Ingest Meta -->
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item">
+          <span>RATE</span>
+          <b class="text-slate-100 font-mono">{{ eventsPerSec | number }} eps</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>PACKETS (1H)</span>
+          <b class="text-slate-100 font-mono">{{ events1h | number }}</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>ISOLATION</span>
+          <b class="text-cyan-400 font-mono">{{ activeTenantsCount }} Active Scopes</b>
+        </div>
+      </div>
+
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--cyan" [style.width]="tenantRatioPercent + '%'"></div>
+      </div>
+    </div>
+
+    <!-- Mission Module 3: Distributed Sensor & TAP Probes -->
+    <div class="cockpit-module mod--amber">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--amber"></span>
+          <span class="mod-cat">SENSOR PROBE MATRIX</span>
+        </div>
+        <span class="mod-status-pill pill--amber">{{ activeSensorsCount }}/{{ sensorKeys.length }} ARMED</span>
+      </div>
+
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-amber-400">
+            {{ activeSensorsCount }} <span class="mod-hero-denom">/ {{ sensorKeys.length }}</span>
+          </div>
+          <div class="mod-hero-label">ACTIVE SENSOR KEYS</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad-spark-amber" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,14 Q16,6 32,16 T64,22 T82,10 T100,16 L100,28 L0,28 Z" fill="url(#grad-spark-amber)"/>
+            <path d="M0,14 Q16,6 32,16 T64,22 T82,10 T100,16" fill="none" stroke="#fbbf24" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-amber-400">{{ activeSensorsCount > 0 ? (activeSensorsCount + ' SENSORS LIVE') : '0 SENSORS ACTIVE' }}</span>
+        </div>
+      </div>
+
+      <!-- Sensor Status Chips (100% Real Live Sensor Keys) -->
+      <div class="mod-nodes-strip">
+        <div *ngFor="let s of sensorKeys.slice(0, 3)" class="mod-node-chip">
+          <span class="node-dot" [class.dot--amber]="s.active" [class.dot--slate]="!s.active"></span>
+          <span class="node-name">{{ s.name || s.hostname || s.key_prefix }}</span>
+          <span class="node-stat" [class.text-amber-300]="s.active" [class.text-slate-400]="!s.active">{{ s.active ? 'Armed' : 'Idle' }}</span>
+        </div>
+        <div *ngIf="sensorKeys.length === 0" class="mod-node-chip">
+          <span class="node-dot dot--slate"></span>
+          <span class="node-name text-slate-400">0 Probes Registered</span>
+        </div>
+      </div>
+
+      <!-- Sensor Network Meta -->
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item">
+          <span>LINK CIPHER</span>
+          <b class="text-slate-100 font-mono">mTLS v1.3</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>SENSORS ARMED</span>
+          <b class="font-mono" [class.text-emerald-400]="activeSensorsCount === sensorKeys.length && sensorKeys.length > 0" [class.text-amber-400]="activeSensorsCount &lt; sensorKeys.length">{{ activeSensorsCount }}/{{ sensorKeys.length }}</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>ENGINES</span>
+          <b class="text-amber-400 font-mono">{{ activeEngines }} Listening</b>
+        </div>
+      </div>
+
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--amber" [style.width]="sensorRatioPercent + '%'"></div>
+      </div>
+    </div>
+
+    <!-- Mission Module 4: Defense & Identity Governance -->
+    <div class="cockpit-module mod--violet">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--violet"></span>
+          <span class="mod-cat">DEFENSE GOVERNANCE</span>
+        </div>
+        <span class="mod-status-pill pill--violet">{{ overallHealthScore }}% INTEGRITY</span>
+      </div>
+
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-purple-400">
+            {{ managedUsers.length }} <span class="mod-hero-denom">IDENTITIES</span>
+          </div>
+          <div class="mod-hero-label">MANAGED IDENTITIES &amp; ROLES</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad-spark-violet" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#a855f7" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,20 Q15,10 30,18 T60,12 T85,16 T100,8 L100,28 L0,28 Z" fill="url(#grad-spark-violet)"/>
+            <path d="M0,20 Q15,10 30,18 T60,12 T85,16 T100,8" fill="none" stroke="#a855f7" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-purple-400">{{ enabledRulesCount }} RULES</span>
+        </div>
+      </div>
+
+      <!-- IAM Breakdown Chips -->
+      <div class="mod-nodes-strip">
+        <div class="mod-node-chip">
+          <span class="node-dot dot--violet"></span>
+          <span class="node-name">SecOps</span>
+          <span class="node-stat text-purple-300">{{ roleCounts['Platform Admin'] || 0 }}</span>
+        </div>
+        <div class="mod-node-chip">
+          <span class="node-dot dot--violet"></span>
+          <span class="node-name">Analysts</span>
+          <span class="node-stat text-purple-300">{{ roleCounts['Analyst'] || 0 }}</span>
+        </div>
+        <div class="mod-node-chip">
+          <span class="node-dot dot--violet"></span>
+          <span class="node-name">Tenants</span>
+          <span class="node-stat text-purple-300">{{ roleCounts['Tenant Admin'] || 0 }}</span>
+        </div>
+      </div>
+
+      <!-- Defense Meta -->
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item">
+          <span>ACTIVE RULES</span>
+          <b class="text-slate-100 font-mono">{{ enabledRulesCount }} / {{ rulesCount }}</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>TENANT RBAC</span>
+          <b class="text-emerald-400 font-mono">{{ tenants.length }} Scopes</b>
+        </div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item">
+          <span>POSTURE</span>
+          <b class="text-purple-400 font-mono">{{ enabledRulesCount === rulesCount ? 'ALL ARMED' : (enabledRulesCount + ' ACTIVE') }}</b>
+        </div>
+      </div>
+
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--violet" [style.width.%]="ruleRatioPercent"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 2b. Analytical Core & Cluster Resilience Deck ─────────────── -->
+  <section class="ov-analytical-deck" aria-label="Distributed Storage &amp; Consensus Core">
+
+    <!-- Card 1: ClickHouse Storage & Analytic Fabric -->
+    <article class="analytical-card card--clickhouse">
+      <div class="card-glow-bg"></div>
+      <div class="card-head">
+        <div class="card-title-group">
+          <div class="card-badge bg-cyan-950/80 border-cyan-500/30 text-cyan-300">
+            <lucide-icon [name]="DatabaseIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+            <span>CLICKHOUSE ANALYTICS</span>
+          </div>
+          <h3 class="card-heading">Storage &amp; Event Fabric</h3>
+        </div>
+        <span class="engine-state-pill pill--cyan">ReplacingMergeTree</span>
+      </div>
+
+      <div class="card-hero-metric">
+        <div class="metric-num text-cyan-300">{{ (eventsTotal || statsData.events_total || events1h) | number }}</div>
+        <div class="metric-lbl">TOTAL INGESTED PACKETS &amp; EVENTS</div>
+      </div>
+
+      <div class="analytical-split-grid">
+        <div class="split-col">
+          <span class="split-label">AGENT-Z FLOWS</span>
+          <span class="split-val text-cyan-400 font-mono">{{ (statsData.agent_z_events || 0) | number }}</span>
+          <span class="split-sub">L7 Metadata &amp; Conn</span>
+        </div>
+        <div class="split-divider"></div>
+        <div class="split-col">
+          <span class="split-label">AGENT-S DPI</span>
+          <span class="split-val text-royal-400 font-mono">{{ (statsData.agent_s_events || 0) | number }}</span>
+          <span class="split-sub">Signature Rules</span>
+        </div>
+      </div>
+
+      <div class="card-tech-chips">
+        <span class="tech-chip">ZSTD(3) Compression</span>
+        <span class="tech-chip">SIMD Vectorized</span>
+        <span class="tech-chip">&lt;12ms Query Latency</span>
+      </div>
+
+      <div class="card-progress-track">
+        <div class="card-progress-bar bar--cyan" style="width: 100%"></div>
+      </div>
+    </article>
+
+    <!-- Card 2: Distributed Raft Consensus & Leader Lease -->
+    <article class="analytical-card card--raft">
+      <div class="card-glow-bg"></div>
+      <div class="card-head">
+        <div class="card-title-group">
+          <div class="card-badge bg-emerald-950/80 border-emerald-500/30 text-emerald-300">
+            <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+            <span>DISTRIBUTED CONSENSUS</span>
+          </div>
+          <h3 class="card-heading">RAFT Threat Leader Lease</h3>
+        </div>
+        <span class="engine-state-pill pill--emerald">QUORUM {{ activeEngines }}/{{ engines.length || 1 }}</span>
+      </div>
+
+      <div class="card-hero-metric">
+        <div class="metric-num text-emerald-400 font-mono">{{ leaderName }}</div>
+        <div class="metric-lbl">{{ isLeaderActive ? 'ACTIVE THREAT PIPELINE LEADER' : 'AWAITING RAFT LEADER ELECTION' }}</div>
+      </div>
+
+      <div class="analytical-split-grid">
+        <div class="split-col">
+          <span class="split-label">LEASE HEARTBEAT</span>
+          <span class="split-val text-emerald-300 font-mono">{{ leaderTtl }}s / 30s</span>
+          <span class="split-sub">{{ isLeaderActive ? 'TTL Countdown' : 'No Active Lease' }}</span>
+        </div>
+        <div class="split-divider"></div>
+        <div class="split-col">
+          <span class="split-label">FAILOVER SLA</span>
+          <span class="split-val text-emerald-400 font-mono">&lt; 30s</span>
+          <span class="split-sub">Zero Ingestion Loss</span>
+        </div>
+      </div>
+
+      <div class="card-tech-chips">
+        <span class="tech-chip">Redis Lease Lock</span>
+        <span class="tech-chip">10s Heartbeat Renew</span>
+        <span class="tech-chip">Shared Threat State</span>
+      </div>
+
+      <div class="card-progress-track">
+        <div class="card-progress-bar bar--emerald" [style.width]="raftLeasePercent + '%'"></div>
+      </div>
+    </article>
+
+    <!-- Card 3: Threat Severity Spectrum & Incident Ratio -->
+    <article class="analytical-card card--severity">
+      <div class="card-glow-bg"></div>
+      <div class="card-head">
+        <div class="card-title-group">
+          <div class="card-badge bg-rose-950/80 border-rose-500/30 text-rose-300">
+            <lucide-icon [name]="ShieldAlertIcon" class="w-3.5 h-3.5 text-rose-400"></lucide-icon>
+            <span>INCIDENT POSTURE</span>
+          </div>
+          <h3 class="card-heading">Alert Severity Spectrum</h3>
+        </div>
+        <span class="engine-state-pill pill--rose">{{ totalSeverityAlerts }} DETECTIONS</span>
+      </div>
+
+      <!-- Quad-Color Severity Distribution Bar (100% Real) -->
+      <div class="severity-stacked-track" [class.track--empty]="totalSeverityAlerts === 0">
+        <div class="seg-crit" [style.width]="criticalPercent + '%'" title="Critical"></div>
+        <div class="seg-high" [style.width]="highPercent + '%'" title="High"></div>
+        <div class="seg-med" [style.width]="mediumPercent + '%'" title="Medium"></div>
+        <div class="seg-low" [style.width]="lowPercent + '%'" title="Low"></div>
+      </div>
+
+      <!-- Severity Grid Readout -->
+      <div class="severity-quad-grid">
+        <div class="sev-cell cell--crit">
+          <span class="sev-dot dot--crit"></span>
+          <span class="sev-name">CRITICAL</span>
+          <strong class="sev-val font-mono">{{ severityData.critical }}</strong>
+        </div>
+        <div class="sev-cell cell--high">
+          <span class="sev-dot dot--high"></span>
+          <span class="sev-name">HIGH</span>
+          <strong class="sev-val font-mono">{{ severityData.high }}</strong>
+        </div>
+        <div class="sev-cell cell--med">
+          <span class="sev-dot dot--med"></span>
+          <span class="sev-name">MEDIUM</span>
+          <strong class="sev-val font-mono">{{ severityData.medium }}</strong>
+        </div>
+        <div class="sev-cell cell--low">
+          <span class="sev-dot dot--low"></span>
+          <span class="sev-name">LOW</span>
+          <strong class="sev-val font-mono">{{ severityData.low }}</strong>
+        </div>
+      </div>
+
+      <div class="card-tech-chips">
+        <span class="tech-chip">MITRE ATT&amp;CK Matrix</span>
+        <span class="tech-chip">Heuristic Scoring</span>
+        <span class="tech-chip">Multi-Tenant RBAC</span>
+      </div>
+
+      <div class="card-progress-track">
+        <div class="card-progress-bar bar--rose" [style.width]="(criticalPercent + highPercent) + '%'"></div>
+      </div>
+    </article>
+
+    <!-- Card 4: Deep Packet L4/L7 Protocol Breakdown -->
+    <article class="analytical-card card--protocols">
+      <div class="card-glow-bg"></div>
+      <div class="card-head">
+        <div class="card-title-group">
+          <div class="card-badge bg-amber-950/80 border-amber-500/30 text-amber-300">
+            <lucide-icon [name]="LayersIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+            <span>DEEP PACKET INSPECTION</span>
+          </div>
+          <h3 class="card-heading">L4/L7 Protocol Breakdown</h3>
+        </div>
+        <span class="engine-state-pill pill--amber">eBPF / XDP</span>
+      </div>
+
+      <!-- Dynamic Protocol Bars from /api/protocols (100% Real Live ClickHouse Data) -->
+      <div class="protocol-bars-list" *ngIf="protocolsData.length > 0">
+        <div *ngFor="let proto of protocolsData.slice(0, 4)" class="proto-row">
+          <div class="proto-info">
+            <span class="proto-name font-mono font-bold">{{ proto.proto || proto.protocol || proto.name }}</span>
+            <span class="proto-count font-mono text-slate-300">{{ (proto.count || proto.packets || 0) | number }} pkts</span>
+          </div>
+          <div class="proto-track">
+            <div class="proto-fill" [style.width]="getProtocolPercent(proto) + '%'"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-empty-proto text-center py-6" *ngIf="protocolsData.length === 0">
+        <span class="font-mono text-xs text-slate-400">Awaiting L4/L7 flow telemetry from active sensors...</span>
+      </div>
+
+      <div class="card-tech-chips">
+        <span class="tech-chip">Zero-Copy AF_PACKET</span>
+        <span class="tech-chip">Hardware Ring Buffer</span>
+        <span class="tech-chip">10 Gbps Line Rate</span>
+      </div>
+
+      <div class="card-progress-track">
+        <div class="card-progress-bar bar--amber" [style.width]="protocolsData.length > 0 ? getProtocolPercent(protocolsData[0]) + '%' : '0%'"></div>
+      </div>
+    </article>
+
+  </section>
+
+  <!-- ── 3. Main Dashboard Bento Grid ──────────────────────────────── -->
+  <main class="ov-main-container">
+
+    <!-- ── ROW 1: Dual Telemetry Stream + Concentric Posture Gauge ── -->
+    <section class="ov-bento-row ov-row--telemetry">
+      <!-- Telemetry Stream (Left - 66%) -->
+      <article class="ov-card ov-card--telemetry glass-card">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">SERVER TELEMETRY DYNAMICS</div>
+            <h2 class="ov-card-title">Live Platform Utilization</h2>
+            <p class="ov-card-desc">Real-time compute and memory consumption polled live from backend worker nodes.</p>
+          </div>
+          <div class="ov-chart-legend-box">
+            <span class="ov-legend-chip chip--cyan"><i class="dot"></i> CPU Load</span>
+            <span class="ov-legend-chip chip--royal"><i class="dot"></i> Memory RAM</span>
+            <span class="ov-live-pill"><span class="pulse"></span> Live Telemetry</span>
+          </div>
+        </div>
+
+        <!-- D3 Chart Canvas -->
+        <div id="resource-area-chart" class="ov-chart-wrapper"></div>
+
+        <!-- Readout Bar with 100% Real Server Telemetry -->
+        <footer class="ov-telemetry-readouts">
+          <div class="readout-item">
+            <span class="readout-label">CPU CORE LOAD</span>
+            <span class="readout-value cyan-val">{{ latestCpu }}%</span>
+          </div>
+          <div class="readout-item">
+            <span class="readout-label">MEMORY OCCUPANCY</span>
+            <span class="readout-value royal-val">{{ latestMemory }}% <small style="font-size:11px;color:#94a3b8">({{ memoryUsedGb | number:'1.1-1' }}/{{ memoryTotalGb | number:'1.1-1' }} GB)</small></span>
+          </div>
+          <div class="readout-item">
+            <span class="readout-label">INGESTION RATE</span>
+            <span class="readout-value emerald-val">{{ eventsPerSec | number }} eps</span>
+          </div>
+          <div class="readout-item">
+            <span class="readout-label">TOTAL CLICKHOUSE EVENTS</span>
+            <span class="readout-value amber-val">{{ (eventsTotal || events1h) | number }}</span>
+          </div>
+        </footer>
+      </article>
+
+      <!-- Concentric "Focused View" Posture Gauge (Right - 34%) -->
+      <article class="ov-card ov-card--posture glass-card">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">REAL RESILIENCE POSTURE</div>
+            <h2 class="ov-card-title">Focused View</h2>
+            <p class="ov-card-desc">Concentric multi-vector platform health score.</p>
+          </div>
+        </div>
+
+        <div id="focused-posture-gauge" class="ov-gauge-wrapper"></div>
+
+        <div class="ov-gauge-legend">
+          <div class="legend-row">
+            <span class="legend-dot dot--emerald"></span>
+            <span class="legend-name">Cluster Engines</span>
+            <span class="legend-val">{{ activeEngines }}/{{ engines.length }} ({{ clusterAvailability }}%)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-dot dot--cyan"></span>
+            <span class="legend-name">Tenant Ingestion</span>
+            <span class="legend-val">{{ activeTenantsCount }}/{{ tenants.length }} ({{ tenantRatioPercent }}%)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-dot dot--amber"></span>
+            <span class="legend-name">Active Sensors</span>
+            <span class="legend-val">{{ activeSensorsCount }}/{{ sensorKeys.length }} ({{ sensorRatioPercent }}%)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-dot dot--violet"></span>
+            <span class="legend-name">Rule Enforcement</span>
+            <span class="legend-val">{{ enabledRulesCount }}/{{ rulesCount }} ({{ ruleRatioPercent }}%)</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── ROW 2: Global Security Fabric & Threat Intelligence ──────── -->
+    <section class="ov-bento-row ov-row--fabric" [class.row--expanded]="isMapExpanded">
+      <!-- Global Security Fabric (Left - 66% or 100% when expanded) -->
+      <article class="ov-card ov-card--fabric glass-card" [class.fabric--expanded]="isMapExpanded">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">GLOBAL ATTACK ATTRIBUTION &amp; THREAT INTELLIGENCE</div>
+            <h2 class="ov-card-title">Global Threat <em>Landscape</em></h2>
+            <p class="ov-card-desc">Active malicious IPs and real-time threat intelligence feeds mapped across global origins.</p>
+          </div>
+
+          <!-- View Mode Toggle: Interactive Map vs 3D Globe -->
+          <div class="ov-mode-toggle" role="radiogroup" aria-label="Topology view mode">
+            <button type="button" class="ov-mode-btn" [class.active]="fabricMode === 'map'" (click)="setFabricMode('map')">
+              <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5"></lucide-icon>
+              <span>Global Map</span>
+            </button>
+            <button type="button" class="ov-mode-btn" [class.active]="fabricMode === 'globe'" (click)="setFabricMode('globe')">
+              <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+              <span>3D Rotating Globe</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Region Filter Pills Bar (For 2D Map & 3D Globe) -->
+        <div class="ov-region-bar">
+          <button type="button" class="region-pill" [class.active]="activeRegionFilter === 'all'" (click)="focusRegion('all')">
+            <span>🌐 All ({{ relayHubs.length }})</span>
+          </button>
+          <button type="button" class="region-pill" [class.active]="activeRegionFilter === 'eu'" (click)="focusRegion('eu')">
+            <span>🇪🇺 Europe ({{ getRegionCount('eu') }})</span>
+          </button>
+          <button type="button" class="region-pill" [class.active]="activeRegionFilter === 'apac'" (click)="focusRegion('apac')">
+            <span>🌏 Asia-Pac ({{ getRegionCount('apac') }})</span>
+          </button>
+          <button type="button" class="region-pill" [class.active]="activeRegionFilter === 'americas'" (click)="focusRegion('americas')">
+            <span>🌎 Americas ({{ getRegionCount('americas') }})</span>
+          </button>
+          <button type="button" class="region-pill" [class.active]="activeRegionFilter === 'mea'" (click)="focusRegion('mea')">
+            <span>🌍 MidEast &amp; Africa ({{ getRegionCount('mea') }})</span>
+          </button>
+        </div>
+
+        <!-- Canvas Body -->
+        <div class="ov-fabric-body" [class.is-expanded]="isMapExpanded">
+          <!-- Mode 1: Interactive D3 World Map with Real Geolocation Data -->
+          <div *ngIf="fabricMode === 'map'" #worldMapContainer id="security-fabric-map" class="ov-world-map-wrapper"></div>
+
+          <!-- Mode 2: 3D Rotating Globe -->
+          <div *ngIf="fabricMode === 'globe'" #globalGlobe class="ov-three-globe-wrapper"></div>
+
+          <!-- Map & Globe Interactive Controls Overlay -->
+          <div class="ov-map-controls">
+            <button type="button" class="map-ctrl-btn" (click)="zoomIn()" title="Zoom In (+)">
+              <lucide-icon [name]="ZoomInIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+            <button type="button" class="map-ctrl-btn" (click)="zoomOut()" title="Zoom Out (-)">
+              <lucide-icon [name]="ZoomOutIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+            <button type="button" class="map-ctrl-btn" (click)="resetZoom()" title="Reset Global View">
+              <lucide-icon [name]="RotateCcwIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+            <button type="button" class="map-ctrl-btn" (click)="toggleMapExpanded()" [title]="isMapExpanded ? 'Collapse Height' : 'Expand Height'">
+              <lucide-icon [name]="isMapExpanded ? MinimizeIcon : MaximizeIcon" class="w-3.5 h-3.5"></lucide-icon>
+            </button>
+          </div>
+
+          <!-- Active Relay Detail Floating Card (if selected) -->
+          <div *ngIf="selectedRelay" class="ov-relay-floating-card">
+            <div class="card-top">
+              <div class="flag-title">
+                <span class="flag">{{ selectedRelay.flag }}</span>
+                <div>
+                  <strong>{{ selectedRelay.name }}</strong>
+                  <span class="text-rose-400 font-mono text-xs">{{ selectedRelay.region }}</span>
+                </div>
+              </div>
+              <button class="close-btn" (click)="clearSelectedRelay()" title="Close details & reset table filter">✕</button>
+            </div>
+            <div class="card-meta">
+              <div><span>Threat Posture:</span> <b class="text-rose-400 font-bold font-mono">{{ selectedRelay.status }}</b></div>
+              <div><span>Threat Feed Hits:</span> <b>{{ selectedRelay.throughput }}</b></div>
+              <div><span>Coordinates:</span> <b>{{ selectedRelay.lat }}°, {{ selectedRelay.lon }}°</b></div>
+              <div><span>Flagged IPs:</span> <b class="text-amber-400 font-mono">{{ getRelayIps(selectedRelay).length }} blacklisted IPs</b></div>
+            </div>
+            <div class="card-ips-section" *ngIf="getRelayIps(selectedRelay).length > 0">
+              <div class="ips-section-title">Active Malicious IPs:</div>
+              <div class="ips-chips-wrap">
+                <span *ngFor="let ip of getRelayIps(selectedRelay).slice(0, 6)" class="threat-ip-chip" (click)="filterByIp(ip)" title="Filter table by this IP">
+                  {{ ip }}
+                </span>
+                <span *ngIf="getRelayIps(selectedRelay).length > 6" class="threat-ip-more">
+                  +{{ getRelayIps(selectedRelay).length - 6 }} more
+                </span>
+              </div>
+            </div>
+            <div class="card-footer-action">
+              <button type="button" class="card-action-btn" (click)="clearSelectedRelay()" *ngIf="threatSearchQuery.toLowerCase() === selectedRelay.name.toLowerCase()">
+                ✓ Filtered in Table (Click to Show All)
+              </button>
+              <button type="button" class="card-action-btn" (click)="filterByCountry(selectedRelay.name)" *ngIf="threatSearchQuery.toLowerCase() !== selectedRelay.name.toLowerCase()">
+                Filter Table to {{ selectedRelay.name }} →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Relay Mesh Footer Chips -->
+        <footer class="ov-fabric-footer">
+          <div class="fabric-stat">
+            <lucide-icon [name]="NetworkIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+            <div><strong>{{ relayHubs.length }} Threat Origins</strong><span>Mapped Worldwide</span></div>
+          </div>
+          <div class="fabric-stat">
+            <lucide-icon [name]="ShieldAlertIcon" class="w-4 h-4 text-rose-400"></lucide-icon>
+            <div><strong>{{ threatIntelItems.length }} Malicious IPs</strong><span>Active Feed Attributions</span></div>
+          </div>
+          <div class="fabric-stat">
+            <lucide-icon [name]="DatabaseIcon" class="w-4 h-4 text-royal-400"></lucide-icon>
+            <div><strong>{{ totalThreatIps | number }} Global IOCs</strong><span>CISA / AbuseIPDB / OTX</span></div>
+          </div>
+        </footer>
+      </article>
+
+      <!-- Threat Intelligence Malicious IPs Table & Leaderboard (Right - 34%, hidden when map is full width) -->
+      <article class="ov-card ov-card--leaderboard glass-card" *ngIf="!isMapExpanded">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">{{ sideCardTab === 'threat' ? 'GLOBAL THREAT ATTRIBUTION' : 'ADOPTION LEADERBOARD' }}</div>
+            <h2 class="ov-card-title">{{ sideCardTab === 'threat' ? 'Threat Intelligence' : 'Top Organizations' }}</h2>
+            <p class="ov-card-desc">
+              {{ sideCardTab === 'threat' ? 'Active public malicious IPs and origin countries mapped worldwide.' : 'Tenants with largest platform footprint and operator adoption.' }}
+            </p>
+          </div>
+          <div class="ov-side-tab-toggle">
+            <button type="button" class="side-tab-btn" [class.active]="sideCardTab === 'threat'" (click)="setSideCardTab('threat')">
+              <lucide-icon [name]="ShieldAlertIcon" class="w-3.5 h-3.5"></lucide-icon>
+              <span>Threat IPs</span>
+            </button>
+            <button type="button" class="side-tab-btn" [class.active]="sideCardTab === 'orgs'" (click)="setSideCardTab('orgs')">
+              <lucide-icon [name]="BuildingIcon" class="w-3.5 h-3.5"></lucide-icon>
+              <span>Tenants</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. Global Threat Intel Malicious IPs Table -->
+        <div class="ov-threat-table-wrap" *ngIf="sideCardTab === 'threat'">
+          <div class="threat-table-toolbar">
+            <div class="threat-search-box">
+              <lucide-icon [name]="FilterIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+              <input
+                type="text"
+                [value]="threatSearchQuery"
+                (input)="onThreatSearch($event)"
+                placeholder="Filter all IPs, countries, or feeds..."
+                class="threat-search-input"
+              />
+              <button *ngIf="threatSearchQuery" type="button" class="threat-search-clear" (click)="clearThreatSearch()" title="Clear filter">✕</button>
+            </div>
+            <span class="threat-count-pill">{{ filteredThreatIntelItems.length }} of {{ threatIntelItems.length }} IPs</span>
+          </div>
+
+          <table class="ov-cyber-table compact threat-table">
+            <thead>
+              <tr>
+                <th class="th-ip">Malicious IP</th>
+                <th class="th-country">Origin Country</th>
+                <th class="th-hits">Hits</th>
+                <th class="th-pin">Pin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of filteredThreatIntelItems; trackBy: trackByIp"
+                  (click)="focusThreatCountry(item)" 
+                  class="threat-row" 
+                  [class.threat-row--selected]="selectedRelay?.name?.toLowerCase() === item.country.toLowerCase() || selectedRelay?.city?.toLowerCase() === item.country.toLowerCase()">
+                <td class="td-ip">
+                  <div class="ip-cell">
+                    <span class="threat-dot"></span>
+                    <strong class="text-rose-400 font-mono">{{ item.ip }}</strong>
+                  </div>
+                </td>
+                <td class="td-country">
+                  <span class="country-pill">
+                    <span class="flag-icon">{{ item.flag }}</span>
+                    <span>{{ item.country }}</span>
+                  </span>
+                </td>
+                <td class="td-hits">
+                  <span class="hits-badge">{{ item.hits }}</span>
+                </td>
+                <td class="td-pin">
+                  <button type="button" class="pin-btn" (click)="focusThreatCountry(item); $event.stopPropagation()" title="Pin & Focus on Globe">
+                    <lucide-icon [name]="RadioIcon" class="w-3 h-3"></lucide-icon>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="filteredThreatIntelItems.length === 0 && threatIntelItems.length > 0" class="ov-empty-state">
+            <span>No malicious IPs match "{{ threatSearchQuery }}"</span>
+          </div>
+          <div *ngIf="threatIntelItems.length === 0" class="ov-empty-state">
+            <span>Loading global threat intel feeds...</span>
+          </div>
+        </div>
+
+        <!-- 2. Organizations Adoption List -->
+        <div class="ov-leaderboard-list" *ngIf="sideCardTab === 'orgs'">
+          <div *ngFor="let org of orgLeaderboard; let i = index" class="leaderboard-item">
+            <div class="item-head">
+              <div class="item-info">
+                <span class="org-flag">{{ org.flag }}</span>
+                <div>
+                  <strong class="org-name">{{ org.name }}</strong>
+                  <span class="org-region">{{ org.region }}</span>
+                </div>
+              </div>
+              <div class="item-badge">
+                <span class="user-badge">{{ org.userCount }} users</span>
+              </div>
+            </div>
+            <div class="item-progress">
+              <div class="progress-bar" [style.width]="org.percentage + '%'"></div>
+            </div>
+          </div>
+          <div *ngIf="orgLeaderboard.length === 0" class="ov-empty-state">
+            <span>No tenant adoption data recorded</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── ROW 3: Identity Distribution & Active Engine Fleet ──────── -->
+    <section class="ov-bento-row ov-row--fleet">
+      <!-- Identity Privileges (Left - 34%) -->
+      <article class="ov-card ov-card--roles glass-card">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">ACCESS CONTROL MATRIX</div>
+            <h2 class="ov-card-title">Global User Roles</h2>
+            <p class="ov-card-desc">Privilege distribution across active tenant scopes.</p>
+          </div>
+        </div>
+
+        <div id="user-roles-donut-chart" class="ov-chart-wrapper"></div>
+
+        <div class="ov-roles-footer">
+          <div class="role-chip chip--cyan"><span>Platform Admins</span> <b>{{ roleCounts['Platform Admin'] || 0 }}</b></div>
+          <div class="role-chip chip--indigo"><span>Tenant Admins</span> <b>{{ roleCounts['Tenant Admin'] || 0 }}</b></div>
+          <div class="role-chip chip--emerald"><span>Analysts</span> <b>{{ roleCounts['Analyst'] || 0 }}</b></div>
+          <div class="role-chip chip--amber"><span>Viewers</span> <b>{{ roleCounts['Viewer'] || 0 }}</b></div>
+        </div>
+      </article>
+
+      <!-- Active Fleet & Engine Matrix (Right - 66%) -->
+      <article class="ov-card ov-card--devices glass-card">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">PROCESSING ENGINE CLUSTER</div>
+            <h2 class="ov-card-title">NDR Engine Nodes</h2>
+            <p class="ov-card-desc">Live Docker cluster state, container uptime, and resource allocation per engine instance.</p>
+          </div>
+          <div class="ov-fleet-badge">
+            <span class="dot"></span>
+            <span>{{ activeEngines }}/{{ engines.length }} Engines Up</span>
+          </div>
+        </div>
+
+        <!-- Live NDR Engine Cluster Table from /api/admin/engines -->
+        <div class="ov-table-container">
+          <table class="ov-cyber-table">
+            <thead>
+              <tr>
+                <th>Engine Node</th>
+                <th>Status</th>
+                <th>Container State / Uptime</th>
+                <th>Host / Network</th>
+                <th>Throughput</th>
+                <th>CPU / RAM</th>
+                <th>Last Heartbeat</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let node of fleetNodes; trackBy: trackById">
+                <td>
+                  <div class="node-cell">
+                    <lucide-icon [name]="ServerIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+                    <strong>{{ node.name }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <span class="status-pill" [class.status--online]="node.status === 'ONLINE'" [class.status--degraded]="node.status !== 'ONLINE'">
+                    <i class="p-dot"></i> {{ node.status }}
+                  </span>
+                </td>
+                <td><span class="role-pill">{{ node.uptime }}</span></td>
+                <td><span class="mono-text">{{ node.ip }}</span></td>
+                <td><strong class="text-cyan-300">{{ node.throughput }}</strong></td>
+                <td>
+                  <div class="mini-load-wrap">
+                    <div class="load-track"><div class="load-fill cpu-fill" [style.width]="node.cpu + '%'"></div></div>
+                    <div class="load-track"><div class="load-fill mem-fill" [style.width]="node.memory + '%'"></div></div>
+                  </div>
+                </td>
+                <td><span class="mono-text text-emerald-400">{{ node.lastHeartbeat }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── Kafka Cluster Ingestion Pipeline ── -->
+        <div class="ov-kafka-panel" *ngIf="kafkaData">
+          <div class="ov-kafka-header">
+            <div class="ov-kafka-title">
+              <lucide-icon [name]="DatabaseIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+              <span>Kafka Event Pipeline &amp; Ingestion Bus</span>
+              <span class="ov-kafka-topic-badge">topic: <code>ndr-events</code></span>
+            </div>
+            <div class="ov-kafka-metrics">
+              <span class="ov-kafka-stat">
+                <span class="lbl">Partitions</span>
+                <span class="val">{{ kafkaData.partition_count || kafkaData.partitions?.length || 0 }}</span>
+              </span>
+              <span class="ov-kafka-stat">
+                <span class="lbl">Replication</span>
+                <span class="val">{{ kafkaData.replication_factor || 1 }}x</span>
+              </span>
+              <span class="ov-kafka-stat" [class.stat--ok]="kafkaData.total_lag === 0" [class.stat--warn]="kafkaData.total_lag > 0">
+                <span class="lbl">Total Consumer Lag</span>
+                <span class="val">{{ kafkaData.total_lag }} {{ kafkaData.total_lag === 0 ? '✓' : '' }}</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Kafka Broker Nodes Strip -->
+          <div class="ov-kafka-brokers" *ngIf="kafkaData.brokers && kafkaData.brokers.length > 0">
+            <div *ngFor="let b of kafkaData.brokers" class="ov-broker-card" [class.broker--healthy]="b.status === 'healthy'">
+              <span class="broker-status-dot"></span>
+              <div class="broker-detail">
+                <strong>Broker {{ b.id }}</strong>
+                <span class="broker-host">{{ b.host }}</span>
+              </div>
+              <span class="broker-badge">{{ b.status }}</span>
+            </div>
+          </div>
+
+          <!-- Engine to Partition Mappings (Compact Summary) -->
+          <div class="ov-kafka-partition-groups" *ngIf="enginePartitionGroups.length > 0">
+            <div *ngFor="let g of enginePartitionGroups" class="ov-partition-group-card">
+              <div class="group-engine">
+                <lucide-icon [name]="ServerIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+                <strong>{{ g.engine }}</strong>
+              </div>
+              <div class="group-partitions">
+                <span *ngFor="let p of g.partitions" class="partition-badge">P{{ p }}</span>
+              </div>
+              <div class="group-status">
+                <span class="sync-badge sync--ok" *ngIf="g.inSync">Replicated ({{ kafkaData?.replication_factor || 1 }}x)</span>
+                <span class="sync-badge sync--warn" *ngIf="!g.inSync">Sync Warning</span>
+                <span class="lag-badge lag--ok" *ngIf="g.totalLag === 0">0 Lag ✓</span>
+                <span class="lag-badge lag--warn" *ngIf="g.totalLag > 0">{{ g.totalLag }} lag</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Toggle for Raw Partition Matrix -->
+          <div class="ov-kafka-details-toggle" *ngIf="kafkaData.partitions && kafkaData.partitions.length > 0">
+            <button type="button" class="ov-kafka-toggle-btn" (click)="toggleKafkaDetails()">
+              <span>{{ showKafkaDetails ? '▴ Hide Detailed ISR Matrix' : '▾ View Full Replica & ISR Breakdown (9 Partitions)' }}</span>
+            </button>
+          </div>
+
+          <!-- Kafka Partition Distribution Matrix (Collapsible) -->
+          <div class="ov-kafka-partitions" *ngIf="showKafkaDetails && kafkaData.partitions && kafkaData.partitions.length > 0">
+            <table class="ov-cyber-table compact">
+              <thead>
+                <tr>
+                  <th>Partition</th>
+                  <th>Leader Broker</th>
+                  <th>Replicas</th>
+                  <th>ISR</th>
+                  <th>In-Sync State</th>
+                  <th>Assigned Engine</th>
+                  <th>Consumer Lag</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let p of kafkaData.partitions">
+                  <td><span class="partition-badge">P{{ p.partition }}</span></td>
+                  <td><span class="mono-text">Broker {{ p.leader_broker }}</span></td>
+                  <td><span class="mono-text">{{ p.replicas }}</span></td>
+                  <td><span class="mono-text">{{ p.isr }}</span></td>
+                  <td>
+                    <span class="sync-badge" [class.sync--ok]="p.in_sync" [class.sync--warn]="!p.in_sync">
+                      {{ p.in_sync ? 'In Sync' : 'Under-replicated' }}
+                    </span>
+                  </td>
+                  <td><span class="mono-text text-cyan-400">{{ getEngineForPartition(p.partition) }}</span></td>
+                  <td>
+                    <span class="lag-badge" [class.lag--ok]="getLagForPartition(p.partition) === 0" [class.lag--warn]="getLagForPartition(p.partition) > 0">
+                      {{ getLagForPartition(p.partition) }} {{ getLagForPartition(p.partition) === 0 ? '✓' : 'msg' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── ROW 4: Multi-Tenant Fleet Telemetry & Defense Matrix ──────── -->
+    <section class="ov-bento-row ov-row--topips">
+      <article class="ov-card ov-card--topips glass-card">
+        <div class="ov-card-head">
+          <div>
+            <div class="ov-card-tag">SUPER ADMIN FLEET GOVERNANCE</div>
+            <h2 class="ov-card-title">Multi-Tenant Fleet Telemetry &amp; Defense Matrix</h2>
+            <p class="ov-card-desc">Cross-tenant organization sensor allocation, real-time ingestion velocity, and verified global threat intelligence.</p>
+          </div>
+
+          <!-- Tab Switcher: Multi-Tenant Fleet vs Global Adversaries vs Public Ingress -->
+          <div class="ov-side-tab-toggle" role="tablist">
+            <button type="button" class="side-tab-btn" [class.active]="ipFlowTab === 'tenants'" (click)="setIpFlowTab('tenants')">
+              <lucide-icon [name]="BuildingIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+              <span>Tenant Organizations ({{ tenantFleetMatrix.length }})</span>
+            </button>
+            <button type="button" class="side-tab-btn" [class.active]="ipFlowTab === 'threats'" (click)="setIpFlowTab('threats')">
+              <lucide-icon [name]="ShieldAlertIcon" class="w-3.5 h-3.5 text-rose-400"></lucide-icon>
+              <span>Global Threat IOCs ({{ threatIntelItems.length }})</span>
+            </button>
+            <button type="button" class="side-tab-btn" [class.active]="ipFlowTab === 'flows'" (click)="setIpFlowTab('flows')">
+              <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+              <span>Public WAN Flows ({{ topPublicIps.length }})</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="ov-top-ips-table-wrap">
+          <!-- TAB 1: Multi-Tenant Fleet Matrix (Primary for Super Admin) -->
+          <table class="ov-cyber-table compact" *ngIf="ipFlowTab === 'tenants'">
+            <thead>
+              <tr>
+                <th style="width: 26%">Organization Name / Scope</th>
+                <th style="width: 14%">Identities</th>
+                <th style="width: 22%">Assigned Sensor Probes</th>
+                <th style="width: 15%">Ingest Velocity</th>
+                <th style="width: 11%">Isolation</th>
+                <th style="width: 12%">Posture Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let t of tenantFleetMatrix; trackBy: trackById" class="top-ip-row">
+                <td>
+                  <div class="ip-cell">
+                    <span class="node-dot" [class.dot--emerald]="t.active" [class.dot--slate]="!t.active"></span>
+                    <strong class="font-mono text-cyan-300">{{ t.name }}</strong>
+                    <span class="text-xs font-mono text-slate-500">({{ t.id }})</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="font-mono text-slate-200">{{ t.users }} {{ t.users === 1 ? 'user' : 'users' }}</span>
+                </td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <span class="status-pill font-mono" [class.status--online]="t.sensorsActive > 0" [class.status--degraded]="t.sensorsActive === 0">
+                      {{ t.sensorsActive }}/{{ t.sensorsTotal }} Armed
+                    </span>
+                    <span *ngIf="t.sensorNames" class="text-xs font-mono text-slate-400 truncate max-w-[140px]" [title]="t.sensorNames">
+                      {{ t.sensorNames }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="flex flex-col">
+                    <span class="hits-badge font-mono">{{ t.estPackets | number }} pkts</span>
+                    <span class="text-[10px] font-mono text-slate-400">{{ t.ingestShare }}% share · {{ t.estEps }} eps</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="country-pill">
+                    <span class="flag-icon">🔒</span>
+                    <span class="font-mono text-xs text-emerald-400">{{ t.isolation }}</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="status-pill font-mono"
+                    [class.status--online]="t.posture === 'PROTECTED'"
+                    [class.status--degraded]="t.posture === 'PENDING PROBE'"
+                    [class.status--offline]="t.posture === 'SUSPENDED'">
+                    {{ t.posture }}
+                  </span>
+                </td>
+              </tr>
+              <tr *ngIf="tenantFleetMatrix.length === 0">
+                <td colspan="6" class="text-center py-6 text-slate-400 font-mono">
+                  No tenant organizations discovered.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- TAB 2: Verified Global Adversary Threats (Real Threat Intelligence Feed) -->
+          <table class="ov-cyber-table compact" *ngIf="ipFlowTab === 'threats'">
+            <thead>
+              <tr>
+                <th style="width: 22%">Malicious Adversary IP</th>
+                <th style="width: 20%">Origin Attribution</th>
+                <th style="width: 22%">Intelligence Feed Source</th>
+                <th style="width: 18%">Threat Classification</th>
+                <th style="width: 10%">Detections</th>
+                <th style="width: 8%">Map Pin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of threatIntelItems.slice(0, 15); trackBy: trackByIp" class="top-ip-row">
+                <td>
+                  <div class="ip-cell">
+                    <span class="threat-dot"></span>
+                    <strong class="font-mono text-rose-400">{{ item.ip }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <span class="country-pill">
+                    <span class="flag-icon">{{ item.flag }}</span>
+                    <span>{{ item.country }}</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="font-mono text-xs text-amber-300">{{ item.feed }}</span>
+                </td>
+                <td>
+                  <span class="status-pill status--degraded font-mono text-xs">{{ item.threatType }}</span>
+                </td>
+                <td>
+                  <span class="hits-badge font-mono">{{ item.hits | number }} hits</span>
+                </td>
+                <td>
+                  <button type="button" class="pin-action-btn" (click)="filterByIpFromTop(item.ip)" title="Locate on Threat Map">
+                    <lucide-icon [name]="RadioIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+                    <span>Pin</span>
+                  </button>
+                </td>
+              </tr>
+              <tr *ngIf="threatIntelItems.length === 0">
+                <td colspan="6" class="text-center py-6 text-slate-400 font-mono">
+                  Synchronizing active threat intelligence indicators from OTX / AbuseIPDB / CISA...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- TAB 3: Filtered Public WAN Flows (Strictly Non-Private IPs) -->
+          <table class="ov-cyber-table compact" *ngIf="ipFlowTab === 'flows'">
+            <thead>
+              <tr>
+                <th style="width: 25%">Public Network Host</th>
+                <th style="width: 25%">Attribution / Destination</th>
+                <th style="width: 25%">Packet / Flow Volume</th>
+                <th style="width: 15%">Traffic Scope</th>
+                <th style="width: 10%">Map Pin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of topPublicIps.slice(0, 15); trackBy: trackByIp" class="top-ip-row">
+                <td>
+                  <div class="ip-cell">
+                    <span class="node-dot dot--cyan"></span>
+                    <strong class="font-mono text-cyan-300">{{ item.ip }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <span class="country-pill">
+                    <span class="flag-icon">🌐</span>
+                    <span>{{ item.country }}</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="hits-badge font-mono">{{ item.count | number }} pkts</span>
+                </td>
+                <td>
+                  <span class="status-pill status--online font-mono text-xs">{{ item.type }}</span>
+                </td>
+                <td>
+                  <button type="button" class="pin-action-btn" (click)="filterByIpFromTop(item.ip)" title="Locate on Threat Map">
+                    <lucide-icon [name]="RadioIcon" class="w-3 h-3 text-cyan-400"></lucide-icon>
+                    <span>Pin</span>
+                  </button>
+                </td>
+              </tr>
+              <tr *ngIf="topPublicIps.length === 0">
+                <td colspan="5" class="text-center py-6 text-slate-400 font-mono">
+                  Zero external public WAN traffic anomalies detected in current window (Internal LAN traffic filtered).
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── ROW 5: Dual Cyber Glass Terminal Console (System Telemetry & User Audit History) ── -->
+    <section class="ov-bento-row ov-row--socterminal">
+      <div class="ov-terminals-grid">
+
+        <!-- Terminal 1: Cyber SOC Engine & Ingestion Stream (Left) -->
+        <article class="ov-card ov-card--terminal ov-card--soc-terminal glass-card">
+          <div class="ov-card-head">
+            <div class="terminal-head-title">
+              <div class="terminal-window-dots">
+                <span class="dot dot--red"></span>
+                <span class="dot dot--yellow"></span>
+                <span class="dot dot--green"></span>
+              </div>
+              <lucide-icon [name]="TerminalIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+              <div>
+                <div class="ov-card-tag">SYSTEM TELEMETRY STREAM</div>
+                <h2 class="ov-card-title">Cyber SOC Engine Console</h2>
+              </div>
+            </div>
+
+            <!-- Controls: Category Filters + Pause / Play / Clear -->
+            <div class="terminal-controls">
+              <!-- Filter Pills -->
+              <div class="terminal-filter-pills" role="tablist">
+                <button type="button" class="term-pill" [class.active]="socLogFilter === 'ALL'" (click)="setSocLogFilter('ALL')">ALL</button>
+                <button type="button" class="term-pill" [class.active]="socLogFilter === 'CRITICAL'" (click)="setSocLogFilter('CRITICAL')">CRITICAL</button>
+                <button type="button" class="term-pill" [class.active]="socLogFilter === 'ENGINES'" (click)="setSocLogFilter('ENGINES')">ENGINES</button>
+                <button type="button" class="term-pill" [class.active]="socLogFilter === 'INGEST'" (click)="setSocLogFilter('INGEST')">INGEST</button>
+              </div>
+
+              <div class="terminal-btn-group">
+                <!-- Pause / Resume -->
+                <button type="button" class="term-action-btn" (click)="toggleSocLogPause()" [title]="socLogPaused ? 'Resume streaming' : 'Pause streaming'">
+                  <lucide-icon [name]="socLogPaused ? PlayIcon : PauseIcon" class="w-3.5 h-3.5" [class.text-amber-400]="socLogPaused" [class.text-emerald-400]="!socLogPaused"></lucide-icon>
+                  <span>{{ socLogPaused ? 'RESUME' : 'PAUSE' }}</span>
+                </button>
+
+                <!-- Clear -->
+                <button type="button" class="term-action-btn" (click)="clearSocLogs()" title="Clear terminal log">
+                  <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5 text-slate-400"></lucide-icon>
+                  <span>CLEAR</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Terminal Shell Screen -->
+          <div class="ov-terminal-screen">
+            <div class="term-line" *ngFor="let log of filteredSocLogs; trackBy: trackById">
+              <span class="term-time font-mono">[{{ log.time }}]</span>
+              <span class="term-badge" [ngClass]="'term--' + log.level.toLowerCase()">{{ log.level }}</span>
+              <span class="term-source font-mono">{{ log.source }}:</span>
+              <span class="term-msg font-mono">{{ log.msg }}</span>
+            </div>
+
+            <div *ngIf="filteredSocLogs.length === 0" class="term-empty font-mono">
+              <span>&gt; No event records matching filter "{{ socLogFilter }}". Polling streaming events...</span>
+            </div>
+            <span class="terminal-cursor">█</span>
+          </div>
+
+          <!-- Terminal Footer Status Bar -->
+          <div class="terminal-footer">
+            <div class="term-foot-item">
+              <span class="pulse-dot-green"></span>
+              <span class="foot-label">STREAM:</span>
+              <span class="foot-val font-mono text-emerald-400">{{ socLogPaused ? 'PAUSED' : 'LIVE TELEMETRY' }}</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">CLICKHOUSE:</span>
+              <span class="foot-val font-mono text-cyan-300">{{ eventsPerSec | number }} EPS</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">LEADER:</span>
+              <span class="foot-val font-mono text-emerald-400">{{ isLeaderActive ? leaderStatus.current_leader : 'Awaiting' }}</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">PROBES:</span>
+              <span class="foot-val font-mono text-amber-300">{{ activeSensorsCount }} online</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Terminal 2: Live Operator & User Activity Audit Stream (Right Side Glass Terminal) -->
+        <article class="ov-card ov-card--terminal ov-card--user-terminal glass-card">
+          <div class="ov-card-head">
+            <div class="terminal-head-title">
+              <div class="terminal-window-dots">
+                <span class="dot dot--red"></span>
+                <span class="dot dot--yellow"></span>
+                <span class="dot dot--green"></span>
+              </div>
+              <lucide-icon [name]="UserCheckIcon" class="w-4 h-4 text-purple-400"></lucide-icon>
+              <div>
+                <div class="ov-card-tag text-purple-300">USER AUDIT & OPERATOR TRAIL</div>
+                <h2 class="ov-card-title">User Actions History Console</h2>
+              </div>
+            </div>
+
+            <!-- Controls: Category Filters + Pause / Export / Clear -->
+            <div class="terminal-controls">
+              <!-- Filter Pills -->
+              <div class="terminal-filter-pills" role="tablist">
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'ALL'" (click)="setUserAuditFilter('ALL')">ALL</button>
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'AUTH'" (click)="setUserAuditFilter('AUTH')">AUTH</button>
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'RULES'" (click)="setUserAuditFilter('RULES')">RULES</button>
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'POLICY'" (click)="setUserAuditFilter('POLICY')">POLICY</button>
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'IAM'" (click)="setUserAuditFilter('IAM')">IAM</button>
+                <button type="button" class="term-pill term-pill--purple" [class.active]="userAuditFilter === 'INVESTIGATE'" (click)="setUserAuditFilter('INVESTIGATE')">INVEST</button>
+              </div>
+
+              <div class="terminal-btn-group">
+                <!-- Pause / Resume -->
+                <button type="button" class="term-action-btn" (click)="toggleUserAuditPause()" [title]="userAuditPaused ? 'Resume audit streaming' : 'Pause audit streaming'">
+                  <lucide-icon [name]="userAuditPaused ? PlayIcon : PauseIcon" class="w-3.5 h-3.5" [class.text-amber-400]="userAuditPaused" [class.text-purple-400]="!userAuditPaused"></lucide-icon>
+                  <span>{{ userAuditPaused ? 'RESUME' : 'PAUSE' }}</span>
+                </button>
+
+                <!-- Export -->
+                <button type="button" class="term-action-btn" (click)="exportUserAuditLogs()" title="Export audit trail log">
+                  <lucide-icon [name]="DownloadIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+                  <span>EXPORT</span>
+                </button>
+
+                <!-- Clear -->
+                <button type="button" class="term-action-btn" (click)="clearUserAuditLogs()" title="Clear audit console">
+                  <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5 text-slate-400"></lucide-icon>
+                  <span>CLEAR</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Terminal Shell Screen -->
+          <div class="ov-terminal-screen ov-terminal-screen--user">
+            <div class="term-line" *ngFor="let log of filteredUserAuditLogs; trackBy: trackById">
+              <span class="term-time font-mono">[{{ log.time }}]</span>
+              <span class="term-badge" [ngClass]="'term--cat-' + log.category.toLowerCase()">{{ log.category }}</span>
+              <span class="term-user font-mono">[{{ log.user }}]</span>
+              <span class="term-role font-mono">({{ log.role }})</span>
+              <span class="term-msg font-mono">{{ log.action }}</span>
+              <span class="term-status-chip" [ngClass]="'status--' + log.status.toLowerCase()">{{ log.status }}</span>
+            </div>
+
+            <div *ngIf="filteredUserAuditLogs.length === 0" class="term-empty font-mono">
+              <span>&gt; No user activity records matching filter "{{ userAuditFilter }}". Monitoring live operator audit trail...</span>
+            </div>
+            <span class="terminal-cursor terminal-cursor--purple">█</span>
+          </div>
+
+          <!-- Terminal Footer Status Bar -->
+          <div class="terminal-footer">
+            <div class="term-foot-item">
+              <span class="pulse-dot-purple"></span>
+              <span class="foot-label">RECORDER:</span>
+              <span class="foot-val font-mono text-purple-400">{{ userAuditPaused ? 'STANDBY' : 'LIVE AUDIT' }}</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">USERS:</span>
+              <span class="foot-val font-mono text-emerald-300">{{ users.length || 1 }} active</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">ORGS:</span>
+              <span class="foot-val font-mono text-cyan-300">{{ tenants.length || 1 }} monitored</span>
+            </div>
+            <div class="term-foot-item">
+              <span class="foot-label">AUDIT:</span>
+              <span class="foot-val font-mono text-amber-300">SOC2 COMPLIANT</span>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+
+</section>

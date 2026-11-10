@@ -1,0 +1,7 @@
+# Wazuh Rust Agent State
+status='active'
+agent_id='win-node-01'
+hostname='win-node-akm'
+heartbeat_seq='3'
+last_keepalive='2026-10-08T16:40:04.650594800+00:00'
+health='ok'

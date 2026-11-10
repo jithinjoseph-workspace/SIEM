@@ -1,0 +1,1832 @@
+[
+ {
+  "id": "S0829",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> r:dav_\\.+module"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0830",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> r:status_module"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0831",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> r:autoindex_module"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0832",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> r:proxy_"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0833",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> userdir_"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0834",
+  "condition": "none",
+  "rules": [
+   "c:$enabled-modules -> r:info_module"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0835",
+  "condition": "all",
+  "rules": [
+   "f:/etc/passwd -> r:apache && r:/sbin/nologin$|/dev/null$"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0836",
+  "condition": "any",
+  "rules": [
+   "c:passwd -S apache -> r:apache && r:\\s*\\t*L|\\s*\\t*LK",
+   "c:passwd -S apache -> r:apache && r:Password locked"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0837",
+  "condition": "all",
+  "rules": [
+   "d:$conf-dirs -> conf -> !r:^# && r:allowoverride|AllowOverride && r:none|None",
+   "not d:$conf-dirs -> conf -> r:allowoverridelist|AllowOverrideList",
+   "f:$main-conf -> !r:^# && r:allowoverride|AllowOverride && r:none|None",
+   "f:$main-conf -> r:allowoverridelist|AllowOverrideList"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0838",
+  "condition": "none",
+  "rules": [
+   "d:$conf-dirs -> conf -> !r:^# && r:options && r:includes|Includes",
+   "f:$main-conf -> !r:^# && r:options && r:includes|Includes"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0839",
+  "condition": "none",
+  "rules": [
+   "d:/var/www -> index.html",
+   "d:/var/www/html -> index.html",
+   "d:$conf-dirs -> r:manual.conf|apache2-doc.conf",
+   "d:$conf-dirs -> conf -> !r:^# && r:sethandler|SetHandler && r:server",
+   "f:$main-conf -> !r:^# && r:sethandler|SetHandler && r:server",
+   "d:$conf-dirs -> conf -> !r:^# && r:sethandler|SetHandler && r:perl",
+   "f:$main-conf -> !r:^# && r:sethandler|SetHandler && r:perl"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0840",
+  "condition": "none",
+  "rules": [
+   "d:/var/www/cgi-bin -> printenv",
+   "d:/usr/lib/cgi-bin -> printenv"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0841",
+  "condition": "none",
+  "rules": [
+   "d:/var/www/cgi-bin -> test-cgi",
+   "d:/usr/lib/cgi-bin -> test-cgi"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0842",
+  "condition": "all",
+  "rules": [
+   "f:$traceen -> !r:^# && r:TraceEnable && r:off"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0843",
+  "condition": "none",
+  "rules": [
+   "d:$conf-dirs -> conf -> !r:^# && r:listen\\s*\\t*\\d+$|Listen\\s*\\t*\\d+$",
+   "d:$conf-dirs -> conf -> !r:^# && r:listen|Listen && r:0.0.0.0",
+   "f:$main-conf -> !r:^# && r:listen\\s*\\t*\\d+$|Listen\\s*\\t*\\d+$",
+   "f:$main-conf -> !r:^# && r:listen|Listen && r:0.0.0.0"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0844",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> r:Header && r:always && r:append && r:X-Frame-Options && r:SAMEORIGIN|DENY"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0845",
+  "condition": "none",
+  "rules": [
+   "f:$ssl-confs -> !r:^# && r:sslinsecurerenegotiation|SSLInsecureRenegotiation && r:\\s+on$"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0846",
+  "condition": "none",
+  "rules": [
+   "f:$ssl-confs -> !r:^# && r:sslcompression|SSLCompression && r:\\s+on$"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0847",
+  "condition": "any",
+  "rules": [
+   "d:$conf-dirs -> conf -> !r:^# && r:servertokens|ServerTokens && r:\\s+Prod|\\s+ProductOnly"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0848",
+  "condition": "none",
+  "rules": [
+   "d:$conf-dirs -> conf -> !r:^# && r:serversignature|ServerSignature && r:\\s+on|\\s+On"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0849",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && && r:timeout|Timeout && n:\\s+(\\d+) compare <= 10"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0850",
+  "condition": "none",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:keepalive|KeepAlive && r:\\s+off|\\s+Off"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0851",
+  "condition": "none",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:maxkeepaliverequests|MaxKeepAliveRequests && n:\\s+(\\d+) compare < 100"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0852",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:keepalivetimeout|KeepAliveTimeout && n:\\s+(\\d+) compare <= 15"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0853",
+  "condition": "any",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:loadmodule|LoadModule && r:\\s+mod_reqtimeout",
+   "f:$request-confs -> !r:^# && r:requestreadtimeout|RequestReadTimeout && n:header=\\d+\\p(\\d+) compare <= 40"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0854",
+  "condition": "any",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:loadmodule|LoadModule && r:\\s+mod_reqtimeout",
+   "f:$request-confs -> !r:^# && r:requestreadtimeout|RequestReadTimeout && n:body=(\\d+) compare <= 20"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0855",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:limitrequestline|LimitRequestLine && n:\\s(\\d+) compare <= 512"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0856",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:limitrequestfields|LimitRequestFields && n:\\s(\\d+) compare <= 100"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0857",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:limitrequestfieldsize|LimitRequestFieldSize && n:\\s(\\d+) compare <= 1024"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0858",
+  "condition": "all",
+  "rules": [
+   "f:$main-conf -> !r:^# && r:limitrequestbody|LimitRequestBody && n:\\s(\\d+) compare <= 102400"
+  ],
+  "used_by": [
+   "provigil_apache24"
+  ]
+ },
+ {
+  "id": "S0859",
+  "condition": "none",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list vdir -> r:SystemDrive"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0860",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:directoryBrowse -> r:directoryBrowse enabled=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0861",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:applicationPools -> r:processModel identityType=\"ApplicationPoolIdentity\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0862",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list app -> r:applicationPool:DefaultAppPool"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0863",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list app -> r:anonymousAuthentication enabled=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0864",
+  "condition": "all",
+  "rules": [
+   "c:powershell.exe import-module servermanager;Get-WindowsFeature Web-DAV-Publishing -> r:available"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0865",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.webserver/security/authorization -> r:remove users=\"\\*\" roles=\"\" verbs=\"\" && accessType=\"Allow\",roles=\"Administrators\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0866",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.web/authentication -> r:cookieless=\"UseCookies\" requireSSL=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0867",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.web/authentication -> r:requireSSL=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0868",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.web/authentication -> r:cookieless=\"UseCookies\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0869",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /commit:WEBROOT /section:machineKey -> r:validation=\"SHA1\"|validation=\"AES\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0870",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /commit:WEBROOT /section:machineKey -> r:validation=\"HMACSHA256\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0871",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /commit:WEBROOT /section:trust -> r:level=\"Low\"|level=\"Medium\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0872",
+  "condition": "none",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.webServer/httpProtocol -> r:name=\"X-Powered-By\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0873",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config -section:system.webServer/security/requestFiltering -> r:removeServerHeader=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0874",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:requestfiltering -> n:maxAllowedContentLength=\"(\\d)\" compare <= 30000000"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0875",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:requestfiltering -> n:maxUrl=\"(\\d)\" compare <= 4096"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0876",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:requestfiltering -> n:maxQueryString=\"(\\d)\" compare <= 2048"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0877",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:requestfiltering -> r:allowHighBitCharacters=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0878",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:requestfiltering -> r:allowDoubleEscaping=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0879",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd listconfig /section:requestfiltering -> r:verb=\"TRACE\" allowed=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0880",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd listconfig /section:requestfiltering -> r:fileExtensions\\.+allowUnlisted=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0881",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd list config /section:handlers -> r:accessPolicy=\"Read, Script\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0882",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.webServer/security/isapiCgiRestriction -> r:notListedIsapisAllowed=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0883",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.webServer/security/isapiCgiRestriction -> r:notListedCgisAllowed=\"false\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0884",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.webServer/security/dynamicIpSecurity -> r:denyByConcurrentRequests enabled=\"true\" && r:denyByRequestRate enabled=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0885",
+  "condition": "none",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.applicationHost/sites -> r:directory=\"%SystemDrive%\\inetpub\\logs\\LogFiles\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0886",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.applicationHost/sites -> r:controlChannelPolicy=\"SslRequire\"&&dataChannelPolicy=\"SslRequire\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0887",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.ftpServer/security/authentication -> r:denyByFailure enabled=\"true\""
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0888",
+  "condition": "all",
+  "rules": [
+   "c:%systemroot%\\system32\\inetsrv\\appcmd.exe list config -section:system.webServer/httpProtocol -> r:name=\"Strict-Transport-Security\" && n:max-age=(\\d) compare > 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0889",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Server -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Client -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Server -> DisabledByDefault -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Client -> DisabledByDefault -> 1"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0890",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Server -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Client -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Server -> DisabledByDefault -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Client -> DisabledByDefault -> 1"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0891",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Client -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server -> DisabledByDefault -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Client -> DisabledByDefault -> 1"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0892",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Server -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Client -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Server -> DisabledByDefault -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Client -> DisabledByDefault -> 1"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0893",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Server -> Enabled -> 1",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Server -> DisabledByDefault -> 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0894",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\NULL -> Enabled -> 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0895",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\DES 56/56 -> Enabled -> 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0896",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 40/128 -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 56/128 -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 64/128 -> Enabled -> 0",
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 128/128 -> Enabled -> 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0897",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\AES 128/128 -> Enabled -> 0"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0898",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\AES 256/256 -> Enabled -> 1"
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0899",
+  "condition": "all",
+  "rules": [
+   "r:HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Cryptography\\Configuration\\SSL\\00010002 -> Functions -> TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256."
+  ],
+  "used_by": [
+   "provigil_iis10"
+  ]
+ },
+ {
+  "id": "S0900",
+  "condition": "none",
+  "rules": [
+   "d:/home -> ^.mysql_history$",
+   "d:/root -> ^.mysql_history$"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0901",
+  "condition": "all",
+  "rules": [
+   "c:getent passwd mysql -> r:/bin/false|/sbin/nologin"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0902",
+  "condition": "none",
+  "rules": [
+   "c:find /home -maxdepth 2 -type f -exec grep MYSQL_PWD {} + -> r:.profile|.bashrc|.bash_profile && r:$MYSQL_PWD"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0903",
+  "condition": "none",
+  "rules": [
+   "c:my_print_defaults mysqld -> r:allow-suspicious-udfs"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0904",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh local-infile /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:local-infile\\s*=\\s*0"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0905",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh skip-grant-tables /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:skip-grant-tables\\s*=\\s*FALSE|skip-grant-tables\\s*=\\s*false"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0906",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh skip_symbolic_links /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:skip_symbolic_links\\s*=\\s*YES|skip_symbolic_links\\s*=\\s*yes"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0907",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh secure_file_priv /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:secure_file_priv\\s*=\\s*\\."
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0908",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh strict_all_tables /etc/mysql/my.cnf /etc/mysql/my.ini /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:strict_all_tables"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0909",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh log_error /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:log_error\\s*=\\s*\\S+\\s*"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0910",
+  "condition": "none",
+  "rules": [
+   "c:grep -Rh log_bin /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:log_bin\\s*\\t*/+$|log_bin\\s*\\t*/+var/*$|log_bin\\s*\\t*/+usr/*$"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0911",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh log_warnings /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:log_warnings\\s*=\\s*2"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0912",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh log-raw /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:log-raw\\s*OFF$|log-raw\\s*off$"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0913",
+  "condition": "none",
+  "rules": [
+   "c:grep -Rh old_passwords /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:old_passwords\\s*=\\s*1",
+   "c:grep -Rh old_passwords /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:old_passwords\\s*=\\s*ON|old_passwords\\s*=\\s*on"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0914",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh secure_auth /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:secure_auth\\s*=\\s*ON|secure_auth\\s*=\\s*on"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0915",
+  "condition": "none",
+  "rules": [
+   "c:grep -Rh password /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:^\\s*password\\.*"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0916",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh no_auto_create_user /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:\\s*no_auto_create_user\\s*$"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0917",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh plugin-load /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:plugin-load\\s*=\\s*validate_password.so\\s*$",
+   "c:grep -Rh validate-password /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:validate-password\\s*=\\s*force_plus_permanent\\s*$",
+   "c:grep -Rh validate_password_length /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> n:validate_password_length\\s*=\\s*(\\d+)\\s$ compare >= 14",
+   "c:grep -Rh validate_password_mixed_case_count /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> n:validate_password_mixed_case_count\\s*=\\s*(\\d+)\\s*$ compare >= 1",
+   "c:grep -Rh validate_password_number_count /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> n:validate_password_number_count\\s*=\\s*(\\d+)\\s*$ compare >= 1",
+   "c:grep -Rh validate_password_special_char_count /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> n:validate_password_special_char_count\\s*=\\s*(\\d+) compare >= 1",
+   "c:grep -Rh validate_password_policy /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:validate_password_policy\\s*=\\s*MEDIUM\\s*|validate_password_policy\\s*=\\s*STRONG\\s*|validate_password_policy\\s*=\\s*medium\\s*|validate_password_policy\\s*=\\s*strong\\s*"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0918",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh master_info_repository /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:master_info_repository\\s*=\\s*TABLE|master_info_repository\\s*=\\s*table"
+  ],
+  "used_by": [
+   "provigil_mysql56_community",
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0919",
+  "condition": "none",
+  "rules": [
+   "c:grep -Rh audit_log_connection_policy /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:audit_log_connection_policy\\s*=\\s* && r:none|NONE"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0920",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh audit_log_exclude_accounts /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:audit_log_exclude_accounts\\s*=\\s* && r:null\\s*$|NULL\\s*$"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0921",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh audit_log_include_accounts /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:audit_log_include_accounts\\s*=\\s* && r:null\\s*$|NULL\\s*$"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0922",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh audit_log_policy /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> !r:^\\s*\\t*# && r:audit_log_policy\\s*=\\s* && r:ALL|LOGINS|all|logins"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0923",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh audit_log_statement_policy /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:audit_log_statement_policy\\s*=\\s* && r:all$|ALL$"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0924",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh audit_log_strategy /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:audit_log_strategy\\s*=\\s* && r:semisynchronous|synchronous|SEMISYNCHRONOUS|SYNCHRONOUS"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0925",
+  "condition": "all",
+  "rules": [
+   "c:grep -Rh force_plus_permanent /etc/mysql/my.cnf /etc/mysql/mariadb.cnf /etc/mysql/conf.d /etc/mysql/mariadb.conf.d -> r:^audit_log\\s*=\\s*force_plus_permanent|^audit_log\\s*=\\s*FORCE_PLUS_PERMANENT"
+  ],
+  "used_by": [
+   "provigil_mysql56_enterprise"
+  ]
+ },
+ {
+  "id": "S0926",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"systemctl get-default | systemctl list-dependencies | grep postgres\" -> r:postgres"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0927",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_destination\\\" | grep $log_destination$\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0928",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW logging_collector\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0929",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_directory\\\" | grep $log_directory$\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0930",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_filename\\\" | grep $log_filename\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0931",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_file_mode\\\" | grep $log_file_mode\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0932",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_truncate_on_rotation\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0933",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_rotation_age\\\" | grep $log_rotation_age\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0934",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_rotation_size\\\" | grep $log_rotation_size\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0935",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"show syslog_facility\\\" | grep $syslog_facility\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0936",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"show syslog_ident\\\" | grep $syslog_ident\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0937",
+  "condition": "none",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_min_messages\" -> r:\\serror|\\slog$|\\sfatal$|\\spanic$"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0938",
+  "condition": "none",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_min_error_statement\" -> r:\\slog$|\\sfatal$|\\spanic$"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0939",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"show debug_print_parse\" -> r:\\soff"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0940",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"show debug_print_rewritten\" -> r:\\soff"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0941",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"show debug_print_plan\" -> r:\\soff"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0942",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"show debug_pretty_print\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0943",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_connections\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0944",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_disconnections\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0945",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_error_verbosity\" -> r:\\sverbose"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0946",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_hostname\" -> r:\\soff"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0947",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_disconnections\" -> r:%m\\s\\[%p\\]:\\s\\[%l-1\\]\\sdb=%d,user=%u,app=%a,client=%h"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0948",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW log_statement\" -> r:\\sdll"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0949",
+  "condition": "all",
+  "rules": [
+   "c:sh -c \"psql -U $user -h $host $db -c \\\"SHOW log_timezone\\\" | grep $log_timezone\" -> r:\\.+"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0950",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"show shared_preload_libraries\" -> r:pgaudit"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0951",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"select * from pg_available_extensions where name=\\\"pg_permissions\\\";\" -> r:pg_permissions && !r:(0\\srows) && !r:ERROR"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0952",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"select * from pg_available_extensions where name=\\\"set_user\\\";\" -> r:set_user && !r:(0\\srows) && !r:ERROR"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0953",
+  "condition": "all",
+  "rules": [
+   "c:fips-mode-setup --check -> r:FIPS\\smode\\sis\\senabled"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0954",
+  "condition": "all",
+  "rules": [
+   "c:psql -U $user -h $host $db -c \"SHOW ssl\" -> r:\\son"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0955",
+  "condition": "none",
+  "rules": [
+   "c:pgbackrest -> -bash: pgbackrest: command not found"
+  ],
+  "used_by": [
+   "provigil_postgresql13"
+  ]
+ },
+ {
+  "id": "S0956",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'Ad Hoc Distributed Queries' ;\" -> r:Ad Hoc Distributed Queries\\s+0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0957",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'clr enabled';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0958",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'cross db ownership chaining';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0959",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'Database Mail XPs';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0960",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'Ole Automation Procedures';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0961",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'remote access';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0962",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"USE master; SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'remote admin connections' AND SERVERPROPERTY('IsClustered') = 0;\" -> r:0\\s*\\t*0|0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0963",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'scan for startup procs';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0964",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name FROM sys.databases WHERE is_trustworthy_on = 1 AND name != 'msdb';\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0965",
+  "condition": "none",
+  "rules": [
+   "c:sqlcmd -Q \"DECLARE @value nvarchar(256); EXECUTE master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'SOFTWARE\\Microsoft\\Microsoft SQL Server\\MSSQLServer\\SuperSocketNetLib\\Tcp\\IPAll', N'TcpPort', @value OUTPUT, N'no_output'; SELECT @value AS TCP_Port WHERE @value = '1433'; \" -> r:1433"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0966",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, is_disabled FROM sys.server_principals WHERE sid = 0x01 AND is_disabled = 0;\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0967",
+  "condition": "none",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name FROM sys.server_principals WHERE sid = 0x01;\" -> r:sa"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2017"
+  ]
+ },
+ {
+  "id": "S0968",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'xp_cmdshell';\" -> r:0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017"
+  ]
+ },
+ {
+  "id": "S0969",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, containment, containment_desc, is_auto_close_on FROM sys.databases WHERE containment <> 0 and is_auto_close_on = 1;\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0970",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT principal_id, name FROM sys.server_principals WHERE name = 'sa';\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0971",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT SERVERPROPERTY('IsIntegratedSecurityOnly') as [login_mode];\" -> r:^1"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0972",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT * FROM master.sys.server_permissions WHERE (grantee_principal_id = SUSER_SID(N'public') and state_desc LIKE 'GRANT%') AND NOT (state_desc = 'GRANT' and [permission_name] = 'VIEW ANY DATABASE' and class_desc = 'SERVER') AND NOT (state_desc = 'GRANT' and [permission_name] = 'CONNECT' and class_desc = 'ENDPOINT' and major_id = 2) AND NOT (state_desc = 'GRANT' and [permission_name] = 'CONNECT' and class_desc = 'ENDPOINT' and major_id = 3) AND NOT (state_desc = 'GRANT' and [permission_name] = 'CONNECT' and class_desc = 'ENDPOINT' and major_id = 4) AND NOT (state_desc = 'GRANT' and [permission_name] = 'CONNECT' and class_desc = 'ENDPOINT' and major_id = 5); \" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0973",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"USE [master] SELECT pr.[name] AS LocalGroupName, pe.[permission_name], pe.[state_desc] FROM sys.server_principals pr JOIN sys.server_permissions pe ON pr.[principal_id] = pe.[grantee_principal_id] WHERE pr.[type_desc] = 'WINDOWS_GROUP' AND pr.[name] like CAST(SERVERPROPERTY('MachineName') AS nvarchar) + '%';\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0974",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT l.[name], 'sysadmin membership' AS 'Access_Method' FROM sys.sql_logins AS l WHERE IS_SRVROLEMEMBER('sysadmin',name) = 1 AND l.is_expiration_checked <> 1 UNION ALL SELECT l.[name], 'CONTROL SERVER' AS 'Access_Method' FROM sys.sql_logins AS l JOIN sys.server_permissions AS p ON l.principal_id = p.grantee_principal_id WHERE p.type = 'CL' AND p.state IN ('G', 'W') AND l.is_expiration_checked <> 1;\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0975",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, is_disabled FROM sys.sql_logins WHERE is_policy_checked = 0;\" -> r:0 rows affected"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0976",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"DECLARE @NumErrorLogs int; EXEC master.sys.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', N'NumErrorLogs', @NumErrorLogs OUTPUT; SELECT ISNULL(@NumErrorLogs, -1) AS [NumberOfLogFiles];\" -> n:^\\s*(\\d+) compare >= 12"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0977",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'default trace enabled';\" -> r:1\\s+1"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0978",
+  "condition": "none",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name, permission_set_desc FROM sys.assemblies WHERE is_user_defined = 1;\" -> r:EXTERNAL_ACCESS|UNSAFE"
+  ],
+  "used_by": [
+   "provigil_sqlserver2012",
+   "provigil_sqlserver2014",
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2017",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0979",
+  "condition": "all",
+  "rules": [
+   "c:sqlcmd -Q \"USE master; SELECT name, CAST(value as int) as value_configured, CAST(value_in_use as int) as value_in_use FROM sys.configurations WHERE name = 'remote admin connections' AND SERVERPROPERTY('IsClustered') = 0;\" -> r:remote admin connections\\s+0\\s+0"
+  ],
+  "used_by": [
+   "provigil_sqlserver2016"
+  ]
+ },
+ {
+  "id": "S0980",
+  "condition": "none",
+  "rules": [
+   "c:sqlcmd -Q \"SELECT name FROM sys.server_principals WHERE sid = 0x01;\" -> r:^sa"
+  ],
+  "used_by": [
+   "provigil_sqlserver2016",
+   "provigil_sqlserver2019"
+  ]
+ },
+ {
+  "id": "S0981",
+  "condition": "all",
+  "rules": [
+   "f:$php.ini -> r:^register_globals\\s*\\t*=\\s*\\t*Off|register_globals\\s*\\t*=\\s*\\t*off"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0982",
+  "condition": "all",
+  "rules": [
+   "f:$php.ini -> r:^expose_php\\s*\\t*=\\s*\\t*Off|^expose_php\\s*\\t*=\\s*\\t*off"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0983",
+  "condition": "all",
+  "rules": [
+   "f:$php.ini -> r:^allow_url_fopen\\s*\\t*=\\s*\\t*Off|^allow_url_fopen\\s*\\t*=\\s*\\t*off"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0984",
+  "condition": "all",
+  "rules": [
+   "f:$php.ini -> r:^display_errors\\s*\\t*=\\s*\\t*Off|^display_errors\\s*\\t*=\\s*\\t*off"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0985",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^.yop$"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0986",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^id$"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0987",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^.ssh$"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0988",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^...$"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0989",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^.shell$"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0990",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^version.php$ -> r:^\\.wp_version && r:4.4.2"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0991",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^version.php$ -> r:var \\.RELEASE && r:3.4.8"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0992",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^application_top.php$ -> r:osCommerce && r:2.2-"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0993",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> .php$ -> r:eval\\(base64_decode\\(\\paWYo"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0994",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> .php$ -> r:eval\\(base64_decode\\(\\S_POST"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0995",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^.htaccess$ -> r:RewriteCond\\s+\\S+HTTP_REFERERS\\s+\\S+google"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ },
+ {
+  "id": "S0996",
+  "condition": "none",
+  "rules": [
+   "d:$web_dirs -> ^.htaccess$ -> r:^php_value\\s*auto_append_file"
+  ],
+  "used_by": [
+   "provigil_web_exposure"
+  ]
+ }
+]

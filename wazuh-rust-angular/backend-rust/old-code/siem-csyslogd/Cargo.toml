@@ -1,0 +1,21 @@
+[package]
+name = "siem-csyslogd"
+version = "0.1.0"
+edition = "2021"
+description = "Port of provigil-csyslogd (src/os_csyslogd): alert forwarding to remote syslog servers"
+
+[dependencies]
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+siem-daemon = { path = "../siem-daemon" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
+siem-maild = { path = "../siem-maild" }
+tokio = { version = "1.40", features = ["full"] }
+chrono = "0.4"
+
+[[bin]]
+name = "provigil-csyslogd"
+path = "src/bin/provigil-csyslogd.rs"

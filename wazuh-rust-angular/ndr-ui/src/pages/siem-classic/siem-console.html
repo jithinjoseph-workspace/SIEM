@@ -1,0 +1,755 @@
+<div class="siem-layout" [class.embedded]="true">
+  <!-- Top Global Header (ndr-ui has its own: hidden inside ndr-ui) -->
+  <header class="siem-header" *ngIf="false">
+    <div class="brand-area">
+      <div class="brand-logo">
+        <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">PROVIGIL AETHER <span class="badge-rust">RUST CORE</span> <span class="badge-xdr">XDR</span> & <span class="badge-ng">ANGULAR 21</span></div>
+        <div class="brand-sub">Autonomous SIEM, XDR & SOAR Security Operations Center (High-Throughput Tokio Core)</div>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="engine-badge">
+        <span class="mono text-muted">ENGINE:</span>
+        <span class="text-cyan">Tokio / Axum (Rust 1.94)</span>
+      </div>
+
+      <div class="conn-pill" [class.connected]="isConnected()">
+        <span class="pulse-dot" [class.online]="isConnected()" [class.offline]="!isConnected()"></span>
+        <span>{{ isConnected() ? 'CORE WS ONLINE :8088' : 'OFFLINE / RECONNECTING' }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tab Bar (only on the full console page) -->
+  <nav class="siem-nav" *ngIf="!embedded()">
+    <button class="nav-item" [class.active]="activeTab() === 'dashboard'" (click)="switchTab('dashboard')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      SOC Overview
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'alerts'" (click)="switchTab('alerts')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Live Alerts Feed
+      <span class="nav-pill" *ngIf="alerts().length">{{ alerts().length }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'telemetry'" (click)="switchTab('telemetry')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Live Telemetry & Logs
+      <span class="nav-pill pill-cyan">{{ stats().total_events }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'rules'" (click)="switchTab('rules')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Detection Rules
+      <span class="nav-pill pill-subtle">{{ rules().length }}</span>
+    </button>
+  </nav>
+
+  <!-- Main View Container -->
+  <main class="siem-main">
+    <!-- ==================== TAB 1: SOC OVERVIEW ==================== -->
+    <section *ngIf="activeTab() === 'dashboard'" class="tab-content">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-outline text-xs" (click)="downloadReport()" [disabled]="reportBusy()" title="Security report of the last 7 days with charts (PDF)">{{ reportBusy() ? 'Making report...' : 'PDF report (7 days)' }}</button>
+      </div>
+      <!-- 4 Top KPI Cards -->
+      <div class="kpi-grid">
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TOTAL LOG EVENTS</span>
+            <span class="kpi-icon icon-cyan">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono">{{ stats().total_events | number }}</div>
+          <div class="kpi-footer text-muted">High-throughput Tokio ingest stream</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TRIGGERED ALERTS</span>
+            <span class="kpi-icon icon-rose">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-rose">{{ stats().total_alerts | number }}</div>
+          <div class="kpi-footer">
+            <span class="badge badge-critical">{{ stats().critical_alerts }} Critical (L12+)</span>
+          </div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">ACTIVE AGENT FLEET</span>
+            <span class="kpi-icon icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-emerald">{{ stats().active_agents }} / {{ stats().total_agents }}</div>
+          <div class="kpi-footer text-muted">Cross-platform Rust endpoints reporting</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">DETECTION RULES</span>
+            <span class="kpi-icon icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-cyan">{{ rules().length | number }}</div>
+          <div class="kpi-footer text-muted">ProVigil rules loaded (plus Sigma)</div>
+        </div>
+      </div>
+
+      <!-- 3D Global Cyber Threat Matrix & Interactive Globe -->
+      <app-cyber-threat-globe
+        [agents]="agents()"
+        [alerts]="alerts()"
+        (inspectAgent)="onGlobeInspect($event)"
+      ></app-cyber-threat-globe>
+
+      <!-- Severity & MITRE Grid -->
+      <div class="dashboard-grid">
+        <!-- Severity Distribution -->
+        <div class="card panel-card">
+          <div class="panel-header">
+            <h3>Threat Severity Breakdown</h3>
+            <span class="text-muted text-xs mono">ProVigil Standard (L1 - L15)</span>
+          </div>
+          <div class="severity-bars">
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-critical">CRITICAL (L12-15)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-critical" [style.width.%]="stats().total_alerts ? (stats().critical_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().critical_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-high">HIGH (L8-11)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-high" [style.width.%]="stats().total_alerts ? (stats().high_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().high_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-medium">MEDIUM (L4-7)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-medium" [style.width.%]="stats().total_alerts ? (stats().medium_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().medium_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-low">LOW (L1-3)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-low" [style.width.%]="stats().total_alerts ? (stats().low_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().low_alerts }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- MITRE ATT&CK Matrix Quick Glance -->
+        <div class="card panel-card">
+          <div class="panel-header">
+            <h3>MITRE ATT&CK Framework Mapping</h3>
+            <span class="text-muted text-xs mono">Tactics Observed</span>
+          </div>
+          <div class="mitre-cards">
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Credential Access</div>
+              <div class="technique-name">T1110 - Brute Force</div>
+              <div class="mitre-badge">sshd auth failure correlation</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Persistence</div>
+              <div class="technique-name">T1098 - Account Manipulation</div>
+              <div class="mitre-badge">/etc/passwd & /etc/shadow FIM</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Execution</div>
+              <div class="technique-name">T1059.001 - PowerShell</div>
+              <div class="mitre-badge">Encoded command / Mimikatz</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Impact</div>
+              <div class="technique-name">T1486 - Data Encrypted</div>
+              <div class="mitre-badge">Ransomware canary detection</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Recent Alerts Preview -->
+      <div class="card panel-card mt-4">
+        <div class="panel-header">
+          <h3>Recent High-Priority Threats</h3>
+          <button class="btn btn-outline text-xs" (click)="switchTab('alerts')">View Full Stream →</button>
+        </div>
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIME</th>
+                <th>LEVEL</th>
+                <th>RULE ID</th>
+                <th>DESCRIPTION</th>
+                <th>AGENT</th>
+                <th>SOURCE IP / DETAILS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let a of alerts().slice(0, 5)" (click)="openAlertDetails(a)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ a.timestamp | date:'HH:mm:ss' }}</td>
+                <td><span [class]="'badge ' + getLevelBadgeClass(a.rule.level)">LVL {{ a.rule.level }}</span></td>
+                <td class="mono text-cyan">{{ a.rule.id }}</td>
+                <td class="font-medium">{{ a.rule.description }}</td>
+                <td><span class="agent-chip">{{ a.agent.name }}</span></td>
+                <td class="mono text-muted">{{ a.decoded.src_ip || a.decoded.file_path || 'internal' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: LIVE ALERTS FEED ==================== -->
+    <section *ngIf="activeTab() === 'alerts'" class="tab-content">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" placeholder="Search alerts by rule, IP, agent, MITRE, or raw payload..."/>
+        </div>
+
+        <div class="filter-group">
+          <span class="text-muted text-xs">FILTER SEVERITY:</span>
+          <button class="filter-btn" [class.active]="selectedSeverity() === 'all'" (click)="selectedSeverity.set('all')">ALL</button>
+          <button class="filter-btn btn-crit" [class.active]="selectedSeverity() === 'critical'" (click)="selectedSeverity.set('critical')">CRITICAL</button>
+          <button class="filter-btn btn-hi" [class.active]="selectedSeverity() === 'high'" (click)="selectedSeverity.set('high')">HIGH</button>
+          <button class="filter-btn btn-med" [class.active]="selectedSeverity() === 'medium'" (click)="selectedSeverity.set('medium')">MEDIUM</button>
+          <button class="filter-btn btn-lo" [class.active]="selectedSeverity() === 'low'" (click)="selectedSeverity.set('low')">LOW</button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIMESTAMP</th>
+                <th>SEVERITY</th>
+                <th>RULE</th>
+                <th>ALERT DESCRIPTION</th>
+                <th>MITRE TECHNIQUE</th>
+                <th>AGENT</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let a of filteredAlerts()" (click)="openAlertDetails(a)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ a.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td>
+                  <span [class]="'badge ' + getLevelBadgeClass(a.rule.level)">
+                    {{ getLevelLabel(a.rule.level) }} (L{{ a.rule.level }})
+                  </span>
+                </td>
+                <td class="mono text-cyan">#{{ a.rule.id }}</td>
+                <td>
+                  <div class="desc-text">{{ a.rule.description }}</div>
+                  <div class="raw-preview mono text-dim text-xs">{{ a.full_log }}</div>
+                </td>
+                <td>
+                  <span *ngIf="a.rule.mitre" class="badge-mitre">
+                    {{ a.rule.mitre.id }} : {{ a.rule.mitre.technique }}
+                  </span>
+                  <span *ngIf="!a.rule.mitre" class="text-dim text-xs">-</span>
+                </td>
+                <td>
+                  <div class="agent-chip">{{ a.agent.name }}</div>
+                  <div class="mono text-dim text-xs">{{ a.agent.ip }}</div>
+                </td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <button class="btn btn-outline text-xs" (click)="openAlertDetails(a); $event.stopPropagation()">Inspect</button>
+                    <button class="btn btn-ai text-xs" (click)="triggerAiAnalyzeForAlert(a); $event.stopPropagation()">AI Triage</button>
+                    <button class="btn btn-outline text-xs" title="Everything about this host or source IP" (click)="investigateAlert(a); $event.stopPropagation()">Investigate</button>
+                    <button class="btn btn-outline text-xs" title="Open a SOAR case with this alert as evidence (AI Copilot)" (click)="openCaseForAlert(a); $event.stopPropagation()">Open case</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredAlerts().length === 0">
+                <td colspan="7" class="text-center py-8 text-muted">
+                  No alerts match the selected search criteria or severity filter.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2B: LIVE TELEMETRY & LOGS STREAM ==================== -->
+    <section *ngIf="activeTab() === 'telemetry'" class="tab-content">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" [ngModel]="telemetryQuery()" (ngModelChange)="telemetryQuery.set($event)" placeholder="Search raw telemetry by EventID, channel, process name, agent, or message..."/>
+        </div>
+
+        <div class="filter-group">
+          <span class="text-muted text-xs">SOURCE:</span>
+          <button class="filter-btn" [class.active]="selectedSource() === 'all'" (click)="selectedSource.set('all'); loadRawEvents()">ALL</button>
+          <button class="filter-btn btn-win" [class.active]="selectedSource() === 'windowsevent'" (click)="selectedSource.set('windowsevent'); loadRawEvents()">WINDOWS EVENT</button>
+          <button class="filter-btn btn-sca" [class.active]="selectedSource() === 'sca'" (click)="selectedSource.set('sca'); loadRawEvents()">SCA AUDIT</button>
+          <button class="filter-btn btn-syscol" [class.active]="selectedSource() === 'syscollector'" (click)="selectedSource.set('syscollector'); loadRawEvents()">SYSCOLLECTOR</button>
+          <button class="filter-btn btn-reg" [class.active]="selectedSource() === 'registry'" (click)="selectedSource.set('registry'); loadRawEvents()">REGISTRY</button>
+          <button class="filter-btn btn-fim" [class.active]="selectedSource() === 'fim'" (click)="selectedSource.set('fim'); loadRawEvents()">FIM</button>
+
+          <button class="filter-btn ml-2" [class.active]="autoRefreshTelemetry()" (click)="autoRefreshTelemetry.set(!autoRefreshTelemetry())">
+            <span class="live-dot" *ngIf="autoRefreshTelemetry()"></span>
+            {{ autoRefreshTelemetry() ? 'LIVE STREAM (4s)' : 'PAUSED' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIMESTAMP</th>
+                <th>EVENT SOURCE</th>
+                <th>AGENT ID</th>
+                <th>CHANNEL / PATH</th>
+                <th>LIVE TELEMETRY PAYLOAD</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let ev of filteredRawEvents()" (click)="openRawEventDetails(ev)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ ev.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td>
+                  <span [class]="'badge ' + getSourceBadgeClass(ev.source)">
+                    {{ getSourceLabel(ev.source) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="agent-chip">{{ ev.agent_id }}</span>
+                </td>
+                <td class="mono text-cyan text-xs">{{ ev.location }}</td>
+                <td>
+                  <div class="mono text-xs raw-preview">{{ ev.message }}</div>
+                </td>
+                <td>
+                  <div class="flex gap-1">
+                    <button class="btn btn-outline text-xs" (click)="openRawEventDetails(ev); $event.stopPropagation()">Inspect Log</button>
+                    <button class="btn btn-ai text-xs" (click)="triggerAiAnalyzeForRawEvent(ev); $event.stopPropagation()">AI Analyze</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredRawEvents().length === 0">
+                <td colspan="6" class="text-center py-8 text-muted">
+                  No telemetry events match your current filter or search criteria.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: DETECTION RULES ==================== -->
+    <section *ngIf="activeTab() === 'rules'" class="tab-content">
+      <div class="fleet-header">
+        <div>
+          <h2>Detection Rules</h2>
+          <p class="text-muted">Compiled and evaluated concurrently by the Rust Analysis Engine</p>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>RULE ID</th>
+                <th>LEVEL</th>
+                <th>RULE DESCRIPTION</th>
+                <th>REGEX PATTERN (COMPILED IN RUST)</th>
+                <th>GROUPS</th>
+                <th>MITRE ATT&CK</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of rules()">
+                <td class="mono text-cyan font-semibold">#{{ r.id }}</td>
+                <td><span [class]="'badge ' + getLevelBadgeClass(r.level)">LEVEL {{ r.level }}</span></td>
+                <td class="font-medium">{{ r.description }}</td>
+                <td class="mono text-muted text-xs">{{ r.regex_pattern }}</td>
+                <td>
+                  <span *ngFor="let g of r.groups" class="group-tag">{{ g }}</span>
+                </td>
+                <td>
+                  <span *ngIf="r.mitre" class="badge-mitre">
+                    {{ r.mitre.id }} ({{ r.mitre.technique }})
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+
+  </main>
+
+  <!-- Alert Inspection Modal -->
+  <div class="modal-backdrop" *ngIf="selectedAlert()" (click)="closeAlertDetails()">
+    <div class="modal-card card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span [class]="'badge ' + getLevelBadgeClass(selectedAlert()!.rule.level)">
+            LEVEL {{ selectedAlert()!.rule.level }}
+          </span>
+          <h3>Rule #{{ selectedAlert()!.rule.id }}: {{ selectedAlert()!.rule.description }}</h3>
+        </div>
+        <button class="close-btn" (click)="closeAlertDetails()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-col">
+            <span class="text-muted text-xs">AGENT NAME / IP</span>
+            <div class="text-main font-semibold">{{ selectedAlert()!.agent.name }} ({{ selectedAlert()!.agent.ip }})</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">LOG LOCATION</span>
+            <div class="mono text-cyan">{{ selectedAlert()!.location }}</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">TIMESTAMP</span>
+            <div class="mono text-main">{{ selectedAlert()!.timestamp | date:'medium' }}</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">MITRE ATT&CK</span>
+            <div class="badge-mitre" *ngIf="selectedAlert()!.rule.mitre">
+              {{ selectedAlert()!.rule.mitre?.id }} - {{ selectedAlert()!.rule.mitre?.technique }}
+            </div>
+            <div *ngIf="!selectedAlert()!.rule.mitre" class="text-dim">None</div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Decoded Telemetry Fields</div>
+        <div class="decoded-chips">
+          <div class="chip" *ngIf="selectedAlert()!.decoded.src_ip">
+            <span class="chip-key">SRC IP:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.src_ip }}</span>
+          </div>
+          <div class="chip" *ngIf="selectedAlert()!.decoded.user">
+            <span class="chip-key">USER:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.user }}</span>
+          </div>
+          <div class="chip" *ngIf="selectedAlert()!.decoded.file_path">
+            <span class="chip-key">FILE:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.file_path }}</span>
+          </div>
+          <div class="chip">
+            <span class="chip-key">DECODER:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.decoder_name }}</span>
+          </div>
+        </div>
+
+        <!-- 1-Click Endpoint Active Response Remediation -->
+        <div class="active-response-actions mt-3 p-3 bg-dark-card border rounded flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-muted font-bold tracking-wider">ENDPOINT ACTIVE RESPONSE REMEDIATION:</span>
+            <span class="text-xs text-emerald mono" *ngIf="activeResponseStatus()">{{ activeResponseStatus() }}</span>
+          </div>
+          <div class="flex gap-2 flex-wrap items-center">
+            <button class="btn btn-danger btn-xs" *ngIf="selectedAlert()!.decoded.src_ip" (click)="executeActiveResponse('block_ip', selectedAlert()!.decoded.src_ip!, selectedAlert()!.agent.id)">
+              Block IP in Firewall (netsh)
+            </button>
+            <button class="btn btn-warning btn-xs" *ngIf="selectedAlert()!.decoded.file_path" (click)="executeActiveResponse('quarantine_file', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id, { path: selectedAlert()!.decoded.file_path })">
+              Quarantine File
+            </button>
+            <button class="btn btn-outline btn-xs" *ngIf="selectedAlert()!.decoded.file_path" title="Scan with the YARA rules; a match becomes an alert" (click)="executeActiveResponse('yara_scan', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id, { path: selectedAlert()!.decoded.file_path })">
+              YARA Scan File
+            </button>
+            <ng-container *ngIf="alertProcess(selectedAlert()!) as proc">
+              <button class="btn btn-outline btn-xs" [title]="proc.image" (click)="executeActiveResponse('kill_process', '' + proc.pid, selectedAlert()!.agent.id, { pid: proc.pid, image: proc.image })">
+                Terminate {{ processName(proc.image) }} (PID {{ proc.pid }})
+              </button>
+              <button class="btn btn-outline btn-xs" *ngIf="proc.image" [title]="proc.image" (click)="executeActiveResponse('quarantine_file', proc.image, selectedAlert()!.agent.id, { path: proc.image })">
+                Quarantine {{ processName(proc.image) }}
+              </button>
+              <button class="btn btn-outline btn-xs" *ngIf="proc.image" [title]="'YARA scan ' + proc.image" (click)="executeActiveResponse('yara_scan', proc.image, selectedAlert()!.agent.id, { path: proc.image })">
+                YARA Scan {{ processName(proc.image) }}
+              </button>
+            </ng-container>
+          </div>
+        </div>
+
+        <!-- Process tree (EDR): from the agent's Sysmon events around the alert -->
+        <ng-container *ngIf="alertProcessGuid(selectedAlert()!)">
+          <div class="section-title mt-4">Process Tree</div>
+          <div class="text-xs text-dim" *ngIf="processTreeState() === 'loading'">Reading the agent's Sysmon events…</div>
+          <div class="text-xs text-rose" *ngIf="processTreeState() === 'error'">The agent's events cannot be read right now.</div>
+          <div class="text-xs text-dim" *ngIf="processTreeState() === 'not-found'">The process's start is not in the agent's Sysmon events of the 24 hours before the alert; what it started is shown below.</div>
+          <div class="process-tree mono text-xs" *ngIf="processTree()?.length">
+            <div *ngFor="let n of processTree()" class="pt-row" [style.padding-left.px]="8 + n.depth * 16"
+                 [class.pt-focal]="n.role === 'focal'" [class.pt-unknown]="!n.known">
+              <div class="pt-line" (click)="expandedProcess.set(expandedProcess() === n.guid ? null : n.guid)">
+                <span class="text-dim">{{ n.depth ? '└─' : '' }}</span>
+                <b [title]="n.image">{{ processName(n.image) }}</b>
+                <span class="text-dim" *ngIf="n.pid">PID {{ n.pid }}</span>
+                <span class="text-dim" *ngIf="n.user">{{ n.user }}</span>
+                <span class="text-dim" *ngIf="n.started">{{ n.started | date:'HH:mm:ss' }}</span>
+                <span class="text-dim" *ngIf="n.ended">ended {{ n.ended | date:'HH:mm:ss' }}</span>
+                <span class="text-dim" *ngIf="!n.known">(started before the window)</span>
+                <span *ngFor="let k of activityKinds(n)" class="pt-chip">{{ k[0] }} {{ k[1] }}</span>
+              </div>
+              <div class="pt-cmd text-dim" [title]="n.command_line">{{ n.command_line }}</div>
+              <div *ngIf="expandedProcess() === n.guid" class="pt-detail">
+                <div *ngIf="n.image">Image: {{ n.image }}</div>
+                <div *ngIf="n.hashes">Hashes: {{ n.hashes }}</div>
+                <div *ngFor="let a of n.activity?.samples">{{ a.ts | date:'HH:mm:ss' }} · {{ a.kind }} · {{ a.detail }}</div>
+                <div class="flex gap-2 mt-1" *ngIf="n.pid && !n.ended && n.known">
+                  <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('kill_process', '' + n.pid, selectedAlert()!.agent.id, { pid: n.pid, image: n.image })">Terminate PID {{ n.pid }}</button>
+                  <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('quarantine_file', n.image, selectedAlert()!.agent.id, { path: n.image })">Quarantine {{ processName(n.image) }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+
+        <div class="section-title mt-4">Raw Log Payload</div>
+        <pre class="raw-log-box mono">{{ selectedAlert()!.full_log }}</pre>
+
+        <!-- AI SOC Threat Analysis Box -->
+        <div class="ai-analysis-container mt-4">
+          <div class="ai-box-header">
+            <div class="flex items-center gap-2">
+              <span class="ai-icon font-mono text-cyan">[AI]</span>
+              <span class="ai-title font-bold">Groq AI Threat Triage & Incident Analysis</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
+                <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
+              </select>
+              <button class="btn btn-ai btn-sm" [disabled]="isAnalyzingAi()" (click)="triggerAiAnalyzeForAlert(selectedAlert()!)">
+                <span class="spinner" *ngIf="isAnalyzingAi()"></span>
+                {{ isAnalyzingAi() ? 'Analyzing with Groq...' : 'Run AI Analysis' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div *ngIf="isAnalyzingAi()" class="ai-loading-box mt-3">
+            <div class="ai-pulse-bar"></div>
+            <div class="text-xs text-cyan mono mt-2">Groq AI is evaluating event payload, MITRE ATT&CK tactics, and compiling remediation playbooks...</div>
+          </div>
+
+          <!-- Error State -->
+          <div *ngIf="aiAnalysisError()" class="ai-error-box mt-2">
+            Error: {{ aiAnalysisError() }}
+          </div>
+
+          <!-- Analysis Results -->
+          <div *ngIf="currentAiAnalysis() as ai" class="ai-result-card mt-3">
+            <div class="ai-top-row">
+              <div class="ai-classification-badge" [class.badge-crit]="ai.severity === 'critical' || ai.severity === 'high'" [class.badge-med]="ai.severity === 'medium'" [class.badge-low]="ai.severity === 'low' || ai.severity === 'info'">
+                {{ ai.classification | uppercase }} ({{ ai.confidence_score }}% CONFIDENCE)
+              </div>
+              <div class="mono text-xs text-muted">Model: {{ ai.model_used }}</div>
+            </div>
+
+            <div class="ai-summary-text mt-2">{{ ai.summary }}</div>
+
+            <!-- MITRE & Impact Grid -->
+            <div class="ai-meta-grid mt-3">
+              <div class="ai-meta-item" *ngIf="ai.mitre_attack as mitre">
+                <span class="ai-meta-label">MITRE ATT&CK</span>
+                <span class="badge-mitre">{{ mitre.technique_id }} : {{ mitre.technique_name }} ({{ mitre.tactic }})</span>
+              </div>
+              <div class="ai-meta-item">
+                <span class="ai-meta-label">HOST / ASSET IMPACT</span>
+                <span class="text-xs text-white">{{ ai.impact }}</span>
+              </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="mt-3" *ngIf="ai.indicators.length">
+              <span class="ai-meta-label">KEY INDICATORS & OBSERVATIONS</span>
+              <ul class="ai-indicator-list">
+                <li *ngFor="let ind of ai.indicators">{{ ind }}</li>
+              </ul>
+            </div>
+
+            <!-- Remediation Playbook -->
+            <div class="mt-3" *ngIf="ai.remediation_commands.length">
+              <span class="ai-meta-label">AUTOMATED REMEDIATION PLAYBOOK (POWERSHELL)</span>
+              <div *ngFor="let cmd of ai.remediation_commands; let i = index" class="ai-cmd-box">
+                <code class="mono text-xs text-cyan">{{ cmd }}</code>
+                <button class="copy-cmd-btn" (click)="copyCommand(cmd, i)">
+                  {{ copiedCmdIndex() === i ? '✓ Copied' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Deep Technical Explanation -->
+            <div class="mt-3">
+              <span class="ai-meta-label">IN-DEPTH TECHNICAL EXPLANATION</span>
+              <p class="ai-explanation-text">{{ ai.explanation }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Raw JSON Alert Payload</div>
+        <pre class="raw-json-box mono">{{ selectedAlert() | json }}</pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="closeAlertDetails()">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw Telemetry Event Details Modal -->
+  <div class="modal-backdrop" *ngIf="selectedRawEvent()" (click)="closeRawEventDetails()">
+    <div class="modal-card card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span [class]="'badge ' + getSourceBadgeClass(selectedRawEvent()!.source)">
+            {{ getSourceLabel(selectedRawEvent()!.source) }}
+          </span>
+          <h3>Raw Telemetry Inspector</h3>
+        </div>
+        <button class="close-btn" (click)="closeRawEventDetails()">✕</button>
+      </div>
+
+      <div class="modal-body" *ngIf="selectedRawEvent() as ev">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">EVENT ID / TIMESTAMP</span>
+            <span class="detail-value mono text-cyan">{{ ev.id }}</span>
+            <span class="text-xs text-muted">{{ ev.timestamp | date:'yyyy-MM-dd HH:mm:ss.SSS' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">SOURCE</span>
+            <span class="detail-value">{{ ev.source | uppercase }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">ORIGIN AGENT</span>
+            <span class="detail-value agent-chip">{{ ev.agent_id }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">CHANNEL / LOCATION</span>
+            <span class="detail-value mono text-xs">{{ ev.location }}</span>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Event Message / Telemetry Stream</div>
+        <pre class="raw-json-box mono text-cyan">{{ ev.message }}</pre>
+
+        <!-- AI SOC Threat Analysis Box for Telemetry -->
+        <div class="ai-analysis-container mt-4">
+          <div class="ai-box-header">
+            <div class="flex items-center gap-2">
+              <span class="ai-icon font-mono text-cyan">[AI]</span>
+              <span class="ai-title font-bold">Groq AI Threat Triage & Incident Analysis</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
+                <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
+              </select>
+              <button class="btn btn-ai btn-sm" [disabled]="isAnalyzingAi()" (click)="triggerAiAnalyzeForRawEvent(ev)">
+                <span class="spinner" *ngIf="isAnalyzingAi()"></span>
+                {{ isAnalyzingAi() ? 'Analyzing with Groq...' : 'Run AI Analysis' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div *ngIf="isAnalyzingAi()" class="ai-loading-box mt-3">
+            <div class="ai-pulse-bar"></div>
+            <div class="text-xs text-cyan mono mt-2">Groq AI is evaluating event payload, MITRE ATT&CK tactics, and compiling remediation playbooks...</div>
+          </div>
+
+          <!-- Error State -->
+          <div *ngIf="aiAnalysisError()" class="ai-error-box mt-2">
+            Error: {{ aiAnalysisError() }}
+          </div>
+
+          <!-- Analysis Results -->
+          <div *ngIf="currentAiAnalysis() as ai" class="ai-result-card mt-3">
+            <div class="ai-top-row">
+              <div class="ai-classification-badge" [class.badge-crit]="ai.severity === 'critical' || ai.severity === 'high'" [class.badge-med]="ai.severity === 'medium'" [class.badge-low]="ai.severity === 'low' || ai.severity === 'info'">
+                {{ ai.classification | uppercase }} ({{ ai.confidence_score }}% CONFIDENCE)
+              </div>
+              <div class="mono text-xs text-muted">Model: {{ ai.model_used }}</div>
+            </div>
+
+            <div class="ai-summary-text mt-2">{{ ai.summary }}</div>
+
+            <!-- MITRE & Impact Grid -->
+            <div class="ai-meta-grid mt-3">
+              <div class="ai-meta-item" *ngIf="ai.mitre_attack as mitre">
+                <span class="ai-meta-label">MITRE ATT&CK</span>
+                <span class="badge-mitre">{{ mitre.technique_id }} : {{ mitre.technique_name }} ({{ mitre.tactic }})</span>
+              </div>
+              <div class="ai-meta-item">
+                <span class="ai-meta-label">HOST / ASSET IMPACT</span>
+                <span class="text-xs text-white">{{ ai.impact }}</span>
+              </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="mt-3" *ngIf="ai.indicators.length">
+              <span class="ai-meta-label">KEY INDICATORS & OBSERVATIONS</span>
+              <ul class="ai-indicator-list">
+                <li *ngFor="let ind of ai.indicators">{{ ind }}</li>
+              </ul>
+            </div>
+
+            <!-- Remediation Playbook -->
+            <div class="mt-3" *ngIf="ai.remediation_commands.length">
+              <span class="ai-meta-label">AUTOMATED REMEDIATION PLAYBOOK (POWERSHELL)</span>
+              <div *ngFor="let cmd of ai.remediation_commands; let i = index" class="ai-cmd-box">
+                <code class="mono text-xs text-cyan">{{ cmd }}</code>
+                <button class="copy-cmd-btn" (click)="copyCommand(cmd, i)">
+                  {{ copiedCmdIndex() === i ? '✓ Copied' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Deep Technical Explanation -->
+            <div class="mt-3">
+              <span class="ai-meta-label">IN-DEPTH TECHNICAL EXPLANATION</span>
+              <p class="ai-explanation-text">{{ ai.explanation }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Full Decoded Metadata</div>
+        <pre class="raw-json-box mono">{{ ev | json }}</pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="closeRawEventDetails()">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+
+

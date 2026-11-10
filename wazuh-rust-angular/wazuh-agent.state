@@ -1,0 +1,7 @@
+# Wazuh Rust Agent State
+status='active'
+agent_id='001'
+hostname='EVOFOX'
+heartbeat_seq='21'
+last_keepalive='2026-09-07T10:21:22.983121500+00:00'
+health='ok'

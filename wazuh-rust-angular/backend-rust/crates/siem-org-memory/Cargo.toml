@@ -1,0 +1,8 @@
+[package]
+name = "siem-org-memory"
+version = "0.1.0"
+edition = "2021"
+description = "Organizational security memory for the SIEM: lessons from closed cases and analyst decisions, and similar-precedent matching"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

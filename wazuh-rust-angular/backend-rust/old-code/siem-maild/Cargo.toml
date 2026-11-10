@@ -1,0 +1,30 @@
+[package]
+name = "siem-maild"
+version = "0.1.0"
+edition = "2021"
+description = "Port of provigil-maild (src/os_maild) and the daily reports (shared/report_op.c), plus optional SMTP TLS/AUTH"
+
+[dependencies]
+siem-config = { path = "../siem-config" }
+siem-cjson = { path = "../siem-cjson" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+siem-daemon = { path = "../siem-daemon" }
+siem-regex = { path = "../siem-regex" }
+siem-xml = { path = "../siem-xml" }
+tokio = { version = "1.40", features = ["full"] }
+chrono = "0.4"
+base64 = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "provigil-maild"
+path = "src/bin/provigil-maild.rs"
+
+[[bin]]
+name = "provigil-reportd"
+path = "src/bin/provigil-reportd.rs"

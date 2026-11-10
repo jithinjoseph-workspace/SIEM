@@ -1,0 +1,30 @@
+[package]
+name = "siem-logcollector"
+version = "0.1.0"
+edition = "2021"
+description = "Port of upstream 4.14.7 provigil-logcollector (src/logcollector)"
+
+[[bin]]
+name = "wazuh-logcollector"
+path = "src/bin/wazuh-logcollector.rs"
+
+[dependencies]
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+siem-ipc = { path = "../siem-ipc" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+siem-daemon = { path = "../siem-daemon" }
+siem-cjson = { path = "../siem-cjson" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+siem-xml = { path = "../siem-xml" }
+sha1 = "0.10"
+chrono = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_SystemInformation", "Win32_System_EventLog", "Win32_System_Threading", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_Globalization", "Win32_System_Memory", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_System_Environment", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug"] }
+
+[dev-dependencies]
+tempfile = "3"

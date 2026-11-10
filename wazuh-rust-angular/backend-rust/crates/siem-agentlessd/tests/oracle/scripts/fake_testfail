@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "$*" >> out/argv.log
+exit 3

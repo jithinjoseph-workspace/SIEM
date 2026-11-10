@@ -1,0 +1,48 @@
+name: "Advanced CodeQL Security Scan"
+
+on:
+  push:
+    branches: [ "*" ]
+    paths:
+      - "wazuh-rust-angular/**"
+      - ".github/workflows/**"
+  pull_request:
+    branches: [ "*" ]
+    paths:
+      - "wazuh-rust-angular/**"
+      - ".github/workflows/**"
+  schedule:
+    - cron: '30 1 * * 1' # Automatically runs every Monday at 1:30 AM to check for new zero-days
+  workflow_dispatch: {} # Allows manual triggering from the GitHub Actions UI
+
+jobs:
+  analyze:
+    name: CodeQL Engine Audit (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript-typescript', 'python' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL Engine
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+          config: |
+            paths:
+              - wazuh-rust-angular
+
+      - name: Perform Semantic Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

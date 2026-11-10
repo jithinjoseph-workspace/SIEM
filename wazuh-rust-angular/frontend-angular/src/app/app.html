@@ -1,0 +1,2538 @@
+<div class="siem-layout" *ngIf="activeTab() !== 'amix'">
+  <!-- Top Global Header -->
+  <header class="siem-header">
+    <div class="brand-area">
+      <div class="brand-logo">
+        <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">PROVIGIL AETHER <span class="badge-rust">RUST CORE</span> <span class="badge-xdr">XDR</span> & <span class="badge-ng">ANGULAR 21</span></div>
+        <div class="brand-sub">Autonomous SIEM, XDR & SOAR Security Operations Center (High-Throughput Tokio Core)</div>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="engine-badge">
+        <span class="mono text-muted">ENGINE:</span>
+        <span class="text-cyan">Tokio / Axum (Rust 1.94)</span>
+      </div>
+
+      <div class="conn-pill" [class.connected]="isConnected()">
+        <span class="pulse-dot" [class.online]="isConnected()" [class.offline]="!isConnected()"></span>
+        <span>{{ isConnected() ? 'CORE WS ONLINE :8088' : 'OFFLINE / RECONNECTING' }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tab Bar -->
+  <nav class="siem-nav">
+    <button class="nav-item" [class.active]="activeTab() === 'dashboard'" (click)="switchTab('dashboard')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      SOC Overview
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'alerts'" (click)="switchTab('alerts')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Live Alerts Feed
+      <span class="nav-pill" *ngIf="alerts().length">{{ alerts().length }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'telemetry'" (click)="switchTab('telemetry')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Live Telemetry & Logs
+      <span class="nav-pill pill-cyan">{{ stats().total_events }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'agents'" (click)="switchTab('agents')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      Agent Fleet
+      <span class="nav-pill pill-subtle">{{ agents().length }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'mitre'" (click)="switchTab('mitre')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+      MITRE ATT&CK
+      <span class="nav-pill pill-subtle">14 Tactics</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'vulnerabilities'" (click)="switchTab('vulnerabilities')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Vulnerabilities (CVE)
+      <span class="nav-pill pill-rose" *ngIf="vulnStats().total">{{ vulnStats().total }}</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'compliance'" (click)="switchTab('compliance')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      Compliance
+      <span class="nav-pill pill-subtle">PCI/HIPAA</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'fim'" (click)="switchTab('fim')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/><path d="M9 11h6"/><path d="M9 7h2"/></svg>
+      Integrity (FIM)
+      <span class="nav-pill pill-subtle" *ngIf="fimStats().modified">{{ fimStats().modified }} mod</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'rules'" (click)="switchTab('rules')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Detection Rules
+      <span class="nav-pill pill-subtle">{{ rules().length }}</span>
+    </button>
+    <button class="nav-item nav-parsers" [class.active]="activeTab() === 'parsers'" (click)="switchTab('parsers')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
+      Parser Studio
+      <span class="badge badge-ai-glow">Self-Learn AI</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'logtest'" (click)="switchTab('logtest')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      Logtest
+      <span class="nav-pill pill-cyan">Console</span>
+    </button>
+    <button class="nav-item" [class.active]="activeTab() === 'active_response'" (click)="switchTab('active_response')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Active Response
+      <span class="nav-pill pill-rose" *ngIf="activeBlockedCount()">{{ activeBlockedCount() }} blocked</span>
+    </button>
+    <button class="nav-item nav-simulator" [class.active]="activeTab() === 'simulator'" (click)="switchTab('simulator')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Simulator
+    </button>
+    <button class="nav-item nav-copilot" [class.active]="activeTab() === 'copilot'" (click)="switchTab('copilot')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+      AI Copilot
+      <span class="badge badge-ai-glow">Groq 120B</span>
+    </button>
+    <button class="nav-item nav-amix" [class.active]="activeTab() === 'amix'" (click)="switchTab('amix')">
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><polygon points="12 2 2 7 12 22 22 7 12 2"/></svg>
+      AMIX DEFENSE MATRIX
+      <span class="badge badge-neon-amix">3D XDR</span>
+    </button>
+  </nav>
+
+  <!-- Main View Container -->
+  <main class="siem-main">
+    <!-- ==================== TAB 1: SOC OVERVIEW ==================== -->
+    <section *ngIf="activeTab() === 'dashboard'" class="tab-content">
+      <!-- 4 Top KPI Cards -->
+      <div class="kpi-grid">
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TOTAL LOG EVENTS</span>
+            <span class="kpi-icon icon-cyan">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono">{{ stats().total_events | number }}</div>
+          <div class="kpi-footer text-muted">High-throughput Tokio ingest stream</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TRIGGERED ALERTS</span>
+            <span class="kpi-icon icon-rose">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-rose">{{ stats().total_alerts | number }}</div>
+          <div class="kpi-footer">
+            <span class="badge badge-critical">{{ stats().critical_alerts }} Critical (L12+)</span>
+          </div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">ACTIVE AGENT FLEET</span>
+            <span class="kpi-icon icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-emerald">{{ stats().active_agents }} / {{ stats().total_agents }}</div>
+          <div class="kpi-footer text-muted">Cross-platform Rust endpoints reporting</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">DETECTION ENGINE</span>
+            <span class="kpi-icon icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+          </div>
+          <div class="kpi-value mono text-cyan">0.4 ms</div>
+          <div class="kpi-footer text-muted">Average Rust regex match latency</div>
+        </div>
+      </div>
+
+      <!-- 3D Global Cyber Threat Matrix & Interactive Globe -->
+      <app-cyber-threat-globe
+        [agents]="agents()"
+        [alerts]="alerts()"
+        (inspectAgent)="onGlobeInspect($event)"
+      ></app-cyber-threat-globe>
+
+      <!-- Severity & MITRE Grid -->
+      <div class="dashboard-grid">
+        <!-- Severity Distribution -->
+        <div class="card panel-card">
+          <div class="panel-header">
+            <h3>Threat Severity Breakdown</h3>
+            <span class="text-muted text-xs mono">Wazuh Standard (L1 - L15)</span>
+          </div>
+          <div class="severity-bars">
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-critical">CRITICAL (L12-15)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-critical" [style.width.%]="stats().total_alerts ? (stats().critical_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().critical_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-high">HIGH (L8-11)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-high" [style.width.%]="stats().total_alerts ? (stats().high_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().high_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-medium">MEDIUM (L4-7)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-medium" [style.width.%]="stats().total_alerts ? (stats().medium_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().medium_alerts }}</span>
+            </div>
+
+            <div class="severity-row">
+              <div class="severity-label"><span class="badge badge-low">LOW (L1-3)</span></div>
+              <div class="bar-container">
+                <div class="bar-fill fill-low" [style.width.%]="stats().total_alerts ? (stats().low_alerts / stats().total_alerts * 100) : 0"></div>
+              </div>
+              <span class="mono count">{{ stats().low_alerts }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- MITRE ATT&CK Matrix Quick Glance -->
+        <div class="card panel-card">
+          <div class="panel-header">
+            <h3>MITRE ATT&CK Framework Mapping</h3>
+            <span class="text-muted text-xs mono">Tactics Observed</span>
+          </div>
+          <div class="mitre-cards">
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Credential Access</div>
+              <div class="technique-name">T1110 - Brute Force</div>
+              <div class="mitre-badge">sshd auth failure correlation</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Persistence</div>
+              <div class="technique-name">T1098 - Account Manipulation</div>
+              <div class="mitre-badge">/etc/passwd & /etc/shadow FIM</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Execution</div>
+              <div class="technique-name">T1059.001 - PowerShell</div>
+              <div class="mitre-badge">Encoded command / Mimikatz</div>
+            </div>
+            <div class="mitre-tag-card">
+              <div class="tactic-name">Impact</div>
+              <div class="technique-name">T1486 - Data Encrypted</div>
+              <div class="mitre-badge">Ransomware canary detection</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Recent Alerts Preview -->
+      <div class="card panel-card mt-4">
+        <div class="panel-header">
+          <h3>Recent High-Priority Threats</h3>
+          <button class="btn btn-outline text-xs" (click)="switchTab('alerts')">View Full Stream →</button>
+        </div>
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIME</th>
+                <th>LEVEL</th>
+                <th>RULE ID</th>
+                <th>DESCRIPTION</th>
+                <th>AGENT</th>
+                <th>SOURCE IP / DETAILS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let a of alerts().slice(0, 5)" (click)="openAlertDetails(a)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ a.timestamp | date:'HH:mm:ss' }}</td>
+                <td><span [class]="'badge ' + getLevelBadgeClass(a.rule.level)">LVL {{ a.rule.level }}</span></td>
+                <td class="mono text-cyan">{{ a.rule.id }}</td>
+                <td class="font-medium">{{ a.rule.description }}</td>
+                <td><span class="agent-chip">{{ a.agent.name }}</span></td>
+                <td class="mono text-muted">{{ a.decoded.src_ip || a.decoded.file_path || 'internal' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: LIVE ALERTS FEED ==================== -->
+    <section *ngIf="activeTab() === 'alerts'" class="tab-content">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" placeholder="Search alerts by rule, IP, agent, MITRE, or raw payload..."/>
+        </div>
+
+        <div class="filter-group">
+          <span class="text-muted text-xs">FILTER SEVERITY:</span>
+          <button class="filter-btn" [class.active]="selectedSeverity() === 'all'" (click)="selectedSeverity.set('all')">ALL</button>
+          <button class="filter-btn btn-crit" [class.active]="selectedSeverity() === 'critical'" (click)="selectedSeverity.set('critical')">CRITICAL</button>
+          <button class="filter-btn btn-hi" [class.active]="selectedSeverity() === 'high'" (click)="selectedSeverity.set('high')">HIGH</button>
+          <button class="filter-btn btn-med" [class.active]="selectedSeverity() === 'medium'" (click)="selectedSeverity.set('medium')">MEDIUM</button>
+          <button class="filter-btn btn-lo" [class.active]="selectedSeverity() === 'low'" (click)="selectedSeverity.set('low')">LOW</button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIMESTAMP</th>
+                <th>SEVERITY</th>
+                <th>RULE</th>
+                <th>ALERT DESCRIPTION</th>
+                <th>MITRE TECHNIQUE</th>
+                <th>AGENT</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let a of filteredAlerts()" (click)="openAlertDetails(a)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ a.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td>
+                  <span [class]="'badge ' + getLevelBadgeClass(a.rule.level)">
+                    {{ getLevelLabel(a.rule.level) }} (L{{ a.rule.level }})
+                  </span>
+                </td>
+                <td class="mono text-cyan">#{{ a.rule.id }}</td>
+                <td>
+                  <div class="desc-text">{{ a.rule.description }}</div>
+                  <div class="raw-preview mono text-dim text-xs">{{ a.full_log }}</div>
+                </td>
+                <td>
+                  <span *ngIf="a.rule.mitre" class="badge-mitre">
+                    {{ a.rule.mitre.id }} : {{ a.rule.mitre.technique }}
+                  </span>
+                  <span *ngIf="!a.rule.mitre" class="text-dim text-xs">-</span>
+                </td>
+                <td>
+                  <div class="agent-chip">{{ a.agent.name }}</div>
+                  <div class="mono text-dim text-xs">{{ a.agent.ip }}</div>
+                </td>
+                <td>
+                  <div class="flex gap-1">
+                    <button class="btn btn-outline text-xs" (click)="openAlertDetails(a); $event.stopPropagation()">Inspect</button>
+                    <button class="btn btn-ai text-xs" (click)="triggerAiAnalyzeForAlert(a); $event.stopPropagation()">AI Triage</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredAlerts().length === 0">
+                <td colspan="7" class="text-center py-8 text-muted">
+                  No alerts match the selected search criteria or severity filter.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2B: LIVE TELEMETRY & LOGS STREAM ==================== -->
+    <section *ngIf="activeTab() === 'telemetry'" class="tab-content">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" [ngModel]="telemetryQuery()" (ngModelChange)="telemetryQuery.set($event)" placeholder="Search raw telemetry by EventID, channel, process name, agent, or message..."/>
+        </div>
+
+        <div class="filter-group">
+          <span class="text-muted text-xs">SOURCE:</span>
+          <button class="filter-btn" [class.active]="selectedSource() === 'all'" (click)="selectedSource.set('all'); loadRawEvents()">ALL</button>
+          <button class="filter-btn btn-win" [class.active]="selectedSource() === 'windowsevent'" (click)="selectedSource.set('windowsevent'); loadRawEvents()">WINDOWS EVENT</button>
+          <button class="filter-btn btn-sca" [class.active]="selectedSource() === 'sca'" (click)="selectedSource.set('sca'); loadRawEvents()">SCA AUDIT</button>
+          <button class="filter-btn btn-syscol" [class.active]="selectedSource() === 'syscollector'" (click)="selectedSource.set('syscollector'); loadRawEvents()">SYSCOLLECTOR</button>
+          <button class="filter-btn btn-reg" [class.active]="selectedSource() === 'registry'" (click)="selectedSource.set('registry'); loadRawEvents()">REGISTRY</button>
+          <button class="filter-btn btn-fim" [class.active]="selectedSource() === 'fim'" (click)="selectedSource.set('fim'); loadRawEvents()">FIM</button>
+
+          <button class="filter-btn ml-2" [class.active]="autoRefreshTelemetry()" (click)="autoRefreshTelemetry.set(!autoRefreshTelemetry())">
+            <span class="live-dot" *ngIf="autoRefreshTelemetry()"></span>
+            {{ autoRefreshTelemetry() ? 'LIVE STREAM (4s)' : 'PAUSED' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIMESTAMP</th>
+                <th>EVENT SOURCE</th>
+                <th>AGENT ID</th>
+                <th>CHANNEL / PATH</th>
+                <th>LIVE TELEMETRY PAYLOAD</th>
+                <th>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let ev of filteredRawEvents()" (click)="openRawEventDetails(ev)" class="clickable-row">
+                <td class="mono text-muted text-xs">{{ ev.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td>
+                  <span [class]="'badge ' + getSourceBadgeClass(ev.source)">
+                    {{ getSourceLabel(ev.source) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="agent-chip">{{ ev.agent_id }}</span>
+                </td>
+                <td class="mono text-cyan text-xs">{{ ev.location }}</td>
+                <td>
+                  <div class="mono text-xs raw-preview">{{ ev.message }}</div>
+                </td>
+                <td>
+                  <div class="flex gap-1">
+                    <button class="btn btn-outline text-xs" (click)="openRawEventDetails(ev); $event.stopPropagation()">Inspect Log</button>
+                    <button class="btn btn-ai text-xs" (click)="triggerAiAnalyzeForRawEvent(ev); $event.stopPropagation()">AI Analyze</button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredRawEvents().length === 0">
+                <td colspan="6" class="text-center py-8 text-muted">
+                  No telemetry events match your current filter or search criteria.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: AGENT FLEET ==================== -->
+    <section *ngIf="activeTab() === 'agents'" class="tab-content">
+      <div class="fleet-header">
+        <div>
+          <h2>Enterprise Endpoint Fleet</h2>
+          <p class="text-muted">High-performance Rust telemetry collectors, Syscollector inventory & CIS SCA compliance active across your infrastructure</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-cyan" (click)="openDeployModal()">+ Deploy New Agent</button>
+          <button class="btn btn-primary" (click)="fetchData()">Refresh Fleet</button>
+        </div>
+      </div>
+
+      <!-- Fleet Action Status Banner -->
+      <div *ngIf="agentActionFeedback()" class="alert-banner mb-3 p-3 bg-dark-card border-cyan rounded flex items-center justify-between">
+        <span class="mono text-xs text-cyan">{{ agentActionFeedback() }}</span>
+        <button class="btn btn-xs btn-outline" (click)="agentActionFeedback.set(null)">✕</button>
+      </div>
+
+      <!-- Fleet KPI Summary Cards Bar -->
+      <div class="fleet-kpi-bar mb-4">
+        <div class="kpi-card" (click)="agentStatusFilter.set('all'); agentOsFilter.set('all')">
+          <div class="kpi-label">TOTAL ENDPOINTS</div>
+          <div class="kpi-val mono text-cyan">{{ fleetStats().total }}</div>
+          <div class="kpi-sub text-muted">Registered in SIEM</div>
+        </div>
+        <div class="kpi-card" [class.active]="agentStatusFilter() === 'active'" (click)="agentStatusFilter.set('active')">
+          <div class="kpi-label">ACTIVE / CONNECTED</div>
+          <div class="kpi-val mono text-emerald flex items-center gap-2">
+            <span class="pulse-dot"></span>
+            {{ fleetStats().active }}
+          </div>
+          <div class="kpi-sub text-muted">Real-time sync</div>
+        </div>
+        <div class="kpi-card" [class.active]="agentStatusFilter() === 'disconnected'" (click)="agentStatusFilter.set('disconnected')">
+          <div class="kpi-label">DISCONNECTED</div>
+          <div class="kpi-val mono text-rose">{{ fleetStats().disconnected }}</div>
+          <div class="kpi-sub text-muted">Keepalive expired</div>
+        </div>
+        <div class="kpi-card" [class.active]="agentOsFilter() === 'windows'" (click)="agentOsFilter.set(agentOsFilter() === 'windows' ? 'all' : 'windows')">
+          <div class="kpi-label">WINDOWS HOSTS</div>
+          <div class="kpi-val mono text-main">WIN: {{ fleetStats().windows }}</div>
+          <div class="kpi-sub text-muted">Win32 / Syscollector</div>
+        </div>
+        <div class="kpi-card" [class.active]="agentOsFilter() === 'linux'" (click)="agentOsFilter.set(agentOsFilter() === 'linux' ? 'all' : 'linux')">
+          <div class="kpi-label">LINUX HOSTS</div>
+          <div class="kpi-val mono text-main">LNX: {{ fleetStats().linux }}</div>
+          <div class="kpi-sub text-muted">Syslog / Auditd</div>
+        </div>
+        <div class="kpi-card" [class.active]="agentOsFilter() === 'macos'" (click)="agentOsFilter.set(agentOsFilter() === 'macos' ? 'all' : 'macos')">
+          <div class="kpi-label">MACOS HOSTS</div>
+          <div class="kpi-val mono text-main">MAC: {{ fleetStats().macos }}</div>
+          <div class="kpi-sub text-muted">Unified Log</div>
+        </div>
+      </div>
+
+      <!-- Fleet Search & Multi-Filter Bar -->
+      <div class="card fleet-filter-bar mb-4">
+        <div class="search-box flex-1">
+          <input 
+            type="text" 
+            class="input-search" 
+            placeholder="Search agents by name, IP, ID, OS platform..." 
+            [(ngModel)]="agentSearchQuery"
+          />
+        </div>
+        <div class="filter-group">
+          <span class="text-xs text-muted">OS:</span>
+          <button class="filter-btn" [class.active]="agentOsFilter() === 'all'" (click)="agentOsFilter.set('all')">All</button>
+          <button class="filter-btn" [class.active]="agentOsFilter() === 'windows'" (click)="agentOsFilter.set('windows')">Windows</button>
+          <button class="filter-btn" [class.active]="agentOsFilter() === 'linux'" (click)="agentOsFilter.set('linux')">Linux</button>
+          <button class="filter-btn" [class.active]="agentOsFilter() === 'macos'" (click)="agentOsFilter.set('macos')">macOS</button>
+        </div>
+        <div class="filter-group">
+          <span class="text-xs text-muted">Status:</span>
+          <button class="filter-btn" [class.active]="agentStatusFilter() === 'all'" (click)="agentStatusFilter.set('all')">All</button>
+          <button class="filter-btn" [class.active]="agentStatusFilter() === 'active'" (click)="agentStatusFilter.set('active')">Active</button>
+          <button class="filter-btn" [class.active]="agentStatusFilter() === 'disconnected'" (click)="agentStatusFilter.set('disconnected')">Offline</button>
+        </div>
+      </div>
+
+      <!-- Fleet Endpoints Grid -->
+      <div class="agents-grid">
+        <div 
+          *ngFor="let ag of filteredAgents()" 
+          class="card agent-card cursor-pointer"
+          (click)="openAgentDetails(ag)"
+        >
+          <div class="agent-top">
+            <div class="os-icon">
+              <span class="badge badge-platform font-mono text-xs" *ngIf="ag.os_type === 'linux'">LNX</span>
+              <span class="badge badge-platform font-mono text-xs" *ngIf="ag.os_type === 'windows'">WIN</span>
+              <span class="badge badge-platform font-mono text-xs" *ngIf="ag.os_type === 'macos'">MAC</span>
+            </div>
+            <div class="agent-meta">
+              <div class="agent-name">{{ ag.name }}</div>
+              <div class="mono text-muted text-xs">ID: {{ ag.id }} • {{ ag.ip }}</div>
+            </div>
+            <span class="status-badge" [class.status-active]="ag.status === 'active'" [class.status-offline]="ag.status !== 'active'">
+              {{ ag.status | uppercase }}
+            </span>
+          </div>
+
+          <div class="agent-info-rows">
+            <div class="info-row">
+              <span class="text-muted">OS Platform:</span>
+              <span class="text-main truncate max-w-180">{{ ag.os }}</span>
+            </div>
+            <div class="info-row">
+              <span class="text-muted">Agent Engine:</span>
+              <span class="mono text-cyan">{{ ag.version }}</span>
+            </div>
+            <div class="info-row">
+              <span class="text-muted">Last Keepalive:</span>
+              <span class="mono text-xs">{{ ag.last_keepalive | date:'medium' }}</span>
+            </div>
+          </div>
+
+          <div class="agent-card-actions" (click)="$event.stopPropagation()">
+            <button class="btn btn-cyan btn-xs" (click)="openAgentDetails(ag)">Inspect</button>
+            <button class="btn btn-outline btn-xs" (click)="restartAgentFromFleet(ag)" title="Restart Agent Background Service">Restart</button>
+            <button class="btn btn-outline btn-xs" (click)="jumpToAgentTelemetry(ag)" title="View Live Telemetry Logs">Logs</button>
+            <button class="btn btn-outline btn-xs" (click)="jumpToAgentAlerts(ag)" title="View Security Alerts">Alerts</button>
+          </div>
+        </div>
+
+        <div *ngIf="filteredAgents().length === 0" class="col-span-full card text-center py-8 text-muted">
+          No endpoints match the current search query or filter selection.
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: DETECTION RULES ==================== -->
+    <section *ngIf="activeTab() === 'rules'" class="tab-content">
+      <div class="fleet-header">
+        <div>
+          <h2>Wazuh-Compatible Detection Rules</h2>
+          <p class="text-muted">Compiled and evaluated concurrently by the Rust Analysis Engine</p>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>RULE ID</th>
+                <th>LEVEL</th>
+                <th>RULE DESCRIPTION</th>
+                <th>REGEX PATTERN (COMPILED IN RUST)</th>
+                <th>GROUPS</th>
+                <th>MITRE ATT&CK</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of rules()">
+                <td class="mono text-cyan font-semibold">#{{ r.id }}</td>
+                <td><span [class]="'badge ' + getLevelBadgeClass(r.level)">LEVEL {{ r.level }}</span></td>
+                <td class="font-medium">{{ r.description }}</td>
+                <td class="mono text-muted text-xs">{{ r.regex_pattern }}</td>
+                <td>
+                  <span *ngFor="let g of r.groups" class="group-tag">{{ g }}</span>
+                </td>
+                <td>
+                  <span *ngIf="r.mitre" class="badge-mitre">
+                    {{ r.mitre.id }} ({{ r.mitre.technique }})
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: ATTACK SIMULATOR ==================== -->
+    <section *ngIf="activeTab() === 'simulator'" class="tab-content">
+      <div class="card simulator-banner">
+        <div class="sim-header-text">
+          <h2>Interactive Threat Simulation Console</h2>
+          <p class="text-muted">
+            Trigger real-world attack vectors against the SIEM. The Rust backend decodes the incoming telemetry,
+            evaluates detection rules in sub-millisecond time, and broadcasts live alerts over WebSockets to this dashboard!
+          </p>
+        </div>
+      </div>
+
+      <div class="sim-buttons-grid">
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-rose">AUTH-01</div>
+          <div class="sim-content">
+            <h3>SSH Brute-Force Attack</h3>
+            <p class="text-muted text-xs">Fires 5 rapid failed login attempts from external IP 198.51.100.44 to trigger stateful correlation Rule 5712 (Level 10).</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('ssh_brute_force')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-amber">FIM-02</div>
+          <div class="sim-content">
+            <h3>FIM /etc/shadow Tampering</h3>
+            <p class="text-muted text-xs">Simulates unauthorized modification of critical Linux security authentication files, triggering Level 12 FIM Alert.</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('fim_tamper')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-cyan">EXEC-03</div>
+          <div class="sim-content">
+            <h3>PowerShell Mimikatz Execution</h3>
+            <p class="text-muted text-xs">Generates encoded command execution simulating LSASS memory dump & credential harvesting on Windows Domain Controller.</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('mimikatz')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-rose">RANSOM-04</div>
+          <div class="sim-content">
+            <h3>Ransomware File Encryption</h3>
+            <p class="text-muted text-xs">Simulates high-velocity mass file renaming to .locked extensions, triggering Rule 70010 (Level 15 Critical).</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('ransomware')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-cyan">LOGON-05</div>
+          <div class="sim-content">
+            <h3>Windows Event 4625 (Logon Failure)</h3>
+            <p class="text-muted text-xs">Simulates repeated bad password authentication attempts captured by the Windows EventChannel collector.</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_event_4625')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-amber">REG-06</div>
+          <div class="sim-content">
+            <h3>Registry Run Key Tampering</h3>
+            <p class="text-muted text-xs">Simulates unauthorized persistence modification to HKLM Run/RunOnce key detected by the Registry Monitor.</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_registry_tamper')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-emerald">CIS-07</div>
+          <div class="sim-content">
+            <h3>Windows SCA Compliance Failure</h3>
+            <p class="text-muted text-xs">Simulates Security Configuration Assessment failure for disabled User Account Control (UAC EnableLUA).</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_sca_fail')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+
+        <div class="card sim-card">
+          <div class="sim-icon font-mono text-xs font-bold text-cyan">SVC-08</div>
+          <div class="sim-content">
+            <h3>Windows Event 7045 (Service Installed)</h3>
+            <p class="text-muted text-xs">Simulates rogue Windows Service installation for persistence and privilege escalation.</p>
+            <button class="btn btn-danger mt-3" [disabled]="simulating()" (click)="runSimulation('win_service_7045')">
+              Execute Attack Vector
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card sim-console mt-4" *ngIf="lastSimResult()">
+        <div class="console-header">
+          <span class="mono text-xs text-muted">SIMULATION TELEMETRY OUTPUT</span>
+        </div>
+        <div class="console-body mono text-cyan text-xs">
+          {{ lastSimResult() }}
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 6: AI SOC COPILOT ==================== -->
+    <section *ngIf="activeTab() === 'copilot'" class="tab-content copilot-section">
+      <div class="copilot-container card">
+        <!-- Copilot Header -->
+        <div class="copilot-header">
+          <div class="copilot-title-group">
+            <div class="ai-avatar-badge font-mono font-bold">AI</div>
+            <div>
+              <h2 class="copilot-title">Wazuh AI SOC Copilot & Threat Hunter</h2>
+              <p class="text-muted text-xs">Powered by Groq High-Speed Inference Engine &bull; Real-time analysis for endpoint EVOFOX</p>
+            </div>
+          </div>
+
+          <div class="copilot-controls">
+            <label class="text-xs text-muted mr-2">Groq Model:</label>
+            <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
+              <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
+            </select>
+            <span class="copilot-status-badge">
+              <span class="pulse-dot online"></span> ACTIVE
+            </span>
+          </div>
+        </div>
+
+        <!-- Quick Action Prompt Chips -->
+        <div class="copilot-prompts">
+          <span class="text-xs text-muted">QUICK INVESTIGATIONS:</span>
+          <button class="prompt-chip" (click)="sendCopilotMessage('Audit the security posture of laptop EVOFOX based on Defender, Firewall, and SCA checks.')">
+            Audit EVOFOX Posture
+          </button>
+          <button class="prompt-chip" (click)="sendCopilotMessage('Explain Windows EventID 5382 (Credential Vault read) and how to detect credential theft.')">
+            Explain EventID 5382
+          </button>
+          <button class="prompt-chip" (click)="sendCopilotMessage('Generate a PowerShell script to harden Windows Defender and block credential dumping.')">
+            Defender Hardening Script
+          </button>
+          <button class="prompt-chip" (click)="sendCopilotMessage('What are the most critical MITRE ATT&CK techniques observed in Windows endpoint logs?')">
+            MITRE Threat Matrix
+          </button>
+        </div>
+
+        <!-- Chat Stream Window -->
+        <div class="copilot-chat-window">
+          <div *ngFor="let msg of aiCopilotMessages()" class="chat-row" [class.user-row]="msg.sender === 'user'" [class.ai-row]="msg.sender === 'ai'">
+            <div class="chat-avatar font-mono text-xs font-bold" *ngIf="msg.sender === 'ai'">AI</div>
+            <div class="chat-bubble" [class.user-bubble]="msg.sender === 'user'" [class.ai-bubble]="msg.sender === 'ai'">
+              <div class="chat-meta">
+                <span class="chat-sender">{{ msg.sender === 'user' ? 'SOC ANALYST' : 'AI COPILOT' }}</span>
+                <span class="chat-model" *ngIf="msg.model">[{{ msg.model }}]</span>
+                <span class="chat-time">{{ msg.time }}</span>
+              </div>
+              <div class="chat-content">
+                <pre class="chat-text">{{ msg.text }}</pre>
+              </div>
+            </div>
+            <div class="chat-avatar user-avatar font-mono text-xs font-bold" *ngIf="msg.sender === 'user'">SOC</div>
+          </div>
+
+          <!-- Thinking Spinner -->
+          <div *ngIf="isCopilotThinking()" class="chat-row ai-row">
+            <div class="chat-avatar font-mono text-xs font-bold">AI</div>
+            <div class="chat-bubble ai-bubble thinking-bubble">
+              <div class="ai-pulse-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="text-xs text-cyan mono">Groq AI is analyzing telemetry & formulating response...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Copilot Input Bar -->
+        <div class="copilot-input-bar">
+          <input
+            type="text"
+            class="copilot-input"
+            [(ngModel)]="aiCopilotInput"
+            (keyup.enter)="sendCopilotMessage()"
+            placeholder="Ask AI Copilot anything about your endpoints, logs, MITRE techniques, or incident playbooks..."
+            [disabled]="isCopilotThinking()"
+          />
+          <button class="btn btn-ai" [disabled]="!aiCopilotInput().trim() || isCopilotThinking()" (click)="sendCopilotMessage()">
+            Send Prompt
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: MITRE ATT&CK MATRIX ==================== -->
+    <section *ngIf="activeTab() === 'mitre'" class="tab-content mitre-view">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+            MITRE ATT&CK Enterprise Matrix Navigator
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Interactive heat-map across 14 tactical phases, correlated with real-time SIEM alerts and Wazuh detection rules.
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="badge badge-critical font-mono" *ngIf="totalMitreAlerts() > 0">
+            {{ totalMitreAlerts() }} ACTIVE DETECTIONS
+          </div>
+          <button class="btn btn-outline btn-sm" (click)="loadMitreMatrix()">
+            Refresh Matrix
+          </button>
+        </div>
+      </div>
+
+      <!-- Search bar -->
+      <div class="card p-3 mb-4 flex items-center gap-3">
+        <input
+          type="text"
+          class="siem-input flex-1"
+          placeholder="Filter techniques by name or ID (e.g. T1110, Brute Force, Dumping)..."
+          [ngModel]="mitreSearchQuery()"
+          (ngModelChange)="mitreSearchQuery.set($event)"
+        />
+        <span class="text-xs text-muted mono">14 Tactics | 100% Wazuh Parity</span>
+      </div>
+
+      <!-- Matrix Grid -->
+      <div class="mitre-matrix-container">
+        <div class="mitre-columns-wrapper">
+          <div *ngFor="let col of filteredMitreMatrix()" class="mitre-tactic-col">
+            <div class="mitre-tactic-header">
+              <span class="tactic-name">{{ col.name }}</span>
+              <span class="tactic-id mono">{{ col.tactic_id }}</span>
+            </div>
+            <div class="mitre-techniques-list">
+              <div
+                *ngFor="let tech of col.techniques"
+                class="mitre-tech-card"
+                [class.has-alerts]="tech.alert_count > 0"
+                [class.high-severity]="tech.max_level >= 10"
+                (click)="selectedMitreTechnique.set(tech)"
+              >
+                <div class="tech-header">
+                  <span class="tech-id mono">{{ tech.id }}</span>
+                  <span class="tech-count-badge" *ngIf="tech.alert_count > 0">{{ tech.alert_count }}</span>
+                </div>
+                <div class="tech-title">{{ tech.name }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: VULNERABILITIES (CVE) ==================== -->
+    <section *ngIf="activeTab() === 'vulnerabilities'" class="tab-content">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Vulnerability Detector (CVE)
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Continuous CVE exposure scoring based on endpoint syscollector software inventories and vulnerability feeds.
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm flex items-center gap-2" [disabled]="isScanningVulns()" (click)="triggerVulnScanNow()">
+          <span class="spinner" *ngIf="isScanningVulns()"></span>
+          {{ isScanningVulns() ? 'Scanning Fleet...' : 'Trigger Vulnerability Scan' }}
+        </button>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="kpi-grid mb-4">
+        <div class="card kpi-card">
+          <div class="kpi-title">TOTAL CVEs</div>
+          <div class="kpi-value mono">{{ vulnStats().total }}</div>
+          <div class="kpi-footer text-muted">Active across all endpoints</div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">CRITICAL (CVSS 9.0+)</div>
+          <div class="kpi-value mono text-rose">{{ vulnStats().critical }}</div>
+          <div class="kpi-footer"><span class="badge badge-critical">Immediate Action Required</span></div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">HIGH (CVSS 7.0-8.9)</div>
+          <div class="kpi-value mono text-orange">{{ vulnStats().high }}</div>
+          <div class="kpi-footer text-muted">Patch scheduled</div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">MEDIUM / LOW</div>
+          <div class="kpi-value mono text-yellow">{{ vulnStats().medium + vulnStats().low }}</div>
+          <div class="kpi-footer text-muted">{{ vulnStats().medium }} medium, {{ vulnStats().low }} low</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="table-filter-bar mb-3">
+        <div class="filter-group">
+          <input
+            type="text"
+            class="siem-input"
+            placeholder="Search CVE ID, package, or description..."
+            [ngModel]="vulnSearchQuery()"
+            (ngModelChange)="vulnSearchQuery.set($event)"
+          />
+        </div>
+        <div class="btn-group">
+          <button class="filter-btn" [class.active]="vulnSeverityFilter() === 'all'" (click)="vulnSeverityFilter.set('all')">ALL</button>
+          <button class="filter-btn btn-crit" [class.active]="vulnSeverityFilter() === 'critical'" (click)="vulnSeverityFilter.set('critical')">CRITICAL</button>
+          <button class="filter-btn btn-hi" [class.active]="vulnSeverityFilter() === 'high'" (click)="vulnSeverityFilter.set('high')">HIGH</button>
+          <button class="filter-btn btn-med" [class.active]="vulnSeverityFilter() === 'medium'" (click)="vulnSeverityFilter.set('medium')">MEDIUM</button>
+        </div>
+      </div>
+
+      <!-- Vulnerabilities Table -->
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>CVE ID</th>
+                <th>SEVERITY</th>
+                <th>CVSS v3</th>
+                <th>AFFECTED PACKAGE</th>
+                <th>INSTALLED VERSION</th>
+                <th>FIXED IN</th>
+                <th>TARGET AGENT</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let v of filteredVulnerabilities()">
+                <td class="mono font-bold text-cyan">{{ v.cve }}</td>
+                <td>
+                  <span class="badge" [class.badge-critical]="v.severity === 'Critical'" [class.badge-high]="v.severity === 'High'" [class.badge-medium]="v.severity === 'Medium'" [class.badge-low]="v.severity === 'Low'">
+                    {{ v.severity | uppercase }}
+                  </span>
+                </td>
+                <td class="mono font-bold" [class.text-rose]="v.cvss_score >= 9.0" [class.text-orange]="v.cvss_score >= 7.0 && v.cvss_score < 9.0">{{ v.cvss_score }}</td>
+                <td class="mono font-semibold">{{ v.package_name }}</td>
+                <td class="mono text-muted text-xs">{{ v.installed_version }}</td>
+                <td class="mono text-emerald text-xs">{{ v.fixed_version || 'Vendor Patch Avail' }}</td>
+                <td class="mono text-dim">{{ v.agent_id }}</td>
+                <td>
+                  <span class="badge" [class.badge-critical]="v.status === 'active'" [class.badge-emerald]="v.status === 'resolved'">
+                    {{ v.status | uppercase }}
+                  </span>
+                </td>
+              </tr>
+              <tr *ngIf="filteredVulnerabilities().length === 0">
+                <td colspan="8" class="text-center py-6 text-muted">
+                  No vulnerabilities match the active filters or system is fully patched.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: REGULATORY COMPLIANCE ==================== -->
+    <section *ngIf="activeTab() === 'compliance'" class="tab-content">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            Regulatory Compliance Hub
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Continuous compliance posture audits against PCI DSS v4.0, HIPAA §164.312, NIST SP 800-53, GDPR, and SOC 2 / TSC.
+          </div>
+        </div>
+      </div>
+
+      <!-- Framework Tabs -->
+      <div class="compliance-nav-tabs mb-4">
+        <button
+          *ngFor="let fw of complianceFrameworks()"
+          class="comp-tab-btn"
+          [class.active]="selectedFramework() === fw.name"
+          (click)="selectedFramework.set(fw.name)"
+        >
+          <div class="comp-tab-name">{{ fw.name }}</div>
+          <div class="comp-tab-score mono" [class.text-emerald]="fw.score_percent >= 80" [class.text-yellow]="fw.score_percent < 80 && fw.score_percent >= 50" [class.text-rose]="fw.score_percent < 50">
+            {{ fw.score_percent }}% Pass
+          </div>
+        </button>
+      </div>
+
+      <!-- Active Framework Summary Card -->
+      <div *ngIf="selectedComplianceFramework() as activeFw" class="card p-4 mb-4">
+        <div class="flex justify-between items-center flex-wrap gap-4">
+          <div>
+            <h3 class="text-lg font-bold text-white mb-1">{{ activeFw.full_name }}</h3>
+            <div class="text-xs text-muted mono">Framework Version: {{ activeFw.version }}</div>
+          </div>
+          <div class="flex items-center gap-4">
+            <div class="text-right">
+              <div class="text-xs text-muted">COMPLIANCE SCORE</div>
+              <div class="text-2xl font-mono font-bold" [class.text-emerald]="activeFw.score_percent >= 80" [class.text-yellow]="activeFw.score_percent < 80 && activeFw.score_percent >= 50" [class.text-rose]="activeFw.score_percent < 50">
+                {{ activeFw.score_percent }}%
+              </div>
+            </div>
+            <div class="comp-score-ring">
+              <span class="mono text-sm font-bold">{{ activeFw.passed_count }}/{{ activeFw.total_requirements }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search & Requirements Table -->
+      <div class="card table-card" *ngIf="selectedComplianceFramework()">
+        <div class="p-3 border-b border-subtle flex justify-between items-center">
+          <input
+            type="text"
+            class="siem-input w-80"
+            placeholder="Search control title, ID, or description..."
+            [ngModel]="complianceSearchQuery()"
+            (ngModelChange)="complianceSearchQuery.set($event)"
+          />
+          <div class="text-xs text-muted mono">
+            Auditing controls via Wazuh Rule Analysis & FIM
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>CONTROL ID</th>
+                <th>TITLE</th>
+                <th>CONTROL DESCRIPTION</th>
+                <th>CORRELATED RULES</th>
+                <th>ALERTS DETECTED</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of filteredRequirements()">
+                <td class="mono font-bold text-cyan">{{ r.id }}</td>
+                <td class="font-semibold">{{ r.title }}</td>
+                <td class="text-xs text-muted max-w-md">{{ r.description }}</td>
+                <td>
+                  <span *ngFor="let rid of r.rule_ids" class="badge badge-subtle mr-1 mono text-xs">#{{ rid }}</span>
+                </td>
+                <td class="mono">
+                  <span [class.text-rose]="r.alerts_count > 0" [class.font-bold]="r.alerts_count > 0">
+                    {{ r.alerts_count }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [class.badge-emerald]="r.status === 'passed'" [class.badge-warning]="r.status === 'warning'" [class.badge-critical]="r.status === 'failed'">
+                    {{ r.status | uppercase }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: FILE INTEGRITY MONITORING (FIM) ==================== -->
+    <section *ngIf="activeTab() === 'fim'" class="tab-content">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/><path d="M9 11h6"/><path d="M9 7h2"/></svg>
+            File Integrity Monitoring (Syscheck / FIM)
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Real-time file and registry modification tracking, cryptographic hash checksum changes, and unified diff inspection.
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" (click)="loadFimSummary()">
+          Refresh Baseline
+        </button>
+      </div>
+
+      <!-- FIM Summary Cards -->
+      <div class="kpi-grid mb-4">
+        <div class="card kpi-card">
+          <div class="kpi-title">MONITORED FILES</div>
+          <div class="kpi-value mono text-cyan">{{ fimStats().total }}</div>
+          <div class="kpi-footer text-muted">Across all agent syscheck directories</div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">MODIFIED FILES</div>
+          <div class="kpi-value mono text-orange">{{ fimStats().modified }}</div>
+          <div class="kpi-footer"><span class="badge badge-warning">Checksum / Perm changes</span></div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">ADDED FILES</div>
+          <div class="kpi-value mono text-emerald">{{ fimStats().added }}</div>
+          <div class="kpi-footer text-muted">New files created in monitored paths</div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">DELETED FILES</div>
+          <div class="kpi-value mono text-rose">{{ fimStats().deleted }}</div>
+          <div class="kpi-footer text-muted">Removed from filesystem</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="table-filter-bar mb-3">
+        <div class="filter-group">
+          <input
+            type="text"
+            class="siem-input"
+            placeholder="Search by file path, agent, or hash..."
+            [ngModel]="fimSearchQuery()"
+            (ngModelChange)="fimSearchQuery.set($event)"
+          />
+        </div>
+        <div class="btn-group">
+          <button class="filter-btn" [class.active]="fimActionFilter() === 'all'" (click)="fimActionFilter.set('all')">ALL</button>
+          <button class="filter-btn btn-med" [class.active]="fimActionFilter() === 'Modified'" (click)="fimActionFilter.set('Modified')">MODIFIED</button>
+          <button class="filter-btn btn-crit" [class.active]="fimActionFilter() === 'Deleted'" (click)="fimActionFilter.set('Deleted')">DELETED</button>
+          <button class="filter-btn btn-lo" [class.active]="fimActionFilter() === 'Added'" (click)="fimActionFilter.set('Added')">ADDED</button>
+        </div>
+      </div>
+
+      <!-- FIM Changes Table -->
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TIMESTAMP</th>
+                <th>AGENT</th>
+                <th>ACTION</th>
+                <th>FILE PATH</th>
+                <th>SIZE</th>
+                <th>SHA256 CHECKSUM</th>
+                <th>DIFF INSPECTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let rec of filteredFimRecords()">
+                <td class="mono text-muted text-xs">{{ rec.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td class="mono font-semibold">{{ rec.agent_name }} ({{ rec.agent_id }})</td>
+                <td>
+                  <span class="badge" [class.badge-warning]="rec.action === 'Modified'" [class.badge-critical]="rec.action === 'Deleted'" [class.badge-emerald]="rec.action === 'Added'">
+                    {{ rec.action | uppercase }}
+                  </span>
+                </td>
+                <td class="mono text-cyan">{{ rec.path }}</td>
+                <td class="mono text-xs">{{ rec.size_bytes ? (rec.size_bytes | number) + ' B' : '-' }}</td>
+                <td class="mono text-xs text-muted">{{ rec.sha256 ? rec.sha256.substring(0, 16) + '...' : '-' }}</td>
+                <td>
+                  <button *ngIf="rec.diff" class="btn btn-outline btn-xs" (click)="selectedFimRecord.set(rec)">
+                    View Diff
+                  </button>
+                  <span *ngIf="!rec.diff" class="text-dim text-xs">No Diff</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: WAZUH LOGTEST CONSOLE ==================== -->
+    <section *ngIf="activeTab() === 'logtest'" class="tab-content">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Interactive Wazuh Logtest Console
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Live 3-Phase log testing matching upstream wazuh-logtest (Pre-decoding, Regex Decoding, and Rule Correlation).
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Sample Chips -->
+      <div class="flex gap-2 flex-wrap items-center mb-3">
+        <span class="text-xs text-muted font-bold">PRESET SAMPLES:</span>
+        <button class="prompt-chip" (click)="logtestInput.set('Oct 03 14:22:01 ubuntu-server sshd[28412]: Failed password for invalid user admin from 192.168.1.100 port 51234 ssh2')">
+          SSH Failed Login
+        </button>
+        <button class="prompt-chip" (click)="logtestInput.set('Oct 03 14:25:30 srv-prod sudo: pam_unix(sudo:auth): authentication failure; logname=uid=1000 euid=0 tty=/dev/pts/1 ruser=developer rhost= user=root')">
+          Sudo Auth Failure
+        </button>
+        <button class="prompt-chip" (click)="logtestInput.set('192.168.10.45 - - [03/Oct/2026:14:30:15 +0000] &quot;GET /etc/passwd HTTP/1.1&quot; 404 432 &quot;-&quot; &quot;sqlmap/1.7&quot;')">
+          Web Directory Traversal
+        </button>
+        <button class="prompt-chip" (click)="logtestInput.set('ossec: File \'/etc/shadow\' was modified. MD5 checksum changed.')">
+          FIM /etc/shadow Change
+        </button>
+      </div>
+
+      <!-- Input Card -->
+      <div class="card p-4 mb-4">
+        <label class="block text-xs font-bold text-muted uppercase tracking-wider mb-2">RAW LOG EVENT TO TEST:</label>
+        <textarea
+          rows="3"
+          class="siem-input w-full font-mono text-xs mb-3"
+          [ngModel]="logtestInput()"
+          (ngModelChange)="logtestInput.set($event)"
+          placeholder="Paste raw syslog, Windows eventchannel log, or web log here..."
+        ></textarea>
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-muted mono">Simulating src/analysisd/logtest.c engine pipeline</span>
+          <button class="btn btn-primary btn-sm flex items-center gap-2" [disabled]="isTestingLog()" (click)="runLogtestAction()">
+            <span class="spinner" *ngIf="isTestingLog()"></span>
+            {{ isTestingLog() ? 'Evaluating in Rust Engine...' : 'Run Wazuh Logtest' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 3-Phase Results -->
+      <div class="logtest-results-grid" *ngIf="logtestResult() as res">
+        <!-- Phase 1 Card -->
+        <div class="card logtest-phase-card">
+          <div class="phase-badge phase-1">Phase 1: Pre-decoding</div>
+          <div class="phase-body font-mono text-xs">
+            <div class="phase-row"><span class="k">Program:</span> <span class="v text-cyan">{{ res.predecoded_program_name || 'N/A' }}</span></div>
+            <div class="phase-row"><span class="k">Hostname:</span> <span class="v text-emerald">{{ res.predecoded_hostname || 'localhost' }}</span></div>
+            <div class="phase-row"><span class="k">Timestamp:</span> <span class="v text-muted">{{ res.predecoded_timestamp || 'Now' }}</span></div>
+            <div class="phase-row mt-2"><span class="k">Clean Log:</span> <div class="p-2 bg-dark-card rounded text-dim">{{ res.predecoded_log }}</div></div>
+          </div>
+        </div>
+
+        <!-- Phase 2 Card -->
+        <div class="card logtest-phase-card">
+          <div class="phase-badge phase-2">Phase 2: Decoding</div>
+          <div class="phase-body font-mono text-xs">
+            <div class="phase-row"><span class="k">Decoder:</span> <span class="v text-cyan font-bold">{{ res.decoder_name }}</span></div>
+            <div class="mt-2 text-xs font-bold text-muted">EXTRACTED FIELDS:</div>
+            <div class="extracted-fields-list mt-1">
+              <div *ngFor="let item of res.extracted_fields | keyvalue" class="field-pill">
+                <span class="text-muted">{{ item.key }}:</span>
+                <span class="text-white">{{ item.value }}</span>
+              </div>
+              <div *ngIf="(res.extracted_fields | keyvalue).length === 0" class="text-dim">
+                No extra dynamic regex fields extracted.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 3 Card -->
+        <div class="card logtest-phase-card">
+          <div class="phase-badge phase-3">Phase 3: Rule Matching</div>
+          <div class="phase-body font-mono text-xs">
+            <div *ngIf="res.matched_rule_id" class="matched-rule-box">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="badge" [class.badge-critical]="(res.matched_rule_level || 0) >= 10" [class.badge-high]="(res.matched_rule_level || 0) >= 7 && (res.matched_rule_level || 0) < 10" [class.badge-medium]="(res.matched_rule_level || 0) < 7">
+                  LEVEL {{ res.matched_rule_level }}
+                </span>
+                <span class="font-bold text-cyan">RULE #{{ res.matched_rule_id }}</span>
+              </div>
+              <div class="text-sm font-semibold text-white mb-2">{{ res.matched_rule_description }}</div>
+              <div class="flex gap-1 flex-wrap mb-2">
+                <span *ngFor="let g of res.matched_rule_groups" class="badge badge-subtle">{{ g }}</span>
+              </div>
+              <div *ngIf="res.mitre_attack as mitre" class="badge-mitre inline-block">
+                MITRE: {{ mitre.id }} ({{ mitre.technique }})
+              </div>
+            </div>
+            <div *ngIf="!res.matched_rule_id" class="text-muted py-4 text-center">
+              No alert rule triggered (Level 0 / Ignore).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Raw CLI Terminal Output Box -->
+      <div class="card p-4 mt-4" *ngIf="logtestOutput()">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-bold text-muted font-mono">WAZUH-LOGTEST CLI EMULATION OUTPUT:</span>
+        </div>
+        <pre class="raw-log-box mono">{{ logtestOutput() }}</pre>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: ACTIVE RESPONSE ==================== -->
+    <section *ngIf="activeTab() === 'active_response'" class="tab-content">
+      <div class="view-header flex justify-between items-center mb-4">
+        <div>
+          <h2 class="view-title flex items-center gap-2">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Active Response Management
+          </h2>
+          <div class="view-subtitle text-muted text-sm">
+            Automated and manual endpoint remediation scripts (firewall-drop, host-deny, user disable, route nullification).
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" (click)="loadActiveResponses()">
+          Refresh Actions
+        </button>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="kpi-grid mb-4">
+        <div class="card kpi-card">
+          <div class="kpi-title">CURRENTLY BLOCKED IPs</div>
+          <div class="kpi-value mono text-rose">{{ activeBlockedCount() }}</div>
+          <div class="kpi-footer"><span class="badge badge-critical">Active Firewall Drops</span></div>
+        </div>
+        <div class="card kpi-card">
+          <div class="kpi-title">TOTAL EXECUTED RESPONSES</div>
+          <div class="kpi-value mono text-cyan">{{ activeResponses().length }}</div>
+          <div class="kpi-footer text-muted">Audited in AR log history</div>
+        </div>
+      </div>
+
+      <!-- Manual Remediation Dispatch Form -->
+      <div class="card p-4 mb-4">
+        <h3 class="text-sm font-bold text-white mb-3">MANUAL ACTIVE RESPONSE DISPATCH</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs text-muted mb-1">TARGET IP ADDRESS</label>
+            <input type="text" class="siem-input w-full mono" [ngModel]="arTargetIp()" (ngModelChange)="arTargetIp.set($event)" placeholder="e.g. 198.51.100.42" />
+          </div>
+          <div>
+            <label class="block text-xs text-muted mb-1">TIMEOUT DURATION</label>
+            <select class="siem-input w-full" [ngModel]="arDuration()" (ngModelChange)="arDuration.set(+$event)">
+              <option [value]="600">10 Minutes (600s)</option>
+              <option [value]="3600">1 Hour (3600s)</option>
+              <option [value]="86400">24 Hours (86400s)</option>
+              <option [value]="0">Permanent (0s)</option>
+            </select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs text-muted mb-1">REASON / AUDIT RATIONALE</label>
+            <div class="flex gap-2">
+              <input type="text" class="siem-input flex-1" [ngModel]="arReason()" (ngModelChange)="arReason.set($event)" placeholder="Reason for blocking..." />
+              <button class="btn btn-danger btn-sm whitespace-nowrap" [disabled]="isBlocking()" (click)="blockIpAction()">
+                {{ isBlocking() ? 'Deploying Drop...' : 'Block IP Now' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Responses History Table -->
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th>TRIGGERED TIME</th>
+                <th>TARGET IP</th>
+                <th>COMMAND</th>
+                <th>AGENT</th>
+                <th>TRIGGER REASON</th>
+                <th>DURATION</th>
+                <th>STATUS</th>
+                <th>MANUAL RELEASE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let ar of activeResponses()">
+                <td class="mono text-muted text-xs">{{ ar.triggered_at | date:'yyyy-MM-dd HH:mm:ss' }}</td>
+                <td class="mono font-bold text-rose">{{ ar.target_ip }}</td>
+                <td class="mono text-cyan">{{ ar.command }}</td>
+                <td class="mono text-xs">{{ ar.agent_id }}</td>
+                <td class="text-xs text-muted">{{ ar.reason }}</td>
+                <td class="mono text-xs">{{ ar.duration_seconds }}s</td>
+                <td>
+                  <span class="badge" [class.badge-critical]="ar.status === 'Active'" [class.badge-subtle]="ar.status === 'Expired'" [class.badge-emerald]="ar.status === 'Released'">
+                    {{ ar.status | uppercase }}
+                  </span>
+                </td>
+                <td>
+                  <button *ngIf="ar.status === 'Active'" class="btn btn-outline btn-xs" (click)="unblockIpAction(ar.target_ip)">
+                    Unblock IP
+                  </button>
+                  <span *ngIf="ar.status !== 'Active'" class="text-dim text-xs">-</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: PARSER STUDIO (METHOD 2) ==================== -->
+    <section *ngIf="activeTab() === 'parsers'" class="tab-content">
+      <div class="card p-4 mb-4 flex justify-between items-center bg-gradient-to-r from-slate-900 to-indigo-950 border-indigo-800">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="badge badge-ai-glow">METHOD 2 AUTONOMOUS PARSING</span>
+            <span class="badge badge-emerald">ZERO LLM PER-LOG OVERHEAD</span>
+          </div>
+          <h2 class="text-xl font-black text-white tracking-wide">AI PARSER STUDIO & AUTONOMOUS RULES ENGINE</h2>
+          <p class="text-xs text-muted">
+            Structural Fingerprint Engine in Rust (&lt;500ns) + Async Cold-Path LLM Synthesis + Native Regex Execution (&lt;5µs)
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" (click)="loadParsers()">
+            ↻ Refresh Registry
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 Top KPI Cards -->
+      <div class="kpi-grid mb-4">
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TOTAL LEARNED PARSERS</span>
+            <span class="kpi-icon text-cyan">⚡</span>
+          </div>
+          <div class="kpi-value text-cyan">{{ parserStats()?.total_learned_parsers || parsers().length }}</div>
+          <div class="kpi-sub">Precompiled in Rust memory</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">ACTIVE INGESTION RULES</span>
+            <span class="kpi-icon text-emerald">🛡</span>
+          </div>
+          <div class="kpi-value text-emerald">{{ parserStats()?.active_parsers || parsers().length }}</div>
+          <div class="kpi-sub">Parsing live syslog & agent streams</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">MEAN EXECUTION LATENCY</span>
+            <span class="kpi-icon text-purple">⏱</span>
+          </div>
+          <div class="kpi-value text-purple">&lt; 4.8 µs</div>
+          <div class="kpi-sub">Native Rust regex (0ms AI delay)</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">NOVEL FORMATS IN QUEUE</span>
+            <span class="kpi-icon text-rose">🧠</span>
+          </div>
+          <div class="kpi-value text-rose">{{ unmatchedFingerprints().length }}</div>
+          <div class="kpi-sub">Buffering samples for AI synthesis</div>
+        </div>
+      </div>
+
+      <!-- Two-Column Grid: Registry Table (Left) + AI Studio Sandbox (Right) -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <!-- Left: Learned Parsers Registry Table (2 cols) -->
+        <div class="lg:col-span-2 flex flex-col gap-4">
+          <!-- Learned Parsers Table Card -->
+          <div class="card table-card">
+            <div class="p-3 border-b border-border flex justify-between items-center">
+              <div>
+                <h3 class="text-sm font-bold text-white">REUSABLE PARSER REGISTRY</h3>
+                <span class="text-xs text-muted">Permanent regex parsers automatically executed on matching fingerprints</span>
+              </div>
+              <input
+                type="text"
+                class="siem-input text-xs w-64"
+                placeholder="Search parsers by name, regex, field..."
+                [ngModel]="parserSearchQuery()"
+                (ngModelChange)="parserSearchQuery.set($event)"
+              />
+            </div>
+
+            <div class="table-wrap">
+              <table class="siem-table">
+                <thead>
+                  <tr>
+                    <th>NAME & FINGERPRINT</th>
+                    <th>COMPILED REGEX PATTERN</th>
+                    <th>EXTRACTED FIELDS</th>
+                    <th>CONFIDENCE</th>
+                    <th>HITS</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let p of filteredParsers()">
+                    <td>
+                      <div class="font-bold text-white text-xs">{{ p.name }}</div>
+                      <div class="mono text-xs text-cyan">0x{{ p.fingerprint.toString(16) }}</div>
+                      <div class="text-xs text-muted truncate max-w-xs" title="{{ p.fingerprint_signature }}">{{ p.fingerprint_signature }}</div>
+                    </td>
+                    <td>
+                      <div class="mono text-xs bg-slate-950 p-1.5 rounded border border-slate-800 text-emerald break-all max-w-md">
+                        {{ p.pattern }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="flex flex-wrap gap-1 max-w-xs">
+                        <span *ngFor="let f of p.fields" class="badge badge-subtle text-xs" title="{{ f.field_type }} - {{ f.ecs_target || f.name }}">
+                          {{ f.name }}:<span class="text-cyan">{{ f.field_type }}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge" [class.badge-emerald]="p.confidence >= 0.9" [class.badge-medium]="p.confidence < 0.9">
+                        {{ (p.confidence * 100) | number:'1.0-0' }}%
+                      </span>
+                    </td>
+                    <td class="mono font-bold text-cyan text-xs">
+                      {{ p.hit_count }}
+                    </td>
+                    <td>
+                      <button
+                        class="badge cursor-pointer"
+                        [class.badge-emerald]="p.status === 'Active'"
+                        [class.badge-subtle]="p.status !== 'Active'"
+                        (click)="toggleParserStatus(p)"
+                        title="Click to toggle status"
+                      >
+                        {{ p.status | uppercase }}
+                      </button>
+                    </td>
+                    <td>
+                      <div class="flex gap-1">
+                        <button class="btn btn-outline btn-xs" (click)="selectParserForTesting(p)" title="Test in sandbox">
+                          Test
+                        </button>
+                        <button class="btn btn-danger btn-xs" (click)="deleteParser(p.id)" title="Delete parser">
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr *ngIf="filteredParsers().length === 0">
+                    <td colspan="7" class="text-center text-muted p-6">
+                      No learned parsers found matching search criteria.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Unmatched Novel Fingerprints Accumulation Queue -->
+          <div class="card p-4">
+            <div class="flex justify-between items-center mb-3">
+              <div>
+                <h3 class="text-sm font-bold text-rose flex items-center gap-2">
+                  <span>COLD-PATH UNMATCHED FINGERPRINTS QUEUE</span>
+                  <span class="badge badge-rose">{{ unmatchedFingerprints().length }} PENDING</span>
+                </h3>
+                <span class="text-xs text-muted">Unknown log structures collecting samples for AI autonomous synthesis</span>
+              </div>
+            </div>
+
+            <div *ngIf="unmatchedFingerprints().length === 0" class="p-4 bg-slate-900/50 rounded border border-border text-center text-xs text-muted">
+              All incoming log streams are currently matching registered parsers. Zero unknown log formats in queue!
+            </div>
+
+            <div *ngFor="let uf of unmatchedFingerprints()" class="p-3 mb-2 bg-slate-900 rounded border border-slate-800 flex justify-between items-center">
+              <div class="flex-1 mr-4">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="mono text-xs text-cyan font-bold">0x{{ uf.fingerprint.toString(16) }}</span>
+                  <span class="badge badge-subtle text-xs">{{ uf.sample_count }} / 5 samples gathered</span>
+                  <span *ngIf="uf.ready_for_synthesis" class="badge badge-emerald text-xs">Ready for AI Synthesis</span>
+                </div>
+                <div class="mono text-xs text-muted break-all">{{ uf.signature }}</div>
+                <div *ngIf="uf.sample_previews.length > 0" class="mt-2 text-xs text-dim italic">
+                  Sample: "{{ uf.sample_previews[0] }}"
+                </div>
+              </div>
+              <button
+                class="btn btn-primary btn-xs whitespace-nowrap"
+                [disabled]="studioIsSynthesizing()"
+                (click)="triggerSynthesize(uf.fingerprint, uf.sample_previews)"
+              >
+                Synthesize with AI
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Interactive AI Parser Generator Sandbox (1 col) -->
+        <div class="card p-4 flex flex-col gap-3">
+          <div class="flex justify-between items-center border-b border-border pb-2">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                AI SYNTHESIS SANDBOX
+              </h3>
+              <span class="text-xs text-muted">Test samples, generate regex, and verify extraction</span>
+            </div>
+            <span class="badge badge-ai-glow">Groq 120B / Fast Rust</span>
+          </div>
+
+          <!-- Message Banner -->
+          <div *ngIf="studioMessage()" class="p-2.5 rounded text-xs bg-indigo-950/80 border border-indigo-800 text-indigo-200">
+            {{ studioMessage() }}
+          </div>
+
+          <!-- Sample Logs Input Area -->
+          <div>
+            <label class="block text-xs text-muted mb-1 font-bold">1. RAW LOG SAMPLES (1 PER LINE)</label>
+            <textarea
+              class="siem-input w-full mono text-xs font-mono"
+              rows="4"
+              placeholder="Paste 1-5 sample logs here..."
+              [ngModel]="studioInputSamples()"
+              (ngModelChange)="studioInputSamples.set($event)"
+            ></textarea>
+          </div>
+
+          <!-- Optional Custom Prompt Instructions -->
+          <div>
+            <label class="block text-xs text-muted mb-1 font-bold">2. CUSTOM AI INSTRUCTIONS (OPTIONAL)</label>
+            <input
+              type="text"
+              class="siem-input w-full text-xs"
+              placeholder="e.g. Map 'src' to source.ip and 'user' to user.name"
+              [ngModel]="studioCustomPrompt()"
+              (ngModelChange)="studioCustomPrompt.set($event)"
+            />
+          </div>
+
+          <!-- Synthesize Action Button -->
+          <button
+            class="btn btn-primary w-full text-sm font-bold py-2"
+            [disabled]="studioIsSynthesizing()"
+            (click)="triggerSynthesize()"
+          >
+            <span *ngIf="studioIsSynthesizing()">Synthesizing Reusable Parser...</span>
+            <span *ngIf="!studioIsSynthesizing()">✨ Synthesize Parser with AI</span>
+          </button>
+
+          <!-- Pattern Preview & Editor -->
+          <div class="mt-2">
+            <label class="block text-xs text-muted mb-1 font-bold">3. COMPILED REGEX PATTERN</label>
+            <input
+              type="text"
+              class="siem-input w-full mono text-xs text-emerald"
+              placeholder="^regex_pattern$"
+              [ngModel]="studioPattern()"
+              (ngModelChange)="studioPattern.set($event)"
+            />
+          </div>
+
+          <!-- Live Test Section -->
+          <div>
+            <label class="block text-xs text-muted mb-1 font-bold">4. TEST INGESTION LOG</label>
+            <div class="flex gap-2">
+              <input
+                type="text"
+                class="siem-input flex-1 mono text-xs"
+                placeholder="Log to test against regex..."
+                [ngModel]="studioTestLog()"
+                (ngModelChange)="studioTestLog.set($event)"
+              />
+              <button class="btn btn-outline btn-xs" [disabled]="studioIsTesting()" (click)="runParserTest()">
+                Run Test
+              </button>
+            </div>
+          </div>
+
+          <!-- Sandbox Test Results -->
+          <div *ngIf="studioTestResult()" class="p-3 bg-slate-950 rounded border border-slate-800 text-xs">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-bold" [class.text-emerald]="studioTestResult()!.success" [class.text-rose]="!studioTestResult()!.success">
+                {{ studioTestResult()!.success ? '✓ MATCH SUCCESSFUL' : '✕ NO MATCH' }}
+              </span>
+              <span class="mono text-cyan text-xs">
+                Execution: {{ studioTestResult()!.execution_time_us }} µs
+              </span>
+            </div>
+
+            <div *ngIf="studioTestResult()!.error" class="text-rose text-xs mb-2">
+              {{ studioTestResult()!.error }}
+            </div>
+
+            <div *ngIf="studioTestResult()!.success && studioTestResult()!.extracted_fields">
+              <span class="text-muted block text-xs mb-1">EXTRACTED CAPTURE GROUPS:</span>
+              <div class="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                <div *ngFor="let kv of studioTestResult()!.extracted_fields | keyvalue" class="p-1.5 bg-slate-900 rounded border border-slate-800">
+                  <div class="text-cyan font-bold text-xs">{{ kv.key }}</div>
+                  <div class="mono text-muted text-xs truncate" title="{{ kv.value }}">{{ kv.value }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Alert Inspection Modal -->
+  <div class="modal-backdrop" *ngIf="selectedAlert()" (click)="closeAlertDetails()">
+    <div class="modal-card card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span [class]="'badge ' + getLevelBadgeClass(selectedAlert()!.rule.level)">
+            LEVEL {{ selectedAlert()!.rule.level }}
+          </span>
+          <h3>Rule #{{ selectedAlert()!.rule.id }}: {{ selectedAlert()!.rule.description }}</h3>
+        </div>
+        <button class="close-btn" (click)="closeAlertDetails()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-col">
+            <span class="text-muted text-xs">AGENT NAME / IP</span>
+            <div class="text-main font-semibold">{{ selectedAlert()!.agent.name }} ({{ selectedAlert()!.agent.ip }})</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">LOG LOCATION</span>
+            <div class="mono text-cyan">{{ selectedAlert()!.location }}</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">TIMESTAMP</span>
+            <div class="mono text-main">{{ selectedAlert()!.timestamp | date:'medium' }}</div>
+          </div>
+          <div class="detail-col">
+            <span class="text-muted text-xs">MITRE ATT&CK</span>
+            <div class="badge-mitre" *ngIf="selectedAlert()!.rule.mitre">
+              {{ selectedAlert()!.rule.mitre?.id }} - {{ selectedAlert()!.rule.mitre?.technique }}
+            </div>
+            <div *ngIf="!selectedAlert()!.rule.mitre" class="text-dim">None</div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Decoded Telemetry Fields</div>
+        <div class="decoded-chips">
+          <div class="chip" *ngIf="selectedAlert()!.decoded.src_ip">
+            <span class="chip-key">SRC IP:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.src_ip }}</span>
+          </div>
+          <div class="chip" *ngIf="selectedAlert()!.decoded.user">
+            <span class="chip-key">USER:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.user }}</span>
+          </div>
+          <div class="chip" *ngIf="selectedAlert()!.decoded.file_path">
+            <span class="chip-key">FILE:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.file_path }}</span>
+          </div>
+          <div class="chip">
+            <span class="chip-key">DECODER:</span>
+            <span class="chip-val">{{ selectedAlert()!.decoded.decoder_name }}</span>
+          </div>
+        </div>
+
+        <!-- 1-Click Endpoint Active Response Remediation -->
+        <div class="active-response-actions mt-3 p-3 bg-dark-card border rounded flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-muted font-bold tracking-wider">ENDPOINT ACTIVE RESPONSE REMEDIATION:</span>
+            <span class="text-xs text-emerald mono" *ngIf="activeResponseStatus()">{{ activeResponseStatus() }}</span>
+          </div>
+          <div class="flex gap-2 flex-wrap items-center">
+            <button class="btn btn-danger btn-xs" *ngIf="selectedAlert()!.decoded.src_ip" (click)="executeActiveResponse('block_ip', selectedAlert()!.decoded.src_ip!, selectedAlert()!.agent.id)">
+              Block IP in Firewall (netsh)
+            </button>
+            <button class="btn btn-warning btn-xs" *ngIf="selectedAlert()!.decoded.file_path" (click)="executeActiveResponse('quarantine_file', selectedAlert()!.decoded.file_path!, selectedAlert()!.agent.id)">
+              Quarantine File
+            </button>
+            <button class="btn btn-outline btn-xs" *ngIf="selectedAlert()!.decoded.user" (click)="executeActiveResponse('disable_account', selectedAlert()!.decoded.user!, selectedAlert()!.agent.id)">
+              Disable User Account (net user)
+            </button>
+            <button class="btn btn-outline btn-xs" (click)="executeActiveResponse('kill_process', '4688', selectedAlert()!.agent.id)">
+              Terminate Process
+            </button>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Raw Log Payload</div>
+        <pre class="raw-log-box mono">{{ selectedAlert()!.full_log }}</pre>
+
+        <!-- AI SOC Threat Analysis Box -->
+        <div class="ai-analysis-container mt-4">
+          <div class="ai-box-header">
+            <div class="flex items-center gap-2">
+              <span class="ai-icon font-mono text-cyan">[AI]</span>
+              <span class="ai-title font-bold">Groq AI Threat Triage & Incident Analysis</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
+                <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
+              </select>
+              <button class="btn btn-ai btn-sm" [disabled]="isAnalyzingAi()" (click)="triggerAiAnalyzeForAlert(selectedAlert()!)">
+                <span class="spinner" *ngIf="isAnalyzingAi()"></span>
+                {{ isAnalyzingAi() ? 'Analyzing with Groq...' : 'Run AI Analysis' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div *ngIf="isAnalyzingAi()" class="ai-loading-box mt-3">
+            <div class="ai-pulse-bar"></div>
+            <div class="text-xs text-cyan mono mt-2">Groq AI is evaluating event payload, MITRE ATT&CK tactics, and compiling remediation playbooks...</div>
+          </div>
+
+          <!-- Error State -->
+          <div *ngIf="aiAnalysisError()" class="ai-error-box mt-2">
+            Error: {{ aiAnalysisError() }}
+          </div>
+
+          <!-- Analysis Results -->
+          <div *ngIf="currentAiAnalysis() as ai" class="ai-result-card mt-3">
+            <div class="ai-top-row">
+              <div class="ai-classification-badge" [class.badge-crit]="ai.severity === 'critical' || ai.severity === 'high'" [class.badge-med]="ai.severity === 'medium'" [class.badge-low]="ai.severity === 'low' || ai.severity === 'info'">
+                {{ ai.classification | uppercase }} ({{ ai.confidence_score }}% CONFIDENCE)
+              </div>
+              <div class="mono text-xs text-muted">Model: {{ ai.model_used }}</div>
+            </div>
+
+            <div class="ai-summary-text mt-2">{{ ai.summary }}</div>
+
+            <!-- MITRE & Impact Grid -->
+            <div class="ai-meta-grid mt-3">
+              <div class="ai-meta-item" *ngIf="ai.mitre_attack as mitre">
+                <span class="ai-meta-label">MITRE ATT&CK</span>
+                <span class="badge-mitre">{{ mitre.technique_id }} : {{ mitre.technique_name }} ({{ mitre.tactic }})</span>
+              </div>
+              <div class="ai-meta-item">
+                <span class="ai-meta-label">HOST / ASSET IMPACT</span>
+                <span class="text-xs text-white">{{ ai.impact }}</span>
+              </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="mt-3" *ngIf="ai.indicators.length">
+              <span class="ai-meta-label">KEY INDICATORS & OBSERVATIONS</span>
+              <ul class="ai-indicator-list">
+                <li *ngFor="let ind of ai.indicators">{{ ind }}</li>
+              </ul>
+            </div>
+
+            <!-- Remediation Playbook -->
+            <div class="mt-3" *ngIf="ai.remediation_commands.length">
+              <span class="ai-meta-label">AUTOMATED REMEDIATION PLAYBOOK (POWERSHELL)</span>
+              <div *ngFor="let cmd of ai.remediation_commands; let i = index" class="ai-cmd-box">
+                <code class="mono text-xs text-cyan">{{ cmd }}</code>
+                <button class="copy-cmd-btn" (click)="copyCommand(cmd, i)">
+                  {{ copiedCmdIndex() === i ? '✓ Copied' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Deep Technical Explanation -->
+            <div class="mt-3">
+              <span class="ai-meta-label">IN-DEPTH TECHNICAL EXPLANATION</span>
+              <p class="ai-explanation-text">{{ ai.explanation }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Raw JSON Alert Payload</div>
+        <pre class="raw-json-box mono">{{ selectedAlert() | json }}</pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="closeAlertDetails()">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw Telemetry Event Details Modal -->
+  <div class="modal-backdrop" *ngIf="selectedRawEvent()" (click)="closeRawEventDetails()">
+    <div class="modal-card card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span [class]="'badge ' + getSourceBadgeClass(selectedRawEvent()!.source)">
+            {{ getSourceLabel(selectedRawEvent()!.source) }}
+          </span>
+          <h3>Raw Telemetry Inspector</h3>
+        </div>
+        <button class="close-btn" (click)="closeRawEventDetails()">✕</button>
+      </div>
+
+      <div class="modal-body" *ngIf="selectedRawEvent() as ev">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">EVENT ID / TIMESTAMP</span>
+            <span class="detail-value mono text-cyan">{{ ev.id }}</span>
+            <span class="text-xs text-muted">{{ ev.timestamp | date:'yyyy-MM-dd HH:mm:ss.SSS' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">SOURCE</span>
+            <span class="detail-value">{{ ev.source | uppercase }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">ORIGIN AGENT</span>
+            <span class="detail-value agent-chip">{{ ev.agent_id }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">CHANNEL / LOCATION</span>
+            <span class="detail-value mono text-xs">{{ ev.location }}</span>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Event Message / Telemetry Stream</div>
+        <pre class="raw-json-box mono text-cyan">{{ ev.message }}</pre>
+
+        <!-- AI SOC Threat Analysis Box for Telemetry -->
+        <div class="ai-analysis-container mt-4">
+          <div class="ai-box-header">
+            <div class="flex items-center gap-2">
+              <span class="ai-icon font-mono text-cyan">[AI]</span>
+              <span class="ai-title font-bold">Groq AI Threat Triage & Incident Analysis</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <select class="ai-select" [ngModel]="selectedAiModel()" (ngModelChange)="selectedAiModel.set($event)">
+                <option *ngFor="let m of aiAvailableModels" [value]="m">{{ m }}</option>
+              </select>
+              <button class="btn btn-ai btn-sm" [disabled]="isAnalyzingAi()" (click)="triggerAiAnalyzeForRawEvent(ev)">
+                <span class="spinner" *ngIf="isAnalyzingAi()"></span>
+                {{ isAnalyzingAi() ? 'Analyzing with Groq...' : 'Run AI Analysis' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div *ngIf="isAnalyzingAi()" class="ai-loading-box mt-3">
+            <div class="ai-pulse-bar"></div>
+            <div class="text-xs text-cyan mono mt-2">Groq AI is evaluating event payload, MITRE ATT&CK tactics, and compiling remediation playbooks...</div>
+          </div>
+
+          <!-- Error State -->
+          <div *ngIf="aiAnalysisError()" class="ai-error-box mt-2">
+            Error: {{ aiAnalysisError() }}
+          </div>
+
+          <!-- Analysis Results -->
+          <div *ngIf="currentAiAnalysis() as ai" class="ai-result-card mt-3">
+            <div class="ai-top-row">
+              <div class="ai-classification-badge" [class.badge-crit]="ai.severity === 'critical' || ai.severity === 'high'" [class.badge-med]="ai.severity === 'medium'" [class.badge-low]="ai.severity === 'low' || ai.severity === 'info'">
+                {{ ai.classification | uppercase }} ({{ ai.confidence_score }}% CONFIDENCE)
+              </div>
+              <div class="mono text-xs text-muted">Model: {{ ai.model_used }}</div>
+            </div>
+
+            <div class="ai-summary-text mt-2">{{ ai.summary }}</div>
+
+            <!-- MITRE & Impact Grid -->
+            <div class="ai-meta-grid mt-3">
+              <div class="ai-meta-item" *ngIf="ai.mitre_attack as mitre">
+                <span class="ai-meta-label">MITRE ATT&CK</span>
+                <span class="badge-mitre">{{ mitre.technique_id }} : {{ mitre.technique_name }} ({{ mitre.tactic }})</span>
+              </div>
+              <div class="ai-meta-item">
+                <span class="ai-meta-label">HOST / ASSET IMPACT</span>
+                <span class="text-xs text-white">{{ ai.impact }}</span>
+              </div>
+            </div>
+
+            <!-- Indicators -->
+            <div class="mt-3" *ngIf="ai.indicators.length">
+              <span class="ai-meta-label">KEY INDICATORS & OBSERVATIONS</span>
+              <ul class="ai-indicator-list">
+                <li *ngFor="let ind of ai.indicators">{{ ind }}</li>
+              </ul>
+            </div>
+
+            <!-- Remediation Playbook -->
+            <div class="mt-3" *ngIf="ai.remediation_commands.length">
+              <span class="ai-meta-label">AUTOMATED REMEDIATION PLAYBOOK (POWERSHELL)</span>
+              <div *ngFor="let cmd of ai.remediation_commands; let i = index" class="ai-cmd-box">
+                <code class="mono text-xs text-cyan">{{ cmd }}</code>
+                <button class="copy-cmd-btn" (click)="copyCommand(cmd, i)">
+                  {{ copiedCmdIndex() === i ? '✓ Copied' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Deep Technical Explanation -->
+            <div class="mt-3">
+              <span class="ai-meta-label">IN-DEPTH TECHNICAL EXPLANATION</span>
+              <p class="ai-explanation-text">{{ ai.explanation }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title mt-4">Full Decoded Metadata</div>
+        <pre class="raw-json-box mono">{{ ev | json }}</pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="closeRawEventDetails()">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== AGENT DEEP-VIEW / DETAIL MODAL ==================== -->
+  <div class="modal-backdrop" *ngIf="selectedAgent() as ag" (click)="closeAgentDetails()">
+    <div class="modal-card card agent-detail-modal" (click)="$event.stopPropagation()">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div class="modal-title-area flex items-center gap-3">
+          <span class="badge badge-platform font-mono text-xs">
+            {{ ag.os_type | uppercase }}
+          </span>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="agent-modal-title">{{ ag.name }}</h3>
+              <span class="status-badge" [class.status-active]="ag.status === 'active'" [class.status-offline]="ag.status !== 'active'">
+                {{ ag.status | uppercase }}
+              </span>
+              <span class="badge badge-rust mono">{{ ag.version }}</span>
+            </div>
+            <div class="mono text-xs text-muted">ID: {{ ag.id }} &bull; IP: {{ ag.ip }} &bull; Last Keepalive: {{ ag.last_keepalive | date:'medium' }}</div>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-xs" (click)="restartAgentFromFleet(ag)" title="Dispatch Wazuh Service Restart">Restart Agent</button>
+          <button class="btn btn-outline btn-xs" (click)="triggerFimScanForAgent(ag)" title="Run FIM & Rootcheck Scan">FIM Scan</button>
+          <button class="btn btn-outline btn-xs" (click)="triggerScaAuditForAgent(ag)" title="Audit CIS Configuration Baseline">SCA Audit</button>
+          <button class="close-btn ml-2" (click)="closeAgentDetails()">✕</button>
+        </div>
+      </div>
+
+      <!-- Detail Modal Sub-Navigation Tabs -->
+      <div class="agent-modal-tabs">
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'specs'" (click)="setAgentDetailTab('specs')">
+          System Specs & Hardware
+        </button>
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'network_ports'" (click)="setAgentDetailTab('network_ports')">
+          Network & Open Ports
+        </button>
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'users_services'" (click)="setAgentDetailTab('users_services')">
+          Accounts & Services
+        </button>
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'sca'" (click)="setAgentDetailTab('sca')">
+          SCA CIS Compliance
+        </button>
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'fim'" (click)="setAgentDetailTab('fim')">
+          FIM & Persistence
+        </button>
+        <button class="agent-tab-btn" [class.active]="selectedAgentTab() === 'actions'" (click)="setAgentDetailTab('actions')">
+          Remote Control & Logs
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="modal-body">
+        <!-- TAB 1: SPECS & HARDWARE -->
+        <div *ngIf="selectedAgentTab() === 'specs'" class="tab-panel">
+          <div *ngIf="selectedAgentInventory() as inv" class="inventory-grid mb-3">
+            <div class="inv-kpi card">
+              <div class="inv-label">CPU ARCHITECTURE & CORES</div>
+              <div class="inv-val mono text-cyan">{{ inv.arch }} &bull; {{ inv.cpu_cores }} Cores</div>
+              <div class="inv-sub text-muted">Multi-threaded analysis</div>
+            </div>
+            <div class="inv-kpi card">
+              <div class="inv-label">TOTAL PHYSICAL RAM</div>
+              <div class="inv-val mono text-emerald">{{ inv.ram_mb | number }} MB</div>
+              <div class="inv-sub text-muted">{{ (inv.ram_mb / 1024) | number:'1.1-1' }} GB Installed</div>
+            </div>
+            <div class="inv-kpi card">
+              <div class="inv-label">RUNNING PROCESSES</div>
+              <div class="inv-val mono text-main">{{ inv.running_processes_count }} Active</div>
+              <div class="inv-sub text-muted">Process tracking active</div>
+            </div>
+            <div class="inv-kpi card">
+              <div class="inv-label">LISTENING PORTS</div>
+              <div class="inv-val mono text-main">{{ inv.open_ports_count }} Ports</div>
+              <div class="inv-sub text-muted">TCP sockets bound</div>
+            </div>
+          </div>
+
+          <div class="card p-4">
+            <div class="section-title">Endpoint Operating System & Runtime</div>
+            <div class="meta-grid">
+              <div class="meta-item"><span class="meta-label">Hostname:</span><span class="mono text-cyan">{{ ag.name }}</span></div>
+              <div class="meta-item"><span class="meta-label">Operating System:</span><span class="text-main">{{ ag.os }}</span></div>
+              <div class="meta-item"><span class="meta-label">Agent ID:</span><span class="mono text-muted">{{ ag.id }}</span></div>
+              <div class="meta-item"><span class="meta-label">Registered IP:</span><span class="mono text-cyan">{{ ag.ip }}</span></div>
+              <div class="meta-item"><span class="meta-label">Agent Engine:</span><span class="badge badge-rust mono">{{ ag.version }}</span></div>
+              <div class="meta-item"><span class="meta-label">Status:</span><span class="status-badge" [class.status-active]="ag.status === 'active'">{{ ag.status | uppercase }}</span></div>
+              <div class="meta-item"><span class="meta-label">Collector Daemons:</span><span class="text-emerald mono">FIM, SCA, Syscollector, WinLog, Execd Active</span></div>
+              <div class="meta-item"><span class="meta-label">Last Keepalive:</span><span class="mono text-xs">{{ ag.last_keepalive | date:'medium' }}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: NETWORK & PORTS -->
+        <div *ngIf="selectedAgentTab() === 'network_ports'" class="tab-panel">
+          <div *ngIf="selectedAgentInventory() as inv">
+            <div class="section-title mb-2">Network Interfaces & IP Bindings</div>
+            <div class="card mb-4 p-3">
+              <ul class="clean-list">
+                <li *ngFor="let net of inv.network_adapters" class="mono text-xs py-1.5 border-b border-subtle">
+                  • {{ net }}
+                </li>
+              </ul>
+            </div>
+
+            <div class="section-title mb-2">Listening TCP/UDP Ports (Syscollector Socket Scan)</div>
+            <div class="card p-3">
+              <div class="table-wrap">
+                <table class="siem-table text-xs">
+                  <thead>
+                    <tr>
+                      <th>LOCAL ADDRESS / PORT</th>
+                      <th>PROTOCOL</th>
+                      <th>SERVICE DESCRIPTION</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let port of inv.listening_ports">
+                      <td class="mono text-cyan">{{ port }}</td>
+                      <td class="mono">TCP</td>
+                      <td class="text-muted">Active Listening Daemon</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: USERS & SERVICES -->
+        <div *ngIf="selectedAgentTab() === 'users_services'" class="tab-panel">
+          <div *ngIf="selectedAgentInventory() as inv">
+            <div class="grid-2col gap-4">
+              <div>
+                <div class="section-title mb-2">Local User Accounts Detected ({{ inv.users_count }})</div>
+                <div class="card p-3">
+                  <div *ngFor="let user of inv.local_users" class="account-item py-2 border-b border-subtle flex items-center justify-between">
+                    <span class="mono text-xs">{{ user }}</span>
+                    <span class="badge badge-low text-xs">Local Account</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="section-title mb-2">Active Services & Daemons ({{ inv.services_count }})</div>
+                <div class="card p-3">
+                  <div *ngFor="let svc of inv.active_services" class="svc-item py-1.5 border-b border-subtle flex items-center justify-between">
+                    <span class="mono text-xs text-main">{{ svc }}</span>
+                    <span class="text-emerald text-xs font-bold">RUNNING</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-title mt-4 mb-2">Installed Software Applications ({{ inv.installed_packages_count }})</div>
+            <div class="card p-3">
+              <div class="flex flex-wrap gap-2">
+                <span *ngFor="let app of inv.installed_software" class="app-chip mono text-xs">
+                  {{ app }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: SCA CIS COMPLIANCE -->
+        <div *ngIf="selectedAgentTab() === 'sca'" class="tab-panel">
+          <div class="sca-summary-card card mb-4 p-4 flex items-center justify-between">
+            <div>
+              <div class="text-xs text-muted font-bold">CIS BENCHMARK COMPLIANCE POSTURE</div>
+              <h3 class="text-emerald text-xl font-bold mt-1">100% Security Baseline Hardened</h3>
+              <p class="text-xs text-muted">Evaluated against Wazuh CIS Windows Benchmark (cis_win11_enterprise)</p>
+            </div>
+            <div class="sca-score-circle">
+              <span class="score-val text-emerald">8/8</span>
+              <span class="score-lbl text-xs text-muted">PASS</span>
+            </div>
+          </div>
+
+          <div class="section-title mb-2">Evaluated CIS Security Baseline Checks</div>
+          <div class="card p-2">
+            <div *ngFor="let check of selectedAgentScaChecks()" class="sca-check-row p-3 border-b border-subtle flex items-center justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="mono text-xs text-cyan">CIS-{{ check.check_id }}</span>
+                  <span class="text-sm font-semibold text-main">{{ check.title }}</span>
+                </div>
+                <div class="text-xs text-muted mt-1">Registry Policy & Account Lockdown Validation</div>
+              </div>
+              <span class="badge badge-emerald text-xs font-bold">
+                ✓ {{ check.status | uppercase }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: FIM & PERSISTENCE -->
+        <div *ngIf="selectedAgentTab() === 'fim'" class="tab-panel">
+          <!-- FIM On-Demand Action & Status Card -->
+          <div class="card mb-4 p-4 border border-cyan/30 flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-main">File Integrity Monitoring Engine</span>
+                <span class="badge badge-warning text-xs font-bold" *ngIf="isFimScanning()">SCANNING HOST...</span>
+                <span [class]="'badge text-xs font-bold ' + selectedAgentFimSummary().badgeClass" *ngIf="!isFimScanning()">
+                  {{ selectedAgentFimSummary().badgeText }}
+                </span>
+              </div>
+              <div class="text-xs text-muted mt-1" *ngIf="selectedAgentFimSummary().lastScanTime">
+                Last Run: <span class="mono text-cyan">{{ selectedAgentFimSummary().lastScanTime }}</span> &bull; 
+                <span [class.text-rose]="selectedAgentFimSummary().totalChanges > 0" [class.font-bold]="selectedAgentFimSummary().totalChanges > 0">
+                  {{ selectedAgentFimSummary().statusText }}
+                </span>
+              </div>
+              <div class="text-xs text-muted mt-1" *ngIf="!selectedAgentFimSummary().lastScanTime">
+                Tracks file checksums, NTFS ADS alternate data streams, and 16 Windows persistence hives in real time.
+              </div>
+            </div>
+            <button class="btn btn-cyan btn-sm flex items-center gap-2" [disabled]="isFimScanning()" (click)="triggerFimScanForAgent(ag)">
+              <span class="spinner" *ngIf="isFimScanning()"></span>
+              {{ isFimScanning() ? 'Scanning Files & Registry...' : '⚡ Trigger FIM Scan Now' }}
+            </button>
+          </div>
+
+          <div class="card mb-4 p-4">
+            <div class="section-title mb-2">Monitored System Directories (Real-Time ReadDirectoryChangesW)</div>
+            <div class="meta-grid">
+              <div class="meta-item"><span class="meta-label">System32:</span><span class="mono text-cyan">C:\Windows\System32 (Drivers, DLLs, EXEs)</span></div>
+              <div class="meta-item"><span class="meta-label">SysWOW64:</span><span class="mono text-cyan">C:\Windows\SysWOW64 (32-bit binaries)</span></div>
+              <div class="meta-item"><span class="meta-label">Temp:</span><span class="mono text-cyan">C:\Users\*\AppData\Local\Temp</span></div>
+              <div class="meta-item"><span class="meta-label">NTFS ADS Rootcheck:</span><span class="text-emerald font-bold">ACTIVE (:Zone.Identifier, Alternate Streams)</span></div>
+            </div>
+          </div>
+
+          <div class="section-title mb-2">Monitored Windows Persistence Registry Hives (16 Hives)</div>
+          <div class="card p-3">
+            <div class="grid-2col gap-2">
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SYSTEM\CurrentControlSet\Services</div>
+              <div class="mono text-xs text-muted py-1 border-b border-subtle">&bull; HKLM\SOFTWARE\Microsoft\Active Setup\Installed Components</div>
+            </div>
+          </div>
+
+          <!-- Live FIM Telemetry Logs -->
+          <div class="section-title mb-2 mt-4">Live FIM & Syscheck Telemetry Stream ({{ selectedAgentFimEvents().length }} Events)</div>
+          <div class="card p-3">
+            <div *ngIf="selectedAgentFimEvents().length === 0" class="text-xs text-muted py-4 text-center">
+              No FIM integrity alerts recorded yet. Click "Trigger FIM Scan Now" above to initiate an audit.
+            </div>
+            <div *ngFor="let ev of selectedAgentFimEvents().slice(0, 10)" class="p-2 border-b border-subtle flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="badge badge-cyan text-xs mono">{{ ev.location }}</span>
+                <span class="text-main font-mono">{{ ev.message }}</span>
+              </div>
+              <span class="mono text-muted text-xs whitespace-nowrap">{{ ev.timestamp | date:'mediumTime' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 6: REMOTE ACTIONS & LOGS -->
+        <div *ngIf="selectedAgentTab() === 'actions'" class="tab-panel">
+          <div class="card mb-4 p-4">
+            <div class="section-title mb-3">Execute Direct Remote Active Response on {{ ag.name }}</div>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button class="btn btn-outline btn-sm" (click)="restartAgentFromFleet(ag)">Restart Agent Service</button>
+              <button class="btn btn-outline btn-sm" (click)="triggerFimScanForAgent(ag)">Run FIM Integrity Scan</button>
+              <button class="btn btn-outline btn-sm" (click)="triggerScaAuditForAgent(ag)">Run CIS SCA Compliance Audit</button>
+              <button class="btn btn-rose btn-sm" (click)="executeActiveResponse('block_ip', ag.ip, ag.id)">Block Host IP (Firewall)</button>
+            </div>
+            <p *ngIf="activeResponseStatus()" class="mono text-xs text-cyan mt-2">{{ activeResponseStatus() }}</p>
+          </div>
+
+          <div class="card p-4">
+            <div class="section-title mb-3">Cross-Dashboard Log & Alert Drilldown</div>
+            <div class="flex gap-3">
+              <button class="btn btn-cyan" (click)="jumpToAgentTelemetry(ag)">View Live Telemetry Stream for {{ ag.name }}</button>
+              <button class="btn btn-primary" (click)="jumpToAgentAlerts(ag)">View All Security Alerts for {{ ag.name }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="modal-footer flex justify-between items-center">
+        <div class="mono text-xs text-muted">
+          Agent Status: <span class="text-emerald font-bold">Synchronized</span> &bull; Engine: <span class="text-cyan">v4.14.7-rust</span>
+        </div>
+        <button class="btn btn-outline" (click)="closeAgentDetails()">Close Modal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent Deployment Wizard Modal -->
+  <div class="modal-backdrop" *ngIf="showDeployModal()" (click)="closeDeployModal()">
+    <div class="modal-card card deploy-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span class="badge badge-high">DEPLOYMENT WIZARD</span>
+          <h3>Deploy Next-Gen Wazuh Agent</h3>
+        </div>
+        <button class="close-btn" (click)="closeDeployModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="text-muted text-sm mb-4">
+          Select target OS, configure manager endpoint, and copy the automated enrollment command.
+        </p>
+
+        <!-- OS Selection Buttons -->
+        <div class="os-selector mb-4">
+          <button class="os-btn" [class.active]="deployOs() === 'linux'" (click)="selectDeployOs('linux')">
+            <span class="os-tag font-mono font-bold text-xs">LNX</span>
+            <span class="os-label">Linux (DEB / RPM)</span>
+          </button>
+          <button class="os-btn" [class.active]="deployOs() === 'windows'" (click)="selectDeployOs('windows')">
+            <span class="os-tag font-mono font-bold text-xs">WIN</span>
+            <span class="os-label">Windows (MSI / EXE)</span>
+          </button>
+          <button class="os-btn" [class.active]="deployOs() === 'macos'" (click)="selectDeployOs('macos')">
+            <span class="os-tag font-mono font-bold text-xs">MAC</span>
+            <span class="os-label">macOS (PKG)</span>
+          </button>
+        </div>
+
+        <!-- Linux Architecture & Package Selection (Matching Wazuh Dashboard) -->
+        <div class="mb-4" *ngIf="deployOs() === 'linux'">
+          <div class="text-xs text-muted font-bold mb-2 uppercase tracking-wide">Select Architecture & Package Format:</div>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="deployLinuxPkgType() === 'deb-amd64'" 
+              [class.btn-outline]="deployLinuxPkgType() !== 'deb-amd64'"
+              (click)="deployLinuxPkgType.set('deb-amd64')">
+              DEB amd64 (Ubuntu / Debian x86_64)
+            </button>
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="deployLinuxPkgType() === 'rpm-amd64'" 
+              [class.btn-outline]="deployLinuxPkgType() !== 'rpm-amd64'"
+              (click)="deployLinuxPkgType.set('rpm-amd64')">
+              RPM amd64 (RHEL / CentOS / Rocky x86_64)
+            </button>
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="deployLinuxPkgType() === 'deb-arm64'" 
+              [class.btn-outline]="deployLinuxPkgType() !== 'deb-arm64'"
+              (click)="deployLinuxPkgType.set('deb-arm64')">
+              DEB arm64 (Ubuntu / Debian ARM)
+            </button>
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="deployLinuxPkgType() === 'rpm-arm64'" 
+              [class.btn-outline]="deployLinuxPkgType() !== 'rpm-arm64'"
+              (click)="deployLinuxPkgType.set('rpm-arm64')">
+              RPM aarch64 (RHEL / Rocky ARM)
+            </button>
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="deployLinuxPkgType() === 'universal'" 
+              [class.btn-outline]="deployLinuxPkgType() !== 'universal'"
+              (click)="deployLinuxPkgType.set('universal')">
+              Universal Script (install.sh)
+            </button>
+          </div>
+        </div>
+
+        <!-- Configuration Inputs -->
+        <div class="form-grid mb-4">
+          <div class="form-group">
+            <label class="text-xs text-muted">SIEM Manager Endpoint</label>
+            <input type="text" class="input-text" [(ngModel)]="deployManagerUrl">
+          </div>
+          <div class="form-group">
+            <label class="text-xs text-muted">Agent Hostname / ID</label>
+            <input type="text" class="input-text" [(ngModel)]="deployAgentName">
+          </div>
+          <div class="form-group">
+            <label class="text-xs text-muted">Agent Group</label>
+            <input type="text" class="input-text" [(ngModel)]="deployGroup">
+          </div>
+        </div>
+
+        <!-- Windows Mode Toggle -->
+        <div class="flex items-center justify-between mb-2" *ngIf="deployOs() === 'windows'">
+          <div class="section-title mb-0">Windows Service Mode</div>
+          <div class="flex gap-2">
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="winInstallMode() === 'auto-elevate'" 
+              [class.btn-outline]="winInstallMode() !== 'auto-elevate'"
+              (click)="winInstallMode.set('auto-elevate')">
+              Auto-Elevate (Recommended)
+            </button>
+            <button 
+              type="button"
+              class="btn btn-xs" 
+              [class.btn-cyan]="winInstallMode() === 'admin-ps'" 
+              [class.btn-outline]="winInstallMode() !== 'admin-ps'"
+              (click)="winInstallMode.set('admin-ps')">
+              Admin PowerShell
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 1: Install Command -->
+        <div class="mb-3">
+          <div class="section-title text-cyan mb-1 flex items-center justify-between">
+            <span>STEP 1: INSTALL THE AGENT</span>
+            <span class="text-xs text-muted font-mono" *ngIf="deployOs() === 'linux'">
+              {{ deployLinuxPkgType() === 'universal' ? 'Automated Distro Installer' : (deployLinuxPkgType().startsWith('deb') ? 'dpkg Package Manager' : 'rpm Package Manager') }}
+            </span>
+          </div>
+          <div class="command-box">
+            <pre class="mono text-xs text-cyan" style="white-space: pre-wrap; word-break: break-all; max-height: 140px; overflow-y: auto;">{{ deployInstallCommand() }}</pre>
+            <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployCommand()">
+              {{ copied() ? '✓ Copied!' : 'Copy Command' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: Start Agent Command -->
+        <div class="mb-3">
+          <div class="section-title text-cyan mb-1">STEP 2: START THE AGENT</div>
+          <div class="command-box">
+            <pre class="mono text-xs text-emerald" style="white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto;">{{ deployStartCommand() }}</pre>
+            <button class="btn btn-outline btn-sm copy-btn" (click)="copyDeployStartCommand()">
+              {{ copiedStart() ? '✓ Copied!' : 'Copy Command' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Linux Management Cheatsheet -->
+        <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'linux'">
+          <div class="text-xs text-muted mono">
+            <span class="text-cyan font-bold">LINUX AGENT CONTROL CHEATSHEET:</span><br/>
+            &bull; Status Check: <code class="text-cyan">sudo systemctl status wazuh-rust-agent</code><br/>
+            &bull; Daemon CLI: <code class="text-cyan">wazuh-control status-service</code><br/>
+            &bull; Restart: <code class="text-cyan">sudo systemctl restart wazuh-rust-agent</code><br/>
+            &bull; View Live Telemetry: <code class="text-cyan">journalctl -u wazuh-rust-agent -f</code>
+          </div>
+        </div>
+
+        <!-- Windows Management Cheatsheet -->
+        <div class="mt-3 p-3 bg-dark-card border rounded" *ngIf="deployOs() === 'windows'">
+          <div class="text-xs text-muted mono">
+            <span class="text-cyan font-bold">WINDOWS SERVICE MANAGEMENT CLI:</span><br/>
+            &bull; Start Service: <code class="text-cyan">net start WazuhRustSvc</code><br/>
+            &bull; Stop Service: <code class="text-cyan">net stop WazuhRustSvc</code><br/>
+            &bull; Check Status: <code class="text-cyan">sc query WazuhRustSvc</code><br/>
+            &bull; Uninstall: <code class="text-cyan">.\siem-agent.exe uninstall-service</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary" *ngIf="deployOs() === 'windows'" (click)="downloadBatScript()">Download 1-Click .BAT</button>
+        <button class="btn btn-cyan" (click)="downloadDeployScript()">Download Deployment Script</button>
+        <button class="btn btn-outline" (click)="closeDeployModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MITRE Technique Details Modal -->
+  <div class="modal-backdrop" *ngIf="selectedMitreTechnique() as tech" (click)="selectedMitreTechnique.set(null)">
+    <div class="modal-card card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span class="badge badge-mitre">{{ tech.id }}</span>
+          <h3>{{ tech.name }}</h3>
+        </div>
+        <button class="close-btn" (click)="selectedMitreTechnique.set(null)">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-4">
+          <span class="detail-label">TECHNIQUE DESCRIPTION</span>
+          <p class="text-sm text-white mt-1">{{ tech.description }}</p>
+        </div>
+        <div class="detail-grid mb-4">
+          <div class="detail-item">
+            <span class="detail-label">ACTIVE ALERT DETECTIONS</span>
+            <span class="detail-value mono font-bold" [class.text-rose]="tech.alert_count > 0">{{ tech.alert_count }} Events</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">MAX SEVERITY LEVEL</span>
+            <span class="detail-value mono" [class.text-rose]="tech.max_level >= 10">Level {{ tech.max_level }}</span>
+          </div>
+        </div>
+        <div class="mb-4" *ngIf="tech.subtechniques.length > 0">
+          <span class="detail-label">SUB-TECHNIQUES (MITRE ATT&CK Enterprise)</span>
+          <div class="flex gap-2 flex-wrap mt-2">
+            <span *ngFor="let sub of tech.subtechniques" class="badge badge-subtle mono text-xs">{{ sub }}</span>
+          </div>
+        </div>
+        <div class="p-3 bg-dark-card rounded border border-subtle">
+          <span class="text-xs font-bold text-cyan mono">RECOMMENDED DEFENDER MITIGATION:</span>
+          <p class="text-xs text-muted mt-1">
+            Enforce multi-factor authentication (MFA), audit process injection APIs via Sysmon event ID 8, and deploy automated active response firewall drops on multiple authentication failures.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="selectedMitreTechnique.set(null)">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIM Unified Diff Inspector Modal -->
+  <div class="modal-backdrop" *ngIf="selectedFimRecord() as fim" (click)="selectedFimRecord.set(null)">
+    <div class="modal-card card max-w-3xl" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <span class="badge" [class.badge-warning]="fim.action === 'Modified'" [class.badge-critical]="fim.action === 'Deleted'" [class.badge-emerald]="fim.action === 'Added'">
+            {{ fim.action | uppercase }}
+          </span>
+          <h3 class="mono text-sm">{{ fim.path }}</h3>
+        </div>
+        <button class="close-btn" (click)="selectedFimRecord.set(null)">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-grid mb-3">
+          <div class="detail-item">
+            <span class="detail-label">AGENT</span>
+            <span class="detail-value mono">{{ fim.agent_name }} ({{ fim.agent_id }})</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">TIMESTAMP</span>
+            <span class="detail-value mono text-xs">{{ fim.timestamp | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+          </div>
+          <div class="detail-item" *ngIf="fim.size_bytes">
+            <span class="detail-label">FILE SIZE</span>
+            <span class="detail-value mono text-xs">{{ fim.size_bytes | number }} Bytes</span>
+          </div>
+          <div class="detail-item" *ngIf="fim.sha256">
+            <span class="detail-label">SHA256 CHECKSUM</span>
+            <span class="detail-value mono text-xs text-muted">{{ fim.sha256 }}</span>
+          </div>
+        </div>
+        <div class="section-title mb-2">Unified Side-by-Side Diff Inspection</div>
+        <pre class="raw-log-box mono diff-box text-xs">{{ fim.diff || 'No text differences available for this change.' }}</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="selectedFimRecord.set(null)">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== NEXT PAGE: AMIX DEFENSE MATRIX ==================== -->
+<app-amix-home *ngIf="activeTab() === 'amix'" (backToSoc)="switchTab('dashboard')" (navigateTab)="switchTab($any($event))"></app-amix-home>
+
+

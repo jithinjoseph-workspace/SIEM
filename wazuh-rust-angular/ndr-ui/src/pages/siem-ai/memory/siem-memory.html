@@ -1,0 +1,73 @@
+<div class="p-6 w-full max-w-[1400px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="BrainIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      Security Memory
+    </h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      What your team decided before and why: closed cases and alert-triage decisions, kept for
+      {{ data()?.retention_years ?? 7 }} years. When similar activity comes back, SIEM Alert Triage shows these as
+      "Seen before". It is context, never an automatic verdict.
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" *ngIf="data() as d">
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block">Lessons kept</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ d.total | number }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+      <span class="text-xs text-slate-400 block">Remembered since</span>
+      <span class="text-2xl font-bold text-white mt-1 block">{{ when(d.oldest) }}</span>
+    </div>
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 lg:col-span-2">
+      <span class="text-xs text-slate-400 block mb-1">By outcome</span>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <span *ngFor="let o of d.by_outcome">{{ o.label }}: <b class="text-white">{{ o.count }}</b></span>
+        <span *ngIf="!d.by_outcome?.length" class="text-slate-500">Nothing yet: lessons are added as cases close and triage groups are decided.</span>
+      </div>
+    </div>
+  </div>
+
+  <form (ngSubmit)="load()" class="flex flex-col md:flex-row gap-3">
+    <div class="relative flex-1">
+      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></lucide-angular>
+      <label for="mem-q" class="sr-only">Search the security memory</label>
+      <input id="mem-q" name="q" [(ngModel)]="q" placeholder="Search: rule, host, IP, user, technique, reason…"
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm">
+    </div>
+    <button type="submit" class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-sm font-semibold rounded-lg">Search</button>
+  </form>
+
+  <div class="flex flex-wrap gap-2" role="tablist" aria-label="Filter by outcome">
+    <button *ngFor="let o of outcomes" role="tab" [attr.aria-selected]="outcome === o[0]" (click)="pick(o[0])"
+      class="px-3 py-1.5 rounded-lg border text-xs font-semibold transition"
+      [class.bg-cyan-600]="outcome === o[0]" [class.border-cyan-500]="outcome === o[0]" [class.text-white]="outcome === o[0]"
+      [class.border-slate-700]="outcome !== o[0]" [class.text-slate-300]="outcome !== o[0]">{{ o[1] }}</button>
+  </div>
+
+  <div *ngIf="loading()" class="text-sm text-slate-400">Loading…</div>
+  <div *ngIf="!loading() && data()?.lessons?.length === 0" class="p-6 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 text-sm text-center">No lessons match.</div>
+
+  <div class="space-y-3">
+    <article *ngFor="let l of data()?.lessons" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span class="px-2 py-0.5 rounded border text-xs font-semibold" [ngClass]="outcomeClass(l.outcome)">{{ l.outcome_label }}</span>
+        <h2 class="font-semibold text-white">{{ l.title }}</h2>
+        <span class="text-xs text-slate-500">{{ l.kind === 'case' ? 'Case ' + l.reference : 'Triage · ' + l.reference }}</span>
+        <span class="text-xs text-slate-500 ml-auto">{{ when(l.decided_at) }} · {{ l.decided_by }}</span>
+      </div>
+      <p class="text-sm text-slate-300 mt-2 whitespace-pre-line">{{ l.rationale }}</p>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-2">
+        <span *ngIf="l.rule_ids?.length">Rules: {{ l.rule_ids.join(', ') }}</span>
+        <span *ngIf="l.techniques?.length">MITRE: {{ l.techniques.join(', ') }}</span>
+        <span *ngIf="l.hosts?.length">Hosts: {{ l.hosts.join(', ') }}</span>
+        <span *ngIf="l.src_ips?.length">Sources: {{ l.src_ips.join(', ') }}</span>
+        <span *ngIf="l.users?.length">Users: {{ l.users.join(', ') }}</span>
+        <span *ngIf="l.actions?.length">Response: {{ l.actions.join(', ') }}</span>
+      </div>
+    </article>
+  </div>
+</div>

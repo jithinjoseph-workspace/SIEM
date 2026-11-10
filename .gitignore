@@ -1,0 +1,105 @@
+# Build and target artifacts
+target/
+target_*/
+dist/
+.angular/
+build/
+bin/
+!wazuh-rust-angular/backend-rust/crates/**/bin/
+!wazuh-rust-angular/backend-rust/crates/**/src/bin/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Binaries and compiled objects
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.o
+*.a
+*.lib
+*.obj
+*.wasm
+
+# Logs and runtime caches
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.runtime/
+tmp/
+temp/
+
+# IDE and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local secrets and runtime state (siem-api / auth-service)
+wazuh-rust-angular/backend-rust/data/jwt_secret.txt
+wazuh-rust-angular/backend-rust/data/tenant_agent_keys.json
+wazuh-rust-angular/backend-rust/data/agent_tenants.json
+wazuh-rust-angular/backend-rust/data/learned_parsers.json
+wazuh-rust-angular/backend-rust/data/manager/logs/
+wazuh-rust-angular/backend-rust/data/manager/var/
+wazuh-rust-angular/backend-rust/data/manager/queue/
+wazuh-rust-angular/backend-rust/data/manager/stats/
+
+# Compose secrets (JWT_SECRET for docker-compose.yml)
+wazuh-rust-angular/.env
+# Secrets written at runtime by siem-api / the manager
+wazuh-rust-angular/backend-rust/data/syslog/
+wazuh-rust-angular/backend-rust/data/sigma/
+wazuh-rust-angular/backend-rust/data/decision_anchors.json
+wazuh-rust-angular/backend-rust/logs/
+wazuh-rust-angular/backend-rust/data/manager/etc/smtp_auth.conf
+
+# runtime data kept in ClickHouse (agent keys encrypted, learned parsers)
+wazuh-rust-angular/backend-rust/data/manager/etc/client.keys
+wazuh-rust-angular/backend-rust/data/learned_parsers.json*
+
+# SIEM Documentation (Internal technical specs, Word conversion artifacts)
+SIEM Documentation/
+SIEM Documentation
+# private CA key and the load tool's state files (they hold agent keys)
+**/data/tls/
+lt-*.json
+# FIM diff copies of local system files, and old agent exe backups
+/data/diff/
+wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
+
+# ========================================================
+# Local Workspace Folders (Kept on disk, NEVER pushed to GitHub)
+# ========================================================
+/wazuh/
+/wazuh-dashboard/
+/wazuh-dashboard-plugins/
+/wazuh-indexer/
+/ponytail-main/
+/ndr/
+/data/
+/.agents/
+/.claude/
+/.continue/
+/graphify-out/
+
+# Local documents, diagrams, and utility scripts
+/*.docx
+/*.png
+/*.pdf
+/*.bat
+/*.ps1
+/build_technical_doc.py
+/generate_diagrams.py
+/generate_architecture_doc.py
+/render_architecture_diagram.py
+/render_complete_architecture_diagram.py
+

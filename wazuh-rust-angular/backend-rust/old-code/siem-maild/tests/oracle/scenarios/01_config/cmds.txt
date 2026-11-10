@@ -1,0 +1,7 @@
+config etc/ossec.conf
+getconfig global
+getconfig alerts
+getconfig internal
+getconfig
+getconfig x
+foo bar

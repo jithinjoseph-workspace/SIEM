@@ -1,0 +1,18 @@
+[package]
+name = "siem-redswarm"
+version = "0.1.0"
+edition = "2021"
+description = "Autonomous Continuous Red Agent Swarm & Perpetual Purple-Team Engine for Wazuh/SIEM"
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-engine = { path = "../siem-engine" }
+siem-parser-gen = { path = "../siem-parser-gen" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+regex = "1.10"
+reqwest = { version = "0.12", features = ["json"], optional = true }

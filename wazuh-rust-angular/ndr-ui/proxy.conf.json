@@ -1,0 +1,40 @@
+{
+  "/api/v1/auth": {
+    "target": "http://127.0.0.1:3011",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/v1/auth": "/api/auth"
+    }
+  },
+  "/api/auth": {
+    "target": "http://127.0.0.1:3011",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/announcements": {
+    "target": "http://127.0.0.1:3011",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api": {
+    "target": "http://127.0.0.1:8088",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/downloads": {
+    "target": "http://127.0.0.1:8088",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/favicon-proxy": {
+    "target": "http://127.0.0.1:8088",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/ws": {
+    "target": "ws://127.0.0.1:8088",
+    "secure": false,
+    "ws": true
+  }
+}

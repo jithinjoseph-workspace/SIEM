@@ -1,0 +1,355 @@
+<section class="settings-shell">
+  <div class="settings-header">
+    <div>
+      <div class="eyebrow">System Preferences</div>
+      <h2>Settings</h2>
+      <p>Configure detection thresholds and alert automation limits.</p>
+    </div>
+
+    <div class="settings-status" [class.saving]="saving">
+      <span>
+        <lucide-icon
+          [name]="saving ? LoadingIcon : SlidersIcon"
+          class="w-4 h-4"
+          [class.spin]="saving">
+        </lucide-icon>
+      </span>
+      <div>
+        <strong>{{ saving ? 'Saving changes' : 'Threshold controls' }}</strong>
+        <small>{{ loading ? 'Loading settings' : 'Ready to edit' }}</small>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="settings-loading">
+    <div class="loading-panel">
+      <lucide-icon [name]="LoadingIcon" class="w-5 h-5 spin"></lucide-icon>
+      <span>Loading settings...</span>
+    </div>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <div class="threshold-strip">
+      <div>
+        <span>Store</span>
+        <strong>{{ thresholds.store_threshold }}</strong>
+      </div>
+      <div>
+        <span>Alert</span>
+        <strong class="warning">{{ thresholds.alert_threshold }}</strong>
+      </div>
+      <div>
+        <span>Critical</span>
+        <strong class="danger">{{ thresholds.critical_threshold }}</strong>
+      </div>
+      <div>
+        <span>SOAR</span>
+        <strong>{{ thresholds.soar_threshold }}</strong>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="SlidersIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Detection Thresholds</h3>
+            <p>Adjust score thresholds for storing, alerting, and automation.</p>
+          </div>
+        </div>
+
+        <div class="threshold-list">
+          <article class="threshold-row store">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="DatabaseIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Store Threshold</strong>
+                <small>Minimum score required before an event is stored.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="50" step="1" [(ngModel)]="thresholds.store_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.store_threshold = thresholds.store_threshold > 0 ? thresholds.store_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="50" [(ngModel)]="thresholds.store_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.store_threshold = thresholds.store_threshold < 50 ? thresholds.store_threshold + 1 : 50">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row alert">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="BellIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Alert Threshold</strong>
+                <small>Minimum score required before an alert is shown.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.alert_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.alert_threshold = thresholds.alert_threshold > 0 ? thresholds.alert_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.alert_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.alert_threshold = thresholds.alert_threshold < 100 ? thresholds.alert_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row critical">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="CriticalIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Critical Threshold</strong>
+                <small>Score at which alerts are treated as critical severity.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.critical_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.critical_threshold = thresholds.critical_threshold > 0 ? thresholds.critical_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.critical_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.critical_threshold = thresholds.critical_threshold < 100 ? thresholds.critical_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row soar">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="WorkflowIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>SOAR Threshold</strong>
+                <small>Minimum score required to trigger SOAR automation.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.soar_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.soar_threshold = thresholds.soar_threshold > 0 ? thresholds.soar_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.soar_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.soar_threshold = thresholds.soar_threshold < 100 ? thresholds.soar_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Sensitive Countries -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="SlidersIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Sensitive Countries</h3>
+            <p>Comma-separated ISO country codes. Connections to/from these countries raise the risk score.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card">
+            <div class="threshold-label">
+              <span class="label-text">Country Codes</span>
+              <span class="label-value">{{ sensitiveCountries.split(',').length }} countries</span>
+            </div>
+            <textarea
+              rows="4"
+              [(ngModel)]="sensitiveCountries"
+              placeholder="e.g. CN,RU,IR,KP"
+              class="countries-textarea"></textarea>
+          </article>
+        </div>
+      </section>
+
+      <!-- Agent enrollment key -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="CriticalIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Agent Enrollment Key</h3>
+            <p>New agents of this tenant enroll with this key. Rotate it if it leaked; enrolled agents keep working.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card">
+            <div class="threshold-label">
+              <span class="label-text">Key</span>
+              <span class="label-value" style="cursor:pointer" (click)="agentKeyShown = !agentKeyShown">{{ agentKeyShown ? 'Hide' : 'Show' }}</span>
+            </div>
+            <code style="word-break:break-all">{{ agentKeyShown ? (agentKey || '—') : '••••••••••••••••' }}</code>
+            <div class="save-action-row">
+              <button class="save-action" (click)="rotateAgentKey()">Rotate key</button>
+            </div>
+            <div *ngIf="agentKeyMessage" class="feedback success"><span>{{ agentKeyMessage }}</span></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Alert e-mails of this tenant -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="BellIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Alert E-mails</h3>
+            <p>Who receives e-mails about this organisation's alerts. Alerts close together come as one e-mail.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card mail-form">
+            <div *ngIf="!smtpReady" class="feedback error"><span>The platform e-mail account is not set yet: ask the platform admin. Settings are saved; e-mails wait for it.</span></div>
+            <label class="threshold-label"><span class="label-text">Send alert e-mails</span>
+              <input type="checkbox" [(ngModel)]="alertMail.enabled" /></label>
+            <label class="threshold-label" for="am-to"><span class="label-text">Recipients</span><span class="label-value">comma-separated</span></label>
+            <textarea id="am-to" rows="2" class="countries-textarea" [(ngModel)]="alertMail.recipients" placeholder="soc@example.com, oncall@example.com"></textarea>
+            <label class="threshold-label" for="am-level"><span class="label-text">Lowest alert level</span><span class="label-value">12+ critical, 8+ high</span></label>
+            <input id="am-level" type="number" min="1" max="16" [(ngModel)]="alertMail.min_level" />
+            <label class="threshold-label" for="am-groups"><span class="label-text">Only these rule groups</span><span class="label-value">empty: all</span></label>
+            <input id="am-groups" type="text" [(ngModel)]="alertMail.groups" placeholder="e.g. authentication_failed, malware" />
+            <label class="threshold-label" for="am-max"><span class="label-text">At most e-mails per hour</span></label>
+            <input id="am-max" type="number" min="1" max="1000" [(ngModel)]="alertMail.max_per_hour" />
+            <div class="save-action-row">
+              <button class="save-action" (click)="saveAlertMail()">Save</button>
+              <button class="save-action" (click)="testAlertMail()">Save and send a test</button>
+            </div>
+            <div *ngIf="alertMailMessage" class="feedback success"><span>{{ alertMailMessage }}</span></div>
+            <div *ngIf="alertMailError" class="feedback error"><span>{{ alertMailError }}</span></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- PDF reports -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="DatabaseIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>PDF Reports</h3>
+            <p>A security report with charts: alerts by severity, day, rule and agent, MITRE techniques and top vulnerabilities.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card mail-form">
+            <label class="threshold-label" for="rp-hours"><span class="label-text">Download now</span></label>
+            <select id="rp-hours" [(ngModel)]="reportHours">
+              <option [ngValue]="24">Last 24 hours</option>
+              <option [ngValue]="168">Last 7 days</option>
+              <option [ngValue]="720">Last 30 days</option>
+              <option [ngValue]="2160">Last 90 days</option>
+            </select>
+            <details class="report-filters">
+              <summary>Filters, breakdown and sample alerts (optional)</summary>
+              <label class="threshold-label" for="rf-title"><span class="label-text">Report title</span></label>
+              <input id="rf-title" type="text" [(ngModel)]="reportFilter.title" placeholder="Security report" />
+              <label class="threshold-label" for="rf-group"><span class="label-text">Rule group</span></label>
+              <input id="rf-group" type="text" [(ngModel)]="reportFilter.group" placeholder="e.g. authentication_failed" />
+              <label class="threshold-label" for="rf-rule"><span class="label-text">Rule number</span></label>
+              <input id="rf-rule" type="text" inputmode="numeric" [(ngModel)]="reportFilter.rule" placeholder="e.g. 5710" />
+              <label class="threshold-label" for="rf-level"><span class="label-text">Lowest level</span><span class="label-value">0 to 16</span></label>
+              <input id="rf-level" type="text" inputmode="numeric" [(ngModel)]="reportFilter.level" placeholder="e.g. 10" />
+              <label class="threshold-label" for="rf-agent"><span class="label-text">Agent (id or name)</span></label>
+              <input id="rf-agent" type="text" [(ngModel)]="reportFilter.agent" />
+              <label class="threshold-label" for="rf-srcip"><span class="label-text">Source IP</span></label>
+              <input id="rf-srcip" type="text" [(ngModel)]="reportFilter.srcip" />
+              <label class="threshold-label" for="rf-user"><span class="label-text">User</span></label>
+              <input id="rf-user" type="text" [(ngModel)]="reportFilter.user" />
+              <label class="threshold-label" for="rf-location"><span class="label-text">Location (log source)</span></label>
+              <input id="rf-location" type="text" [(ngModel)]="reportFilter.location" />
+              <label class="threshold-label" for="rf-file"><span class="label-text">File path</span></label>
+              <input id="rf-file" type="text" [(ngModel)]="reportFilter.file" />
+              <label class="threshold-label" for="rf-by"><span class="label-text">Breakdown</span></label>
+              <select id="rf-by" [(ngModel)]="reportFilter.by">
+                <option value="">None</option>
+                <option value="srcip,user">Source IP by user</option>
+                <option value="agent,rule">Agent by rule</option>
+                <option value="rule,agent">Rule by agent</option>
+                <option value="srcip,agent">Source IP by agent</option>
+                <option value="user,agent">User by agent</option>
+                <option value="location,rule">Location by rule</option>
+                <option value="agent,level">Agent by level</option>
+              </select>
+              <label class="threshold-label"><span class="label-text">List the latest 100 matching alerts</span>
+                <input type="checkbox" [(ngModel)]="reportFilter.samples" /></label>
+            </details>
+            <div class="save-action-row">
+              <button class="save-action" (click)="downloadReport()" [disabled]="reportBusy">{{ reportBusy ? 'Working…' : 'Download PDF' }}</button>
+            </div>
+          </article>
+          <article class="threshold-card mail-form">
+            <label class="threshold-label"><span class="label-text">E-mail the report on a schedule</span>
+              <input type="checkbox" [(ngModel)]="report.enabled" /></label>
+            <label class="threshold-label" for="rp-freq"><span class="label-text">Every</span></label>
+            <select id="rp-freq" [(ngModel)]="report.frequency">
+              <option value="daily">Day (last 24 hours)</option>
+              <option value="weekly">Monday (last 7 days)</option>
+              <option value="monthly">1st of the month (last 30 days)</option>
+            </select>
+            <label class="threshold-label" for="rp-hour"><span class="label-text">At (hour, UTC)</span></label>
+            <input id="rp-hour" type="number" min="0" max="23" [(ngModel)]="report.hour_utc" />
+            <label class="threshold-label" for="rp-to"><span class="label-text">Recipients</span><span class="label-value">comma-separated</span></label>
+            <textarea id="rp-to" rows="2" class="countries-textarea" [(ngModel)]="report.recipients" placeholder="ciso@example.com"></textarea>
+            <div class="save-action-row">
+              <button class="save-action" (click)="saveReport()">Save schedule</button>
+              <button class="save-action" (click)="sendReportNow()" [disabled]="reportBusy">Save and send now</button>
+            </div>
+            <div *ngIf="reportMessage" class="feedback success"><span>{{ reportMessage }}</span></div>
+            <div *ngIf="reportError" class="feedback error"><span>{{ reportError }}</span></div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="panel save-panel">
+        <div class="panel-heading compact">
+          <div class="panel-icon secondary">
+            <lucide-icon [name]="SaveIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Apply Changes</h3>
+            <p>Save the current threshold values to the engine.</p>
+          </div>
+        </div>
+
+        <div class="save-summary">
+          <div>
+            <span>Configured values</span>
+            <strong>4 thresholds</strong>
+          </div>
+          <div>
+            <span>Destination</span>
+            <strong>System settings</strong>
+          </div>
+        </div>
+
+        <div class="save-action-row">
+          <button class="save-action" (click)="saveSettings()" [disabled]="saving">
+            <lucide-icon [name]="saving ? LoadingIcon : SaveIcon" class="w-4 h-4" [class.spin]="saving"></lucide-icon>
+            {{ saving ? 'Saving…' : 'Save Settings' }}
+          </button>
+        </div>
+
+        <div *ngIf="message" class="feedback success">
+          <lucide-icon [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+          <span>{{ message }}</span>
+        </div>
+
+        <div *ngIf="error" class="feedback error">
+          <lucide-icon [name]="ErrorIcon" class="w-4 h-4"></lucide-icon>
+          <span>{{ error }}</span>
+        </div>
+      </aside>
+    </div>
+
+  </ng-container>
+</section>

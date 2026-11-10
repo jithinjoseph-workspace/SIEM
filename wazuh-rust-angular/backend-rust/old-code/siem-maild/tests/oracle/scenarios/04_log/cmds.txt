@@ -1,0 +1,12 @@
+config etc/ossec.conf
+set 1 1 1
+log
+log
+log
+log
+log
+log
+log
+log
+sendmail
+sms

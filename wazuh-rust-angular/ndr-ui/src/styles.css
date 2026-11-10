@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Rajdhani", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-surface, #0d1117);
+  color: var(--color-on-surface-variant, #dfe5fa);
+  font-family: var(--font-sans);
+}
+
+/* Global fix for select dropdown options in dark theme */
+select option {
+  background-color: #0f172a;
+  color: #f7f9ff;
+}
+
+/* Global Lucide Icon Display & SVG Alignment Fix */
+lucide-icon,
+lucide-angular {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+lucide-icon svg,
+lucide-angular svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}

@@ -1,0 +1,259 @@
+<div class="ai-activity-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <lucide-icon [name]="BotIcon" class="header-icon"></lucide-icon>
+    <div>
+      <h2>AI Agent Activity</h2>
+      <p class="subtitle">ARIA threat analyses and suppression decisions</p>
+    </div>
+    <div class="live-indicator">
+      <span class="live-dot"></span>
+      Live · updates every 15s
+    </div>
+  </div>
+  <!-- Error -->
+  <div *ngIf="error()" class="error-banner">{{ error() }}</div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn" [class.active]="activeTab === 'analyses'" (click)="activeTab = 'analyses'">
+      <lucide-icon [name]="FileIcon" class="w-4 h-4"></lucide-icon>
+      Threat Analyses
+      <span class="badge">{{ analyses().length }}</span>
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'predictions'" (click)="activeTab = 'predictions'">
+      <lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon>
+      Threat Predictions
+      <span class="badge">{{ predictions().length }}</span>
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'suppressions'" (click)="activeTab = 'suppressions'">
+      <lucide-icon [name]="ShieldOffIcon" class="w-4 h-4"></lucide-icon>
+      Suppression Decisions
+      <span class="badge">{{ suppressions().length }}</span>
+    </button>
+    <button class="tab-btn ai-report-btn" (click)="openAiReport()" title="Generate AI-powered threat intelligence report">
+      <lucide-icon [name]="BotIcon" class="w-4 h-4"></lucide-icon>
+      AI Report
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading()" class="loading-state">Loading AI activity...</div>
+
+  <!-- ── Threat Analyses Tab ──────────────────────────────────────── -->
+  <div *ngIf="!loading() && activeTab === 'analyses'">
+    <div *ngIf="analyses().length === 0" class="empty-state">
+      No AI threat analyses yet. Analyses are generated automatically when HIGH, CRITICAL, or MEDIUM evidence bundles are captured.
+    </div>
+
+    <div class="split-pane-layout" *ngIf="analyses().length > 0">
+      <div class="split-list analysis-list">
+        <div class="analysis-card" *ngFor="let a of analyses()" [class.active-card]="isExpanded(a.id)" (click)="toggleAnalysis(a.id)">
+          <div class="analysis-header">
+            <div class="analysis-meta">
+              <span class="sev-badge" [class]="sevClass(a.severity)">{{ a.severity || 'UNKNOWN' }}</span>
+              <span class="flow">
+                <span class="flow-ep">
+                  {{ a.src_asset?.hostname || a.src_ip }}
+                  <span *ngIf="a.src_asset?.trusted" class="mini-trusted" title="Trusted device">✓</span>
+                  <span *ngIf="a.src_asset?.threat_flagged && !a.src_asset?.trusted" class="mini-threat" title="AI flagged">!</span>
+                </span>
+                →
+                <span class="flow-ep">
+                  {{ a.dst_asset?.hostname || a.dst_ip }}
+                  <span *ngIf="a.dst_asset?.trusted" class="mini-trusted" title="Trusted device">✓</span>
+                </span>
+              </span>
+              <span class="cid-short" [title]="a.community_id">{{ (a.community_id || '').slice(0, 24) }}…</span>
+            </div>
+            <div class="analysis-right">
+              <span class="time">{{ formatTime(a.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-detail">
+        <div *ngIf="!selectedAnalysis()" class="split-empty fade-in">
+          <lucide-icon [name]="BotIcon" class="split-empty-icon"></lucide-icon>
+          <h3>Select an Analysis</h3>
+          <p>Click a threat analysis on the left to view detailed ARIA insights.</p>
+        </div>
+
+        <div *ngIf="selectedAnalysis() as a" class="split-content page-turn">
+          <div class="detail-top">
+            <div class="detail-title-group">
+              <lucide-icon [name]="FileIcon" class="detail-title-icon"></lucide-icon>
+              <h2>Analysis Details</h2>
+            </div>
+            <span class="detail-time">{{ formatTime(a.created_at) }}</span>
+          </div>
+          <div class="analysis-body">
+            <div class="analysis-label">ARIA Analysis</div>
+            <pre class="analysis-text">{{ a.analysis }}</pre>
+            <div class="analysis-footer">
+              <span class="bundle-link">Bundle: {{ a.bundle_id }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Threat Predictions Tab ────────────────────────────────── -->
+  <div *ngIf="!loading() && activeTab === 'predictions'">
+    <div *ngIf="predictions().length === 0" class="empty-state">
+      No threat predictions yet. Predictions are generated automatically every 6 hours using DeepSeek-R1.
+    </div>
+
+    <div class="split-pane-layout" *ngIf="predictions().length > 0">
+      <div class="split-list predictions-grid">
+        <div class="prediction-card" *ngFor="let p of predictions()" [class.active-card]="isPredExpanded(p.attack_type)" (click)="togglePrediction(p.attack_type)">
+          <div class="pred-header">
+            <div class="pred-title">
+              <lucide-icon [name]="AlertIcon" class="w-4 h-4 pred-icon"></lucide-icon>
+              <span class="pred-attack-type">{{ p.attack_type }}</span>
+              <span class="alert-badge" [class]="alertLevelClass(p.alert_level)">{{ (p.alert_level || 'info').toUpperCase() }}</span>
+            </div>
+            <div class="pred-right">
+              <span class="pred-time">{{ formatTime(p.predicted_at) }}</span>
+            </div>
+          </div>
+          <div class="prob-row">
+            <span class="prob-label">Probability</span>
+            <div class="prob-bar-track">
+              <div class="prob-bar-fill"
+                [style.width]="probBar(p.probability) + '%'"
+                [style.background]="probColor(p.probability)">
+              </div>
+            </div>
+            <span class="prob-pct" [style.color]="probColor(p.probability)">
+              {{ probBar(p.probability) }}%
+            </span>
+            <span class="trend-chip" [class]="trendClass(p.trend)">
+              <lucide-icon [name]="trendIcon(p.trend)" class="w-3 h-3"></lucide-icon>
+              {{ p.trend }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-detail">
+        <div *ngIf="!selectedPrediction()" class="split-empty fade-in">
+          <lucide-icon [name]="BotIcon" class="split-empty-icon"></lucide-icon>
+          <h3>Select a Prediction</h3>
+          <p>Click a threat prediction on the left to view deep insights.</p>
+        </div>
+
+        <div *ngIf="selectedPrediction() as p" class="split-content pred-detail page-turn">
+          <div class="detail-top">
+            <div class="detail-title-group">
+              <lucide-icon [name]="ActivityIcon" class="detail-title-icon"></lucide-icon>
+              <h2>Prediction Details</h2>
+            </div>
+            <span class="detail-time">Predicted at {{ formatTime(p.predicted_at) }}</span>
+          </div>
+
+          <div class="pred-section" *ngIf="p.aria_briefing">
+            <div class="pred-section-label">ARIA Briefing</div>
+            <p class="pred-briefing">{{ p.aria_briefing }}</p>
+          </div>
+
+          <div class="pred-section" *ngIf="p.recommendations?.length">
+            <div class="pred-section-label">Recommendations</div>
+            <ul class="pred-recs">
+              <li *ngFor="let r of p.recommendations">
+                <lucide-icon [name]="ShieldIcon" class="w-3 h-3 rec-icon"></lucide-icon>
+                {{ r }}
+              </li>
+            </ul>
+          </div>
+
+          <div class="pred-meta">
+            <span>Confidence: {{ (p.confidence * 100 || 0).toFixed(0) }}%</span>
+            <span *ngIf="p.ai_model">Model: {{ p.ai_model }}</span>
+          </div>
+
+          <!-- History Timeline -->
+          <div class="pred-section" *ngIf="historicalPredictions().length > 0">
+            <div class="pred-section-label">Historical Trend</div>
+            <div class="history-timeline">
+              <div class="timeline-item" *ngFor="let hist of historicalPredictions().slice(0, 5)">
+                <div class="timeline-marker" [class.active]="hist.id === p.id"></div>
+                <div class="timeline-content">
+                  <div class="timeline-time">{{ formatTime(hist.predicted_at) }}</div>
+                  <div class="timeline-prob">Probability: {{ probBar(hist.probability) }}%</div>
+                  <div class="timeline-trend">
+                    <span [class.trend-up]="hist.trend_delta > 0" [class.trend-down]="hist.trend_delta < 0">
+                      {{ hist.trend_delta > 0 ? '+' : '' }}{{ (hist.trend_delta * 100).toFixed(1) }}%
+                    </span>
+                    delta
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Suppression Decisions Tab ──────────────────────────────── -->
+  <div *ngIf="!loading() && activeTab === 'suppressions'">
+    <div *ngIf="suppressions().length === 0" class="empty-state">
+      No suppression decisions yet. ARIA automatically suppresses high-confidence false positives.
+    </div>
+
+    <div class="suppression-table-wrap" *ngIf="suppressions().length > 0">
+      <table class="suppression-table">
+        <thead>
+          <tr>
+            <th>Signature</th>
+            <th>Suppress Type</th>
+            <th>Target IP</th>
+            <th>Flow</th>
+            <th>Confidence</th>
+            <th>Status</th>
+            <th>Reason</th>
+            <th>Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let s of suppressions()">
+            <td>
+              <span class="sig-name" [title]="s.signature_name">{{ s.signature_name || '—' }}</span>
+              <span class="sig-id">SID {{ s.signature_id }}</span>
+            </td>
+            <td><span class="suppress-type">{{ suppressTypeLabel(s.suppress_type) }}</span></td>
+            <td class="mono">{{ s.suppress_ip || '—' }}</td>
+            <td class="mono small">{{ s.src_ip }} → {{ s.dst_ip }}</td>
+            <td>
+              <span class="confidence-bar">
+                <span class="confidence-fill" [style.width]="s.ai_confidence + '%'"></span>
+              </span>
+              {{ s.ai_confidence }}%
+            </td>
+            <td>
+              <span class="status-badge" [class.active]="s.active" [class.inactive]="!s.active">
+                {{ s.active ? 'Active' : 'Inactive' }}
+              </span>
+            </td>
+            <td class="reason-cell" [title]="s.ai_reason">{{ s.ai_reason }}</td>
+            <td class="small">{{ formatTime(s.created_at) }}</td>
+            <td class="actions-cell">
+              <button *ngIf="s.active" class="btn-deactivate" (click)="deactivateSuppression(s.id)" title="Deactivate — keeps history but stops suppressing">
+                Deactivate
+              </button>
+              <button class="btn-delete" (click)="deleteSuppression(s.id)" title="Delete permanently">
+                Delete
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>

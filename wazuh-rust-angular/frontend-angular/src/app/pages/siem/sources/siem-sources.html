@@ -1,0 +1,158 @@
+<section class="siem-sources-shell">
+
+  <div class="sources-header">
+    <div>
+      <div class="eyebrow">SIEM — Log Sources</div>
+      <h2>Source Management</h2>
+      <p>Configure and monitor all log ingest endpoints.</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-refresh" (click)="load()">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+      <button class="btn-add" (click)="openModal()">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        Add Source
+      </button>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error()" class="error-banner">{{ error() }}</div>
+
+  <!-- Loading -->
+  <div *ngIf="loading()" class="loading-row">
+    <span class="spinner"></span> Loading sources...
+  </div>
+
+  <!-- Empty -->
+  <div *ngIf="!loading() && sources().length === 0" class="empty-state">
+    <lucide-icon [name]="RadioIcon" class="w-8 h-8 empty-icon"></lucide-icon>
+    <p>No sources configured.</p>
+    <p class="muted">Add a source to start ingesting logs into SIEM.</p>
+    <button class="btn-add" (click)="openModal()">
+      <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+      Add First Source
+    </button>
+  </div>
+
+  <!-- Source cards -->
+  <div *ngIf="!loading() && sources().length > 0" class="source-grid">
+    <div *ngFor="let src of sources()" class="source-card">
+
+      <div class="source-card-top">
+        <div class="source-status-dot" [class]="statusClass(src.status)"></div>
+        <div class="source-name">{{ src.name }}</div>
+        <button class="btn-delete" (click)="deleteSource(src.source_id)" title="Delete source">
+          <lucide-icon [name]="DeleteIcon" class="w-3 h-3"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="source-type-chip">{{ sourceTypeLabel(src.source_type) }}</div>
+      <div class="source-hint muted">{{ sourceTypeHint(src.source_type) }}</div>
+
+      <div class="source-stats">
+        <div class="stat">
+          <div class="stat-value">{{ src.eps }}</div>
+          <div class="stat-label">EPS</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" [class]="statusClass(src.status)">{{ src.status }}</div>
+          <div class="stat-label">Status</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value mono muted">{{ src.last_seen_at | date:'HH:mm:ss' }}</div>
+          <div class="stat-label">Last Seen</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Ingest key reveal — shown once after source creation -->
+  <div *ngIf="newKeyData()" class="modal-backdrop">
+    <div class="modal key-reveal-modal">
+      <div class="modal-header">
+        <span>Source Created — Save Your Ingest Key</span>
+      </div>
+      <div class="modal-body">
+
+        <div class="key-warning">
+          This key is shown <strong>once only</strong>. Copy it now — it cannot be retrieved again.
+        </div>
+
+        <!-- API Key -->
+        <div class="setup-section-label">API Key</div>
+        <div class="key-row">
+          <code class="key-value">{{ newKeyData()!.ingest_key }}</code>
+          <button class="btn-copy" (click)="copyKey()">{{ keyCopied() ? 'Copied!' : 'Copy' }}</button>
+        </div>
+
+        <!-- Endpoints reference -->
+        <div class="setup-section-label">Ingest Endpoints</div>
+        <div class="endpoint-table">
+          <div class="ep-row"><span class="ep-type">REST / Generic</span><code class="ep-val">POST /api/siem/ingest</code></div>
+          <div class="ep-row"><span class="ep-type">WEC (Windows)</span><code class="ep-val">POST /api/siem/wec  (HTTPS)</code></div>
+          <div class="ep-row"><span class="ep-type">Syslog UDP</span><code class="ep-val">UDP  :514</code></div>
+          <div class="ep-row"><span class="ep-type">Syslog TCP/TLS</span><code class="ep-val">TCP  :6514</code></div>
+        </div>
+
+        <!-- Source-type setup command -->
+        <div class="setup-section-label">
+          Setup — {{ setupLabel(newKeyData()!.source_type) }}
+        </div>
+
+        <!-- WEC architecture callout -->
+        <div *ngIf="newKeyData()!.source_type === 'wec'" class="wef-arch-note">
+          <strong>No-agent architecture:</strong>
+          Endpoints push via GPO&nbsp;→&nbsp;Windows WEC Server (1 box)&nbsp;→&nbsp;Winlogbeat on that box only&nbsp;→&nbsp;PromaSecure SIEM
+        </div>
+
+        <div class="cmd-block-wrap">
+          <pre class="cmd-block">{{ setupCommand(newKeyData()!.source_type, newKeyData()!.ingest_key) }}</pre>
+          <button class="btn-copy cmd-copy-btn" (click)="copyCmd()">{{ cmdCopied() ? 'Copied!' : 'Copy' }}</button>
+        </div>
+
+        <div class="key-source-info muted">Source ID: <code>{{ newKeyData()!.source_id }}</code></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-add" (click)="dismissKey()">I've saved the key &amp; config</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add source modal -->
+  <div *ngIf="showModal()" class="modal-backdrop" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+
+      <div class="modal-header">
+        <span>Add Log Source</span>
+        <button class="modal-close" (click)="closeModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <label class="form-label">Source Name</label>
+        <input class="form-input" type="text" placeholder="e.g. Windows DC01" [(ngModel)]="newSource.name" />
+
+        <label class="form-label">Source Type</label>
+        <select class="form-select" [(ngModel)]="newSource.source_type">
+          <option *ngFor="let t of sourceTypes" [value]="t.value">{{ t.label }}</option>
+        </select>
+        <div class="type-hint muted">{{ selectedTypeHint }}</div>
+
+        <label class="form-label">Config JSON <span class="optional">(optional)</span></label>
+        <textarea class="form-textarea" placeholder='{"host":"10.0.0.1","port":514}'
+                  [(ngModel)]="newSource.config" rows="3"></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="closeModal()">Cancel</button>
+        <button class="btn-add" (click)="addSource()" [disabled]="saving() || !newSource.name.trim()">
+          {{ saving() ? 'Adding…' : 'Add Source' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+</section>

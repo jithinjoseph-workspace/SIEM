@@ -1,0 +1,170 @@
+<div class="siem-agents-container">
+  <!-- Header Bar -->
+  <div class="agents-header" *ngIf="!compactMode">
+    <div class="title-group">
+      <div class="badge-tag">Wazuh SIEM / EDR Fleet</div>
+      <h3>Managed Endpoint Hosts</h3>
+      <p>Live inventory, telemetry heartbeats, SCA compliance, and active response controls.</p>
+    </div>
+    <div class="metrics-pill">
+      <span class="active-dot"></span>
+      <span class="count">{{ activeCount() }} Online</span>
+      <span class="sep">/</span>
+      <span class="total">{{ agents().length }} Total Hosts</span>
+    </div>
+  </div>
+
+  <!-- Search & Filters -->
+  <div class="filter-toolbar">
+    <div class="search-box">
+      <i-lucide [img]="SearchIcon" class="icon"></i-lucide>
+      <input type="text" placeholder="Filter by host, IP, or agent ID..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)">
+    </div>
+
+    <div class="os-buttons">
+      <button [class.active]="osFilter() === 'all'" (click)="osFilter.set('all')">All</button>
+      <button [class.active]="osFilter() === 'windows'" (click)="osFilter.set('windows')">Windows</button>
+      <button [class.active]="osFilter() === 'linux'" (click)="osFilter.set('linux')">Linux</button>
+      <button [class.active]="osFilter() === 'macos'" (click)="osFilter.set('macos')">macOS</button>
+      <button class="refresh-btn" (click)="loadAgents()" title="Refresh Inventory">
+        <i-lucide [img]="RefreshIcon" [class.spin]="loading()"></i-lucide>
+      </button>
+    </div>
+  </div>
+
+  <!-- Agent Cards Grid -->
+  <div class="agents-grid">
+    <div *ngFor="let agent of filteredAgents()" class="agent-card" [class.selected]="selectedAgent()?.id === agent.id" (click)="selectAgent(agent)">
+      <div class="card-top">
+        <div class="os-icon-wrap" [attr.data-os]="agent.os_type">
+          <i-lucide [img]="ServerIcon"></i-lucide>
+        </div>
+        <div class="status-indicator" [class.online]="agent.status === 'active'">
+          <span class="dot"></span>
+          {{ agent.status | uppercase }}
+        </div>
+      </div>
+
+      <div class="card-body">
+        <h4 class="host-name">{{ agent.name }}</h4>
+        <div class="agent-id">ID: {{ agent.id }}</div>
+        <div class="agent-ip">IP: {{ agent.ip }}</div>
+        <div class="agent-os">{{ agent.os }}</div>
+      </div>
+
+      <div class="card-footer">
+        <span class="ver">Wazuh v{{ agent.version }}</span>
+        <button class="inspect-btn">Manage →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="filteredAgents().length === 0 && !loading()" class="empty-state">
+    <i-lucide [img]="ServerIcon" class="empty-icon"></i-lucide>
+    <p>No endpoint agents found matching your query.</p>
+  </div>
+
+  <!-- Agent Details Drawer / Modal -->
+  <div *ngIf="selectedAgent()" class="modal-backdrop" (click)="closeModal()">
+    <div class="drawer-panel" (click)="$event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3>{{ selectedAgent()?.name }}</h3>
+          <span class="sub-id">{{ selectedAgent()?.id }} · {{ selectedAgent()?.ip }}</span>
+        </div>
+        <button class="close-btn" (click)="closeModal()">✕</button>
+      </div>
+
+      <!-- Action Feedback Alert -->
+      <div *ngIf="actionFeedback()" class="feedback-banner">
+        {{ actionFeedback() }}
+      </div>
+
+      <!-- Tabs Navigation -->
+      <div class="drawer-tabs">
+        <button [class.active]="activeTab() === 'specs'" (click)="activeTab.set('specs')">Host Specs</button>
+        <button [class.active]="activeTab() === 'sca'" (click)="activeTab.set('sca')">SCA Baseline</button>
+        <button [class.active]="activeTab() === 'fim'" (click)="activeTab.set('fim')">FIM Audit</button>
+        <button [class.active]="activeTab() === 'actions'" (click)="activeTab.set('actions')">Active Response</button>
+      </div>
+
+      <!-- Tab 1: Specs -->
+      <div *ngIf="activeTab() === 'specs'" class="tab-content">
+        <div class="spec-grid">
+          <div class="spec-item">
+            <span class="label">Operating System</span>
+            <span class="val">{{ selectedAgent()?.os }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Agent Version</span>
+            <span class="val">Wazuh v{{ selectedAgent()?.version }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Status</span>
+            <span class="val text-green">{{ selectedAgent()?.status | uppercase }}</span>
+          </div>
+          <div class="spec-item">
+            <span class="label">Keepalive Timestamp</span>
+            <span class="val">{{ selectedAgent()?.last_keepalive }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: SCA -->
+      <div *ngIf="activeTab() === 'sca'" class="tab-content">
+        <div class="compliance-badge">
+          <span class="score">94%</span>
+          <span class="text">CIS Security Benchmark Pass Rate</span>
+        </div>
+        <div class="check-list">
+          <div class="check-row passed">
+            <span class="status-tag">PASS</span>
+            <span class="check-text">Ensure Anonymous enumeration of SAM accounts and shares is restricted</span>
+          </div>
+          <div class="check-row passed">
+            <span class="status-tag">PASS</span>
+            <span class="check-text">Ensure Windows Defender Antivirus Service is running and auto-start</span>
+          </div>
+          <div class="check-row failed">
+            <span class="status-tag fail">FAIL</span>
+            <span class="check-text">Audit: Account Logon Events failure audits disabled</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: FIM -->
+      <div *ngIf="activeTab() === 'fim'" class="tab-content">
+        <div class="fim-list">
+          <div class="fim-row">
+            <span class="badge mod">MODIFIED</span>
+            <span class="path">C:\Windows\System32\drivers\etc\hosts</span>
+          </div>
+          <div class="fim-row">
+            <span class="badge add">CREATED</span>
+            <span class="path">C:\ProgramData\Google\Chrome Remote Desktop\host.json</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Active Response -->
+      <div *ngIf="activeTab() === 'actions'" class="tab-content">
+        <p class="ar-desc">Execute instant active response actions through the secure Wazuh Agent daemon channel:</p>
+        <div class="action-buttons-grid">
+          <button class="ar-btn danger" (click)="executeAction('isolate_host')">
+            <i-lucide [img]="ShieldIcon"></i-lucide>
+            Isolate Host from Network
+          </button>
+          <button class="ar-btn warn" (click)="executeAction('block_active_ip')">
+            <i-lucide [img]="TerminalIcon"></i-lucide>
+            Block Attacking IPs (Firewall)
+          </button>
+          <button class="ar-btn default" (click)="executeAction('restart_agent')">
+            <i-lucide [img]="RefreshIcon"></i-lucide>
+            Restart Wazuh Agent Daemon
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

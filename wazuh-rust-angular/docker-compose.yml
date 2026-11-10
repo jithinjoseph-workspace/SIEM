@@ -1,0 +1,173 @@
+# ==============================================================================
+# Unified XDR Platform (NDR + SIEM) - Production Docker Compose
+# Architecture: Caddy (Edge Proxy) -> Rust Microservices -> ClickHouse DB
+# ==============================================================================
+
+services:
+  # 1. Edge Reverse Proxy & Automatic TLS
+  caddy:
+    image: caddy:alpine
+    container_name: xdr-caddy-proxy
+    restart: always
+    ports:
+      - "80:80"       # HTTP & WebSocket entrypoint
+      - "443:443"     # HTTPS SSL entrypoint
+      - "443:443/udp" # HTTP/3 QUIC
+    environment:
+      - SITE_DOMAIN=localhost # Replace with your production domain (e.g. siem.company.com)
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend-angular/dist/frontend-angular/browser:/usr/share/caddy/html:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - clickhouse
+      - siem-api
+      - auth-service
+
+  # 2. High-Performance Columnar Big Data Engine (Shared NDR + SIEM)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: xdr-clickhouse
+    restart: always
+    environment:
+      CLICKHOUSE_DB: ndr
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-}"
+    ports:
+      - "127.0.0.1:8123:8123" # HTTP API port
+      - "127.0.0.1:9000:9000" # Native TCP client port
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./clickhouse/ndr-cluster.xml:/etc/clickhouse-server/config.d/ndr-cluster.xml:ro
+      - ./clickhouse/ndr-compat-profile.xml:/etc/clickhouse-server/users.d/ndr-compat-profile.xml:ro
+      - ./clickhouse/ndr-user.xml:/etc/clickhouse-server/users.d/ndr-user.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. In-Memory Session & Fast Token Revocation Cache
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: xdr-valkey
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  # 4. Multi-Tenant JWT & RBAC Auth Microservice
+  auth-service:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile.auth
+    container_name: xdr-auth-service
+    restart: always
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      - PORT=3001
+      - LISTEN_ADDR=0.0.0.0:3001
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DB=ndr
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      - VALKEY_URL=redis://valkey:6379
+      - REDIS_URL=redis://valkey:6379
+      - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # generate with openssl rand -hex 32
+      - TOKEN_TTL_SECS=3600
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+
+  # 5. Rust SIEM Microservice (AnalysisEngine + Sliding Window Accumulator + Ingestion + WebSockets + Syslog)
+  siem-api:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile
+    container_name: xdr-siem-api
+    restart: always
+    ports:
+      - "6514:6514"   # Syslog over TLS (RFC 5425), per-tenant client certificates
+      # Plain syslog has no sender authentication: publish it only on a private/VPN interface,
+      # e.g. "10.0.0.5:514:514/udp" (sources are mapped to tenants by IP in the UI).
+      - "514:514/udp" # Syslog UDP
+      - "601:601"     # Syslog RFC 6587 TCP
+    volumes:
+      - siem_data:/app/data # agent and syslog CAs, device registry, learned parsers
+    environment:
+      - SIEM_PORT=8088
+      - SIEM_EVENTS_RETENTION_DAYS=${SIEM_EVENTS_RETENTION_DAYS:-7}   # raw events, deleted after this
+      - SIEM_ALERTS_RETENTION_DAYS=${SIEM_ALERTS_RETENTION_DAYS:-365} # alerts
+      - SIEM_LAN_IP=${SIEM_LAN_IP:-} # the address agents use: it goes in the TLS certificate
+      - SYSLOG_UDP_PORT=514
+      - SYSLOG_TCP_PORT=601
+      - SYSLOG_TLS_PORT=6514
+      - SITE_DOMAIN=localhost # the syslog TLS certificate names (comma-separated: SYSLOG_TLS_HOSTNAMES)
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DB=ndr
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}" # the same value as auth-service
+      - SIEM_API_INTERNAL_ADDR=0.0.0.0:9102 # the gateway's calls; not published outside the compose network
+      - "GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:?set GATEWAY_INTERNAL_TOKEN in .env}"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  # Agent gateway: every agent connection (gRPC 8089, HTTPS 8443); shares siem-api's data volume
+  # (the agent CA, the published package, the manager's sockets)
+  provigil-gateway:
+    build:
+      context: ./backend-rust
+      dockerfile: Dockerfile
+    container_name: xdr-provigil-gateway
+    restart: always
+    command: ["/app/provigil-gateway"]
+    ports:
+      - "8443:8443"   # agents: HTTPS (TLS with the private CA in siem_data)
+      - "8089:8089"   # agents: gRPC over TLS
+    volumes:
+      - siem_data:/app/data
+    environment:
+      - GATEWAY_GRPC_PORT=8089
+      - GATEWAY_TLS_PORT=8443
+      - GATEWAY_PUBLIC_HOSTS=${SIEM_LAN_IP:-}
+      - SIEM_API_INTERNAL_URL=http://siem-api:9102
+      - "GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:?set GATEWAY_INTERNAL_TOKEN in .env}"
+      - "AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:?set AGENT_KEYS_SECRET in .env}"
+      - PROVIGIL_MANAGER_HOME=/app/data/manager
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+    depends_on:
+      - siem-api
+
+  # 7. Rust NDR Microservice (Network Detection & Response)
+  # Un-comment to run NDR backend microservice alongside SIEM:
+  # ndr-api:
+  #   image: your-ndr-backend:latest
+  #   container_name: xdr-ndr-api
+  #   restart: always
+  #   environment:
+  #     - NDR_PORT=8090
+  #     - CLICKHOUSE_URL=http://clickhouse:8123
+  #     - CLICKHOUSE_DB=ndr
+
+volumes:
+  clickhouse_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  siem_data:
+    driver: local

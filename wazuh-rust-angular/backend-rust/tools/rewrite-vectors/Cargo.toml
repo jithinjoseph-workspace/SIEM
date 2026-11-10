@@ -1,0 +1,17 @@
+[package]
+name = "rewrite-vectors"
+version = "0.1.0"
+edition = "2021"
+description = "Runs the old siem-regex / siem-crypto / siem-fileop over many inputs and writes JSON test vectors (specs/vectors/)"
+
+# standalone: not part of the backend workspace build
+[workspace]
+
+[dependencies]
+siem-regex = { path = "../../old-code/siem-regex" }
+siem-crypto = { path = "../../old-code/siem-crypto" }
+siem-fileop = { path = "../../old-code/siem-fileop" }
+siem-shared = { path = "../../crates/siem-shared" }
+serde_json = "1.0"
+hex = "0.4"
+tracing = "0.1"

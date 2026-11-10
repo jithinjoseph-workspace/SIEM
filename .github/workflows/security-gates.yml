@@ -1,0 +1,56 @@
+name: Production Security Gates
+
+on:
+  push:
+    branches: [ "*" ]
+    paths:
+      - "wazuh-rust-angular/**"
+      - ".github/workflows/**"
+  pull_request:
+    branches: [ "*" ]
+    paths:
+      - "wazuh-rust-angular/**"
+      - ".github/workflows/**"
+  workflow_dispatch: {} # Allows manual triggering from the GitHub Actions UI
+
+jobs:
+  # Gate 1: Check code logic for bugs, security vulnerabilities, and antipatterns
+  logic-scan:
+    name: Semgrep Custom Logic Audit
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: semgrep scan --config auto wazuh-rust-angular/
+
+  # Gate 2: Make sure no passwords, private keys, or API tokens are committed
+  secrets-scan:
+    name: TruffleHog Secret Protection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run TruffleHog Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  # Gate 3: Audit all third-party packages, rust crates, and node modules for CVEs
+  dependency-scan:
+    name: Trivy Package Integrity Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run Trivy Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'wazuh-rust-angular'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'

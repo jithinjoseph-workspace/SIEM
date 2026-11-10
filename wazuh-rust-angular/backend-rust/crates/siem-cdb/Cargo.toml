@@ -1,0 +1,11 @@
+[package]
+name = "siem-cdb"
+version = "0.1.0"
+edition = "2021"
+description = "Threat indicator lists (IPs and ranges, file hashes, domains) with fast lookups"
+
+[lib]
+name = "siem_cdb"
+path = "src/lib.rs"
+
+[dependencies]

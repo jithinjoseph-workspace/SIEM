@@ -97,6 +97,8 @@ wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 /*.pdf
 /*.bat
 /*.ps1
+/*.md
+.gitattributes
 /build_technical_doc.py
 /generate_diagrams.py
 /generate_architecture_doc.py

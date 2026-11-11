@@ -1474,10 +1474,14 @@ fn http_command(payload: &str) -> Option<serde_json::Value> {
     if payload.trim() == "syscheck restart" {
         return Some(serde_json::json!({ "command_id": id, "type": "scan" }));
     }
-    let message = serde_json::Deserializer::from_str(payload)
+    let mut message = serde_json::Deserializer::from_str(payload)
         .into_iter::<serde_json::Value>()
         .next()?
         .ok()?;
+    // the response configuration still names the restart command after the old agent
+    if let Some(rest) = message["command"].as_str().and_then(|c| c.strip_prefix("restart-wazuh")) {
+        message["command"] = format!("restart-agent{rest}").into();
+    }
     Some(serde_json::json!({ "command_id": id, "type": "ar", "message": message }))
 }
 
@@ -1589,7 +1593,7 @@ pub async fn restart_agent(agent_id: &str) -> Result<(), String> {
         "{:03}",
         agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
     );
-    let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-wazuh0", "parameters": {"extra_args": [], "alert": {}}}"#;
+    let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-agent0", "parameters": {"extra_args": [], "alert": {}}}"#;
     send_ar_queue(&format!(
         "(msg_to_agent) [] NNS {id} {m} - null (from_the_server) (no_rule_id)"
     ))
@@ -3284,5 +3288,16 @@ mod engine_responses_tests {
         assert_eq!(command["message"]["origin"]["module"], "provigil-analysisd");
         assert_eq!(command["message"]["parameters"]["alert"]["rule"]["id"], "100101", "{command}");
         assert!(command["command_id"].as_str().is_some_and(|c| !c.is_empty()));
+    }
+}
+
+#[cfg(test)]
+mod restart_name_tests {
+    #[test]
+    fn provigil_agents_get_the_restart_command_by_its_own_name() {
+        let c = super::http_command(r#"{"version":1,"command":"restart-wazuh0","parameters":{}}"#).unwrap();
+        assert_eq!(c["message"]["command"], "restart-agent0");
+        let c = super::http_command(r#"{"version":1,"command":"netsh600","parameters":{}}"#).unwrap();
+        assert_eq!(c["message"]["command"], "netsh600");
     }
 }

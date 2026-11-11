@@ -13,11 +13,11 @@ use tracing::{info, warn};
 
 use crate::config::BufferConfig;
 
-pub const STATE_90: &str = "wazuh: Agent buffer: '90%'.";
-pub const STATE_FULL: &str = "wazuh: Agent buffer: 'full'.";
-pub const STATE_FLOODED: &str = "wazuh: Agent buffer: 'flooded'.";
-pub const STATE_NORMAL: &str = "wazuh: Agent buffer: 'normal'.";
-const STATE_LOCATION: &str = "wazuh-agent";
+pub const STATE_90: &str = "provigil: Agent buffer: '90%'.";
+pub const STATE_FULL: &str = "provigil: Agent buffer: 'full'.";
+pub const STATE_FLOODED: &str = "provigil: Agent buffer: 'flooded'.";
+pub const STATE_NORMAL: &str = "provigil: Agent buffer: 'normal'.";
+const STATE_LOCATION: &str = "provigil-agent";
 /// JSON in one batch at most (a single larger event goes alone): well under the manager's
 /// message limits, so a batch is never refused for its size alone.
 const BATCH_BYTES: usize = 1 << 20;
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(messages(&peek), [STATE_90]);
         let e = &peek[0];
         assert_eq!(e["event_type"], "logfile");
-        assert_eq!(e["location"], "wazuh-agent");
+        assert_eq!(e["location"], "provigil-agent");
         assert_eq!(e["agent"]["id"], "001");
         assert!(e["timestamp"].is_string());
         buf.push(json!({"id": 9}));

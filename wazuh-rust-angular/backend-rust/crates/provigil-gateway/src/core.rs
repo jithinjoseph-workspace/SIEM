@@ -209,7 +209,19 @@ fn engine_message(i: &Value) -> Option<(u8, String, String)> {
         Some("sca") => queues::SCA_MQ,
         _ => queues::LOCALFILE_MQ,
     };
-    Some((q, i["location"].as_str().filter(|l| !l.is_empty())?.to_string(), i["message"].as_str()?.to_string()))
+    Some((q, i["location"].as_str().filter(|l| !l.is_empty())?.to_string(), ruleset_text(i["message"].as_str()?)))
+}
+
+/// The ProVigil agent's own texts in the form the current ruleset's decoders read (its command
+/// output and buffer-state rules); other messages unchanged.
+fn ruleset_text(m: &str) -> String {
+    if let Some(rest) = m.strip_prefix("provigil: output: ") {
+        format!("ossec: output: {rest}")
+    } else if let Some(rest) = m.strip_prefix("provigil: Agent buffer: ") {
+        format!("wazuh: Agent buffer: {rest}")
+    } else {
+        m.to_string()
+    }
 }
 
 /// A batch of an agent's events: how many it was. A refusal means nothing of the batch reached
@@ -360,4 +372,14 @@ pub fn legacy_commands(gw: &Gw, a: &Authed) -> Vec<Value> {
 pub fn push_full_send(gw: &Gw, tenant: &str, agent: &str, command: &Value) {
     gw.stats.c.full_sends_asked.fetch_add(1, Relaxed);
     gw.queue.push(agent, tenant, "gateway", command, cmd::DEFAULT_TTL_MS);
+}
+
+#[cfg(test)]
+mod ruleset_text_tests {
+    #[test]
+    fn provigil_texts_reach_the_ruleset_in_its_form() {
+        assert_eq!(super::ruleset_text("provigil: output: 'df -P': /dev/sda1 100%"), "ossec: output: 'df -P': /dev/sda1 100%");
+        assert_eq!(super::ruleset_text("provigil: Agent buffer: 'full'."), "wazuh: Agent buffer: 'full'.");
+        assert_eq!(super::ruleset_text("sshd[1]: Failed password"), "sshd[1]: Failed password");
+    }
 }

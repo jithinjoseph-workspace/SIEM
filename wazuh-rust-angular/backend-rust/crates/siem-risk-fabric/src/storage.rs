@@ -14,15 +14,6 @@ pub fn load_config(path: &Path) -> Option<RiskFabricConfig> {
     None
 }
 
-pub fn save_config(path: &Path, cfg: &RiskFabricConfig) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(cfg) {
-        let _ = fs::write(path, json);
-    }
-}
-
 pub fn default_config() -> RiskFabricConfig {
     let processes = vec![
         BusinessProcessDefinition {

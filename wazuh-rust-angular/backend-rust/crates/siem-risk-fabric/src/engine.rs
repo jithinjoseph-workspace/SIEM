@@ -2,7 +2,8 @@ use chrono::{Datelike, Timelike, Utc};
 use siem_core::Alert;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::models::{
     BusinessProcessDefinition, BusinessTimeWindow, FleetAgentMeta, ProcessRiskStat,
@@ -15,20 +16,25 @@ pub struct RiskFabricEngine {
     processes: Arc<RwLock<Vec<BusinessProcessDefinition>>>,
     time_windows: Arc<RwLock<Vec<BusinessTimeWindow>>>,
     fleet: Arc<RwLock<HashMap<String, FleetAgentMeta>>>,
-    config_path: PathBuf,
+    /// Changed since siem-api last stored it (ClickHouse, `engine_docs`)
+    changed: Arc<AtomicBool>,
+    /// The settings file of an earlier version, until its content is stored
+    legacy_file: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl RiskFabricEngine {
     pub fn new(config_path: impl Into<PathBuf>) -> Self {
         let path = config_path.into();
-        let cfg = storage::load_config(&path).unwrap_or_else(storage::default_config);
-        storage::save_config(&path, &cfg);
+        let old = storage::load_config(&path);
+        let had_file = old.is_some();
+        let cfg = old.unwrap_or_else(storage::default_config);
 
         Self {
             processes: Arc::new(RwLock::new(cfg.processes)),
             time_windows: Arc::new(RwLock::new(cfg.time_windows)),
             fleet: Arc::new(RwLock::new(HashMap::new())),
-            config_path: path,
+            changed: Arc::new(AtomicBool::new(had_file)),
+            legacy_file: Arc::new(Mutex::new(had_file.then_some(path))),
         }
     }
 
@@ -78,13 +84,37 @@ impl RiskFabricEngine {
         }
     }
 
-    /// Persist current configuration state to disk
+    /// The business processes or time windows changed: siem-api stores them.
     pub fn save(&self) {
-        let cfg = RiskFabricConfig {
-            processes: self.processes.read().unwrap().clone(),
-            time_windows: self.time_windows.read().unwrap().clone(),
-        };
-        storage::save_config(&self.config_path, &cfg);
+        self.changed.store(true, Ordering::SeqCst);
+    }
+
+    /// The stored document if it changed since the last call, for siem-api to store.
+    pub fn take_changed(&self) -> Option<String> {
+        if !self.changed.swap(false, Ordering::SeqCst) {
+            return None;
+        }
+        serde_json::to_string(&RiskFabricConfig { processes: self.processes.read().unwrap().clone(), time_windows: self.time_windows.read().unwrap().clone() }).ok()
+    }
+
+    /// Not stored: it stays changed.
+    pub fn store_failed(&self) {
+        self.save();
+    }
+
+    /// Stored: the settings file of an earlier version is not needed any more.
+    pub fn stored(&self) {
+        if let Some(p) = self.legacy_file.lock().unwrap().take() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    /// The stored document, at start.
+    pub fn load(&self, doc: &str) {
+        if let Ok(c) = serde_json::from_str::<RiskFabricConfig>(doc) {
+            *self.processes.write().unwrap() = c.processes;
+            *self.time_windows.write().unwrap() = c.time_windows;
+        }
     }
 
     /// Evaluates an alert and injects the score into `alert.data["risk_fabric"]`
@@ -701,5 +731,22 @@ mod tests {
         alert.data.clear();
         alert.data.insert("dstuser".into(), serde_json::Value::String("root".into()));
         assert_eq!(resolve_alert_user(&alert), "root");
+    }
+}
+
+#[cfg(test)]
+mod stored_tests {
+    use super::*;
+
+    #[test]
+    fn changes_are_handed_over_once_and_load_back() {
+        let e = RiskFabricEngine::new("no-such-file.json");
+        assert!(e.take_changed().is_none());
+        e.save();
+        let doc = e.take_changed().expect("changed");
+        assert!(e.take_changed().is_none());
+        let fresh = RiskFabricEngine::new("no-such-file.json");
+        fresh.load(&doc);
+        assert_eq!(fresh.take_changed(), None, "loading is not a change");
     }
 }

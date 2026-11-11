@@ -280,13 +280,15 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 26] = [
+pub const ANALYST_DDL: [&str; 27] = [
     // the vulnerability scanner's current results, streamed (vulnerability.rs)
     crate::vulnerability::DDL,
     // each agent's intent dossier (intent_store.rs)
     crate::intent_store::DDL,
     // the intent engine's executed actions, audit log and simulation overrides (intent_store.rs)
     crate::intent_store::EXTRAS_DDL,
+    // the Risk Fabric and Deception settings (engine_docs.rs)
+    crate::engine_docs::DDL,
     // EDR tamper protection: the tenant's setting and each agent's lock state (tamper.rs)
     crate::tamper::DDL,
     // EDR live response requests and their results (live_response.rs)

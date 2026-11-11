@@ -56,7 +56,7 @@ export class Navbar implements OnInit, OnDestroy {
     { label: 'Alerts', hint: 'View correlation hits', route: '/analyst/alerts', permission: 'alerts' },
     { label: 'Rules', hint: 'Manage SIGMA rules', route: '/analyst/rules', permission: 'rules' },
     { label: 'Threat Intel', hint: 'IOC lookup', route: '/analyst/intel', permission: 'intel' },
-    { label: 'Attack Map', hint: 'Global threat map', route: '/analyst/threat-map', permission: 'intel' },
+    { label: 'Attack Map', hint: 'Global threat map', route: '/analyst/threat-map', permission: 'alerts' },
     { label: 'Network Map', hint: 'Topology view', route: '/analyst/network-map', permission: 'network-map' },
     { label: 'System Health', hint: 'Service status', route: '/analyst/health', permission: 'health' },
     { label: 'Live Stream', hint: 'Real-time events', route: '/analyst/live', permission: 'live' },

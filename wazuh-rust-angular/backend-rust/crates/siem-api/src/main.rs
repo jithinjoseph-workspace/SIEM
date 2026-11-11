@@ -75,6 +75,7 @@ pub mod mitre;
 pub mod org_memory;
 pub mod platform;
 pub mod intent_store;
+pub mod engine_docs;
 pub mod posture_store;
 pub mod predictions;
 pub mod process_tree;
@@ -569,6 +570,12 @@ async fn main() {
             if ch_state.db.is_connected() {
                 intent_store::load(&ch_state).await;
                 intent_store::spawn(ch_state.clone());
+                engine_docs::load(&ch_state).await;
+                // each tenant's learned parsers now, not on the first page visit (that one showed none)
+                for t in predictions::tenant_ids(&ch_state) {
+                    parsers_store::for_tenant(&ch_state, &t);
+                }
+                engine_docs::spawn(ch_state.clone());
                 let since_ms =
                     (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
                 for tenant in predictions::tenant_ids(&ch_state) {

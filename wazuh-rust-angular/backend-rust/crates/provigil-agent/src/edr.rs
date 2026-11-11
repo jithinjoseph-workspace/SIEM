@@ -92,8 +92,6 @@ pub fn program_of(base: &str) -> &str {
     match base {
         "release-host" => "isolate-host",
         "tamper-unlock" => "tamper-protect",
-        // the manager's response config names the restart command after the old agent
-        "restart-wazuh" => RESTART_PROGRAM,
         b => b,
     }
 }
@@ -517,7 +515,6 @@ mod tests {
             drop(stdin); // more ends at the end of its input
         }
         assert_eq!(program_path(RESTART_PROGRAM), PathBuf::from(r"active-response\bin\restart-agent.exe"));
-        assert_eq!(program_of("restart-wazuh"), "restart-agent");
     }
 }
 

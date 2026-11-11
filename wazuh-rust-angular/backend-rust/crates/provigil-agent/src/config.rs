@@ -472,31 +472,6 @@ impl AgentConfig {
             }
         }
 
-        // agents installed before the installer wrote provigil-agent.json: the manager host
-        // from the old agent configuration file, on the manager API port
-        if cfg.manager_url.trim().is_empty() {
-            let possible_conf_paths = [
-                Path::new("ossec.conf"),
-                Path::new("C:\\Program Files (x86)\\ProVigil Agent\\ossec.conf"),
-                Path::new("C:\\Program Files\\ProVigil Agent\\ossec.conf"),
-            ];
-            for cpath in possible_conf_paths {
-                if cpath.is_file() {
-                    if let Ok(content) = fs::read_to_string(cpath) {
-                        if let Some(start) = content.find("<address>") {
-                            if let Some(end) = content[start + 9..].find("</address>") {
-                                let addr = content[start + 9..start + 9 + end].trim();
-                                if !addr.is_empty() && addr != "0.0.0.0" {
-                                    cfg.manager_url = format!("http://{}:8088", addr);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         if cfg.agent_name.is_empty() {
             cfg.agent_name = sysinfo::System::host_name().unwrap_or_else(|| "win-agent".into());
         }

@@ -26,7 +26,7 @@
         class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-amber-500/20 transition"
       >
         <lucide-angular [img]="PlayIcon" class="w-4 h-4" [class.animate-spin]="isScanning()"></lucide-angular>
-        {{ isScanning() ? 'Scanning...' : 'Re-scan now' }}
+        {{ isScanning() ? 'Scanning ' + scanProgress().done + ' of ' + scanProgress().total + '…' : 'Re-scan now' }}
       </button>
 
       <button (click)="openExport()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
@@ -193,6 +193,7 @@
               </td>
               <td class="p-3.5 font-semibold text-white">{{ a.name }}
                 @for (g of groupsOf().get(a.id) ?? []; track g) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-cyan-300 align-middle">{{ g }}</span> }
+                @if (scanLabel(a.id); as sl) { <span class="ml-1.5 px-1.5 py-0.5 rounded border text-[10px] font-semibold align-middle" [ngClass]="sl.cls" role="status">{{ sl.text }}</span> }
                 @for (s of agentSegs(a.id); track s) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-amber-300 align-middle" [title]="segTitle(a.id)">{{ segLabel(s) }}{{ seg().agents[a.id]?.guessed ? ' ?' : '' }}</span> }
               </td>
               <td class="p-3.5 font-mono text-slate-400">{{ a.id }}</td>

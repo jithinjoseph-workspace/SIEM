@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -39,7 +39,7 @@ const COLUMNS_KEY = 'provigil.vulnReport.columns';
   templateUrl: './vulnerabilities.html',
   styleUrl: './vulnerabilities.css',
 })
-export class Vulnerabilities implements OnInit {
+export class Vulnerabilities implements OnInit, OnDestroy {
   private siem = inject(SiemService);
   scanMessage = signal<string | null>(null);
 
@@ -229,6 +229,14 @@ export class Vulnerabilities implements OnInit {
 
   ngOnInit() {
     this.loadVulnerabilities();
+    // a re-scan still running (page opened again): follow it
+    this.siem.getVulnScanStatus().subscribe(r => {
+      this.scanState.set(r.agents);
+      if (Object.values(r.agents).some(s => s.state === 'queued' || s.state === 'scanning')) {
+        this.isScanning.set(true);
+        this.followScans();
+      }
+    });
     this.siem.getGroups().subscribe(g => this.groups.set(g));
     this.loadSegments();
   }
@@ -321,20 +329,71 @@ export class Vulnerabilities implements OnInit {
     });
   }
 
+  /** Re-scan progress per agent (from the scanner, through siem-api). */
+  scanState = signal<Record<string, { state: string; at: number }>>({});
+  private scanTimer: ReturnType<typeof setInterval> | null = null;
+  private scanStarted = 0;
+  /** Agents still queued or being scanned, and how many of this run are finished. */
+  scanProgress = computed(() => {
+    const s = Object.values(this.scanState()).filter(x => x.at >= this.scanStarted);
+    const active = s.filter(x => x.state === 'queued' || x.state === 'scanning').length;
+    return { active, done: s.filter(x => x.state === 'done').length, total: s.length };
+  });
+
   triggerScanNow() {
     this.isScanning.set(true);
     this.scanMessage.set(null);
+    this.scanStarted = Math.floor(Date.now() / 1000) - 5;
     this.siem.triggerVulnScan().subscribe({
       next: (r: any) => {
-        this.isScanning.set(false);
-        this.scanMessage.set(`✓ ${r?.message ?? 'Results refreshed'}`);
-        this.loadVulnerabilities();
+        this.scanMessage.set(`✓ ${r?.message ?? 'Re-scan requested'} Results appear PC by PC as each scan finishes.`);
+        this.followScans();
       },
       error: (err) => {
         this.isScanning.set(false);
         this.scanMessage.set(`✗ ${err?.error?.message || 'scan failed'}`);
+      }
+    });
+  }
+
+  /** Polls the scan states every 2 s; reloads the results whenever an agent finishes, stops when
+   *  none is queued or scanning (at most 15 minutes). */
+  private followScans() {
+    this.stopFollowing();
+    const until = Date.now() + 15 * 60 * 1000;
+    const tick = () => this.siem.getVulnScanStatus().subscribe(r => {
+      const before = this.scanState();
+      this.scanState.set(r.agents);
+      const finished = Object.entries(r.agents).some(([id, s]) =>
+        (s.state === 'done' || s.state === 'failed') && before[id]?.state !== s.state);
+      if (finished) this.loadVulnerabilities();
+      if (this.scanProgress().active === 0 || Date.now() > until) {
+        this.stopFollowing();
+        this.isScanning.set(false);
         this.loadVulnerabilities();
       }
     });
+    tick();
+    this.scanTimer = setInterval(tick, 2000);
+  }
+
+  private stopFollowing() {
+    if (this.scanTimer) { clearInterval(this.scanTimer); this.scanTimer = null; }
+  }
+
+  ngOnDestroy() { this.stopFollowing(); }
+
+  scanLabel(id: string): { text: string; cls: string } | null {
+    const s = this.scanState()[id];
+    if (!s) return null;
+    const recent = Date.now() / 1000 - s.at < 600;
+    switch (s.state) {
+      case 'queued': return { text: 'Queued', cls: 'text-slate-300 border-slate-600' };
+      case 'scanning': return { text: 'Scanning…', cls: 'text-amber-300 border-amber-700 animate-pulse' };
+      case 'waiting': return { text: 'Waiting for agent details', cls: 'text-sky-300 border-sky-800' };
+      case 'failed': return recent ? { text: 'Scan failed', cls: 'text-rose-300 border-rose-800' } : null;
+      case 'done': return recent ? { text: 'Scanned ✓', cls: 'text-emerald-300 border-emerald-800' } : null;
+      default: return null;
+    }
   }
 }

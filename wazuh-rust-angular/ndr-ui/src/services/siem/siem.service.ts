@@ -412,6 +412,13 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/vulnerabilities`, agentId ? { agent_id: agentId } : {});
   }
 
+  /** Each agent's re-scan state: queued, scanning, done, failed or waiting (unix seconds `at`). */
+  getVulnScanStatus(): Observable<{ agents: Record<string, { state: string; at: number }> }> {
+    return this.http.get<{ agents: Record<string, { state: string; at: number }> }>(`${this.apiUrl}/api/v1/vulnerabilities/scan-status`).pipe(
+      catchError(() => of({ agents: {} }))
+    );
+  }
+
   getFimSummary(): Observable<FimSummaryResponse> {
     return this.http.get<FimSummaryResponse>(`${this.apiUrl}/api/v1/fim/summary`);
   }

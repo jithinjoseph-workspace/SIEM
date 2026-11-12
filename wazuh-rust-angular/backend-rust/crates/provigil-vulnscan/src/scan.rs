@@ -761,10 +761,12 @@ impl Core {
             *n += 1;
             if *n <= MISSING_AGENT_TRIES {
                 vs!(self.log, Debug2, "Agent {id} is not in the agent database yet; re-scan retried in a minute (try {n}).");
+                self.sink.scan_status(&id, "waiting");
                 return Err(Error::Incomplete { agents: vec![id], no_index: ctx.no_index });
             }
             self.missing_agent.remove(&id);
             vs!(self.log, Warning, "Agent {id} is still not in the agent database after {MISSING_AGENT_TRIES} tries; re-scan dropped.");
+            self.sink.scan_status(&id, "failed");
             return Ok(());
         }
         self.missing_agent.remove(&id);
@@ -806,9 +808,16 @@ impl Core {
     /// Scans one agent's data (after its clean-up) and alerts the changes against `before`.
     /// A scan that failed part-way sends no alerts.
     fn rescan_agent_data(&mut self, a: &Agent, before: &BTreeSet<(String, String, String)>, l1: L1, no_index: bool) -> Res<()> {
+        self.sink.scan_status(&a.id, "scanning");
         self.collect = Some(BTreeMap::new());
         let r = self.scan_agent_data(a, l1, no_index);
         let collected = self.collect.take().unwrap_or_default();
+        let state = match &r {
+            Ok(true) => "done",
+            Err(Error::NotReady { .. }) => "waiting",
+            _ => "failed",
+        };
+        self.sink.scan_status(&a.id, state);
         if r? && !before.is_empty() {
             self.change_alerts(a, before, &collected)?;
         }

@@ -118,6 +118,16 @@ impl DocSink {
         }
     }
 
+    /// Tells siem-api how an agent's re-scan is going (`scanning`, `done`, `failed`, `waiting`),
+    /// so the console can show progress and load each agent's results as soon as it is done.
+    /// Stream mode only; it is not a document and is not remembered.
+    pub fn scan_status(&mut self, agent: &str, state: &str) {
+        if let Mode::Stream { spool, .. } = &self.mode {
+            let msg = serde_json::json!({"operation":"SCAN_STATUS","id":agent,"state":state}).to_string();
+            Self::send(spool.as_ref(), &msg, &self.log);
+        }
+    }
+
     pub fn publish(&mut self, msg: &str) {
         let log = self.log.clone();
         let Ok(v) = serde_json::from_str::<Value>(msg) else { return };
@@ -228,6 +238,23 @@ mod tests {
             format!("{} {}", v["operation"].as_str().unwrap(), v["id"].as_str().unwrap())
         }).collect();
         v
+    }
+
+    #[test]
+    fn scan_status_goes_to_siem_api_only_in_stream_mode() {
+        let home = tempfile::tempdir().unwrap();
+        let sp = Arc::new(Spool(Mutex::new(Vec::new())));
+        let mut s = DocSink::open(home.path(), "idx", Some(sp.clone()), Log::null()).unwrap();
+        s.scan_status("8084", "scanning");
+        s.scan_status("8084", "done");
+        let sent = sp.0.lock().unwrap().clone();
+        assert_eq!(sent, vec![
+            r#"{"id":"8084","operation":"SCAN_STATUS","state":"scanning"}"#.to_string(),
+            r#"{"id":"8084","operation":"SCAN_STATUS","state":"done"}"#.to_string(),
+        ]);
+        let mut local = DocSink::open(home.path(), "idx2", None, Log::null()).unwrap();
+        local.scan_status("8084", "done");
+        assert!(local.local_keys().is_empty());
     }
 
     #[test]

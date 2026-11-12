@@ -1177,6 +1177,7 @@ async fn main() {
         .route("/api/v1/syscheck", put(put_syscheck_handler))
         .route("/api/v1/simulate", post(simulate_attack))
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
+        .route("/api/v1/vulnerabilities/scan-status", get(get_scan_status))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
         .route("/api/v1/vulnerabilities/report.xlsx", get(vuln_report::get_report))
@@ -4669,26 +4670,29 @@ async fn post_scan_now(
     let sent = agents
         .iter()
         .filter(|a| match vulnerability::request_rescan(a, true) {
-            Ok(()) => true,
+            Ok(()) => {
+                vulnerability::set_scan_status(a, "queued");
+                true
+            }
             Err(e) => {
                 tracing::warn!("vulnerability re-scan of agent {a} not requested: {e}");
                 false
             }
         })
         .count();
-    if sent > 0 {
-        // a scan takes a few seconds per agent
-        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
-    }
-    let n = scoped_vulnerabilities(&state, &ctx, None)
-        .await
-        .map(|l| l.len())
-        .unwrap_or(0);
+    // the console follows each agent with GET /api/v1/vulnerabilities/scan-status
     Json(serde_json::json!({
         "status": "ok",
-        "message": format!("Re-scan requested for {sent} agent(s); {n} active vulnerabilities. Results keep updating for a minute."),
+        "agents": sent,
+        "message": format!("Re-scan requested for {sent} agent(s)."),
     }))
     .into_response()
+}
+
+/// `GET /api/v1/vulnerabilities/scan-status`: each in-scope agent's re-scan state.
+async fn get_scan_status(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    let agents: Vec<String> = state.agent_tenants.read().unwrap().keys().filter(|a| agent_in_scope(&state, &ctx, a)).cloned().collect();
+    Json(serde_json::json!({ "agents": vulnerability::scan_status(agents.into_iter()) })).into_response()
 }
 
 async fn get_agent_os_handler(

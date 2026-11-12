@@ -1,0 +1,31 @@
+# Linux test PCs for the mass deployment (specs/provigil-mass-deploy.md, section 10).
+# Each runs systemd and SSH, with a user "pvtest" that may use sudo with its password.
+#
+#   set LAB_PASSWORD=<any test password>     (PowerShell: $env:LAB_PASSWORD = '...')
+#   docker compose -f deploy/lab/docker-compose.yml up -d --build
+#   provigil-deploy push-linux --host 127.0.0.1 --port 2221 --user pvtest --kit <kit folder>
+#   docker compose -f deploy/lab/docker-compose.yml down
+#
+# Test machines only: privileged containers (systemd needs it). Never on a shared host.
+services:
+  pv-ubuntu:
+    build: { context: ., dockerfile: Dockerfile.ubuntu, args: { LAB_PASSWORD: "${LAB_PASSWORD:?set LAB_PASSWORD}" } }
+    hostname: pv-ubuntu
+    privileged: true
+    cgroup: host
+    volumes: ["/sys/fs/cgroup:/sys/fs/cgroup:rw"]
+    tmpfs: ["/run", "/run/lock"]
+    ports: ["127.0.0.1:2221:22"]
+  pv-rocky:
+    build: { context: ., dockerfile: Dockerfile.rocky, args: { LAB_PASSWORD: "${LAB_PASSWORD:?set LAB_PASSWORD}" } }
+    hostname: pv-rocky
+    privileged: true
+    cgroup: host
+    volumes: ["/sys/fs/cgroup:/sys/fs/cgroup:rw"]
+    tmpfs: ["/run", "/run/lock"]
+    ports: ["127.0.0.1:2222:22"]
+  # no systemd: must be reported "not supported"
+  pv-nosystemd:
+    build: { context: ., dockerfile: Dockerfile.nosystemd, args: { LAB_PASSWORD: "${LAB_PASSWORD:?set LAB_PASSWORD}" } }
+    hostname: pv-nosystemd
+    ports: ["127.0.0.1:2223:22"]

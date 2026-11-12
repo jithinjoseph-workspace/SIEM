@@ -256,3 +256,230 @@ Replaces:
 
 
 
+
+## siem-agentd and siem-winagent: old-vs-new review (moved to old-code/ 2026-11-12)
+
+Both were ports of the upstream agent (each file mirrors a C file). `siem-agentd` (5,294 lines)
+was used only by `siem-winagent` (3,814 lines), which is not shipped: every PC runs
+`provigil-agent`. `siem-winagent` also built a program named `provigil-agent`, so a full
+workspace build could have replaced the shipped agent with the old one; moving it out ends that.
+Each feature below was checked against `provigil-agent`; none is missing.
+
+| Feature (old file) | Where it is now |
+|---|---|
+| Connect, start-up handshake, start / stop messages (`start_agent.rs`) | `lib.rs` sends "ProVigil agent started"; `transport.rs` `send_stopping` sends the last keepalive with status `stopping` |
+| Several managers and failover (`start_agent.rs`, `config.rs`) | `transport.rs` `Failover` (max retries, retry interval, wraps to the first) and gRPC-to-HTTPS fallback |
+| Enrollment and agent-name rules (`enrollment.rs`) | `identity.rs` (`clean_name`, HTTPS enrollment with the tenant or deployment key) |
+| Keys, counters, message encryption (`keys.rs`, `sendmsg.rs`) | replaced by TLS with the private CA and the per-agent key (`transport.rs`) |
+| Keepalive with the agent IP and the shared-configuration version (`notify.rs`) | `transport.rs` `keepalive_body` (agent IP, labels, group configuration version) |
+| Anti-flooding buffer: normal / 90 % / full / flooded, events-per-second pacing (`buffer.rs`) | `buffer.rs` (same states, sent once per change, paced to `events_per_second`) |
+| Labels (`config.rs`) | `config.rs` `labels`, sent with every keepalive and per log entry |
+| `getconfig` / `getstate` requests (`agcom.rs`, `state.rs`) | `transport.rs` `query` (settings without keys; version, manager, transport, buffer, last keepalive, last scans, sent, dropped) |
+| Requests from the manager with acknowledgement (`request.rs`, `receiver.rs`) | `commands.rs`; results kept and sent again until the manager has them |
+| Shared files and remote configuration checked before use (`receiver.rs`, `reload.rs`) | group configuration as JSON; `config.rs` `overlay` refuses a bad one and keeps the running settings |
+| Restart on new configuration (`reload.rs`) | `lib.rs`: new group settings restart the collection loops |
+| Own log rotation (`rotate_log.rs`) | `main.rs`: size-based rotation keeping five files |
+| Uninstall needs the manager's permission (`uninstall.rs`) | tamper protection (`tamper-protect.exe`, `siem-api/src/tamper.rs`): a locked agent cannot be stopped or removed |
+| Signature check of loaded DLLs (`siem-winagent/dll_verify.rs`) | `siem_active_response::dll_guard::enable()` at agent start |
+| Windows service, install / uninstall (`siem-winagent/service.rs`) | `service.rs`, `main.rs` (`--install`, `--uninstall`, `--service`, `--status`) |
+| Agent upgrade (`siem-winagent/upgrade.rs`) | `upgrade.rs` (SHA-256 and signer checks, rollback) |
+| Scheduled commands, osquery (`wm_command.rs`, `wm_osquery.rs`) | `config.rs` group scheduled commands (need `allow_remote_commands`), `osquery.rs` |
+| Restart the connection on a timer (`force_reconnect_interval`) | not needed: the cluster plan moves agents by changing their home worker (`specs/provigil-cluster.md`, step C5) |
+| IPv6 link-local interface check | not needed: managers are URLs |
+
+## siem-authd and siem-shared (step 4, replaced 2026-11-12)
+
+siem-api used three pieces; they are now its own code (`specs/siem-authd.md`). Old against new:
+
+| Old (`siem-authd`) | New | Result |
+|---|---|---|
+| `groups::MAX_GROUPS_PER_MULTIGROUP` = 256 and its message | `groups.rs` `MAX_GROUPS` = 256, `group_count_ok` | same value and message (test `at_most_256_groups`) |
+| `enrollment::add_agent_to_keystore` (ID given or next free; key given or random) | `agent_keys_store.rs` `new_agent_key` (ID always given, key always random) | same for siem-api's only call, which always gave the ID and never a key (test `new_agent_keys_are_random_and_stored`) |
+| `enrollment::format_success_response` (`authd_response` in the enrollment answer) | dropped | no agent, script or gateway read it; the same values are in `agent_id`, `agent_name`, `agent_ip`, `raw_key` |
+
+The rest of `siem-authd` served the old enrollment socket and is replaced by HTTPS enrollment:
+
+| Old feature | Where it is now |
+|---|---|
+| Enrollment server on port 1515 with password (`server.rs`, `config.rs`) | provigil-gateway `POST /api/v1/agents/enroll` → siem-api, with the tenant key or a deployment token |
+| Agent name rules (`is_valid_name`) | siem-api `valid_agent_name` (2–128 characters: letters, digits, `.`, `_`, `-`); provigil-agent `identity.rs` `clean_name` |
+| Duplicate name and replacement rules (`can_replace_agent`, force options) | siem-api enrollment: the same name in a tenant keeps its ID; `force` re-enrolls; a removed agent cannot enroll itself again |
+| Group checks: forbidden characters, `.`/`..`, repeats, limit (`groups.rs`) | siem-api `groups.rs` (`valid_group`, `resolve`, `MAX_GROUPS`); tokens refuse groups that do not exist |
+| `client.keys` on disk (`server.rs`) | ClickHouse `ndr.agent_keys` (encrypted), `agent_keys_store.rs` |
+| Agent certificate checks (`cert.rs`) | TLS with the private CA plus the per-agent key (provigil-gateway) |
+| Local add / remove / get commands (`local_server.rs`) | console API (agents list, remove, enrollment) |
+| `getconfig` request (`authcom.rs`) | not needed: no authd settings remain |
+| Agent-side enrollment program (`bin/agent_auth.rs`) | provigil-agent `identity.rs` |
+| Refusing agents newer than the manager (`compare_provigil_versions`) | not carried: ProVigil agents are upgraded from the console; versions are not compared with an upstream manager version |
+
+`siem-shared` (3,214 lines) was used only by `siem-authd` and `siem-util`; moved with them.
+
+## Unused agent crates (step 4, moved to old-code/ 2026-11-12)
+
+Nothing in the workspace, the manager's daemon list or any script used these; their features are
+in `provigil-agent` (table "The ProVigil Windows Agent" above): siem-syscheckd, siem-logcollector,
+siem-remoted, siem-sysinfo, siem-dbsync, siem-syscollector, siem-agent, siem-sca, siem-util,
+siem-shared-modules, siem-harvester (54,421 lines).
+
+## siem-vulnerability-scanner (own rewrite: provigil-vulnscan)
+
+Specification: `specs/vulnerability-scanner.md` (section numbers in brackets). Each line is one
+feature the line-by-line review ticks off; the rewrite must keep the on-disk formats so existing
+databases and queues are reused.
+
+1. Started by provigil-modulesd only when a `<vulnerability-detection>` or `<vulnerability-detector>` section exists (2.1)
+2. Host log lines: wdb socket init failure, "Created new thread" (2.1, 14.1)
+3. Entry points: start, push event, stop, change feed interval (2.2)
+4. Stop: stop flag for feed processing, event and delayed threads, scheduler join and its log line (2.2)
+5. Module configuration fields from the host (2.3) and start options (2.4)
+6. Start sequence order, including the defaults for enabled / index-status / feed-update-interval (2.5)
+7. Start debug line with the configuration JSON in its fixed key order (2.5)
+8. Start failure line with the trailing period (and double period quirk) (2.5, Q33)
+9. Config reader: valid element names, invalid-element warning, nested objects, duplicate rules (3.1)
+10. Deprecated section: only `enabled`, first value kept, deprecation warning (3.1)
+11. Missing `cti-url` filled from the global section or the default URL (3.1)
+12. Empty section leads to `Missing URL setting.` (3.1, Q1)
+13. Internal options, ranges and silent defaults (3.2)
+14. Time texts with s/m/h/d/w suffixes and invalid cases (3.3)
+15. Validation checks in order with their exact texts (3.4)
+16. Feed interval minimum 1 hour with the warning (3.4)
+17. Updater parameters for online and offline modes (3.4)
+18. Policy-change tracking in `queue/vd/state_track`: module, manager scan, cluster name/state/node (3.5)
+19. Policy actions pushed: reboot, scanAgent 000, deleteAgent 000, with their log lines (3.5)
+20. Prebuilt feed check (debug line only) (3.6, Q3)
+21. Feed maps load failure at start deletes `queue/vd_updater` and logs the error (2.5)
+22. All on-disk paths of 4.1
+23. Key-value store layout: directory + `data.sqlite`, pragmas, `cf` and `kv` tables, text binding (4.2)
+24. Key-value store operations and error texts, 20 000-write batches (4.2)
+25. Durable queue format: 20-digit keys, prefix + zero byte + item, reload on open (4.3, Q4)
+26. Feed value encoding: JSON, zlib above 64 bytes, read rule on byte 0x78 (4.4.1)
+27. Feed columns and key formats (4.4.2)
+28. CVE record schema, defaults and fields read (4.4.3)
+29. Translation record schema and action names (4.4.4)
+30. Candidate list format (4.4.5)
+31. Description record format (4.4.6)
+32. Global maps fields read (4.4.7)
+33. Updater metadata store: timestamp keys, greatest key wins, one row per run (4.5, Q6)
+34. Inventory database columns and key formats, node prefix (4.6)
+35. Updater creation: metadata store, configured offset, output folders, user agent, chain (5.3)
+36. Step chain building, invalid-value errors, offline compression from extension (5.4, Q7)
+37. Run state and `stageStatus` entries (5.4)
+38. Scheduled run: offset failure leads to snapshot retry; other failures; hash cleared (5.5)
+39. Full download on offset 0 (online) or reset, state restored afterwards (5.5)
+40. Any regular-chain failure counts as offset failure (5.5, Q8, Q9)
+41. Content server metadata parsing, warnings and errors (5.6)
+42. Offsets download in pages of 1000 into `<to>-api_file.json`, interruption warning (5.7)
+43. Snapshot download into `downloads/` (5.8)
+44. Offline download: file:// copy, http(s) single GET, unknown prefix, SHA-1 change check (5.9)
+45. User agent header on every request (5.10)
+46. Retry rules: 429 90 s; 5xx 1,1,2,4,8,16,30 s; endless; stop flag (5.10)
+47. HTTP error texts and transport messages (5.10)
+48. gzip and zip decompression, insecure-path check, directory entries (5.11)
+49. Publishing to the callback and its log lines; offsets vs snapshot failure (5.12)
+50. Version recording: offset row; offline hash + offset rows (5.13)
+51. Clean-up of downloads/contents, stop at first missing folder (5.14, Q24)
+52. Scheduler: immediate first run, interval, in-progress guard, log lines (5.15)
+53. Changing the interval starts a run at once (2.2, Q34)
+54. Feed message checks and unknown type (6.1)
+55. Whole message under the exclusive feed lock, batch committed even on error (6.1, Q10)
+56. Change pages: per-item apply, last offset, stop handling (6.2, Q23)
+57. Raw file: database emptied, line-by-line, progress lines every 1000, invalid line error (6.3)
+58. Stop during raw load returns offset 0 as success (6.3, Q35)
+59. Resource kinds by name prefix, unknown kinds ignored with a debug line (6.4)
+60. create / update / delete per kind, error texts (6.4)
+61. CVE state handling: PUBLISHED stores derived records, REJECTED removes them, other errors (6.4)
+62. Schema normalising rules, defaults, token names, `1: <col>: error:` positions (6.5)
+63. Text form for patching with 6-decimal float printing (6.5.3)
+64. JSON patch operations and every error text (6.6)
+65. Hotfix index store/remove (6.7.1)
+66. Remediations store/remove and its two error lines (6.7.2)
+67. Descriptions per container: source name, English text, references, CVSS 3.1/3.0 choice, CVSS 2 ignored (6.7.3, Q11)
+68. Candidates per container: grouping by lower-case product, vendor only for nvd/cisa, reverse index, stale product removal, write only when changed (6.7.4)
+69. Candidate removal for rejected CVEs across all CNA columns (6.7.4)
+70. Feed callback: log lines, reload maps, reboot event after every update (6.8, Q32)
+71. Global maps loading and its errors (6.9)
+72. Translation cache fill up to its size, additive, regex compile (6.9, Q12)
+73. Lookups: candidates (stop ends current list only), description, remediation, hotfix prefix, CNA by format/source/prefix/contains (6.10)
+74. Translation lookup: target platform, unanchored product/vendor patterns, version capture from the name (6.10, Q13)
+75. Four router subscriptions with ids and filters, subscription failure line (7.1)
+76. rsync attributes_type null error line (7.1)
+77. Event classification table, including MODIFIED and DELETED OS deltas (7.2, Q14, Q15)
+78. Hotfix insert events add the hotfix to the agent's hotfix cache (7.2)
+79. JSON actions: reboot, cleanup, scanAgent, upgradeAgentDB(15), deletePackage, deleteHotfix, deleteAgent, unknown (7.2)
+80. `no-index` and `full` flags (7.2)
+81. Agent id padding and manager name for `000` (7.2)
+82. Persistent event queue with type byte encoding, at-least-once, 1 s idle wait (7.3)
+83. Delayed queue per agent, 60 s in-memory postponement, result handling (7.4)
+84. Postponing an agent's events while it has delayed ones (7.5)
+85. Concurrency: one feed lock for events and feed updates; single agent-database connection (7.6)
+86. Event processing log lines and chains per type; delayed queue emptied after re-scans/clean-ups (7.7)
+87. Error handling of normal events: not-ready, agents incomplete, json, other (7.7, Q40)
+88. "Agent data not ready" sources: NOT_SYNCED answers and empty OS data (7.8)
+89. Agent database transport: length-prefixed frames, `due` parts, 64 MiB limit, one reconnect (8.1)
+90. Agent database answer parsing and error texts (8.2)
+91. Exact query texts with trailing space and agent id check (8.3)
+92. OS data loading, OS cache, CPE name building from the OS CPE rules (9.1)
+93. Package insert chain stops when nothing was found (9.2)
+94. CNA choice: format, source, prefix, contains, default; CNA mapping expansion (9.3)
+95. Default CNA list `adp_default_array` or `nvd` (9.3)
+96. Translation L1 (3 separate caches) / L2 / lower-cased fallback (9.4)
+97. Package scan log lines and failure warning (9.4)
+98. Candidate: already-found skip, platform check (CPE part o or code name), vendor check (9.5, Q25)
+99. Version kind per package format (9.5)
+100. Version ranges: equal, lower/upper bounds, `0` and `*`, unaffected stop, default status (9.5.1)
+101. Match log lines and no-match lines (9.5.1)
+102. Match conditions and detection source recorded (9.5.1)
+103. Windows package hotfix remediation with the hotfix cache (9.6, Q16, Q17)
+104. Package delete chain (9.7)
+105. OS scan: Windows hotfix query first, windows/darwin only, CPE product, CNA list, Debian kind (9.8)
+106. OS scan Windows remediation filter and discard of CVEs without remediation data (9.8)
+107. OS scan error warning and completion line (9.8)
+108. Hotfix insert lookup with prefix search (9.9, Q18)
+109. Integrity clear chain (9.10, Q19)
+110. Global sync does nothing but log (9.11)
+111. Re-scan all: clean all, agent list (skip 000 when disabled), scan list (9.12)
+112. Re-scan one: clean agent, agent-info checks with cluster rule, scan list (9.12, Q41)
+113. Scan list: OS rows and package rows turned into state messages; incomplete agents (9.12, Q27)
+114. Re-scans never alert (9.12)
+115. Clean-up all / clean-up one (9.13)
+116. Version kinds and strategies with the try-all order (10.1)
+117. Calendar versions (10.2)
+118. Python versions incl. normalised pre names and dev ordering (10.3, Q20)
+119. Major-minor versions (10.4)
+120. Semantic versions with byte-wise pre-release order (10.5)
+121. Debian versions: parsing rules and ordering, invalid-character debug lines (10.6)
+122. RPM versions: epoch, first hyphen split, `~` and `^`, run comparison (10.7)
+123. All worked examples of 10.8
+124. Version parser debug lines (10.9)
+125. CPE parsing, 2.3 shift, field count, comparison with `*` (11)
+126. Inventory insert: prepend new CVEs, never remove (12.1, Q22)
+127. Inventory delete (12.2)
+128. Inventory OS sync: old OS keys deleted with deletions published, insert/delete/unchanged elements, first-scan marker, "No changes" stop (12.3)
+129. Inventory update for hotfix-solved CVEs (package column only) (12.4, Q36)
+130. Clean-up of all agents: deletions published per CVE, os_initial_scan cleared (12.5)
+131. Clean-up of one agent: keys removed, one DELETED_BY_QUERY, os_initial_scan (12.6)
+132. Prefix-search collisions kept as they are (Q21, Q38)
+133. Document fields and "if set" rule (13.1)
+134. Document id with the description offset appended (13.1)
+135. Detection source and `scanner.source` from `adp_descriptions` (13.1)
+136. Per-CVE document errors still publish the element (13.1, Q39)
+137. Install time conversion (13.1.1, Q29) and OS version formatting (Q28)
+138. Score rounding and -1 fill, sentence-case severity, under_evaluation (13.1.2)
+139. Description merge with fallbacks to `nvd` and its log lines (13.2)
+140. Package / OS alerts: when built, INSERTED and DELETED fields, cvssN key, vector fields (13.3.1, Q31, Q42)
+141. Hotfix alerts (13.3.3)
+142. Clear alert builder kept but never sent (13.3.4)
+143. Report line format and per-line send logs (13.3.5)
+144. Report queue size limit with silent drop (13.4, Q37)
+145. Report sender: datagram to `queue/sockets/queue`, retry every 1 s, rate limit, "Report sent" line, survives restarts (13.4)
+146. Sink mode by `SIEM_STREAM_ADDR` / `SIEM_STREAM_TOKEN` (13.5.1)
+147. Element publisher and array publisher with their log/error lines; `no-index` ignored (13.5.2, Q2)
+148. Local sink: prefix deletes, upserts, missing-data warning (13.5.2)
+149. Stream sink: kind V, remembered hashes without detected_at, replaced-offset deletes, unchanged skip (13.5.2)
+150. Re-scan mode: deferred deletions, unseen documents deleted at the end, `full` bypass (13.5.3)
+151. Every log line of section 14 with its tag and level
+152. Every error text of section 15
+153. Limits and sizes of section 16
+154. Outputs read by siem-api, the analysis rules and the console stay compatible (17)
+155. Load-bearing literals with old names kept until the owner renames them (20)
+156. Tests of section 19 pass, including the differential checks against the old scanner

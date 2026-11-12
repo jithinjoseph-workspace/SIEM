@@ -7,4 +7,5 @@ pub mod database;
 pub mod download;
 pub mod task_general;
 pub mod task_manager;
+pub mod vulnscan_host;
 pub mod wdb;

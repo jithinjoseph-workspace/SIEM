@@ -1,0 +1,10 @@
+FROM rockylinux:9
+ARG LAB_PASSWORD
+ENV container=docker
+RUN dnf -y install systemd openssh-server sudo passwd procps-ng hostname && dnf clean all \
+    && useradd -m -G wheel pvtest && echo "pvtest:${LAB_PASSWORD}" | chpasswd \
+    && sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && systemctl enable sshd \
+    && rm -f /run/nologin /etc/nologin
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

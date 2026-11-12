@@ -821,26 +821,467 @@
         }
 
         @case ('rootcheck') {
-          <div class="tab-panel space-y-3">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h4 class="font-semibold text-white">Rootcheck findings <span class="text-slate-500 font-mono text-xs">({{ rootcheckEvents().length }})</span></h4>
-              <div class="flex gap-2">
-                <button type="button" (click)="runRootcheck()" class="text-xs px-3 py-1.5 rounded-lg border border-cyan-700 text-cyan-300 hover:bg-cyan-950">Scan now</button>
-                <button type="button" (click)="loadRootcheck(sa.id)" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800">Refresh</button>
+          <div class="tab-panel space-y-4">
+            <!-- Header bar with Title, Status & Actions -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-2">
+                  <h4 class="font-bold text-white text-sm">Rootcheck Anomaly & Baseline Inspection</h4>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800/60">
+                    {{ rootcheckEvents().length }} Findings
+                  </span>
+                </div>
+                <p class="text-xs text-slate-400 max-w-2xl">
+                  Deep host inspection for NTFS alternate data streams (ADS), hidden binaries, rootkits, trojans, and OS hardening disparities.
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  (click)="runRootcheck()"
+                  class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-cyan-700/80 text-cyan-300 hover:bg-cyan-950/70 hover:border-cyan-500 transition-all font-medium cursor-pointer shadow-sm">
+                  <lucide-angular [img]="ScanIcon" class="w-3.5 h-3.5"></lucide-angular>
+                  <span>Scan now</span>
+                </button>
+                <button
+                  type="button"
+                  (click)="loadRootcheck(sa.id)"
+                  [disabled]="rootcheckLoading()"
+                  class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 transition-all font-medium cursor-pointer">
+                  <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5" [class.animate-spin]="rootcheckLoading()"></lucide-angular>
+                  <span>Refresh</span>
+                </button>
               </div>
             </div>
-            @if (rootcheckLoading()) { <div class="text-xs text-slate-500">Loading…</div> }
-            @else {
-              @for (ev of rootcheckEvents(); track $index) {
-                <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
-                  <div class="text-xs text-slate-200 break-words">{{ ev.log }}</div>
-                  <div class="text-[11px] text-slate-500">
-                    First {{ ev.date_first | date:'short' }} · last {{ ev.date_last | date:'short' }}
-                    @if (ev.pci_dss) { <span> · PCI DSS {{ ev.pci_dss }}</span> }@if (ev.cis) { <span> · Ref {{ ev.cis }}</span> }
+
+            <!-- Feedback banner -->
+            @if (agentActionFeedback()) {
+              <div class="p-3 rounded-lg border border-cyan-800/70 bg-cyan-950/40 text-cyan-300 text-xs flex items-center gap-2">
+                <lucide-angular [img]="ActivityIcon" class="w-4 h-4 text-cyan-400 shrink-0"></lucide-angular>
+                <span>{{ agentActionFeedback() }}</span>
+              </div>
+            }
+
+            @if (rootcheckLoading()) {
+              <div class="p-8 rounded-xl border border-slate-800 bg-slate-950/60 text-center space-y-2">
+                <lucide-angular [img]="RefreshIcon" class="w-6 h-6 animate-spin text-cyan-400 mx-auto"></lucide-angular>
+                <div class="text-xs text-slate-300 font-medium">Querying agent anomaly database…</div>
+              </div>
+            } @else {
+              @if (rootcheckEvents().length > 0) {
+                <!-- Analytical KPI & Distribution Breakdown Banner -->
+                <div class="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-800/90 bg-slate-950/80 backdrop-blur-md">
+                  <!-- Numeric Ring Badge (Fixed no-overflow) -->
+                  <div
+                    class="ring shrink-0"
+                    [style.--p]="100"
+                    [style.--ring]="rootcheckSummary().rootkit > 0 ? 'var(--st-critical)' : rootcheckSummary().streams > 0 ? 'var(--st-warning)' : rootcheckSummary().audit > 0 ? '#06b6d4' : 'var(--st-good)'">
+                    <div class="flex flex-col items-center justify-center leading-none select-none">
+                      <span class="text-base font-black font-mono text-white">{{ rootcheckSummary().total }}</span>
+                      <span class="text-[8px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">Total</span>
+                    </div>
+                  </div>
+
+                  <div class="min-w-0 flex-1 space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span
+                          class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border inline-flex items-center gap-1.5 shadow-sm"
+                          [class.bg-rose-950]="rootcheckSummary().rootkit > 0"
+                          [class.text-rose-300]="rootcheckSummary().rootkit > 0"
+                          [class.border-rose-800]="rootcheckSummary().rootkit > 0"
+                          [class.bg-amber-950]="rootcheckSummary().streams > 0 && rootcheckSummary().rootkit === 0"
+                          [class.text-amber-300]="rootcheckSummary().streams > 0 && rootcheckSummary().rootkit === 0"
+                          [class.border-amber-800]="rootcheckSummary().streams > 0 && rootcheckSummary().rootkit === 0"
+                          [class.bg-cyan-950]="rootcheckSummary().audit > 0 && rootcheckSummary().streams === 0 && rootcheckSummary().rootkit === 0"
+                          [class.text-cyan-300]="rootcheckSummary().audit > 0 && rootcheckSummary().streams === 0 && rootcheckSummary().rootkit === 0"
+                          [class.border-cyan-800]="rootcheckSummary().audit > 0 && rootcheckSummary().streams === 0 && rootcheckSummary().rootkit === 0"
+                          [class.bg-emerald-950]="rootcheckSummary().total === 0"
+                          [class.text-emerald-300]="rootcheckSummary().total === 0"
+                          [class.border-emerald-800]="rootcheckSummary().total === 0">
+                          <span
+                            class="w-1.5 h-1.5 rounded-full"
+                            [class.bg-rose-400]="rootcheckSummary().rootkit > 0"
+                            [class.bg-amber-400]="rootcheckSummary().streams > 0 && rootcheckSummary().rootkit === 0"
+                            [class.bg-cyan-400]="rootcheckSummary().audit > 0 && rootcheckSummary().streams === 0 && rootcheckSummary().rootkit === 0"
+                            [class.bg-emerald-400]="rootcheckSummary().total === 0"></span>
+                          {{ rootcheckSummary().overallRisk }} Profile
+                        </span>
+                        <span class="text-xs font-semibold text-slate-300">
+                          {{ rootcheckSummary().total }} Anomaly Records Recorded
+                        </span>
+                      </div>
+                      <span class="text-[11px] text-slate-500 font-mono">SQLite provigil-db pm_event</span>
+                    </div>
+
+                    <!-- Proportional Distribution Bar -->
+                    @let totalRc = rootcheckSummary().total;
+                    @if (totalRc > 0) {
+                      <div class="track thick max-w-xl">
+                        @if (rootcheckSummary().rootkit > 0) {
+                          <span
+                            class="seg"
+                            [style.width.%]="(rootcheckSummary().rootkit * 100) / totalRc"
+                            style="background: var(--st-critical)"
+                            [title]="'Rootkits: ' + rootcheckSummary().rootkit">
+                          </span>
+                        }
+                        @if (rootcheckSummary().streams > 0) {
+                          <span
+                            class="seg"
+                            [style.width.%]="(rootcheckSummary().streams * 100) / totalRc"
+                            style="background: var(--st-warning)"
+                            [title]="'NTFS Hidden Streams: ' + rootcheckSummary().streams">
+                          </span>
+                        }
+                        @if (rootcheckSummary().audit > 0) {
+                          <span
+                            class="seg"
+                            [style.width.%]="(rootcheckSummary().audit * 100) / totalRc"
+                            style="background: #06b6d4"
+                            [title]="'Audit Baselines: ' + rootcheckSummary().audit">
+                          </span>
+                        }
+                        @if (rootcheckSummary().system > 0) {
+                          <span
+                            class="seg"
+                            [style.width.%]="(rootcheckSummary().system * 100) / totalRc"
+                            style="background: #64748b"
+                            [title]="'Scan Lifecycles: ' + rootcheckSummary().system">
+                          </span>
+                        }
+                      </div>
+                    }
+
+                    <!-- Swatches / Counters -->
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-300">
+                      @if (rootcheckSummary().streams > 0) {
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="swatch" style="background: var(--st-warning)"></span>
+                          <span class="font-semibold text-amber-300">{{ rootcheckSummary().streams }}</span>
+                          <span class="text-slate-400">NTFS Streams (ADS)</span>
+                        </span>
+                      }
+                      @if (rootcheckSummary().audit > 0) {
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="swatch" style="background: #06b6d4"></span>
+                          <span class="font-semibold text-cyan-300">{{ rootcheckSummary().audit }}</span>
+                          <span class="text-slate-400">Security Audits</span>
+                        </span>
+                      }
+                      @if (rootcheckSummary().rootkit > 0) {
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="swatch" style="background: var(--st-critical)"></span>
+                          <span class="font-semibold text-rose-300">{{ rootcheckSummary().rootkit }}</span>
+                          <span class="text-slate-400">Rootkits / Trojans</span>
+                        </span>
+                      }
+                      @if (rootcheckSummary().system > 0) {
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="swatch" style="background: #64748b"></span>
+                          <span class="font-semibold text-slate-300">{{ rootcheckSummary().system }}</span>
+                          <span class="text-slate-400">Scan Status</span>
+                        </span>
+                      }
+                    </div>
                   </div>
                 </div>
-              } @empty {
-                <div class="p-4 rounded-lg border border-slate-800 bg-slate-950/70 text-xs text-slate-400">No rootcheck findings stored for this agent.</div>
+
+                <!-- Filter Chips & Search Bar -->
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="chip"
+                      [class.on]="rootcheckFilter() === 'all'"
+                      (click)="rootcheckFilter.set('all')">
+                      All ({{ rootcheckSummary().total }})
+                    </button>
+                    @if (rootcheckSummary().streams > 0) {
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.on]="rootcheckFilter() === 'streams'"
+                        (click)="rootcheckFilter.set('streams')">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>
+                        NTFS Streams ({{ rootcheckSummary().streams }})
+                      </button>
+                    }
+                    @if (rootcheckSummary().audit > 0) {
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.on]="rootcheckFilter() === 'audit'"
+                        (click)="rootcheckFilter.set('audit')">
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block"></span>
+                        Security Audits ({{ rootcheckSummary().audit }})
+                      </button>
+                    }
+                    @if (rootcheckSummary().rootkit > 0) {
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.on]="rootcheckFilter() === 'rootkit'"
+                        (click)="rootcheckFilter.set('rootkit')">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-400 inline-block"></span>
+                        Rootkits ({{ rootcheckSummary().rootkit }})
+                      </button>
+                    }
+                    @if (rootcheckSummary().system > 0) {
+                      <button
+                        type="button"
+                        class="chip"
+                        [class.on]="rootcheckFilter() === 'system'"
+                        (click)="rootcheckFilter.set('system')">
+                        <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>
+                        Scan Status ({{ rootcheckSummary().system }})
+                      </button>
+                    }
+                  </div>
+
+                  <!-- Properly aligned search input with centered icon -->
+                  <div class="sm:ml-auto w-full sm:w-72 relative flex items-center">
+                    <span class="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-slate-500">
+                      <lucide-angular [img]="SearchIcon" class="w-3.5 h-3.5"></lucide-angular>
+                    </span>
+                    <input
+                      id="rootcheck-search"
+                      class="w-full bg-slate-950/90 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-slate-100 text-xs focus:border-cyan-500 focus:outline-none placeholder:text-slate-500 transition-colors"
+                      placeholder="Search paths, registry, keywords..."
+                      [ngModel]="rootcheckQuery()"
+                      (ngModelChange)="rootcheckQuery.set($event)" />
+                    @if (rootcheckQuery()) {
+                      <button
+                        type="button"
+                        (click)="rootcheckQuery.set('')"
+                        class="absolute inset-y-0 right-2.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
+                        <lucide-angular [img]="CloseIcon" class="w-3.5 h-3.5"></lucide-angular>
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                <div class="text-[11px] text-slate-500 flex justify-between items-center">
+                  <span>{{ filteredRootcheck().length }} finding{{ filteredRootcheck().length === 1 ? '' : 's' }} displayed</span>
+                  <span class="text-slate-600">Select any finding to inspect raw event telemetry</span>
+                </div>
+
+                <!-- Finding Cards Grid -->
+                <div class="space-y-3">
+                  @for (item of filteredRootcheck(); track item.index) {
+                    <div
+                      class="rounded-xl border border-l-4 bg-slate-950/80 hover:bg-slate-900/60 transition-all p-4 space-y-3"
+                      [class.border-l-amber-500]="item.parsed.category === 'streams'"
+                      [class.border-l-cyan-500]="item.parsed.category === 'audit'"
+                      [class.border-l-rose-500]="item.parsed.category === 'rootkit'"
+                      [class.border-l-slate-600]="item.parsed.category === 'system'"
+                      [class.border-slate-800]="!rootcheckExpanded()[item.index]"
+                      [class.border-cyan-700]="rootcheckExpanded()[item.index]"
+                      [class.ring-1]="rootcheckExpanded()[item.index]"
+                      [class.ring-cyan-900]="rootcheckExpanded()[item.index]">
+                      
+                      <!-- Card Header Row -->
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div class="flex items-start gap-3 min-w-0">
+                          <!-- Category Icon -->
+                          <div
+                            class="p-2 rounded-lg shrink-0 mt-0.5 border"
+                            [class.bg-amber-500/10]="item.parsed.category === 'streams'"
+                            [class.border-amber-500/30]="item.parsed.category === 'streams'"
+                            [class.text-amber-400]="item.parsed.category === 'streams'"
+                            [class.bg-cyan-500/10]="item.parsed.category === 'audit'"
+                            [class.border-cyan-500/30]="item.parsed.category === 'audit'"
+                            [class.text-cyan-400]="item.parsed.category === 'audit'"
+                            [class.bg-rose-500/10]="item.parsed.category === 'rootkit'"
+                            [class.border-rose-500/30]="item.parsed.category === 'rootkit'"
+                            [class.text-rose-400]="item.parsed.category === 'rootkit'"
+                            [class.bg-slate-800/80]="item.parsed.category === 'system'"
+                            [class.border-slate-700]="item.parsed.category === 'system'"
+                            [class.text-slate-400]="item.parsed.category === 'system'">
+                            @if (item.parsed.category === 'streams') {
+                              <lucide-angular [img]="LayersIcon" class="w-4 h-4"></lucide-angular>
+                            } @else if (item.parsed.category === 'audit') {
+                              <lucide-angular [img]="SlidersIcon" class="w-4 h-4"></lucide-angular>
+                            } @else if (item.parsed.category === 'rootkit') {
+                              <lucide-angular [img]="BugIcon" class="w-4 h-4"></lucide-angular>
+                            } @else {
+                              <lucide-angular [img]="CheckIcon" class="w-4 h-4"></lucide-angular>
+                            }
+                          </div>
+
+                          <div class="min-w-0 space-y-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                              <span
+                                class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border"
+                                [class.bg-amber-950/80]="item.parsed.category === 'streams'"
+                                [class.text-amber-300]="item.parsed.category === 'streams'"
+                                [class.border-amber-800/60]="item.parsed.category === 'streams'"
+                                [class.bg-cyan-950/80]="item.parsed.category === 'audit'"
+                                [class.text-cyan-300]="item.parsed.category === 'audit'"
+                                [class.border-cyan-800/60]="item.parsed.category === 'audit'"
+                                [class.bg-rose-950/80]="item.parsed.category === 'rootkit'"
+                                [class.text-rose-300]="item.parsed.category === 'rootkit'"
+                                [class.border-rose-800/60]="item.parsed.category === 'rootkit'"
+                                [class.bg-slate-900]="item.parsed.category === 'system'"
+                                [class.text-slate-400]="item.parsed.category === 'system'"
+                                [class.border-slate-700]="item.parsed.category === 'system'">
+                                {{ item.parsed.label }}
+                              </span>
+
+                              <!-- Title Headline -->
+                              <span class="text-xs font-bold text-white break-words">
+                                {{ item.parsed.title }}
+                              </span>
+                            </div>
+
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                              {{ item.parsed.explanation }}
+                            </p>
+                          </div>
+                        </div>
+
+                        <!-- Severity Badge -->
+                        <div class="shrink-0 flex sm:flex-col items-end gap-1">
+                          <span
+                            class="px-2.5 py-0.5 rounded text-[11px] font-bold border whitespace-nowrap"
+                            [class.bg-rose-950]="item.parsed.severity === 'critical'"
+                            [class.text-rose-300]="item.parsed.severity === 'critical'"
+                            [class.border-rose-800]="item.parsed.severity === 'critical'"
+                            [class.bg-amber-950]="item.parsed.severity === 'warning'"
+                            [class.text-amber-300]="item.parsed.severity === 'warning'"
+                            [class.border-amber-800]="item.parsed.severity === 'warning'"
+                            [class.bg-cyan-950]="item.parsed.severity === 'audit'"
+                            [class.text-cyan-300]="item.parsed.severity === 'audit'"
+                            [class.border-cyan-800]="item.parsed.severity === 'audit'"
+                            [class.bg-slate-900]="item.parsed.severity === 'info'"
+                            [class.text-slate-400]="item.parsed.severity === 'info'"
+                            [class.border-slate-700]="item.parsed.severity === 'info'">
+                            @if (item.parsed.severity === 'critical') { Critical Threat }
+                            @else if (item.parsed.severity === 'warning') { Warning / Hidden }
+                            @else if (item.parsed.severity === 'audit') { Policy Disparity }
+                            @else { Completed }
+                          </span>
+                        </div>
+                      </div>
+
+                      <!-- Structured Finding Target & Reference -->
+                      @if (item.parsed.path || item.parsed.registry || item.parsed.reference) {
+                        <div class="p-2.5 rounded-lg bg-black/40 border border-slate-900 space-y-2 text-xs">
+                          <!-- File Stream Path -->
+                          @if (item.parsed.path) {
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                              <div class="flex items-center gap-1.5 min-w-0">
+                                <span class="text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Stream Target:</span>
+                                <code class="font-mono text-cyan-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800 break-all select-all">
+                                  {{ item.parsed.path }}
+                                </code>
+                              </div>
+                              <button
+                                type="button"
+                                (click)="copyRootcheckLog(item.index, item.parsed.path)"
+                                class="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-cyan-300 transition-colors">
+                                <lucide-angular [img]="rootcheckCopied() === item.index ? CopiedIcon : CopyIcon" class="w-3 h-3"></lucide-angular>
+                                <span>{{ rootcheckCopied() === item.index ? 'Copied' : 'Copy Path' }}</span>
+                              </button>
+                            </div>
+                          }
+
+                          <!-- Registry Key -->
+                          @if (item.parsed.registry) {
+                            <div class="flex items-start gap-1.5 min-w-0 flex-wrap">
+                              <span class="text-slate-500 font-semibold text-[11px] uppercase tracking-wider shrink-0 mt-0.5">Registry Target:</span>
+                              <code class="font-mono text-cyan-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800 break-all select-all">
+                                {{ item.parsed.registry }}
+                              </code>
+                            </div>
+                          }
+
+                          <!-- Reference Documentation -->
+                          @if (item.parsed.reference) {
+                            <div class="flex items-center gap-1.5 pt-0.5">
+                              <span class="text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Reference:</span>
+                              <a
+                                [href]="item.parsed.reference"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 hover:underline break-all">
+                                <span>Security Baseline Documentation</span>
+                                <lucide-angular [img]="ExternalIcon" class="w-3 h-3"></lucide-angular>
+                              </a>
+                            </div>
+                          }
+                        </div>
+                      }
+
+                      <!-- Compliance & Timestamps Row -->
+                      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-900 text-[11px] text-slate-500">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="flex items-center gap-1 font-mono text-slate-400">
+                            <lucide-angular [img]="ClockIcon" class="w-3 h-3 text-slate-500"></lucide-angular>
+                            First: {{ item.parsed.dateFirst | date:'short' }}
+                          </span>
+                          <span class="text-slate-600">·</span>
+                          <span class="font-mono text-slate-300">
+                            Last seen: {{ item.parsed.dateLast | date:'short' }}
+                          </span>
+
+                          @if (item.ev.pci_dss) {
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-950/80 text-violet-300 border border-violet-800/60 font-mono">
+                              PCI DSS {{ item.ev.pci_dss }}
+                            </span>
+                          }
+                          @if (item.ev.cis) {
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-950/80 text-blue-300 border border-blue-800/60 font-mono">
+                              CIS {{ item.ev.cis }}
+                            </span>
+                          }
+                        </div>
+
+                        <!-- Toggle Raw Log Accordion -->
+                        <button
+                          type="button"
+                          (click)="toggleRootcheckExpand(item.index)"
+                          class="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer text-[11px]">
+                          <span>{{ rootcheckExpanded()[item.index] ? 'Hide Raw Log' : 'View Raw Log' }}</span>
+                          <lucide-angular [img]="rootcheckExpanded()[item.index] ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3"></lucide-angular>
+                        </button>
+                      </div>
+
+                      <!-- Raw Event Payload Accordion -->
+                      @if (rootcheckExpanded()[item.index]) {
+                        <div class="pt-2 space-y-1.5 border-t border-slate-800/70">
+                          <div class="flex items-center justify-between text-[11px] text-slate-400">
+                            <span class="font-semibold uppercase tracking-wider text-[10px] text-slate-500 font-mono">Raw Engine Event Payload (ev.log):</span>
+                            <button
+                              type="button"
+                              (click)="copyRootcheckLog(item.index, item.parsed.rawLog)"
+                              class="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 transition-colors">
+                              <lucide-angular [img]="rootcheckCopied() === item.index ? CopiedIcon : CopyIcon" class="w-3 h-3"></lucide-angular>
+                              <span>{{ rootcheckCopied() === item.index ? 'Copied' : 'Copy Log' }}</span>
+                            </button>
+                          </div>
+                          <pre class="font-mono text-xs text-slate-300 bg-black/80 p-3 rounded-lg border border-slate-800/90 break-all whitespace-pre-wrap select-all">{{ item.parsed.rawLog }}</pre>
+                        </div>
+                      }
+                    </div>
+                  } @empty {
+                    <div class="p-8 rounded-xl border border-slate-800 bg-slate-950/60 text-center space-y-1">
+                      <div class="text-xs font-semibold text-slate-300">No findings match the active filter or search query.</div>
+                      <div class="text-[11px] text-slate-500">Try selecting "All" or clearing the search bar.</div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <!-- Clean Zero Findings State -->
+                <div class="p-10 rounded-2xl border border-emerald-900/40 bg-gradient-to-b from-slate-950 to-emerald-950/20 text-center space-y-3">
+                  <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 mx-auto flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-950/40">
+                    <lucide-angular [img]="ShieldCheckIcon" class="w-6 h-6"></lucide-angular>
+                  </div>
+                  <h4 class="text-sm font-bold text-white">Zero Rootkits or Anomalies Detected</h4>
+                  <p class="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                    No hidden NTFS alternate data streams, trojan artifacts, rootkits, or security baseline deviations are stored for this agent.
+                  </p>
+                </div>
               }
             }
           </div>

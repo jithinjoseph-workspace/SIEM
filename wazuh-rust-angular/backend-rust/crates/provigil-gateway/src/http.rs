@@ -31,6 +31,8 @@ const MAX_KEEPALIVE: usize = 64 * 1024;
 const MAX_RESULT: usize = 1024 * 1024;
 const MAX_ENROLL: usize = 16 * 1024;
 const MAX_NONE: usize = 16 * 1024;
+/// 100 result rows of a deployment report, with room.
+const MAX_REPORT: usize = 512 * 1024;
 const CHUNK: usize = 1024 * 1024;
 const GRPC_PREFIX: &str = "/provigil.agent.v1.AgentService/";
 
@@ -54,6 +56,9 @@ fn classify<'a>(method: &Method, path: &'a str) -> (Kind, usize, Option<&'a str>
     }
     if p == "/api/v1/agents/enroll" {
         return (Kind::Enroll, MAX_ENROLL, None);
+    }
+    if p == "/api/v1/deploy/report" {
+        return (Kind::Other, MAX_REPORT, None);
     }
     if p == "/api/v1/agent/state" {
         return (Kind::AgentState, MAX_NONE, None);
@@ -169,11 +174,17 @@ async fn gate(State(gw): State<Arc<Gw>>, mut req: Request, next: Next) -> Respon
     match kind {
         Kind::Other => {}
         Kind::Enroll => {
+            // a deployment's PCs often share one public address (NAT); its token limits their count
+            let deployment = tenant_key.as_deref().is_some_and(|k| gw.cache.is_deploy_token(k));
             // no default tenant from any address: a key of a live tenant, or nothing
             if let Err(code) = gw.cache.tenant_of_key(tenant_key.as_deref()) {
+                if deployment && code == 401 {
+                    gw.stats.call(kind, code);
+                    return refused(grpc, Refuse(403, "The deployment token has expired or was revoked: create a new one in the console (Agent Deployment)"));
+                }
                 return refuse(&gw, Refuse(code, "tenant_key"));
             }
-            if !gw.limits.enroll_addr.allow(addr, now) || !gw.limits.enroll_total.allow(now) {
+            if !(deployment || gw.limits.enroll_addr.allow(addr, now)) || !gw.limits.enroll_total.allow(now) {
                 return refuse(&gw, Refuse(429, "enroll_rate"));
             }
         }
@@ -263,6 +274,22 @@ fn plain(r: Refuse) -> Response {
 async fn enroll(State(gw): State<Arc<Gw>>, Extension(c): Extension<Conn>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
     let tk = head(&headers, "x-tenant-key").unwrap_or_default();
     match core::enroll(&gw, &body, tk, &c.peer.ip().to_string()).await {
+        Ok(v) => Json(v).into_response(),
+        Err((code, msg)) => (StatusCode::from_u16(code).unwrap_or(StatusCode::SERVICE_UNAVAILABLE), Json(json!({ "status": "error", "message": msg }))).into_response(),
+    }
+}
+
+/// `POST /api/v1/deploy/report`: a deployment kit's results, with its token in `X-Tenant-Key`.
+async fn deploy_report(State(gw): State<Arc<Gw>>, Extension(c): Extension<Conn>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+    let token = head(&headers, "x-tenant-key").unwrap_or_default();
+    if !gw.cache.is_deploy_token(token) {
+        return plain(Refuse(401, "deployment token"));
+    }
+    // a few reports per run
+    if !gw.limits.state_addr.allow(c.peer.ip(), now_ms()) {
+        return plain(Refuse(429, "report_rate"));
+    }
+    match gw.up.deploy_report(token.trim(), &body).await {
         Ok(v) => Json(v).into_response(),
         Err((code, msg)) => (StatusCode::from_u16(code).unwrap_or(StatusCode::SERVICE_UNAVAILABLE), Json(json!({ "status": "error", "message": msg }))).into_response(),
     }
@@ -457,6 +484,7 @@ pub fn app(gw: Arc<Gw>) -> Router {
         .route("/api/agents/:id/commands", get(legacy_commands))
         .route("/api/v1/agent/commands/ack", post(legacy_ack))
         .route("/api/v1/agent/state", get(agent_state_route))
+        .route("/api/v1/deploy/report", post(deploy_report))
         .route("/downloads/provigil-agent.exe", get(download_agent))
         // agents set up before the ProVigil rename ask for the old name
         .route("/downloads/wazuh-agent.exe", get(download_agent))

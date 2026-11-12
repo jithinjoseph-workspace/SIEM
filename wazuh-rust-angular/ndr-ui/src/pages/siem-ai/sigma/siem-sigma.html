@@ -59,7 +59,7 @@
             <td class="px-4 py-3 text-right font-semibold">{{ m.alerts }}</td>
             <td class="px-4 py-3 text-slate-400">{{ m.hosts.join(', ') }}</td>
             <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ when(m.last_seen) }}</td>
-            <td class="px-4 py-3"><a *ngIf="m.hosts[0]" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: m.hosts[0] }" class="text-cyan-300 hover:underline">Investigate</a></td>
+            <td class="px-4 py-3"><a *ngIf="m.hosts[0]" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: m.hosts[0], days: 7, rule: m.rule_id, from: m.first_seen, to: m.last_seen }" title="These alerts, and the host's events around them" class="text-cyan-300 hover:underline">Investigate</a></td>
           </tr>
         </tbody>
       </table>

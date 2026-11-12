@@ -49,4 +49,145 @@
       </ul>
     </div>
   </div>
+
+  <section class="bg-slate-900/60 rounded-xl border border-slate-800 p-5 space-y-4">
+    <div>
+      <h3 class="text-base font-semibold text-white">Deployment tokens (many PCs at once)</h3>
+      <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+        For installing on many PCs with one script or Group Policy: a token enrolls PCs into your organisation like the
+        enrolment key, but it expires, enrolls at most the number of PCs you set, and can be revoked. Each PC enrolls under its
+        own computer name. Revoking stops new PCs only; PCs already enrolled keep working.
+      </p>
+    </div>
+    <div *ngIf="tokenError()" role="alert" class="text-sm text-rose-300">{{ tokenError() }}</div>
+    <div *ngIf="newToken() as t" role="status" class="p-3 rounded-lg border border-amber-700 bg-amber-950/30 text-sm space-y-2">
+      <div class="text-amber-200">Copy this token now: it is shown only once.</div>
+      <div class="flex gap-2 items-center">
+        <code class="flex-1 break-all text-xs text-slate-100 bg-slate-950 p-2 rounded">{{ t }}</code>
+        <button type="button" (click)="copyToken()" class="px-3 py-1.5 text-xs rounded border border-slate-700 hover:bg-slate-800">Copy</button>
+        <button type="button" (click)="newToken.set(null)" class="px-3 py-1.5 text-xs rounded border border-slate-700 hover:bg-slate-800">Done</button>
+      </div>
+      <div class="pt-2 border-t border-amber-800/60 space-y-2">
+        <div class="text-slate-200">Deployment kit with this token: one script for all PCs (see GUIDE.md in the zip).</div>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-300">
+          <label class="flex items-center gap-1.5"><input type="checkbox" [(ngModel)]="kitOptions.audit_policy" name="k_audit"> Windows audit policy</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" [(ngModel)]="kitOptions.ps_logging" name="k_ps"> PowerShell logging</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" [(ngModel)]="kitOptions.sysmon" name="k_sysmon"> Sysmon (downloaded from Microsoft on each PC)</label>
+        </div>
+        <button type="button" (click)="downloadKit()" [disabled]="kitBusy()" class="px-3 py-1.5 text-xs rounded bg-cyan-700 hover:bg-cyan-600 text-white disabled:opacity-50">
+          {{ kitBusy() ? 'Building the kit…' : 'Download deployment kit (.zip)' }}</button>
+      </div>
+    </div>
+    <form (ngSubmit)="createToken()" class="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end text-sm">
+      <label class="sm:col-span-2">Name of the deployment
+        <input [(ngModel)]="tokenForm.label" name="label" required maxlength="80" placeholder="Head office, November"
+          class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700"></label>
+      <label>Valid for (days)
+        <input type="number" [(ngModel)]="tokenForm.days" name="days" min="1" max="90" class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700"></label>
+      <label>Maximum PCs
+        <input type="number" [(ngModel)]="tokenForm.max" name="max" min="1" max="100000" class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700"></label>
+      <label>Agent group
+        <select [(ngModel)]="tokenForm.groups" name="groups" class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700">
+          <option value="">default</option>
+          <option *ngFor="let g of groupNames()" [value]="g">{{ g }}</option>
+        </select></label>
+      <div class="sm:col-span-5 flex flex-wrap items-end gap-2">
+        <button class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white">Create token</button>
+        <label class="ml-auto text-xs text-slate-400">New agent group
+          <input [(ngModel)]="newGroup" name="newGroup" placeholder="vlan" maxlength="64" (keydown.enter)="$event.preventDefault(); createGroup()"
+            class="mt-1 block w-40 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-100"></label>
+        <button type="button" (click)="createGroup()" [disabled]="!newGroup.trim()" class="px-3 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40">Create group</button>
+      </div>
+    </form>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-slate-400 text-left border-b border-slate-800">
+          <tr><th class="py-2 pr-3">Deployment</th><th class="pr-3">State</th><th class="pr-3">Enrolled</th><th class="pr-3">Expires</th><th class="pr-3">Created by</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="tokens().length === 0"><td colspan="6" class="py-3 text-slate-500">No deployment token yet.</td></tr>
+          <tr *ngFor="let t of tokens()" class="border-b border-slate-800/60">
+            <td class="py-2 pr-3">{{ t.label }}<span *ngIf="t.groups" class="text-xs text-slate-500"> · group {{ t.groups }}</span></td>
+            <td class="pr-3" [class.text-emerald-300]="t.state === 'active'" [class.text-slate-500]="t.state !== 'active'">{{ t.state }}</td>
+            <td class="pr-3">{{ t.enrolled }} / {{ t.max_enrollments }}</td>
+            <td class="pr-3 whitespace-nowrap">{{ when(t.expires_at * 1000) }}</td>
+            <td class="pr-3">{{ t.created_by }}</td>
+            <td class="text-right whitespace-nowrap">
+              <button type="button" (click)="showResults(t)" class="text-xs text-cyan-300 hover:underline mr-3">Results</button>
+              <button *ngIf="t.state !== 'revoked'" type="button" (click)="revokeToken(t)" class="text-xs text-rose-300 hover:underline">Revoke</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div *ngIf="results() as r" class="p-3 rounded-lg border border-slate-700 bg-slate-950/40 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <h4 class="text-sm font-semibold text-white mr-2">Results: {{ r.token.label }}</h4>
+        <span class="text-xs text-slate-400">{{ r.targets.length }} PCs reported · {{ r.enrolled.length }} enrolled with this token</span>
+        <span class="flex-1"></span>
+        <button type="button" (click)="exportResults()" [disabled]="!r.targets.length" class="px-2 py-1 text-xs rounded border border-slate-700 hover:bg-slate-800 disabled:opacity-50">Export CSV</button>
+        <button type="button" (click)="showResults(r.token)" class="px-2 py-1 text-xs rounded border border-slate-700 hover:bg-slate-800">Refresh</button>
+        <button type="button" (click)="results.set(null)" class="px-2 py-1 text-xs rounded border border-slate-700 hover:bg-slate-800">Close</button>
+      </div>
+      <div class="flex flex-wrap gap-2 text-xs" role="group" aria-label="Filter by outcome">
+        <button type="button" (click)="resultFilter.set('')" class="px-2 py-1 rounded border" [class.border-cyan-500]="!resultFilter()" [class.border-slate-700]="!!resultFilter()">All</button>
+        <button *ngFor="let o of outcomes()" type="button" (click)="resultFilter.set(o[0])" class="px-2 py-1 rounded border"
+          [class.border-cyan-500]="resultFilter() === o[0]" [class.border-slate-700]="resultFilter() !== o[0]">{{ o[0] }} ({{ o[1] }})</button>
+      </div>
+      <div class="overflow-x-auto max-h-[28rem]">
+        <table class="w-full text-xs">
+          <thead class="text-slate-400 text-left border-b border-slate-800 sticky top-0 bg-slate-950">
+            <tr><th class="py-1.5 pr-3">Computer</th><th class="pr-3">Address</th><th class="pr-3">OS</th><th class="pr-3">Method</th><th class="pr-3">Outcome</th><th class="pr-3">Reason</th><th class="pr-3">Agent</th><th>Reported</th></tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="!shownTargets().length"><td colspan="8" class="py-3 text-slate-500">No PCs reported yet. The kit's script sends its results at the end of its run.</td></tr>
+            <tr *ngFor="let t of shownTargets()" class="border-b border-slate-800/60 align-top">
+              <td class="py-1.5 pr-3">{{ t.computer || '—' }}</td>
+              <td class="pr-3">{{ t.address || '—' }}</td>
+              <td class="pr-3">{{ t.os || '—' }}</td>
+              <td class="pr-3">{{ t.method || '—' }}</td>
+              <td class="pr-3 whitespace-nowrap" [class.text-emerald-300]="t.outcome === 'installed' || t.outcome === 'already installed'"
+                [class.text-rose-300]="t.outcome === 'failed' || t.outcome === 'access denied'" [class.text-amber-300]="t.outcome === 'unreachable'">{{ t.outcome }}</td>
+              <td class="pr-3 max-w-md break-words text-slate-300">{{ t.reason }}</td>
+              <td class="pr-3">{{ t.agent_id || '—' }}</td>
+              <td class="whitespace-nowrap">{{ when(t.at * 1000) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  @if (tamper(); as t) {
+  <section class="bg-slate-900/60 rounded-xl border border-slate-800 p-5 space-y-3" aria-labelledby="tamper-h">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="tamper-h" class="text-sm font-semibold text-white">Tamper protection</h2>
+      <span class="text-xs" [class.text-emerald-300]="t.settings.enabled" [class.text-slate-400]="!t.settings.enabled">{{ t.settings.enabled ? 'On for all Windows agents' : 'Off' }}</span>
+    </div>
+    <p class="text-xs text-slate-400">A locked agent cannot be stopped, changed or removed on the PC, not even by an administrator. To reinstall or remove it, open a maintenance window here; the agent locks itself again when it ends.</p>
+    @if (!t.agents.length) { <p class="text-xs text-slate-500">No Windows agents.</p> }
+    <div class="space-y-2">
+      @for (a of t.agents; track a.agent_id) {
+        <div class="flex flex-wrap items-center gap-2 text-sm border-t border-slate-800/80 pt-2">
+          <span class="text-slate-200 min-w-[12rem]">{{ a.name }} <span class="text-xs text-slate-500 font-mono">{{ a.agent_id }}</span></span>
+          <span class="text-[11px] font-semibold px-2 py-0.5 rounded border"
+            [ngClass]="a.state === 'locked' ? 'text-emerald-300 border-emerald-700' : a.state === 'maintenance' ? 'text-amber-300 border-amber-700' : a.state === 'failed' ? 'text-rose-300 border-rose-700' : 'text-slate-300 border-slate-700'">
+            {{ a.state === 'locked' ? 'Locked' : a.state === 'maintenance' ? 'Maintenance until ' + (a.window_until | date:'MMM d, HH:mm') : a.state === 'off' ? 'Off' : a.state === 'failed' ? 'Lock failed' : a.state === 'sent' ? 'Sent, waiting for the agent' : 'Unknown' }}
+          </span>
+          @if (t.editable) {
+            <label class="sr-only" [for]="'tw-' + a.agent_id">Maintenance window length for {{ a.name }}</label>
+            <select [id]="'tw-' + a.agent_id" [ngModel]="tamperMinutes[a.agent_id] ?? 60" (ngModelChange)="tamperMinutes[a.agent_id] = +$event" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-100 text-xs">
+              <option [ngValue]="10">10 minutes</option><option [ngValue]="60">1 hour</option><option [ngValue]="1440">24 hours</option>
+            </select>
+            <label class="sr-only" [for]="'tr-' + a.agent_id">Reason for {{ a.name }}</label>
+            <input [id]="'tr-' + a.agent_id" [(ngModel)]="tamperReason[a.agent_id]" maxlength="200" placeholder="Reason (reinstall, removal…)"
+              class="flex-1 min-w-[10rem] bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-100 text-xs" />
+            <button type="button" (click)="tamperAction(a.agent_id, a.name, 'maintenance')" class="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold">Open maintenance window</button>
+            <button type="button" (click)="tamperAction(a.agent_id, a.name, 'lock')" class="px-3 py-1.5 rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950 text-xs">Lock now</button>
+          }
+          @if (tamperNote()[a.agent_id]; as n) { <p class="basis-full text-xs text-slate-300" role="status">{{ n }}</p> }
+        </div>
+      }
+    </div>
+  </section>
+  }
 </div>

@@ -20,21 +20,12 @@ use siem_xml::{OsXml, XmlNode};
 struct Handler<'a> {
     up: &'a mut agent_upgrade::Config,
     tm: &'a mut task_manager::Config,
-    /// `<vulnerability-detection>` / `<vulnerability-detector>` (Read_Vulnerability_Detection)
-    vd: &'a mut Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl ConfigHandler for Handler<'_> {
     fn section(&mut self, ctx: &mut ConfigContext, _xml: &OsXml, section: Section, node: &XmlNode, children: Option<&[XmlNode]>) -> siem_config::Result<()> {
+        // the vulnerability scanner reads its own section (vulnscan_host)
         if matches!(section, Section::VulnerabilityDetection | Section::VulnerabilityDetector) {
-            let vd = self.vd.get_or_insert_with(Default::default);
-            match children {
-                None => ctx.debug1("Empty configuration for module 'vulnerability_scanner'"),
-                Some(ch) => {
-                    let old = section == Section::VulnerabilityDetector;
-                    siem_vulnerability_scanner::config::subnode_read(ctx, _xml, ch, vd, old, std::path::Path::new("etc/ossec.conf"));
-                }
-            }
             return Ok(());
         }
         if !matches!(section, Section::AgentUpgrade | Section::TaskManager) {
@@ -107,7 +98,7 @@ async fn main() {
     let base = PathBuf::new();
     let log = Arc::new(WLog::new_server(ARGV0, &base));
     let opts = siem_config::internal_options::InternalOptions::from_home(&base);
-    let wm_debug_level = match opts.get_int("wazuh_modules", "debug", 0, 2) {
+    let wm_debug_level = match opts.get_int("provigil_modules", "debug", 0, 2) {
         Ok(v) => v,
         Err(e) => {
             log.critical(e.0.as_bytes());
@@ -149,7 +140,7 @@ async fn main() {
     }
     log.debug1(format!("ProVigil home directory: {}", home_path.display()));
 
-    let nofile = match opts.get_int("wazuh_modules", "rlimit_nofile", 8192, 1048576) {
+    let nofile = match opts.get_int("provigil_modules", "rlimit_nofile", 8192, 1048576) {
         Ok(v) => v,
         Err(e) => {
             log.critical(e.0.as_bytes());
@@ -163,9 +154,8 @@ async fn main() {
     // wm_setup: wm_config. wm_initialize_default_modules: agent-upgrade, task-manager
     let mut up = agent_upgrade::Config::default();
     let mut tm = task_manager::Config::default();
-    let mut vd = None;
     let mut ctx = ConfigContext::new(Platform::MANAGER);
-    let r = read_config(&mut ctx, siem_config::modules::CWMODULE, "etc/ossec.conf", None, &mut Handler { up: &mut up, tm: &mut tm, vd: &mut vd });
+    let r = read_config(&mut ctx, siem_config::modules::CWMODULE, "etc/ossec.conf", None, &mut Handler { up: &mut up, tm: &mut tm });
     flush(&log, &mut ctx);
     if r.is_err() {
         std::process::exit(1);
@@ -221,57 +211,13 @@ async fn main() {
         }));
         siem_router::router_start();
     }
-    let wm_max_eps = match opts.get_int("wazuh_modules", "max_eps", 1, 1000) {
-        Ok(v) => v as i64,
-        Err(e) => {
-            log.critical(e.0.as_bytes());
-            std::process::exit(1);
-        }
-    };
-    // gethostname: the cluster name of a standalone manager, and agent 000's name
-    let hostname = siem_ipc::os_net::gethostname(255).map(|h| String::from_utf8_lossy(&h).into_owned()).unwrap_or_else(|| "undefined".into());
-    // vulnerability_scanner: its start returns once the feed updater thread runs; it lives until exit.
-    let _vulnerability_scanner = vd.and_then(|vd| {
-        let lru = opts.get_int("vulnerability-detection", "translation_lru_size", 1, 100000).unwrap_or(2048) as usize;
-        let osdata_lru = opts.get_int("vulnerability-detection", "osdata_lru_size", 1, 100000).unwrap_or(1000) as usize;
-        let remediation_lru = opts.get_int("vulnerability-detection", "remediation_lru_size", 1, 100000).unwrap_or(2048) as usize;
-        let report_queue = opts.get_int("vulnerability-detection", "report_queue_size", 0, 2147483647).unwrap_or(262144) as usize;
-        let disable_scan = opts.get_int("vulnerability-detection", "disable_scan_manager", 0, 1).unwrap_or(1) != 0;
-
-        let cfg = siem_vulnerability_scanner::scanner::ModuleConfig {
-            vulnerability_detection: serde_json::Value::Object(vd),
-            // shortcut: no <indexer> reader; the scanner's indexer is its local database (read by the console)
-            indexer: serde_json::json!({ "enabled": "yes" }),
-            wm_max_eps,
-            translation_lru_size: lru,
-            osdata_lru_size: osdata_lru,
-            remediation_lru_size: remediation_lru,
-            manager_disabled_scan: disable_scan,
-            report_queue_size: report_queue,
-            // shortcut: no cluster support (provigil-clusterd is not ported): standalone manager values
-            cluster_enabled: false,
-            cluster_name: hostname.clone(),
-            cluster_node_name: "undefined".into(),
-        };
-
-        let wdb_socket = match siem_vulnerability_scanner::scan::wdb::WdbSocket::new(siem_modulesd::wdb::WDB_LOCAL_SOCK) {
-            Ok(s) => Arc::new(s),
-            Err(e) => {
-                log.error(format!("vulnerability_scanner: failed to initialize wdb socket: {e}"));
-                return None;
-            }
-        };
-
-        let start_opts = siem_vulnerability_scanner::scanner::StartOptions {
-            wdb: wdb_socket,
-            reports: None,
-            manager_name: hostname.clone(),
-            content_updater: true,
-        };
-
-        log.debug2("Created new thread for the 'vulnerability_scanner' module.");
-        siem_vulnerability_scanner::scanner::VulnerabilityScanner::start(&base, log.clone(), cfg, start_opts)
-    });
+    // a bad max_eps stops the daemon (the scanner reads the value itself)
+    if let Err(e) = opts.get_int("provigil_modules", "max_eps", 1, 1000) {
+        log.critical(e.0.as_bytes());
+        std::process::exit(1);
+    }
+    // ProVigil's own vulnerability scanner: reads its section of etc/ossec.conf itself (none: not started)
+    let _vulnerability_scanner = siem_modulesd::vulnscan_host::start(&base, log.clone());
     if let Some(database) = database {
         let d = Database::new(database, log.clone(), db.clone());
         threads.push(tokio::spawn(async move { d.main().await }));

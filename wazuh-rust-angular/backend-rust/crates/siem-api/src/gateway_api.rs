@@ -73,11 +73,20 @@ async fn events(State(state): State<AppState>, Json(v): Json<Value>) -> Response
     }
 }
 
+/// `POST /internal/gateway/deploy_report`: `{token, from, rows}`, a mass deployment's results.
+async fn deploy_report(State(state): State<AppState>, Json(v): Json<Value>) -> Response {
+    match crate::deploy_tokens::report(&state, &v).await {
+        Ok(n) => Json(json!({ "status": "ok", "stored": n })).into_response(),
+        Err((code, msg)) => refused(code, &msg),
+    }
+}
+
 pub fn app(state: AppState, token: String) -> Router {
     Router::new()
         .route("/internal/gateway/enroll", post(enroll))
         .route("/internal/gateway/ar_log", post(ar_log))
         .route("/internal/gateway/events", post(events))
+        .route("/internal/gateway/deploy_report", post(deploy_report))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(from_fn_with_state(token, guard))
         .with_state(state)

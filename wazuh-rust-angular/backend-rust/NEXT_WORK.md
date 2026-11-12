@@ -7,6 +7,13 @@ exists today, what is missing and how to verify it, following the rest of the
 port: a faithful port of Wazuh 4.14.7, checked against the C/C++/Python
 original (see `AGENTD_PORT_PROGRESS.md`).
 
+## 000. Console roadmap (2026-11-11)
+
+`specs/provigil-ui-roadmap.md`: Threat Center home page and regrouped sidebar first, then data
+readiness score, ATT&CK coverage on the MITRE page (detection content, runnable, blind spots),
+posture's remaining parts, data engineering view, UEBA, extras. Predictive Posture built
+(`specs/provigil-posture.md`, crate provigil-posture, page /analyst/siem-posture).
+
 ## 00. Open after the gateway and the test-branch merge (2026-11-09)
 
 - **Cluster: one control plane + N workers.** Design in `specs/provigil-cluster.md` (phases

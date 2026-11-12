@@ -1,0 +1,23 @@
+[package]
+name = "provigil-vulnscan"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil vulnerability scanner: feed updater, feed database, inventory scans and reports"
+
+[dependencies]
+rusqlite = { version = "0.41", features = ["bundled"] }
+regex = "1"
+serde_json = "1"
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+sha1 = "0.10"
+hex = "0.4"
+chrono = "0.4"
+quick-xml = "0.36"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

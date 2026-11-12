@@ -44,6 +44,8 @@ export class AgentDeploy implements OnInit {
   private serverInfo = signal<ServerInfo | null>(null);
   deployManagerLoopback = computed(() => isLoopbackManager(this.deployManagerUrl()));
   deployAgentName = signal<string>('');
+  /** Each PC enrolls under its own computer name: one command for any number of PCs. */
+  useComputerName = signal(true);
   deployGroup = signal<string>('default');
   deployTenantKey = signal<string>('');
   deployTenantId = signal<string>('');
@@ -60,7 +62,7 @@ export class AgentDeploy implements OnInit {
     os: this.deployOs(),
     server: this.serverInfo(),
     managerUrl: this.deployManagerUrl(),
-    agentName: this.deployAgentName(),
+    agentName: this.useComputerName() ? '' : this.deployAgentName(),
     group: this.deployGroup(),
     tenantKey: this.deployTenantKey(),
     winMode: this.winInstallMode(),
@@ -68,8 +70,8 @@ export class AgentDeploy implements OnInit {
     winPsLogging: this.winPsLogging(),
     winAuditPolicy: this.winAuditPolicy(),
   }));
-  deployNameValid = computed(() => isValidAgentName(this.deployAgentName().trim()));
-  deployNameTaken = computed(() => this.agentNames().includes(this.deployAgentName().trim().toLowerCase()));
+  deployNameValid = computed(() => this.useComputerName() || isValidAgentName(this.deployAgentName().trim()));
+  deployNameTaken = computed(() => !this.useComputerName() && this.agentNames().includes(this.deployAgentName().trim().toLowerCase()));
   /** The manager gave its TLS details (and for Windows the agent is published). */
   deployReady = computed(() => canDeploy(this.deployParams()));
   deployInstallCommand = computed(() => (this.deployNameValid() ? installCommand(this.deployParams()) : ''));

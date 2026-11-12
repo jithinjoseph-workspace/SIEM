@@ -15,7 +15,7 @@ siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
 siem-xml = { path = "../siem-xml" }
 siem-cjson = { path = "../siem-cjson" }
 siem-execd = { path = "../siem-execd" }
-siem-vulnerability-scanner = { path = "../siem-vulnerability-scanner" }
+provigil-vulnscan = { path = "../provigil-vulnscan" }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1.40", features = ["full"] }

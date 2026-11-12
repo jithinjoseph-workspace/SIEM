@@ -20,5 +20,21 @@ by the owner's decision (2026-11-03) to compare old against new, feature by feat
 | `siem-regex` | `crates/provigil-regex` (review: `specs/rewrite-review-regex.md`) |
 | `siem-crypto` | `crates/provigil-crypto` (review: `specs/rewrite-review-crypto-fileop.md`) |
 | `siem-fileop` | `crates/provigil-fileop` (review: `specs/rewrite-review-crypto-fileop.md`) |
+| `siem-agentd` | `crates/provigil-agent` (review: `specs/FEATURES.md`, siem-agentd and siem-winagent) |
+| `siem-winagent` | `crates/provigil-agent` (same review) |
+| `siem-authd` | `crates/siem-api` (`specs/siem-authd.md`, review in `specs/FEATURES.md`) |
+| `siem-shared` | nothing: used only by siem-authd and siem-util |
+| `siem-syscheckd` | `crates/provigil-agent` (`fim.rs`, `registry.rs`, `realtime.rs`, `whodata.rs`) |
+| `siem-logcollector` | `crates/provigil-agent` (`wevt.rs`, `logfiles.rs`) |
+| `siem-remoted` | `crates/provigil-gateway` |
+| `siem-sysinfo` | `crates/provigil-agent` (`osinfo.rs`, `syscollector/win.rs`) |
+| `siem-dbsync` | `crates/provigil-agent` (`syscollector/delta.rs`) |
+| `siem-syscollector` | `crates/provigil-agent` (`syscollector.rs`, `inventory.rs`) |
+| `siem-agent` | `crates/provigil-agent` (early prototype) |
+| `siem-sca` | `crates/provigil-agent` (`sca/`) |
+| `siem-util` | console and API (agent list, control, reports) |
+| `siem-shared-modules` | nothing: used only by moved crates |
+| `siem-harvester` | nothing: inventory is read from provigil-db |
+| `siem-vulnerability-scanner` | `crates/provigil-vulnscan` (own code from `specs/vulnerability-scanner.md`; matched old vs new, 12 Nov 2026) |
 
 Each later replaced crate is moved here instead of being deleted.

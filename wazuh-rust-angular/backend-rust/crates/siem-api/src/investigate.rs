@@ -24,7 +24,25 @@ const MAX_ALERTS: u64 = 500;
 pub struct InvestigateQuery {
     pub q: String,
     pub days: Option<u32>,
+    /// with `from`/`to` (epoch seconds): the investigation of one alert group (the triage page's
+    /// Investigate): that rule's alerts in that window and the host's events around it
+    pub rule: Option<u32>,
+    pub from: Option<u64>,
+    pub to: Option<u64>,
+    /// a SOAR case id: its own alerts' window, all rules (the case page's and SOAR's evidence links)
+    pub case: Option<String>,
 }
+
+/// One alert group: a rule (0: any rule) between two moments (epoch seconds).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Focus {
+    pub rule: u32,
+    pub from: u64,
+    pub to: u64,
+}
+
+/// The events shown around a focused alert group, before and after it (seconds).
+const FOCUS_MARGIN: u64 = 300;
 
 #[derive(Debug, PartialEq)]
 pub enum Kind {
@@ -127,18 +145,51 @@ fn fail(m: &str) -> Value {
 }
 
 pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Query(p): Query<InvestigateQuery>) -> Json<Value> {
-    Json(run(&state, &ctx.scope(), &p.q, p.days.unwrap_or(7)).await)
+    let mut focus = match (p.rule, p.from, p.to) {
+        (Some(rule), Some(from), Some(to)) if from <= to => Some(Focus { rule, from, to }),
+        _ => None,
+    };
+    if let Some(id) = p.case.as_deref().filter(|c| !c.is_empty()) {
+        focus = case_window(&state, &ctx.scope(), id).await.or(focus);
+    }
+    Json(run_focused(&state, &ctx.scope(), &p.q, p.days.unwrap_or(7), focus).await)
+}
+
+/// The first and last alert of a SOAR case (epoch seconds), any rule.
+pub(crate) async fn case_window(state: &AppState, tenant: &str, case_id: &str) -> Option<Focus> {
+    let db = state.db.tenant_client(tenant);
+    let ids: Vec<String> = db.query("SELECT hit_ids FROM soar_cases FINAL WHERE id = ?").bind(case_id).fetch_optional().await.ok()??;
+    if ids.is_empty() {
+        return None;
+    }
+    let (n, lo, hi): (u64, u64, u64) = db.query("SELECT count(), min(timestamp), max(timestamp) FROM siem_alerts WHERE id IN ?").bind(&ids).fetch_one().await.ok()?;
+    (n > 0).then_some(Focus { rule: 0, from: lo / 1000, to: hi / 1000 })
 }
 
 /// The investigation of one value in a tenant (the page, and the case investigations of case_ai.rs).
 pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
+    run_focused(state, tenant, q, days, None).await
+}
+
+/// [`run`], or with `focus`: that rule's alerts in its window and the events around it.
+pub async fn run_focused(state: &AppState, tenant: &str, q: &str, days: u32, focus: Option<Focus>) -> Value {
     let q: String = q.trim().chars().take(256).collect();
     if q.len() < 2 {
         return fail("Enter an IP address, host, user, file hash or domain");
     }
     let t = tenant.to_string();
     let days = days.clamp(1, 90);
-    let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(days as u64 * 86_400_000);
+    let mut since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(days as u64 * 86_400_000);
+    // the window the alerts and events come from; the whole period without a focus
+    let mut until = u64::MAX;
+    let mut rule_clause = String::new();
+    if let Some(f) = focus {
+        since = f.from.saturating_sub(FOCUS_MARGIN) * 1000;
+        until = (f.to + FOCUS_MARGIN) * 1000;
+        if f.rule != 0 {
+            rule_clause = format!(" AND rule_id = {}", f.rule);
+        }
+    }
     let tenant_agents: Vec<(String, String)> = {
         let owners = state.agent_tenants.read().unwrap().clone();
         state.agents.read().unwrap().values().filter(|a| crate::tenancy::tenant_of(&owners, &a.id) == t).map(|a| (a.id.clone(), a.name.clone())).collect()
@@ -154,10 +205,11 @@ pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
     let alerts = tc
         .query(&format!(
             "SELECT id, JSONExtractString(alert_json, 'data', 'wazuh_alert_id') AS wazuh_id, timestamp, agent_name, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, src_ip, dst_ip, user, location \
-             FROM siem_alerts WHERE timestamp >= ? AND {} ORDER BY timestamp DESC LIMIT {MAX_ALERTS}",
+             FROM siem_alerts WHERE timestamp >= ? AND timestamp <= ? AND {}{rule_clause} ORDER BY timestamp DESC LIMIT {MAX_ALERTS}",
             alert_filter(&kind)
         ))
         .bind(since)
+        .bind(until)
         .bind(&a1)
         .bind(&a2)
         .fetch_all::<AlertRow>()
@@ -167,8 +219,8 @@ pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
         Err(e) => return fail(&format!("The alerts could not be read: {e}")),
     };
     let events = match &kind {
-        Kind::Host(id, _) => tc.query("SELECT id, timestamp, agent_id, location, message FROM siem_events WHERE timestamp >= ? AND agent_id = ? ORDER BY timestamp DESC LIMIT 100").bind(since).bind(id),
-        _ => tc.query("SELECT id, timestamp, agent_id, location, message FROM siem_events WHERE timestamp >= ? AND positionCaseInsensitive(message, ?) > 0 ORDER BY timestamp DESC LIMIT 100").bind(since).bind(&q),
+        Kind::Host(id, _) => tc.query("SELECT id, timestamp, agent_id, location, message FROM siem_events WHERE timestamp >= ? AND timestamp <= ? AND agent_id = ? ORDER BY timestamp DESC LIMIT 100").bind(since).bind(until).bind(id),
+        _ => tc.query("SELECT id, timestamp, agent_id, location, message FROM siem_events WHERE timestamp >= ? AND timestamp <= ? AND positionCaseInsensitive(message, ?) > 0 ORDER BY timestamp DESC LIMIT 100").bind(since).bind(until).bind(&q),
     }
     .fetch_all::<EventRow>()
     .await
@@ -329,6 +381,7 @@ pub async fn run(state: &AppState, tenant: &str, q: &str, days: u32) -> Value {
         "kind": kind.name(),
         "geo": if kind == Kind::Ip { crate::geomap::describe(&q) } else { Value::Null },
         "days": days,
+        "focus": focus.map(|f| json!({ "rule": f.rule, "from": f.from, "to": f.to, "margin_seconds": FOCUS_MARGIN })),
         "summary": {
             "verdict": verdict,
             "alerts": alerts.len(),

@@ -124,12 +124,31 @@ pub fn ai_verdict(reply: &str) -> Option<Verdict> {
     (LABELS.contains(&v.label.as_str()) && v.confidence <= 100 && !v.summary.trim().is_empty()).then_some(v)
 }
 
-const SYSTEM: &str = "You are a Tier-2 SOC analyst investigating one SOAR case of a Wazuh-based SIEM. \
+const SYSTEM: &str = "You are a Tier-2 SOC analyst investigating one SOAR case of the ProVigil SIEM. \
 Decide only from the evidence given; do not invent facts. Distinguish an attack that failed, an attack \
 that succeeded (for example a successful login after many failures), a known malicious source, and normal \
 activity (an ordinary user login). Answer with one JSON object and nothing else: \
 {\"label\": \"compromised|malicious|attack_attempt|likely_benign|needs_review\", \"confidence\": 0-100, \
 \"summary\": \"one or two sentences\", \"reasons\": [\"...\"], \"next_steps\": [\"...\"]}";
+
+/// A second look at an AI verdict: the strongest case against it, and whether it still holds.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Challenge {
+    pub points: Vec<String>,
+    pub holds: bool,
+    /// 0-100: how sure the reviewer is that the verdict holds
+    pub confidence: u8,
+    #[serde(default)]
+    pub alternative: String,
+}
+
+const CHALLENGE: &str = "You review another SOC analyst's verdict on a SOAR case of the ProVigil SIEM. Argue the strongest case AGAINST the verdict, only from the evidence given: what it may have missed, other explanations, missing data. Then decide whether the verdict still holds. Answer with one JSON object and nothing else: {\"points\": [\"...\"], \"holds\": true|false, \"confidence\": 0-100, \"alternative\": \"the other explanation, or empty\"}";
+
+pub fn ai_challenge(reply: &str) -> Option<Challenge> {
+    let (a, b) = (reply.find('{')?, reply.rfind('}')?);
+    let c: Challenge = serde_json::from_str(reply.get(a..=b)?).ok()?;
+    (c.confidence <= 100 && !c.points.is_empty()).then_some(c)
+}
 
 /// AI calls per tenant and hour (`SIEM_CASE_AI_PER_HOUR`, default 30).
 fn ai_allowed(tenant: &str) -> bool {
@@ -215,8 +234,10 @@ pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> 
         return Err("The case has no source IP, host or user to investigate".into());
     }
     let mut evidence: Vec<(String, String, Value)> = Vec::new();
+    // the case's own alerts and the events around them; the whole period when it has no alerts
+    let window = crate::investigate::case_window(state, tenant, case_id).await;
     for (role, value) in &subjects {
-        evidence.push((role.to_string(), value.clone(), crate::investigate::run(state, tenant, value, DAYS).await));
+        evidence.push((role.to_string(), value.clone(), crate::investigate::run_focused(state, tenant, value, DAYS, window).await));
     }
     let src = evidence.iter().find(|e| e.0 == "source").map(|e| &e.2);
     let host = evidence.iter().find(|e| e.0 == "host").map(|e| &e.2);
@@ -267,6 +288,7 @@ pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> 
     // ── the AI's view, when the tenant has one ──
     let timeline: Vec<Value> = evidence.iter().flat_map(|e| e.2["timeline"].as_array().cloned().unwrap_or_default()).take(40).collect();
     let mut ai_note = String::new();
+    let mut challenge: Option<Challenge> = None;
     let ai = if !crate::ai_assist::tenant_ai_enabled(state, tenant) {
         ai_note = "AI is switched off for this tenant".into();
         None
@@ -292,7 +314,16 @@ pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> 
             });
             match siem_ai::generate(&providers, SYSTEM, &prompt.to_string()).await {
                 Ok(r) => match ai_verdict(&r.text) {
-                    Some(v) => Some((v, r.model)),
+                    Some(v) => {
+                        // the challenge: same evidence, the verdict to argue against (a second call within the budget)
+                        if ai_allowed(tenant) {
+                            let ask = json!({ "verdict": v, "evidence": prompt });
+                            if let Ok(c) = siem_ai::generate(&providers, CHALLENGE, &ask.to_string()).await {
+                                challenge = ai_challenge(&c.text);
+                            }
+                        }
+                        Some((v, r.model))
+                    }
                     None => {
                         ai_note = "The AI answer was not a usable verdict".into();
                         None
@@ -316,6 +347,7 @@ pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> 
         "verdict_source": if ai.is_some() { "ai" } else { "rules" },
         "rule_verdict": rules,
         "ai": ai.as_ref().map(|(v, m)| json!({ "verdict": v, "model": m })),
+        "challenge": challenge,
         "ai_note": ai_note,
         "geo": src.map(|e| e["geo"].clone()),
         "intel": src.map(|e| e["intel"].clone()).unwrap_or(json!([])),
@@ -349,6 +381,33 @@ pub fn spawn_for_new_case(state: AppState, tenant: String, case_id: String) {
 
 fn bad(code: StatusCode, m: &str) -> Response {
     (code, Json(json!({ "status": "error", "message": m }))).into_response()
+}
+
+const EXPLAIN: &str = "You are a senior SOC analyst of the ProVigil SIEM explaining findings to a colleague. From the JSON given (an investigation result or a SOAR case with its alerts and verdict), explain in plain words, only from that data: 1) What happened, in time order. 2) How serious it is and why (cite the alerts, hosts, addresses, ATT&CK techniques). 3) Why the verdict was reached, and what could make it wrong. 4) What to do next, as short numbered steps. Say plainly when the data is not enough. No preamble, at most 350 words, plain text.";
+
+/// The evidence sent to the AI is clipped to this many characters.
+const EXPLAIN_MAX: usize = 14_000;
+
+/// `POST /api/v1/siem/explain` `{ "kind": "investigation"|"case", "data": {...} }`: a plain-language
+/// explanation by the tenant's AI (tenant AI switch and hourly budget respected).
+pub async fn explain(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(p): Json<Value>) -> Response {
+    let t = ctx.scope();
+    if !crate::ai_assist::tenant_ai_enabled(&state, &t) {
+        return Json(json!({ "status": "error", "message": "AI is turned off for this tenant." })).into_response();
+    }
+    let providers = crate::ai_assist::providers(&state, "chat").await;
+    if providers.is_empty() {
+        return Json(json!({ "status": "error", "message": "No AI provider is configured." })).into_response();
+    }
+    if !ai_allowed(&t) {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(json!({ "status": "error", "message": "The hourly AI budget is used up; try again later." }))).into_response();
+    }
+    let kind = if p["kind"].as_str() == Some("case") { "SOAR case" } else { "investigation" };
+    let data: String = p["data"].to_string().chars().take(EXPLAIN_MAX).collect();
+    match siem_ai::generate_long(&providers, EXPLAIN, &format!("The {kind}:\n{data}"), 1200).await {
+        Ok(r) => Json(json!({ "status": "ok", "explanation": r.text.trim(), "model": r.model })).into_response(),
+        Err(e) => Json(json!({ "status": "error", "message": format!("The AI did not answer: {e}") })).into_response(),
+    }
 }
 
 /// `GET /api/soar/cases/:id/investigation`
@@ -397,5 +456,15 @@ mod tests {
         assert!(ai_verdict("{\"label\": \"pwned\", \"confidence\": 80, \"summary\": \"x\", \"reasons\": []}").is_none(), "unknown label");
         assert!(ai_verdict("{\"label\": \"malicious\", \"confidence\": 180, \"summary\": \"x\", \"reasons\": []}").is_none(), "confidence over 100");
         assert!(ai_verdict("no json").is_none());
+    }
+}
+
+#[cfg(test)]
+mod challenge_tests {
+    #[test]
+    fn a_challenge_reply_is_read_and_an_empty_one_refused() {
+        let c = super::ai_challenge("x {\"points\": [\"only one event\"], \"holds\": false, \"confidence\": 40, \"alternative\": \"admin task\"} y").unwrap();
+        assert!(!c.holds && c.confidence == 40 && c.alternative == "admin task");
+        assert!(super::ai_challenge("{\"points\": [], \"holds\": true, \"confidence\": 90}").is_none());
     }
 }

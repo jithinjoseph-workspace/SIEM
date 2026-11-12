@@ -1,0 +1,8 @@
+FROM ubuntu:22.04
+ARG LAB_PASSWORD
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server sudo && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -s /bin/bash -G sudo pvtest && echo "pvtest:${LAB_PASSWORD}" | chpasswd \
+    && sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && mkdir -p /run/sshd
+CMD ["/usr/sbin/sshd", "-D", "-e"]

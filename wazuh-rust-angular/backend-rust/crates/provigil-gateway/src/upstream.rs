@@ -40,6 +40,11 @@ impl Upstream {
         self.call("enroll", &json!({ "request": request, "tenant_key": tenant_key, "peer": peer })).await
     }
 
+    /// A mass deployment's results (`provigil-deploy report`).
+    pub async fn deploy_report(&self, token: &str, body: &Value) -> Result<Value, Refused> {
+        self.call("deploy_report", &json!({ "token": token, "from": body["from"], "rows": body["rows"] })).await
+    }
+
     pub async fn ar_log(&self, agent: &str, tenant: &str, name: &str, ip: &str, lines: &[String]) -> Result<(), Refused> {
         self.call("ar_log", &json!({ "agent_id": agent, "tenant_id": tenant, "name": name, "ip": ip, "lines": lines })).await.map(drop)
     }

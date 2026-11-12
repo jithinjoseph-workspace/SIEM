@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Instant;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -19,6 +21,10 @@ pub struct CompiledDynamicParser {
     pub parser: DynamicParser,
     pub regex: Option<Regex>,
 }
+
+/// The platform's AI for parsers: (system, prompt) -> the reply text, `None` when there is no
+/// AI or it failed (the built-in synthesis is used then).
+pub type AiHook = Arc<dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Option<String>> + Send>> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct DynamicParserRegistry {
@@ -30,6 +36,7 @@ pub struct DynamicParserRegistry {
     total_latency_us: Arc<AtomicU64>,
     /// Bumped on every change (the owner persists the parsers when it moves).
     version: Arc<AtomicU64>,
+    ai: Arc<RwLock<Option<AiHook>>>,
 }
 
 impl DynamicParserRegistry {
@@ -42,6 +49,7 @@ impl DynamicParserRegistry {
             total_executions: Arc::new(AtomicU64::new(0)),
             total_latency_us: Arc::new(AtomicU64::new(0)),
             version: Arc::new(AtomicU64::new(0)),
+            ai: Arc::new(RwLock::new(None)),
         };
 
         // Load existing persisted parsers
@@ -135,6 +143,17 @@ impl DynamicParserRegistry {
         samples: &[String],
         custom_instructions: Option<&str>,
     ) -> Result<DynamicParser, String> {
+        // the platform's AI first; a reply that gives no working parser falls back below
+        let hook = self.ai.read().unwrap().clone();
+        if let Some(ai) = hook {
+            let (system, user) = AiParserSynthesizer::llm_prompts(fingerprint, signature, samples, custom_instructions);
+            if let Some(reply) = ai(system, user).await {
+                match self.register_from_ai_reply(fingerprint, signature, samples, &reply) {
+                    Ok(p) => return Ok(p),
+                    Err(e) => info!("AI parser for fingerprint 0x{fingerprint:x} not usable ({e}); built-in synthesis instead"),
+                }
+            }
+        }
         let result = AiParserSynthesizer::synthesize(fingerprint, signature, samples, custom_instructions).await;
 
         match result {
@@ -164,6 +183,11 @@ impl DynamicParserRegistry {
         self.accumulator.remove(fingerprint);
         let _ = self.save_to_disk();
         Ok(parser)
+    }
+
+    /// The platform's AI for automatic parser synthesis.
+    pub fn set_ai(&self, hook: AiHook) {
+        *self.ai.write().unwrap() = Some(hook);
     }
 
     /// Register a verified parser into memory
@@ -328,5 +352,26 @@ impl DynamicParserRegistry {
                 info!("DynamicParserRegistry: Loaded {} learned parsers from disk", count);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod ai_hook_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_platform_ai_is_asked_first_and_a_bad_reply_falls_back() {
+        let r = DynamicParserRegistry::new("");
+        let asked = Arc::new(AtomicU64::new(0));
+        let a = asked.clone();
+        r.set_ai(Arc::new(move |_s: String, _u: String| {
+            a.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { Some("not a parser".to_string()) })
+        }));
+        let samples: Vec<String> = (0..5).map(|i| format!("user=alice action=login src=10.0.0.{i} status=ok")).collect();
+        let (fp, sig) = FingerprintEngine::compute(&samples[0]);
+        let p = r.synthesize_and_register(fp, &sig, &samples, None).await;
+        assert_eq!(asked.load(Ordering::SeqCst), 1, "the AI is asked");
+        assert!(p.is_ok(), "an unusable reply falls back to the built-in synthesis: {p:?}");
     }
 }

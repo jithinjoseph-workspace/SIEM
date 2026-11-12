@@ -33,6 +33,8 @@ export class SiemInvestigate implements OnInit {
   error = signal<string | null>(null);
   show = signal<'all' | EntryType>('all');
   showEvents = signal(false);
+  explanation = signal<{ text: string; model: string } | null>(null);
+  explaining = signal(false);
   types: { key: 'all' | EntryType; label: string }[] = [
     { key: 'all', label: 'All' }, { key: 'alert', label: 'Alerts' }, { key: 'case', label: 'Cases' },
     { key: 'playbook', label: 'Playbooks' }, { key: 'decision', label: 'AI decisions' }, { key: 'swarm', label: 'Swarm' },
@@ -42,12 +44,30 @@ export class SiemInvestigate implements OnInit {
     return this.show() === 'all' ? t : t.filter((e: any) => e.type === this.show());
   });
 
+  /** One alert group (the triage page's Investigate): its rule and window. */
+  focus: { rule: number; from: number; to: number } | null = null;
+  /** A SOAR case's evidence link: the server focuses on the case's own alerts. */
+  caseId: string | null = null;
+
+  focusText(): string {
+    const f = this.focus;
+    if (!f) return '';
+    const t = (s: number) => new Date(s * 1000).toLocaleString();
+    const what = f.rule ? `Rule ${f.rule} alerts` : `This case's alerts`;
+    return `${what} from ${t(f.from)} to ${t(f.to)}, and the log events 5 minutes before and after.`;
+  }
+
   ngOnInit() {
     this.route.queryParamMap.subscribe(p => {
       const q = p.get('q');
-      if (q && q !== this.data()?.query) {
+      const rule = Number(p.get('rule')), from = Number(p.get('from')), to = Number(p.get('to'));
+      const focus = rule && from && to ? { rule, from, to } : null;
+      const caseId = p.get('case');
+      if (q && (q !== this.data()?.query || caseId !== this.caseId || (!caseId && JSON.stringify(focus) !== JSON.stringify(this.focus)))) {
         this.q = q;
         this.days = Number(p.get('days')) || this.days;
+        this.focus = focus;
+        this.caseId = caseId;
         this.run();
       }
     });
@@ -56,6 +76,9 @@ export class SiemInvestigate implements OnInit {
   submit() {
     if (!this.q.trim()) return;
     // the URL carries the query, so it can be shared and the back button works
+    // a new search is about everything, not the alert group it came from
+    this.focus = null;
+    this.caseId = null;
     this.router.navigate([], { relativeTo: this.route, queryParams: { q: this.q.trim(), days: this.days } });
     if (this.q.trim() === this.data()?.query) this.run();
   }
@@ -63,14 +86,27 @@ export class SiemInvestigate implements OnInit {
   run() {
     this.loading.set(true);
     this.error.set(null);
-    this.siem.investigate(this.q.trim(), this.days).subscribe({
+    this.siem.investigate(this.q.trim(), this.days, this.focus, this.caseId).subscribe({
       next: r => {
         this.loading.set(false);
         if (r.status === 'error') { this.error.set(r.message); this.data.set(null); return; }
         this.data.set(r);
+        if (this.caseId) this.focus = r.focus ?? null;
+        this.explanation.set(null);
         this.show.set('all');
       },
       error: e => { this.loading.set(false); this.error.set(e?.status === 403 ? 'You do not have access to SIEM alerts.' : 'The investigation failed.'); },
+    });
+  }
+
+  explain() {
+    const d = this.data();
+    if (!d) return;
+    this.explaining.set(true);
+    // the summary and the first timeline entries: enough for the AI, small enough for its prompt
+    this.siem.explain('investigation', { query: d.query, kind: d.kind, focus: d.focus, summary: d.summary, timeline: (d.timeline ?? []).slice(0, 60) }).subscribe({
+      next: r => { this.explaining.set(false); r?.status === 'ok' ? this.explanation.set({ text: r.explanation, model: r.model }) : this.error.set(r?.message || 'The AI did not answer.'); },
+      error: e => { this.explaining.set(false); this.error.set(e?.error?.message || 'The AI did not answer.'); },
     });
   }
 

@@ -3083,7 +3083,8 @@ mod https_agent_tests {
         let c = http_command(payload).unwrap();
         assert_eq!(
             (c["type"].as_str(), c["message"]["command"].as_str()),
-            (Some("ar"), Some("restart-wazuh0"))
+            // the ruleset's program name is translated to the agent's own
+            (Some("ar"), Some("restart-agent0"))
         );
         let (id, payload) = ar_target("(msg_to_agent) [] N!S 58 syscheck restart").unwrap();
         assert_eq!(

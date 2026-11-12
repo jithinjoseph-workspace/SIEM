@@ -1,0 +1,10 @@
+FROM ubuntu:22.04
+ARG LAB_PASSWORD
+ENV container=docker DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv openssh-server sudo curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -s /bin/bash -G sudo pvtest && echo "pvtest:${LAB_PASSWORD}" | chpasswd \
+    && sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && systemctl enable ssh
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

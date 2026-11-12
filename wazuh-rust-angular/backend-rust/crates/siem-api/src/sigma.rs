@@ -293,11 +293,12 @@ pub async fn status(State(state): State<AppState>, Extension(ctx): Extension<Aut
         alerts: u64,
         last: u64,
         hosts: Vec<String>,
+        first: u64,
     }
     let recent = state
         .db
         .tenant_client(&ctx.scope())
-        .query("SELECT rule_id, rule_description AS title, rule_level AS level, count() AS alerts, max(timestamp) AS last, groupUniqArray(5)(agent_name) AS hosts FROM siem_alerts WHERE timestamp >= ? AND rule_id >= 950000 AND rule_id < 1000000 GROUP BY rule_id, rule_description, rule_level ORDER BY count() DESC LIMIT 100")
+        .query("SELECT rule_id, rule_description AS title, rule_level AS level, count() AS alerts, max(timestamp) AS last, groupUniqArray(5)(agent_name) AS hosts, min(timestamp) AS first FROM siem_alerts WHERE timestamp >= ? AND rule_id >= 950000 AND rule_id < 1000000 GROUP BY rule_id, rule_description, rule_level ORDER BY count() DESC LIMIT 100")
         .bind(since)
         .fetch_all::<Hit>()
         .await
@@ -307,7 +308,7 @@ pub async fn status(State(state): State<AppState>, Extension(ctx): Extension<Aut
         "loaded": rules.len(),
         "stored": stored(&state).await,
         "by_product": by_product,
-        "matches_24h": recent.iter().map(|r| json!({ "rule_id": r.rule_id, "title": r.title, "level": r.level, "alerts": r.alerts, "last_seen": r.last / 1000, "hosts": r.hosts })).collect::<Vec<_>>(),
+        "matches_24h": recent.iter().map(|r| json!({ "rule_id": r.rule_id, "title": r.title, "level": r.level, "alerts": r.alerts, "last_seen": r.last / 1000, "first_seen": r.first / 1000, "hosts": r.hosts })).collect::<Vec<_>>(),
         "rules": rules.iter().take(5000).map(|r| json!({ "id": r["id"], "title": r["title"], "severity": r["severity"], "product": r["logsource"]["product"], "category": r["logsource"]["category"], "service": r["logsource"]["service"], "tags": r["tags"] })).collect::<Vec<_>>(),
     }))
 }

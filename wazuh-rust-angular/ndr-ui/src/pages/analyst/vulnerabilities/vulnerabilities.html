@@ -85,7 +85,7 @@
   }
 
   <!-- Filters -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
     <div class="relative">
       <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
       <input 
@@ -108,7 +108,64 @@
         <option value="low">Low Only</option>
       </select>
     </div>
+
+    <div class="flex items-center gap-2">
+      <label for="vuln-group" class="text-xs text-slate-400 uppercase font-semibold">Group:</label>
+      <select id="vuln-group"
+        [ngModel]="groupFilter()" (ngModelChange)="groupFilter.set($event); firstPage()"
+        class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+      >
+        <option value="">All groups</option>
+        @for (g of groups(); track g.name) { <option [value]="g.name">{{ g.name }} ({{ g.agent_ids.length }})</option> }
+      </select>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <label for="vuln-segment" class="text-xs text-slate-400 uppercase font-semibold">Segment:</label>
+      <select id="vuln-segment"
+        [ngModel]="segmentFilter()" (ngModelChange)="segmentFilter.set($event); firstPage()"
+        class="flex-1 min-w-0 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+      >
+        <option value="">All segments</option>
+        @for (s of segments(); track s.cidr) { <option [value]="s.cidr">{{ segLabel(s.cidr) }} · {{ s.agents }}</option> }
+      </select>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <label for="vuln-type" class="text-xs text-slate-400 uppercase font-semibold">Type:</label>
+      <select id="vuln-type"
+        [ngModel]="typeFilter()" (ngModelChange)="typeFilter.set($event); firstPage()"
+        class="flex-1 min-w-0 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+      >
+        <option value="">All types</option>
+        @for (t of types; track t.id) { <option [value]="t.id">{{ t.label }}</option> }
+      </select>
+    </div>
   </div>
+
+  @if (seg().editable) {
+  <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 space-y-3">
+    <button type="button" (click)="namingOpen.set(!namingOpen())" class="text-xs font-semibold text-cyan-300 hover:text-cyan-200">
+      {{ namingOpen() ? 'Hide' : 'Name network segments' }} ({{ segments().length }} found)
+    </button>
+    @if (namingOpen()) {
+      <p class="text-xs text-slate-400">Each segment is a subnet worked out from the PCs' own addresses (a VLAN is normally one subnet). Give it a name such as "VLAN 10 Finance"; an empty name removes it.</p>
+      <div class="space-y-2">
+        @for (s of segments(); track s.cidr) {
+          <div class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="font-mono text-slate-300 w-40">{{ s.cidr }}</span>
+            <span class="text-xs text-slate-500 w-16">{{ s.agents }} PC(s)</span>
+            <label class="sr-only" [for]="'seg-' + s.cidr">Name of {{ s.cidr }}</label>
+            <input [id]="'seg-' + s.cidr" [(ngModel)]="segDraft[s.cidr]" maxlength="60" placeholder="VLAN 10 Finance"
+              class="flex-1 min-w-[10rem] px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white" />
+            <button type="button" (click)="saveSegmentName(s.cidr)" class="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 text-xs">Save</button>
+          </div>
+        }
+      </div>
+      @if (segMessage()) { <p class="text-xs text-cyan-300" role="status">{{ segMessage() }}</p> }
+    }
+  </div>
+  }
 
   @if (tab() === 'agents' && !selectedAgent()) {
   <!-- Agents -->
@@ -134,7 +191,10 @@
               <td class="p-3.5" (click)="$event.stopPropagation()">
                 <input type="checkbox" class="accent-amber-500" [attr.aria-label]="'Select ' + a.name + ' for export'" [checked]="ticked().has(a.id)" (change)="ticked.set(toggled(ticked(), a.id))" (keydown.enter)="$event.stopPropagation()" />
               </td>
-              <td class="p-3.5 font-semibold text-white">{{ a.name }}</td>
+              <td class="p-3.5 font-semibold text-white">{{ a.name }}
+                @for (g of groupsOf().get(a.id) ?? []; track g) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-cyan-300 align-middle">{{ g }}</span> }
+                @for (s of agentSegs(a.id); track s) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-amber-300 align-middle" [title]="segTitle(a.id)">{{ segLabel(s) }}{{ seg().agents[a.id]?.guessed ? ' ?' : '' }}</span> }
+              </td>
               <td class="p-3.5 font-mono text-slate-400">{{ a.id }}</td>
               <td class="p-3.5 text-slate-400">{{ a.os || '-' }}</td>
               <td class="p-3.5 text-right font-mono font-bold text-rose-400">{{ a.critical }}</td>

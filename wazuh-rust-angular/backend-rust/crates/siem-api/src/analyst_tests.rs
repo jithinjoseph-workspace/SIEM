@@ -2182,6 +2182,10 @@ async fn intel_and_investigation_end_to_end() {
                 Query(crate::investigate::InvestigateQuery {
                     q: q.into(),
                     days: Some(1),
+                    rule: None,
+                    from: None,
+                    to: None,
+                    case: None,
                 }),
             )
         };
@@ -2225,6 +2229,10 @@ async fn intel_and_investigation_end_to_end() {
             Query(crate::investigate::InvestigateQuery {
                 q: "web-77".into(),
                 days: Some(1),
+                rule: None,
+                from: None,
+                to: None,
+                case: None,
             }),
         )
         .await
@@ -2239,7 +2247,11 @@ async fn intel_and_investigation_end_to_end() {
                 Extension(analyst.clone()),
                 Query(crate::investigate::InvestigateQuery {
                     q: "x".into(),
-                    days: None
+                    days: None,
+                    rule: None,
+                    from: None,
+                    to: None,
+                    case: None,
                 })
             )
             .await

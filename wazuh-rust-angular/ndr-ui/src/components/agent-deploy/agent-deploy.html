@@ -71,7 +71,11 @@
 
       <label class="block">
         <span class="text-xs text-slate-300 font-medium">Agent Name</span>
-        <div class="mt-1.5 flex gap-2">
+        <span class="mt-1.5 flex items-center gap-2 text-xs text-slate-300">
+          <input type="checkbox" [ngModel]="useComputerName()" (ngModelChange)="useComputerName.set($event)" />
+          Each computer's own name (the same command works on any number of PCs)
+        </span>
+        <div *ngIf="!useComputerName()" class="mt-1.5 flex gap-2">
           <input class="flex-1 bg-slate-950 border rounded-lg px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500 transition"
             [class.border-slate-800]="deployNameValid()" [class.border-red-600]="!deployNameValid()"
             [ngModel]="deployAgentName()" (ngModelChange)="deployAgentName.set($event)" />

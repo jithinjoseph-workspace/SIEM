@@ -152,6 +152,7 @@ export class Sidebar implements OnInit, OnDestroy {
     ]);
     const intelSiemItems = siemGroup([
       { label: 'Threat Intel',        route: '/analyst/siem-threat-intel',  icon: Globe,     permission: 'siem-alerts' },
+      { label: 'Security Posture',    route: '/analyst/siem-posture',       icon: ShieldCheck, permission: 'siem-alerts' },
       { label: 'Threat Predictions',  route: '/analyst/siem-predictions',   icon: Crosshair, permission: 'siem-mitre' },
       { label: 'Threat Swarm',        route: '/analyst/siem-swarm',         icon: Share2,    permission: 'siem-alerts' },
       { label: 'Attacker Intent Radar', route: '/analyst/intent-prediction', icon: Target,   permission: 'siem-agents' },

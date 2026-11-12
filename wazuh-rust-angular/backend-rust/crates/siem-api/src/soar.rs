@@ -1350,7 +1350,10 @@ pub async fn create_case(
         )
         .await
     {
-        Ok(()) => Json(json!({ "status": "success", "id": id, "case_number": number })),
+        Ok(()) => {
+            crate::case_detail::created(&state, &tenant, &id, &ctx.username).await;
+            Json(json!({ "status": "success", "id": id, "case_number": number }))
+        }
         Err(e) => err(e),
     }
 }
@@ -1381,7 +1384,10 @@ pub async fn update_case(
         .rewrite_case(&ctx.scope(), &id, &set, false)
         .await
     {
-        Ok(()) => Json(json!({ "status": "success", "message": "Case updated" })),
+        Ok(()) => {
+            crate::case_detail::journey(&state, &ctx.scope(), &id, &ctx.username, "edited", &format!("Priority {pri}, severity {sev}, assigned to {}", if assigned.is_empty() { "nobody" } else { &assigned })).await;
+            Json(json!({ "status": "success", "message": "Case updated" }))
+        }
         Err(e) => err(e),
     }
 }
@@ -1411,6 +1417,7 @@ pub async fn update_case_status(
                     crate::org_memory::record(&state, &ctx.scope(), &l).await;
                 }
             }
+            crate::case_detail::journey(&state, &ctx.scope(), &id, &ctx.username, "status", &format!("Status: {status}")).await;
             Json(json!({ "status": "success", "message": "Status updated" }))
         }
         Err(e) => err(e),
@@ -1443,6 +1450,7 @@ pub async fn add_case_comment(
     store(&state)
         .soar_add_comment(&id, &ctx.username, comment, &ctx.scope())
         .await;
+    crate::case_detail::journey(&state, &ctx.scope(), &id, &ctx.username, "note", comment).await;
     Json(json!({ "status": "success", "message": "Comment added" }))
 }
 

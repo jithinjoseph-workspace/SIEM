@@ -185,7 +185,7 @@ fn start_collection(config: &AgentConfig, identity: &AgentIdentity, buffer: &Arc
     // Windows Event Log Collector: one live subscription per channel, on its own thread
     let wevt = wevt::spawn_readers(
         &config.event_channels,
-        &config.event_channel_queries,
+        &config::effective_channel_queries(&config.event_channel_queries, config::sysmon_installed()),
         Duration::from_secs(config.event_channel_reconnect_secs),
         &PathBuf::from("bookmarks"),
         buffer.clone(),

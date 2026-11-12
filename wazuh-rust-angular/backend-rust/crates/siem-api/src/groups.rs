@@ -34,6 +34,16 @@ fn valid_group(g: &str) -> bool {
         && g.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
+/// The most groups one agent can be in.
+pub const MAX_GROUPS: usize = 256;
+
+fn group_count_ok(n: usize) -> Result<(), String> {
+    if n > MAX_GROUPS {
+        return Err(format!("Maximum multigroup reached: Limit is {MAX_GROUPS}"));
+    }
+    Ok(())
+}
+
 /// The manager group of `tenant`'s group `g`.
 pub fn manager_name(tenant: &str, g: &str) -> Option<String> {
     if g == "default" {
@@ -93,9 +103,7 @@ pub fn resolve(tenant: &str, groups: &[String]) -> Result<Vec<String>, String> {
             out.push(m);
         }
     }
-    if out.len() > siem_authd::groups::MAX_GROUPS_PER_MULTIGROUP {
-        return Err(format!("Maximum multigroup reached: Limit is {}", siem_authd::groups::MAX_GROUPS_PER_MULTIGROUP));
-    }
+    group_count_ok(out.len())?;
     if out.is_empty() {
         out.push("default".to_string());
     }
@@ -356,6 +364,12 @@ pub async fn put_agent_groups(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn at_most_256_groups() {
+        assert!(group_count_ok(256).is_ok());
+        assert_eq!(group_count_ok(257).unwrap_err(), "Maximum multigroup reached: Limit is 256");
+    }
 
     #[test]
     fn names_are_per_tenant() {

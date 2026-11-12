@@ -292,6 +292,17 @@ export class SiemService {
     );
   }
 
+  /** Each agent's network segments (subnets) and PC type, and the tenant's segment names. */
+  getSegments(): Observable<{ agents: Record<string, { segments: string[]; guessed: boolean; type: string }>; names: { cidr: string; name: string }[]; editable: boolean }> {
+    return this.http.get<any>(`${this.apiUrl}/api/v1/segments`).pipe(
+      catchError(() => of({ agents: {}, names: [], editable: false }))
+    );
+  }
+
+  setSegmentName(cidr: string, name: string): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/v1/segments/name`, { cidr, name });
+  }
+
   createGroup(name: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/groups`, { name });
   }
@@ -628,12 +639,34 @@ export class SiemService {
   addWatched(value: string, group = ''): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/intel/watchlist`, { value, group }); }
   /** The SOAR case's investigation (evidence and verdict); POST runs it again. */
   getCaseInvestigation(caseId: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`); }
+  /** The full case page (siem-api case_detail.rs): case, SLA, alerts, entities, journey, attachments. */
+  /** A plain-language explanation of an investigation or a case by the tenant's AI (siem-api case_ai.rs). */
+  explain(kind: 'investigation' | 'case', data: any): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/explain`, { kind, data }); }
+  /** Deployment tokens for mass deployment (siem-api deploy_tokens.rs); a new token is in the answer only. */
+  deployTokens(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/deploy/tokens`); }
+  createDeployToken(body: { label: string; days: number; max: number; groups: string }): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/deploy/tokens`, body); }
+  revokeDeployToken(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/deploy/tokens/${encodeURIComponent(id)}`); }
+  deployTargets(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/deploy/tokens/${encodeURIComponent(id)}/targets`); }
+  deployKit(body: { token: string; host: string; options: { sysmon: boolean; audit_policy: boolean; ps_logging: boolean } }): Observable<Blob> { return this.http.post(`${this.apiUrl}/api/v1/deploy/kit`, body, { responseType: 'blob' }); }
+  getCaseDetail(id: string): Observable<any> { return this.http.get(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/detail`); }
+  setCaseDetails(id: string, body: { category?: string; subcategory?: string }): Observable<any> { return this.http.put(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/details`, body); }
+  setCaseDisposition(id: string, disposition: string, note: string): Observable<any> { return this.http.put(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/disposition`, { disposition, note }); }
+  resolveCase(id: string, disposition: string, resolution: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/resolve`, { disposition, resolution }); }
+  addCaseAttachment(id: string, name: string, mime: string, data: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/attachments`, { name, mime, data }); }
+  caseAttachment(id: string, att: string): Observable<Blob> { return this.http.get(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(id)}/attachments/${encodeURIComponent(att)}`, { responseType: 'blob' }); }
   runCaseInvestigation(caseId: string): Observable<any> { return this.http.post(`${this.apiUrl}/api/soar/cases/${encodeURIComponent(caseId)}/investigation`, {}); }
   removeWatched(id: string): Observable<any> { return this.http.delete(`${this.apiUrl}/api/v1/siem/intel/watchlist/${encodeURIComponent(id)}`); }
   getIntelMatches(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/intel/matches`); }
   getSigma(): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/sigma`); }
   syncSigma(): Observable<any> { return this.http.post(`${this.apiUrl}/api/v1/siem/sigma/sync`, {}); }
-  investigate(q: string, days: number): Observable<any> { return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params: { q, days } }); }
+  /** `focus`: one alert group (rule between two epoch seconds), e.g. from the triage page. */
+  /** `caseId`: the SOAR case's own alerts' window (the server finds it). */
+  investigate(q: string, days: number, focus?: { rule: number; from: number; to: number } | null, caseId?: string | null): Observable<any> {
+    const params: Record<string, string | number> = { q, days };
+    if (caseId) params['case'] = caseId;
+    else if (focus) Object.assign(params, focus);
+    return this.http.get(`${this.apiUrl}/api/v1/siem/investigate`, { params });
+  }
 
   // AI Copilot (siem-api copilot.rs): plain-language requests run with the SIEM's tools
   copilotAsk(message: string, conversationId?: string | null): Observable<any> {
@@ -690,6 +723,23 @@ export class SiemService {
 
   runSiemPredictions(): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/predictions/run`, {});
+  }
+
+  // ── Security posture (siem-api /api/v1/posture: score, history, forecast) ──
+  getPosture(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/posture`);
+  }
+
+  getPostureHistory(days = 30): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/posture/history`, { params: { days } });
+  }
+
+  getPostureAgents(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/posture/agents`);
+  }
+
+  runPosture(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/api/v1/posture/run`, {});
   }
 
   getSiemFiredRules(): Observable<any> {

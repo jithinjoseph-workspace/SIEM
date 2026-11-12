@@ -8,7 +8,8 @@ import {
   CheckCircle2, AlertTriangle, Monitor, Cpu, HardDrive, Network,
   Layers, Copy, Check, Download, Play, X, ExternalLink, Activity,
   LayoutGrid, Lock, ShieldAlert, TrendingDown, Laptop, BarChart3, Users, FileSearch,
-  Bug, Boxes, ArrowUpCircle, Zap, Power, ScanSearch
+  Bug, Boxes, ArrowUpCircle, Zap, Power, ScanSearch,
+  ChevronDown, ChevronUp, Clock, ShieldCheck, SlidersHorizontal
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 import { AuthService } from '../../../services/auth/auth';
@@ -64,6 +65,12 @@ export class Agents implements OnInit {
   ChartIcon = BarChart3;
   PowerIcon = Power;
   ScanIcon = ScanSearch;
+  ChevronDownIcon = ChevronDown;
+  ChevronUpIcon = ChevronUp;
+  ClockIcon = Clock;
+  ShieldCheckIcon = ShieldCheck;
+  SlidersIcon = SlidersHorizontal;
+  BugIcon = Bug;
 
   /** The tabs of the agent details (Upgrade only for the tenant's admins). */
   readonly detailTabs = computed(() => ([
@@ -252,6 +259,130 @@ export class Agents implements OnInit {
   });
   rootcheckEvents = signal<any[]>([]);
   rootcheckLoading = signal<boolean>(false);
+  rootcheckFilter = signal<'all' | 'streams' | 'audit' | 'rootkit' | 'system'>('all');
+  rootcheckQuery = signal<string>('');
+  rootcheckExpanded = signal<Record<number, boolean>>({});
+  rootcheckCopied = signal<number | null>(null);
+
+  /** Parse and categorize a rootcheck event from backend pm_event row */
+  parseRootcheck(ev: any) {
+    const log: string = (ev?.log || '').trim();
+    const isStream = log.includes('Alternate data stream') || log.includes('NTFS Alternate data stream');
+    const isAudit = log.startsWith('Windows Audit') || log.startsWith('System Audit') || log.startsWith('Application Audit');
+    const isLifecycle = log.toLowerCase().includes('ending rootcheck scan') || log.toLowerCase().includes('starting rootcheck scan');
+    const isRootkit = log.toLowerCase().includes('rootkit') || log.toLowerCase().includes('trojan') || log.toLowerCase().includes('hidden port') || log.toLowerCase().includes('hidden file');
+
+    let category: 'streams' | 'audit' | 'rootkit' | 'system' = 'audit';
+    let label = 'System Audit';
+    let severity: 'critical' | 'warning' | 'audit' | 'info' = 'audit';
+    let title = log;
+    let path = '';
+    let registry = '';
+    let reference = '';
+    let explanation = '';
+
+    if (isStream) {
+      category = 'streams';
+      label = 'NTFS Hidden Stream';
+      severity = 'warning';
+      const m = log.match(/found:\s*['"]([^'"]+)['"]/i);
+      path = m ? m[1] : '';
+      title = path ? `Alternate Data Stream on ${path}` : 'NTFS Alternate Data Stream';
+      explanation = 'Secondary data stream attached to file or directory; often used by evasion tactics to conceal unmonitored binaries or payloads.';
+    } else if (isAudit) {
+      category = 'audit';
+      label = log.startsWith('Windows') ? 'Windows Security Audit' : log.startsWith('System') ? 'System Baseline Audit' : 'Application Hardening';
+      severity = 'audit';
+
+      const titleMatch = log.match(/^(?:Windows|System|Application)\s+Audit:\s*([^.]+)/i);
+      if (titleMatch) title = titleMatch[1].trim();
+
+      const regMatch = log.match(/Registry:\s*([^.]+?)(?:\.\s+Reference:|$)/i);
+      if (regMatch) registry = regMatch[1].trim();
+
+      const refMatch = log.match(/Reference:\s*(https?:\/\/[^\s]+)/i);
+      if (refMatch) reference = refMatch[1].trim();
+
+      explanation = 'Security baseline disparity identified against recommended system hardening policies.';
+    } else if (isLifecycle) {
+      category = 'system';
+      label = 'Engine Scan Lifecycle';
+      severity = 'info';
+      title = log.toLowerCase().includes('ending') ? 'Rootcheck Scan Completed' : 'Rootcheck Scan Initiated';
+      explanation = 'Periodic integrity and anomaly inspection cycle executed across filesystem and system registry.';
+    } else if (isRootkit) {
+      category = 'rootkit';
+      label = 'Rootkit / Malware Anomaly';
+      severity = 'critical';
+      title = 'Suspicious Hidden Artifact / Rootkit Signature';
+      explanation = 'Kernel or userland hidden entity detected attempting evasion from standard system APIs.';
+    } else {
+      title = log.slice(0, 95);
+      explanation = log;
+    }
+
+    return {
+      category,
+      label,
+      severity,
+      title,
+      path,
+      registry,
+      reference,
+      explanation,
+      rawLog: log,
+      dateFirst: ev.date_first,
+      dateLast: ev.date_last,
+      pciDss: ev.pci_dss,
+      cis: ev.cis,
+    };
+  }
+
+  /** Analytics summary for the Rootcheck tab */
+  rootcheckSummary = computed(() => {
+    const events = this.rootcheckEvents();
+    let streams = 0, audit = 0, rootkit = 0, system = 0;
+    for (const ev of events) {
+      const p = this.parseRootcheck(ev);
+      if (p.category === 'streams') streams++;
+      else if (p.category === 'audit') audit++;
+      else if (p.category === 'rootkit') rootkit++;
+      else if (p.category === 'system') system++;
+    }
+    const total = events.length;
+    const overallRisk = rootkit > 0 ? 'Critical' : streams > 0 ? 'Suspicious' : audit > 0 ? 'Audit Gap' : 'Optimal';
+    return { total, streams, audit, rootkit, system, overallRisk };
+  });
+
+  /** Filtered and categorized rootcheck findings */
+  filteredRootcheck = computed(() => {
+    const filter = this.rootcheckFilter();
+    const query = this.rootcheckQuery().toLowerCase().trim();
+    const events = this.rootcheckEvents();
+
+    return events
+      .map((ev, index) => ({ ev, parsed: this.parseRootcheck(ev), index }))
+      .filter(({ ev, parsed }) => {
+        if (filter !== 'all' && parsed.category !== filter) return false;
+        if (!query) return true;
+        const haystack = `${parsed.title} ${parsed.rawLog} ${parsed.path} ${parsed.registry} ${parsed.reference} ${ev.pci_dss || ''} ${ev.cis || ''}`.toLowerCase();
+        return haystack.includes(query);
+      });
+  });
+
+  toggleRootcheckExpand(idx: number) {
+    this.rootcheckExpanded.update(m => ({ ...m, [idx]: !m[idx] }));
+  }
+
+  copyRootcheckLog(idx: number, text: string) {
+    try {
+      navigator.clipboard.writeText(text);
+      this.rootcheckCopied.set(idx);
+      setTimeout(() => {
+        if (this.rootcheckCopied() === idx) this.rootcheckCopied.set(null);
+      }, 2000);
+    } catch {}
+  }
 
   /** Upgrade form and the agent's last upgrade task. */
   upgradeMode = signal<'repo' | 'custom'>('repo');

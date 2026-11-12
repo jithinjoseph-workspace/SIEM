@@ -280,7 +280,7 @@ pub const SOAR_DDL: [&str; 5] = [
 /// The SIEM analyst features' tables (one JSON document per row; a new
 /// `version` replaces a row): suppressions, triage state, retrospective scans,
 /// and the threat prediction history.
-pub const ANALYST_DDL: [&str; 27] = [
+pub const ANALYST_DDL: [&str; 33] = [
     // the vulnerability scanner's current results, streamed (vulnerability.rs)
     crate::vulnerability::DDL,
     // each agent's intent dossier (intent_store.rs)
@@ -289,8 +289,17 @@ pub const ANALYST_DDL: [&str; 27] = [
     crate::intent_store::EXTRAS_DDL,
     // the Risk Fabric and Deception settings (engine_docs.rs)
     crate::engine_docs::DDL,
+    // the security posture per day and today's hourly points (posture.rs)
+    crate::posture::DDL[0],
+    crate::posture::DDL[1],
+    // the full case view: details, journey, attachments (case_detail.rs)
+    crate::case_detail::DDL[0],
+    crate::case_detail::DDL[1],
+    crate::case_detail::DDL[2],
     // EDR tamper protection: the tenant's setting and each agent's lock state (tamper.rs)
     crate::tamper::DDL,
+    // names of network segments (segments.rs)
+    crate::segments::DDL,
     // EDR live response requests and their results (live_response.rs)
     crate::live_response::DDL[0],
     crate::live_response::DDL[1],
@@ -993,6 +1002,12 @@ impl ClickHouseDb {
     }
 
     /// Client without a default database (fully qualified table names).
+    /// The main database (CLICKHOUSE_DB): `tenant_agent_keys`, `deploy_tokens`, the tables the
+    /// gateway reads too.
+    pub fn main(&self) -> &Client {
+        &self.client
+    }
+
     pub fn root(&self) -> &Client {
         &self.root
     }
@@ -1638,19 +1653,27 @@ impl ClickHouseDb {
         &self,
         tenant_id: &str,
         limit: usize,
+        source: &str,
+        q: &str,
     ) -> Option<Vec<ClickHouseEventRow>> {
         if !self.is_connected() {
             return None;
         }
-
+        // source: the console's filter names ("windowsevent", "fim", "registry"...) against the
+        // stored source ("windows_event", "fim"...); q: an agent ID, a host name or any text
         let query = format!(
-            "SELECT * FROM siem_events ORDER BY timestamp DESC LIMIT {}",
-            limit
+            "SELECT * FROM siem_events WHERE (? = '' OR positionCaseInsensitive(replaceAll(source, '_', ''), ?) > 0 \
+             OR (? = 'registry' AND source = 'fim' AND positionCaseInsensitive(message, 'registry') > 0)) \
+             AND (? = '' OR agent_id = ? OR positionCaseInsensitive(message, ?) > 0 OR positionCaseInsensitive(raw_metadata, ?) > 0 OR positionCaseInsensitive(location, ?) > 0) \
+             ORDER BY timestamp DESC LIMIT {}",
+            limit.min(1000)
         );
 
         match self
             .tenant_client(tenant_id)
             .query(&query)
+            .bind(source).bind(source).bind(source)
+            .bind(q).bind(q).bind(q).bind(q).bind(q)
             .fetch_all::<ClickHouseEventRow>()
             .await
         {

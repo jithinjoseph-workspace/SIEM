@@ -192,8 +192,16 @@ export class SiemConsole implements OnInit, OnDestroy {
     this.loadRawEvents();
   }
 
+  private searchTimer?: ReturnType<typeof setTimeout>;
+  /** The search runs on the server, over every stored event (not only the newest loaded). */
+  searchTelemetry(q: string) {
+    this.telemetryQuery.set(q);
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.loadRawEvents(), 400);
+  }
+
   loadRawEvents() {
-    this.siemService.getRawEvents(150, this.selectedSource()).subscribe({
+    this.siemService.getRawEvents(150, this.selectedSource(), this.telemetryQuery()).subscribe({
       next: (data) => this.rawEvents.set(data),
       error: (e) => console.warn('Could not fetch raw events', e)
     });
@@ -339,7 +347,13 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   /** Everything about the alert's source IP, else its host (Investigation). */
   investigateAlert(a: Alert) {
-    this.router.navigate(['/analyst/siem-investigate'], { queryParams: { q: a.decoded?.src_ip || a.agent?.name || a.agent?.id, days: 7 } });
+    this.router.navigate(['/analyst/siem-investigate'], { queryParams: { q: a.decoded?.src_ip || a.agent?.name || a.agent?.id, days: 7, ...this.alertFocus(a) } });
+  }
+
+  /** The alert's own rule and time, so Investigate shows it and the events around it, not the live log. */
+  private alertFocus(a: Alert) {
+    const t = Math.floor(Date.parse(a.timestamp as any) / 1000), rule = Number(a.rule?.id);
+    return t > 0 && rule > 0 ? { rule, from: t, to: t } : {};
   }
 
   /** The AI Copilot opens a case with the alert as evidence and says why it happened. */

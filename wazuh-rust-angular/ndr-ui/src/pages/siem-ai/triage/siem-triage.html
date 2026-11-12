@@ -118,7 +118,7 @@
                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs whitespace-nowrap">
                   <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular> View alerts
                 </button>
-                <a routerLink="/analyst/siem-investigate" [queryParams]="{ q: r.src_ip || r.agent_name || r.agent_id, days: 7 }" title="Everything about this host or source IP"
+                <a routerLink="/analyst/siem-investigate" [queryParams]="{ q: r.src_ip || r.agent_name || r.agent_id, days: 7, rule: r.rule_id, from: r.first_seen, to: r.last_seen }" title="These alerts, and the host's events around them"
                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs whitespace-nowrap">Investigate</a>
                 <a routerLink="/analyst/siem-copilot" [queryParams]="{ ask: caseAsk(r) }" title="Open a SOAR case for the newest alert, with its evidence (AI Copilot)"
                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-cyan-800 hover:bg-cyan-950 text-cyan-300 text-xs whitespace-nowrap">Open case</a>

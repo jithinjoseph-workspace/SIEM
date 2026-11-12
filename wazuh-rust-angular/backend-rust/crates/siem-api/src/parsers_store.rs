@@ -130,6 +130,26 @@ pub fn spawn_sync(db: ClickHouseDb, registry: Arc<DynamicParserRegistry>, mut st
 
 /// The tenant's parser registry: the default tenant's is `state.parser_registry`; another
 /// tenant's is made on first use and filled from its database in the background.
+/// Automatic parser synthesis asks the platform's AI providers (super admin's AI settings),
+/// when the tenant has AI switched on, like the Parsers page's Generate button.
+pub fn connect_ai(state: &AppState, registry: &DynamicParserRegistry, tenant: &str) {
+    let (st, t) = (state.clone(), tenancy::normalize_tenant(tenant));
+    registry.set_ai(Arc::new(move |system: String, user: String| {
+        let (st, t) = (st.clone(), t.clone());
+        Box::pin(async move {
+            if !crate::ai_assist::tenant_ai_enabled(&st, &t) {
+                return None;
+            }
+            let providers = crate::ai_assist::providers(&st, "chat").await;
+            if providers.is_empty() {
+                return None;
+            }
+            // a parser (pattern + fields) is a long answer
+            siem_ai::generate_long(&providers, &system, &user, 8192).await.ok().map(|r| r.text)
+        })
+    }));
+}
+
 pub fn for_tenant(state: &AppState, tenant: &str) -> Arc<DynamicParserRegistry> {
     let t = tenancy::normalize_tenant(tenant);
     if t == tenancy::DEFAULT_TENANT {
@@ -142,6 +162,7 @@ pub fn for_tenant(state: &AppState, tenant: &str) -> Arc<DynamicParserRegistry> 
     all.entry(t.clone())
         .or_insert_with(|| {
             let r = Arc::new(DynamicParserRegistry::new(""));
+            connect_ai(state, &r, &t);
             let (db, reg, database) = (state.db.clone(), r.clone(), tenancy::tenant_db_name(&t));
             tokio::spawn(async move {
                 if let Some(ids) = load(&db, &reg, &database).await {

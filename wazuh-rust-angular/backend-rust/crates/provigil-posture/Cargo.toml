@@ -1,0 +1,8 @@
+[package]
+name = "provigil-posture"
+version = "0.1.0"
+edition = "2021"
+description = "Security posture score per tenant and host, and its forecast"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

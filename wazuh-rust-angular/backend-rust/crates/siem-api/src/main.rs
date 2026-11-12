@@ -43,6 +43,7 @@ pub mod syslog;
 pub mod syslog_send;
 pub mod syslog_tenancy;
 pub mod tamper;
+pub mod segments;
 pub mod tenancy;
 pub mod vuln_report;
 pub mod vulnerability;
@@ -76,6 +77,10 @@ pub mod org_memory;
 pub mod platform;
 pub mod intent_store;
 pub mod engine_docs;
+pub mod posture;
+pub mod case_detail;
+pub mod deploy_tokens;
+pub mod deploy_kit;
 pub mod posture_store;
 pub mod predictions;
 pub mod process_tree;
@@ -516,6 +521,7 @@ async fn main() {
     // Agent registry and tenant agent keys live in ClickHouse.
     load_agent_registry(&state).await;
     state.agent_keys.load_from(&state.db).await;
+    deploy_tokens::load(&state).await;
 
     // Tenants come from the shared auth-service registry (ndr.tenants).
     tenancy::sync_tenants(&state).await;
@@ -534,6 +540,7 @@ async fn main() {
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
     predictions::spawn(state.clone());
+    posture::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
@@ -576,6 +583,8 @@ async fn main() {
                     parsers_store::for_tenant(&ch_state, &t);
                 }
                 engine_docs::spawn(ch_state.clone());
+                // the default tenant's parsers, too, learn with the platform AI
+                parsers_store::connect_ai(&ch_state, &ch_state.parser_registry, tenancy::DEFAULT_TENANT);
                 let since_ms =
                     (chrono::Utc::now().timestamp().max(0) as u64).saturating_sub(7 * 86400) * 1000;
                 for tenant in predictions::tenant_ids(&ch_state) {
@@ -982,6 +991,10 @@ async fn main() {
             "/api/v1/tenant/agent-key/rotate",
             post(rotate_tenant_agent_key_handler),
         )
+        .route("/api/v1/deploy/tokens", get(deploy_tokens::list).post(deploy_tokens::create))
+        .route("/api/v1/deploy/tokens/:id", axum::routing::delete(deploy_tokens::revoke))
+        .route("/api/v1/deploy/tokens/:id/targets", get(deploy_tokens::targets))
+        .route("/api/v1/deploy/kit", post(deploy_kit::kit))
         .route(
             "/api/v1/tenant/alert-mail",
             get(alert_mail::get).put(alert_mail::put),
@@ -1252,6 +1265,8 @@ async fn main() {
             get(live_response::list).post(live_response::create),
         )
         .route("/api/v1/edr/tamper", get(tamper::get).put(tamper::put))
+        .route("/api/v1/segments", get(segments::list))
+        .route("/api/v1/segments/name", axum::routing::put(segments::set_name))
         .route(
             "/api/v1/agents/:id/tamper",
             axum::routing::post(tamper::agent_action),
@@ -1363,6 +1378,7 @@ async fn main() {
         )
         .route("/api/v1/siem/intel/matches", get(intel::matches))
         .route("/api/v1/siem/investigate", get(investigate::investigate))
+        .route("/api/v1/siem/explain", post(case_ai::explain))
         .route("/api/v1/siem/copilot", post(copilot::ask))
         .route("/api/v1/siem/copilot/status", get(copilot::status))
         .route(
@@ -1395,6 +1411,10 @@ async fn main() {
             delete(suppressions::delete),
         )
         .route("/api/v1/siem/predictions", get(predictions::latest))
+        .route("/api/v1/posture", get(posture::cards))
+        .route("/api/v1/posture/history", get(posture::history))
+        .route("/api/v1/posture/agents", get(posture::agents))
+        .route("/api/v1/posture/run", post(posture::run_now))
         .route(
             "/api/v1/siem/predictions/history",
             get(predictions::history),
@@ -1439,6 +1459,13 @@ async fn main() {
             get(soar::get_cases).post(soar::create_case),
         )
         .route("/api/soar/cases/:id", put(soar::update_case))
+        .route("/api/soar/cases/:id/detail", get(case_detail::detail))
+        .route("/api/soar/cases/:id/details", put(case_detail::set_details))
+        .route("/api/soar/cases/:id/disposition", put(case_detail::set_disposition))
+        .route("/api/soar/cases/:id/resolve", post(case_detail::resolve))
+        // a 10 MB file is about 13.4 MB as base64; the default request limit is 2 MB
+        .route("/api/soar/cases/:id/attachments", post(case_detail::add_attachment).layer(axum::extract::DefaultBodyLimit::max(15 * 1024 * 1024)))
+        .route("/api/soar/cases/:id/attachments/:att", get(case_detail::get_attachment))
         .route("/api/soar/cases/:id/status", put(soar::update_case_status))
         .route(
             "/api/soar/cases/:id/comments",
@@ -2157,6 +2184,7 @@ async fn get_rules(State(state): State<AppState>) -> Json<Vec<Rule>> {
 struct EventsQuery {
     limit: Option<usize>,
     source: Option<String>,
+    q: Option<String>,
 }
 
 async fn get_events(
@@ -2172,10 +2200,13 @@ async fn get_events(
         .map(|s| s.is_empty() || s.eq_ignore_ascii_case("all"))
         .unwrap_or(true);
 
-    // Persisted events come from the tenant's own ClickHouse database.
-    if state.db.is_connected() && is_all_source {
-        if let Some(ch_rows) = state.db.fetch_events(&scope, limit).await {
-            if !ch_rows.is_empty() {
+    // Persisted events come from the tenant's own ClickHouse database: filtered there, so a
+    // quiet PC's events are found among a busy PC's (not only in the newest few hundred)
+    if state.db.is_connected() {
+        let source = if is_all_source { String::new() } else { params.source.clone().unwrap_or_default().to_lowercase() };
+        let q = params.q.as_deref().unwrap_or("").trim().chars().take(200).collect::<String>();
+        if let Some(ch_rows) = state.db.fetch_events(&scope, limit, &source, &q).await {
+            if !ch_rows.is_empty() || !source.is_empty() || !q.is_empty() {
                 let events: Vec<RawEvent> = ch_rows.into_iter().map(|r| r.to_raw_event()).collect();
                 return Json(events);
             }
@@ -5947,9 +5978,23 @@ pub(crate) async fn enroll_agent(
         }
     }
     // authd refuses groups that do not exist ("Invalid group"); the manager names carry the tenant
+    // a deployment token: valid, not used up (a reinstall of the same PC does not count again)
+    let deploy_token = match headers.get("x-tenant-key").and_then(|v| v.to_str().ok()).map(str::trim).filter(|k| deploy_tokens::is_token(k)) {
+        Some(k) => {
+            let existing = state.enrolled.read().unwrap().iter().find(|(_, a)| a.tenant == tenant && a.name.eq_ignore_ascii_case(&name)).map(|(id, _)| id.clone());
+            match deploy_tokens::check_enroll(k, existing.as_deref()) {
+                Ok(t) => Some(t),
+                Err(m) => return err(StatusCode::FORBIDDEN, &m),
+            }
+        }
+        None => None,
+    };
+    // the token's group when the PC asks for none
     let asked: Vec<String> = payload
         .groups
         .as_deref()
+        .filter(|g| !g.trim().is_empty())
+        .or(deploy_token.as_ref().map(|t| t.groups.as_str()))
         .unwrap_or("")
         .split(',')
         .map(str::to_string)
@@ -6018,16 +6063,14 @@ pub(crate) async fn enroll_agent(
         })
         .await;
 
+    if let Some(t) = &deploy_token {
+        deploy_tokens::record(state, t, &agent_id, &name).await;
+    }
+
     let client_key = {
         let mut keystore = state.auth_keystore.write().unwrap();
         let _ = keystore.delete_key(&agent_id);
-        siem_authd::enrollment::add_agent_to_keystore(
-            &mut keystore,
-            &name,
-            &ip,
-            Some(&agent_id),
-            None,
-        )
+        agent_keys_store::new_agent_key(&mut keystore, &agent_id, &name, &ip)
     };
     // remoted reads the keys from etc/client.keys, the agent row from global.db
     provigil_manager::save_keys(state);
@@ -6103,7 +6146,6 @@ pub(crate) async fn enroll_agent(
     if let Some(n) = &mut new_agent {
         n.done = true;
     }
-    let response_str = siem_authd::enrollment::format_success_response(&client_key);
     Ok(serde_json::json!({
         "status": "success",
         "agent_id": client_key.id,
@@ -6112,8 +6154,7 @@ pub(crate) async fn enroll_agent(
         "raw_key": client_key.raw_key,
         "tenant_id": tenant,
         "groups": groups,
-        "reenrolled": reused,
-        "authd_response": response_str
+        "reenrolled": reused
     }))
 }
 
@@ -6345,6 +6386,7 @@ fn resolve_agent_tenant(
             state
                 .agent_keys
                 .tenant_for(k)
+                .or_else(|| deploy_tokens::tenant_of(k))
                 .ok_or(StatusCode::UNAUTHORIZED)?,
         ),
         None => None,

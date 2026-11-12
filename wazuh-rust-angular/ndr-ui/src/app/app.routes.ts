@@ -28,6 +28,7 @@ export const routes: Routes = [
       { path: 'health',      canActivate: [authGuard], data: { role: 'analyst', permission: 'health'      }, loadComponent: () => import('../pages/analyst/health/health').then(m => m.Health) },
       { path: 'network-map', canActivate: [authGuard], data: { role: 'analyst', permission: 'network-map' }, loadComponent: () => import('../pages/analyst/network-map/network-map').then(m => m.NetworkMap) },
       { path: 'soar',        canActivate: [authGuard], data: { role: 'analyst', permission: 'soar'        }, loadComponent: () => import('../pages/analyst/soar/soar').then(m => m.Soar) },
+      { path: 'cases/:id',   canActivate: [authGuard], data: { role: 'analyst', permission: 'soar'        }, loadComponent: () => import('../pages/analyst/case/case-page').then(m => m.CasePage) },
       { path: 'evidence',    canActivate: [authGuard], data: { role: 'analyst', permission: 'evidence'    }, loadComponent: () => import('../pages/analyst/evidence/evidence').then(m => m.EvidenceComponent) },
       { path: 'ai-activity', canActivate: [authGuard], data: { role: 'analyst', permission: 'ai-activity' }, loadComponent: () => import('../pages/analyst/ai-activity/ai-activity').then(m => m.AiActivity) },
       { path: 'threat-map',  canActivate: [authGuard], data: { role: 'analyst', permission: 'alerts' }, loadComponent: () => import('../pages/analyst/threat-map/threat-map').then(m => m.ThreatMap) },
@@ -55,6 +56,7 @@ export const routes: Routes = [
       /* SIEM analyst AI pages (siem-api /api/v1/siem/*), separate from the NDR's triage / AI activity / retrospective */
       { path: 'siem-triage',        canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/triage/siem-triage').then(m => m.SiemTriage) },
       { path: 'siem-suppressions',  canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/suppressions/siem-suppressions').then(m => m.SiemSuppressions) },
+      { path: 'siem-posture',       canActivate: [authGuard], data: { permission: 'siem-alerts' }, loadComponent: () => import('../pages/siem-ai/posture/siem-posture').then(m => m.SiemPosture) },
       { path: 'siem-predictions',   canActivate: [authGuard], data: { permission: 'siem-mitre' },  loadComponent: () => import('../pages/siem-ai/predictions/siem-predictions').then(m => m.SiemPredictions) },
       { path: 'siem-retrospective', canActivate: [authGuard], data: { permission: 'siem-rules' },  loadComponent: () => import('../pages/siem-ai/retrospective/siem-retrospective').then(m => m.SiemRetrospective) },
       { path: 'siem-my-insights',   redirectTo: '/analyst/siem-ai-oversight?tab=usage' },

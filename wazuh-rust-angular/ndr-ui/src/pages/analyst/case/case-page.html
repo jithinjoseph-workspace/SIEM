@@ -1,0 +1,267 @@
+<div class="p-6 w-full max-w-[1720px] mx-auto space-y-5 text-slate-200">
+  <a routerLink="/analyst/soar" class="text-xs text-cyan-400 hover:underline">&larr; Cases</a>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <ng-container *ngIf="c() as c">
+    <!-- header -->
+    <div class="flex flex-col lg:flex-row justify-between gap-4 border-b border-slate-800 pb-4">
+      <div class="min-w-0">
+        <div class="text-xs font-mono text-slate-500">{{ c.case_number }}</div>
+        <h1 class="text-2xl font-bold text-white break-words">{{ c.title }}</h1>
+        <div class="flex flex-wrap items-center gap-2 mt-2 text-xs">
+          <span class="px-2 py-0.5 rounded border border-slate-700">{{ c.severity }}</span>
+          <span class="px-2 py-0.5 rounded border border-slate-700">{{ c.priority || 'P2' }}</span>
+          <span class="px-2 py-0.5 rounded border border-cyan-800 text-cyan-300">{{ c.status }}</span>
+          <span *ngIf="d().details?.disposition" class="px-2 py-0.5 rounded border border-violet-800 text-violet-300">{{ d().details.disposition }}</span>
+          <span *ngFor="let t of c.tags" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">#{{ t }}</span>
+          <span class="text-slate-500">Opened {{ date(c.created_at) }}<ng-container *ngIf="d().details?.created_by"> by {{ d().details.created_by }}</ng-container></span>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 items-start">
+        <button (click)="open('resolve')" [disabled]="closed()" class="px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white">Resolve</button>
+        <button (click)="open('disposition')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Change disposition</button>
+        <button (click)="open('edit')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Edit</button>
+        <a *ngFor="let s of inv()?.subjects" routerLink="/analyst/siem-investigate" [queryParams]="{ q: s.value, case: c.id }" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Evidence: {{ s.role }} {{ s.value }}</a>
+        <button (click)="reinvestigate()" [disabled]="busy()" class="px-3 py-2 text-sm rounded-lg border border-cyan-800 text-cyan-300 hover:bg-cyan-950/40 disabled:opacity-40">Investigate again</button>
+      </div>
+    </div>
+
+    <!-- summary strip -->
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
+      <div class="p-3 rounded-lg border" [ngClass]="sla().cls">
+        <div class="text-xs opacity-70">SLA ({{ d().sla.hours }}h for {{ c.priority || 'P2' }})</div>
+        <div class="font-semibold">{{ d().sla.state }}: {{ sla().text }}</div>
+        <div class="text-xs opacity-70">Due {{ date(d().sla.due) }}</div>
+      </div>
+      <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
+        <div class="text-xs text-slate-500">Category</div>
+        <div>{{ d().details?.category || '—' }}<span *ngIf="d().details?.subcategory" class="text-slate-400"> / {{ d().details.subcategory }}</span></div>
+      </div>
+      <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
+        <div class="text-xs text-slate-500">Assigned to</div><div>{{ c.assigned_to || 'Unassigned' }}</div>
+      </div>
+      <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
+        <div class="text-xs text-slate-500">Source → destination</div><div class="font-mono text-xs">{{ c.src_ip || '—' }} → {{ c.dst_ip || '—' }}</div>
+      </div>
+      <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
+        <div class="text-xs text-slate-500">Alerts / entities</div><div>{{ d().alerts.length }} / {{ d().entities.length }}</div>
+      </div>
+    </div>
+
+    <!-- tabs -->
+    <div class="flex flex-wrap gap-1 border-b border-slate-800" role="tablist">
+      <button *ngFor="let t of tabs" role="tab" [attr.aria-selected]="tab() === t.key" (click)="tab.set(t.key)"
+        class="px-3 py-2 text-sm -mb-px border-b-2" [ngClass]="tab() === t.key ? 'border-cyan-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'">{{ t.label }}</button>
+    </div>
+
+    <!-- Overview -->
+    <div *ngIf="tab() === 'overview'" class="grid lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 space-y-4">
+        <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">Description</h2>
+          <p class="text-sm text-slate-300 whitespace-pre-wrap">{{ c.description || 'No description.' }}</p>
+          <div *ngIf="d().details?.resolution" class="mt-3 text-sm"><span class="text-slate-500">Resolution:</span> {{ d().details.resolution }}</div>
+        </section>
+
+        <section class="p-4 rounded-xl border border-cyan-900 bg-cyan-950/10">
+          <div class="flex justify-between items-center gap-2">
+            <h2 class="text-sm font-semibold text-white">What happened, in plain words</h2>
+            <button (click)="explain()" [disabled]="busy()" class="text-xs px-3 py-1.5 rounded border border-cyan-800 text-cyan-300 hover:bg-cyan-950/40 disabled:opacity-40">{{ explanation() ? 'Explain again' : 'Explain with AI' }}</button>
+          </div>
+          <div *ngIf="!explanation()" class="text-sm text-slate-400 mt-1">The AI reads the case, its alerts, entities and verdict and explains them: what happened, how serious, why, and what to do next.</div>
+          <ng-container *ngIf="explanation() as x">
+            <div class="text-xs text-slate-500 mt-1">{{ x.model }}: check it against the evidence</div>
+            <div class="whitespace-pre-wrap text-sm text-slate-200 mt-2">{{ x.text }}</div>
+          </ng-container>
+        </section>
+
+        <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <div class="flex justify-between items-center mb-2">
+            <h2 class="text-sm font-semibold text-white">Assessment</h2>
+            <span *ngIf="inv()" class="text-xs text-slate-500">{{ inv().verdict_source === 'ai' ? 'AI (' + inv().ai?.model + ')' : 'Built-in rules' }} · {{ date(inv().investigated_at) }}</span>
+          </div>
+          <div *ngIf="!inv()" class="text-sm text-slate-400">Not investigated yet.</div>
+          <ng-container *ngIf="verdict() as v">
+            <div class="flex items-center gap-3">
+              <span class="text-lg font-semibold capitalize">{{ label(v.label) }}</span>
+              <div class="flex-1 max-w-xs h-2 rounded bg-slate-800" [attr.aria-label]="'Confidence ' + v.confidence + '%'">
+                <div class="h-2 rounded bg-cyan-500" [style.width.%]="v.confidence"></div>
+              </div>
+              <span class="text-sm text-slate-300">{{ v.confidence }}% confidence</span>
+            </div>
+            <p class="text-sm text-slate-300 mt-2">{{ v.summary }}</p>
+            <ul class="list-disc pl-5 mt-2 text-sm text-slate-300 space-y-1"><li *ngFor="let r of v.reasons">{{ r }}</li></ul>
+            <div *ngIf="v.next_steps?.length" class="mt-3">
+              <div class="text-xs text-slate-500 mb-1">Recommended next steps</div>
+              <ol class="list-decimal pl-5 text-sm text-slate-300 space-y-1"><li *ngFor="let s of v.next_steps">{{ s }}</li></ol>
+            </div>
+            <div *ngIf="inv().challenge as ch" class="mt-4 p-3 rounded-lg border" [ngClass]="ch.holds ? 'border-emerald-900 bg-emerald-950/20' : 'border-amber-800 bg-amber-950/30'">
+              <div class="text-sm font-semibold" [ngClass]="ch.holds ? 'text-emerald-300' : 'text-amber-300'">
+                Challenge: the verdict {{ ch.holds ? 'holds' : 'may not hold' }} ({{ ch.confidence }}% sure)
+              </div>
+              <ul class="list-disc pl-5 mt-1 text-sm text-slate-300 space-y-1"><li *ngFor="let p of ch.points">{{ p }}</li></ul>
+              <div *ngIf="ch.alternative" class="text-sm mt-1"><span class="text-slate-500">Other explanation:</span> {{ ch.alternative }}</div>
+            </div>
+            <div *ngIf="inv().ai_note" class="text-xs text-slate-500 mt-2">{{ inv().ai_note }}</div>
+            <!-- human in the loop: the analyst decides; the AI only proposes -->
+            <div class="flex flex-wrap gap-2 mt-4">
+              <button *ngIf="acceptAs()" (click)="open('disposition', acceptAs())" class="px-3 py-1.5 text-xs rounded border border-emerald-800 text-emerald-300 hover:bg-emerald-950/40">Accept: {{ acceptAs() }}</button>
+              <button (click)="open('disposition')" class="px-3 py-1.5 text-xs rounded border border-slate-700 hover:bg-slate-800">Override</button>
+              <button (click)="tab.set('ai')" class="px-3 py-1.5 text-xs rounded border border-slate-700 hover:bg-slate-800">Ask AI about it</button>
+            </div>
+          </ng-container>
+        </section>
+      </div>
+
+      <div class="space-y-4">
+        <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">Related entities</h2>
+          <div *ngIf="!d().entities.length" class="text-sm text-slate-400">None.</div>
+          <div *ngFor="let e of d().entities" class="flex justify-between gap-2 py-1.5 border-b border-slate-800/60 last:border-0 text-sm">
+            <div class="min-w-0">
+              <span class="text-xs uppercase text-slate-500 mr-2">{{ e.type }}</span><span class="font-mono break-all">{{ e.value }}</span>
+              <div *ngIf="e.geo" class="text-xs text-slate-500">{{ e.geo.city ? e.geo.city + ', ' : '' }}{{ e.geo.country }}<ng-container *ngIf="e.geo.org"> · {{ e.geo.org }}</ng-container></div>
+              <div *ngIf="e.threat_intel" class="text-xs text-rose-300">On a threat-intel list</div>
+            </div>
+            <div *ngIf="e.risk != null" class="text-right shrink-0" [ngClass]="riskCls(e.risk)"><div class="font-semibold">{{ e.risk }}</div><div class="text-[10px] text-slate-500">risk</div></div>
+          </div>
+        </section>
+        <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">Attachments</h2>
+          <div *ngFor="let a of d().attachments" class="flex justify-between gap-2 text-sm py-1">
+            <button (click)="download(a)" class="text-cyan-300 hover:underline break-all text-left">{{ a.name }}</button>
+            <span class="text-xs text-slate-500 shrink-0">{{ (a.size / 1024) | number:'1.0-0' }} KB</span>
+          </div>
+          <label class="inline-block mt-2 px-3 py-1.5 text-xs rounded border border-slate-700 hover:bg-slate-800 cursor-pointer">
+            Upload evidence (max 10 MB)<input type="file" class="hidden" (change)="upload($event)">
+          </label>
+        </section>
+      </div>
+    </div>
+
+    <!-- Supporting evidence -->
+    <div *ngIf="tab() === 'evidence'" class="space-y-4">
+      <div *ngIf="!inv()?.evidence?.length" class="text-sm text-slate-400">No evidence gathered yet: run "Investigate again".</div>
+      <section *ngFor="let e of inv()?.evidence" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
+        <div class="font-semibold text-white"><span class="text-xs uppercase text-slate-500 mr-2">{{ e.role }}</span>{{ e.value }}</div>
+        <pre class="mt-2 text-xs text-slate-300 whitespace-pre-wrap break-all">{{ e.summary | json }}</pre>
+      </section>
+      <section *ngIf="inv()?.intel?.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
+        <h2 class="font-semibold text-white mb-2">Threat intelligence</h2>
+        <pre class="text-xs text-slate-300 whitespace-pre-wrap break-all">{{ inv().intel | json }}</pre>
+      </section>
+      <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
+        <h2 class="font-semibold text-white mb-2">Attachments ({{ d().attachments.length }})</h2>
+        <div *ngFor="let a of d().attachments" class="py-1">
+          <button (click)="download(a)" class="text-cyan-300 hover:underline">{{ a.name }}</button>
+          <span class="text-xs text-slate-500 ml-2">{{ a.mime }} · by {{ a.uploaded_by }} · {{ date(a.at) }} · sha256 {{ a.sha256 }}</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- Journey -->
+    <ol *ngIf="tab() === 'journey'" class="border-l border-slate-700 ml-2 space-y-3">
+      <li *ngIf="!d().journey.length" class="pl-4 text-sm text-slate-400">No recorded changes yet.</li>
+      <li *ngFor="let j of d().journey" class="pl-4 relative text-sm">
+        <span class="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full bg-cyan-500"></span>
+        <div class="text-xs text-slate-500">{{ j.at }} · {{ j.actor }} · {{ j.kind }}</div>
+        <div class="text-slate-200">{{ j.detail }}</div>
+      </li>
+    </ol>
+
+    <!-- Sequence: the alerts in time order -->
+    <div *ngIf="tab() === 'sequence'" class="overflow-x-auto rounded-xl border border-slate-800">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900 text-xs text-slate-400 text-left">
+          <tr><th class="p-2">Time</th><th class="p-2">Host</th><th class="p-2">Rule</th><th class="p-2">Level</th><th class="p-2">ATT&amp;CK</th><th class="p-2">Source → destination</th><th class="p-2">User</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="!d().alerts.length"><td colspan="7" class="p-3 text-slate-400">No alerts linked to this case.</td></tr>
+          <tr *ngFor="let a of d().alerts" class="border-t border-slate-800">
+            <td class="p-2 whitespace-nowrap">{{ date(a.timestamp / 1000) }}</td>
+            <td class="p-2">{{ a.agent_name }}</td>
+            <td class="p-2">{{ a.rule_description }} <span class="text-xs text-slate-500">({{ a.rule_id }})</span></td>
+            <td class="p-2">{{ a.rule_level }}</td>
+            <td class="p-2 text-xs">{{ a.mitre_id }} {{ a.mitre_tactic }}</td>
+            <td class="p-2 font-mono text-xs">{{ a.src_ip || '—' }} → {{ a.dst_ip || '—' }}</td>
+            <td class="p-2">{{ a.user }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Raw JSON -->
+    <pre *ngIf="tab() === 'raw'" class="p-4 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-300 overflow-auto max-h-[70vh]">{{ rawJson() }}</pre>
+
+    <!-- Ask AI -->
+    <div *ngIf="tab() === 'ai'" class="space-y-3 max-w-4xl">
+      <div *ngFor="let x of answers()" class="space-y-1">
+        <div class="text-sm text-cyan-300">{{ x.q }}</div>
+        <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60 text-sm whitespace-pre-wrap">{{ x.a }}</div>
+      </div>
+      <form (ngSubmit)="ask()" class="flex gap-2">
+        <input [(ngModel)]="question" name="q" placeholder="Ask about this case, e.g. what else did this host do?" aria-label="Question"
+          class="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm">
+        <button [disabled]="busy()" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-sm">Ask</button>
+      </form>
+    </div>
+
+    <!-- Related -->
+    <div *ngIf="tab() === 'related'" class="space-y-2">
+      <div *ngIf="!d().similar.length" class="text-sm text-slate-400">No other cases with these addresses or hosts in the last 90 days.</div>
+      <a *ngFor="let s of d().similar" [routerLink]="['/analyst/cases', s.id]" (click)="id = s.id; load()"
+        class="flex justify-between p-3 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-cyan-800 text-sm">
+        <span><span class="font-mono text-xs text-slate-500 mr-2">{{ s.case_number }}</span>{{ s.title }}</span>
+        <span class="text-xs text-slate-400">{{ s.status }} · {{ date(s.created_at) }}</span>
+      </a>
+    </div>
+
+    <!-- Notes -->
+    <div *ngIf="tab() === 'notes'" class="space-y-3 max-w-4xl">
+      <div *ngFor="let n of comments()" class="p-3 rounded-lg border border-slate-800 bg-slate-900/60 text-sm">
+        <div class="text-xs text-slate-500">{{ n.author }} · {{ date(n.created_at) }}</div>
+        <div class="whitespace-pre-wrap">{{ n.comment }}</div>
+      </div>
+      <form (ngSubmit)="addNote()" class="flex gap-2">
+        <textarea [(ngModel)]="newNote" name="note" rows="2" placeholder="Add a note" aria-label="Note" class="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"></textarea>
+        <button class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-sm">Add</button>
+      </form>
+    </div>
+  </ng-container>
+
+  <!-- dialogs -->
+  <div *ngIf="dialog()" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <form (ngSubmit)="save()" class="w-full max-w-lg p-5 rounded-xl border border-slate-700 bg-slate-900 space-y-3 text-sm">
+      <h2 class="text-lg font-semibold text-white">{{ dialog() === 'resolve' ? 'Resolve case' : dialog() === 'edit' ? 'Edit case' : 'Change disposition' }}</h2>
+      <ng-container *ngIf="dialog() !== 'edit'">
+        <label class="block">Disposition
+          <select [(ngModel)]="form.disposition" name="disposition" required class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700">
+            <option *ngFor="let x of d().dispositions" [value]="x">{{ x }}</option>
+          </select>
+        </label>
+        <label class="block">{{ dialog() === 'resolve' ? 'Resolution' : 'Note (optional)' }}
+          <textarea [(ngModel)]="form.text" name="text" rows="4" [required]="dialog() === 'resolve'" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></textarea>
+        </label>
+      </ng-container>
+      <ng-container *ngIf="dialog() === 'edit'">
+        <label class="block">Title<input [(ngModel)]="form.title" name="title" required class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>
+        <label class="block">Description<textarea [(ngModel)]="form.description" name="description" rows="3" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></textarea></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block">Priority<select [(ngModel)]="form.priority" name="priority" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700">
+            <option *ngFor="let p of ['P1','P2','P3','P4']" [value]="p">{{ p }}</option></select></label>
+          <label class="block">Severity<select [(ngModel)]="form.severity" name="severity" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700">
+            <option *ngFor="let s of ['CRITICAL','HIGH','MEDIUM','LOW']" [value]="s">{{ s }}</option></select></label>
+          <label class="block">Category<input [(ngModel)]="form.category" name="category" maxlength="80" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>
+          <label class="block">Subcategory<input [(ngModel)]="form.subcategory" name="subcategory" maxlength="80" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>
+        </div>
+        <label class="block">Assigned to<input [(ngModel)]="form.assigned_to" name="assigned_to" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>
+      </ng-container>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" (click)="dialog.set('')" class="px-3 py-2 rounded border border-slate-700 hover:bg-slate-800">Cancel</button>
+        <button [disabled]="busy()" class="px-3 py-2 rounded bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white">Save</button>
+      </div>
+    </form>
+  </div>
+</div>

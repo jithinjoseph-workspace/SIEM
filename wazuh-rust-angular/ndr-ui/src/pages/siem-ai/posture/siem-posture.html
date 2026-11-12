@@ -1,0 +1,589 @@
+<div class="p-6 w-full max-w-[1720px] mx-auto space-y-6 text-slate-200 posture-fade-in">
+  <!-- Top Header Bar -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-5 border-b border-slate-800/80">
+    <div class="space-y-1">
+      <div class="flex items-center gap-3">
+        <div class="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+          <lucide-angular [img]="ShieldIcon" class="w-6 h-6"></lucide-angular>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-bold text-white tracking-tight">Security Posture Intelligence</h1>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-800/60">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 beacon-dot"></span>
+              Live Hourly Assessment
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5 max-w-3xl">
+            Real-time composite score (0–100) aggregating high-fidelity telemetry: tenant threat alerts, vulnerability exposure,
+            endpoint configuration baselines, MITRE kill-chain progression, and agent coverage.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions & Status -->
+    <div class="flex items-center gap-3 self-stretch md:self-auto justify-between md:justify-end">
+      <div *ngIf="today() as t" class="hidden sm:flex flex-col text-right">
+        <span class="text-[11px] text-slate-500 uppercase font-semibold tracking-wider">Last Evaluated</span>
+        <span class="text-xs font-mono text-slate-300 flex items-center gap-1 justify-end">
+          <lucide-angular [img]="ClockIcon" class="w-3 h-3 text-slate-500"></lucide-angular>
+          {{ when(t.computed_at) }}
+        </span>
+      </div>
+
+      <button
+        (click)="runNow()"
+        [disabled]="loading()"
+        class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 disabled:opacity-50 text-slate-100 text-xs font-semibold rounded-xl border border-slate-700/80 shadow-lg shadow-black/40 hover:border-cyan-500/50 hover:shadow-cyan-950/30 transition-all duration-200 cursor-pointer">
+        <lucide-angular [img]="RefreshIcon" class="w-3.5 h-3.5 text-cyan-400" [class.animate-spin]="loading()"></lucide-angular>
+        <span>{{ loading() ? 'Evaluating Telemetry...' : 'Recalculate Posture' }}</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error & Status Alerts -->
+  <div *ngIf="error()" role="alert" class="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-300 text-sm flex items-center gap-3 backdrop-blur-sm shadow-lg shadow-rose-950/20">
+    <lucide-angular [img]="ShieldAlertIcon" class="w-5 h-5 shrink-0 text-rose-400"></lucide-angular>
+    <div class="flex-1">{{ error() }}</div>
+  </div>
+  
+  <div *ngIf="message()" role="status" class="p-4 rounded-xl border border-emerald-800/80 bg-emerald-950/40 text-emerald-300 text-sm flex items-center gap-3 backdrop-blur-sm shadow-lg shadow-emerald-950/20">
+    <lucide-angular [img]="CheckCircleIcon" class="w-5 h-5 shrink-0 text-emerald-400"></lucide-angular>
+    <div class="flex-1">{{ message() }}</div>
+  </div>
+
+  <!-- Empty Initializing State -->
+  <div *ngIf="!loading() && !today() && !error()" class="p-12 rounded-2xl glass-panel text-center space-y-3">
+    <div class="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mx-auto flex items-center justify-center text-cyan-400">
+      <lucide-angular [img]="ActivityIcon" class="w-6 h-6"></lucide-angular>
+    </div>
+    <h3 class="text-base font-semibold text-white">Initializing Security Posture Engine</h3>
+    <p class="text-xs text-slate-400 max-w-md mx-auto">
+      The first posture score is synthesized within minutes of engine startup from enrolled agent heartbeats, alerts, and CVE scans.
+    </p>
+  </div>
+
+  <!-- Primary Three-Day Perspective Grid -->
+  <div *ngIf="today() as t" class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- Card 1: Yesterday's Verified Performance -->
+    <div class="lg:col-span-3 glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Yesterday</span>
+          <lucide-angular
+            *ngIf="yesterday() as y"
+            [img]="icon(y.band)"
+            class="w-5 h-5"
+            [ngClass]="bandClass(y.band)">
+          </lucide-angular>
+        </div>
+
+        <ng-container *ngIf="yesterday() as y; else noYesterday">
+          <div class="text-[11px] font-mono text-slate-500">{{ y.day }}</div>
+          
+          <div class="flex items-baseline gap-2 pt-1">
+            <div class="text-5xl font-black tracking-tight" [ngClass]="bandClass(y.band)">
+              {{ y.score | number:'1.0-0' }}
+            </div>
+            <span class="text-xs text-slate-500 font-mono">/ 100</span>
+          </div>
+
+          <div class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border" [ngClass]="bandBadgeClass(y.band)">
+            {{ y.band }}
+          </div>
+
+          <div class="pt-3 border-t border-slate-800/80 text-xs text-slate-400 space-y-1" *ngIf="y.forecast != null">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="text-slate-500">Day Forecast:</span>
+              <span class="font-mono text-slate-300 font-medium">{{ y.forecast | number:'1.0-0' }}</span>
+            </div>
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="text-slate-500">Forecast Variance:</span>
+              <span class="font-mono font-semibold" [ngClass]="(y.score - y.forecast) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                {{ (y.score - y.forecast) >= 0 ? '+' : '' }}{{ y.score - y.forecast | number:'1.0-1' }} pts
+              </span>
+            </div>
+          </div>
+        </ng-container>
+
+        <ng-template #noYesterday>
+          <div class="py-8 text-xs text-slate-500 text-center">
+            No completed 24h baseline yet.
+          </div>
+        </ng-template>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-800/60 text-[11px] text-slate-500 flex items-center gap-1.5">
+        <lucide-angular [img]="ClockIcon" class="w-3.5 h-3.5 text-slate-500"></lucide-angular>
+        <span>24h Closed Baseline</span>
+      </div>
+    </div>
+
+    <!-- Card 2: Today's Active Posture (HERO GAUGE) -->
+    <div class="lg:col-span-5 glass-panel-hero rounded-2xl p-6 flex flex-col justify-between">
+      <div class="flex items-center justify-between border-b border-cyan-900/40 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 beacon-dot"></span>
+          <span class="text-xs uppercase tracking-wider font-bold text-white">Current Assessment (Today)</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <lucide-angular [img]="icon(t.posture.band)" class="w-5 h-5" [ngClass]="bandClass(t.posture.band)"></lucide-angular>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-bold border" [ngClass]="bandBadgeClass(t.posture.band)">
+            {{ t.posture.band }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Hero Radial Gauge & Stats Center -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center py-4">
+        <!-- SVG Radial Gauge -->
+        <div class="flex items-center justify-center relative">
+          <svg class="w-40 h-40" viewBox="0 0 128 128">
+            <defs>
+              <linearGradient id="todayGaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" [attr.stop-color]="bandStrokeColor(t.posture.band)" />
+              </linearGradient>
+            </defs>
+            <!-- Background Track -->
+            <circle
+              cx="64"
+              cy="64"
+              r="54"
+              fill="transparent"
+              stroke="#1e293b"
+              stroke-width="9"
+              class="opacity-60"
+            />
+            <!-- Animated Colored Value Arc -->
+            <circle
+              cx="64"
+              cy="64"
+              r="54"
+              fill="transparent"
+              stroke="url(#todayGaugeGradient)"
+              stroke-width="9"
+              stroke-linecap="round"
+              stroke-dasharray="339.292"
+              [attr.stroke-dashoffset]="gaugeOffset(t.posture.score)"
+              class="radial-gauge-circle glow-cyan"
+            />
+          </svg>
+          <!-- Gauge Center Text -->
+          <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span class="text-4xl font-black text-white tracking-tighter">
+              {{ t.posture.score | number:'1.0-0' }}
+            </span>
+            <span class="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Score / 100</span>
+          </div>
+        </div>
+
+        <!-- Metric Details & Score Delta -->
+        <div class="space-y-3">
+          <div>
+            <div class="text-[11px] uppercase tracking-wider font-semibold text-slate-400">Day-over-Day Trend</div>
+            <div class="flex items-center gap-2 mt-1">
+              <div *ngIf="scoreDelta() !== null" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                [ngClass]="scoreDelta()! >= 0 ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border-rose-500/30'">
+                <lucide-angular [img]="scoreDelta()! >= 0 ? TrendingUpIcon : TrendingDownIcon" class="w-3.5 h-3.5"></lucide-angular>
+                <span>{{ scoreDelta()! >= 0 ? '+' : '' }}{{ scoreDelta() }} pts</span>
+              </div>
+              <span class="text-xs text-slate-400">vs. yesterday</span>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-300 leading-relaxed">
+            Composite posture evaluates <span class="font-semibold text-cyan-300">{{ t.posture.hosts.length }} enrolled endpoints</span> and active event telemetry.
+          </div>
+
+          <!-- Quick Action: SOAR Case -->
+          <a
+            routerLink="/analyst/soar"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-700/50 text-cyan-300 text-xs font-semibold hover:border-cyan-400 transition-all duration-200 group">
+            <lucide-angular [img]="CaseIcon" class="w-3.5 h-3.5 group-hover:scale-110 transition-transform"></lucide-angular>
+            <span>Open SOAR Remediation Case</span>
+            <lucide-angular [img]="ArrowUpRightIcon" class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 -translate-y-0.5 transition-all"></lucide-angular>
+          </a>
+        </div>
+      </div>
+
+      <!-- Card Footer -->
+      <div class="pt-3 border-t border-cyan-900/30 flex items-center justify-between text-[11px] text-slate-400">
+        <span class="flex items-center gap-1.5">
+          <lucide-angular [img]="SparklesIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-angular>
+          <span>Provigil AI Defense Engine</span>
+        </span>
+        <span class="text-cyan-400/80 font-mono">{{ t.day }}</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Tomorrow's Predictive Forecast -->
+    <div class="lg:col-span-4 glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-xs uppercase tracking-wider font-semibold text-violet-300">Tomorrow (AI Forecast)</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-950/70 text-violet-300 border border-violet-800/60">AI</span>
+          </div>
+          <lucide-angular
+            [img]="icon(t.forecast_next.band)"
+            class="w-5 h-5"
+            [ngClass]="bandClass(t.forecast_next.band)">
+          </lucide-angular>
+        </div>
+
+        <div class="text-[11px] text-slate-400 truncate" [title]="modelText(t.forecast_next.model)">
+          {{ modelText(t.forecast_next.model) }}
+        </div>
+
+        <div class="flex items-baseline gap-2 pt-1">
+          <div class="text-5xl font-black tracking-tight" [ngClass]="bandClass(t.forecast_next.band)">
+            {{ t.forecast_next.score | number:'1.0-0' }}
+          </div>
+          <span class="text-xs text-slate-500 font-mono">/ 100 projected</span>
+        </div>
+
+        <div class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border" [ngClass]="bandBadgeClass(t.forecast_next.band)">
+          {{ t.forecast_next.band }} Expected
+        </div>
+
+        <!-- Confidence Range & MAE Metrics -->
+        <div class="pt-3 border-t border-slate-800/80 space-y-2 text-xs">
+          <div>
+            <div class="flex justify-between items-center text-[11px] mb-1">
+              <span class="text-slate-400">Likely Confidence Interval:</span>
+              <span class="font-mono text-violet-300 font-bold">
+                {{ t.forecast_next.low | number:'1.0-0' }} – {{ t.forecast_next.high | number:'1.0-0' }}
+              </span>
+            </div>
+            <!-- Range Bar -->
+            <div class="h-1.5 rounded-full bg-slate-800 overflow-hidden relative">
+              <div
+                class="h-full bg-gradient-to-r from-violet-500 to-indigo-400 rounded-full"
+                [style.margin-left.%]="t.forecast_next.low"
+                [style.width.%]="t.forecast_next.high - t.forecast_next.low">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-400" *ngIf="t.forecast_next.accuracy_mae != null">
+            <span>Historical Accuracy (MAE):</span>
+            <span class="font-mono text-slate-200">± {{ t.forecast_next.accuracy_mae | number:'1.0-1' }} pts</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-800/60 text-[11px] text-slate-500 flex items-center justify-between">
+        <span class="flex items-center gap-1">
+          <lucide-angular [img]="TrendingUpIcon" class="w-3.5 h-3.5 text-violet-400"></lucide-angular>
+          <span>Model: {{ t.forecast_next.model }}</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Middle Section: Drivers & Component Breakdown -->
+  <div *ngIf="today() as t" class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+    
+    <!-- Left: Why This Score (Impact Drivers) -->
+    <div class="xl:col-span-6 glass-panel rounded-2xl p-6 space-y-4 flex flex-col justify-between">
+      <div class="space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+          <div class="flex items-center gap-2.5">
+            <div class="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
+              <lucide-angular [img]="AlertTriangleIcon" class="w-4 h-4"></lucide-angular>
+            </div>
+            <div>
+              <h2 class="text-sm font-bold text-white tracking-wide">Primary Score Reducers (Drivers)</h2>
+              <p class="text-[11px] text-slate-400">Top operational factors and anomalies penalizing current posture</p>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+            {{ t.posture.drivers.length }} Factors
+          </span>
+        </div>
+
+        <!-- Drivers List -->
+        <div *ngIf="t.posture.drivers.length === 0" class="py-10 text-center space-y-2">
+          <lucide-angular [img]="CheckCircleIcon" class="w-8 h-8 text-emerald-400 mx-auto"></lucide-angular>
+          <div class="text-xs font-semibold text-emerald-300">Optimal Security Baseline</div>
+          <p class="text-[11px] text-slate-500 max-w-sm mx-auto">
+            Zero active alerts or misconfigurations are currently lowering the security posture score.
+          </p>
+        </div>
+
+        <div *ngIf="t.posture.drivers.length > 0" class="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+          <div
+            *ngFor="let d of t.posture.drivers"
+            class="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 hover:border-slate-700/80 transition-all flex items-start gap-3 group">
+            <!-- Points Impact Badge -->
+            <div class="shrink-0 px-2 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-xs font-bold text-center min-w-[54px]">
+              -{{ d.points | number:'1.0-1' }}
+            </div>
+
+            <!-- Details -->
+            <div class="flex-1 min-w-0 space-y-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-medium text-slate-200 group-hover:text-white transition-colors">
+                  {{ d.text }}
+                </span>
+                <span *ngIf="d.agent" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-cyan-300 border border-slate-700">
+                  {{ d.agent }}
+                </span>
+              </div>
+              <div class="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                Category: <span class="text-slate-400">{{ d.component }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advisory Notes -->
+        <div *ngIf="t.posture.notes && t.posture.notes.length > 0" class="pt-2 border-t border-slate-800/60 space-y-1.5">
+          <div *ngFor="let n of t.posture.notes" class="flex items-center gap-2 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg">
+            <lucide-angular [img]="AlertTriangleIcon" class="w-3.5 h-3.5 shrink-0 text-amber-400"></lucide-angular>
+            <span>{{ n }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Component Weight & Score Breakdown -->
+    <div class="xl:col-span-6 glass-panel rounded-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+            <lucide-angular [img]="LayersIcon" class="w-4 h-4"></lucide-angular>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-white tracking-wide">Posture Component Breakdown</h2>
+            <p class="text-[11px] text-slate-400">Weighted scores across the 5 core telemetry dimensions</p>
+          </div>
+        </div>
+        <span class="text-[11px] text-slate-500 font-mono">100% Total Model</span>
+      </div>
+
+      <div class="space-y-4">
+        <div *ngFor="let c of components()" class="p-3.5 rounded-xl bg-slate-950/40 border border-slate-800/60 hover:border-slate-700/60 transition-all space-y-2">
+          <div class="flex justify-between items-center text-xs">
+            <div class="flex items-center gap-2">
+              <lucide-angular [img]="c.icon" class="w-4 h-4 text-cyan-400"></lucide-angular>
+              <span class="font-semibold text-slate-200">{{ c.key }}</span>
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                Weight {{ c.weight }}%
+              </span>
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-sm font-black font-mono" [ngClass]="c.value >= 80 ? 'text-emerald-400' : c.value >= 60 ? 'text-cyan-400' : c.value >= 40 ? 'text-amber-400' : 'text-rose-400'">
+                {{ c.value | number:'1.0-0' }}
+              </span>
+              <span class="text-[10px] text-slate-500 font-mono">/ 100</span>
+            </div>
+          </div>
+
+          <!-- Luminous Progress Bar -->
+          <div class="h-2 rounded-full bg-slate-800/80 overflow-hidden p-0.5" role="progressbar" [attr.aria-valuenow]="c.value" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="c.key">
+            <div
+              class="h-full rounded-full bg-gradient-to-r transition-all duration-1000 luminous-bar"
+              [ngClass]="barGradient(c.value)"
+              [style.width.%]="c.value">
+            </div>
+          </div>
+
+          <div class="text-[11px] text-slate-500 leading-tight">
+            {{ c.desc }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Section: 30-Day Historical Trend & Weakest Hosts -->
+  <div class="space-y-5">
+    
+    <!-- 30-Day Trajectory Area Chart -->
+    <div *ngIf="history().length > 0" class="glass-panel rounded-2xl p-6 space-y-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+            <lucide-angular [img]="ActivityIcon" class="w-4 h-4"></lucide-angular>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-white tracking-wide">30-Day Security Posture Trajectory</h2>
+            <p class="text-[11px] text-slate-400">Actual daily posture score compared with advance predictive forecast</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-5 text-xs">
+          <span class="flex items-center gap-2 text-slate-300">
+            <span class="w-3.5 h-1 rounded-full bg-cyan-400 inline-block shadow-sm shadow-cyan-400/50"></span>
+            <span>Actual Posture</span>
+          </span>
+          <span class="flex items-center gap-2 text-slate-400">
+            <span class="w-4 h-0 border-t-2 border-dashed border-violet-400 inline-block"></span>
+            <span>AI Forecasted</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- SVG Chart Canvas -->
+      <div class="w-full overflow-x-auto">
+        <svg
+          [attr.viewBox]="'0 0 ' + chart().w + ' ' + chart().h"
+          class="w-full h-48 min-w-[600px]"
+          role="img"
+          aria-label="30-Day Posture Score Trajectory">
+          <defs>
+            <linearGradient id="chartAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.0" />
+            </linearGradient>
+            <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#06b6d4" flood-opacity="0.6"/>
+            </filter>
+          </defs>
+
+          <!-- Grid Lines -->
+          <g *ngFor="let g of chart().grid">
+            <line
+              [attr.x1]="36"
+              [attr.x2]="chart().w - 20"
+              [attr.y1]="g.y"
+              [attr.y2]="g.y"
+              stroke="#1e293b"
+              stroke-width="1"
+              stroke-dasharray="3 3">
+            </line>
+            <text [attr.x]="30" [attr.y]="g.y + 3" text-anchor="end" font-size="9" font-family="monospace" fill="#64748b">
+              {{ g.s }}
+            </text>
+          </g>
+
+          <!-- Gradient Area Fill under Actual Curve -->
+          <polygon
+            *ngIf="chart().area"
+            [attr.points]="chart().area"
+            fill="url(#chartAreaGradient)">
+          </polygon>
+
+          <!-- Forecast Line (Dashed Violet) -->
+          <polyline
+            [attr.points]="chart().forecast"
+            fill="none"
+            stroke="#a78bfa"
+            stroke-width="2"
+            stroke-dasharray="6 4"
+            class="opacity-75">
+          </polyline>
+
+          <!-- Actual Score Line (Glowing Cyan) -->
+          <polyline
+            [attr.points]="chart().actual"
+            fill="none"
+            stroke="#06b6d4"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            filter="url(#cyanGlow)">
+          </polyline>
+
+          <!-- Data Points on Actual Line -->
+          <circle
+            *ngFor="let d of chart().dots"
+            [attr.cx]="d.x"
+            [attr.cy]="d.y"
+            r="3.5"
+            fill="#06b6d4"
+            stroke="#0f172a"
+            stroke-width="1.5"
+            class="chart-dot">
+            <title>{{ d.day }}: Score {{ d.score }} ({{ d.band }})</title>
+          </circle>
+        </svg>
+      </div>
+
+      <!-- Date Range Labels -->
+      <div class="flex justify-between items-center text-xs font-mono text-slate-500 px-6 pt-1 border-t border-slate-800/40">
+        <span class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+          {{ chart().first }}
+        </span>
+        <span class="text-[11px] text-slate-600">30-day continuous rolling evaluation window</span>
+        <span class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          {{ chart().last }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Weakest Hosts Grid / Card Table -->
+    <div *ngIf="today() as t" class="glass-panel rounded-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+            <lucide-angular [img]="ServerIcon" class="w-4 h-4"></lucide-angular>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-white tracking-wide">Endpoint Posture (Weakest First)</h2>
+            <p class="text-[11px] text-slate-400">Individual endpoint security ratings prioritized by remediation urgency</p>
+          </div>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
+          {{ t.posture.hosts.length }} Endpoints
+        </span>
+      </div>
+
+      <!-- Zero Hosts Empty State -->
+      <div *ngIf="t.posture.hosts.length === 0" class="py-10 text-center space-y-2">
+        <lucide-angular [img]="CheckCircleIcon" class="w-8 h-8 text-emerald-400 mx-auto"></lucide-angular>
+        <div class="text-xs font-semibold text-slate-300">All Endpoints Healthy</div>
+        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">
+          No host currently exhibits critical CVE exposures or misconfiguration degradations.
+        </p>
+      </div>
+
+      <!-- Hosts Modern List -->
+      <div *ngIf="t.posture.hosts.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div
+          *ngFor="let h of t.posture.hosts; let idx = index"
+          class="p-4 rounded-xl bg-slate-950/50 border border-slate-800/80 hover:border-slate-700/80 transition-all space-y-3 group">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-5 h-5 rounded-md bg-slate-800 flex items-center justify-center text-[10px] font-mono font-bold text-slate-400 shrink-0">
+                #{{ idx + 1 }}
+              </span>
+              <span class="font-semibold text-xs text-white truncate" [title]="h.agent_name">
+                {{ h.agent_name }}
+              </span>
+            </div>
+            
+            <div class="flex items-baseline gap-1 shrink-0">
+              <span class="text-base font-black font-mono" [ngClass]="h.score >= 80 ? 'text-emerald-400' : h.score >= 60 ? 'text-cyan-400' : h.score >= 40 ? 'text-amber-400' : 'text-rose-400'">
+                {{ h.score | number:'1.0-0' }}
+              </span>
+              <span class="text-[10px] text-slate-500 font-mono">/ 100</span>
+            </div>
+          </div>
+
+          <!-- Score Meter Bar -->
+          <div class="h-2 rounded-full bg-slate-800/80 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-gradient-to-r transition-all duration-700"
+              [ngClass]="barGradient(h.score)"
+              [style.width.%]="h.score">
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] pt-1 border-t border-slate-900">
+            <span class="text-slate-500">Agent ID:</span>
+            <span class="font-mono text-cyan-300/80 bg-slate-900/90 px-1.5 py-0.5 rounded text-[10px] border border-slate-800">
+              {{ h.agent_id }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

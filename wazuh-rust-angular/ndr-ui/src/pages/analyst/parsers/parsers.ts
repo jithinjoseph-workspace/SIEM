@@ -165,6 +165,8 @@ export class Parsers implements OnInit {
       this.studioMessage.set('Please provide at least 1 log sample for synthesis.');
       return;
     }
+    // one AI request at a time: repeated clicks used up the AI provider's rate limit
+    if (this.studioIsSynthesizing()) return;
 
     this.studioIsSynthesizing.set(true);
     this.studioMessage.set('Analyzing structural signature & synthesizing reusable parser with AI...');

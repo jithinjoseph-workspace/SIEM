@@ -52,6 +52,23 @@ struct TenantKeyRow {
     created_at: u64,
 }
 
+/// A deployment token (siem-api `deploy_tokens.rs`): only its hash is stored.
+#[derive(Row, Deserialize)]
+struct DeployTokenRow {
+    token_hash: String,
+    tenant_id: String,
+    expires_at: u64,
+    revoked: u8,
+}
+
+/// A deployment token's tenant and whether it may still enroll new agents.
+#[derive(Clone, Debug)]
+struct DeployToken {
+    tenant: String,
+    expires_at: u64,
+    revoked: bool,
+}
+
 #[derive(Row, Deserialize)]
 struct TenantRow {
     id: String,
@@ -83,6 +100,8 @@ struct Inner {
     registry: HashMap<String, Arc<Registered>>,
     /// Hash of the key -> (key, tenant).
     tenant_keys: HashMap<Hash, (String, String)>,
+    /// Hex SHA-256 of a deployment token -> its tenant and state.
+    deploy_tokens: HashMap<String, DeployToken>,
     inactive: HashSet<String>,
 }
 
@@ -181,11 +200,25 @@ impl Cache {
     /// The tenant of an enrollment's key; the status when refused.
     pub fn tenant_of_key(&self, tenant_key: Option<&str>) -> Result<String, u16> {
         let c = self.inner.read().unwrap();
-        let t = tenant_key.map(str::trim).filter(|k| !k.is_empty()).and_then(|k| c.tenant_for(k)).ok_or(401u16)?;
+        let k = tenant_key.map(str::trim).filter(|k| !k.is_empty()).ok_or(401u16)?;
+        // a deployment token enrolls new agents only while it is valid (siem-api checks its count)
+        let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        if let Some(d) = c.deploy_tokens.get(&hex_hash(k)) {
+            if d.revoked || d.expires_at <= now {
+                return Err(401);
+            }
+        }
+        let t = c.tenant_for(k).ok_or(401u16)?;
         if c.inactive.contains(&t) {
             return Err(403);
         }
         Ok(t)
+    }
+
+    /// Whether a key is a known deployment token, whatever its state (a run's results may come
+    /// after it expired or was revoked).
+    pub fn is_deploy_token(&self, k: &str) -> bool {
+        self.inner.read().unwrap().deploy_tokens.contains_key(&hex_hash(k.trim()))
     }
 
     /// An enrollment that passed through here, ahead of the next poll. Only for the time until
@@ -218,6 +251,8 @@ impl Cache {
         // few rows: read whole, so a rotated key or a tenant switched off counts within a poll
         let tk: Vec<TenantKeyRow> = db.query("SELECT ?fields FROM tenant_agent_keys FINAL").fetch_all().await?;
         let tenants: Vec<TenantRow> = db.query("SELECT id, active FROM ndr.tenants FINAL").fetch_all().await?;
+        // missing until siem-api created it: no tokens then
+        let tokens: Vec<DeployTokenRow> = db.query("SELECT token_hash, tenant_id, expires_at, revoked FROM deploy_tokens FINAL").fetch_all().await.unwrap_or_default();
 
         let mut changed = Vec::new();
         let decoded: Vec<(KeyRow, Option<String>)> = key_rows
@@ -257,6 +292,7 @@ impl Cache {
         }
         c.tenant_keys = tk.into_iter().map(|r| (hash(&r.agent_key), (r.agent_key, normalize(&r.tenant_id)))).collect();
         c.inactive = tenants.into_iter().filter(|t| t.active == 0).map(|t| t.id).collect();
+        c.deploy_tokens = tokens.into_iter().map(|r| (r.token_hash.to_ascii_lowercase(), DeployToken { tenant: normalize(&r.tenant_id), expires_at: r.expires_at, revoked: r.revoked != 0 })).collect();
         if !self.ready.swap(true, Relaxed) {
             info!("Caches loaded: {} keys, {} registry rows, {} tenant keys", c.by_hash.len(), c.registry.len(), c.tenant_keys.len());
         }
@@ -265,9 +301,19 @@ impl Cache {
 }
 
 impl Inner {
+    /// The tenant of a tenant key or of a deployment token, valid or not: agents keep sending the
+    /// token they enrolled with, and an expired or revoked token must not cut them off.
     fn tenant_for(&self, key: &str) -> Option<String> {
-        self.tenant_keys.get(&hash(key)).filter(|(k, _)| keys::ct_eq(k.as_bytes(), key.as_bytes())).map(|(_, t)| t.clone())
+        self.tenant_keys
+            .get(&hash(key))
+            .filter(|(k, _)| keys::ct_eq(k.as_bytes(), key.as_bytes()))
+            .map(|(_, t)| t.clone())
+            .or_else(|| self.deploy_tokens.get(&hex_hash(key)).map(|d| d.tenant.clone()))
     }
+}
+
+fn hex_hash(k: &str) -> String {
+    hash(k).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -294,8 +340,26 @@ mod tests {
             i.tenant_keys.insert(hash("tk-other"), ("tk-other".into(), "other".into()));
             i.tenant_keys.insert(hash("tk-off"), ("tk-off".into(), "off".into()));
             i.inactive.insert("off".into());
+            let tok = |tenant: &str, expires_at: u64, revoked: bool| DeployToken { tenant: tenant.into(), expires_at, revoked };
+            i.deploy_tokens.insert(hex_hash("pvd_live"), tok("acme", u64::MAX, false));
+            i.deploy_tokens.insert(hex_hash("pvd_old"), tok("acme", 1, false));
+            i.deploy_tokens.insert(hex_hash("pvd_gone"), tok("acme", u64::MAX, true));
         }
         c
+    }
+
+    #[test]
+    fn deployment_tokens_enroll_only_while_valid_but_keep_enrolled_agents() {
+        let c = cache();
+        assert_eq!(c.tenant_of_key(Some("pvd_live")).unwrap(), "acme");
+        assert_eq!(c.tenant_of_key(Some("pvd_old")).unwrap_err(), 401, "expired");
+        assert_eq!(c.tenant_of_key(Some("pvd_gone")).unwrap_err(), 401, "revoked");
+        let peer: IpAddr = "10.1.2.3".parse().unwrap();
+        // agent 001 (acme) still sends the token it enrolled with
+        assert_eq!(c.check(Some("k1"), Some("001"), Some("pvd_old"), peer).unwrap().tenant, "acme");
+        assert_eq!(c.check(Some("k1"), Some("001"), Some("pvd_gone"), peer).unwrap().tenant, "acme");
+        assert_eq!(c.check(Some("k1"), Some("001"), Some("pvd_unknown"), peer).unwrap_err(), 401);
+        assert!(c.is_deploy_token(" pvd_gone") && !c.is_deploy_token("pvd_unknown") && !c.is_deploy_token("tk-acme"));
     }
 
     const PEER: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(10, 1, 2, 3));

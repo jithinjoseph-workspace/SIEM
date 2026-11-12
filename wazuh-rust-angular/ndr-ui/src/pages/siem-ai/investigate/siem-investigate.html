@@ -26,6 +26,10 @@
     </button>
   </form>
 
+  <div *ngIf="focus" role="status" class="p-3 rounded-lg border border-cyan-800 bg-cyan-950/30 text-cyan-200 text-sm flex flex-wrap items-center gap-3">
+    <span>Focused on one alert group: {{ focusText() }}</span>
+    <a [routerLink]="[]" [queryParams]="{ q: q, days: days }" class="underline hover:text-white">Show everything for {{ q }} instead</a>
+  </div>
   <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
 
   <ng-container *ngIf="data() as d">
@@ -34,6 +38,7 @@
         <span class="font-mono text-lg text-white break-all">{{ d.query }}</span>
         <span class="text-xs uppercase px-2 py-0.5 rounded border border-slate-700 text-slate-300">{{ d.kind }}</span>
         <span class="text-xs uppercase font-semibold px-2 py-0.5 rounded border" [ngClass]="verdictCls(d.summary.verdict)">{{ d.summary.verdict }}</span>
+        <button (click)="explain()" [disabled]="explaining()" class="ml-auto text-xs px-3 py-1.5 rounded border border-cyan-800 text-cyan-300 hover:bg-cyan-950/40 disabled:opacity-40">{{ explaining() ? 'Explaining…' : 'Explain with AI' }}</button>
         <span class="text-sm text-slate-400">last {{ d.days }} day(s)</span>
         <span *ngIf="d.geo as g" class="text-sm text-slate-300">{{ g.city ? g.city + ', ' : '' }}{{ g.country }}<span *ngIf="g.org" class="text-slate-400"> · AS{{ g.asn }} {{ g.org }}</span></span>
       </div>
@@ -50,6 +55,10 @@
       </div>
       <div *ngIf="techniques(d.summary.techniques).length" class="flex flex-wrap gap-1.5">
         <span *ngFor="let t of techniques(d.summary.techniques)" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 border border-slate-700">{{ t[0] }} ×{{ t[1] }}</span>
+      </div>
+      <div *ngIf="explanation() as x" class="p-3 rounded-lg border border-cyan-900 bg-cyan-950/20 text-sm">
+        <div class="text-xs text-cyan-300 mb-1">AI explanation ({{ x.model }}): check it against the evidence below</div>
+        <div class="whitespace-pre-wrap text-slate-200">{{ x.text }}</div>
       </div>
     </div>
 

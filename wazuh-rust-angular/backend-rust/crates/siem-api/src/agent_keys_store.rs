@@ -18,6 +18,14 @@ use tracing::{info, warn};
 use crate::tenancy::DEFAULT_DB;
 use crate::AppState;
 
+/// A new key for an enrolling agent (the `id` siem-api chose, its name and address): a new
+/// random secret, added to `store`. The caller removes an old key of the same ID first.
+pub fn new_agent_key(store: &mut KeyStore, id: &str, name: &str, ip: &str) -> siem_crypto::keys::ClientKey {
+    let key = siem_crypto::keys::ClientKey::new(id.to_string(), name.to_string(), ip.to_string(), KeyStore::generate_raw_key());
+    store.add_key(key.clone());
+    key
+}
+
 /// Bumped by `provigil_manager::save_keys`: the sync writes the keystore when it moves.
 pub static VERSION: AtomicU64 = AtomicU64::new(0);
 /// Wakes the sync as soon as a key is added or removed (not on its next 5 s check).
@@ -170,6 +178,18 @@ pub fn spawn_sync(state: AppState, mut stored: BTreeMap<String, String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_agent_keys_are_random_and_stored() {
+        let mut ks = KeyStore::new();
+        let a = new_agent_key(&mut ks, "8090", "pc-1", "any");
+        assert_eq!((a.id.as_str(), a.name.as_str(), a.ip.as_str()), ("8090", "pc-1", "any"));
+        assert!(a.raw_key.len() == 64 && a.raw_key.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(ks.find_by_id("8090").map(|k| k.raw_key.clone()), Some(a.raw_key.clone()));
+        let _ = ks.delete_key("8090");
+        let b = new_agent_key(&mut ks, "8090", "pc-1", "any");
+        assert_ne!(a.raw_key, b.raw_key);
+    }
 
     #[test]
     fn a_change_touches_only_its_own_key() {

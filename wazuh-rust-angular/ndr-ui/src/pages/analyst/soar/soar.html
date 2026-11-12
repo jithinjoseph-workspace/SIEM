@@ -203,6 +203,7 @@
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M5 7l3 3 3-3M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2"/></svg>
               Report
             </button>
+            <a [routerLink]="['/analyst/cases', selectedCase().id]" class="case-report-dl-btn" title="Open the full case page">Full page</a>
             <button (click)="closeCaseModal()" class="modal-close">✕</button>
           </div>
         </div>
@@ -923,7 +924,7 @@
               <div *ngIf="inv.verdict_source === 'ai' && inv.rule_verdict?.label !== inv.verdict.label" class="text-[11px] text-amber-300">The rules alone say: {{ inv.rule_verdict.label.replace('_', ' ') }}</div>
               <div *ngIf="inv.ai_note" class="text-[11px] text-on-surface-variant">AI not used: {{ inv.ai_note }}</div>
               <div class="text-[11px] mt-1">
-                <a *ngFor="let s of inv.subjects" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: s.value }" class="text-cyan-300 hover:underline mr-3">Full evidence: {{ s.role }} {{ s.value }}</a>
+                <a *ngFor="let s of inv.subjects" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: s.value, case: selectedCase()?.id }" class="text-cyan-300 hover:underline mr-3">Full evidence: {{ s.role }} {{ s.value }}</a>
               </div>
             </ng-container>
           </div>

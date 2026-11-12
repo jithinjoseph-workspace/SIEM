@@ -299,15 +299,22 @@ if [ -s "${KEYS_FILE}" ] && ! grep -q "a1b2c3d4e5f67890123456789abcdef0" "${KEYS
     OLD_NAME=$(head -1 "${KEYS_FILE}" | cut -d' ' -f2)
     AGENT_NAME=${OLD_NAME:-${AGENT_NAME}}
 fi
+# an enrolled agent's key and settings, put back when this enrollment is refused: a refused
+# reinstall must not break an agent that works
+KEPT=""
+if [ -s "${KEYS_FILE}" ]; then
+    KEPT="$(mktemp -d)"
+    for f in "${KEYS_FILE}" "${INSTALL_DIR}/etc/agent-config.json" "${INSTALL_DIR}/etc/agent.env"; do [ -f "$f" ] && cp -p "$f" "${KEPT}/"; done
+fi
 rm -f "${KEYS_FILE}" "${INSTALL_DIR}/.decommissioned" "${INSTALL_DIR}/client.keys.deleted" "${INSTALL_DIR}/etc/.decommissioned" "${INSTALL_DIR}/etc/client.keys.deleted" /etc/wazuh-agent/.decommissioned /etc/wazuh-agent/client.keys.deleted
 BODY="{\"name\":\"${AGENT_NAME}\",\"groups\":\"${AGENT_GROUP}\",\"os_type\":\"linux\",\"force\":true}"
 RESP=""
 if command -v curl > /dev/null 2>&1; then
-    RESP=$(curl -fsS "${CURL_CA[@]}" -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
+    RESP=$(curl -sS "${CURL_CA[@]}" -X POST "${MANAGER_URL}/api/v1/agents/enroll" \
         -H "Content-Type: application/json" ${TENANT_KEY:+-H "X-Tenant-Key: ${TENANT_KEY}"} \
         -d "${BODY}" 2>/dev/null || true)
 else
-    RESP=$(wget -qO- "${WGET_CA[@]}" --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
+    RESP=$(wget -qO- --content-on-error "${WGET_CA[@]}" --header="Content-Type: application/json" ${TENANT_KEY:+--header="X-Tenant-Key: ${TENANT_KEY}"} \
         --post-data="${BODY}" "${MANAGER_URL}/api/v1/agents/enroll" 2>/dev/null || true)
 fi
 NEW_ID=$(printf '%s' "${RESP}" | sed -n 's/.*"agent_id"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
@@ -342,6 +349,16 @@ SIEM_AGENT_GROUP="${AGENT_GROUP}"
 SIEM_TENANT_KEY="${TENANT_KEY}"
 SIEM_CA_FILE="${CA_FILE}"
 EOF
+
+if [ -z "${NEW_ID}" ] && [ -n "${KEPT}" ]; then
+    for f in "${KEPT}"/*; do
+        case "$(basename "$f")" in client.keys) cp -p "$f" "${KEYS_FILE}" ;; *) cp -p "$f" "${INSTALL_DIR}/etc/" ;; esac
+    done
+    cp -f "${INSTALL_DIR}/etc/agent-config.json" "${INSTALL_DIR}/agent-config.json" 2>/dev/null || true
+    cp -f "${INSTALL_DIR}/etc/agent-config.json" /etc/wazuh-agent/agent-config.json 2>/dev/null || true
+    echo "[!] Enrollment refused: the agent already installed here keeps its enrollment and settings."
+fi
+[ -n "${KEPT}" ] && rm -rf "${KEPT}"
 
 # 7. Apply hardened file permissions
 chown root:${GROUP} "${INSTALL_DIR}"
@@ -413,6 +430,11 @@ else
     ( cd "${INSTALL_DIR}" && nohup "${INSTALL_DIR}/bin/siem-agent-linux" --daemon < /dev/null >> "${INSTALL_DIR}/logs/agent.log" 2>&1 & )
     echo "[✓] Agent started (log: ${INSTALL_DIR}/logs/agent.log). Add it to your init system to start on boot."
 fi
+
+# One line for the mass deployment (provigil-deploy push-linux reads it)
+json_s() { printf '%s' "$1" | tr -d '\000-\037"\\' | cut -c1-300; }
+if [ -n "${NEW_ID}" ]; then RESULT_OUTCOME="installed"; RESULT_REASON=""; else RESULT_OUTCOME="failed"; RESULT_REASON="enrollment refused: $(json_s "${RESP:-no answer from ${MANAGER_URL}}")${KEPT:+; the agent already installed here was kept}"; fi
+echo "PROVIGIL_RESULT {\"computer\":\"$(json_s "$(hostname -s 2>/dev/null || hostname)")\",\"os\":\"$(json_s "${PRETTY_NAME:-${DIST_NAME} ${DIST_VER}}")\",\"agent_name\":\"$(json_s "${NEW_NAME:-${AGENT_NAME}}")\",\"outcome\":\"${RESULT_OUTCOME}\",\"reason\":\"${RESULT_REASON}\",\"agent_id\":\"$(json_s "${NEW_ID}")\"}"
 
 echo "==============================================================="
 echo "   Wazuh Linux Agent Installed Successfully! [COMPLETE]        "

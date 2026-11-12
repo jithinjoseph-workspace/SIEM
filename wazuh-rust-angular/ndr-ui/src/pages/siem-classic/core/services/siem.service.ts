@@ -57,8 +57,8 @@ export class SiemService {
     return this.alertsService.getAlerts(limit, minLevel);
   }
 
-  getRawEvents(limit: number = 200, source?: string): Observable<RawEvent[]> {
-    return this.logsService.getRawEvents(limit, source);
+  getRawEvents(limit: number = 200, source?: string, q?: string): Observable<RawEvent[]> {
+    return this.logsService.getRawEvents(limit, source, q);
   }
 
   getAgents(): Observable<Agent[]> {

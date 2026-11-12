@@ -355,7 +355,35 @@ fn default_event_channel_queries() -> HashMap<String, String> {
         // like the old agent's default: object access and handle events flood the channel (who-data reads
         // them on its own subscription)
         ("Security".into(), SECURITY_QUERY.into()),
+        // process-ended events: high volume, rarely useful for detection
+        (SYSMON_CHANNEL.into(), SYSMON_QUERY.into()),
     ])
+}
+
+/// The computer name as an agent name the manager accepts (letters, digits, '.', '_', '-'; 2-128).
+pub fn agent_name_from_host(host: &str) -> String {
+    let n: String = host.trim().chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' }).take(128).collect();
+    let n = n.trim_matches('-').to_string();
+    if n.len() < 2 { "win-agent".into() } else { n }
+}
+
+pub const SYSMON_CHANNEL: &str = "Microsoft-Windows-Sysmon/Operational";
+pub const SYSMON_QUERY: &str = "Event/System[EventID != 5]";
+
+/// The channel filters in force: with Sysmon installed, the default Security filter also leaves
+/// out 4688 (process created), which Sysmon event 1 records with more detail. A filter a group
+/// configuration set is kept as it is.
+pub fn effective_channel_queries(queries: &HashMap<String, String>, sysmon_installed: bool) -> HashMap<String, String> {
+    let mut q = queries.clone();
+    if sysmon_installed && q.get("Security").map(String::as_str) == Some(SECURITY_QUERY) {
+        q.insert("Security".into(), format!("{} and EventID != 4688]", SECURITY_QUERY.trim_end_matches(']')));
+    }
+    q
+}
+
+/// Sysmon is installed when its channel's log file exists.
+pub fn sysmon_installed() -> bool {
+    std::path::Path::new(r"C:\Windows\System32\winevt\Logs\Microsoft-Windows-Sysmon%4Operational.evtx").exists()
 }
 
 fn default_fim_paths() -> Vec<PathBuf> {
@@ -473,7 +501,8 @@ impl AgentConfig {
         }
 
         if cfg.agent_name.is_empty() {
-            cfg.agent_name = sysinfo::System::host_name().unwrap_or_else(|| "win-agent".into());
+            // a mass deployment sets no name: each PC enrolls under its own computer name
+            cfg.agent_name = agent_name_from_host(&sysinfo::System::host_name().unwrap_or_default());
         }
         cfg.buffer = cfg.buffer.clamped();
 
@@ -755,3 +784,35 @@ mod tests {
     }
 }
 
+
+#[cfg(test)]
+mod channel_filter_tests {
+    use super::*;
+
+    #[test]
+    fn with_sysmon_4688_is_left_out_and_a_group_filter_is_kept() {
+        let d = default_event_channel_queries();
+        assert_eq!(d.get(SYSMON_CHANNEL).map(String::as_str), Some(SYSMON_QUERY));
+        let with = effective_channel_queries(&d, true);
+        assert!(with["Security"].ends_with("and EventID != 4688]") && with["Security"].starts_with("Event/System[EventID != 5145"), "{}", with["Security"]);
+        assert_eq!(effective_channel_queries(&d, false)["Security"], SECURITY_QUERY, "without Sysmon 4688 stays");
+        let mut custom = d.clone();
+        custom.insert("Security".into(), "*".into());
+        assert_eq!(effective_channel_queries(&custom, true)["Security"], "*", "a group's own filter is kept");
+    }
+}
+
+#[cfg(test)]
+mod host_name_tests {
+    use super::agent_name_from_host;
+
+    #[test]
+    fn computer_names_become_valid_agent_names() {
+        assert_eq!(agent_name_from_host("DESKTOP-7F3A"), "DESKTOP-7F3A");
+        assert_eq!(agent_name_from_host("pc.corp.local"), "pc.corp.local");
+        assert_eq!(agent_name_from_host("Büro PC"), "B-ro-PC");
+        assert_eq!(agent_name_from_host(""), "win-agent");
+        assert_eq!(agent_name_from_host("x"), "win-agent");
+        assert_eq!(agent_name_from_host(&"a".repeat(300)).len(), 128);
+    }
+}

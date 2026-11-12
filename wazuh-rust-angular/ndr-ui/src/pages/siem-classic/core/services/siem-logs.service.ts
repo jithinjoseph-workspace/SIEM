@@ -10,10 +10,13 @@ export class SiemLogsService {
   private http = inject(HttpClient);
   private apiUrl = '';
 
-  getRawEvents(limit: number = 200, source?: string): Observable<RawEvent[]> {
+  getRawEvents(limit: number = 200, source?: string, q?: string): Observable<RawEvent[]> {
     let url = `${this.apiUrl}/api/v1/events?limit=${limit}`;
     if (source && source !== 'all') {
-      url += `&source=${source}`;
+      url += `&source=${encodeURIComponent(source)}`;
+    }
+    if (q && q.trim()) {
+      url += `&q=${encodeURIComponent(q.trim())}`;
     }
     return this.http.get<RawEvent[]>(url).pipe(
       catchError(() => of([]))

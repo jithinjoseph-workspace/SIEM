@@ -80,6 +80,9 @@ export class Vulnerabilities implements OnInit {
 
     if (agent) {
       list = list.filter(v => v.agent_id === agent);
+    } else if (this.groupFilter() || this.segmentFilter() || this.typeFilter()) {
+      this.groupsOf(); this.seg();
+      list = list.filter(v => this.inGroup(v.agent_id));
     }
     if (sev !== 'all') {
       list = list.filter(v => v.severity.toLowerCase() === sev);
@@ -124,10 +127,69 @@ export class Vulnerabilities implements OnInit {
     }
     return [...m.values()].sort((a, b) => b.critical - a.critical || b.high - a.high || b.total - a.total || a.name.localeCompare(b.name));
   });
+  /** The tenant's agent groups and their agents, for the group filter and labels. */
+  groups = signal<{ name: string; agent_ids: string[] }[]>([]);
+  groupFilter = signal<string>('');
+  groupsOf = computed(() => {
+    const m = new Map<string, string[]>();
+    for (const g of this.groups()) for (const id of g.agent_ids) m.set(id, [...(m.get(id) ?? []), g.name]);
+    return m;
+  });
+  /** Network segments (subnets, named by the tenant admin) and PC types. */
+  seg = signal<{ agents: Record<string, { segments: string[]; guessed: boolean; type: string }>; names: { cidr: string; name: string }[]; editable: boolean }>({ agents: {}, names: [], editable: false });
+  segmentFilter = signal<string>('');
+  typeFilter = signal<string>('');
+  readonly types = [
+    { id: 'windows-workstation', label: 'Windows workstation' }, { id: 'windows-server', label: 'Windows server' },
+    { id: 'linux', label: 'Linux' }, { id: 'macos', label: 'macOS' }, { id: 'unknown', label: 'Unknown' },
+  ];
+  segName = computed(() => new Map(this.seg().names.map(n => [n.cidr, n.name])));
+  /** Every segment an agent is in, with how many agents, named ones first. */
+  segments = computed(() => {
+    const count = new Map<string, number>();
+    for (const a of Object.values(this.seg().agents)) for (const s of a.segments) count.set(s, (count.get(s) ?? 0) + 1);
+    for (const n of this.seg().names) if (!count.has(n.cidr)) count.set(n.cidr, 0);
+    return [...count.entries()].map(([cidr, agents]) => ({ cidr, agents, name: this.segName().get(cidr) ?? '' }))
+      .sort((a, b) => Number(!a.name) - Number(!b.name) || a.cidr.localeCompare(b.cidr, undefined, { numeric: true }));
+  });
+  segLabel(cidr: string): string {
+    const n = this.segName().get(cidr);
+    return n ? `${n} (${cidr})` : cidr;
+  }
+  agentSegs(id: string) { return this.seg().agents[id]?.segments ?? []; }
+  segTitle(id: string): string {
+    return this.seg().agents[id]?.guessed ? 'Guessed from the agent address (no network inventory)' : 'From the network card of the PC';
+  }
+  private inGroup(agentId: string): boolean {
+    const g = this.groupFilter();
+    const s = this.segmentFilter();
+    const t = this.typeFilter();
+    const a = this.seg().agents[agentId];
+    return (!g || (this.groupsOf().get(agentId) ?? []).includes(g))
+      && (!s || (a?.segments ?? []).includes(s))
+      && (!t || (a?.type ?? 'unknown') === t);
+  }
+  namingOpen = signal<boolean>(false);
+  segDraft: Record<string, string> = {};
+  segMessage = signal<string | null>(null);
+  saveSegmentName(cidr: string) {
+    const name = (this.segDraft[cidr] ?? '').trim();
+    this.siem.setSegmentName(cidr, name).subscribe({
+      next: () => { this.segMessage.set(name ? `${cidr} is now "${name}".` : `The name of ${cidr} was removed.`); this.loadSegments(); },
+      error: e => this.segMessage.set(e?.error?.message || 'The name was not saved.'),
+    });
+  }
+  loadSegments() {
+    this.siem.getSegments().subscribe(s => {
+      this.seg.set(s);
+      this.segDraft = Object.fromEntries(s.names.map(n => [n.cidr, n.name]));
+    });
+  }
   filteredAgents = computed(() => {
     const sev = this.severityFilter();
     const q = this.searchQuery().toLowerCase().trim();
-    return this.agentRows().filter(r => (sev === 'all' || r[sev] > 0) && (!q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.os.toLowerCase().includes(q)));
+    this.groupFilter(); this.groupsOf(); this.segmentFilter(); this.typeFilter(); this.seg();
+    return this.agentRows().filter(r => this.inGroup(r.id) && (sev === 'all' || r[sev] > 0) && (!q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.os.toLowerCase().includes(q)));
   });
   agentPages = computed(() => Math.max(1, Math.ceil(this.filteredAgents().length / this.agentPageSize)));
   pagedAgents = computed(() => {
@@ -167,6 +229,8 @@ export class Vulnerabilities implements OnInit {
 
   ngOnInit() {
     this.loadVulnerabilities();
+    this.siem.getGroups().subscribe(g => this.groups.set(g));
+    this.loadSegments();
   }
 
   showTab(tab: 'agents' | 'cve') {

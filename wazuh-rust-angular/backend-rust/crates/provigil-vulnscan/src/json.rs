@@ -57,6 +57,12 @@ pub fn s<'a>(v: &'a Value, key: &str) -> &'a str {
 }
 
 /// Text member that must be a text when present (json error 302 otherwise).
+/// Text member, empty when missing, `null` or not a text: agent details the agent database has
+/// not filled in yet (a new agent, an agent without an address) must not stop its scan.
+pub fn text_or_empty(v: &Value, key: &str) -> String {
+    v.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+}
+
 pub fn opt_text(v: &Value, key: &str) -> Res<String> {
     match v.get(key) {
         None => Ok(String::new()),

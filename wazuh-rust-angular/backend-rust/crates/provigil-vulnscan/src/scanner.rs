@@ -289,6 +289,7 @@ impl Scanner {
             delayed: delayed.clone(),
             job,
             collect: None,
+            missing_agent: Default::default(),
             settings: Settings {
                 manager_name: if opts.manager_name.is_empty() { "manager".into() } else { opts.manager_name.clone() },
                 cluster_enabled: cfg.cluster_enabled,

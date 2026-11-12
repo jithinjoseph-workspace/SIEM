@@ -768,3 +768,44 @@ fn c4_os_clear_keeps_packages() {
     assert!(r[0].contains("There is no information of the operating system. Vulnerabilities cleared."));
     assert!(!e.log.has_text("DELETED_BY_QUERY"));
 }
+
+#[test]
+fn agent_without_address_is_scanned() {
+    let e = Env::new();
+    let s = e.start();
+    let _ = queued(&s);
+    load_feed(&s);
+    e.db.set("agent 001 osinfo get ", Ok(vec![ubuntu()]));
+    // no address and no node yet: `null` or missing details must not skip the agent
+    e.db.set("global get-agent-info 001 ", Ok(vec![json!({"name":"a","ip":null,"connection_status":"active"})]));
+    e.db.set("agent 001 package get ", Ok(vec![pkg("openssl", "3.0.2", "deb", "acme")]));
+    s.process_event(&Event::json(json!({"action":"scanAgent","agent_info":{"agent_id":"001"}})));
+    let keys = s.core.lock().unwrap().sink.local_keys();
+    assert!(keys.iter().any(|k| k.starts_with("001_") && k.contains("CVE-")), "{keys:?}");
+}
+
+#[test]
+fn unknown_agent_rescan_is_retried_then_dropped() {
+    let e = Env::new();
+    let s = e.start();
+    let _ = queued(&s);
+    load_feed(&s);
+    e.db.set("global get-agent-info 009 ", Ok(vec![]));
+    let ev = Event::json(json!({"action":"scanAgent","agent_info":{"agent_id":"009"}}));
+    // the first try parks the re-scan for a retry
+    s.process_event(&ev);
+    assert!(!s.delayed.is_empty(), "a new agent's re-scan is kept for a retry");
+    // the retries (one a minute in the delayed thread)
+    for _ in 1..crate::scan::MISSING_AGENT_TRIES {
+        assert!(matches!(s.core.lock().unwrap().process(&ev, true), Err(crate::json::Error::Incomplete { .. })));
+    }
+    assert!(e.has(Level::Debug2, "Agent 009 is not in the agent database yet; re-scan retried in a minute (try 10)."));
+    assert!(matches!(s.core.lock().unwrap().process(&ev, true), Ok(())));
+    assert!(e.has(Level::Warning, "Agent 009 is still not in the agent database after 10 tries; re-scan dropped."));
+    // once the agent is known, its scan runs and the count starts again
+    e.db.set("global get-agent-info 009 ", Ok(vec![json!({"name":"n","ip":"1","node_name":"x","connection_status":"active"})]));
+    e.db.set("agent 009 osinfo get ", Ok(vec![ubuntu()]));
+    e.db.set("agent 009 package get ", Ok(vec![pkg("openssl", "3.0.2", "deb", "acme")]));
+    assert!(matches!(s.core.lock().unwrap().process(&ev, true), Ok(())));
+    assert!(s.core.lock().unwrap().missing_agent.is_empty());
+}

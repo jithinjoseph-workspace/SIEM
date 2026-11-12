@@ -5,7 +5,7 @@ use crate::agentdb::{self, AgentDb, DbError};
 use crate::cpe::{is_cpe, Cpe};
 use crate::event::{Agent, Component, Cond, Ctx, Event, EventType, OsData, Origin, OS_FIELDS};
 use crate::feed::FeedDb;
-use crate::json::{key_missing, opt_text, req_text, s, wrong_type, Error, Res};
+use crate::json::{key_missing, opt_text, s, wrong_type, Error, Res};
 use crate::kvstore::KvStore;
 use crate::legacy_names::AGENT_VERSION_STRIP;
 use crate::log::Log;
@@ -16,7 +16,7 @@ use crate::sink::DocSink;
 use crate::version::{compare_installed, parse_installed, Kind};
 use serde_json::{json, Map, Value};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 pub const L1_SIZE: usize = 2048;
@@ -57,7 +57,13 @@ pub struct Core {
     /// Alerts a re-scan would send, by (inventory key, CVE); set only while re-scanning an agent.
     pub collect: Option<BTreeMap<(String, String), Value>>,
     pub settings: Settings,
+    /// Re-scans of agents the agent database does not know yet, by agent: retried a few times
+    /// (a new agent's details arrive just after its inventory), then dropped.
+    pub missing_agent: HashMap<String, u32>,
 }
+
+/// Tries of a re-scan whose agent the agent database does not know yet (one a minute).
+pub const MISSING_AGENT_TRIES: u32 = 10;
 
 /// Agent versions of the agent list lose their leading characters found in the strip set.
 fn strip_version(v: &str) -> String {
@@ -668,9 +674,10 @@ impl Core {
                     vs!(self.log, Debug2, "Skipping manager agent with id 0.");
                     return Ok(None);
                 }
-                let name = req_text(row, "name")?;
+                // an agent without an address (or a name yet) is still scanned
+                let name = crate::json::text_or_empty(row, "name");
                 let version = strip_version(&opt_text(row, "version")?);
-                let ip = req_text(row, "ip")?;
+                let ip = crate::json::text_or_empty(row, "ip");
                 Ok(Some(Agent { id: format!("{id:03}"), ip, name, version }))
             })();
             match r {
@@ -748,12 +755,26 @@ impl Core {
             DbError::NotSynced => Error::NotReady { agent: id.clone(), text: agentdb::NOT_SYNCED_TEXT.into() },
             DbError::Failed(t) => Error::Other(format!("Unable to retrieve agent-info (agent {id}). Reason: {t}.")),
         })?;
+        if rows.is_empty() {
+            // just enrolled: its details reach the agent database a moment after its inventory
+            let n = self.missing_agent.entry(id.clone()).or_insert(0);
+            *n += 1;
+            if *n <= MISSING_AGENT_TRIES {
+                vs!(self.log, Debug2, "Agent {id} is not in the agent database yet; re-scan retried in a minute (try {n}).");
+                return Err(Error::Incomplete { agents: vec![id], no_index: ctx.no_index });
+            }
+            self.missing_agent.remove(&id);
+            vs!(self.log, Warning, "Agent {id} is still not in the agent database after {MISSING_AGENT_TRIES} tries; re-scan dropped.");
+            return Ok(());
+        }
+        self.missing_agent.remove(&id);
         if rows.len() != 1 {
             return Ok(());
         }
         let r = &rows[0];
-        let t = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string).ok_or_else(|| Error::Other("Invalid agent-info response format".into()));
-        let (node, status, name, ip) = (t("node_name")?, t("connection_status")?, t("name")?, t("ip")?);
+        // details not filled in yet (or no address) are empty, never a reason to skip the agent
+        let t = |k: &str| crate::json::text_or_empty(r, k);
+        let (node, status, name, ip) = (t("node_name"), t("connection_status"), t("name"), t("ip"));
         // Missing or not a text = empty; stripped like the all-agents list.
         let version = strip_version(r.get("version").and_then(Value::as_str).unwrap_or(""));
         if !self.settings.cluster_enabled || (node == self.settings.node_name && status == "active") {

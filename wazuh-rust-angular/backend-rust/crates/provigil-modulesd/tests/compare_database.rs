@@ -195,3 +195,21 @@ fn compare(conf: &str) {
         assert!(!qn.iter().any(|q| q.contains("set-agent-groups")), "a worker only deletes legacy group files");
     }
 }
+
+/// Spec M-4: an empty key list never removes the registered agents; a key list without one
+/// agent still removes that one.
+#[test]
+fn empty_key_list_removes_nothing() {
+    let (h, db) = home(MASTER_CONF);
+    let log = Arc::new(provigil_daemon::Log::open(h.path(), "provigil-modulesd"));
+    let s = provigil_modulesd::database::Settings { sync_agents: true, real_time: false, interval: 3600, max_queued_events: 0 };
+    let d = provigil_modulesd::database::Database::new(s, log, db.clone(), h.path());
+    d.sync_keys(&siem_crypto::keystore::KeyStore::default());
+    assert!(dump(&db)[0].contains(r#""id":7"#), "agent 7 kept");
+    assert!(!db.seen.lock().unwrap().iter().any(|q| q.starts_with("global delete-agent")));
+    assert!(std::fs::read_to_string(h.path().join("logs/ossec.log")).unwrap().contains("The key list is empty: none of the 1 registered agents is removed."));
+    // agent 7 has no key in this list: removed
+    let keys = siem_crypto::keystore::KeyStore::read(&h.path().join("etc/client.keys").to_string_lossy(), true, false).unwrap();
+    d.sync_keys(&keys);
+    assert!(!dump(&db)[0].contains(r#""id":7"#), "agent 7 removed");
+}

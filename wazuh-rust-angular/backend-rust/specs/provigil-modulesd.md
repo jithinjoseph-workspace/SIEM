@@ -55,6 +55,12 @@ where the old service already used the interval loop. Key-table and group change
 within `interval` seconds (60 in the shipped settings) on every system; `real_time` and
 `max_queued_events` are read and checked but have no other effect.
 
+**M-4 (13 Nov 2026): an empty key list removes nothing.** The old service removed every agent
+(with its database) when the key list came back empty, which happens when it starts without
+siem-api's key service and without `client.keys` (a manual start). Now an empty list while agents
+are registered only logs `The key list is empty: none of the N registered agents is removed.`; a
+list that lacks some agents still removes those (`tests/compare_database.rs`).
+
 ## 3. Progress
 
 Done 13 Nov 2026: `provigil-ipc` (stream moved, db client, local sockets), `provigil-daemon` (with the
@@ -69,4 +75,7 @@ Switch-over done 13 Nov 2026: siem-api's upgrade endpoints no longer use the mod
 program is `provigil-modulesd`; settings keys `provigil_database.*`; `siem-modulesd`, `siem-router`
 and `siem-njson` moved to `old-code/` (outside the workspace; the comparison test uses
 `siem-modulesd` as a library). Smoke test on a copy of the manager data: starts, opens the
-router, runs the database module's start-up. Still to do: live run under siem-api.
+router, runs the database module's start-up. Live under siem-api (13 Nov 11:55): all services
+started without errors, the router opened its five topics, the agents loaded from siem-api's key
+service, heartbeats written, and a re-scan request sent through the router was scanned and its
+results stored in ClickHouse 2 seconds later.

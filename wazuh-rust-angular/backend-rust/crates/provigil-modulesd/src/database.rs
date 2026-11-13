@@ -205,6 +205,13 @@ impl Database {
                 }
             }
         }
+        // an empty key list never empties global.db: it means the keys could not be read (the
+        // service started without siem-api's key service and without client.keys), spec M-4
+        let registered = agents.iter().filter(|a| siem_regex::os_ip::atoi(a) != 0).count();
+        if keys.entries.iter().all(|e| siem_regex::os_ip::atoi(&e.id) == 0) && registered > 0 {
+            self.mlog("WARNING", format!("The key list is empty: none of the {registered} registered agents is removed. Check that siem-api's key service is running."));
+            return;
+        }
         for id_text in &agents {
             let id = siem_regex::os_ip::atoi(id_text);
             if id == 0 || keys.entries.iter().any(|e| &e.id == id_text) {

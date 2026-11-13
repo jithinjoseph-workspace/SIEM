@@ -293,6 +293,25 @@ it has a row.)
 | **SonicWall_Decoder:** sets its decoder's type to syslog, then `pri=(\d) c=(\d+) m=(\d+) ` (status, category (7 bytes), id), `src=ip:port:x dst=ip:port:`, `proto=` (up to 6 host-name characters before `/`); category 32 makes the type IDS; ids 98/597/598 firewall `pass`; 38/36/173/174/37 firewall `drop`; 537 firewall `close`; 97 squid with `result= dstname= arg=` (id = result, url = dstname + arg). The type change is on the decoder itself, so it lasts for later events (original behaviour, kept) | Same |
 | **OSSECAlert_Decoder:** sets its decoder's type to OSSEC alert; `Alert Level: ...; Rule: <id> ...; Location: <loc>; [srcip: x;] [user: y;] <log>`: the rule must exist (by id); location becomes `<location>\|<loc>` (254 bytes) and also the host name; srcip and dstuser; the log becomes the rest (4,094 bytes); the event carries that rule | Same |
 
+### 2.15 CDB lists (`lists.rs`)
+
+| Feature | New |
+|---|---|
+| **Files:** a name without `/` is under `ruleset/rules`; a `.cdb` suffix is removed; the text file is read (a missing one is a warning, not an error); the list is known by its text name and its `.cdb` name | Same |
+| **Text format** (per line of at most 65,534 bytes, cut at a zero byte, `\r` and `\n`): `key:value`; a key in quotes when a `"` comes before the `:` (`"k:1":v`; an unterminated quote skips the line); a value in quotes (`x:"v"`; unterminated: skipped); a line without `:` is skipped; `key:` gives an empty value | Same |
+| **Lookups:** the first record of a key wins (`cdb_find`). match_key; not_match_key; match_key_value (the value must match the `check_value` pattern; no pattern never matches); address_match_key (the key, then shorter prefixes ending in `.`, e.g. `10.1.2.` then `10.1.` then `10.`); not_address_match_key; address_match_key_value (true when the address lookup with the value check FAILS: the original's inverted result, kept) | Same, the inversion kept: rules depend on it |
+| A `.cdb` writer (D. J. Bernstein format) for other tools | Same |
+
+### 2.16 Ruleset file selection (`ruleset.rs`)
+
+| Feature | New |
+|---|---|
+| `<ruleset>`: `rule_include` / `decoder_include` (a name without `/` under `ruleset/rules` or `ruleset/decoders`), `list`, `rule_exclude`, `decoder_exclude`, `rule_dir` / `decoder_dir` (with `pattern`, default `.xml$`; an attribute other than `pattern` leaves no pattern, which is a "does not compile" error); other elements are "Invalid element" | Same |
+| Default directories when none is given; every file of each directory whose path matches the pattern, unless excluded or already listed (by path or file name) | Same |
+| **Order:** decoders and rules sorted by file name (bytes), a stable sort keeping directory order for equal names | Same (the order decides which of two same-level rules is tried first) |
+| `<alerts>`: `email_alert_level`, `log_alert_level` (digits, else an error) | Same |
+| Reading the ruleset from `ossec.conf` (logtest: also `<alerts>`; hot reload: only `<ruleset>`): XML errors; "There are no configuration blocks inside of ..."; only `<ossec_config>` roots; a section without options is `XML_ELEMNULL` + configuration error | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -318,4 +337,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON and the plugin decoders written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists and file selection written.

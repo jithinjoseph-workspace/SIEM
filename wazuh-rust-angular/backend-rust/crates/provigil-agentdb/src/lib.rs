@@ -9,6 +9,7 @@ mod global;
 mod layout;
 mod legacy;
 mod rows;
+mod sca;
 mod task;
 
 use std::collections::HashMap;

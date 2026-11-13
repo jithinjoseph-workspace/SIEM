@@ -215,9 +215,11 @@ impl Engine {
     /// The legacy commands; None = unknown command.
     fn legacy_command(&self, h: &mut Handle, cmd: &[u8], args: Option<&[u8]>) -> Option<Answer> {
         let who = format!("DB({})", h.id);
+        const NEEDS_ARGS: [&[u8]; 12] =
+            [b"sca", b"netinfo", b"netproto", b"netaddr", b"osinfo", b"hardware", b"port", b"package", b"hotfix", b"process", b"dbsync", b"ciscat"];
         let Some(a) = args else {
             return match cmd {
-                b"ciscat" => {
+                c if NEEDS_ARGS.contains(&c) => {
                     self.debug(cat!(who.clone(), " Invalid DB query syntax."));
                     self.debug2(cat!(who, " query error near: ", cmd));
                     Some((INVALID, near("err Invalid DB query syntax", cmd)))
@@ -227,6 +229,7 @@ impl Engine {
         };
         match cmd {
             b"ciscat" => Some(self.ciscat_command(h, a)),
+            b"sca" => Some(self.sca_command(h, a)),
             _ => None,
         }
     }

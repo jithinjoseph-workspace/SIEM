@@ -312,6 +312,16 @@ it has a row.)
 | `<alerts>`: `email_alert_level`, `log_alert_level` (digits, else an error) | Same |
 | Reading the ruleset from `ossec.conf` (logtest: also `<alerts>`; hot reload: only `<ruleset>`): XML errors; "There are no configuration blocks inside of ..."; only `<ossec_config>` roots; a section without options is `XML_ELEMNULL` + configuration error | Same |
 
+### 2.17 Logtest (`logtest.rs`)
+
+| Feature | New |
+|---|---|
+| **Sessions:** an 8-hex-digit token (random, unique); each session loads the ruleset of `etc/ossec.conf` (`<ruleset>` and `<alerts>`) into its own engine, without active responses, with the global rule hash; `logbylevel` from `<alerts>` (default 0); more than `max_sessions`: the least recently used goes; sessions idle for `session_timeout` are removed (checked every timeout) | Same |
+| **Request checks:** JSON parse error: code 1, "(7307): Error parsing JSON in position N, ... <20 bytes around> ..."; missing/invalid `parameters` or `command` (7313/7317, code 2); commands `log_processing` and `remove_session`, others "(7306): Unable to process command" (code 3); `remove_session` needs an 8-character token (7309 / 7316, code 4); `log_processing` needs non-empty `location` and `log_format` (7308) and `event` (non-empty string or non-empty object; 7313/7317); an invalid token warns (7309) and is dropped; non-object `options` warns (7005) and is dropped | Same codes and texts |
+| **log_processing:** a known token renews the session, an unknown one warns "(7003): '<t>' token expires"; a new session: "(7202): Session initialized with token '<t>'" or "(7311): Failure to initializing session"; `options.rules_debug` (boolean, else 7006) adds the rule trace; an object event is printed compact; the event goes through the logtest pipeline (2.8); "(7312): Failed to process the event"; `output`, `rules_debug`, `alert` | Same |
+| **remove_session:** "(7206): The session '<t>' was closed successfully" or "(7004): No session found for token '<t>'" | Same |
+| **Response:** `{"message":..,"error":<code>,"data":{"messages":["ERROR: ...","WARNING: ...","INFO: ..."],"token":..,"output":..,"rules_debug":[..],"alert":<bool>,"codemsg":<-1 error, 1 warning, 0>}}`; an oversized request: `{"message":"(7315): Failure to receive message: size is bigger than expected","error":5}` | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -337,4 +347,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists and file selection written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection and logtest written.

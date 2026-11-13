@@ -2928,6 +2928,7 @@ dependencies = [
  "chrono",
  "provigil-daemon",
  "provigil-fileop",
+ "provigil-json",
  "provigil-regex",
  "regex",
  "siem-analysisd",

@@ -8,6 +8,7 @@ description = "ProVigil manager analysis: decoders, rules, lists, alerts, active
 provigil-daemon = { path = "../provigil-daemon" }
 provigil-fileop = { path = "../provigil-fileop" }
 provigil-regex = { path = "../provigil-regex" }
+provigil-json = { path = "../provigil-json" }
 regex = "1.10"
 chrono = "0.4"
 

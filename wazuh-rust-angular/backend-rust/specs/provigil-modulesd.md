@@ -57,4 +57,12 @@ within `interval` seconds (60 in the shipped settings) on every system; `real_ti
 
 ## 3. Progress
 
-<!-- next: provigil-ipc (stream moved, db client, local sockets), provigil-daemon, database sync + comparison test, router broker + test, scanner host, service program, siem-api upgrade endpoints (M-1), switch-over, live test -->
+Done 13 Nov 2026: `provigil-ipc` (stream moved, db client, local sockets), `provigil-daemon` (with the
+exact cluster rules of the old reader: a cluster section without `node_type` counts as a worker for
+the database module; single node unless an enabled cluster has a node type; also fixed in the
+`provigil-db` program), the database module (`tests/compare_database.rs`: start-up of old and new on
+the same manager setup, as worker and as master, gives the same requests, rows, files and log
+lines), the router broker (`router::tests`), the scanner host and the service program
+(`provigil-modules` until switch-over).
+
+<!-- next: siem-api upgrade endpoints (M-1), switch-over (names, settings keys, old crates to old-code), live test -->

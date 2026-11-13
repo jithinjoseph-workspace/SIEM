@@ -127,18 +127,12 @@ fn element<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     Some(xml[start..start + end].trim())
 }
 
-/// (single node, worker): a cluster section that is enabled makes it not single; its
-/// `node_type` worker makes it a worker. -1 when the file cannot be read.
+/// (single node, worker) as 1 / 0, -1 when unknown (the file cannot be read, or the cluster is
+/// not an enabled one with a node type); the rules are in `provigil_daemon::single_node`.
 fn cluster_mode(conf: &Path) -> (i32, i32) {
     let Ok(xml) = std::fs::read_to_string(conf) else { return (-1, -1) };
-    match element(&xml, "cluster") {
-        None => (1, 0),
-        Some(c) => {
-            let disabled = element(c, "disabled").is_some_and(|d| d == "yes");
-            let worker = element(c, "node_type").is_some_and(|t| t == "worker");
-            (disabled as i32, (!disabled && worker) as i32)
-        }
-    }
+    let (single, worker) = provigil_daemon::single_node(&xml);
+    (single as i32, worker.map_or(-1, |w| w as i32))
 }
 
 /// `1d`, `12h`, `30m`, `45s` or plain seconds.
@@ -203,7 +197,7 @@ fn settings(home: &Path) -> Result<(Settings, u8), String> {
     };
     let debug = int("debug", 0, 0, 2)? as u8;
     let conf = std::fs::read_to_string(home.join("etc/ossec.conf")).map_err(|e| format!("Cannot read etc/ossec.conf: {e}"))?;
-    s.is_worker_node = cluster_mode(&home.join("etc/ossec.conf")).1 == 1;
+    s.is_worker_node = provigil_daemon::is_worker(&conf) == Some(true);
     if let Some(wdb) = element(&conf, "wdb") {
         if let Some(b) = wdb.find("<backup database=\"global\">").map(|p| &wdb[p..]) {
             let b = &b[..b.find("</backup>").unwrap_or(b.len())];

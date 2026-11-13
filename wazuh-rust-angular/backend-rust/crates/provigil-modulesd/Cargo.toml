@@ -2,5 +2,27 @@
 name = "provigil-modulesd"
 version = "0.1.0"
 edition = "2021"
+description = "ProVigil manager modules service: agents and groups in global.db, the message router and the vulnerability scanner"
 
 [dependencies]
+provigil-daemon = { path = "../provigil-daemon" }
+provigil-ipc = { path = "../provigil-ipc" }
+provigil-vulnscan = { path = "../provigil-vulnscan" }
+siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
+siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
+siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+serde_json = "1.0"
+chrono = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+# the old service, the reference of the comparison test (removed with it)
+siem-modulesd = { path = "../siem-modulesd" }
+siem-ipc = { path = "../siem-ipc" }
+siem-log = { path = "../siem-log" }
+provigil-agentdb = { path = "../provigil-agentdb" }
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"

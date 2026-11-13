@@ -154,16 +154,35 @@ pub fn element<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     None
 }
 
-/// (single node, cluster worker) from `ossec.conf`: an enabled `<cluster>` makes the manager not
-/// single; its `node_type` worker makes it a worker.
-pub fn cluster_mode(xml: &str) -> (bool, bool) {
-    match element(xml, "cluster") {
-        None => (true, false),
-        Some(c) => {
-            let disabled = element(c, "disabled").is_some_and(|d| d == "yes");
-            let worker = element(c, "node_type").is_some_and(|t| t == "worker");
-            (disabled, !disabled && worker)
-        }
+/// The `<cluster>` section and its `node_type` and `disabled` values (empty ones count as absent).
+fn cluster_parts(xml: &str) -> Option<(Option<&str>, Option<&str>)> {
+    let c = element(xml, "cluster").filter(|c| !c.is_empty())?;
+    let get = |k: &str| element(c, k).filter(|v| !v.is_empty());
+    Some((get("node_type"), get("disabled")))
+}
+
+fn worker_type(t: &str) -> bool {
+    t == "worker" || t == "client"
+}
+
+/// Whether the manager is a cluster worker: false without a cluster section; None when the
+/// section has no `node_type` (callers treat that as a worker); otherwise a worker type that is
+/// not disabled (`disabled` absent counts as enabled).
+pub fn is_worker(xml: &str) -> Option<bool> {
+    match cluster_parts(xml) {
+        None => Some(false),
+        Some((None, _)) => None,
+        Some((Some(t), Some(d))) => Some(d == "no" && worker_type(t)),
+        Some((Some(t), None)) => Some(worker_type(t)),
+    }
+}
+
+/// (single node, worker): a single node unless a cluster section with a `node_type` is enabled
+/// (`disabled` = `no`); the worker part is known only for such a cluster.
+pub fn single_node(xml: &str) -> (bool, Option<bool>) {
+    match cluster_parts(xml) {
+        Some((Some(t), Some("no"))) => (false, Some(worker_type(t))),
+        _ => (true, None),
     }
 }
 
@@ -214,8 +233,15 @@ mod tests {
         let xml = "<ossec_config><cluster><node_name>n1</node_name><disabled>no</disabled><node_type>worker</node_type></cluster>\
                    <wdb><backup database=\"global\"><enabled>no</enabled></backup></wdb><clusterx>z</clusterx></ossec_config>";
         assert_eq!(node_name(xml).as_deref(), Some("n1"));
-        assert_eq!(cluster_mode(xml), (false, true));
-        assert_eq!(cluster_mode("<ossec_config/>"), (true, false));
+        assert_eq!((is_worker(xml), single_node(xml)), (Some(true), (false, Some(true))));
+        assert_eq!((is_worker("<ossec_config/>"), single_node("<ossec_config/>")), (Some(false), (true, None)));
+        let c = |inner: &str| format!("<ossec_config><cluster>{inner}</cluster></ossec_config>");
+        // no node type: unknown worker, single node
+        assert_eq!((is_worker(&c("<disabled>yes</disabled>")), single_node(&c("<disabled>yes</disabled>"))), (None, (true, None)));
+        // disabled absent: a worker type counts as worker, but the node is single
+        assert_eq!((is_worker(&c("<node_type>client</node_type>")), single_node(&c("<node_type>client</node_type>"))), (Some(true), (true, None)));
+        assert_eq!(is_worker(&c("<node_type>master</node_type><disabled>no</disabled>")), Some(false));
+        assert_eq!(is_worker(&c("<node_type>worker</node_type><disabled>yes</disabled>")), Some(false));
         assert_eq!(element(xml, "backup"), Some("<enabled>no</enabled>"));
         assert_eq!(element(xml, "clusterx"), Some("z"));
         assert_eq!((seconds("1d"), seconds("90"), seconds("0"), seconds("5x")), (Some(86400), Some(90), None, None));

@@ -2888,6 +2888,7 @@ dependencies = [
  "chrono",
  "flate2",
  "parking_lot",
+ "provigil-daemon",
  "serde_json",
  "sha1 0.10.7",
  "sha2 0.10.9",
@@ -3046,6 +3047,24 @@ dependencies = [
 [[package]]
 name = "provigil-modulesd"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "libc",
+ "provigil-agentdb",
+ "provigil-crypto",
+ "provigil-daemon",
+ "provigil-fileop",
+ "provigil-ipc",
+ "provigil-regex",
+ "provigil-vulnscan",
+ "serde_json",
+ "siem-ipc",
+ "siem-log",
+ "siem-modulesd",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "provigil-posture"

@@ -17,6 +17,7 @@ flate2 = "1"
 parking_lot = { version = "0.12", features = ["arc_lock"] }
 chrono = "0.4"
 serde_json = "1"
+provigil-daemon = { path = "../provigil-daemon" }
 
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)

@@ -322,6 +322,36 @@ it has a row.)
 | **remove_session:** "(7206): The session '<t>' was closed successfully" or "(7004): No session found for token '<t>'" | Same |
 | **Response:** `{"message":..,"error":<code>,"data":{"messages":["ERROR: ...","WARNING: ...","INFO: ..."],"token":..,"output":..,"rules_debug":[..],"alert":<bool>,"codemsg":<-1 error, 1 warning, 0>}}`; an oversized request: `{"message":"(7315): Failure to receive message: size is bigger than expected","error":5}` | Same |
 
+### 2.18 Load messages (`logmsg.rs`)
+
+| Feature | New |
+|---|---|
+| Message lists with info / warning / error, each text cut to 2,047 bytes; analysisd's lists keep the last 50 (the oldest dropped) but remember that an error was seen | Same |
+| **The message texts** (every code and wording kept, they are shown in logs and logtest): 1103 file open, 1226 XML read, 1227 XML variables, 1231 NULL element, 1230 invalid element, 1234 NULL content, 7601 / 7602 / 7603 decoder option values, 2109 duplicated offsets, 2107 decoder configuration, 2110 decoder argument, 2108 no prematch, 2120 offset, 1452 / 1451 / 1450 regex syntax and sub-strings, 2111 plugin data, 2106 / 2105 decoder plugin, 1104 string size, 2102 / 2103 / 2104 duplicated decoders, 2101 parent name, 1202 configuration error, 1232, 1279, 7612 duplicated rule id, 7613 overwrite of a missing rule, 1274 invalid configuration, 1241 day format, 1237 IP, 5107 rule tag syntax, 7616 list not loaded, 1273 category, 7609 if_level, 7615 if_matched_sid, 1235 value, 7618 if_sid, 7600 rule attribute value, 7614, 7620 / 7617 signature not found, 7607 invalid signature, 7619 empty if_sid, 7608 level, 7610 group, 7611 category, 7605 overwrite, 1106 format | Same texts (a table in the new code, checked against the old one by a test) |
+| System error texts in the glibc wording (No such file or directory, Permission denied, ...) | Same |
+
+### 2.19 MITRE table (`mitre.rs`)
+
+| Feature | New |
+|---|---|
+| Loaded from provigil-db's `mitre` database in pages of 100 techniques (not revoked, not deprecated, the `mitre-attack` external id); per technique its phases' tactics (name and external id); first entry per id wins | Same queries |
+| Errors: "Response from the Mitre database cannot be parsed.", "... has 0 elements.", the missing technique/tactic id/name/external id texts, then "Mitre matrix information could not be loaded." | Same |
+
+### 2.20 EPS limits (`limits.rs`)
+
+| Feature | New |
+|---|---|
+| With `maximum` and `timeframe`: credits = eps × timeframe, one per decoded message; a credit spent comes back `timeframe` seconds later; "EPS limit enabled, EPS: 'N', timeframe: 'T'"; without the maximum but with a timeframe: the warning "EPS limit disabled. The maximum value is missing in the configuration block."; otherwise "EPS limit disabled" | Same |
+| Limit reached and the available credits for the state report | Same |
+
+### 2.21 Labels, local time, time and day checks (`labels.rs`, `localtime.rs`, `timeday.rs`)
+
+| Feature | New |
+|---|---|
+| Labels: key, value, hidden and system flags; lookup by exact key | Same |
+| Local time: the system zone, or a fixed offset for tests; broken-down time, `ctime` text, the `%FT%T%z` text into a 20-byte buffer | Same |
+| Time and day checks used by rules (`<time>`, `<weekday>`; from siem-config): the accepted formats and the "on time" / "on day" tests | Own code in the new crate (section 2.x when read) |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -347,4 +377,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection and logtest written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels and time written.

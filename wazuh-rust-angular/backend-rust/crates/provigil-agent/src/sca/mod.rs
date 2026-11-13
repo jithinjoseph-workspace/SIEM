@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
@@ -37,7 +37,7 @@ use crate::sent::Sent;
 
 /// The policies compiled into the agent, one per line.
 /// (the list and files are written by `specs/sca-manifest/build_policies.py`)
-pub const BUILTIN: &[&str] = &include!("policies/builtin.rs");
+pub const BUILTIN: &[&str] = include!("policies/builtin.rs");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -63,7 +63,7 @@ pub struct PolicyInfo {
     pub name: String,
     #[serde(default)]
     pub description: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_references")]
     pub references: Vec<String>,
 }
 
@@ -90,12 +90,98 @@ pub struct CheckDef {
     pub rationale: String,
     #[serde(default)]
     pub remediation: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_references")]
     pub references: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_compliance")]
     pub compliance: BTreeMap<String, Vec<String>>,
     pub condition: Condition,
     pub rules: Vec<String>,
+}
+
+/// Accepts scalar string/map or a sequence of strings/unquoted YAML `Label: https://...` maps.
+fn deserialize_references<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum RefItem {
+        Str(String),
+        Map(BTreeMap<String, Option<String>>),
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum RefField {
+        One(RefItem),
+        Many(Vec<RefItem>),
+    }
+
+    let Some(field) = Option::<RefField>::deserialize(deserializer)? else {
+        return Ok(Vec::new());
+    };
+    let items = match field {
+        RefField::One(item) => vec![item],
+        RefField::Many(items) => items,
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            RefItem::Str(s) => out.push(s),
+            RefItem::Map(map) => {
+                for (k, v) in map {
+                    match v {
+                        Some(val) if !val.is_empty() => out.push(format!("{k}: {val}")),
+                        _ => out.push(k),
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Accepts both a map `{ "cis": ["1.1"] }` (Windows built-ins) and a sequence of single-key maps
+/// `[ { "cis": ["1.1"] }, ... ]` (standard Linux `ruleset/sca/*.yml`), with scalar or sequence values.
+fn deserialize_compliance<'de, D: Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum EntryVal {
+        One(String),
+        Many(Vec<String>),
+        Int(i64),
+    }
+    impl EntryVal {
+        fn into_vec(self) -> Vec<String> {
+            match self {
+                EntryVal::One(s) => vec![s],
+                EntryVal::Many(v) => v,
+                EntryVal::Int(n) => vec![n.to_string()],
+            }
+        }
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum RawCompliance {
+        Map(BTreeMap<String, EntryVal>),
+        Seq(Vec<BTreeMap<String, EntryVal>>),
+    }
+
+    let Some(raw) = Option::<RawCompliance>::deserialize(deserializer)? else {
+        return Ok(BTreeMap::new());
+    };
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    match raw {
+        RawCompliance::Map(map) => {
+            for (k, v) in map {
+                out.entry(k).or_default().extend(v.into_vec());
+            }
+        }
+        RawCompliance::Seq(items) => {
+            for item in items {
+                for (k, v) in item {
+                    out.entry(k).or_default().extend(v.into_vec());
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,7 +251,8 @@ impl Matcher {
             let bad = || format!("numeric match not understood: {p}");
             let (r, cmp) = n.rsplit_once(" compare ").ok_or_else(bad)?;
             let cmp = cmp.trim();
-            let (op, num) = cmp.split_at(cmp.find(|c| !"<>=!".contains(c)).unwrap_or(cmp.len())); // `<=30` occurs too
+            let (op, num) = cmp.split_at(cmp.find(|c| !"<>=!".contains(c)).unwrap_or(cmp.len())); // `<=30` and `=0` occur too
+            let op = if op == "=" { "==" } else { op };
             if !["<", "<=", "==", "!=", ">=", ">"].contains(&op) {
                 return Err(bad());
             }
@@ -176,7 +263,7 @@ impl Matcher {
             if re.captures_len() < 2 {
                 return Err(bad());
             }
-            return Ok(Matcher::Numeric(re, op.to_string(), number(num).ok_or_else(bad)?));
+            return Ok(Matcher::Numeric(re, op.to_string(), number(num.trim()).ok_or_else(bad)?));
         }
         Ok(Matcher::Equals(p.to_string()))
     }
@@ -306,10 +393,18 @@ impl Rule {
         let content_at = match (kind, parts.len()) {
             ("p", 1) => 0,
             ("r" | "d", 1..=3) => 2,
-            ("f" | "c", 1..=2) => 1,
+            ("f" | "c", 1..=usize::MAX) => 1,
             _ => return Err(bad()),
         };
-        let expect = parts.get(content_at).map(|p| Content::parse(p)).transpose()?;
+        let expect = if content_at > 0 && parts.len() > content_at {
+            if parts.len() > content_at + 1 {
+                Some(Content::parse(&parts[content_at..].join(" && "))?)
+            } else {
+                Some(Content::parse(parts[content_at])?)
+            }
+        } else {
+            None
+        };
         let mut broken = expect.as_ref().and_then(Content::bad);
         let name = match (kind, parts.get(1)) {
             ("d", Some(n)) => regex(n.strip_prefix("r:").unwrap_or(n)).map_err(|e| broken.get_or_insert(e).clone()).ok(),
@@ -440,6 +535,21 @@ fn parse_rules(rules: &[String], vars: &Vars) -> Result<Vec<Rule>, String> {
     rules.iter().map(|r| Rule::parse_with(r, vars)).collect()
 }
 
+/// Parses a check's rules, keeping any single rule with invalid syntax as non-evaluatable
+/// so one upstream YAML typo (e.g. `compare => 5`) does not discard the entire benchmark.
+fn parse_check_rules(rules: &[String], vars: &Vars, check_id: u32) -> Vec<Rule> {
+    rules
+        .iter()
+        .map(|r| match Rule::parse_with(r, vars) {
+            Ok(rule) => rule,
+            Err(e) => {
+                warn!(check_id, rule = %r, error = %e, "Configuration assessment rule cannot be evaluated");
+                Rule { negate: false, targets: Err(e), expect: None }
+            }
+        })
+        .collect()
+}
+
 impl Policy {
     pub fn parse(yaml: &str) -> Result<Policy, String> {
         let f: PolicyFile = serde_yaml::from_str(yaml).map_err(|e| e.to_string())?;
@@ -467,7 +577,7 @@ impl Policy {
             if def.title.trim().is_empty() || def.rules.is_empty() {
                 return Err(format!("check {} needs a title and at least one rule", def.id));
             }
-            let rules = parse_rules(&def.rules, &vars).map_err(|e| format!("check {}: {e}", def.id))?;
+            let rules = parse_check_rules(&def.rules, &vars, def.id);
             checks.push(Check { def, rules });
         }
         checks.sort_by_key(|c| c.def.id);

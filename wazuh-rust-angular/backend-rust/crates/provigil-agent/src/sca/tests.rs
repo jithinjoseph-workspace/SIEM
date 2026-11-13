@@ -663,3 +663,65 @@ fn live_manifest_rules() {
     }
     assert!(took.as_secs() < 120);
 }
+
+#[test]
+fn linux_cis_ruleset_policies_parse_without_errors() {
+    let linux_files = [
+        "ubuntu/cis_ubuntu24-04.yml",
+        "ubuntu/cis_ubuntu22-04.yml",
+        "ubuntu/cis_ubuntu20-04.yml",
+        "ubuntu/cis_ubuntu18-04.yml",
+        "ubuntu/cis_ubuntu16-04.yml",
+        "ubuntu/cis_ubuntu14-04.yml",
+        "debian/cis_debian13.yml",
+        "debian/cis_debian12.yml",
+        "debian/cis_debian11.yml",
+        "debian/cis_debian10.yml",
+        "debian/cis_debian9.yml",
+        "debian/cis_debian8.yml",
+        "debian/cis_debian7.yml",
+        "rhel/10/cis_rhel10_linux.yml",
+        "rhel/9/cis_rhel9_linux.yml",
+        "rhel/8/cis_rhel8_linux.yml",
+        "rhel/7/cis_rhel7_linux.yml",
+        "rhel/6/cis_rhel6_linux.yml",
+        "rhel/5/cis_rhel5_linux.yml",
+        "centos/10/cis_centos10_linux.yml",
+        "centos/9/cis_centos9_linux.yml",
+        "centos/8/cis_centos8_linux.yml",
+        "centos/7/cis_centos7_linux.yml",
+        "centos/6/cis_centos6_linux.yml",
+        "almalinux/cis_alma_linux_10.yml",
+        "almalinux/cis_alma_linux_9.yml",
+        "almalinux/cis_alma_linux_8.yml",
+        "rocky/cis_rocky_linux_10.yml",
+        "rocky/cis_rocky_linux_9.yml",
+        "rocky/cis_rocky_linux_8.yml",
+        "amazon/cis_amazon_linux_2023.yml",
+        "amazon/cis_amazon_linux_2.yml",
+        "amazon/cis_amazon_linux_1.yml",
+        "ol/10/cis_oracle_linux_10.yml",
+        "ol/9/cis_oracle_linux_9.yml",
+        "sles/16/cis_sles16_linux.yml",
+        "sles/15/cis_sles15_linux.yml",
+        "sles/12/cis_sles12_linux.yml",
+        "sles/11/cis_sles11_linux.yml",
+        "generic/sca_distro_independent_linux.yml",
+        "nginx/cis_nginx_1.yml",
+        "mongodb/cis_mongodb_36.yml",
+    ];
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ruleset/sca");
+    let mut policy_ids = HashSet::new();
+    let mut check_ids: HashMap<u32, String> = HashMap::new();
+    for rel in linux_files {
+        let yaml = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        let p = Policy::parse(&yaml).unwrap_or_else(|e| panic!("failed to parse {rel}: {e}"));
+        assert!(policy_ids.insert(p.info.id.clone()), "duplicate policy id {} in {rel}", p.info.id);
+        assert!(!p.checks.is_empty(), "empty checks in {rel}");
+        for c in &p.checks {
+            if let Some(prev) = check_ids.insert(c.def.id, p.info.id.clone()) {
+                panic!("duplicate check id {} in {} and {}", c.def.id, prev, p.info.id);
+            }
+        }
+    }
+}

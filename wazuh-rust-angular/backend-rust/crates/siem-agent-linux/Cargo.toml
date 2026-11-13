@@ -1,8 +1,8 @@
 [package]
 name = "siem-agent-linux"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-description = "Dedicated Wazuh Next-Gen Linux Endpoint Agent in Rust mirroring Wazuh core architecture"
+description = "ProVigil Linux Endpoint Telemetry and Defense Agent"
 
 [dependencies]
 quick-xml = { version = "0.36", features = ["serialize"] }
@@ -20,34 +20,31 @@ hex = "0.4"
 libc = "0.2"
 
 [package.metadata.deb]
-name = "wazuh-agent"
-maintainer = "Wazuh Rust Team <info@wazuh.com>"
-copyright = "2026 Wazuh Inc."
-license-file = ["../../LICENSE", "4"]
+name = "provigil-agent"
+maintainer = "ProVigil Security <support@provigil.io>"
+copyright = "2026 ProVigil Security"
 depends = "libc6 (>= 2.17), systemd, procps, iptables | ufw"
 section = "admin"
 priority = "optional"
 assets = [
-    ["target/release/siem-agent-linux", "var/ossec/bin/siem-agent-linux", "750"],
-    ["init/wazuh-rust-agent.service", "lib/systemd/system/wazuh-rust-agent.service", "644"],
+    ["target/release/siem-agent-linux", "opt/provigil-agent/bin/siem-agent-linux", "750"],
+    ["init/provigil-agent.service", "lib/systemd/system/provigil-agent.service", "644"],
 ]
 maintainer-scripts = "packages/debs"
 
 [package.metadata.generate-rpm]
-name = "wazuh-agent"
-version = "4.14.7"
+name = "provigil-agent"
+version = "1.0.0"
 release = "1"
-summary = "Wazuh Next-Gen Endpoint Telemetry & Security Agent in Rust"
-license = "GPL-2.0"
-vendor = "Wazuh, Inc."
-url = "https://wazuh.com"
+summary = "ProVigil Endpoint Telemetry and Security Agent"
+license = "Proprietary"
+vendor = "ProVigil Security"
 requires = ["systemd", "procps-ng", "iptables"]
 assets = [
-    { source = "target/release/siem-agent-linux", dest = "/var/ossec/bin/siem-agent-linux", mode = "750" },
-    { source = "init/wazuh-rust-agent.service", dest = "/usr/lib/systemd/system/wazuh-rust-agent.service", mode = "644" }
+    { source = "target/release/siem-agent-linux", dest = "/opt/provigil-agent/bin/siem-agent-linux", mode = "750" },
+    { source = "init/provigil-agent.service", dest = "/usr/lib/systemd/system/provigil-agent.service", mode = "644" }
 ]
 pre_install_script = "packages/rpms/pre.sh"
 post_install_script = "packages/rpms/post.sh"
 pre_uninstall_script = "packages/rpms/preun.sh"
 post_uninstall_script = "packages/rpms/postun.sh"
-

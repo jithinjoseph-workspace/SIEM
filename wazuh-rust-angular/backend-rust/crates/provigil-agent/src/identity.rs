@@ -50,6 +50,8 @@ impl AgentIdentity {
         let possible_keys_paths = [
             Path::new("client.keys"),
             Path::new("data/client.keys"),
+            Path::new("/opt/provigil-agent/etc/client.keys"),
+            Path::new("/etc/provigil-agent/client.keys"),
             Path::new("C:\\Program Files (x86)\\ProVigil Agent\\client.keys"),
             Path::new("C:\\Program Files\\ProVigil Agent\\client.keys"),
         ];
@@ -66,6 +68,8 @@ impl AgentIdentity {
                         if parts.len() >= 4 {
                             let tenant_key = [
                                 Path::new("provigil-agent.json"),
+                                Path::new("/opt/provigil-agent/etc/provigil-agent.json"),
+                                Path::new("/etc/provigil-agent/provigil-agent.json"),
                                 Path::new("C:\\Program Files (x86)\\ProVigil Agent\\provigil-agent.json"),
                                 Path::new("C:\\Program Files\\ProVigil Agent\\provigil-agent.json"),
                             ].iter()
@@ -175,19 +179,26 @@ fn clean_name(name: &str) -> String {
 
 /// The enrollment request (the tenant key also goes in a header).
 fn enroll_body(tenant_key: &str, name: &str, groups: &str, force: bool) -> serde_json::Value {
+    let os_type = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
     serde_json::json!({
         "name": name,
         "tenant_key": tenant_key,
         "hostname": sysinfo::System::host_name().unwrap_or_default(),
-        "os": format!("Windows {}", sysinfo::System::os_version().unwrap_or_default()),
-        "os_type": "windows",
+        "os": crate::osinfo::enroll_os_string(),
+        "os_type": os_type,
         "groups": groups.trim(),
         "version": env!("CARGO_PKG_VERSION"),
         "force": force,
     })
 }
 
-/// Only SYSTEM and Administrators may open the file (it holds the agent key).
+/// Only SYSTEM and Administrators (or owner root `0600` on Unix) may open the file.
 fn restrict(path: &Path) {
     #[cfg(windows)]
     {
@@ -201,7 +212,14 @@ fn restrict(path: &Path) {
             error!(file = %path.display(), "Agent identity file not restricted to SYSTEM and Administrators");
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            error!(file = %path.display(), error = %e, "Agent identity file permissions not set to 0600");
+        }
+    }
+    #[cfg(not(any(windows, unix)))]
     let _ = path;
 }
 

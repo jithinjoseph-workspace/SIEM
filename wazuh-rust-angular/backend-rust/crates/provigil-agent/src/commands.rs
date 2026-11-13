@@ -104,9 +104,15 @@ impl ScheduledCommand {
                 cmd.raw_arg(rest);
             }
         }
-        // shortcut: no quoting on other systems (the agent runs on Windows), split on spaces
         #[cfg(not(windows))]
-        cmd.args(rest.split_whitespace());
+        {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                cmd.process_group(0);
+            }
+            cmd.args(split_args(rest));
+        }
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("{}: {e}", path.display()))
     }
 
@@ -164,8 +170,58 @@ pub(crate) fn kill_tree(child: &mut Child) {
             .creation_flags(CREATE_NO_WINDOW)
             .status();
     }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL);
+    }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+/// Splits quoted and escaped command-line arguments on POSIX platforms.
+#[cfg_attr(windows, allow(dead_code))]
+pub(crate) fn split_args(input: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_arg = false;
+    let mut quote: Option<char> = None;
+    let mut escape = false;
+    for ch in input.chars() {
+        if escape {
+            cur.push(ch);
+            escape = false;
+            in_arg = true;
+            continue;
+        }
+        match quote {
+            Some('\'') if ch == '\'' => quote = None,
+            Some('"') if ch == '\\' => escape = true,
+            Some('"') if ch == '"' => quote = None,
+            Some(_) => cur.push(ch),
+            None if ch == '\\' => {
+                escape = true;
+                in_arg = true;
+            }
+            None if ch == '\'' || ch == '"' => {
+                quote = Some(ch);
+                in_arg = true;
+            }
+            None if ch.is_whitespace() => {
+                if in_arg {
+                    out.push(std::mem::take(&mut cur));
+                    in_arg = false;
+                }
+            }
+            None => {
+                cur.push(ch);
+                in_arg = true;
+            }
+        }
+    }
+    if in_arg {
+        out.push(cur);
+    }
+    out
 }
 
 /// The program (without its quotes) and the rest of the command line.

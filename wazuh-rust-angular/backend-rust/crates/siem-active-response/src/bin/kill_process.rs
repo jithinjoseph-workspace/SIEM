@@ -1,5 +1,5 @@
 //! EDR response (not in upstream): ends a process on the endpoint.
-//! extra_args: `pid=<n>`, optionally `image=<full path or file name>` (refused when the PID now
+//! extra_args: `pid=<n>`, optionally `image=<full path>` (refused when the PID now
 //! runs another program: PIDs are reused). Critical Windows processes and the
 //! agent are never killed (`edr::kill_refusal`).
 
@@ -58,7 +58,7 @@ fn kill(input: &serde_json::Value) -> Result<String, String> {
             .map(|why| format!("Process {pid} ({image}) not killed: {why}"))
             .or_else(|| {
                 extra_arg(input, "image")
-                    .filter(|want| !image_matches(want, &image))
+                    .filter(|want| !want.trim().eq_ignore_ascii_case(&image))
                     .map(|want| format!("Process {pid} now runs {image}, not {want}; not killed"))
             });
         let r = match refused {
@@ -68,25 +68,5 @@ fn kill(input: &serde_json::Value) -> Result<String, String> {
         };
         CloseHandle(h);
         r
-    }
-}
-
-/// The analyst's `image` names the running program: its full path or just its file name.
-fn image_matches(want: &str, image: &str) -> bool {
-    let want = want.trim();
-    let name = image.rsplit(['\\', '/']).next().unwrap_or(image);
-    want.eq_ignore_ascii_case(image) || want.eq_ignore_ascii_case(name)
-}
-
-#[cfg(test)]
-mod image_tests {
-    #[test]
-    fn full_path_or_file_name_match_another_program_does_not() {
-        let img = r"C:\Windows\System32\PING.EXE";
-        assert!(super::image_matches(img, img));
-        assert!(super::image_matches("ping.exe", img));
-        assert!(super::image_matches(" PING.EXE ", img));
-        assert!(!super::image_matches("notepad.exe", img));
-        assert!(!super::image_matches(r"C:\Temp\PING.EXE", img), "another folder is another program");
     }
 }

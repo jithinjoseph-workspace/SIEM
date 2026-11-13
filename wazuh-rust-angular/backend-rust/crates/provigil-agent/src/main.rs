@@ -85,11 +85,32 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 3. Foreground / Console Mode
-    info!("Starting ProVigil Unified Windows Endpoint Agent (Console Mode)");
-    
-    // Spawn Ctrl+C listener for graceful stop
+    // 3. Foreground / Daemon Mode
+    info!("Starting ProVigil Unified Endpoint Agent");
+
+    // Spawn Ctrl+C / SIGTERM listener for graceful stop (used by systemd on Linux too)
     tokio::spawn(async {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = signal(SignalKind::terminate()).ok();
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("SIGINT received; stopping ProVigil Agent gracefully...");
+                }
+                _ = async {
+                    if let Some(ref mut s) = sigterm {
+                        let _ = s.recv().await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                } => {
+                    info!("SIGTERM received; stopping ProVigil Agent gracefully...");
+                }
+            }
+            service::request_stop();
+        }
+        #[cfg(not(unix))]
         if let Ok(()) = tokio::signal::ctrl_c().await {
             info!("Ctrl+C received; stopping ProVigil Agent gracefully...");
             service::request_stop();

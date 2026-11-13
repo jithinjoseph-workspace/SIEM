@@ -822,18 +822,51 @@ fn rows_of(table: Table, scan_id: i64, scan_time: &str, items: &[Value]) -> Vec<
 /// The agent's row: OS and version, as the console's agent list shows them.
 async fn agent_os(id: &str, os: &Value) {
     let n: u32 = id.parse().unwrap_or(0);
+    let platform = derive_os_platform(os);
     global_sql(&format!(
-        "UPDATE agent SET os_name = {}, os_version = {}, os_major = {}, os_minor = {}, os_build = {}, os_platform = 'windows', os_arch = {}, os_codename = {} WHERE id = {n}",
+        "UPDATE agent SET os_name = {}, os_version = {}, os_major = {}, os_minor = {}, os_build = {}, os_platform = {}, os_arch = {}, os_codename = {} WHERE id = {n}",
         lit(&text(os, "os_name")),
         lit(&text(os, "os_version")),
         lit(&text(os, "os_major")),
         lit(&text(os, "os_minor")),
         lit(&text(os, "os_build")),
+        lit(&platform),
         lit(&text(os, "architecture")),
         lit(&text(os, "os_display_version"))
     ))
     .await;
     host().os_changed(id, os);
+}
+
+fn derive_os_platform(os: &Value) -> String {
+    let explicit = text(os, "os_platform").trim().to_ascii_lowercase();
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    let sysname = text(os, "sysname").to_ascii_lowercase();
+    if sysname.contains("linux") {
+        return "linux".to_string();
+    }
+    if sysname.contains("darwin") || sysname.contains("mac") {
+        return "darwin".to_string();
+    }
+    let name = text(os, "os_name").to_ascii_lowercase();
+    for distro in [
+        "ubuntu", "debian", "rhel", "red hat", "centos", "rocky", "alma", "amazon", "oracle",
+        "suse", "sles", "fedora", "alpine", "arch", "kali", "linux",
+    ] {
+        if name.contains(distro) {
+            return match distro {
+                "red hat" => "rhel",
+                "amazon" => "amzn",
+                "oracle" => "ol",
+                "suse" => "sles",
+                other => other,
+            }
+            .to_string();
+        }
+    }
+    "windows".to_string()
 }
 
 /// A full `system_inventory` into the tables; the number of packages and updates.
@@ -1807,5 +1840,99 @@ mod tests {
         assert_eq!(sql(true), None, "unchanged: not written again");
         assert_eq!(sql(false).as_deref(), Some("UPDATE agent SET group_config_status = 'not synced' WHERE id = 77"));
         assert_eq!(group_config_sql("x", true), None);
+    }
+
+    #[test]
+    fn os_platform_derived_for_linux_and_windows() {
+        assert_eq!(derive_os_platform(&json!({ "os_platform": "ubuntu", "sysname": "Linux" })), "ubuntu");
+        assert_eq!(derive_os_platform(&json!({ "sysname": "Linux", "os_name": "Ubuntu 24.04" })), "linux");
+        assert_eq!(derive_os_platform(&json!({ "os_name": "Red Hat Enterprise Linux 9" })), "rhel");
+        assert_eq!(derive_os_platform(&json!({ "os_name": "Debian GNU/Linux 12" })), "debian");
+        assert_eq!(derive_os_platform(&json!({ "os_name": "Microsoft Windows 11 Pro" })), "windows");
+    }
+
+    #[tokio::test]
+    async fn linux_inventory_stores_deb_packages_and_interfaces() {
+        let id = "779";
+        let db = RealDb::new(779).await;
+        let mut os = json!({
+            "hostname": "linux-prod-01",
+            "architecture": "x86_64",
+            "os_name": "Ubuntu",
+            "os_version": "24.04",
+            "os_major": "24",
+            "os_minor": "04",
+            "os_build": "6.8.0-45-generic",
+            "os_display_version": "Noble Numbat",
+            "os_platform": "ubuntu",
+            "sysname": "Linux",
+            "release": "6.8.0-45-generic"
+        });
+        let mut inv = json!({
+            "hostname": "linux-prod-01",
+            "architecture": "x86_64",
+            "os": "Ubuntu 24.04 LTS",
+            "hardware": {
+                "cpu_name": "AMD EPYC 7763",
+                "cpu_cores": 8,
+                "cpu_logical_processors": 8,
+                "cpu_mhz": 2450,
+                "ram_total_kb": 16777216,
+                "ram_free_kb": 8388608,
+                "board_serial": "VMware-42",
+                "manufacturer": "VMware, Inc.",
+                "model": "VMware Virtual Platform"
+            },
+            "packages": [
+                { "name": "openssl", "version": "3.0.13-0ubuntu3.4", "publisher": "Ubuntu Developers", "install_date": null, "size_bytes": 4194304, "architecture": "amd64", "location": null, "description": "Secure Sockets Layer toolkit", "source": "deb", "format": "deb", "user_sid": null }
+            ],
+            "ports": [
+                { "protocol": "tcp", "local_ip": "0.0.0.0", "local_port": 22, "remote_ip": null, "remote_port": null, "state": "listening", "pid": 901, "process": "sshd" }
+            ],
+            "network_interfaces": [
+                {
+                    "name": "eth0",
+                    "mac_address": "00:50:56:01:02:03",
+                    "ipv4": ["10.10.1.50"],
+                    "ipv6": [],
+                    "rx_bytes": 100,
+                    "tx_bytes": 200,
+                    "rx_packets": 1,
+                    "tx_packets": 2,
+                    "speed_mbps": 1000,
+                    "type": "ethernet",
+                    "state": "up",
+                    "mtu": 1500,
+                    "gateway": "10.10.1.1",
+                    "dhcp": "enabled",
+                    "metric": 100,
+                    "addresses": [{ "address": "10.10.1.50", "netmask": "255.255.255.0", "broadcast": "10.10.1.255", "family": "ipv4" }]
+                }
+            ],
+            "processes": [
+                { "pid": 901, "name": "sshd", "command_line": "sshd: /usr/sbin/sshd -D", "owner": "root", "parent_pid": 1, "memory_mb": 12, "cpu_time_ms": 240, "start_time": 1700000000, "priority": 20, "threads": 1, "virtual_kb": 15400, "session_id": 901 }
+            ],
+            "services": [
+                { "name": "ssh.service", "display_name": "OpenBSD Secure Shell server", "state": "running", "startup_type": "enabled", "account": "root", "path": "/usr/sbin/sshd", "pid": 901, "description": "OpenBSD Secure Shell server" }
+            ],
+            "users": [
+                { "name": "ubuntu", "full_name": "Ubuntu", "sid": "1000", "home": "/home/ubuntu", "disabled": false, "last_logon": "2026-11-12T00:00:00Z", "groups": ["ubuntu", "sudo"] }
+            ],
+            "groups": [
+                { "name": "sudo", "sid": "27", "description": null, "members": ["ubuntu"] }
+            ],
+            "browser_extensions": []
+        });
+        let hotfixes: Vec<String> = Vec::new();
+        delta::mark_full(&delta::tables(&inv.clone(), &os.clone(), &hotfixes), &mut inv, &mut os);
+        let ev = json!({ "event_type": "system_inventory", "os_info": os, "hotfixes": hotfixes });
+        store_inventory(&db, id, &ev, &inv).await;
+
+        assert_eq!(db.rows(id, "SELECT os_name, os_platform FROM sys_osinfo").await, [json!({ "os_name": "Ubuntu", "os_platform": "ubuntu" })]);
+        assert_eq!(db.rows(id, "SELECT name, format, architecture FROM sys_programs").await, [json!({ "name": "openssl", "format": "deb", "architecture": "amd64" })]);
+        assert_eq!(db.rows(id, "SELECT name, mac FROM sys_netiface").await, [json!({ "name": "eth0", "mac": "00:50:56:01:02:03" })]);
+        assert_eq!(db.rows(id, "SELECT process, local_port FROM sys_ports").await, [json!({ "process": "sshd", "local_port": 22 })]);
+        assert_eq!(db.rows(id, "SELECT service_id, service_state FROM sys_services").await, [json!({ "service_id": "ssh.service", "service_state": "running" })]);
+        assert_eq!(db.rows(id, "SELECT user_name, user_uuid FROM sys_users").await, [json!({ "user_name": "ubuntu", "user_uuid": "1000" })]);
     }
 }

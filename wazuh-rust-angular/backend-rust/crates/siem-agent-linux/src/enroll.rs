@@ -1,4 +1,4 @@
-//! Agent self-enrollment with the SIEM manager.
+//! Agent self-enrollment with the ProVigil manager.
 //!
 //! An agent without an identity (no `client.keys`, no `SIEM_AGENT_ID`)
 //! calls `POST <manager>/api/v1/agents/enroll` with its name, group and the
@@ -7,7 +7,7 @@
 //! (`ID NAME IP KEY`), so later starts reuse it. Re-enrolling the same name
 //! in the same tenant gives the same id back.
 //!
-//! The tenant key comes from `SIEM_TENANT_KEY` / `WAZUH_TENANT_KEY` or from
+//! The tenant key comes from `SIEM_TENANT_KEY` / `PROVIGIL_TENANT_KEY` or from
 //! `"tenant_key"` in `agent-config.json`; it is exported as
 //! `SIEM_TENANT_KEY` so every request the agent sends carries it.
 
@@ -27,7 +27,7 @@ pub struct Enrollment {
 pub fn tenant_key(config_json: Option<&serde_json::Value>) -> Option<String> {
     std::env::var("SIEM_TENANT_KEY")
         .ok()
-        .or_else(|| std::env::var("WAZUH_TENANT_KEY").ok())
+        .or_else(|| std::env::var("PROVIGIL_TENANT_KEY").ok())
         .or_else(|| config_json.and_then(|v| v.get("tenant_key")).and_then(|v| v.as_str()).map(str::to_string))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -50,7 +50,7 @@ pub fn export_agent_key(key: &str) {
     }
 }
 
-/// Wazuh agent names: letters, digits, '.', '_', '-' (anything else becomes '-').
+/// Valid agent names: letters, digits, '.', '_', '-' (anything else becomes '-').
 pub fn sanitize_name(name: &str) -> String {
     let s: String = name
         .trim()
@@ -62,7 +62,7 @@ pub fn sanitize_name(name: &str) -> String {
 }
 
 /// The manager's CA certificate, when none is named in `SIEM_CA_FILE` (install.sh puts it here).
-const CA_FILE: &str = "/var/ossec/etc/ca.pem";
+const CA_FILE: &str = "/opt/provigil-agent/etc/ca.pem";
 
 /// A client for the manager: it also trusts the manager's private CA.
 pub fn http_builder() -> reqwest::ClientBuilder {
@@ -144,7 +144,7 @@ pub async fn enroll_until_done(manager_url: &str, name: &str, groups: &str, os_t
     }
 }
 
-/// Stores the identity as a Wazuh `client.keys` line (`ID NAME IP KEY`).
+/// Stores the identity as a `client.keys` line (`ID NAME IP KEY`).
 pub fn write_client_keys(path: &Path, e: &Enrollment) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn key_from_config() {
         let v = serde_json::json!({ "tenant_key": " tk_abc " });
-        if std::env::var("SIEM_TENANT_KEY").is_err() && std::env::var("WAZUH_TENANT_KEY").is_err() {
+        if std::env::var("SIEM_TENANT_KEY").is_err() && std::env::var("PROVIGIL_TENANT_KEY").is_err() {
             assert_eq!(tenant_key(Some(&v)).as_deref(), Some("tk_abc"));
         }
     }

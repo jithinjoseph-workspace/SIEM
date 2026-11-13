@@ -1,7 +1,6 @@
 use chrono::Utc;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 use crate::models::{
@@ -20,10 +19,7 @@ pub struct DeceptionEngine {
     assets: Arc<RwLock<Vec<DeceptionAsset>>>,
     tripwire_events: Arc<RwLock<Vec<TripwireEvent>>>,
     blueprints: Vec<DeceptionBlueprint>,
-    /// Changed since siem-api last stored it (ClickHouse, `engine_docs`)
-    changed: Arc<AtomicBool>,
-    /// The settings file of an earlier version, until its content is stored
-    legacy_file: Arc<Mutex<Option<PathBuf>>>,
+    config_path: PathBuf,
     deploy_dispatcher: Arc<RwLock<Option<DeployDispatcherFn>>>,
     alert_emitter: Arc<RwLock<Option<AlertEmitterFn>>>,
     fleet_reader: Arc<RwLock<Option<FleetReaderFn>>>,
@@ -32,16 +28,14 @@ pub struct DeceptionEngine {
 impl DeceptionEngine {
     pub fn new(config_path: impl Into<PathBuf>) -> Self {
         let path = config_path.into();
-        let old = storage::load_storage(&path);
-        let had_file = old.is_some();
-        let store = old.map(storage::without_demo).unwrap_or_else(storage::default_storage);
+        let store = storage::load_storage(&path).unwrap_or_else(storage::default_storage);
+        storage::save_storage(&path, &store);
 
         Self {
             assets: Arc::new(RwLock::new(store.assets)),
             tripwire_events: Arc::new(RwLock::new(store.tripwire_events)),
             blueprints: get_default_blueprints(),
-            changed: Arc::new(AtomicBool::new(had_file)),
-            legacy_file: Arc::new(Mutex::new(had_file.then_some(path))),
+            config_path: path,
             deploy_dispatcher: Arc::new(RwLock::new(None)),
             alert_emitter: Arc::new(RwLock::new(None)),
             fleet_reader: Arc::new(RwLock::new(None)),
@@ -60,37 +54,12 @@ impl DeceptionEngine {
         *self.fleet_reader.write().unwrap() = Some(reader);
     }
 
-    /// The assets or tripwire events changed: siem-api stores them.
     pub fn save(&self) {
-        self.changed.store(true, Ordering::SeqCst);
-    }
-
-    /// The stored document if it changed since the last call, for siem-api to store.
-    pub fn take_changed(&self) -> Option<String> {
-        if !self.changed.swap(false, Ordering::SeqCst) {
-            return None;
-        }
-        serde_json::to_string(&DeceptionStorage { assets: self.assets.read().unwrap().clone(), tripwire_events: self.tripwire_events.read().unwrap().clone() }).ok()
-    }
-
-    /// Not stored: it stays changed.
-    pub fn store_failed(&self) {
-        self.save();
-    }
-
-    /// Stored: the settings file of an earlier version is not needed any more.
-    pub fn stored(&self) {
-        if let Some(p) = self.legacy_file.lock().unwrap().take() {
-            let _ = std::fs::remove_file(p);
-        }
-    }
-
-    /// The stored document, at start.
-    pub fn load(&self, doc: &str) {
-        if let Ok(s) = serde_json::from_str::<DeceptionStorage>(doc).map(storage::without_demo) {
-            *self.assets.write().unwrap() = s.assets;
-            *self.tripwire_events.write().unwrap() = s.tripwire_events;
-        }
+        let store = DeceptionStorage {
+            assets: self.assets.read().unwrap().clone(),
+            tripwire_events: self.tripwire_events.read().unwrap().clone(),
+        };
+        storage::save_storage(&self.config_path, &store);
     }
 
     pub fn get_assets(&self) -> Vec<DeceptionAsset> {
@@ -601,28 +570,5 @@ mod tests {
             normalize_path("/var/data/shared/master_passwords_2026.kdbx"),
             "/var/data/shared/master_passwords_2026.kdbx"
         );
-    }
-}
-
-#[cfg(test)]
-mod stored_tests {
-    use super::*;
-
-    #[test]
-    fn starts_empty_hands_over_changes_once_and_drops_demo_entries() {
-        let e = DeceptionEngine::new("no-such-file.json");
-        assert!(e.get_assets().is_empty() && e.get_triggers().is_empty(), "a new install has no demo assets");
-        assert!(e.take_changed().is_none());
-        e.save();
-        let doc = e.take_changed().expect("changed");
-        assert!(e.take_changed().is_none(), "handed over once");
-        e.store_failed();
-        assert!(e.take_changed().is_some(), "a failed store is tried again");
-
-        let mut v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        v["assets"] = serde_json::json!([{ "id": "dec-1", "name": "Production KeePass Master Vault Tripwire" }]);
-        let fresh = DeceptionEngine::new("no-such-file.json");
-        fresh.load(&v.to_string());
-        assert!(fresh.get_assets().is_empty(), "the old demo asset is not loaded");
     }
 }

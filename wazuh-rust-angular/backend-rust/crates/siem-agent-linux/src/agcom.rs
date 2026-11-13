@@ -1,6 +1,6 @@
-//! Wazuh Agent Control Socket Interface (src/client-agent/agcom.c & state.c)
+//! Agent Control Socket Interface
 //!
-//! Handles IPC commands sent to `/var/ossec/queue/sockets/agent`:
+//! Handles IPC commands sent to `/opt/provigil-agent/queue/sockets/agent`:
 //! - `getconfig client`
 //! - `getconfig buffer`
 //! - `getconfig labels`
@@ -13,8 +13,7 @@ use crate::buffer::AgentBuffer;
 use crate::client_agent::AgentConfig;
 use serde_json::json;
 
-/// Dispatches an agent control socket command string and returns "ok <json>" or "err <msg>".
-/// Mirroring `src/client-agent/agcom.c: agcom_dispatch`
+/// Dispatches an agent control command string and returns "ok <json>" or "err <msg>".
 pub fn agcom_dispatch(
     command: &str,
     config: &AgentConfig,
@@ -27,7 +26,7 @@ pub fn agcom_dispatch(
 
     match cmd {
         "getconfig" => match args {
-            None | Some("") => "err AGCOM getconfig needs arguments".to_string(),
+            None | Some("") => "err control getconfig needs arguments".to_string(),
             Some("client") => {
                 let j = get_client_config(config);
                 format!("ok {}", serde_json::to_string(&j).unwrap_or_default())
@@ -45,7 +44,7 @@ pub fn agcom_dispatch(
                 format!("ok {}", serde_json::to_string(&j).unwrap_or_default())
             }
             Some(sec) => {
-                tracing::debug!("AGCOM getconfig: Section '{}' not found", sec);
+                tracing::debug!("control getconfig: Section '{}' not found", sec);
                 "err Could not get requested section".to_string()
             }
         },
@@ -57,38 +56,35 @@ pub fn agcom_dispatch(
             "ok Agent configuration reloaded successfully".to_string()
         }
         _ => {
-            tracing::debug!("AGCOM Unrecognized command '{}'.", cmd);
+            tracing::debug!("control Unrecognized command '{}'.", cmd);
             "err Unrecognized command".to_string()
         }
     }
 }
 
-/// Returns `<client>` configuration in Wazuh JSON format.
-/// Mirroring `src/client-agent/agcom.c: getClientConfig`
+/// Returns `<client>` configuration as JSON.
 pub fn get_client_config(config: &AgentConfig) -> serde_json::Value {
     json!({
         "client": {
             "server": {
                 "address": config.manager_url,
-                "port": 1514,
-                "protocol": "tcp"
+                "port": 8443,
+                "protocol": "https"
             },
             "notify_time": 10,
             "time-reconnect": 60,
             "auto_restart": "yes",
-            "crypto_method": "aes",
+            "crypto_method": "tls",
             "enrollment": {
                 "enabled": "yes",
                 "manager_address": config.manager_url,
-                "port": 1515,
                 "agent_name": config.agent_name
             }
         }
     })
 }
 
-/// Returns `<client_buffer>` configuration in Wazuh JSON format.
-/// Mirroring `src/client-agent/agcom.c: getBufferConfig`
+/// Returns `<client_buffer>` configuration as JSON.
 pub fn get_buffer_config(config: &AgentConfig) -> serde_json::Value {
     json!({
         "buffer": {
@@ -99,8 +95,7 @@ pub fn get_buffer_config(config: &AgentConfig) -> serde_json::Value {
     })
 }
 
-/// Returns `<labels>` configuration in Wazuh JSON format.
-/// Mirroring `src/client-agent/agcom.c: getLabelsConfig`
+/// Returns agent labels configuration as JSON.
 pub fn get_labels_config() -> serde_json::Value {
     json!({
         "labels": {
@@ -111,7 +106,6 @@ pub fn get_labels_config() -> serde_json::Value {
 }
 
 /// Returns internal agent configuration options.
-/// Mirroring `src/client-agent/agcom.c: getAgentInternalOptions`
 pub fn get_agent_internal_options() -> serde_json::Value {
     json!({
         "agent": {
@@ -124,12 +118,12 @@ pub fn get_agent_internal_options() -> serde_json::Value {
     })
 }
 
-/// Returns agent state structure matching `src/client-agent/state.c`.
+/// Returns agent runtime state JSON.
 pub fn get_agent_state(config: &AgentConfig, buffer: &AgentBuffer) -> serde_json::Value {
     json!({
         "status": "connected",
         "last_keepalive": chrono::Utc::now().to_rfc3339(),
-        "version": "4.14.7",
+        "version": "1.0.0",
         "agent_id": config.agent_id,
         "agent_name": config.agent_name,
         "manager_url": config.manager_url,
@@ -148,43 +142,44 @@ mod tests {
     #[tokio::test]
     async fn test_agcom_dispatch_commands() {
         let config = AgentConfig::default();
-        let (buffer, _worker) = AgentBuffer::new(config.manager_url.clone(), 5000, 500, std::sync::Arc::new(crate::lifecycle::LifecycleCoordinator::new(config.agent_id.clone(), config.manager_url.clone())));
+        let (buffer, _worker) = AgentBuffer::new(
+            config.manager_url.clone(),
+            5000,
+            500,
+            std::sync::Arc::new(crate::lifecycle::LifecycleCoordinator::new(
+                config.agent_id.clone(),
+                config.manager_url.clone(),
+            )),
+        );
 
-        // 1. getconfig client
         let resp = agcom_dispatch("getconfig client", &config, &buffer);
         assert!(resp.starts_with("ok "));
         assert!(resp.contains("\"client\":"));
-        assert!(resp.contains("\"crypto_method\":\"aes\""));
+        assert!(resp.contains("\"crypto_method\":\"tls\""));
 
-        // 2. getconfig buffer
         let resp = agcom_dispatch("getconfig buffer", &config, &buffer);
         assert!(resp.starts_with("ok "));
         assert!(resp.contains("\"queue_size\":5000"));
 
-        // 3. getconfig labels
         let resp = agcom_dispatch("getconfig labels", &config, &buffer);
         assert!(resp.starts_with("ok "));
         assert!(resp.contains("\"agent_type\":\"linux_endpoint\""));
 
-        // 4. getconfig internal
         let resp = agcom_dispatch("getconfig internal", &config, &buffer);
         assert!(resp.starts_with("ok "));
         assert!(resp.contains("\"agent\":"));
 
-        // 5. getstate
         let resp = agcom_dispatch("getstate", &config, &buffer);
         assert!(resp.starts_with("ok "));
         assert!(resp.contains("\"status\":\"connected\""));
-        assert!(resp.contains("\"version\":\"4.14.7\""));
+        assert!(resp.contains("\"version\":\"1.0.0\""));
 
-        // 6. reload
         let resp = agcom_dispatch("reload", &config, &buffer);
         assert_eq!(resp, "ok Agent configuration reloaded successfully");
 
-        // 7. error cases
         assert_eq!(
             agcom_dispatch("getconfig", &config, &buffer),
-            "err AGCOM getconfig needs arguments"
+            "err control getconfig needs arguments"
         );
         assert_eq!(
             agcom_dispatch("getconfig unknown", &config, &buffer),

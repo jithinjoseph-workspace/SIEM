@@ -2,8 +2,7 @@ use chrono::{Datelike, Timelike, Utc};
 use siem_core::Alert;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crate::models::{
     BusinessProcessDefinition, BusinessTimeWindow, FleetAgentMeta, ProcessRiskStat,
@@ -16,25 +15,20 @@ pub struct RiskFabricEngine {
     processes: Arc<RwLock<Vec<BusinessProcessDefinition>>>,
     time_windows: Arc<RwLock<Vec<BusinessTimeWindow>>>,
     fleet: Arc<RwLock<HashMap<String, FleetAgentMeta>>>,
-    /// Changed since siem-api last stored it (ClickHouse, `engine_docs`)
-    changed: Arc<AtomicBool>,
-    /// The settings file of an earlier version, until its content is stored
-    legacy_file: Arc<Mutex<Option<PathBuf>>>,
+    config_path: PathBuf,
 }
 
 impl RiskFabricEngine {
     pub fn new(config_path: impl Into<PathBuf>) -> Self {
         let path = config_path.into();
-        let old = storage::load_config(&path);
-        let had_file = old.is_some();
-        let cfg = old.unwrap_or_else(storage::default_config);
+        let cfg = storage::load_config(&path).unwrap_or_else(storage::default_config);
+        storage::save_config(&path, &cfg);
 
         Self {
             processes: Arc::new(RwLock::new(cfg.processes)),
             time_windows: Arc::new(RwLock::new(cfg.time_windows)),
             fleet: Arc::new(RwLock::new(HashMap::new())),
-            changed: Arc::new(AtomicBool::new(had_file)),
-            legacy_file: Arc::new(Mutex::new(had_file.then_some(path))),
+            config_path: path,
         }
     }
 
@@ -84,37 +78,13 @@ impl RiskFabricEngine {
         }
     }
 
-    /// The business processes or time windows changed: siem-api stores them.
+    /// Persist current configuration state to disk
     pub fn save(&self) {
-        self.changed.store(true, Ordering::SeqCst);
-    }
-
-    /// The stored document if it changed since the last call, for siem-api to store.
-    pub fn take_changed(&self) -> Option<String> {
-        if !self.changed.swap(false, Ordering::SeqCst) {
-            return None;
-        }
-        serde_json::to_string(&RiskFabricConfig { processes: self.processes.read().unwrap().clone(), time_windows: self.time_windows.read().unwrap().clone() }).ok()
-    }
-
-    /// Not stored: it stays changed.
-    pub fn store_failed(&self) {
-        self.save();
-    }
-
-    /// Stored: the settings file of an earlier version is not needed any more.
-    pub fn stored(&self) {
-        if let Some(p) = self.legacy_file.lock().unwrap().take() {
-            let _ = std::fs::remove_file(p);
-        }
-    }
-
-    /// The stored document, at start.
-    pub fn load(&self, doc: &str) {
-        if let Ok(c) = serde_json::from_str::<RiskFabricConfig>(doc) {
-            *self.processes.write().unwrap() = c.processes;
-            *self.time_windows.write().unwrap() = c.time_windows;
-        }
+        let cfg = RiskFabricConfig {
+            processes: self.processes.read().unwrap().clone(),
+            time_windows: self.time_windows.read().unwrap().clone(),
+        };
+        storage::save_config(&self.config_path, &cfg);
     }
 
     /// Evaluates an alert and injects the score into `alert.data["risk_fabric"]`
@@ -392,9 +362,16 @@ impl RiskFabricEngine {
         let mut medium = 0;
         let mut low = 0;
         let mut total_score: u64 = 0;
+        let mut evaluated_count: usize = 0;
         let mut proc_counts: HashMap<String, (String, usize, u8)> = HashMap::new();
 
         for a in alerts {
+            // Skip synthetic Red Swarm validation alerts from live business risk summaries
+            if a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
+                continue;
+            }
+            evaluated_count += 1;
+
             // Check attached score or dynamically evaluate on the fly
             let score = Self::get_score(a).unwrap_or_else(|| {
                 let mut cloned = a.clone();
@@ -421,8 +398,8 @@ impl RiskFabricEngine {
             }
         }
 
-        let avg_score = if !alerts.is_empty() {
-            (total_score as f64) / (alerts.len() as f64)
+        let avg_score = if evaluated_count > 0 {
+            (total_score as f64) / (evaluated_count as f64)
         } else {
             0.0
         };
@@ -732,21 +709,68 @@ mod tests {
         alert.data.insert("dstuser".into(), serde_json::Value::String("root".into()));
         assert_eq!(resolve_alert_user(&alert), "root");
     }
-}
-
-#[cfg(test)]
-mod stored_tests {
-    use super::*;
 
     #[test]
-    fn changes_are_handed_over_once_and_load_back() {
-        let e = RiskFabricEngine::new("no-such-file.json");
-        assert!(e.take_changed().is_none());
-        e.save();
-        let doc = e.take_changed().expect("changed");
-        assert!(e.take_changed().is_none());
-        let fresh = RiskFabricEngine::new("no-such-file.json");
-        fresh.load(&doc);
-        assert_eq!(fresh.take_changed(), None, "loading is not a change");
+    fn test_summary_excludes_redswarm_simulations() {
+        let temp_file = std::env::temp_dir().join(format!("test_rf_sum_{}.json", uuid::Uuid::new_v4()));
+        let engine = RiskFabricEngine::new(&temp_file);
+
+        let sim_alert = Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 99001,
+                level: 14,
+                description: "Red Swarm simulated attack".into(),
+                groups: vec!["redswarm_simulation".into(), "attack".into()],
+                mitre: None,
+            },
+            agent: siem_core::AgentAlertInfo {
+                id: "001".into(),
+                name: "srv-payment-01".into(),
+                ip: "192.168.10.15".into(),
+            },
+            manager: None,
+            decoder: None,
+            full_log: "".into(),
+            decoded: siem_core::DecodedFields::default(),
+            location: "redswarm".into(),
+            data: HashMap::new(),
+        };
+
+        let real_alert = Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 1001,
+                level: 3,
+                description: "Routine notice".into(),
+                groups: vec!["syslog".into()],
+                mitre: None,
+            },
+            agent: siem_core::AgentAlertInfo {
+                id: "002".into(),
+                name: "wks-generic-01".into(),
+                ip: "10.0.0.55".into(),
+            },
+            manager: None,
+            decoder: None,
+            full_log: "".into(),
+            decoded: siem_core::DecodedFields::default(),
+            location: "/var/log/syslog".into(),
+            data: HashMap::new(),
+        };
+
+        let summary = engine.get_summary(&[sim_alert, real_alert]);
+        assert_eq!(summary.catastrophic_alerts_count, 0);
+        assert_eq!(summary.critical_alerts_count, 0);
+        let total_counted = summary.catastrophic_alerts_count
+            + summary.critical_alerts_count
+            + summary.high_alerts_count
+            + summary.medium_alerts_count
+            + summary.low_alerts_count;
+        assert_eq!(total_counted, 1);
+
+        let _ = std::fs::remove_file(temp_file);
     }
 }

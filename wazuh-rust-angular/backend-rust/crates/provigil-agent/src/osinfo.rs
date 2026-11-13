@@ -181,9 +181,126 @@ pub fn collect(arch: &str, hostname: &str) -> (Value, Vec<String>) {
     (os_from(&reg_values(&cv), arch, hostname), merge_hotfixes(&hotfix_sources()))
 }
 
+/// Human-readable OS summary reported during enrollment.
+pub fn enroll_os_string() -> String {
+    #[cfg(windows)]
+    {
+        format!("Windows {}", sysinfo::System::os_version().unwrap_or_default()).trim().to_string()
+    }
+    #[cfg(not(windows))]
+    {
+        let os_rel = read_os_release();
+        let fields = parse_os_release(&os_rel);
+        if let Some(pretty) = fields.iter().find(|(k, _)| k == "PRETTY_NAME").map(|(_, v)| v.clone()).filter(|s| !s.is_empty()) {
+            return pretty;
+        }
+        let name = fields.iter().find(|(k, _)| k == "NAME").map(|(_, v)| v.as_str()).unwrap_or("Linux");
+        let ver = fields.iter().find(|(k, _)| k == "VERSION_ID").map(|(_, v)| v.as_str()).unwrap_or("");
+        format!("{name} {ver}").trim().to_string()
+    }
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+pub(crate) fn parse_os_release(content: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((k, raw_v)) = line.split_once('=') else { continue };
+        let v = raw_v.trim().trim_matches('"').trim_matches('\'').to_string();
+        out.push((k.trim().to_string(), v));
+    }
+    out
+}
+
+/// Parse Linux `/etc/os-release` and kernel release string into the `sys_osinfo` JSON object.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn linux_os_from(os_release: &str, kernel_release: &str, arch: &str, hostname: &str) -> Value {
+    let pairs = parse_os_release(os_release);
+    let get = |key: &str| {
+        pairs
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+
+    let raw_id = get("ID").to_ascii_lowercase();
+    let os_name = {
+        let n = get("NAME");
+        if n.is_empty() {
+            let p = get("PRETTY_NAME");
+            if p.is_empty() { "Linux".to_string() } else { p }
+        } else {
+            n
+        }
+    };
+    let os_version = {
+        let v = get("VERSION_ID");
+        if v.is_empty() { kernel_release.trim().to_string() } else { v }
+    };
+    let mut ver_parts = os_version.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty());
+    let os_major = ver_parts.next().unwrap_or("").to_string();
+    let os_minor = ver_parts.next().unwrap_or("").to_string();
+    let os_patch = ver_parts.next().unwrap_or("").to_string();
+
+    let os_platform = match raw_id.as_str() {
+        "rhel" | "redhat" => "rhel".to_string(),
+        "sles" | "sled" | "opensuse-leap" | "opensuse-tumbleweed" | "opensuse" => raw_id.clone(),
+        "" => {
+            let lower = os_name.to_ascii_lowercase();
+            if lower.contains("ubuntu") { "ubuntu".into() }
+            else if lower.contains("debian") { "debian".into() }
+            else if lower.contains("red hat") { "rhel".into() }
+            else if lower.contains("centos") { "centos".into() }
+            else if lower.contains("rocky") { "rocky".into() }
+            else if lower.contains("alma") { "almalinux".into() }
+            else { "linux".into() }
+        }
+        other => other.to_string(),
+    };
+
+    let os_display_version = {
+        let codename = get("VERSION_CODENAME");
+        if !codename.is_empty() {
+            codename
+        } else {
+            let ver = get("VERSION");
+            if !ver.is_empty() { ver } else { get("PRETTY_NAME") }
+        }
+    };
+
+    let release = kernel_release.trim().to_string();
+    json!({
+        "hostname": hostname,
+        "architecture": arch,
+        "os_name": os_name,
+        "os_version": os_version,
+        "os_major": os_major,
+        "os_minor": os_minor,
+        "os_patch": os_patch,
+        "os_build": release,
+        "os_display_version": os_display_version,
+        "os_platform": os_platform,
+        "sysname": "Linux",
+        "release": release,
+    })
+}
+
+#[cfg(not(windows))]
+fn read_os_release() -> String {
+    std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .unwrap_or_default()
+}
+
 #[cfg(not(windows))]
 pub fn collect(arch: &str, hostname: &str) -> (Value, Vec<String>) {
-    (json!({ "hostname": hostname, "architecture": arch, "os_platform": std::env::consts::OS }), Vec::new())
+    let os_rel = read_os_release();
+    let kernel_rel = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
+    (linux_os_from(&os_rel, &kernel_rel, arch, hostname), Vec::new())
 }
 
 #[cfg(test)]
@@ -229,5 +346,28 @@ mod tests {
             merge_hotfixes(&sources),
             vec!["KB2267602", "KB2468871", "KB2565063", "KB5000004", "KB5031455", "KB5032189", "KB5034123"]
         );
+    }
+
+    #[test]
+    fn linux_os_release_parses_major_distros() {
+        let ubuntu = "NAME=\"Ubuntu\"\nVERSION=\"24.04.1 LTS (Noble Numbat)\"\nID=ubuntu\nVERSION_ID=\"24.04\"\nVERSION_CODENAME=noble\n";
+        let u = linux_os_from(ubuntu, "6.8.0-45-generic\n", "x86_64", "web-01");
+        assert_eq!(u["os_name"], "Ubuntu");
+        assert_eq!(u["os_version"], "24.04");
+        assert_eq!(u["os_major"], "24");
+        assert_eq!(u["os_minor"], "04");
+        assert_eq!(u["os_platform"], "ubuntu");
+        assert_eq!(u["os_display_version"], "noble");
+        assert_eq!(u["sysname"], "Linux");
+        assert_eq!(u["release"], "6.8.0-45-generic");
+
+        let rhel = "NAME=\"Red Hat Enterprise Linux\"\nVERSION=\"9.4 (Plow)\"\nID=\"rhel\"\nVERSION_ID=\"9.4\"\n";
+        let r = linux_os_from(rhel, "5.14.0-427.el9.x86_64", "x86_64", "db-01");
+        assert_eq!(r["os_platform"], "rhel");
+        assert_eq!((r["os_major"].as_str(), r["os_minor"].as_str()), (Some("9"), Some("4")));
+
+        let debian = "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nID=debian\nVERSION_CODENAME=bookworm\n";
+        let d = linux_os_from(debian, "6.1.0-25-amd64", "x86_64", "app-01");
+        assert_eq!((d["os_platform"].as_str(), d["os_major"].as_str(), d["os_display_version"].as_str()), (Some("debian"), Some("12"), Some("bookworm")));
     }
 }

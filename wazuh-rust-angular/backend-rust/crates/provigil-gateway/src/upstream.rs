@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 const LIMIT: Duration = Duration::from_secs(5);
 
+#[derive(Clone)]
 pub struct Upstream {
     url: String,
     token: String,
@@ -19,6 +20,10 @@ pub type Refused = (u16, String);
 impl Upstream {
     pub fn new(url: &str, token: &str) -> Self {
         Self { url: url.to_string(), token: token.to_string(), http: reqwest::Client::builder().timeout(LIMIT).build().expect("HTTP client") }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.url.is_empty()
     }
 
     async fn call(&self, path: &str, body: &Value) -> Result<Value, Refused> {
@@ -46,5 +51,9 @@ impl Upstream {
 
     pub async fn events(&self, agent: &str, tenant: &str, events: &[Value]) -> Result<(), Refused> {
         self.call("events", &json!({ "agent_id": agent, "tenant_id": tenant, "events": events })).await.map(drop)
+    }
+
+    pub async fn keepalives(&self, items: &[Value]) -> Result<(), Refused> {
+        self.call("keepalives", &json!({ "items": items })).await.map(drop)
     }
 }

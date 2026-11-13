@@ -825,13 +825,13 @@ fn command_messages(full: bool, label: &str, output: &str, filters: &Filters) ->
         if body.is_empty() || !filters.keep(&body) {
             return Vec::new();
         }
-        return vec![format!("provigil: output: '{label}':\n{body}")];
+        return vec![format!("ossec: output: '{label}':\n{body}")];
     }
     output
         .split('\n')
         .map(|l| l.strip_suffix('\r').unwrap_or(l))
         .filter(|l| !l.is_empty() && filters.keep(l))
-        .map(|l| format!("provigil: output: '{label}': {l}"))
+        .map(|l| format!("ossec: output: '{label}': {l}"))
         .collect()
 }
 
@@ -1087,8 +1087,8 @@ mod tests {
     #[test]
     fn command_message_text() {
         let none = Filters { ignore: Vec::new(), restrict: Vec::new() };
-        assert_eq!(command_messages(false, "list", "a\r\n\r\nb\r\n", &none), ["provigil: output: 'list': a", "provigil: output: 'list': b"]);
-        assert_eq!(command_messages(true, "list", "a\r\n\r\nb\r\n", &none), ["provigil: output: 'list':\na\nb"]);
+        assert_eq!(command_messages(false, "list", "a\r\n\r\nb\r\n", &none), ["ossec: output: 'list': a", "ossec: output: 'list': b"]);
+        assert_eq!(command_messages(true, "list", "a\r\n\r\nb\r\n", &none), ["ossec: output: 'list':\na\nb"]);
         assert!(command_messages(true, "list", "", &none).is_empty());
     }
 
@@ -1097,8 +1097,8 @@ mod tests {
     fn runs_a_command() {
         let out = run_command("echo a&echo b", Duration::from_secs(30), || true).unwrap().unwrap();
         let none = Filters { ignore: Vec::new(), restrict: Vec::new() };
-        assert_eq!(command_messages(false, "echo a&echo b", &out, &none), ["provigil: output: 'echo a&echo b': a", "provigil: output: 'echo a&echo b': b"]);
-        assert_eq!(command_messages(true, "echo a&echo b", &out, &none), ["provigil: output: 'echo a&echo b':\na\nb"]);
+        assert_eq!(command_messages(false, "echo a&echo b", &out, &none), ["ossec: output: 'echo a&echo b': a", "ossec: output: 'echo a&echo b': b"]);
+        assert_eq!(command_messages(true, "echo a&echo b", &out, &none), ["ossec: output: 'echo a&echo b':\na\nb"]);
         // quotes in the command are kept
         let out = run_command("\"cmd\" /C echo \"q\"", Duration::from_secs(30), || true).unwrap().unwrap();
         assert_eq!(out.trim_end(), "\"q\"");

@@ -110,7 +110,7 @@ export const WINDOWS_SERVICE = 'ProVigilSvc';
 /** The service and folder of agents installed before the ProVigil rename (migrated on reinstall). */
 export const LEGACY_WINDOWS_SERVICE = 'WazuhSvc';
 export const LEGACY_WINDOWS_AGENT_DIR = '${env:ProgramFiles(x86)}\\ossec-agent';
-export const LINUX_SERVICE = 'wazuh-rust-agent';
+export const LINUX_SERVICE = 'provigil-agent';
 
 /** Default manager URL: the console's own origin (the dev server and Caddy
  *  both forward /api and /downloads to siem-api).
@@ -161,7 +161,7 @@ export function isLoopbackManager(url: string): boolean {
   }
 }
 
-/** Wazuh agent names: letters, digits, '.', '_', '-' (2..128 chars). */
+/** Valid agent names: letters, digits, '.', '_', '-' (2..128 chars). */
 export function isValidAgentName(name: string): boolean {
   return /^[A-Za-z0-9._-]{2,128}$/.test(name);
 }

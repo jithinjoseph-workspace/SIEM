@@ -898,7 +898,7 @@
               } @else {
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <label class="space-y-1 min-w-0"><span class="text-slate-400 block">WPK file path on the manager</span>
-                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="/var/ossec/var/upgrade/agent.wpk" [ngModel]="upgradeFilePath()" (ngModelChange)="upgradeFilePath.set($event)" /></label>
+                    <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" placeholder="/opt/provigil-agent/var/upgrade/agent.pkg" [ngModel]="upgradeFilePath()" (ngModelChange)="upgradeFilePath.set($event)" /></label>
                   <label class="space-y-1 min-w-0"><span class="text-slate-400 block">Installer in the package (empty = upgrade.bat / upgrade.sh)</span>
                     <input class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono" [ngModel]="upgradeInstaller()" (ngModelChange)="upgradeInstaller.set($event)" /></label>
                 </div>

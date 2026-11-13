@@ -175,24 +175,47 @@ export class RiskFabric implements OnInit, OnDestroy {
   winFormType = signal<string>('recurring_schedule');
   winFormActive = signal<boolean>(true);
   winFormTargetProcs = signal<string>('');
+  private summaryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private isNoiseOrSimulationAlert(alert: Alert): boolean {
+    const groups = alert.rule?.groups || [];
+    if (groups.includes('redswarm_simulation')) return true;
+    return (alert.rule?.level ?? 0) < 5;
+  }
+
+  private scheduleSummaryRefresh() {
+    if (this.summaryRefreshTimer !== null) return;
+    this.summaryRefreshTimer = setTimeout(() => {
+      this.summaryRefreshTimer = null;
+      this.siem.getRiskFabricSummary().subscribe({
+        next: (sum) => this.summary.set(sum),
+        error: () => {},
+      });
+    }, 3000);
+  }
 
   ngOnInit() {
     this.loadAllData();
     this.runSimulation();
     this.alertSub = this.siem.getAlertStream().subscribe({
       next: (incomingAlert) => {
-        this.alerts.update((list) => [incomingAlert, ...list.slice(0, 99)]);
-        this.lastAlertTimestamp.set(new Date().toLocaleTimeString());
-        this.siem.getRiskFabricSummary().subscribe({
-          next: (sum) => this.summary.set(sum),
-          error: () => {},
+        if (this.isNoiseOrSimulationAlert(incomingAlert)) return;
+        this.alerts.update((list) => {
+          const deduped = list.filter((a) => a.id !== incomingAlert.id);
+          return [incomingAlert, ...deduped.slice(0, 99)];
         });
+        this.lastAlertTimestamp.set(new Date().toLocaleTimeString());
+        this.scheduleSummaryRefresh();
       },
     });
   }
 
   ngOnDestroy() {
     this.alertSub?.unsubscribe();
+    if (this.summaryRefreshTimer !== null) {
+      clearTimeout(this.summaryRefreshTimer);
+      this.summaryRefreshTimer = null;
+    }
   }
 
   loadAllData() {
@@ -237,9 +260,16 @@ export class RiskFabric implements OnInit, OnDestroy {
     });
 
     // Fetch recent alerts to display Risk Fabric enrichment
-    this.siem.getAlerts().subscribe({
+    this.siem.getAlerts(100, 5).subscribe({
       next: (alts) => {
-        this.alerts.set(alts);
+        const seen = new Set<string>();
+        const filtered = alts.filter((a) => {
+          if (this.isNoiseOrSimulationAlert(a)) return false;
+          if (!a.id || seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        });
+        this.alerts.set(filtered);
         this.isLoading.set(false);
       },
       error: (e) => {

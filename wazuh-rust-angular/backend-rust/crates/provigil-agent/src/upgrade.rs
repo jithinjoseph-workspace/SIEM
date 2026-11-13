@@ -21,8 +21,25 @@ use crate::transport::{Download, Link};
 
 pub const DIR: &str = "upgrade";
 const RESULT_FILE: &str = "upgrade_result.json";
+#[cfg(windows)]
 const HELPER_FILE: &str = "upgrade.ps1";
+#[cfg(not(windows))]
+const HELPER_FILE: &str = "upgrade.sh";
+#[cfg(windows)]
 const AGENT_EXE: &str = "provigil-agent.exe";
+#[cfg(not(windows))]
+const AGENT_EXE: &str = "provigil-agent-linux";
+
+fn is_agent_binary(name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        name == AGENT_EXE
+    }
+    #[cfg(not(windows))]
+    {
+        matches!(name, "provigil-agent-linux" | "provigil-agent")
+    }
+}
 const MAX_BYTES: u64 = 200 * 1024 * 1024;
 pub(crate) const DOWNLOAD_LIMIT: Duration = Duration::from_secs(600);
 
@@ -129,7 +146,8 @@ impl UpgradeSupervisor {
 
     async fn prepare(&self, cmd: &Value, id: &str, version: &str, link: &dyn Link) -> Result<(), String> {
         let files = files_of(cmd);
-        let complete = files.iter().all(|(name, url, sha)| plain(name) && !url.is_empty() && sha.len() == 64) && files.iter().any(|f| f.0 == AGENT_EXE);
+        let complete = files.iter().all(|(name, url, sha)| plain(name) && !url.is_empty() && sha.len() == 64)
+            && files.iter().any(|f| is_agent_binary(&f.0));
         if !complete || !plain(version) || !plain(id) {
             return Err("upgrade command incomplete or not valid".into());
         }
@@ -157,8 +175,16 @@ impl UpgradeSupervisor {
         let result = dir.join(RESULT_FILE);
         fs::write(&result, serde_json::to_string(&pending).unwrap_or_default()).map_err(|e| format!("{}: {e}", result.display()))?;
         let script = dir.join(HELPER_FILE);
-        // with a BOM: Windows PowerShell reads a script without one in the ANSI code page
-        fs::write(&script, "\u{feff}".to_string() + &helper_script(&swaps, &result, &pending, std::process::id())).map_err(|e| format!("{}: {e}", script.display()))?;
+        #[cfg(windows)]
+        let script_body = "\u{feff}".to_string() + &helper_script(&swaps, &result, &pending, std::process::id());
+        #[cfg(not(windows))]
+        let script_body = helper_script(&swaps, &result, &pending, std::process::id());
+        fs::write(&script, script_body).map_err(|e| format!("{}: {e}", script.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&script, fs::Permissions::from_mode(0o700));
+        }
         launch(&script).inspect_err(|_| {
             let _ = fs::remove_file(&result);
             drop_staged();
@@ -181,7 +207,12 @@ impl UpgradeSupervisor {
                     return Err(format!("{name} is not signed by '{subject}', the running agent's signer"));
                 }
             }
-            swaps.push((if name == AGENT_EXE { exe.to_path_buf() } else { bin.join(name) }, new));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&new, fs::Permissions::from_mode(0o755));
+            }
+            swaps.push((if is_agent_binary(name) { exe.to_path_buf() } else { bin.join(name) }, new));
         }
         Ok(swaps)
     }
@@ -223,13 +254,115 @@ async fn download(mut resp: Download, to: &Path, sha256: &str) -> Result<(), Str
 }
 
 /// A path in a single-quoted PowerShell string.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn ps(p: &Path) -> String {
     p.display().to_string().replace('\'', "''")
+}
+
+/// A string safely wrapped for single-quoted POSIX `sh`.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
+}
+
+/// Renders the POSIX `sh` upgrade helper used on Linux agents (exposed for cross-platform tests).
+pub fn linux_helper_script(files: &[(PathBuf, PathBuf)], result: &Path, r: &UpgradeResult, pid: u32) -> String {
+    let mut pairs = String::new();
+    for (target, new) in files {
+        pairs.push_str(&format!("    swap_one {} {}\n", sh_quote(&target.display().to_string()), sh_quote(&new.display().to_string())));
+    }
+    let mut restore = String::new();
+    for (target, _) in files {
+        restore.push_str(&format!("    restore_one {}\n", sh_quote(&target.display().to_string())));
+    }
+    let esc_json = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"#!/bin/sh
+# ProVigil Linux agent upgrade {from} -> {version}
+set -u
+SVC='provigil-agent'
+RESULT={result}
+
+write_result() {{
+    st="$1"
+    why="$2"
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+    if [ -n "$why" ]; then
+        esc=$(printf '%s' "$why" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+        reason_json="\"$esc\""
+    else
+        reason_json="null"
+    fi
+    printf '{{"status":"%s","version":"{ver_j}","from_version":"{from_j}","command_id":"{id_j}","timestamp":"%s","reason":%s}}\n' "$st" "$ts" "$reason_json" > "$RESULT"
+}}
+
+restore_one() {{
+    t="$1"
+    if [ -e "${{t}}.bak" ]; then
+        mv -f "${{t}}.bak" "$t" 2>/dev/null || true
+    elif [ -e "$t" ]; then
+        rm -f "$t" 2>/dev/null || true
+    fi
+}}
+
+restore_all() {{
+{restore}}}
+
+swap_one() {{
+    t="$1"
+    n="$2"
+    parent=$(dirname "$t")
+    mkdir -p "$parent" 2>/dev/null || true
+    rm -f "${{t}}.bak" 2>/dev/null || true
+    if [ -e "$t" ]; then
+        mv -f "$t" "${{t}}.bak" || return 1
+    fi
+    chmod 0755 "$n" 2>/dev/null || true
+    mv -f "$n" "$t" || return 1
+    chmod 0755 "$t" 2>/dev/null || true
+}}
+
+# Wait up to 300 s for agent PID {pid} to exit
+i=0
+while [ "$i" -lt 300 ] && kill -0 {pid} 2>/dev/null; do
+    sleep 1
+    i=$((i + 1))
+done
+
+do_swaps() {{
+{pairs}    return 0
+}}
+
+if ! do_swaps; then
+    restore_all
+    write_result "failed" "file swap failed during upgrade"
+    systemctl restart "$SVC" 2>/dev/null || true
+    exit 1
+fi
+
+systemctl restart "$SVC" 2>/dev/null || systemctl start "$SVC" 2>/dev/null || true
+sleep 60
+if systemctl is-active --quiet "$SVC"; then
+    write_result "done" ""
+else
+    systemctl stop "$SVC" 2>/dev/null || true
+    restore_all
+    write_result "rolled_back" "the new version was not running 60 s after its start"
+    systemctl start "$SVC" 2>/dev/null || true
+fi
+"#,
+        from = r.from_version,
+        version = r.version,
+        result = sh_quote(&result.display().to_string()),
+        ver_j = esc_json(&r.version),
+        from_j = esc_json(&r.from_version),
+        id_j = esc_json(&r.command_id),
+    )
 }
 
 /// The helper: waits for the agent to exit, swaps every (target, new) file, starts the service
 /// and after 60 s puts all the old files back when the service is not running. A file with no
 /// old version is removed by that. A swap that fails half-way restores what it swapped.
+#[cfg(windows)]
 fn helper_script(files: &[(PathBuf, PathBuf)], result: &Path, r: &UpgradeResult, pid: u32) -> String {
     let list: String = files.iter().map(|(target, new)| format!("    @{{ target = '{}'; new = '{}' }}\n", ps(target), ps(new))).collect();
     format!(
@@ -287,6 +420,12 @@ if ((Get-Service $svc).Status -eq 'Running') {{
     )
 }
 
+#[cfg(not(windows))]
+fn helper_script(files: &[(PathBuf, PathBuf)], result: &Path, r: &UpgradeResult, pid: u32) -> String {
+    linux_helper_script(files, result, r, pid)
+}
+
+#[cfg(windows)]
 fn launch(script: &Path) -> Result<(), String> {
     let mut c = std::process::Command::new("powershell.exe");
     c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File"])
@@ -294,12 +433,31 @@ fn launch(script: &Path) -> Result<(), String> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP: outlives the service. Not DETACHED_PROCESS:
         // PowerShell without any console exits at once (the upgrade then never ran, seen live)
         c.creation_flags(0x0800_0000 | 0x0000_0200);
+    }
+    c.spawn().map(drop).map_err(|e| format!("upgrade helper not started: {e}"))
+}
+
+#[cfg(not(windows))]
+fn launch(script: &Path) -> Result<(), String> {
+    let mut c = std::process::Command::new("sh");
+    c.arg(script)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            c.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
     }
     c.spawn().map(drop).map_err(|e| format!("upgrade helper not started: {e}"))
 }

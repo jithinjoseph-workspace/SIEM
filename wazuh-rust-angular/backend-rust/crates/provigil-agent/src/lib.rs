@@ -264,28 +264,30 @@ fn start_collection(config: &AgentConfig, identity: &AgentIdentity, buffer: &Arc
         }));
     }
 
-    // Windows registry monitoring, at start and then on schedule, on its own thread
-    let buffer_reg = buffer.clone();
-    let mut reg = RegistryMonitor::new(config.registry_keys.clone())
-        .with_ignore(&config.registry_ignore)
-        .with_recursion_level(config.registry_recursion_level)
-        .with_restrict(&config.registry_restrict_key, &config.registry_restrict_value)
-        .with_report_changes(&config.registry_report_changes)
-        .with_database(&PathBuf::from("data").join("fim.db"));
-    let reg_agent = (identity.agent_id.clone(), identity.agent_name.clone());
-    let reg_interval = Duration::from_secs(config.registry_scan_interval_secs);
-    let spawned = thread("registry".into(), move || {
-        while collecting() {
-            let reg_events = reg.scan(&reg_agent.0, &reg_agent.1);
-            scan_done("registry");
-            fim::push_paced(&buffer_reg, reg_events, fim_rate, collecting);
-            reg.sync_state(&buffer_reg, &reg_agent, Path::new(fim::SYNCED_FILE), collecting, fim::state_allowed);
-            nap(reg_interval, collecting);
+    // Windows registry monitoring, at start and then on schedule, on its own thread (only when configured)
+    if !config.registry_keys.is_empty() {
+        let buffer_reg = buffer.clone();
+        let mut reg = RegistryMonitor::new(config.registry_keys.clone())
+            .with_ignore(&config.registry_ignore)
+            .with_recursion_level(config.registry_recursion_level)
+            .with_restrict(&config.registry_restrict_key, &config.registry_restrict_value)
+            .with_report_changes(&config.registry_report_changes)
+            .with_database(&PathBuf::from("data").join("fim.db"));
+        let reg_agent = (identity.agent_id.clone(), identity.agent_name.clone());
+        let reg_interval = Duration::from_secs(config.registry_scan_interval_secs);
+        let spawned = thread("registry".into(), move || {
+            while collecting() {
+                let reg_events = reg.scan(&reg_agent.0, &reg_agent.1);
+                scan_done("registry");
+                fim::push_paced(&buffer_reg, reg_events, fim_rate, collecting);
+                reg.sync_state(&buffer_reg, &reg_agent, Path::new(fim::SYNCED_FILE), collecting, fim::state_allowed);
+                nap(reg_interval, collecting);
+            }
+        });
+        match spawned {
+            Ok(t) => threads.push(t),
+            Err(e) => error!(error = %e, "Registry monitoring thread not started"),
         }
-    });
-    match spawned {
-        Ok(t) => threads.push(t),
-        Err(e) => error!(error = %e, "Registry monitoring thread not started"),
     }
 
     // System Inventory Collector Loop (Hardware, OS, Ports, Processes, Services, Software)

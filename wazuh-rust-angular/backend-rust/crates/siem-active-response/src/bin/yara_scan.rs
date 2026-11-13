@@ -21,29 +21,6 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn skip_reason(path: &std::path::Path) -> Option<String> {
-    match std::fs::metadata(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !path.as_os_str().is_empty() => Some("the file no longer exists: not scanned".into()),
-        Ok(m) if m.is_file() && m.len() > yara::MAX_FILE => Some(format!("larger than {} MB: not scanned", yara::MAX_FILE / 1024 / 1024)),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn gone_or_big_files_are_skipped_not_failed() {
-        let dir = std::env::temp_dir().join(format!("pv-yara-skip-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(super::skip_reason(&dir.join("gone.exe")).unwrap().contains("no longer exists"));
-        let small = dir.join("small.bin");
-        std::fs::write(&small, b"x").unwrap();
-        assert_eq!(super::skip_reason(&small), None);
-        assert_eq!(super::skip_reason(std::path::Path::new("")), None, "an empty path stays an error");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-}
-
 fn run_main() -> i32 {
     use sha2::{Digest, Sha256};
 
@@ -54,13 +31,6 @@ fn run_main() -> i32 {
         return 0;
     }
     let path = extra_arg(&input, "path").map(|p| p.trim().to_string()).unwrap_or_default();
-    // nothing to scan is not a failure: a file already gone (temporary files) or over the size limit
-    if let Some(why) = skip_reason(std::path::Path::new(&path)) {
-        let m = format!("{{\"message\":{},\"path\":{},\"status\":\"skipped\",\"script\":\"yara-scan\"}}", json_str(&why), json_str(&path));
-        write_debug_file(&argv0, m.as_bytes());
-        write_debug_file(&argv0, b"Ended");
-        return 0;
-    }
     let r = (|| -> Result<(String, String, Vec<String>), String> {
         if path.is_empty() {
             return Err("A file (path=<full path>) is required".into());

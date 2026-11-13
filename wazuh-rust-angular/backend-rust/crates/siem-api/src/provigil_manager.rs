@@ -1362,18 +1362,26 @@ async fn send_ar_queue(msg: &str) -> Result<(), String> {
 
 /// A ProVigil agent (HTTPS) gets the message on its next keepalive, other agents through remoted.
 async fn route_ar(msg: &str, origin: &str) -> Result<(), String> {
-    if let Some((id, payload)) = ar_target(msg) {
-        if is_http_agent(&id) {
-            queue_http_command(&id, payload, origin);
+    let target = ar_target(msg);
+    if let Some((ref id, payload)) = target {
+        if is_http_agent(id) {
+            queue_http_command(id, payload, origin);
             return Ok(());
         }
     }
-    let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar"))
-        .await
-        .map_err(|e| format!("remoted active-response queue: {e}"))?;
-    s.send(msg.as_bytes())
-        .await
-        .map_err(|e| format!("remoted active-response queue: {e}"))
+    match siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar")).await {
+        Ok(s) => s
+            .send(msg.as_bytes())
+            .await
+            .map_err(|e| format!("remoted active-response queue: {e}")),
+        Err(e) => {
+            if let Some((id, payload)) = target {
+                queue_http_command(&id, payload, origin);
+                return Ok(());
+            }
+            Err(format!("remoted active-response queue: {e}"))
+        }
+    }
 }
 
 /// The responses the engine sends for ProVigil agents become their commands.
@@ -1432,13 +1440,45 @@ pub fn is_http_agent(id: &str) -> bool {
         .is_some_and(|s| s.contains(&agent_key(id)))
 }
 
-/// Queues a remote upgrade for a ProVigil agent (HTTPS): the published `provigil-agent.exe`
+/// Queues a remote upgrade for a ProVigil agent (HTTPS): the published agent binary
 /// and its SHA-256; the agent downloads, verifies and replaces itself.
-pub fn queue_http_upgrade(id: &str) -> Result<String, String> {
+pub fn queue_http_upgrade(id: &str, is_windows: bool) -> Result<String, String> {
     use sha2::Digest;
+    let hex = |b: &[u8]| -> String { sha2::Sha256::digest(b).iter().map(|b| format!("{b:02x}")).collect() };
+    if !is_windows {
+        let dist_linux = crate::data_file_path("agent-dist").join("linux");
+        let path = [
+            dist_linux.join("provigil-agent-linux"),
+            dist_linux.join("provigil-agent"),
+            std::path::PathBuf::from("target/x86_64-unknown-linux-gnu/release/provigil-agent"),
+            std::path::PathBuf::from("backend-rust/target/x86_64-unknown-linux-gnu/release/provigil-agent"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or("provigil-agent-linux is not published")?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let sha = hex(&bytes);
+        let version = exe_version(&bytes).ok_or("provigil-agent-linux carries no version mark (rebuild it)")?;
+        let files = vec![serde_json::json!({
+            "name": "provigil-agent-linux",
+            "url": "/downloads/provigil-agent-linux",
+            "sha256": sha,
+        })];
+        push_http_command(
+            id,
+            serde_json::json!({
+                "command_id": uuid::Uuid::new_v4().to_string(),
+                "type": "upgrade",
+                "url": "/downloads/provigil-agent-linux",
+                "sha256": sha,
+                "version": version,
+                "files": files
+            }),
+        );
+        return Ok(sha);
+    }
     let path = windows_agent_file("provigil-agent.exe").ok_or("provigil-agent.exe is not published")?;
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let hex = |b: &[u8]| -> String { sha2::Sha256::digest(b).iter().map(|b| format!("{b:02x}")).collect() };
     let sha = hex(&bytes);
     let version = exe_version(&bytes).ok_or("provigil-agent.exe carries no version mark (rebuild it)")?;
     // the agent and every published response program; `url` and `sha256` for agents before `files`
@@ -1474,14 +1514,10 @@ fn http_command(payload: &str) -> Option<serde_json::Value> {
     if payload.trim() == "syscheck restart" {
         return Some(serde_json::json!({ "command_id": id, "type": "scan" }));
     }
-    let mut message = serde_json::Deserializer::from_str(payload)
+    let message = serde_json::Deserializer::from_str(payload)
         .into_iter::<serde_json::Value>()
         .next()?
         .ok()?;
-    // the response configuration still names the restart command after the old agent
-    if let Some(rest) = message["command"].as_str().and_then(|c| c.strip_prefix("restart-wazuh")) {
-        message["command"] = format!("restart-agent{rest}").into();
-    }
     Some(serde_json::json!({ "command_id": id, "type": "ar", "message": message }))
 }
 
@@ -1593,7 +1629,7 @@ pub async fn restart_agent(agent_id: &str) -> Result<(), String> {
         "{:03}",
         agent_id.parse::<u32>().map_err(|_| "invalid agent id")?
     );
-    let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-agent0", "parameters": {"extra_args": [], "alert": {}}}"#;
+    let m = r#"{"version": 1, "origin": {"module": "api"}, "command": "restart-wazuh0", "parameters": {"extra_args": [], "alert": {}}}"#;
     send_ar_queue(&format!(
         "(msg_to_agent) [] NNS {id} {m} - null (from_the_server) (no_rule_id)"
     ))
@@ -2892,6 +2928,9 @@ async fn agent_status_loop(state: AppState) {
         }
         for r in rows {
             let id = format!("{:03}", r.get("id").and_then(|x| x.as_i64()).unwrap_or(0));
+            if state.deleted_agents.read().unwrap().contains(&id) || crate::is_deactivated(&state, &id) {
+                continue;
+            }
             let ka = r
                 .get("last_keepalive")
                 .and_then(|x| x.as_i64())
@@ -2945,23 +2984,30 @@ async fn agent_status_loop(state: AppState) {
                 if !ip.is_empty() && ip != "any" {
                     a.ip = ip.clone();
                 }
-                // an agent heard more recently over HTTP keeps that keepalive (active for 180 s)
+                // an agent heard more recently over HTTP keeps that keepalive (active for 180 s, or Pending if reactivated)
                 if a.last_keepalive > last_keepalive {
-                    a.status = if (Utc::now() - a.last_keepalive).num_seconds() < 180 { AgentStatus::Active } else { AgentStatus::Disconnected };
+                    if a.status != AgentStatus::Pending {
+                        a.status = if (Utc::now() - a.last_keepalive).num_seconds() < 180 {
+                            AgentStatus::Active
+                        } else {
+                            AgentStatus::Disconnected
+                        };
+                    }
                 } else {
                     a.status = status.clone();
                     a.last_keepalive = last_keepalive;
                 }
                 a.clone()
             };
+            let effective_ka = agent.last_keepalive.timestamp();
             let changed = last_saved
                 .get(&id)
-                .map(|(st, k)| *st != status || *k != ka)
+                .map(|(st, k)| *st != agent.status || *k != effective_ka)
                 .unwrap_or(true);
             if changed {
                 let tenant = tenant_of(&state, &id);
                 state.db.save_agent_row(&tenant, &agent);
-                last_saved.insert(id, (status, ka));
+                last_saved.insert(id, (agent.status.clone(), effective_ka));
             }
         }
     }
@@ -3288,16 +3334,5 @@ mod engine_responses_tests {
         assert_eq!(command["message"]["origin"]["module"], "provigil-analysisd");
         assert_eq!(command["message"]["parameters"]["alert"]["rule"]["id"], "100101", "{command}");
         assert!(command["command_id"].as_str().is_some_and(|c| !c.is_empty()));
-    }
-}
-
-#[cfg(test)]
-mod restart_name_tests {
-    #[test]
-    fn provigil_agents_get_the_restart_command_by_its_own_name() {
-        let c = super::http_command(r#"{"version":1,"command":"restart-wazuh0","parameters":{}}"#).unwrap();
-        assert_eq!(c["message"]["command"], "restart-agent0");
-        let c = super::http_command(r#"{"version":1,"command":"netsh600","parameters":{}}"#).unwrap();
-        assert_eq!(c["message"]["command"], "netsh600");
     }
 }

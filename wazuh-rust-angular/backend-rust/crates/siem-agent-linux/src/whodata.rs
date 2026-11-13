@@ -294,7 +294,7 @@ impl AuditWhodataEngine {
                 || (!file_name.is_empty() && rec_path.ends_with(file_name))
             {
                 debug!(
-                    "wazuh-whodata: Correlated file '{}' to user '{:?}' (process: '{:?}')",
+                    "provigil-whodata: Correlated file '{}' to user '{:?}' (process: '{:?}')",
                     path_str, record.whodata.user_name, record.whodata.process_name
                 );
                 return Some(record.whodata.clone());
@@ -309,8 +309,6 @@ impl AuditWhodataEngine {
         tokio::spawn(async move {
             let candidate_paths = [
                 "/var/log/audit/audit.log",
-                "./test_linux_logs/audit.log",
-                "test_linux_logs/audit.log",
             ];
 
             let mut target_path: Option<PathBuf> = None;
@@ -323,11 +321,11 @@ impl AuditWhodataEngine {
             }
 
             let Some(audit_file) = target_path else {
-                info!("wazuh-whodata: Linux audit.log not present. Whodata engine ready for dynamic event ingestion.");
+                info!("provigil-whodata: Linux audit.log not present. Whodata engine ready for dynamic event ingestion.");
                 return;
             };
 
-            info!("wazuh-whodata: Tailing Linux audit log stream at '{}'", audit_file.display());
+            info!("provigil-whodata: Tailing Linux audit log stream at '{}'", audit_file.display());
 
             let mut offset = std::fs::metadata(&audit_file).map(|m| m.len()).unwrap_or(0);
 
@@ -369,15 +367,15 @@ impl AuditWhodataEngine {
                 }
                 let path_str = path.to_string_lossy();
                 let status = std::process::Command::new("auditctl")
-                    .args(["-w", &path_str, "-p", "wa", "-k", "wazuh_fim"])
+                    .args(["-w", &path_str, "-p", "wa", "-k", "provigil_fim"])
                     .status();
 
                 match status {
                     Ok(s) if s.success() => {
-                        debug!("wazuh-whodata: auditctl watch rule installed for '{}'", path_str);
+                        debug!("provigil-whodata: auditctl watch rule installed for '{}'", path_str);
                     }
                     _ => {
-                        debug!("wazuh-whodata: Note: auditctl watch rule skipped for '{}' (non-root or auditctl absent)", path_str);
+                        debug!("provigil-whodata: Note: auditctl watch rule skipped for '{}' (non-root or auditctl absent)", path_str);
                     }
                 }
             }

@@ -1,13 +1,10 @@
 #!/bin/sh
-# ==============================================================================
-# Wazuh Linux Agent - Debian/Ubuntu postinst script
-# Mirrors official Wazuh packaging (packages/debs/SPECS/wazuh-agent/debian/postinst)
-# ==============================================================================
+# ProVigil Linux Agent - Debian/Ubuntu postinst script
 set -e
 
-DIR="/var/ossec"
-USER="wazuh"
-GROUP="wazuh"
+DIR="/opt/provigil-agent"
+USER="provigil"
+GROUP="provigil"
 SHELL="/sbin/nologin"
 
 if [ ! -f "${SHELL}" ]; then
@@ -18,17 +15,14 @@ fi
 
 case "$1" in
     configure)
-        # 1. Create wazuh system group if not present
         if ! getent group ${GROUP} > /dev/null 2>&1; then
             addgroup --system ${GROUP} > /dev/null 2>&1
         fi
 
-        # 2. Create wazuh system user if not present
         if ! getent passwd ${USER} > /dev/null 2>&1; then
             adduser --system --home ${DIR} --shell ${SHELL} --ingroup ${GROUP} ${USER} > /dev/null 2>&1
         fi
 
-        # 3. Create required runtime directory hierarchy
         mkdir -p "${DIR}/bin"
         mkdir -p "${DIR}/etc"
         mkdir -p "${DIR}/logs"
@@ -36,13 +30,11 @@ case "$1" in
         mkdir -p "${DIR}/quarantine"
         mkdir -p "${DIR}/var/run"
 
-        # 4. Create default agent config if missing
         if [ ! -f "${DIR}/etc/agent-config.json" ]; then
             cat <<EOF > "${DIR}/etc/agent-config.json"
 {
-  "manager_url": "http://127.0.0.1:8088",
-  "agent_id": "002",
-  "agent_name": "wazuh-linux-endpoint",
+  "manager_url": "https://127.0.0.1:8443",
+  "agent_name": "provigil-linux-endpoint",
   "buffer_capacity": 5000,
   "events_per_second": 500
 }
@@ -51,7 +43,6 @@ EOF
             chown root:${GROUP} "${DIR}/etc/agent-config.json"
         fi
 
-        # 5. Set hardened directory permissions
         chown root:${GROUP} "${DIR}"
         chmod 750 "${DIR}"
         chown -R root:${GROUP} "${DIR}/bin"
@@ -64,18 +55,16 @@ EOF
         chown -R root:${GROUP} "${DIR}/quarantine"
         chmod 700 "${DIR}/quarantine"
 
-        # 6. Create global binary symlinks
-        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-agentd
-        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/wazuh-control
+        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/provigil-agentd
+        ln -sf "${DIR}/bin/siem-agent-linux" /usr/local/bin/provigil-control
 
-        # 7. Reload systemd and enable service
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload > /dev/null 2>&1 || true
-            systemctl enable wazuh-rust-agent.service > /dev/null 2>&1 || true
-            systemctl restart wazuh-rust-agent.service > /dev/null 2>&1 || true
+            systemctl enable provigil-agent.service > /dev/null 2>&1 || true
+            systemctl restart provigil-agent.service > /dev/null 2>&1 || true
         fi
 
-        echo "[✓] Wazuh Linux Agent successfully installed and configured."
+        echo "[+] ProVigil Linux Agent successfully installed and configured."
     ;;
 esac
 

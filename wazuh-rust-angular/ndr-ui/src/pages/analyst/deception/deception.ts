@@ -542,7 +542,7 @@ export class Deception implements OnInit, OnDestroy {
         agent_id: trip.agent_id,
         agent_name: trip.agent_name,
         ip_address: trip.attacker_ip,
-        wazuh_module: 'syscheck_fim_realtime'
+        sensor_module: 'syscheck_fim_realtime'
       },
       adversary_context: {
         source_ip: trip.attacker_ip,
@@ -565,7 +565,7 @@ export class Deception implements OnInit, OnDestroy {
         technique_name: 'Unsecured Credentials / Credential Discovery (T1552)',
         tactic: 'Credential Access & Lateral Movement'
       },
-      raw_wazuh_evidence: trip.raw_evidence
+      raw_telemetry_evidence: trip.raw_evidence
     };
     return JSON.stringify(raw, null, 2);
   }

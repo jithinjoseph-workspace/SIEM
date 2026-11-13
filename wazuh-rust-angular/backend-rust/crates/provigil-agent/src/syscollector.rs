@@ -26,8 +26,15 @@ pub mod delta;
 pub mod win;
 #[cfg(windows)]
 use win as sys;
-#[cfg(not(windows))]
+#[cfg(unix)]
+#[path = "syscollector/linux.rs"]
+mod sys;
+#[cfg(all(not(unix), not(windows)))]
 use other as sys;
+#[cfg(all(not(unix), test))]
+#[allow(dead_code)]
+#[path = "syscollector/linux.rs"]
+mod linux_parse_test;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageInfo {
@@ -592,12 +599,24 @@ pub fn firefox_extensions(profiles: &Path, user: &str) -> Vec<BrowserExtension> 
 
 /// Every Chrome, Edge and Firefox extension in one user's profile directory.
 pub fn browser_extensions_for(home: &Path, user: &str) -> Vec<BrowserExtension> {
-    let local = home.join("AppData").join("Local");
-    let mut out = chromium_extensions(&local.join("Google").join("Chrome").join("User Data"), "chrome", user);
-    out.extend(chromium_extensions(&local.join("Microsoft").join("Edge").join("User Data"), "edge", user));
-    let ff = home.join("AppData").join("Roaming").join("Mozilla").join("Firefox").join("Profiles");
-    out.extend(firefox_extensions(&ff, user));
-    out
+    #[cfg(windows)]
+    {
+        let local = home.join("AppData").join("Local");
+        let mut out = chromium_extensions(&local.join("Google").join("Chrome").join("User Data"), "chrome", user);
+        out.extend(chromium_extensions(&local.join("Microsoft").join("Edge").join("User Data"), "edge", user));
+        let ff = home.join("AppData").join("Roaming").join("Mozilla").join("Firefox").join("Profiles");
+        out.extend(firefox_extensions(&ff, user));
+        out
+    }
+    #[cfg(not(windows))]
+    {
+        let cfg = home.join(".config");
+        let mut out = chromium_extensions(&cfg.join("google-chrome"), "chrome", user);
+        out.extend(chromium_extensions(&cfg.join("chromium"), "chrome", user));
+        out.extend(chromium_extensions(&cfg.join("microsoft-edge"), "edge", user));
+        out.extend(firefox_extensions(&home.join(".mozilla").join("firefox"), user));
+        out
+    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -627,7 +646,10 @@ impl Syscollector {
     pub fn collect_inventory(&self) -> SystemInventory {
         let hostname = std::env::var("COMPUTERNAME")
             .or_else(|_| std::env::var("HOSTNAME"))
-            .unwrap_or_else(|_| "localhost".into());
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(sysinfo::System::host_name)
+            .unwrap_or_else(|| "localhost".into());
         let os = std::env::consts::OS.to_string();
         let arch = std::env::consts::ARCH.to_string();
 
@@ -728,7 +750,7 @@ impl Syscollector {
             "network_adapters": inv.network_adapters.join("; "),
             "system": {
                 "os": {
-                    "name": "Windows",
+                    "name": os_info.get("sysname").and_then(Value::as_str).unwrap_or(if cfg!(windows) { "Windows" } else { "Linux" }),
                     "version": inv.os,
                     "hostname": inv.hostname,
                 },
@@ -798,7 +820,7 @@ pub fn spawn_syscollector_worker(
 
 /// Other platforms: the processes, packages, interfaces and services the old fallbacks read;
 /// the rest is empty.
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(unix)))]
 mod other {
     use super::*;
     use std::process::Command;

@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
     routing::{delete, get, post},
-    Router,
+    Extension, Router,
 };
 use siem_core::Alert;
 use std::sync::Arc;
@@ -12,6 +12,10 @@ use crate::models::{
     BusinessProcessDefinition, BusinessTimeWindow, FleetAgentMeta, RiskEvaluationRequest,
     RiskFabricScore, RiskFabricSummary,
 };
+
+/// Optional tenant-scoped alert override injected by host API middleware.
+#[derive(Clone)]
+pub struct ScopedAlerts(pub Vec<Alert>);
 
 #[derive(Clone)]
 pub struct RiskFabricApiState {
@@ -76,9 +80,13 @@ fn trigger_fleet_sync(state: &RiskFabricApiState) {
 
 async fn get_summary_handler(
     State(state): State<RiskFabricApiState>,
+    scoped: Option<Extension<ScopedAlerts>>,
 ) -> Json<RiskFabricSummary> {
     trigger_fleet_sync(&state);
-    let alerts = (state.get_alerts)();
+    let alerts = match scoped {
+        Some(Extension(ScopedAlerts(list))) => list,
+        None => (state.get_alerts)(),
+    };
     Json(state.engine.get_summary(&alerts))
 }
 

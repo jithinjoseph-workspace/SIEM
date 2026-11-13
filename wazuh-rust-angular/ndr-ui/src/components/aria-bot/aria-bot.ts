@@ -6,7 +6,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
-import { AuthService } from '../../services/auth/auth';
 import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { DotLottie } from '@lottiefiles/dotlottie-web';
@@ -139,7 +138,6 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     private http: HttpClient,
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private auth: AuthService,
   ) { }
 
   // ── LIFECYCLE ──
@@ -161,16 +159,13 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     const initUrl = this.router.url;
     this.isVisible = !initUrl.includes('/admin') && !initUrl.includes('/siem-copilot');
 
-    // the network-detection status exists only with the NDR product
-    if (this.auth.hasFeature('ndr')) {
-      this.fetchStatus();
-      this.pollSub = interval(30000).pipe(
-        switchMap(() => this.httpGet('/api/aria/status'))
-      ).subscribe({
-        next: s => this.handleStatus(s),
-        error: () => { }
-      });
-    }
+    this.fetchStatus();
+    this.pollSub = interval(30000).pipe(
+      switchMap(() => this.httpGet('/api/aria/status'))
+    ).subscribe({
+      next: s => this.handleStatus(s),
+      error: () => { }
+    });
 
     // Proactive speech bubbles every 18s when chat is closed
     this.proactiveSub = setInterval(() => {

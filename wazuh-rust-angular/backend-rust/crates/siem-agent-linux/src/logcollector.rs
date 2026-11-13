@@ -72,7 +72,7 @@ impl LogTracker {
     }
 }
 
-/// Spawns the Linux logcollector worker (mirroring Wazuh logcollector daemon)
+/// Spawns the Linux log collector worker.
 pub fn spawn_logcollector_worker(
     agent_id: String,
     buffer: Arc<AgentBuffer>,
@@ -80,7 +80,7 @@ pub fn spawn_logcollector_worker(
     poll_interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        info!("wazuh-logcollector: Initializing target log streams...");
+        info!("provigil-logcollector: Initializing target log streams...");
 
         let mut trackers: Vec<LogTracker> = Vec::new();
 
@@ -100,21 +100,18 @@ pub fn spawn_logcollector_worker(
             ("/var/log/apache2/access.log", EventSource::Custom("web-apache".into())),
             ("/var/log/apache2/error.log", EventSource::Custom("web-apache".into())),
             ("/var/log/httpd/access_log", EventSource::Custom("web-httpd".into())),
-            ("./test_linux_logs/auth.log", EventSource::Auth),
-            ("./test_linux_logs/audit.log", EventSource::Syslog),
-            ("./test_linux_logs/syslog", EventSource::Syslog),
         ];
 
         for (path_str, src) in &candidate_logs {
             let path = Path::new(path_str);
             if path.exists() {
-                info!(" [✓] wazuh-logcollector attached to: {}", path_str);
+                info!("provigil-logcollector attached to: {}", path_str);
                 trackers.push(LogTracker::new(path, src.clone()));
             }
         }
 
         if trackers.is_empty() {
-            info!("wazuh-logcollector: Standard Linux log paths not detected. Dynamic detection active.");
+            info!("provigil-logcollector: Standard Linux log paths not detected. Dynamic detection active.");
         }
 
         loop {
@@ -126,11 +123,11 @@ pub fn spawn_logcollector_worker(
                 continue;
             }
 
-            // Dynamically attach if new logs are created or test files created
+            // Dynamically attach when watched log files appear
             for (path_str, src) in &candidate_logs {
                 let p = Path::new(path_str);
                 if p.exists() && !trackers.iter().any(|t| t.path == p) {
-                    info!(" [✓] wazuh-logcollector dynamically attached to: {}", path_str);
+                    info!("provigil-logcollector dynamically attached to: {}", path_str);
                     trackers.push(LogTracker::new(p, src.clone()));
                 }
             }

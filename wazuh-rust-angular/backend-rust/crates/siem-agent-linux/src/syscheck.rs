@@ -66,7 +66,7 @@ impl SyscheckEngine {
         self.watcher.as_mut()
     }
 
-    /// Extract POSIX file metadata (mode, uid, gid) mirroring Wazuh create_db.c
+    /// Extract POSIX file metadata (mode, uid, gid).
     pub fn get_file_metadata(path: &Path) -> (u32, u32, u32) {
         #[cfg(unix)]
         {
@@ -138,7 +138,7 @@ impl SyscheckEngine {
         }
 
         info!(
-            "wazuh-syscheckd: Deep baseline computed with {} tracked files across all nested subdirectories",
+            "provigil-syscheckd: Deep baseline computed with {} tracked files across all nested subdirectories",
             new_baseline.len()
         );
 

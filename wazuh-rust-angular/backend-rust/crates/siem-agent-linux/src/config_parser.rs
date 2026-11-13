@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Root ProVigil Configuration 
+/// Root ProVigil Agent XML Configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename = "ossec_config")]
-pub struct OssecConfig {
+#[serde(rename = "agent_config")]
+pub struct AgentXmlConfig {
     // Agent configuration sections
     #[serde(default)]
     pub client: Option<ClientConfig>,
@@ -28,7 +28,7 @@ pub struct OssecConfig {
     #[serde(default, rename = "active-response")]
     pub active_responses: Vec<ActiveResponseConfig>,
 
-    // Manager / Server configuration sections (src/config/)
+    // Manager / Server configuration sections
     #[serde(default)]
     pub global: Option<GlobalConfig>,
 
@@ -60,7 +60,7 @@ pub struct OssecConfig {
     pub vulnerability_detection: Option<VulnerabilityDetectionConfig>,
 }
 
-/// `<global>` block (src/config/global-config.c)
+/// `<global>` configuration block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GlobalConfig {
     #[serde(default)]
@@ -87,7 +87,7 @@ pub struct GlobalConfig {
     pub white_list: Vec<String>,
 }
 
-/// `<alerts>` block (src/config/alerts-config.c)
+/// `<alerts>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AlertsConfig {
     #[serde(default)]
@@ -96,7 +96,7 @@ pub struct AlertsConfig {
     pub email_alert_level: Option<u32>,
 }
 
-/// `<ruleset>` block (src/config/rules-config.c)
+/// `<ruleset>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RulesetConfig {
     #[serde(default, rename = "decoder_dir")]
@@ -111,7 +111,7 @@ pub struct RulesetConfig {
     pub lists: Vec<String>,
 }
 
-/// `<remote>` block (src/config/remote-config.c)
+/// `<remote>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RemoteConfig {
     #[serde(default)]
@@ -128,7 +128,7 @@ pub struct RemoteConfig {
     pub queue_size: Option<usize>,
 }
 
-/// `<auth>` block (src/config/authd-config.c)
+/// `<auth>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AuthServerConfig {
     #[serde(default = "default_no")]
@@ -149,7 +149,7 @@ pub struct AuthServerConfig {
     pub ssl_verify_host: Option<String>,
 }
 
-/// `<integration>` block (src/config/integrator-config.c)
+/// `<integration>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IntegrationConfig {
     #[serde(default)]
@@ -170,7 +170,7 @@ pub struct IntegrationConfig {
     pub alert_format: Option<String>,
 }
 
-/// `<syslog_output>` block (src/config/csyslogd-config.c)
+/// `<syslog_output>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyslogOutputConfig {
     #[serde(default)]
@@ -183,7 +183,7 @@ pub struct SyslogOutputConfig {
     pub level: Option<u32>,
 }
 
-/// `<cluster>` block (src/config/cluster-config.c)
+/// `<cluster>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ClusterConfig {
     #[serde(default = "default_no")]
@@ -204,7 +204,7 @@ pub struct ClusterConfig {
     pub nodes: Vec<String>,
 }
 
-/// `<indexer>` block (src/config/indexer-config.c)
+/// `<indexer>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IndexerConfig {
     #[serde(default = "default_yes")]
@@ -213,7 +213,7 @@ pub struct IndexerConfig {
     pub hosts: Vec<String>,
 }
 
-/// `<vulnerability-detection>` block (src/config/wmodules-vulnerability-detection.c)
+/// `<vulnerability-detection>` block
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VulnerabilityDetectionConfig {
     #[serde(default = "default_yes")]
@@ -225,7 +225,7 @@ pub struct VulnerabilityDetectionConfig {
 }
 
 
-/// `<client>` block in ossec.conf
+/// `<client>` block in agent.conf
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ClientConfig {
     #[serde(default)]
@@ -423,10 +423,10 @@ fn default_frequency() -> u64 {
     43200
 }
 
-impl OssecConfig {
+impl AgentXmlConfig {
     /// Parse from an XML string
     pub fn from_xml_str(xml: &str) -> Result<Self, String> {
-        quick_xml::de::from_str(xml).map_err(|e| format!("Failed to parse ossec.conf XML: {}", e))
+        quick_xml::de::from_str(xml).map_err(|e| format!("Failed to parse agent XML config: {}", e))
     }
 
     /// Load from a file path
@@ -445,7 +445,8 @@ impl OssecConfig {
                     return if addr.starts_with("http") {
                         addr.clone()
                     } else {
-                        format!("http://{}:{}", addr, port)
+                        let proto = if port == 8443 || port == 443 { "https" } else { "http" };
+                        format!("{}://{}:{}", proto, addr, port)
                     };
                 }
             }
@@ -454,21 +455,20 @@ impl OssecConfig {
                 return if addr.starts_with("http") {
                     addr.clone()
                 } else {
-                    format!("http://{}:{}", addr, port)
+                    let proto = if port == 8443 || port == 443 { "https" } else { "http" };
+                    format!("{}://{}:{}", proto, addr, port)
                 };
             }
         }
         "http://127.0.0.1:8088".to_string()
     }
 
-    /// Helper to find standard ossec.conf locations across operating systems
+    /// Helper to find standard agent.conf locations across operating systems
     pub fn find_and_load() -> Self {
         let candidates = [
-            PathBuf::from("ossec.conf"),
-            PathBuf::from("/var/ossec/etc/ossec.conf"),
-            PathBuf::from("/etc/wazuh-agent/ossec.conf"),
-            PathBuf::from(r"C:\Program Files (x86)\ossec-agent\ossec.conf"),
-            PathBuf::from(r"C:\Program Files\ossec-agent\ossec.conf"),
+            PathBuf::from("agent.conf"),
+            PathBuf::from("/opt/provigil-agent/etc/agent.conf"),
+            PathBuf::from("/etc/provigil-agent/agent.conf"),
         ];
 
         for path in &candidates {
@@ -516,9 +516,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_sample_ossec_conf() {
+    fn test_parse_sample_agent_conf() {
         let xml = r#"
-<ossec_config>
+<agent_config>
   <client>
     <server>
       <address>192.168.1.100</address>
@@ -563,10 +563,10 @@ mod tests {
     <location>local</location>
     <timeout>600</timeout>
   </active-response>
-</ossec_config>
+</agent_config>
         "#;
 
-        let config = OssecConfig::from_xml_str(xml).expect("Failed to parse XML");
+        let config = AgentXmlConfig::from_xml_str(xml).expect("Failed to parse XML");
         assert_eq!(config.get_manager_address(), "http://192.168.1.100:8088");
         assert!(config.client.is_some());
         assert_eq!(config.client.as_ref().unwrap().crypto_method.as_deref(), Some("aes"));
@@ -581,9 +581,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_full_manager_ossec_conf() {
+    fn test_parse_full_manager_agent_conf() {
         let xml = r#"
-<ossec_config>
+<agent_config>
   <global>
     <jsonout_output>yes</jsonout_output>
     <alerts_log>yes</alerts_log>
@@ -591,7 +591,7 @@ mod tests {
     <logall_json>no</logall_json>
     <email_notification>no</email_notification>
     <smtp_server>127.0.0.1</smtp_server>
-    <email_from>ossecm@localhost</email_from>
+    <email_from>alerts@localhost</email_from>
   </global>
 
   <alerts>
@@ -629,7 +629,7 @@ mod tests {
   </syslog_output>
 
   <cluster>
-    <name>wazuh-cluster</name>
+    <name>provigil-cluster</name>
     <node_name>node01</node_name>
     <node_type>master</node_type>
     <key>9876543210abcdef9876543210abcdef</key>
@@ -637,10 +637,10 @@ mod tests {
     <bind_addr>0.0.0.0</bind_addr>
     <disabled>no</disabled>
   </cluster>
-</ossec_config>
+</agent_config>
         "#;
 
-        let config = OssecConfig::from_xml_str(xml).expect("Failed to parse Manager XML");
+        let config = AgentXmlConfig::from_xml_str(xml).expect("Failed to parse Manager XML");
         assert!(config.global.is_some());
         assert_eq!(config.global.as_ref().unwrap().jsonout_output.as_deref(), Some("yes"));
         assert!(config.alerts.is_some());

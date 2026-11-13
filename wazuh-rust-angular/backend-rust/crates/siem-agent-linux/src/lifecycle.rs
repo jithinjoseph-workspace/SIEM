@@ -41,29 +41,29 @@ impl LifecycleCoordinator {
             AgentLifecycleState::Active => {
                 let was_active = self.is_active.swap(true, Ordering::SeqCst);
                 if !was_active {
-                    info!("wazuh-agentd: [LIFECYCLE] Agent REACTIVATED by manager. Resuming all monitoring and event transmission.");
+                    info!("provigil-agentd: [LIFECYCLE] Agent REACTIVATED by manager. Resuming monitoring and event transmission.");
                 }
             }
             AgentLifecycleState::Dormant => {
                 let was_active = self.is_active.swap(false, Ordering::SeqCst);
                 if was_active {
-                    warn!("wazuh-agentd: [LIFECYCLE] Agent DEACTIVATED by manager. Pausing monitoring workers and event transmission.");
+                    warn!("provigil-agentd: [LIFECYCLE] Agent DEACTIVATED by manager. Pausing monitoring workers and event transmission.");
                 }
             }
             AgentLifecycleState::Decommissioned => {
                 self.is_active.store(false, Ordering::SeqCst);
                 self.is_terminated.store(true, Ordering::SeqCst);
-                warn!("wazuh-agentd: [LIFECYCLE] Agent DECOMMISSIONED by manager. Archiving keys and executing clean shutdown.");
+                warn!("provigil-agentd: [LIFECYCLE] Agent DECOMMISSIONED by manager. Archiving keys and shutting down.");
                 self.decommission_local();
             }
         }
     }
 
-    /// Archive client.keys, write decommission marker, and exit with status 42 (preventing systemd restart)
+    /// Archive client.keys, write decommission marker, and exit with status 42 (preventing systemd restart).
     fn decommission_local(&self) {
         let keys_candidates = [
-            std::path::PathBuf::from("/var/ossec/etc/client.keys"),
-            std::path::PathBuf::from("/etc/wazuh-agent/client.keys"),
+            std::path::PathBuf::from("/opt/provigil-agent/etc/client.keys"),
+            std::path::PathBuf::from("/etc/provigil-agent/client.keys"),
             std::path::PathBuf::from("client.keys"),
         ];
 
@@ -71,9 +71,9 @@ impl LifecycleCoordinator {
             if path.exists() {
                 let archived = path.with_extension("keys.deleted");
                 if let Err(e) = std::fs::rename(path, &archived) {
-                    warn!("wazuh-agentd: Failed to archive {}: {}", path.display(), e);
+                    warn!("provigil-agentd: Failed to archive {}: {}", path.display(), e);
                 } else {
-                    info!("wazuh-agentd: Archived identity {} -> {}", path.display(), archived.display());
+                    info!("provigil-agentd: Archived identity {} -> {}", path.display(), archived.display());
                 }
             }
             if let Some(parent) = path.parent() {
@@ -85,20 +85,19 @@ impl LifecycleCoordinator {
         }
         let _ = std::fs::write(".decommissioned", format!("agent_id={}\ndecommissioned_at={}\n", self.agent_id, chrono::Utc::now().to_rfc3339()));
 
-        // Clean termination sequence with exit code 42 (matching RestartPreventExitStatus=42)
         tokio::spawn(async {
             tokio::time::sleep(Duration::from_millis(500)).await;
             #[cfg(unix)]
             {
                 let _ = std::process::Command::new("systemctl")
-                    .args(["disable", "--now", "wazuh-rust-agent"])
+                    .args(["disable", "--now", "provigil-agent"])
                     .status();
             }
             std::process::exit(42);
         });
     }
 
-    /// Fetch latest state from manager
+    /// Fetch latest state from manager.
     pub async fn fetch_state(&self) -> Option<AgentLifecycleState> {
         let client = crate::enroll::http_builder()
             .timeout(Duration::from_secs(5))
@@ -115,7 +114,7 @@ impl LifecycleCoordinator {
         }
     }
 
-    /// Spawn background loop polling manager state every 15s
+    /// Spawn background loop polling manager state every 15s.
     pub fn spawn_poll_worker(self: Arc<Self>, poll_interval: Duration) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             loop {
@@ -131,13 +130,13 @@ impl LifecycleCoordinator {
     }
 }
 
-/// Checks if this endpoint was permanently decommissioned
+/// Checks if this endpoint was permanently decommissioned.
 pub fn is_decommissioned() -> bool {
     let markers = [
-        "/var/ossec/etc/.decommissioned",
-        "/var/ossec/etc/client.keys.deleted",
-        "/etc/wazuh-agent/.decommissioned",
-        "/etc/wazuh-agent/client.keys.deleted",
+        "/opt/provigil-agent/etc/.decommissioned",
+        "/opt/provigil-agent/etc/client.keys.deleted",
+        "/etc/provigil-agent/.decommissioned",
+        "/etc/provigil-agent/client.keys.deleted",
         ".decommissioned",
         "client.keys.deleted",
     ];

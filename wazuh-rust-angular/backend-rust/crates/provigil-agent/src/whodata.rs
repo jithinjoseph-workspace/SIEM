@@ -139,16 +139,19 @@ impl Correlator {
 #[cfg(windows)]
 pub use win::{has_audit_entry, spawn, start, Session};
 
-/// Who-data needs Windows.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub use linux::{spawn, start, Session};
+
+/// Who-data correlates audit events with FIM changes on Windows and Linux.
+#[cfg(not(any(windows, target_os = "linux")))]
 pub struct Session;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn start(_folders: &[PathBuf], _data_dir: &Path) -> Result<Session, String> {
-    Err("who-data needs Windows".into())
+    Err("who-data is unsupported on this OS".into())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn spawn(
     _session: Session,
     _fim: std::sync::Arc<std::sync::Mutex<crate::fim::FimScanner>>,
@@ -157,6 +160,299 @@ pub fn spawn(
     _running: fn() -> bool,
 ) -> Option<std::thread::JoinHandle<()>> {
     None
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(crate) struct AuditPending {
+    user_id: String,
+    process_name: String,
+    process_id: u32,
+    cwd: Option<String>,
+    paths: Vec<(String, String)>, // (name, nametype)
+    seen: Instant,
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(crate) struct LinuxAuditCorrelator {
+    roots: Vec<PathBuf>,
+    users: HashMap<String, String>,
+    pending: HashMap<String, AuditPending>,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl LinuxAuditCorrelator {
+    pub fn new(roots: &[PathBuf], passwd_content: &str) -> Self {
+        let mut users = HashMap::new();
+        for line in passwd_content.lines() {
+            let mut cols = line.split(':');
+            if let (Some(name), Some(_), Some(uid)) = (cols.next(), cols.next(), cols.next()) {
+                users.entry(uid.to_string()).or_insert_with(|| name.to_string());
+            }
+        }
+        Self { roots: roots.to_vec(), users, pending: HashMap::new() }
+    }
+
+    fn watched(&self, p: &Path) -> bool {
+        self.roots.iter().any(|r| p.starts_with(r))
+    }
+
+    fn audit_key(line: &str) -> Option<&str> {
+        let start = line.find("msg=audit(")? + "msg=audit(".len();
+        let end = line[start..].find("):")?;
+        Some(&line[start..start + end])
+    }
+
+    fn decode_audit_val(raw: &str) -> String {
+        let trimmed = raw.trim_matches('"');
+        if trimmed.len() >= 2 && trimmed.len() % 2 == 0 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) && !trimmed.starts_with('/') {
+            let mut bytes = Vec::with_capacity(trimmed.len() / 2);
+            for i in (0..trimmed.len()).step_by(2) {
+                if let Ok(b) = u8::from_str_radix(&trimmed[i..i + 2], 16) {
+                    bytes.push(b);
+                }
+            }
+            if !bytes.is_empty() && bytes.iter().all(|&b| b >= 0x20 || b == 0) {
+                return String::from_utf8_lossy(&bytes).trim_end_matches('\0').to_string();
+            }
+        }
+        trimmed.to_string()
+    }
+
+    fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+        let needle = format!("{key}=");
+        let idx = line.find(&needle)?;
+        if idx > 0 && !line.as_bytes()[idx - 1].is_ascii_whitespace() {
+            return None;
+        }
+        let rest = &line[idx + needle.len()..];
+        if let Some(q) = rest.strip_prefix('"') {
+            let end = q.find('"')?;
+            Some(&q[..end])
+        } else {
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            Some(&rest[..end])
+        }
+    }
+
+    pub fn feed_line(&mut self, line: &str, now: Instant) -> Vec<(PathBuf, Who)> {
+        let Some(key) = Self::audit_key(line) else { return Vec::new() };
+        if line.starts_with("type=SYSCALL ") {
+            let auid = Self::field(line, "auid").filter(|v| *v != "4294967295" && *v != "-1");
+            let uid = auid.or_else(|| Self::field(line, "uid")).unwrap_or("0").to_string();
+            let pid = Self::field(line, "pid").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+            let exe = Self::field(line, "exe")
+                .or_else(|| Self::field(line, "comm"))
+                .map(Self::decode_audit_val)
+                .unwrap_or_default();
+            self.pending.insert(
+                key.to_string(),
+                AuditPending {
+                    user_id: uid,
+                    process_name: exe,
+                    process_id: pid,
+                    cwd: None,
+                    paths: Vec::new(),
+                    seen: now,
+                },
+            );
+            return Vec::new();
+        }
+        if line.starts_with("type=CWD ") {
+            if let (Some(p), Some(cwd)) = (self.pending.get_mut(key), Self::field(line, "cwd")) {
+                p.cwd = Some(Self::decode_audit_val(cwd));
+            }
+            return Vec::new();
+        }
+        if line.starts_with("type=PATH ") {
+            if let (Some(p), Some(name)) = (self.pending.get_mut(key), Self::field(line, "name")) {
+                let nametype = Self::field(line, "nametype").unwrap_or("NORMAL").to_string();
+                let decoded = Self::decode_audit_val(name);
+                if decoded != "(null)" {
+                    p.paths.push((decoded, nametype));
+                }
+            }
+            return Vec::new();
+        }
+        if line.starts_with("type=EOE") {
+            let Some(entry) = self.pending.remove(key) else { return Vec::new() };
+            return self.finalize(entry);
+        }
+        Vec::new()
+    }
+
+    fn finalize(&self, entry: AuditPending) -> Vec<(PathBuf, Who)> {
+        let user_name = self.users.get(&entry.user_id).cloned().unwrap_or_else(|| entry.user_id.clone());
+        let cwd = entry.cwd.as_deref().map(Path::new);
+        let mut out = Vec::new();
+        for (raw_path, nametype) in entry.paths {
+            if nametype == "PARENT" {
+                continue;
+            }
+            let p = Path::new(&raw_path);
+            let abs = if p.is_absolute() {
+                p.to_path_buf()
+            } else if let Some(c) = cwd {
+                c.join(p)
+            } else {
+                p.to_path_buf()
+            };
+            if self.watched(&abs) {
+                let access_mask = match nametype.as_str() {
+                    "DELETE" => 0x0001_0000, // DELETE
+                    "CREATE" | "NORMAL" => 0x2, // WRITE
+                    _ => 0x2,
+                };
+                out.push((
+                    abs,
+                    Who {
+                        user_name: user_name.clone(),
+                        user_id: entry.user_id.clone(),
+                        process_name: entry.process_name.clone(),
+                        process_id: entry.process_id,
+                        access_mask,
+                    },
+                ));
+            }
+        }
+        out
+    }
+
+    pub fn flush_expired(&mut self, now: Instant, max_age: Duration) -> Vec<(PathBuf, Who)> {
+        let stale: Vec<String> = self
+            .pending
+            .iter()
+            .filter(|(_, p)| now.duration_since(p.seen) >= max_age)
+            .map(|(k, _)| k.clone())
+            .collect();
+        let mut out = Vec::new();
+        for k in stale {
+            if let Some(entry) = self.pending.remove(&k) {
+                out.extend(self.finalize(entry));
+            }
+        }
+        out
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    use std::os::unix::fs::MetadataExt;
+    use std::process::Command;
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+    use tracing::{info, warn};
+
+    const AUDIT_LOG: &str = "/var/log/audit/audit.log";
+    const AUDIT_KEY: &str = "provigil_fim";
+
+    pub struct Session {
+        correlator: LinuxAuditCorrelator,
+        rules_installed: bool,
+    }
+
+    impl Drop for Session {
+        fn drop(&mut self) {
+            if self.rules_installed {
+                let _ = Command::new("auditctl").args(["-D", "-k", AUDIT_KEY]).output();
+            }
+        }
+    }
+
+    pub fn start(folders: &[PathBuf], _data_dir: &Path) -> Result<Session, String> {
+        if folders.is_empty() {
+            return Err("no whodata folders configured".into());
+        }
+        if !Path::new(AUDIT_LOG).is_file() {
+            return Err(format!("{AUDIT_LOG} not found (auditd unavailable)"));
+        }
+        File::open(AUDIT_LOG).map_err(|e| format!("{AUDIT_LOG}: {e}"))?;
+
+        let mut rules_installed = false;
+        let _ = Command::new("auditctl").args(["-D", "-k", AUDIT_KEY]).output();
+        for dir in folders {
+            if dir.is_dir() {
+                if let Ok(out) = Command::new("auditctl")
+                    .args(["-w", &dir.to_string_lossy(), "-p", "wa", "-k", AUDIT_KEY])
+                    .output()
+                {
+                    if out.status.success() {
+                        rules_installed = true;
+                    }
+                }
+            }
+        }
+        let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+        info!(folders = folders.len(), rules_installed, "Linux auditd who-data session initialized");
+        Ok(Session {
+            correlator: LinuxAuditCorrelator::new(folders, &passwd),
+            rules_installed,
+        })
+    }
+
+    pub fn spawn(
+        mut session: Session,
+        fim: Arc<Mutex<crate::fim::FimScanner>>,
+        buffer: Arc<crate::buffer::EventBuffer>,
+        agent: (String, String),
+        running: fn() -> bool,
+    ) -> Option<JoinHandle<()>> {
+        crate::thread("whodata auditd".into(), move || {
+            let mut offset = std::fs::metadata(AUDIT_LOG).map(|m| m.len()).unwrap_or(0);
+            let mut inode = std::fs::metadata(AUDIT_LOG).map(|m| m.ino()).unwrap_or(0);
+            while running() {
+                if let Ok(meta) = std::fs::metadata(AUDIT_LOG) {
+                    if meta.ino() != inode || meta.len() < offset {
+                        inode = meta.ino();
+                        offset = 0;
+                    }
+                    if meta.len() > offset {
+                        if let Ok(mut f) = File::open(AUDIT_LOG) {
+                            if f.seek(SeekFrom::Start(offset)).is_ok() {
+                                let mut reader = BufReader::new(f);
+                                let mut line = String::new();
+                                let now = Instant::now();
+                                while let Ok(n) = reader.read_line(&mut line) {
+                                    if n == 0 {
+                                        break;
+                                    }
+                                    offset += n as u64;
+                                    let hits = session.correlator.feed_line(line.trim_end(), now);
+                                    dispatch(&hits, &fim, &buffer, &agent);
+                                    line.clear();
+                                }
+                            }
+                        }
+                    }
+                }
+                let expired = session.correlator.flush_expired(Instant::now(), Duration::from_secs(2));
+                if !expired.is_empty() {
+                    dispatch(&expired, &fim, &buffer, &agent);
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            drop(session);
+        })
+        .map_err(|e| warn!(error = %e, "Linux who-data thread not started"))
+        .ok()
+    }
+
+    fn dispatch(
+        hits: &[(PathBuf, Who)],
+        fim: &Arc<Mutex<crate::fim::FimScanner>>,
+        buffer: &Arc<crate::buffer::EventBuffer>,
+        agent: &(String, String),
+    ) {
+        for (path, who) in hits {
+            let events = {
+                let mut f = fim.lock().unwrap_or_else(|e| e.into_inner());
+                f.recheck(path, true, Some(who), &agent.0, &agent.1)
+            };
+            events.into_iter().for_each(|e| buffer.push(e));
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -666,5 +962,30 @@ mod tests {
         assert!(!has_audit_entry(&root), "audit entry left on the folder");
         assert_eq!(policy(), before, "audit policy not restored");
         assert!(!dir.path().join("data").join("audit_policy_backup.csv").exists());
+    }
+
+    #[test]
+    fn linux_audit_correlates_syscall_cwd_and_path() {
+        let mut c = LinuxAuditCorrelator::new(
+            &[PathBuf::from("/etc/ssh")],
+            "root:x:0:0::/root:/bin/bash\nalice:x:1000:1000::/home/alice:/bin/bash\n",
+        );
+        let t = Instant::now();
+        let l1 = r#"type=SYSCALL msg=audit(1700000000.123:42): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=55555 a2=241 a3=1a4 items=2 ppid=900 pid=4567 auid=1000 uid=0 gid=0 euid=0 comm="vim" exe="/usr/bin/vim" key="provigil_fim""#;
+        let l2 = r#"type=CWD msg=audit(1700000000.123:42): cwd="/etc/ssh""#;
+        let l3 = r#"type=PATH msg=audit(1700000000.123:42): item=0 name="/etc/ssh/" inode=10 dev=08:01 mode=040755 nametype=PARENT"#;
+        let l4 = r#"type=PATH msg=audit(1700000000.123:42): item=1 name="sshd_config" inode=20 dev=08:01 mode=0100644 nametype=NORMAL"#;
+        let l5 = r#"type=EOE msg=audit(1700000000.123:42): "#;
+        assert!(c.feed_line(l1, t).is_empty());
+        assert!(c.feed_line(l2, t).is_empty());
+        assert!(c.feed_line(l3, t).is_empty());
+        assert!(c.feed_line(l4, t).is_empty());
+        let out = c.feed_line(l5, t);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, PathBuf::from("/etc/ssh/sshd_config"));
+        assert_eq!(out[0].1.user_name, "alice");
+        assert_eq!(out[0].1.user_id, "1000");
+        assert_eq!(out[0].1.process_name, "/usr/bin/vim");
+        assert_eq!(out[0].1.process_id, 4567);
     }
 }

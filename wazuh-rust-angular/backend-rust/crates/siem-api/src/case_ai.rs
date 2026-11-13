@@ -124,7 +124,7 @@ pub fn ai_verdict(reply: &str) -> Option<Verdict> {
     (LABELS.contains(&v.label.as_str()) && v.confidence <= 100 && !v.summary.trim().is_empty()).then_some(v)
 }
 
-const SYSTEM: &str = "You are a Tier-2 SOC analyst investigating one SOAR case of a Wazuh-based SIEM. \
+const SYSTEM: &str = "You are a Tier-2 SOC analyst investigating one SOAR case in ProVigil SIEM. \
 Decide only from the evidence given; do not invent facts. Distinguish an attack that failed, an attack \
 that succeeded (for example a successful login after many failures), a known malicious source, and normal \
 activity (an ordinary user login). Answer with one JSON object and nothing else: \

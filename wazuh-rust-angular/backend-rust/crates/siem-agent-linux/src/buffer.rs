@@ -29,7 +29,7 @@ impl AgentBuffer {
                 .build()
                 .unwrap_or_default();
 
-            let endpoint = format!("{}/api/events/ingest", manager_url.trim_end_matches('/'));
+            let endpoint = format!("{}/api/v1/events/ingest", manager_url.trim_end_matches('/'));
             info!("AgentBuffer: Initialized with capacity {} and target endpoint '{}'", capacity, endpoint);
 
             let delay_between_flushes = Duration::from_millis(
@@ -68,7 +68,19 @@ impl AgentBuffer {
                     let to_send = std::mem::take(&mut batch);
                     let count = to_send.len();
 
-                    match client.post(&endpoint).header("x-agent-key", std::env::var("SIEM_AGENT_KEY").unwrap_or_default().trim()).json(&to_send).send().await {
+                    let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+                    let key_trim = key.trim();
+                    let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
+                    let mut req = client.post(&endpoint).json(&to_send);
+                    if !key_trim.is_empty() {
+                        req = req.header("x-agent-key", key_trim)
+                            .header("authorization", format!("Bearer {}", key_trim));
+                    }
+                    if !agent_id.trim().is_empty() {
+                        req = req.header("x-agent-id", agent_id.trim());
+                    }
+
+                    match req.send().await {
                         Ok(res) if res.status().is_success() => {
                             debug!("AgentBuffer: Dispatched {} events to Manager", count);
                         }
@@ -81,8 +93,13 @@ impl AgentBuffer {
                             }
                         }
                         Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
-                            warn!("AgentBuffer: Manager returned 404 NOT FOUND (agent deleted from registry). Executing decommission...");
-                            lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
+                            warn!("AgentBuffer: Manager returned 404 NOT FOUND. Checking agent lifecycle state...");
+                            if let Some(state) = lifecycle.fetch_state().await {
+                                if state == crate::lifecycle::AgentLifecycleState::Decommissioned {
+                                    warn!("AgentBuffer: Agent is confirmed deleted in registry. Executing decommission...");
+                                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
+                                }
+                            }
                         }
                         Ok(res) => {
                             warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());

@@ -14,6 +14,15 @@ pub fn load_config(path: &Path) -> Option<RiskFabricConfig> {
     None
 }
 
+pub fn save_config(path: &Path, cfg: &RiskFabricConfig) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(cfg) {
+        let _ = fs::write(path, json);
+    }
+}
+
 pub fn default_config() -> RiskFabricConfig {
     let processes = vec![
         BusinessProcessDefinition {
@@ -28,11 +37,6 @@ pub fn default_config() -> RiskFabricConfig {
                 "*swift*".into(),
                 "*pos*".into(),
                 "*checkout*".into(),
-                "*linux*".into(),
-                "linux-node-*".into(),
-                "019".into(),
-                "linux-node-8651".into(),
-                "127.0.0.1".into(),
                 "192.168.10.15".into(),
                 "srv-prod-ubuntu-01".into(),
             ],
@@ -66,10 +70,6 @@ pub fn default_config() -> RiskFabricConfig {
                 "*ldap*".into(),
                 "*vault*".into(),
                 "*kerberos*".into(),
-                "*win*".into(),
-                "win-node-*".into(),
-                "042".into(),
-                "win-node-7a5e".into(),
                 "192.168.1.*".into(),
             ],
             group_patterns: vec![

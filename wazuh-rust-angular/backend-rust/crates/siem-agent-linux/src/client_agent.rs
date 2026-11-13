@@ -15,7 +15,7 @@ pub struct AgentConfig {
     /// Raw agent key used for authentication (`X-Agent-Key`)
     #[serde(default)]
     pub agent_key: String,
-    /// Agent group sent at enrollment (`SIEM_AGENT_GROUP` / `WAZUH_AGENT_GROUP`).
+    /// Agent group sent at enrollment (`SIEM_AGENT_GROUP` / `PROVIGIL_AGENT_GROUP`).
     pub agent_group: String,
     /// Tenant agent key (`X-Tenant-Key`), see enroll.rs.
     pub tenant_key: Option<String>,
@@ -26,9 +26,9 @@ pub struct AgentConfig {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            manager_url: "http://127.0.0.1:8088".to_string(),
+            manager_url: "https://127.0.0.1:8443".to_string(),
             agent_id: String::new(),
-            agent_name: "wazuh-linux-node".to_string(),
+            agent_name: "provigil-linux-node".to_string(),
             agent_key: String::new(),
             agent_group: "default".to_string(),
             tenant_key: None,
@@ -43,16 +43,16 @@ pub struct ClientAgent {
 }
 
 impl ClientAgent {
-    /// Load agent configuration from environment, JSON configuration file, or defaults
+    /// Load agent configuration from environment, JSON configuration file, or defaults.
     pub fn load_config() -> AgentConfig {
         let mut cfg = AgentConfig::default();
         let mut name_from_keys = false;
         let mut config_json: Option<serde_json::Value> = None;
 
-        // 1. Check client.keys (official Wazuh key authentication format: ID NAME IP KEY)
+        // Check client.keys (ID NAME IP KEY)
         let client_keys_candidates = [
-            PathBuf::from("/var/ossec/etc/client.keys"),
-            PathBuf::from("/etc/wazuh-agent/client.keys"),
+            PathBuf::from("/opt/provigil-agent/etc/client.keys"),
+            PathBuf::from("/etc/provigil-agent/client.keys"),
             PathBuf::from("client.keys"),
         ];
 
@@ -68,26 +68,29 @@ impl ClientAgent {
             }
         }
 
-        // 2. Check official Wazuh ossec.conf XML configuration
-        let ossec_conf = crate::config_parser::OssecConfig::find_and_load();
-        let mut ossec_addr = ossec_conf.get_manager_address();
-        if ossec_addr.ends_with(":1514") {
-            ossec_addr = format!("{}:8088", &ossec_addr[..ossec_addr.len() - 5]);
+        // Check XML configuration if present
+        let xml_conf = crate::config_parser::AgentXmlConfig::find_and_load();
+        let mut xml_addr = xml_conf.get_manager_address();
+        if xml_addr.ends_with(":1514") {
+            xml_addr = format!("{}:8443", &xml_addr[..xml_addr.len() - 5]);
+            if !xml_addr.starts_with("https://") {
+                xml_addr = xml_addr.replace("http://", "https://");
+            }
         }
-        if ossec_addr != "http://127.0.0.1:8088" || ossec_conf.client.is_some() {
-            cfg.manager_url = ossec_addr;
-            info!("ClientAgent: Loaded manager address from ossec.conf: {}", cfg.manager_url);
+        if xml_addr != "http://127.0.0.1:8088" || xml_conf.client.is_some() {
+            cfg.manager_url = xml_addr;
+            info!("ClientAgent: Loaded manager address from agent.conf: {}", cfg.manager_url);
         }
-        if let Some(buf) = &ossec_conf.client_buffer {
+        if let Some(buf) = &xml_conf.client_buffer {
             cfg.buffer_capacity = buf.queue_size;
             cfg.events_per_second = buf.events_per_second;
         }
 
-        // 3. Check JSON configuration candidates
+        // Check JSON configuration candidates
         let config_candidates = [
             PathBuf::from("agent-config.json"),
-            PathBuf::from("/etc/wazuh-agent/agent-config.json"),
-            PathBuf::from("/var/ossec/etc/agent-config.json"),
+            PathBuf::from("/etc/provigil-agent/agent-config.json"),
+            PathBuf::from("/opt/provigil-agent/etc/agent-config.json"),
         ];
 
         for cand in &config_candidates {
@@ -119,33 +122,34 @@ impl ClientAgent {
             }
         }
 
-        // 4. Environment variable overrides (Supporting official Wazuh & SIEM environment variables)
-        // Check WAZUH_MANAGER / WAZUH_MANAGER_IP
-        if let Ok(manager) = std::env::var("WAZUH_MANAGER").or_else(|_| std::env::var("WAZUH_MANAGER_IP")) {
-            let port = std::env::var("WAZUH_MANAGER_PORT").unwrap_or_else(|_| "8088".to_string());
+        // Environment variable overrides
+        if let Ok(manager) = std::env::var("PROVIGIL_MANAGER").or_else(|_| std::env::var("PROVIGIL_MANAGER_IP")) {
+            let port = std::env::var("PROVIGIL_MANAGER_PORT")
+                .or_else(|_| std::env::var("SIEM_MANAGER_PORT"))
+                .unwrap_or_else(|_| "8443".to_string());
+            let proto = if port == "8443" || port == "443" { "https" } else { "http" };
             cfg.manager_url = if manager.starts_with("http") {
                 manager
             } else {
-                format!("http://{}:{}", manager, port)
+                format!("{}://{}:{}", proto, manager, port)
             };
         } else if let Ok(url) = std::env::var("SIEM_MANAGER_URL") {
             cfg.manager_url = url;
         }
 
-        // Agent name: an enrolled agent keeps the name in client.keys; otherwise
-        // SIEM_AGENT_NAME / WAZUH_AGENT_NAME, the config file, or the host name.
+        // Enrolled agent keeps name in client.keys; otherwise env var, config file, or hostname.
         if !name_from_keys {
-            if let Ok(name) = std::env::var("SIEM_AGENT_NAME").or_else(|_| std::env::var("WAZUH_AGENT_NAME")) {
+            if let Ok(name) = std::env::var("SIEM_AGENT_NAME").or_else(|_| std::env::var("PROVIGIL_AGENT_NAME")) {
                 if !name.trim().is_empty() {
                     cfg.agent_name = name.trim().to_string();
                 }
-            } else if cfg.agent_name == "wazuh-linux-node" {
+            } else if cfg.agent_name == "provigil-linux-node" {
                 if let Some(h) = Self::host_name() {
                     cfg.agent_name = h;
                 }
             }
         }
-        if let Ok(g) = std::env::var("SIEM_AGENT_GROUP").or_else(|_| std::env::var("WAZUH_AGENT_GROUP")) {
+        if let Ok(g) = std::env::var("SIEM_AGENT_GROUP").or_else(|_| std::env::var("PROVIGIL_AGENT_GROUP")) {
             if !g.trim().is_empty() {
                 cfg.agent_group = g.trim().to_string();
             }
@@ -248,9 +252,9 @@ impl ClientAgent {
         "127.0.0.1".to_string()
     }
 
-    /// Write runtime state to /var/ossec/var/run/wazuh-agentd.state (mirroring Wazuh state.c)
+    /// Write runtime state to /opt/provigil-agent/var/run/provigil-agent.state
     pub fn write_state_file(agent_id: &str, agent_name: &str, manager_url: &str, status: &str) {
-        let state_dir = Path::new("/var/ossec/var/run");
+        let state_dir = Path::new("/opt/provigil-agent/var/run");
         let fallback_dir = Path::new("./run");
         let target_dir = if state_dir.exists() || std::fs::create_dir_all(state_dir).is_ok() {
             state_dir
@@ -261,10 +265,10 @@ impl ClientAgent {
 
         let now = chrono::Utc::now().to_rfc3339();
         let state_content = format!(
-            "# Wazuh Agent State File (1:1 state.c)\n\
+            "# ProVigil Agent Runtime State\n\
             status='{}'\n\
             last_keepalive='{}'\n\
-            version='4.14.7'\n\
+            version='1.0.0'\n\
             agent_id='{}'\n\
             agent_name='{}'\n\
             manager_url='{}'\n\
@@ -272,7 +276,7 @@ impl ClientAgent {
             status, now, agent_id, agent_name, manager_url
         );
 
-        let state_file = target_dir.join("wazuh-agentd.state");
+        let state_file = target_dir.join("provigil-agent.state");
         let _ = std::fs::write(state_file, state_content);
     }
 
@@ -281,7 +285,7 @@ impl ClientAgent {
         let distro = Self::detect_linux_distro();
         let agent_ip = Self::detect_agent_ip(&self.config.manager_url);
         let reg_msg = format!(
-            "wazuh-agentd[{}]: Linux Agent registered on host '{}' ({} - IP: {}). Communication active with manager at {}",
+            "provigil-agentd[{}]: Linux Agent registered on host '{}' ({} - IP: {}). Connected to manager at {}",
             self.config.agent_id, self.config.agent_name, distro, agent_ip, self.config.manager_url
         );
 
@@ -294,17 +298,67 @@ impl ClientAgent {
 
         reg_event.metadata.insert("status".into(), "active".into());
         reg_event.metadata.insert("hostname".into(), self.config.agent_name.clone());
-        reg_event.metadata.insert("ip".into(), agent_ip);
+        reg_event.metadata.insert("ip".into(), agent_ip.clone());
         reg_event.metadata.insert("os_type".into(), "linux".into());
         reg_event.metadata.insert("distribution".into(), distro);
-        reg_event.metadata.insert("version".into(), "4.14.7".into());
+        reg_event.metadata.insert("version".into(), "1.0.0".into());
 
         buffer.push(reg_event).await;
+        let _ = Self::send_keepalive_http(&self.config.manager_url, &self.config.agent_id, &self.config.agent_name, &agent_ip).await;
         Self::write_state_file(&self.config.agent_id, &self.config.agent_name, &self.config.manager_url, "active");
-        info!("ClientAgent: Registered agent '{}' with SIEM Manager and wrote wazuh-agentd.state", self.config.agent_id);
+        info!("ClientAgent: Registered agent '{}' with manager and wrote provigil-agent.state", self.config.agent_id);
     }
 
-    /// Spawn periodic keepalive heartbeat worker (mirroring Wazuh agentd keepalive notify.c & state.c)
+    /// Send direct HTTP keepalive heartbeat to manager / gateway (`POST /api/v1/agents/{id}/keepalive`)
+    /// Returns `(Some(status_code), returned_commands)`.
+    pub async fn send_keepalive_http(manager_url: &str, agent_id: &str, agent_name: &str, agent_ip: &str) -> (Option<u16>, Vec<serde_json::Value>) {
+        let client = crate::enroll::http_builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
+        let endpoint = format!("{}/api/v1/agents/{}/keepalive", manager_url.trim_end_matches('/'), agent_id);
+        let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+        let payload = serde_json::json!({
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "status": "active",
+            "agent_ip": agent_ip,
+            "version": "1.0.0",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        let mut req = client.post(&endpoint).json(&payload);
+        if !agent_id.trim().is_empty() {
+            req = req.header("x-agent-id", agent_id.trim());
+        }
+        let key_trim = key.trim();
+        if !key_trim.is_empty() {
+            req = req.header("x-agent-key", key_trim)
+                .header("authorization", format!("Bearer {}", key_trim));
+        }
+        match req.send().await {
+            Ok(res) if res.status().is_success() => {
+                let code = res.status().as_u16();
+                let body: serde_json::Value = res.json().await.unwrap_or_default();
+                let cmds = body
+                    .get("commands")
+                    .and_then(|c| c.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                (Some(code), cmds)
+            }
+            Ok(res) => {
+                let code = res.status().as_u16();
+                tracing::warn!("ClientAgent: Keepalive {} returned HTTP {}", endpoint, res.status());
+                (Some(code), Vec::new())
+            }
+            Err(err) => {
+                tracing::warn!("ClientAgent: Keepalive {} failed: {}", endpoint, err);
+                (None, Vec::new())
+            }
+        }
+    }
+
+    /// Spawn periodic keepalive heartbeat worker.
     pub fn spawn_keepalive_worker(
         agent_id: String,
         agent_name: String,
@@ -314,20 +368,45 @@ impl ClientAgent {
         interval: Duration,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
+            let handler = crate::execd::LinuxActiveResponseHandler::new(agent_id.clone());
+            let mut was_dormant = false;
             loop {
-                tokio::time::sleep(interval).await;
+                if !lifecycle.is_active() {
+                    was_dormant = true;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    if lifecycle.is_terminated() {
+                        break;
+                    }
+                    continue;
+                }
+                if !was_dormant {
+                    tokio::time::sleep(interval).await;
+                }
+                was_dormant = false;
                 if lifecycle.is_terminated() {
                     break;
                 }
                 if !lifecycle.is_active() {
+                    was_dormant = true;
                     continue;
                 }
                 let agent_ip = Self::detect_agent_ip(&manager_url);
+                let (status_code, cmds) = Self::send_keepalive_http(&manager_url, &agent_id, &agent_name, &agent_ip).await;
+                if matches!(status_code, Some(404 | 410)) {
+                    if let Some(st) = lifecycle.fetch_state().await {
+                        lifecycle.set_state(st);
+                    }
+                    continue;
+                }
+                if !cmds.is_empty() {
+                    crate::execd::dispatch_commands(&cmds, &agent_id, &handler, &buffer, &lifecycle).await;
+                }
+
                 let mut keepalive_event = RawEvent::new(
                     &agent_id,
                     EventSource::Syslog,
                     "agent/heartbeat",
-                    format!("wazuh-agentd[{}]: Keepalive heartbeat from '{}'", agent_id, agent_name),
+                    format!("provigil-agentd[{}]: Keepalive heartbeat from '{}'", agent_id, agent_name),
                 );
                 keepalive_event.metadata.insert("status".into(), "active".into());
                 keepalive_event.metadata.insert("hostname".into(), agent_name.clone());

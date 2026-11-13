@@ -247,6 +247,7 @@ impl Scanner {
             vs!(log, Debug2, "No database compressed file found at '{PREBUILT_FEED_PATH}'. Skipping decompression.");
         }
 
+        FeedDb::recover(&p("queue/vd/feed"));
         let mut feed = FeedDb::open(home, &p("queue/vd/feed"))?;
         if let Err(e) = feed.load_maps(cfg.translation_lru_size) {
             let _ = std::fs::remove_dir_all(p(UPDATER_DIR));
@@ -317,11 +318,33 @@ impl Scanner {
         Arc::new(move |msg: &str| {
             vs!(log, Info, "Initiating update feed process.");
             let Some(core) = slot.wait(&stop) else { return (0, String::new(), false) };
-            let mut c = core.lock().unwrap();
-            c.feed.take_changes();
-            let r = serde_json::from_str::<Value>(msg)
-                .map_err(|e| format!("JSON parse error: {e}"))
-                .and_then(|m| c.feed.apply_message(&m, stop.flag(), &log));
+            let m = match serde_json::from_str::<Value>(msg) {
+                Ok(m) => m,
+                Err(e) => {
+                    vs!(log, Error, "Error updating feed: JSON parse error: {e}.");
+                    return (0, String::new(), false);
+                }
+            };
+            let (mut c, r) = if FeedDb::is_full_rebuild(&m) {
+                // a full rebuild is built beside the feed without holding the core, so scans go
+                // on; it is switched in at once when complete, and a stopped or failed one leaves
+                // the current feed as it was
+                vs!(log, Info, "Building the full feed beside the current one; scans continue meanwhile.");
+                let (home, dir) = core.lock().unwrap().feed.location();
+                match crate::feed::build_full(&home, &dir, &m, stop.flag(), &log) {
+                    Ok((built, r)) => {
+                        let mut c = core.lock().unwrap();
+                        let switched = c.feed.switch_to(built).map(|_| r);
+                        (c, switched)
+                    }
+                    Err(e) => (core.lock().unwrap(), Err(e)),
+                }
+            } else {
+                let c = core.lock().unwrap();
+                c.feed.take_changes();
+                let r = c.feed.apply_message(&m, stop.flag(), &log);
+                (c, r)
+            };
             let (offset, hash, ok) = match r {
                 Ok(x) => x,
                 Err(e) => {

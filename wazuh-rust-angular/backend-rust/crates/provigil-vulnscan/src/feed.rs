@@ -28,6 +28,32 @@ pub const KEY_CNA_MAPPING: &str = "CNA-MAPPING-GLOBAL";
 
 type R<T> = Result<T, String>;
 
+/// Where a full rebuild is built (`<feed dir>.new`).
+pub fn staging_dir(dir: &Path) -> PathBuf {
+    let mut s = dir.as_os_str().to_owned();
+    s.push(".new");
+    s.into()
+}
+
+/// Builds a full rebuild (a snapshot message) into a fresh store beside the feed at `dir`,
+/// leaving the feed itself alone so scans go on. The finished store and the message result, or
+/// an error with the half-built store removed (also when `stop` cut it short).
+pub fn build_full(home: &Path, dir: &Path, msg: &Value, stop: &AtomicBool, log: &Log) -> R<(FeedDb, (i64, String, bool))> {
+    let staging = staging_dir(dir);
+    let _ = std::fs::remove_dir_all(&staging);
+    let built = FeedDb::open(home, &staging).and_then(|db| {
+        let r = db.apply_message(msg, stop, log)?;
+        if stop.load(Ordering::Relaxed) {
+            return Err("stopped before the rebuild was complete; the current feed is kept".into());
+        }
+        Ok((db, r))
+    });
+    if built.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    built
+}
+
 /// Compact JSON, zlib-compressed (fast level) when longer than 64 bytes.
 pub fn encode(text: &str) -> Vec<u8> {
     if text.len() <= 64 {
@@ -85,6 +111,8 @@ pub struct FeedDb {
     pub store: KvStore,
     pub maps: Maps,
     home: PathBuf,
+    /// The store's folder.
+    dir: PathBuf,
     /// Resources created, updated or deleted since the last `take_changes`.
     changed: AtomicUsize,
 }
@@ -98,7 +126,38 @@ enum Kind {
 
 impl FeedDb {
     pub fn open(home: &Path, dir: &Path) -> R<FeedDb> {
-        Ok(FeedDb { store: KvStore::open(dir)?, maps: Maps::default(), home: home.to_path_buf(), changed: AtomicUsize::new(0) })
+        Ok(FeedDb { store: KvStore::open(dir)?, maps: Maps::default(), home: home.to_path_buf(), dir: dir.to_path_buf(), changed: AtomicUsize::new(0) })
+    }
+
+    /// (home, folder) of this feed: what [`build_full`] needs.
+    pub fn location(&self) -> (PathBuf, PathBuf) {
+        (self.home.clone(), self.dir.clone())
+    }
+
+    /// Before the live feed opens: a switch cut short by a crash is undone, and a half-built
+    /// rebuild is removed.
+    pub fn recover(dir: &Path) {
+        let old = crate::kvstore::old_dir(dir);
+        if !dir.exists() && old.exists() {
+            let _ = std::fs::rename(&old, dir);
+        }
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(staging_dir(dir));
+    }
+
+    /// Whether a message is a full rebuild (a snapshot) rather than a list of changes.
+    pub fn is_full_rebuild(msg: &Value) -> bool {
+        msg.get("type").and_then(Value::as_str) == Some("raw")
+    }
+
+    /// Takes over a finished [`build_full`]: its files replace this feed's in one step.
+    pub fn switch_to(&mut self, built: FeedDb) -> R<()> {
+        let changed = built.take_changes();
+        // the built store closes before its folder moves
+        drop(built);
+        self.store.switch_to(&self.dir, &staging_dir(&self.dir))?;
+        self.changed.store(changed, Ordering::Relaxed);
+        Ok(())
     }
 
     fn ensure(&self, c: &str) -> R<()> {
@@ -913,5 +972,71 @@ mod tests {
     fn maps_missing() {
         let (_d, mut f) = db();
         assert_eq!(f.load_maps(10).unwrap_err(), "Couldn't find column family: 'vendor_map'");
+    }
+
+    /// A snapshot message with one line: the CNA mapping `{"tag":<tag>}`.
+    fn snapshot(d: &Path, tag: &str) -> Value {
+        let file = d.join(format!("snap-{tag}.json"));
+        std::fs::write(&file, format!("{{\"name\":\"{KEY_CNA_MAPPING}\",\"offset\":7,\"payload\":{{\"tag\":\"{tag}\"}}}}\n")).unwrap();
+        json!({"type": "raw", "offset": 0, "paths": [file.to_string_lossy()], "fileMetadata": {"hash": format!("h-{tag}")}})
+    }
+
+    fn tag(f: &FeedDb) -> Option<String> {
+        let v = f.store.get(COL_CNA_MAPPING, KEY_CNA_MAPPING.as_bytes()).ok()??;
+        serde_json::from_slice::<Value>(&v).ok()?["tag"].as_str().map(str::to_string)
+    }
+
+    #[test]
+    fn full_rebuild_is_built_beside_and_switched_in() {
+        let (d, mut f) = db();
+        let log = Log::null();
+        let stop = AtomicBool::new(false);
+        f.apply_message(&snapshot(d.path(), "old"), &stop, &log).unwrap();
+        assert_eq!(tag(&f).as_deref(), Some("old"));
+        let (home, dir) = f.location();
+
+        // built beside: the live feed still answers with the old content
+        let (built, r) = build_full(&home, &dir, &snapshot(d.path(), "new"), &stop, &log).unwrap();
+        assert_eq!(r, (7, "h-new".to_string(), true));
+        assert_eq!(tag(&f).as_deref(), Some("old"));
+        assert!(staging_dir(&dir).exists());
+
+        f.switch_to(built).unwrap();
+        assert_eq!(tag(&f).as_deref(), Some("new"));
+        assert_eq!(f.take_changes(), 1);
+        assert!(!staging_dir(&dir).exists() && !crate::kvstore::old_dir(&dir).exists());
+        // the switched store keeps working
+        f.apply_message(&snapshot(d.path(), "later"), &stop, &log).unwrap();
+        assert_eq!(tag(&f).as_deref(), Some("later"));
+    }
+
+    #[test]
+    fn stopped_rebuild_keeps_the_current_feed() {
+        let (d, f) = db();
+        let log = Log::null();
+        f.apply_message(&snapshot(d.path(), "old"), &AtomicBool::new(false), &log).unwrap();
+        let (home, dir) = f.location();
+        let e = build_full(&home, &dir, &snapshot(d.path(), "new"), &AtomicBool::new(true), &log).err().unwrap();
+        assert!(e.contains("current feed is kept"), "{e}");
+        assert_eq!(tag(&f).as_deref(), Some("old"));
+        assert!(!staging_dir(&dir).exists());
+    }
+
+    #[test]
+    fn a_switch_cut_short_is_recovered() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("feed");
+        let log = Log::null();
+        {
+            let f = FeedDb::open(d.path(), &dir).unwrap();
+            f.apply_message(&snapshot(d.path(), "old"), &AtomicBool::new(false), &log).unwrap();
+        }
+        // crash after the live folder was moved away, before the new one took its place
+        std::fs::rename(&dir, crate::kvstore::old_dir(&dir)).unwrap();
+        std::fs::create_dir_all(staging_dir(&dir)).unwrap();
+        FeedDb::recover(&dir);
+        let f = FeedDb::open(d.path(), &dir).unwrap();
+        assert_eq!(tag(&f).as_deref(), Some("old"));
+        assert!(!staging_dir(&dir).exists() && !crate::kvstore::old_dir(&dir).exists());
     }
 }

@@ -43,6 +43,13 @@ pub struct KvStore {
 
 pub type KvResult<T> = Result<T, String>;
 
+/// Where the replaced files go during [`KvStore::switch_to`] (`<dir>.old`).
+pub fn old_dir(dir: &Path) -> std::path::PathBuf {
+    let mut s = dir.as_os_str().to_owned();
+    s.push(".old");
+    s.into()
+}
+
 /// Read and write error texts.
 fn rd(e: rusqlite::Error) -> String {
     format!("Error getting data: {e}")
@@ -61,6 +68,11 @@ impl KvStore {
     }
 
     fn open_inner(dir: &Path) -> Result<KvStore, String> {
+        let (conn, columns) = Self::connect(dir)?;
+        Ok(KvStore { inner: Mutex::new(Inner { conn, columns, batch_writes: None }) })
+    }
+
+    fn connect(dir: &Path) -> Result<(Connection, BTreeSet<String>), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_CREATE
@@ -82,7 +94,32 @@ impl KvStore {
                 columns.insert(String::from_utf8_lossy(&bytes(r.get_ref(0).map_err(|e| e.to_string())?)).into_owned());
             }
         }
-        Ok(KvStore { inner: Mutex::new(Inner { conn, columns, batch_writes: None }) })
+        Ok((conn, columns))
+    }
+
+    /// Replaces this store's files at `live` with the finished store at `staged` (its own
+    /// connection already closed): the folders are swapped and this store reopens on the new
+    /// files. When a rename fails the old files are put back and reopened.
+    pub fn switch_to(&self, live: &Path, staged: &Path) -> KvResult<()> {
+        let mut g = self.inner.lock().unwrap();
+        if g.batch_writes.take().is_some() {
+            g.conn.execute_batch("COMMIT").map_err(wr)?;
+        }
+        // close the live files; an in-memory connection holds the place meanwhile
+        g.conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        let old = old_dir(live);
+        let _ = std::fs::remove_dir_all(&old);
+        let moved = std::fs::rename(live, &old).and_then(|_| {
+            std::fs::rename(staged, live).inspect_err(|_| {
+                let _ = std::fs::rename(&old, live);
+            })
+        });
+        let (conn, columns) = Self::connect(live)?;
+        g.conn = conn;
+        g.columns = columns;
+        moved.map_err(|e| format!("Couldn't switch to the new feed: {e}"))?;
+        let _ = std::fs::remove_dir_all(&old);
+        Ok(())
     }
 
     pub fn has_column(&self, c: &str) -> bool {

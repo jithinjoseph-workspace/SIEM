@@ -2866,13 +2866,13 @@ dependencies = [
  "local-ip-address",
  "provigil-agent",
  "provigil-agentdb",
+ "provigil-ipc",
  "quick-xml",
  "rcgen",
  "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "siem-ipc",
  "sysinfo",
  "tempfile",
  "tokio",
@@ -2998,6 +2998,7 @@ dependencies = [
  "hyper-util",
  "provigil-agent",
  "provigil-agent-server",
+ "provigil-ipc",
  "provigil-proto",
  "rcgen",
  "reqwest",
@@ -3005,7 +3006,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "siem-ipc",
  "socket2 0.5.10",
  "sysinfo",
  "tempfile",
@@ -3022,7 +3022,12 @@ dependencies = [
 name = "provigil-ipc"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "serde_json",
  "tempfile",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4117,6 +4122,7 @@ dependencies = [
  "provigil-agent-server",
  "provigil-common",
  "provigil-crypto",
+ "provigil-ipc",
  "provigil-posture",
  "provigil-regex",
  "quick-xml",
@@ -4143,7 +4149,6 @@ dependencies = [
  "siem-decision",
  "siem-engine",
  "siem-intent-engine",
- "siem-ipc",
  "siem-org-memory",
  "siem-parser-gen",
  "siem-predict",

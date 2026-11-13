@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use provigil_agent_server::{agent_config, agent_state, commands as cmd, engine, published};
 use serde_json::{json, Value};
-use siem_ipc::mq::queues;
+use provigil_ipc::queue::ids as queues;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -97,7 +97,7 @@ pub async fn state_worker(gw: Arc<Gw>, mut rx: mpsc::Receiver<Job>) {
                 agent_state::stopped(&id).await;
                 // what the engine's rule on a stopped agent reads
                 let message = format!("ossec: Agent stopped: '{name}->{ip}'.");
-                if let Some(d) = engine::source(&id, &name, &ip).and_then(|s| engine::datagram(gw.s.sender, &s, queues::LOCALFILE_MQ, "ossec", &message)) {
+                if let Some(d) = engine::source(&id, &name, &ip).and_then(|s| engine::datagram(gw.s.sender, &s, queues::LOCALFILE, "ossec", &message)) {
                     if let Err(e) = gw.engine.send(&gw.stats, &[d]).await {
                         warn!("agent {id}: \"agent stopped\" not sent to the engine: {e}");
                     }
@@ -201,16 +201,16 @@ fn kind_of(i: &Value) -> Option<&str> {
 fn engine_message(i: &Value) -> Option<(u8, String, String)> {
     let kind = kind_of(i);
     if matches!(kind, Some("fim" | "registry")) {
-        return Some((queues::SYSCHECK_MQ, "syscheck".into(), agent_state::syscheck_message(i)?));
+        return Some((queues::SYSCHECK, "syscheck".into(), agent_state::syscheck_message(i)?));
     }
     let q = match kind {
-        Some("windows_eventchannel") => queues::WIN_EVT_MQ,
-        Some("rootcheck") => queues::ROOTCHECK_MQ,
-        Some("sca") => queues::SCA_MQ,
-        _ => queues::LOCALFILE_MQ,
+        Some("windows_eventchannel") => queues::WIN_EVT,
+        Some("rootcheck") => queues::ROOTCHECK,
+        Some("sca") => queues::SCA,
+        _ => queues::LOCALFILE,
     };
     let mut text = ruleset_text(i["message"].as_str()?);
-    if q == queues::WIN_EVT_MQ {
+    if q == queues::WIN_EVT {
         text = fit_event_values(&text);
     }
     Some((q, i["location"].as_str().filter(|l| !l.is_empty())?.to_string(), text))

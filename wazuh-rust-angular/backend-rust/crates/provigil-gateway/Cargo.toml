@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 provigil-agent-server = { path = "../provigil-agent-server" }
 provigil-proto = { path = "../provigil-proto" }
-siem-ipc = { path = "../siem-ipc" }
+provigil-ipc = { path = "../provigil-ipc" }
 tokio = { version = "1.40", features = ["full"] }
 axum = "0.7"
 hyper = "1"

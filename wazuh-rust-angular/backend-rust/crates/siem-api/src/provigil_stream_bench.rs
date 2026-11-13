@@ -13,7 +13,7 @@ use std::io::Write;
 use std::time::Instant;
 
 use serde_json::{json, Value};
-use siem_ipc::platform_stream::{frame, ALERT, EVENT, HELLO};
+use provigil_ipc::platform_stream::{frame, ALERT, EVENT, HELLO};
 
 /// An analysisd archive line of a Windows event: logon (4624), failed logon (4625),
 /// process creation (4688) or Sysmon 1, as the eventchannel decoder writes them.
@@ -112,7 +112,7 @@ async fn stream_throughput() {
     let writer = std::thread::spawn(move || {
         if wal {
             // the whole path: spooled by a daemon's Stream, sent, stored, acknowledged
-            let mut s = siem_ipc::platform_stream::Stream::start(addr.to_string(), "t0k".into(), &dir, siem_ipc::platform_stream::SPOOL_MAX).unwrap();
+            let mut s = provigil_ipc::platform_stream::Stream::start(addr.to_string(), "t0k".into(), &dir, provigil_ipc::platform_stream::SPOOL_MAX).unwrap();
             let t = Instant::now();
             for (k, b) in queued {
                 s.send(k, &b);

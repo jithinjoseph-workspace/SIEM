@@ -21,7 +21,7 @@ use siem_core::{
     Agent, AgentAlertInfo, AgentStatus, Alert, DecodedFields, DecoderAlertInfo, EventSource,
     ManagerAlertInfo, MitreAttack, RawEvent, RuleAlertInfo,
 };
-use siem_ipc::wdbc::WdbQuery;
+use provigil_ipc::agentdb::DbQuery;
 use tracing::{info, warn};
 
 use crate::agent_commands::{self, table, table::CommandRow};
@@ -1148,16 +1148,16 @@ pub fn apply_mail_settings(s: &crate::mail_settings::MailSettings) {
     }
 }
 
-static WDB: std::sync::OnceLock<siem_ipc::wdbc::WdbcSocket> = std::sync::OnceLock::new();
+static WDB: std::sync::OnceLock<provigil_ipc::agentdb::DbSocket> = std::sync::OnceLock::new();
 
-pub(crate) fn wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
-    WDB.get_or_init(|| siem_ipc::wdbc::WdbcSocket::new(home().join("queue/db/wdb")))
+pub(crate) fn wdb() -> &'static provigil_ipc::agentdb::DbSocket {
+    WDB.get_or_init(|| provigil_ipc::agentdb::DbSocket::new(home().join("queue/db/wdb")))
 }
 
 /// The connection of removals: a mass removal queues here, not in front of enrollments.
-fn purge_wdb() -> &'static siem_ipc::wdbc::WdbcSocket {
-    static CONN: std::sync::OnceLock<siem_ipc::wdbc::WdbcSocket> = std::sync::OnceLock::new();
-    CONN.get_or_init(|| siem_ipc::wdbc::WdbcSocket::new(home().join("queue/db/wdb")))
+fn purge_wdb() -> &'static provigil_ipc::agentdb::DbSocket {
+    static CONN: std::sync::OnceLock<provigil_ipc::agentdb::DbSocket> = std::sync::OnceLock::new();
+    CONN.get_or_init(|| provigil_ipc::agentdb::DbSocket::new(home().join("queue/db/wdb")))
 }
 
 /// What authd does for a new key (`wdb_insert_agent` + `wdb_set_agent_groups_csv`):
@@ -1368,7 +1368,7 @@ async fn route_ar(msg: &str, origin: &str) -> Result<(), String> {
             return Ok(());
         }
     }
-    let s = siem_ipc::local::DatagramSender::connect(home().join("queue/alerts/ar"))
+    let s = provigil_ipc::aio::DatagramSender::connect(home().join("queue/alerts/ar"))
         .await
         .map_err(|e| format!("remoted active-response queue: {e}"))?;
     s.send(msg.as_bytes())
@@ -1378,7 +1378,7 @@ async fn route_ar(msg: &str, origin: &str) -> Result<(), String> {
 
 /// The responses the engine sends for ProVigil agents become their commands.
 async fn engine_responses(home: PathBuf) {
-    let rx = match siem_ipc::local::DatagramReceiver::bind(home.join(siem_ipc::mq::PROVIGIL_ARQUEUE)).await {
+    let rx = match provigil_ipc::aio::DatagramReceiver::bind(home.join(provigil_ipc::queue::AGENT_AR_QUEUE)).await {
         Ok(r) => r,
         Err(e) => {
             warn!("Engine responses cannot reach ProVigil agents: {e}");
@@ -1386,7 +1386,7 @@ async fn engine_responses(home: PathBuf) {
         }
     };
     loop {
-        match rx.recv(siem_ipc::OS_MAXSTR).await {
+        match rx.recv(provigil_ipc::MAX_MESSAGE).await {
             Ok(m) => {
                 let text = String::from_utf8_lossy(&m);
                 if let Err(e) = route_ar(text.trim_end_matches('\0'), "engine").await {
@@ -3134,7 +3134,7 @@ mod stream_bench;
 
 #[cfg(test)]
 mod stream_tests {
-    use siem_ipc::platform_stream::{frame, EVENT, HELLO};
+    use provigil_ipc::platform_stream::{frame, EVENT, HELLO};
     use std::io::{Read, Write};
 
     /// A daemon's connection: the lines (sequence, n), then the acknowledgements.
@@ -3189,7 +3189,7 @@ mod engine_responses_tests {
     use super::*;
     use siem_analysisd::daemon::{run, Analysis, Logger, StderrLogger};
     use siem_analysisd::daemon_config::AnalysisdConfig;
-    use siem_ipc::{framing, local::StreamListener};
+    use provigil_ipc::aio::{framing, StreamListener};
     use std::sync::Arc;
 
     const CONF: &str = r#"<ossec_config>
@@ -3217,7 +3217,7 @@ mod engine_responses_tests {
 
     /// provigil-db as the engine asks it about an agent: what siem-api's flush wrote for it.
     async fn agent_db(home: &Path) {
-        let l = StreamListener::bind(home.join(siem_ipc::wdbc::WDB_LOCAL_SOCK)).await.unwrap();
+        let l = StreamListener::bind(home.join(provigil_ipc::agentdb::DB_SOCKET)).await.unwrap();
         tokio::spawn(async move {
             while let Ok(mut s) = l.accept().await {
                 tokio::spawn(async move {
@@ -3267,7 +3267,7 @@ mod engine_responses_tests {
 
         let t = std::time::Instant::now();
         let sender = loop {
-            if let Ok(s) = siem_ipc::local::DatagramSender::connect(home.join(siem_ipc::mq::DEFAULTQUEUE)).await {
+            if let Ok(s) = provigil_ipc::aio::DatagramSender::connect(home.join(provigil_ipc::queue::EVENT_QUEUE)).await {
                 break s;
             }
             assert!(t.elapsed() < Duration::from_secs(30), "the engine did not start");

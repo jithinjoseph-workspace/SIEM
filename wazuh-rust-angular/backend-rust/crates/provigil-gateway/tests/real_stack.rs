@@ -15,7 +15,7 @@ use provigil_agent::transport::{ca_certs, Cert, Creds, GrpcLink, Link};
 use provigil_agent::wevt::build_payload;
 use provigil_agent_server::commands::{CommandRow, DEFAULT_TTL_MS};
 use serde_json::{json, Value};
-use siem_ipc::wdbc::{WdbQuery, WdbcSocket, WDB_LOCAL_SOCK};
+use provigil_ipc::agentdb::{DbQuery, DbSocket, DB_SOCKET};
 
 const SECRET: &str = "real-stack-secret";
 const TOKEN: &str = "real-stack-token";
@@ -89,7 +89,7 @@ impl Stack {
     }
 
     async fn wdb(&self, q: &str) -> Value {
-        let r = WdbcSocket::new(self.home.join(WDB_LOCAL_SOCK)).query(q).await.unwrap_or_default();
+        let r = DbSocket::new(self.home.join(DB_SOCKET)).query(q).await.unwrap_or_default();
         r.strip_prefix("ok ").and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default()
     }
 
@@ -242,7 +242,7 @@ async fn real_siem_api_engine_and_provigil_db() {
     println!("command round trip: ok");
 
     // an engine-triggered response for this ProVigil agent: siem-api queues it, the gateway hands it out
-    let ar = siem_ipc::local::DatagramSender::connect(home.join(siem_ipc::mq::PROVIGIL_ARQUEUE)).await.expect("siem-api reads the engine's responses");
+    let ar = provigil_ipc::aio::DatagramSender::connect(home.join(provigil_ipc::queue::AGENT_AR_QUEUE)).await.expect("siem-api reads the engine's responses");
     let msg = format!(r#"(local_source) [] NNS {id} {{"version":1,"origin":{{"name":"","module":"provigil-analysisd"}},"command":"firewall-drop600","parameters":{{"extra_args":[],"alert":{{"rule":{{"id":"100101"}}}}}}}}"#);
     let mut response = None;
     until("the engine's response at a keepalive", 40, async || {

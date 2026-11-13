@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::{Arc, RwLock};
 
 use provigil_agent_server::engine;
-use siem_ipc::local::DatagramSender;
+use provigil_ipc::aio::DatagramSender;
 use tracing::{error, warn};
 
 use crate::queue::now_ms;
@@ -38,7 +38,7 @@ impl EngineLink {
     /// Reads the engine's load every 500 ms until the process ends: its queues, and the datagrams
     /// of this gateway (`sender`) it read, so several gateways on one engine each see their own lag.
     pub async fn run(self: Arc<Self>, home: PathBuf, sender: u8, stats: Arc<Stats>) {
-        let (load_path, queue_path) = (home.join(engine::LOAD_SOCKET), home.join(siem_ipc::mq::DEFAULTQUEUE));
+        let (load_path, queue_path) = (home.join(engine::LOAD_SOCKET), home.join(provigil_ipc::queue::EVENT_QUEUE));
         let mut lag = engine::Lag::default();
         // the first check runs at once: agents connecting at start were refused for 500 ms
         let mut first = true;

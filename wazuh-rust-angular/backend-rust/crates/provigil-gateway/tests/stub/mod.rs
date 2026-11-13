@@ -15,8 +15,8 @@ use clickhouse::Client;
 use provigil_agent_server::keys;
 use serde::Serialize;
 use serde_json::{json, Value};
-use siem_ipc::local::{DatagramReceiver, StreamListener};
-use siem_ipc::framing;
+use provigil_ipc::aio::{DatagramReceiver, StreamListener};
+use provigil_ipc::aio::framing;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(clickhouse::Row, Serialize)]
@@ -90,7 +90,7 @@ impl Stub {
         for d in ["queue/sockets", "queue/db", "queue/alerts", "queue/router"] {
             std::fs::create_dir_all(home.join(d)).unwrap();
         }
-        let input = DatagramReceiver::bind(home.join(siem_ipc::mq::DEFAULTQUEUE)).await.unwrap();
+        let input = DatagramReceiver::bind(home.join(provigil_ipc::queue::EVENT_QUEUE)).await.unwrap();
         let me = self.clone();
         tokio::spawn(async move {
             while let Ok(m) = input.recv(70_000).await {

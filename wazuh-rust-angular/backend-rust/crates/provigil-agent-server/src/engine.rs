@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use siem_ipc::mq;
+use provigil_ipc::queue;
 
 /// Datagrams the engine may be behind, well inside its input channel and receive buffer.
 pub const LAG_MAX: u64 = 2_000;
@@ -14,7 +14,7 @@ pub const LOAD_EVERY: Duration = Duration::from_millis(500);
 pub const LOAD_TIMEOUT: Duration = Duration::from_secs(1);
 pub const LOAD_SOCKET: &str = "queue/sockets/analysis";
 /// The engine's largest message.
-pub const MAX_MESSAGE: usize = siem_ipc::OS_MAXSTR;
+pub const MAX_MESSAGE: usize = provigil_ipc::MAX_MESSAGE;
 
 /// The hand-off label of an agent: `[<id>] (<name>) <ip>`.
 pub fn source(agent_id: &str, name: &str, ip: &str) -> Option<String> {
@@ -26,11 +26,11 @@ pub fn source(agent_id: &str, name: &str, ip: &str) -> Option<String> {
 /// secure form, marked as coming from gateway `sender`. `None`: too long for the queue.
 pub fn datagram(sender: u8, source: &str, q: u8, location: &str, message: &str) -> Option<Vec<u8>> {
     let mut agent_msg = vec![q, b':'];
-    agent_msg.extend(mq::wstr_escape(location.as_bytes(), b'|', b':', 8193));
+    agent_msg.extend(queue::escape(location.as_bytes(), queue::LOCATION_ROOM));
     agent_msg.push(b':');
     agent_msg.extend_from_slice(message.as_bytes());
-    let mut m = mq::format_msg(&agent_msg, source, mq::queues::SECURE_MQ)?;
-    m.splice(0..0, [siem_ipc::platform_stream::FROM_GATEWAY, sender]);
+    let mut m = queue::message(&agent_msg, source, queue::ids::SECURE)?;
+    m.splice(0..0, [provigil_ipc::platform_stream::FROM_GATEWAY, sender]);
     Some(m)
 }
 
@@ -67,7 +67,7 @@ impl Lag {
 /// The engine's load: how full its fullest queue is (0 to 1) and the datagrams of gateway `sender`
 /// it read. Err(true): it took too long to answer. Err(false): it is not there.
 pub async fn load(path: &Path, sender: u8) -> Result<(f64, u64), bool> {
-    use siem_ipc::{framing, local::LocalStream};
+    use provigil_ipc::aio::{framing, LocalStream};
     let mut s = LocalStream::connect(path).await.map_err(|_| false)?;
     let asked = async {
         framing::send(&mut s, b"{\"command\":\"getload\"}").await.ok()?;
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn datagram_form() {
         let m = datagram(9, "[007] (pc) any", b'f', "Event:Channel", "hello").unwrap();
-        assert_eq!(m[..2], [siem_ipc::platform_stream::FROM_GATEWAY, 9]);
+        assert_eq!(m[..2], [provigil_ipc::platform_stream::FROM_GATEWAY, 9]);
         let t = String::from_utf8_lossy(&m[2..]);
         assert_eq!(t, "f:[007] (pc) any->Event|:Channel:hello");
         assert_eq!(source("x", "n", ""), None);
@@ -112,7 +112,7 @@ mod tests {
     /// answer, are told apart.
     #[tokio::test(flavor = "multi_thread")]
     async fn load_is_read_from_its_socket() {
-        use siem_ipc::{framing, local::StreamListener};
+        use provigil_ipc::aio::{framing, StreamListener};
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("analysis");
         let l = StreamListener::bind(&path).await.unwrap();

@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use siem_ipc::wdbc::{WdbQuery, WdbcSocket, WDBOUTPUT_SIZE, WDB_LOCAL_SOCK};
+use provigil_ipc::agentdb::{DbQuery, DbSocket, DB_SOCKET, MAX_ANSWER};
 use tracing::{info, warn};
 
 
@@ -32,10 +32,10 @@ use tracing::{info, warn};
 pub trait Host: Send + Sync + 'static {
     /// The manager's home (sockets).
     fn home(&self) -> PathBuf;
-    fn wdb(&self) -> &dyn WdbQuery;
+    fn wdb(&self) -> &dyn DbQuery;
     /// The connection of an agent's inventories: a full inventory does not hold up keepalive
     /// writes, and several connections take several agents' inventories at once.
-    fn inventory_wdb(&self, _agent_id: &str) -> &dyn WdbQuery {
+    fn inventory_wdb(&self, _agent_id: &str) -> &dyn DbQuery {
         self.wdb()
     }
     /// A command for the agent's next keepalive.
@@ -166,7 +166,7 @@ fn agent_key(id: &str) -> Option<String> {
     id.parse::<u32>().ok().map(|n| format!("{n:03}"))
 }
 
-async fn exec(wdb: &dyn WdbQuery, id: &str, sql: &str) -> bool {
+async fn exec(wdb: &dyn DbQuery, id: &str, sql: &str) -> bool {
     let ok = wdb.query(&format!("agent {id} sql {sql}")).await.is_ok_and(|r| r.starts_with("ok "));
     if !ok {
         warn!(
@@ -178,7 +178,7 @@ async fn exec(wdb: &dyn WdbQuery, id: &str, sql: &str) -> bool {
 }
 
 /// `INSERT INTO table (cols) VALUES (...), (...)` in statements under the size limit.
-async fn insert_rows(wdb: &dyn WdbQuery, id: &str, (_, table, cols): Table, rows: &[String]) -> bool {
+async fn insert_rows(wdb: &dyn DbQuery, id: &str, (_, table, cols): Table, rows: &[String]) -> bool {
     let head = format!("INSERT OR REPLACE INTO {table} ({cols}) VALUES ");
     let mut sql = head.clone();
     let mut ok = true;
@@ -200,14 +200,14 @@ async fn insert_rows(wdb: &dyn WdbQuery, id: &str, (_, table, cols): Table, rows
 
 /// Marks inventory / file integrity parts as fully synced: the database only hands a part to
 /// its readers (the vulnerability scanner's `package get`, `hotfix get`) once it is.
-async fn mark_synced(wdb: &dyn WdbQuery, id: &str, components: &[&str]) {
+async fn mark_synced(wdb: &dyn DbQuery, id: &str, components: &[&str]) {
     let now = Utc::now().timestamp();
     let list = components.iter().map(|c| lit(c)).collect::<Vec<_>>().join(", ");
     exec(wdb, id, &format!("UPDATE sync_info SET last_attempt = {now}, last_completion = {now}, n_attempts = n_attempts + 1, n_completions = n_completions + 1 WHERE component IN ({list})")).await;
 }
 
 /// Replaces a table's rows with `rows`.
-async fn replace(wdb: &dyn WdbQuery, id: &str, t: Table, rows: &[String]) -> bool {
+async fn replace(wdb: &dyn DbQuery, id: &str, t: Table, rows: &[String]) -> bool {
     exec(wdb, id, &format!("DELETE FROM {}", t.1)).await && insert_rows(wdb, id, t, rows).await
 }
 
@@ -536,14 +536,14 @@ fn fim_state_rows(v: &Value) -> Vec<String> {
         for k in ["mode", "type", "content_changes", "audit"] {
             d.remove(k);
         }
-        Some(Value::Object(d).to_string()).filter(|r| r.len() < WDBOUTPUT_SIZE - 64)
+        Some(Value::Object(d).to_string()).filter(|r| r.len() < MAX_ANSWER - 64)
     };
     v["entries"].as_array().into_iter().flatten().filter_map(row).collect()
 }
 
 /// Writes a `fim_state` event; false when provigil-db did not answer (the batch comes again).
 /// A row it refuses would be refused again, so that costs only the row.
-async fn save_fim_state(wdb: &dyn WdbQuery, id: &str, v: &Value) -> bool {
+async fn save_fim_state(wdb: &dyn DbQuery, id: &str, v: &Value) -> bool {
     let n: u32 = id.parse().unwrap_or(0);
     match wdb.query(&format!("global get-agent-info {n}")).await {
         Ok(r) if r.starts_with("ok [{") => {}
@@ -570,11 +570,11 @@ async fn save_fim_state(wdb: &dyn WdbQuery, id: &str, v: &Value) -> bool {
 /// The agent's `fim_state` event, written to `fim_entry` without the analysis engine. False: to
 /// be sent again. On its own connection, so a baseline does not hold up other requests' queries.
 pub async fn store_fim_state(agent_id: &str, v: &Value) -> bool {
-    static WDB: OnceLock<WdbcSocket> = OnceLock::new();
+    static WDB: OnceLock<DbSocket> = OnceLock::new();
     let Some(id) = agent_key(agent_id) else {
         return true;
     };
-    save_fim_state(WDB.get_or_init(|| WdbcSocket::new(host().home().join(WDB_LOCAL_SOCK))), &id, v).await
+    save_fim_state(WDB.get_or_init(|| DbSocket::new(host().home().join(DB_SOCKET))), &id, v).await
 }
 
 /// The agent's state events of one batch, written to provigil-db.
@@ -864,7 +864,7 @@ async fn agent_os(id: &str, os: &Value) {
 }
 
 /// A full `system_inventory` into the tables; the number of packages and updates.
-async fn store_inventory(wdb: &dyn WdbQuery, id: &str, v: &Value, inv: &Value) -> (usize, usize) {
+async fn store_inventory(wdb: &dyn DbQuery, id: &str, v: &Value, inv: &Value) -> (usize, usize) {
     let now = Utc::now();
     let scan_id = now.timestamp();
     let scan_time = lit(&now.format("%Y/%m/%d %H:%M:%S").to_string());
@@ -974,7 +974,7 @@ async fn inventory(id: &str, v: &Value) {
 }
 
 /// A table's row checksums in sorted order; `None` when provigil-db did not answer.
-async fn checksums(wdb: &dyn WdbQuery, id: &str, table: &str) -> Option<Vec<String>> {
+async fn checksums(wdb: &dyn DbQuery, id: &str, table: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     loop {
         let r = wdb.query(&format!("agent {id} sql SELECT checksum FROM {table} ORDER BY checksum LIMIT {CHECKSUM_PAGE} OFFSET {}", out.len())).await.ok()?;
@@ -988,7 +988,7 @@ async fn checksums(wdb: &dyn WdbQuery, id: &str, table: &str) -> Option<Vec<Stri
 
 /// Applies a `system_inventory_delta`: whether packages, updates or the OS changed, and whether
 /// the tables then have the agent's counts and hashes (`None`: not known).
-async fn apply_delta(wdb: &dyn WdbQuery, id: &str, v: &Value) -> (bool, Option<bool>) {
+async fn apply_delta(wdb: &dyn DbQuery, id: &str, v: &Value) -> (bool, Option<bool>) {
     let now = Utc::now();
     let scan_id = now.timestamp();
     let scan_time = lit(&now.format("%Y/%m/%d %H:%M:%S").to_string());
@@ -1043,7 +1043,7 @@ async fn inventory_delta(id: &str, v: &Value) {
 }
 
 /// [`apply_delta`], and what follows from it: a full send, or a vulnerability scan.
-async fn store_delta(wdb: &dyn WdbQuery, id: &str, v: &Value) {
+async fn store_delta(wdb: &dyn DbQuery, id: &str, v: &Value) {
     let (software, same) = apply_delta(wdb, id, v).await;
     if same == Some(false) {
         // the full send asked for here gets its vulnerability scan, also with the same software
@@ -1099,7 +1099,7 @@ pub fn watch_sca(agent_id: &str, events: &[Value]) {
 
 /// Whether the agent's results are in provigil-db, once the engine has handled this summary
 /// (`None`: not yet, or no answer). It stores the summary after the checks that came before it.
-async fn sca_in_sync(wdb: &dyn WdbQuery, id: &str, policy: &str, scan_id: i64, hash: &str) -> Option<bool> {
+async fn sca_in_sync(wdb: &dyn DbQuery, id: &str, policy: &str, scan_id: i64, hash: &str) -> Option<bool> {
     let r = wdb.query(&format!("agent {id} sql SELECT id FROM sca_scan_info WHERE policy_id = {}", lit(policy))).await.ok()?;
     let rows: Vec<Value> = serde_json::from_str(r.strip_prefix("ok ")?).ok()?;
     if rows.first()?["id"].as_i64() != Some(scan_id) {
@@ -1111,7 +1111,7 @@ async fn sca_in_sync(wdb: &dyn WdbQuery, id: &str, policy: &str, scan_id: i64, h
 
 /// The summaries watched: those the engine has handled are compared, a difference gets a full
 /// send of the policy.
-async fn check_sca(wdb: &dyn WdbQuery, now: Instant) {
+async fn check_sca(wdb: &dyn DbQuery, now: Instant) {
     let watched: Vec<_> = SCA_WATCH.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     for ((id, policy), (scan_id, hash, since)) in watched {
         let same = sca_in_sync(wdb, &id, &policy, scan_id, &hash).await;
@@ -1158,7 +1158,7 @@ mod tests {
         fn home(&self) -> PathBuf {
             std::env::temp_dir()
         }
-        fn wdb(&self) -> &dyn WdbQuery {
+        fn wdb(&self) -> &dyn DbQuery {
             unreachable!("these tests pass their own database")
         }
         fn queue_command(&self, agent_id: &str, command: Value) {
@@ -1267,11 +1267,11 @@ mod tests {
     }
 
     #[tonic::async_trait]
-    impl WdbQuery for FakeDb {
-        async fn query(&self, query: &str) -> Result<String, siem_ipc::wdbc::WdbcError> {
+    impl DbQuery for FakeDb {
+        async fn query(&self, query: &str) -> Result<String, provigil_ipc::agentdb::DbError> {
             let mut q = self.queries.lock().unwrap();
             if q.len() >= self.down {
-                return Err(siem_ipc::wdbc::WdbcError::Connect("down".into()));
+                return Err(provigil_ipc::agentdb::DbError::Connect("down".into()));
             }
             q.push(query.to_string());
             Ok(if query.starts_with("global") && !self.agent {
@@ -1333,7 +1333,7 @@ mod tests {
 
     #[test]
     fn fim_state_row_too_long_for_the_database_left_out() {
-        let v = json!({ "entries": [{ "path": "C:\\a", "permissions_after": "x".repeat(WDBOUTPUT_SIZE) }, { "path": "C:\\b" }] });
+        let v = json!({ "entries": [{ "path": "C:\\a", "permissions_after": "x".repeat(MAX_ANSWER) }, { "path": "C:\\b" }] });
         assert_eq!(fim_state_rows(&v).len(), 1);
         assert!(fim_state_rows(&json!({ "entries": "none" })).is_empty());
     }
@@ -1370,7 +1370,7 @@ mod tests {
     #[ignore]
     async fn fim_state_on_provigil_db() {
         let home = std::env::var("PROVIGIL_TEST_DB_HOME").expect("PROVIGIL_TEST_DB_HOME");
-        let sock = || WdbcSocket::new(std::path::Path::new(&home).join(WDB_LOCAL_SOCK));
+        let sock = || DbSocket::new(std::path::Path::new(&home).join(DB_SOCKET));
         let wdb = sock();
         let batch = |agent: u32, b: u32| {
             let sddl = "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;BU)(A;;0x1200a9;;;S-1-15-2-1)";
@@ -1513,8 +1513,8 @@ mod tests {
     }
 
     #[tonic::async_trait]
-    impl WdbQuery for RealDb {
-        async fn query(&self, query: &str) -> Result<String, siem_ipc::wdbc::WdbcError> {
+    impl DbQuery for RealDb {
+        async fn query(&self, query: &str) -> Result<String, provigil_ipc::agentdb::DbError> {
             let r = self.0.handle(query.as_bytes(), 0).1;
             Ok(String::from_utf8_lossy(&r[..r.iter().position(|&b| b == 0).unwrap_or(r.len())]).into_owned())
         }

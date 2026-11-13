@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use provigil_agent_server::commands as cmd;
 use serde_json::json;
-use siem_ipc::local::DatagramReceiver;
+use provigil_ipc::aio::DatagramReceiver;
 use tracing::{error, warn};
 
 use crate::core::Gw;
@@ -29,7 +29,7 @@ async fn read(gw: Arc<Gw>) {
         Err(e) => return error!("Engine queue {DUMP_QUEUE} not read: {e}"),
     };
     loop {
-        let Ok(m) = r.recv(siem_ipc::OS_MAXSTR).await else { continue };
+        let Ok(m) = r.recv(provigil_ipc::MAX_MESSAGE).await else { continue };
         gw.stats.c.engine_responses_received.fetch_add(1, Relaxed);
         let text = String::from_utf8_lossy(&m);
         match parse_dump(text.trim_end_matches('\0')) {

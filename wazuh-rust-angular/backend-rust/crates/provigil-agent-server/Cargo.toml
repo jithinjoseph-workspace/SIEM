@@ -5,7 +5,7 @@ edition = "2021"
 description = "What provigil-gateway and siem-api share on the agent side: provigil-db state, engine link, group config, agent CA, keys, command queue table"
 
 [dependencies]
-siem-ipc = { path = "../siem-ipc" }
+provigil-ipc = { path = "../provigil-ipc" }
 tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

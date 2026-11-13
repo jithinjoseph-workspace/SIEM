@@ -2,9 +2,17 @@
 name = "provigil-ipc"
 version = "0.1.0"
 edition = "2021"
-description = "ProVigil local IPC: local sockets at manager paths, length-prefixed framing, the agent-database client and the platform stream to siem-api"
+description = "ProVigil local IPC: local sockets at manager paths (blocking and async), length-prefixed framing, the agent-database clients, the event-queue message format and the platform stream to siem-api"
 
 [dependencies]
+tokio = { version = "1.40", features = ["net", "io-util", "sync", "time", "rt"] }
+async-trait = "0.1"
+serde_json = "1.0"
+tracing = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinSock"] }
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { version = "1.40", features = ["full"] }

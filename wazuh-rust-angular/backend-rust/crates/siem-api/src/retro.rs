@@ -46,9 +46,9 @@ async fn events(state: &AppState, tenant: &str, hours: u32, keyword: Option<&str
 /// One logtest request on analysisd's socket.
 pub(crate) async fn logtest(req: &str) -> Result<String, String> {
     let path = crate::provigil_manager::home().join("queue/sockets/logtest");
-    let mut s = siem_ipc::local::LocalStream::connect(&path).await.map_err(|e| format!("analysisd logtest is not reachable ({}): {e}", path.display()))?;
-    siem_ipc::framing::send(&mut s, req.as_bytes()).await.map_err(|e| format!("logtest: {e:?}"))?;
-    let r = siem_ipc::framing::recv(&mut s, siem_ipc::OS_MAXSTR).await.map_err(|e| format!("logtest: {e:?}"))?;
+    let mut s = provigil_ipc::aio::LocalStream::connect(&path).await.map_err(|e| format!("analysisd logtest is not reachable ({}): {e}", path.display()))?;
+    provigil_ipc::aio::framing::send(&mut s, req.as_bytes()).await.map_err(|e| format!("logtest: {e:?}"))?;
+    let r = provigil_ipc::aio::framing::recv(&mut s, provigil_ipc::MAX_MESSAGE).await.map_err(|e| format!("logtest: {e:?}"))?;
     Ok(String::from_utf8_lossy(&r).into_owned())
 }
 

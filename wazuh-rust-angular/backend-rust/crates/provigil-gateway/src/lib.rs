@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use provigil_agent_server::{agent_state, commands, keys, DEFAULT_DB};
 use serde_json::Value;
-use siem_ipc::wdbc::{WdbQuery, WdbcSocket, WDB_LOCAL_SOCK};
+use provigil_ipc::agentdb::{DbQuery, DbSocket, DB_SOCKET};
 use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
 
@@ -45,18 +45,18 @@ const DRAIN: Duration = Duration::from_secs(14);
 
 struct Host {
     gw: Arc<Gw>,
-    wdb: WdbcSocket,
-    inventory: Vec<WdbcSocket>,
+    wdb: DbSocket,
+    inventory: Vec<DbSocket>,
 }
 
 impl agent_state::Host for Host {
     fn home(&self) -> PathBuf {
         self.gw.s.home.clone()
     }
-    fn wdb(&self) -> &dyn WdbQuery {
+    fn wdb(&self) -> &dyn DbQuery {
         &self.wdb
     }
-    fn inventory_wdb(&self, agent_id: &str) -> &dyn WdbQuery {
+    fn inventory_wdb(&self, agent_id: &str) -> &dyn DbQuery {
         &self.inventory[core::lane(agent_id, self.inventory.len())]
     }
     fn queue_command(&self, agent_id: &str, command: Value) {
@@ -233,7 +233,7 @@ pub async fn run(s: Settings) -> Result<(), String> {
         stats: stats.clone(),
         s,
     });
-    let sock = || WdbcSocket::new(gw.s.home.join(WDB_LOCAL_SOCK));
+    let sock = || DbSocket::new(gw.s.home.join(DB_SOCKET));
     agent_state::set_host(Arc::new(Host { gw: gw.clone(), wdb: sock(), inventory: (0..gw.s.inventory_workers).map(|_| sock()).collect() }));
 
     // every listener first: a port that cannot be bound stops the start

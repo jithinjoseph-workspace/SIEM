@@ -352,6 +352,18 @@ it has a row.)
 | Local time: the system zone, or a fixed offset for tests; broken-down time, `ctime` text, the `%FT%T%z` text into a 20-byte buffer | Same |
 | Time and day checks used by rules (`<time>`, `<weekday>`; from siem-config): the accepted formats and the "on time" / "on day" tests | Own code in the new crate (section 2.x when read) |
 
+### 2.22 Statistics, the analysis socket and getconfig (`state.rs`, `asyscom.rs`, `config_json.rs`)
+
+| Feature | New |
+|---|---|
+| **Counters:** bytes and events received; decoded and dropped per component (agent, agentless, dbsync, monitor, remote, syslog, virustotal, and the modules aws, azure, ciscat, command, docker, gcp, github, office365, ms-graph, oscap, osquery, rootcheck, sca, syscheck, syscollector, upgrade, vulnerability, and logcollector eventchannel / eventlog / macos / others); processed; written alerts, archives, firewall, FTS, stats; EPS (available credits now and before, dropped, dropped not by EPS, seconds over the limit); per agent (not agentless or syslog, not agent 000): uptime, decoded per component, processed, written alerts/archives/firewall; agents no longer active are removed | Same |
+| **Component of a log event:** the module after `->` in the location (or in the message for drops), mapped by name: the agent, agentless, monitor and remote program names (old and ProVigil spellings), cloud and tool module names, `command`/`command_*`, `macos`, `WinEvtLog`, otherwise logcollector "others" | Same mapping table, both spellings |
+| **State file** `var/run/provigil-analysisd.state` (written to `.temp` then renamed; errors 1103 and the rename/delete texts): the totals, per-queue usage (two decimals) and sizes | Same text |
+| **getstats** JSON: uptime, timestamp, name, `metrics.bytes.received`, `metrics.eps` (when EPS is on), `metrics.events` (processed, received, `received_breakdown` with `decoded_breakdown` / `dropped_breakdown` (module breakdowns), `written_breakdown`), `metrics.queues` (size, usage per queue) | Same keys and order |
+| **getagentsstats:** the listed agents (fewer than 75), or `"all"` with `last_id` (pages of 75 from provigil-db, `due` when full); per agent its metrics | Same |
+| **Socket requests:** `getstats`, `getagentsstats`, `getconfig` (sections global, active_response, alerts, decoders, rules, internal, command, labels, rule_test), `reload-ruleset` (the load messages; `due` when it failed); answers `{"error":N,"message":..,"data":..}` with the codes ok, due, Invalid JSON input, Empty command, Unrecognized command, Empty parameters, Empty section, Unrecognized or not configured section, Invalid agents parameter, Error getting agents from DB, Empty last id, Too many agents | Same |
+| **getconfig sections:** each section's JSON as the old one builds it (global options, active responses and commands, alert levels, internal options, labels, rule_test, the full decoder list with their options, the full rule list with their options), quirks included (the FTS list holds only the first flag; the dynamic FTS fields printed as a 0/1 string; a rule with `if_level` gets an extra `if_group`) | Same JSON, compared key by key with the old code |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -377,4 +389,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels and time written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels, time, statistics, the analysis socket and getconfig written.

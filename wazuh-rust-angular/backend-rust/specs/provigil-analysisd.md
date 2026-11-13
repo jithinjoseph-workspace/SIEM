@@ -121,6 +121,17 @@ it has a row.)
 | Forwarder (`SendJSONtoSCK`, Unix): datagram or stream to the socket location; one connection attempt per second; errors "Unable to connect to socket ..."; a busy socket (ENOBUFS) drops the message; the name `agent` is never forwarded to | Same |
 | Database errors in the decoders: "Unable to connect to socket 'queue/db/wdb'." and "Bad response from provigil-db: ..." | Same (`provigil-ipc::agentdb`) |
 
+### 2.3 Settings (`daemon_config.rs`)
+
+| Feature | New |
+|---|---|
+| **Internal options** (`analysisd.*`, each a whole number in a range; a value outside it stops the start): `debug` 0–2, `decoder_order_size` 32–1024, `log_fw` 0–1, `label_cache_maxage` 0–60, `show_hidden_labels` 0–1, `min_rotate_interval` 10–86400, `default_timeframe` 60–3600, `fts_list_size` 12–512, `fts_min_size_for_str` 6–128, `rule_matching_threads` 0–32, `stats_maxdiff` 10–999999, `stats_mindiff` 10–999999, `stats_percent_diff` 5–9999, `rlimit_nofile` 1024–1048576, `state_interval` 0–86400, `event_threads`, `syscheck_threads`, `syscollector_threads`, `rootcheck_threads`, `sca_threads`, `hostinfo_threads`, `winevt_threads`, `dbsync_threads` 0–32, `geoip_jsonout` 0–1; queue sizes 128–2000000: `archives_queue_size`, `alerts_queue_size`, `statistical_queue_size`, `firewall_queue_size`, `fts_queue_size`, `decode_{syscheck,syscollector,rootcheck,sca,hostinfo,winevt,event,output}_queue_size`, `dbsync_queue_size`, `upgrade_queue_size` | Same keys, ranges and failure (the old reader fails on a missing key: E-11 of `provigil-execd.md` applies, defaults from the shipped file) |
+| **Global defaults:** stats 4, integrity 8, rootcheck 8, hostinfo 8, `jsonout_output` 1, `alerts_log` 1, `memory_size` 8192, mail notify -1, `syscheck_alert_new` 1, `syscheck_ignore_frequency` 10, `syscheck_ignore_time` 3600, mail level 7, log level 1, `label_cache_maxage` 10, `hide_cluster_info` 1 | Same |
+| **Reading order:** active response (commands and responses), then `etc/shared/ar.conf` is written (header + one line per command; failure 1103 stops the start); then global, ruleset, alerts, cluster, sockets; then labels; then `<rule_test>` | Same |
+| **After reading:** `<alerts>` levels override the global mail/log levels; `min_rotate_interval` from the internal option; `memory_size` at least 2048; `rotate_interval` 0 or between `min_rotate_interval` and 86400 (else "Rotate interval setting must be between N seconds and one day."); `max_output_size` 0 or 1 MiB–1 TiB (else "Maximum output size must be between 1 MiB and 1 TiB."); a missing decoder or rule list takes the defaults; cluster name, node name, node type and `hide_cluster_info` copied into the global settings; `label_cache_maxage` and `show_hidden_labels` from the internal options; AR on unless disabled (-1 counts as off) | Same |
+| Warnings of all readers collected and logged at start | Same |
+| The siem-config readers used: `<global>` (and its syscheck options), `<cluster>`, `<socket>`, `<labels>`, `<command>`, `<active-response>`, `<rule_test>`, the time and day checks | Own readers on `provigil-daemon::xml` (section 2.4, filled when read) |
+
 ## 3. Decisions
 
 (None yet.)

@@ -177,6 +177,21 @@ fn shipped_ruleset_on_test_logs() {
     assert!(o.load_ruleset(&cfg.ruleset.decoders, &cfg.ruleset.lists, &cfg.ruleset.rules, Some(&oars), &mut ol));
     assert!(n.load_ruleset(&cfg.ruleset.decoders, &cfg.ruleset.lists, &cfg.ruleset.rules, Some(&nars), &mut nl));
 
+    // the same MITRE table in both: most techniques the rules name, each with one or two tactics
+    let mut techs: Vec<String> = n.rules.rules.iter().flat_map(|r| r.mitre_technique_id.iter().flatten().chain(r.mitre_id.iter().flatten()).cloned()).collect();
+    techs.sort();
+    techs.dedup();
+    let tactic = |i: usize| (format!("TA{:04}", i % 14 + 1), format!("Tactic {}", i % 14 + 1));
+    let mut om = siem_analysisd::mitre::MitreDb::default();
+    let mut nm = provigil_analysisd::mitre::Mitre::default();
+    for (i, t) in techs.iter().enumerate().filter(|(i, _)| i % 9 != 0) {
+        let tacs: Vec<(String, String)> = (0..1 + i % 2).map(|k| tactic(i + k * 3)).collect();
+        om.add(siem_analysisd::mitre::Technique { technique_id: t.clone(), technique_name: format!("Technique {t}"), tactics: tacs.iter().map(|(a, b)| siem_analysisd::mitre::Tactic { tactic_id: a.clone(), tactic_name: b.clone() }).collect() });
+        nm.add(provigil_analysisd::mitre::Technique { id: t.clone(), name: format!("Technique {t}"), tactics: tacs.iter().map(|(a, b)| provigil_analysisd::mitre::Tactic { id: a.clone(), name: b.clone() }).collect() });
+    }
+    o.mitre = Some(Arc::new(om));
+    n.mitre = Some(Arc::new(nm));
+    let mut jsons = 0;
     let (oopt, nopt) = (oa::ProcessOptions { logfw: true, logall: true, stats: 0 }, np::Options { logfw: true, logall: true, stats: 0 });
     let (mut os, mut ns) = (oa::Stats::default(), np::Stats::default());
     let logs = test_logs();
@@ -213,8 +228,29 @@ fn shipped_ruleset_on_test_logs() {
             }
             o.decode(&mut oev);
             n.decode(&mut nev);
-            let x = o.process_event(oev, &oopt, &mut os, None, 10, 3, &mut |_| Vec::new());
-            let y = n.process(nev, &nopt, &mut ns, None, 10, 3, &mut |_| Vec::new());
+            // agent 001 has labels (an address, a nested key, a hidden one, a system one)
+            let x = o.process_event(oev, &oopt, &mut os, None, 10, 3, &mut |e| {
+                if e.agent_id.as_deref() != Some(b"001") {
+                    return Vec::new();
+                }
+                let l = |k: &str, v: &str, hidden, system| siem_analysisd::labels::Label { key: k.into(), value: v.into(), flags: siem_analysisd::labels::LabelFlags { hidden, system } };
+                vec![l("_agent_ip", "10.9.9.9", false, true), l("env", "prod", false, false), l("team.name", "sec", true, false), l("x", "[1,2]", false, false)]
+            });
+            let y = n.process(nev, &nopt, &mut ns, None, 10, 3, &mut |e| {
+                if e.agent_id.as_deref() != Some(b"001") {
+                    return Vec::new();
+                }
+                let l = |k: &str, v: &str, hidden, system| provigil_analysisd::event::Label { key: k.into(), value: v.into(), hidden, system };
+                vec![l("_agent_ip", "10.9.9.9", false, true), l("env", "prod", false, false), l("team.name", "sec", true, false), l("x", "[1,2]", false, false)]
+            });
+            if let (Some(a), Some(b)) = (&x.alert, &y.alert) {
+                let (mut ol2, mut nl2) = (LogList::default(), Messages::default());
+                let ja = siem_analysisd::to_json::eventinfo_to_json(&o, a, false, &mut ol2);
+                let jb = provigil_analysisd::alert_json::alert(&n, b, false, &mut nl2);
+                assert_eq!(String::from_utf8_lossy(&ja), String::from_utf8_lossy(&jb), "{msg}");
+                assert_eq!(ol2.msgs.iter().map(|m| m.msg.clone()).collect::<Vec<_>>(), nl2.list.iter().map(|m| m.text.clone()).collect::<Vec<_>>());
+                jsons += 1;
+            }
             let (xa, ya) = (old_outcome(&x, &o), new_outcome(&y, &n));
             for (p, q) in xa.iter().zip(&ya) {
                 assert_eq!(p, q, "round {round}: {msg}");
@@ -225,6 +261,6 @@ fn shipped_ruleset_on_test_logs() {
             contexts += usize::from(x.alert.as_ref().is_some_and(|e| e.last_events.as_ref().is_some_and(|l| !l.is_empty())));
         }
     }
-    eprintln!("events {} alerts {alerts} with context {contexts}", stream.len());
+    eprintln!("events {} alerts {alerts} with context {contexts}, json {jsons}", stream.len());
     assert!(alerts > 5000 && contexts > 50, "alerts {alerts} with context {contexts}");
 }

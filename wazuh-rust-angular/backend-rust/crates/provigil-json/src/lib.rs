@@ -98,6 +98,23 @@ impl Json {
         }
     }
 
+    /// [`get`](Self::get) with a key in bytes.
+    pub fn get_bytes(&self, key: &[u8]) -> Option<&Json> {
+        let i = self.position(key)?;
+        match self {
+            Json::Object(m) => Some(&m[i].1),
+            _ => None,
+        }
+    }
+
+    pub fn get_mut_bytes(&mut self, key: &[u8]) -> Option<&mut Json> {
+        let i = self.position(key)?;
+        match self {
+            Json::Object(m) => Some(&mut m[i].1),
+            _ => None,
+        }
+    }
+
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Json> {
         let i = self.position(key.as_bytes())?;
         match self {

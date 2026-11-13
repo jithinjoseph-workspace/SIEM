@@ -144,6 +144,8 @@ pub struct Engine {
     pub alert_counter: i64,
     /// First-time-seen lines to save.
     pub fts_lines: Vec<Bytes>,
+    /// The MITRE table, shared by all engines.
+    pub mitre: Option<Arc<crate::mitre::Mitre>>,
 }
 
 impl Engine {
@@ -170,6 +172,7 @@ impl Engine {
             hourly_alerts: 0,
             alert_counter: 0,
             fts_lines: Vec::new(),
+            mitre: None,
         }
     }
 
@@ -180,6 +183,7 @@ impl Engine {
         e.rules = self.rules.clone();
         e.lists = self.lists.clone();
         e.rules_by_id = self.rules_by_id.clone();
+        e.mitre = self.mitre.clone();
         e
     }
 

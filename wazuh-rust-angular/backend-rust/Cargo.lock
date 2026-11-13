@@ -2979,7 +2979,6 @@ dependencies = [
  "libc",
  "md-5",
  "serde_json",
- "siem-log",
  "tracing",
  "windows-sys 0.59.0",
 ]

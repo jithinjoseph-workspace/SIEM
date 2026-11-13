@@ -8,7 +8,6 @@ description = "Shared-file bundles, directory helpers, Windows text-mode I/O and
 md-5 = "0.10"
 libc = "0.2"
 tracing = "0.1"
-siem-log = { path = "../siem-log" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

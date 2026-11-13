@@ -11,10 +11,13 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-static LOGGER: OnceLock<Arc<siem_log::WLog>> = OnceLock::new();
+/// Receives this crate's messages: (level "ERROR" | "WARNING" | "DEBUG2", text).
+pub type LogFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
-/// Sends this crate's messages to the daemon logger; the first call wins.
-pub fn set_logger(log: Arc<siem_log::WLog>) {
+static LOGGER: OnceLock<LogFn> = OnceLock::new();
+
+/// Sends this crate's messages to the daemon's log; the first call wins.
+pub fn set_logger(log: LogFn) {
     let _ = LOGGER.set(log);
 }
 
@@ -25,7 +28,6 @@ enum Lvl {
     Debug2,
 }
 
-#[track_caller]
 fn log(lvl: Lvl, msg: &str) {
     let Some(w) = LOGGER.get() else {
         match lvl {
@@ -36,12 +38,11 @@ fn log(lvl: Lvl, msg: &str) {
         return;
     };
     let level = match lvl {
-        Lvl::Error => siem_log::Level::Error,
-        Lvl::Warn => siem_log::Level::Warning,
-        Lvl::Debug2 if w.is_debug() >= 2 => siem_log::Level::Debug,
-        Lvl::Debug2 => return,
+        Lvl::Error => "ERROR",
+        Lvl::Warn => "WARNING",
+        Lvl::Debug2 => "DEBUG2",
     };
-    w.log_at(level, msg.as_bytes(), std::panic::Location::caller());
+    w(level, msg);
 }
 
 /// POSIX `dirname` over `/`-separated text.

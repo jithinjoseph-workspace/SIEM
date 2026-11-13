@@ -240,8 +240,31 @@ it has a row.)
 | The event joins the rule lists and the event list (its last events dropped); the archive copy when archiving | Same |
 | No rule: the archive copy when archiving | Same |
 
+### 2.10 Text formats (`output.rs`)
+
+| Feature | New |
+|---|---|
+| **alerts.log** (`OS_Log`): `** Alert <sec>.<id>: [ mail ]- <groups>` / `<year> <Mon> <dd> <hh:mm:ss> [<host>->]<location>` (the host only when the location does not start with `(`) / the labels (`key: value`, not system ones, hidden only when shown; over 65,536 bytes none) / `Rule: <id> (level <n>) -> '<description>'` / `Src IP`, `Src Port`, `Dst IP`, `Dst Port`, `User` lines when present / the full log / for syscheck decoders an `Attributes:` block (size, permissions, date via ctime, inode, user (uid), group (gid), MD5/SHA1/SHA256 unless `xxx`, file attributes, the audit names, ids and folders, "What changed:", "Tags:" one per line), otherwise the decoder's dynamic fields / the last events / a blank line. Missing values print `(null)`. | Same bytes |
+| **Custom format** (`custom_alert_output`): `$TIMESTAMP`, `$FTELL`, `$RULEALERT` (`mail `), `$HOSTNAME`, `$LOCATION`, `$RULEID`, `$RULELEVEL`, `$SRCIP`, `$DSTUSER`, `$FULLLOG` (line breaks as `\n`), `$RULECOMMENT`, `$RULEGROUP`; missing values `None`; values cut to 1,023 bytes; every occurrence replaced, in that order | Same |
+| **archives.log** (`OS_Store`): `<year> <Mon> <dd> <time> [<host>->]<location> <full log>`; keep-alive locations (`ossec-keepalive`, `...->ossec-keepalive`) skipped | Same |
+| **firewall.log** (`FW_Log`): the action normalised on the event (d/r/b → DROP, c/t → CLOSED, a/p/o → ALLOW, otherwise "drop" → DROP then "accept" tested on that → ALLOW or UNKNOWN), then `<date> [<host>->]<location> <ACTION> <protocol> <srcip>:<srcport>-><dstip>:<dstport>` | Same, the quirk kept |
+| JSON lines for alerts and archives (keep-alives skipped in the archive) | Same |
+
+### 2.11 The alert JSON (`to_json.rs`)
+
+| Feature | New |
+|---|---|
+| **Member order:** `timestamp` (local `YYYY-MM-DDThh:mm:ss.mmm+zzzz`), `rule`, `agent`, `manager`, then `id` (`<sec>.<id>`), `cluster` (unless hidden: name, default the product name, see A-2; node), `previous_output`, `full_log`, `syscheck`, `predecoder`, `decoder`, `previous_log`, then `data` (when not empty); then the post-processing below | Same order (the console and ClickHouse read these documents) |
+| **rule:** `level` (unless 0), `description`, `id` (text), `mitre`, `cve`, `info`, `frequency` (context rules: frequency + 2), `firedtimes` (unless `no_counter`), `mail` (bool) | Same |
+| **mitre:** new form: per technique id, its name and the named tactic (warnings "Mitre Technique ID ... not found in database." and "Mitre Tactic ID ... is not a tactic of ..."), no repeats; old form: the ids, all tactics of each technique, the technique names | Same |
+| `previous_output`: the last events joined by line breaks, when there are at least 2 and the second is not empty | Same |
+| **data:** protocol, action, srcip, srcport, srcuser, dstip, dstport, dstuser, then id, status, url, data, extra_data, system_name, then the decoder's dynamic fields (dotted keys become nested objects; a value that is a whole JSON array is kept as an array; the first value of a key wins); GeoIP fields only with GeoIP (off) | Same |
+| `full_log` unless the rule has `no_full_log` (archives always); `agent.id`; the syscheck section and its audit part for syscheck decoders; `predecoder` (program_name, timestamp); `decoder` (accumulate, parent, name, ftscomment) | Same |
+| **Post-processing** (`W_ParseJSON`): `agent.name` (the location's agent name, or the manager's name for agent 000); `predecoder.hostname` from a syslog header in the full log; `agent.ip` (the agent-IP label, else from the location, not `any`); `location` (after `->` for agent locations); `agentless` {script, user, host} for agentless locations of agent 000 (then `agent` is removed); `rule.groups` and the compliance arrays (`pci_dss_`, `cis_`, `gdpr_`, `gpg13_`, `hipaa_`, `nist_800_53_`, `tsc_`), plus the SCA check's compliance values; for rootcheck alerts, `{name: a, b}` pairs from the full log (at most 10, 29 bytes each) as arrays; `agent.labels` (not system ones, hidden only when shown) | Same |
+
 ## 3. Decisions
 
+- **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
 - **A-1 Context search, different agent.** The original loops for ever on an event of another agent in the event-list search; the port skips that event, and the new code keeps the skip.
 
 ## 4. The ruleset (GPL-free plan, after the engine)
@@ -264,4 +287,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher and the event stage written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats and the alert JSON written.

@@ -1164,7 +1164,7 @@ impl Engine {
         let mut ctx = Sha1::new();
         while s == SQLITE_ROW {
             match st.column_text(0) {
-                None => self.debug(cat!("DB(", h.id.clone(), ") has a NULL generic checksum.")),
+                None => self.debug(cat!("DB(", h.id.clone(), ") has a NULL  checksum.")),
                 Some(c) => ctx.update(&c),
             }
             s = self.step(&st);

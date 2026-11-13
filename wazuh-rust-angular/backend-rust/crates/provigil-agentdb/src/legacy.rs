@@ -20,6 +20,10 @@ pub enum Kind {
     Unsigned,
     /// A decimal number.
     Real,
+    /// `NULL…` = 0, else a number (32 bits).
+    Nice,
+    /// `NULL…` = -1, else an unsigned 64-bit number.
+    StartTime,
 }
 
 #[derive(Clone, Debug)]
@@ -80,6 +84,8 @@ fn read(kind: Kind, f: &[u8]) -> Val {
         Kind::Plain => Val::Int(read_long(f).0 as i32 as i64),
         Kind::Unsigned => Val::Int(read_long(f).0),
         Kind::Real => Val::Real(read_real(f)),
+        Kind::Nice => Val::Int(if null { 0 } else { read_long(f).0 as i32 as i64 }),
+        Kind::StartTime => Val::Int(if null { -1 } else { crate::text::read_ulong(f) as i64 }),
     }
 }
 

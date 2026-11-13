@@ -230,6 +230,7 @@ impl Engine {
         match cmd {
             b"ciscat" => Some(self.ciscat_command(h, a)),
             b"sca" => Some(self.sca_command(h, a)),
+            b"netinfo" | b"netproto" | b"netaddr" | b"osinfo" | b"hardware" | b"port" | b"package" | b"hotfix" | b"process" => self.inventory_command(h, cmd, a),
             _ => None,
         }
     }

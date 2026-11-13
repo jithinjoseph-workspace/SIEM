@@ -6,6 +6,8 @@
 pub mod text;
 mod agent;
 mod global;
+mod integrity;
+mod inventory;
 mod layout;
 mod legacy;
 mod rows;
@@ -122,7 +124,7 @@ pub type Locked = ArcMutexGuard<RawMutex, Handle>;
 
 pub struct Engine {
     home: PathBuf,
-    env: Arc<dyn Env>,
+    pub(crate) env: Arc<dyn Env>,
     pub settings: Settings,
     dbs: Mutex<HashMap<String, Arc<Mutex<Handle>>>>,
     /// The cursor of `sync-agent-info-get`.

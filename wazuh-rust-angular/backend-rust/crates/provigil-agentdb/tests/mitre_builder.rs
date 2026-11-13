@@ -6,12 +6,12 @@ use std::process::Command;
 fn query(db: &std::path::Path, sql: &str) -> Vec<Vec<Option<String>>> {
     let mut p = db.to_string_lossy().into_owned().into_bytes();
     p.push(0);
-    let (_, d) = siem_sqlite::Db::open_v2(&p, siem_sqlite::SQLITE_OPEN_READWRITE);
+    let (_, d) = provigil_sqlite::Db::open_v2(&p, provigil_sqlite::SQLITE_OPEN_READWRITE);
     let d = d.unwrap();
     let (_, st, _) = d.prepare_v2(sql.as_bytes());
     let st = st.unwrap();
     let mut out = Vec::new();
-    while st.step() == siem_sqlite::SQLITE_ROW {
+    while st.step() == provigil_sqlite::SQLITE_ROW {
         out.push((0..st.column_count()).map(|i| st.column_text(i).map(|t| String::from_utf8_lossy(&t).into_owned())).collect());
     }
     out

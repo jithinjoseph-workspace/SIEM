@@ -3,7 +3,7 @@
 use sha1::{Digest as _, Sha1};
 use sha2::Sha256;
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_ERROR, SQLITE_ROW};
+use provigil_sqlite::{Stmt, SQLITE_DONE, SQLITE_ERROR, SQLITE_ROW};
 
 use crate::rows::Columns;
 use crate::text::{answer, id3, near, read_int, split_word, tokens, until_nul};
@@ -1725,7 +1725,7 @@ impl Engine {
         h.drop_statements();
         let full = self.path(&rel);
         let (rc, st, _) = h.db().prepare_v2(b"VACUUM INTO ?;");
-        let Some(st) = st.filter(|_| rc == siem_sqlite::SQLITE_OK) else {
+        let Some(st) = st.filter(|_| rc == provigil_sqlite::SQLITE_OK) else {
             return (INVALID, answer(cat!("err DB(", h.id.clone(), ") sqlite3_prepare_v2(): ", h.errmsg())));
         };
         st.bind_text(1, Some(full.to_string_lossy().as_bytes()));

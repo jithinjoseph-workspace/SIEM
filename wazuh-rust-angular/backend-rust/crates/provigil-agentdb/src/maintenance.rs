@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use provigil_json::Json;
-use siem_sqlite::SQLITE_DONE;
+use provigil_sqlite::SQLITE_DONE;
 
 use crate::text::read_long;
 use crate::{Engine, Handle, DB_DIR, GLOBAL_NAME, INVALID};

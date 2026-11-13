@@ -2,7 +2,7 @@
 //! texts and blobs as strings, NULL columns left out); a result is an array of rows.
 
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_BLOB, SQLITE_DONE, SQLITE_ERROR, SQLITE_FLOAT, SQLITE_INTEGER, SQLITE_OK, SQLITE_ROW, SQLITE_TEXT};
+use provigil_sqlite::{Stmt, SQLITE_BLOB, SQLITE_DONE, SQLITE_ERROR, SQLITE_FLOAT, SQLITE_INTEGER, SQLITE_OK, SQLITE_ROW, SQLITE_TEXT};
 
 use crate::{Engine, Handle, INVALID, OK};
 

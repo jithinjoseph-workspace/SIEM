@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_MISUSE, SQLITE_ROW};
+use provigil_sqlite::{Stmt, SQLITE_DONE, SQLITE_MISUSE, SQLITE_ROW};
 
 use crate::checksum::{self, Sum};
 use crate::integrity;

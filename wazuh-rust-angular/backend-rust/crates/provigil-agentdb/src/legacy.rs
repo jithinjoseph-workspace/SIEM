@@ -3,7 +3,7 @@
 
 use crate::text::{near, read_long, until_nul};
 use crate::{Answer, Engine, Handle, INVALID, OK};
-use siem_sqlite::SQLITE_DONE;
+use provigil_sqlite::SQLITE_DONE;
 
 /// How a field is read.
 #[derive(Clone, Copy, PartialEq)]

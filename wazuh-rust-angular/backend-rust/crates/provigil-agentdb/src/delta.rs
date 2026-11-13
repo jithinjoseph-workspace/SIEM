@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_OK};
+use provigil_sqlite::{Stmt, SQLITE_DONE, SQLITE_OK};
 
 use crate::text::{near, read_long, read_real, until_nul};
 use crate::{Answer, Engine, Handle, INVALID, OK};

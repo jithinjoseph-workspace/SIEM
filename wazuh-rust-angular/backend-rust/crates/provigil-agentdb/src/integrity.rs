@@ -3,7 +3,7 @@
 
 use sha1::{Digest, Sha1};
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_ROW};
+use provigil_sqlite::{Stmt, SQLITE_DONE, SQLITE_ROW};
 
 use crate::{Engine, Handle, INVALID};
 
@@ -353,7 +353,7 @@ impl Engine {
             self.debug(b"Cannot cache statement".to_vec());
             return;
         };
-        if st.bind_text(1, Some(pk)) != siem_sqlite::SQLITE_OK {
+        if st.bind_text(1, Some(pk)) != provigil_sqlite::SQLITE_OK {
             self.error(cat!("DB(", h.id.clone(), ") sqlite3_bind_text(): ", h.errmsg()));
             return;
         }

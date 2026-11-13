@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use siem_sqlite::{Db, SQLITE_DONE, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_READWRITE};
+use provigil_sqlite::{Db, SQLITE_DONE, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_READWRITE};
 
 /// The tables: name, then `column:kind` with kind `t` text (NULL when absent), `b` boolean
 /// (0 when absent), `t!` required text; keys and links as written in `LAYOUT`.

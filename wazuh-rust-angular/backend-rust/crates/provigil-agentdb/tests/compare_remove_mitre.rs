@@ -40,7 +40,7 @@ fn remove_and_mitre_match_old() {
     for home in p.homes() {
         std::fs::create_dir_all(home.join("var/db")).unwrap();
         let path = home.join("var/db/mitre.db");
-        let (_, db) = siem_sqlite::Db::open_v2(path.to_string_lossy().as_bytes(), siem_sqlite::SQLITE_OPEN_READWRITE | siem_sqlite::SQLITE_OPEN_CREATE);
+        let (_, db) = provigil_sqlite::Db::open_v2(path.to_string_lossy().as_bytes(), provigil_sqlite::SQLITE_OPEN_READWRITE | provigil_sqlite::SQLITE_OPEN_CREATE);
         let db = db.unwrap();
         db.exec(b"CREATE TABLE technique (id TEXT PRIMARY KEY, name TEXT); INSERT INTO technique VALUES ('T1059', 'Command and Scripting Interpreter'), ('T1003', 'OS Credential Dumping');");
     }

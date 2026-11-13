@@ -2,7 +2,7 @@
 
 use sha2::{Digest, Sha256};
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
+use provigil_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
 use std::sync::Arc;
 
 use crate::text::{near, read_long, until_nul};

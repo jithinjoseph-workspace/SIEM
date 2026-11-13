@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
+use provigil_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
 
 use crate::integrity::{self, HOTFIXES, PACKAGES};
 use crate::legacy::{Kind, Val, Words};

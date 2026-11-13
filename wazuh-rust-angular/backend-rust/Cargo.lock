@@ -2890,6 +2890,7 @@ dependencies = [
  "parking_lot",
  "provigil-daemon",
  "provigil-json",
+ "provigil-sqlite",
  "serde_json",
  "sha1 0.10.7",
  "sha2 0.10.9",
@@ -3101,6 +3102,13 @@ dependencies = [
  "pcre2",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "provigil-sqlite"
+version = "0.1.0"
+dependencies = [
+ "libsqlite3-sys",
 ]
 
 [[package]]
@@ -4132,6 +4140,7 @@ dependencies = [
  "provigil-ipc",
  "provigil-posture",
  "provigil-regex",
+ "provigil-sqlite",
  "quick-xml",
  "rand 0.8.8",
  "rcgen",
@@ -4161,7 +4170,6 @@ dependencies = [
  "siem-redswarm",
  "siem-retro",
  "siem-risk-fabric",
- "siem-sqlite",
  "siem-suppression",
  "siem-swarm",
  "siem-triage",

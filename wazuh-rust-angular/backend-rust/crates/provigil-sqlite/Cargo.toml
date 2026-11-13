@@ -1,0 +1,8 @@
+[package]
+name = "provigil-sqlite"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil SQLite connections and statements for the agent database, on the workspace's one bundled SQLite"
+
+[dependencies]
+libsqlite3-sys = { version = "0.39", features = ["bundled"] }

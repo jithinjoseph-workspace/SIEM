@@ -150,7 +150,13 @@ impl Db {
         let p = cstring(path);
         let mut raw = ptr::null_mut();
         let rc = unsafe { sqlite3_open_v2(p.as_ptr() as *const c_char, &mut raw, flags, ptr::null()) };
-        (rc, if raw.is_null() { None } else { Some(Db { raw }) })
+        let db = if raw.is_null() { None } else { Some(Db { raw }) };
+        // the shared build turns foreign keys on by default; the pinned build above has them off
+        #[cfg(feature = "shared")]
+        if let (SQLITE_OK, Some(d)) = (rc, &db) {
+            d.exec(b"PRAGMA foreign_keys = OFF;");
+        }
+        (rc, db)
     }
 
     /// `sqlite3_errmsg`

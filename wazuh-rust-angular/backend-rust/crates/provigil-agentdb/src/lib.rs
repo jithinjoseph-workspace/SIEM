@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use parking_lot::{ArcMutexGuard, Mutex, RawMutex};
 pub use provigil_json::Json;
-use siem_sqlite::{Db, Stmt, SQLITE_BUSY, SQLITE_DONE, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_READWRITE, SQLITE_ROW};
+use provigil_sqlite::{Db, Stmt, SQLITE_BUSY, SQLITE_DONE, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_READWRITE, SQLITE_ROW};
 
 use text::{answer, near, split_word};
 
@@ -291,11 +291,6 @@ impl Engine {
     /// Opens `rel` into the handle; false (handle kept for its error text) when it fails.
     pub(crate) fn open_into(&self, h: &mut Handle, rel: &str) -> bool {
         let (rc, db) = Db::open_v2(self.path(rel).to_string_lossy().as_bytes(), SQLITE_OPEN_READWRITE);
-        // foreign keys off unless asked for (the global database turns them on): SQLite builds
-        // differ in their default, and the agent layout only works with them off
-        if let (Some(d), SQLITE_OK) = (db.as_ref(), rc) {
-            let _ = d.exec(b"PRAGMA foreign_keys = OFF;");
-        }
         h.db = db;
         rc == SQLITE_OK
     }
@@ -580,7 +575,7 @@ impl Engine {
         st.bind_text(1, Some(time));
         st.bind_text(2, Some(value));
         let r = self.step(&st);
-        if r != SQLITE_DONE && r != siem_sqlite::SQLITE_CONSTRAINT {
+        if r != SQLITE_DONE && r != provigil_sqlite::SQLITE_CONSTRAINT {
             self.error(cat!("(5211): SQL error: '", h.errmsg(), "'"));
             return false;
         }

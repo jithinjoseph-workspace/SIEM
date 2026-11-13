@@ -2,7 +2,7 @@
 //! (spec § 2.6): inventory rows from the JSON sync messages of the 13 inventory kinds.
 
 use provigil_json::Json;
-use siem_sqlite::{Stmt, SQLITE_DONE};
+use provigil_sqlite::{Stmt, SQLITE_DONE};
 
 use crate::fim::d2long;
 use crate::integrity::*;

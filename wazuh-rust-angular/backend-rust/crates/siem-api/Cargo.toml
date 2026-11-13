@@ -26,7 +26,7 @@ reqwest = { version = "0.12", features = ["json"] }
 clickhouse = { version = "0.13", features = ["time", "uuid"] }
 provigil-common = { path = "../provigil-common", features = ["soar"] }
 redis = { version = "0.23", features = ["tokio-comp", "connection-manager"] }
-siem-sqlite = { path = "../siem-sqlite" }
+provigil-sqlite = { path = "../provigil-sqlite" }
 provigil-agent-server = { path = "../provigil-agent-server" }
 provigil-posture = { path = "../provigil-posture" }
 siem-cdb = { path = "../siem-cdb" }

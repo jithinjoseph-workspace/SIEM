@@ -4,13 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "ProVigil agent database (provigil-db): per-agent, global and task SQLite databases behind a text protocol"
 
-[features]
-# build on the SQLite rusqlite bundles (see siem-sqlite)
-shared-sqlite = ["siem-sqlite/shared"]
-
 [dependencies]
 provigil-json = { path = "../provigil-json" }
-siem-sqlite = { path = "../siem-sqlite" }
+provigil-sqlite = { path = "../provigil-sqlite" }
 sha2 = "0.10"
 sha1 = "0.10"
 flate2 = "1"
@@ -22,4 +18,6 @@ provigil-daemon = { path = "../provigil-daemon" }
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)
 siem-wdb = { path = "../../old-code/siem-wdb" }
+# the reference on the same SQLite build as the new code (one copy per program)
+siem-sqlite = { path = "../../old-code/siem-sqlite", features = ["shared"] }
 tempfile = "3"

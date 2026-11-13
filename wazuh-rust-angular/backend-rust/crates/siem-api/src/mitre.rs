@@ -41,8 +41,8 @@ pub struct CatalogRow {
 
 /// The catalog rows of a mitre.db.
 pub fn read_catalog(path: &std::path::Path) -> Result<Vec<CatalogRow>, String> {
-    let (rc, db) = siem_sqlite::Db::open_v2(path.to_string_lossy().as_bytes(), siem_sqlite::SQLITE_OPEN_READONLY);
-    let db = db.filter(|_| rc == siem_sqlite::SQLITE_OK).ok_or_else(|| format!("cannot open {}", path.display()))?;
+    let (rc, db) = provigil_sqlite::Db::open_v2(path.to_string_lossy().as_bytes(), provigil_sqlite::SQLITE_OPEN_READONLY);
+    let db = db.filter(|_| rc == provigil_sqlite::SQLITE_OK).ok_or_else(|| format!("cannot open {}", path.display()))?;
     db.busy_timeout(5_000);
     let mut rows = Vec::new();
     let (rc, err) = db.exec_rows(CATALOG_SQL.as_bytes(), |cols, _| {
@@ -50,7 +50,7 @@ pub fn read_catalog(path: &std::path::Path) -> Result<Vec<CatalogRow>, String> {
         rows.push(CatalogRow { tactic_id: c(0), tactic: c(1), id: c(2), name: c(3), description: summary(&c(4)), parent: c(5) });
         0
     });
-    if rc != siem_sqlite::SQLITE_OK {
+    if rc != provigil_sqlite::SQLITE_OK {
         return Err(String::from_utf8_lossy(&err.unwrap_or_default()).into_owned());
     }
     Ok(rows)

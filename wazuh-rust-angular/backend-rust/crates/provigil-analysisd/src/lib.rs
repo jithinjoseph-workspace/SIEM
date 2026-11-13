@@ -6,4 +6,5 @@ pub mod event;
 pub mod lists;
 pub mod messages;
 pub mod plugins;
+pub mod rules;
 pub mod time;

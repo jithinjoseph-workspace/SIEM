@@ -99,6 +99,207 @@ pub fn write_iso(buf: &mut [u8], max: usize, tm: &Tm) {
     buf[at] = 0;
 }
 
+// ---------------------------------------------------------------- `<time>` and `<weekday>` of rules
+
+fn at(s: &[u8], i: usize) -> u8 {
+    s.get(i).copied().unwrap_or(0)
+}
+
+/// The leading number of `s` from `i` (spaces and a sign allowed, wrapping like C).
+fn leading_int(s: &[u8], mut i: usize) -> i32 {
+    while matches!(at(s, i), b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
+        i += 1;
+    }
+    let neg = at(s, i) == b'-';
+    if matches!(at(s, i), b'+' | b'-') {
+        i += 1;
+    }
+    let mut v: i64 = 0;
+    while at(s, i).is_ascii_digit() {
+        v = v.wrapping_mul(10).wrapping_add(i64::from(at(s, i) - b'0'));
+        i += 1;
+    }
+    (if neg { -v } else { v }) as i32
+}
+
+/// `h[:mm][ ][am|pm]` at `p`: (position after it, "HH:MM").
+fn hour(s: &[u8], mut p: usize) -> Option<(usize, String)> {
+    let mut h = leading_int(s, p);
+    if !(0..24).contains(&h) {
+        return None;
+    }
+    let start = p;
+    while at(s, p).is_ascii_digit() {
+        p += 1;
+    }
+    if p - start > 2 {
+        return None;
+    }
+    let mut min = 0;
+    if at(s, p) == b':' {
+        p += 1;
+        // two digits, unless only the third is a digit
+        if (!at(s, p).is_ascii_digit() || !at(s, p + 1).is_ascii_digit()) && at(s, p + 2).is_ascii_digit() {
+            return None;
+        }
+        min = leading_int(s, p);
+        p += 2;
+    }
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    let text = |h: i32, m: i32| {
+        let t = format!("{h:02}:{m:02}");
+        (t.len() < 7).then_some(t)
+    };
+    match at(s, p).to_ascii_lowercase() {
+        c @ (b'a' | b'p') => {
+            if at(s, p + 1).to_ascii_lowercase() != b'm' {
+                return None;
+            }
+            if h == 12 {
+                h = 0;
+            }
+            if c == b'p' {
+                h += 12;
+                if !(0..24).contains(&h) {
+                    return None;
+                }
+            }
+            Some((p + 2, text(h, min)?))
+        }
+        _ => Some((p, text(h, min)?)),
+    }
+}
+
+/// A rule's `<time>` range `[!]from - to` as `.HHMMHHMM`-like text: `.` or `!` (negated),
+/// then the two "HH:MM" texts; a range given backwards becomes the negated range the other
+/// way round. None when invalid.
+pub fn rule_time(t: &str) -> Option<String> {
+    let s = t.as_bytes();
+    let mut p = 0;
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    let negated = at(s, p) == b'!';
+    if negated {
+        p += 1;
+        while at(s, p) == b' ' {
+            p += 1;
+        }
+    }
+    let (q, first) = hour(s, p)?;
+    p = q;
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    if at(s, p) != b'-' {
+        return None;
+    }
+    p += 1;
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    let (q, second) = hour(s, p)?;
+    p = q;
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    if at(s, p) != 0 {
+        return None;
+    }
+    if first > second {
+        return Some(format!("!{second}{first}"));
+    }
+    Some(format!("{}{first}{second}", if negated { '!' } else { '.' }))
+}
+
+/// Whether `now` ("HH:MM:SS") is in a [`rule_time`] range (the first 5 characters compared).
+pub fn on_time(now: &str, range: &str) -> bool {
+    let cmp5 = |a: &[u8], b: &[u8]| {
+        for i in 0..5 {
+            let (x, y) = (at(a, i), at(b, i));
+            if x != y || x == 0 {
+                return x.cmp(&y);
+            }
+        }
+        std::cmp::Ordering::Equal
+    };
+    let r = range.as_bytes();
+    let inside = at(r, 0) != b'!';
+    let r = r.get(1..).unwrap_or(&[]);
+    let n = now.as_bytes();
+    let within = cmp5(n, r).is_ge() && cmp5(n, r.get(5..).unwrap_or(&[])).is_le();
+    within == inside
+}
+
+/// A rule's `<weekday>` list (names, three-letter names, weekdays, weekends; separated by
+/// spaces or commas) as 9 bytes: 1 for each day Sunday..Saturday, then `!` at 7 when negated.
+/// A leading `!` is not skipped, so it never reads (as in the original).
+pub fn rule_days(d: &str) -> Option<Vec<u8>> {
+    const NAMES: [(&str, i32); 16] = [
+        ("sunday", 0),
+        ("sun", 0),
+        ("monday", 1),
+        ("mon", 1),
+        ("tuesday", 2),
+        ("tue", 2),
+        ("wednesday", 3),
+        ("wed", 3),
+        ("thursday", 4),
+        ("thu", 4),
+        ("friday", 5),
+        ("fri", 5),
+        ("saturday", 6),
+        ("sat", 6),
+        ("weekdays", 7),
+        ("weekends", 8),
+    ];
+    let s = d.as_bytes();
+    let mut p = 0;
+    while at(s, p) == b' ' {
+        p += 1;
+    }
+    let negated = at(s, p) == b'!';
+    let mut days = [0u8; 7];
+    while at(s, p) != 0 {
+        let (name, n) = NAMES.iter().find(|(name, _)| name.bytes().enumerate().all(|(k, c)| at(s, p + k).to_ascii_lowercase() == c))?;
+        match n {
+            7 => days[1..6].fill(1),
+            8 => {
+                days[0] = 1;
+                days[6] = 1;
+            }
+            d => days[*d as usize] = 1,
+        }
+        p += name.len();
+        match at(s, p) {
+            b' ' | b',' => {
+                while matches!(at(s, p), b' ' | b',') {
+                    p += 1;
+                }
+            }
+            0 => break,
+            _ => return None,
+        }
+    }
+    if !days.contains(&1) {
+        return None;
+    }
+    let mut out = days.to_vec();
+    out.extend_from_slice(&[if negated { b'!' } else { 0 }, 0]);
+    Some(out)
+}
+
+/// Whether week day `wday` (0 = Sunday) is in a [`rule_days`] list.
+pub fn on_day(wday: i32, days: &[u8]) -> bool {
+    let inside = days.get(7) != Some(&b'!');
+    if !(0..=7).contains(&wday) {
+        return false;
+    }
+    (days.get(wday as usize) == Some(&1)) == inside
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

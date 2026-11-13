@@ -12,6 +12,7 @@ mod checksum;
 pub mod fim;
 mod syscollector;
 mod delta;
+mod remove;
 mod inventory;
 mod layout;
 mod legacy;
@@ -189,6 +190,8 @@ impl Engine {
             b"global" => self.global_actor(rest, peer),
             b"task" => self.task_actor(rest, peer),
             b"agent" => self.agent_actor(rest, peer),
+            b"wazuhdb" => self.remove_actor(rest),
+            b"mitre" => self.mitre_actor(rest, peer),
             _ => {
                 self.debug(cat!("DB(000) Invalid DB query actor: ", actor));
                 (INVALID, answer(cat!("err Invalid DB query actor: '", text::first32(actor), "'")))

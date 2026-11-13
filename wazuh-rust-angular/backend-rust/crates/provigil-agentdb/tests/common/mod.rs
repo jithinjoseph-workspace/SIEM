@@ -116,6 +116,11 @@ impl Pair {
         Pair { old, new, so, sn, ho, hn }
     }
 
+    /// The two home folders (old, new).
+    pub fn homes(&self) -> [&std::path::Path; 2] {
+        [self.ho.path(), self.hn.path()]
+    }
+
     /// Sends each request to both; returns every difference (empty when identical).
     pub fn run(&self, requests: &[String], mask: &dyn Fn(String) -> String) -> Vec<String> {
         let (po, pn) = (self.ho.path().to_string_lossy().into_owned(), self.hn.path().to_string_lossy().into_owned());

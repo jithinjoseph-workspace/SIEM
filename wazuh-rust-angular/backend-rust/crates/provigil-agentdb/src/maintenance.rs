@@ -175,6 +175,16 @@ impl Engine {
         *last = now;
     }
 
+    /// Commits and closes every open database (at shutdown).
+    pub fn close_all(&self) {
+        for (_, h) in self.handles() {
+            let mut h = h.lock();
+            if h.db.is_some() {
+                self.close(&mut h, true);
+            }
+        }
+    }
+
     /// Opens every agent database once, one per second, while `running` says so.
     pub fn open_all_agents(&self, running: &dyn Fn() -> bool) {
         let dir = match std::fs::read_dir(self.path(DB_DIR)) {

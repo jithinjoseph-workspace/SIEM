@@ -11,6 +11,7 @@ sha2 = "0.10"
 sha1 = "0.10"
 flate2 = "1"
 parking_lot = { version = "0.12", features = ["arc_lock"] }
+chrono = "0.4"
 
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)

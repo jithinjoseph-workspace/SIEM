@@ -14,6 +14,8 @@ mod syscollector;
 mod delta;
 mod remove;
 mod maintenance;
+mod stats;
+pub mod server;
 mod inventory;
 mod layout;
 mod legacy;
@@ -160,13 +162,26 @@ pub struct Engine {
     sync_last_id: Mutex<i32>,
     /// The cached global group hash (empty = not cached).
     group_hash: Mutex<Vec<u8>>,
+    /// Request counters (spec § 1.9) and the start time.
+    stats: Mutex<stats::Stats>,
+    started: i64,
 }
 
 pub type Answer = (i32, Vec<u8>);
 
 impl Engine {
     pub fn new(home: impl Into<PathBuf>, settings: Settings, env: Arc<dyn Env>) -> Engine {
-        Engine { home: home.into(), env, settings, dbs: Mutex::new(HashMap::new()), sync_last_id: Mutex::new(0), group_hash: Mutex::new(Vec::new()) }
+        let started = env.time();
+        Engine {
+            home: home.into(),
+            env,
+            settings,
+            dbs: Mutex::new(HashMap::new()),
+            sync_last_id: Mutex::new(0),
+            group_hash: Mutex::new(Vec::new()),
+            stats: Mutex::new(stats::Stats::default()),
+            started,
+        }
     }
 
     pub fn path(&self, rel: &str) -> PathBuf {
@@ -197,7 +212,15 @@ impl Engine {
     }
 
     /// Handles one request line; returns the result code and the answer.
+    /// Answers one request (and counts it).
     pub fn handle(&self, request: &[u8], peer: i32) -> Answer {
+        let t = std::time::Instant::now();
+        let r = self.answer(request, peer);
+        self.stats.lock().record(request, t.elapsed());
+        r
+    }
+
+    fn answer(&self, request: &[u8], peer: i32) -> Answer {
         let req = text::until_nul(request);
         let start = req.iter().position(|&c| c != b' ' && c != b'\n').unwrap_or(req.len());
         let req = &req[start..];

@@ -20,9 +20,10 @@ clears, and every removal message published on the router), `dbsync` deltas on a
 (`compare_dbsync.rs`: insert, partial modify, delete, value types against column types, range
 rules, syntax and JSON errors). The delta column lists are our own compact description in
 `src/delta.rs` (column, type, key / fixed / keep-empty flags; defaults follow the type).
-Agent actor complete. Then: `wazuhdb remove`, `mitre`,
-background jobs, socket server, statistics (incl. the per-kind inventory query counters, not
-counted yet), MITRE builder, wiring.
+Agent actor complete. Also done: `wazuhdb remove` and `mitre` (`compare_remove_mitre.rs`),
+background jobs (`compare_maintenance.rs`), the local server and the service program
+(`tests/server.rs`, D-5) and statistics (D-6). Still to do: MITRE builder, siem-api's in-memory
+store check, switch-over (program name, settings keys, siem-api), live test, final review.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,
@@ -397,6 +398,25 @@ notice must ship with the product (licence files are still pending, see the lice
 `hh:mm:ss`; Windows does not allow `:` in file names, so on the Windows server every global backup
 (daily and on demand) failed with `unable to open database` in the old code. On Windows the time is
 written `hh-mm-ss`; Linux keeps the old name. Tested: create, list, restore round trip.
+
+**Decision D-5 (13 Nov 2026): the service program uses only our own code.** `src/bin/provigil-agentdb.rs`
+has its own log writer (same `logs/ossec.log` line format), its own router publisher (the frame
+`[u32 size][u32 1]['P'][json]` to `queue/router/<topic>`, port file on Windows; a topic nobody
+listens to drops the message), and reads its settings itself: `provigil_db.*` in
+`etc/internal_options.conf` / `etc/local_internal_options.conf` (same keys, ranges and defaults
+as before; the old `wazuh_db.*` lines are renamed at switch-over) and the
+`<wdb><backup database="global">` block of `etc/ossec.conf`. It is built as `provigil-agentdb`
+while the old program still has the name `provigil-db`; at switch-over it takes that name, so
+siem-api starts it unchanged. The old ported helper crates (log, daemon, config, router, xml)
+are not used.
+
+**Decision D-6 (13 Nov 2026): statistics are counted generically.** No part of the platform reads
+the database statistics (only the old Python API did, which we do not run). `getstats` keeps its
+layout (`uptime`, `timestamp`, `name`, `metrics.queries.received`, `received_breakdown`,
+`metrics.time.execution`, `execution_breakdown`) but the counters come from one place: every
+request is counted and timed by actor and by command (`<actor>_breakdown` objects), instead of
+about 250 hand-written counters. `getconfig` returns the same sections; the internal one is named
+`provigil_db`.
 
 ## 7. Global database rules
 

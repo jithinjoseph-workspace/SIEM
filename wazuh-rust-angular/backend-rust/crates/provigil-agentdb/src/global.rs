@@ -1734,7 +1734,13 @@ impl Engine {
         }
         drop(st);
         let gz = format!("{rel}.gz");
-        let compressed = gzip_file(&full, &self.path(&gz));
+        let compressed = match gzip_file(&full, &self.path(&gz)) {
+            Ok(()) => true,
+            Err(e) => {
+                self.error(cat!("Global database backup compression failed: ", e));
+                false
+            }
+        };
         let _ = std::fs::remove_file(&full);
         if !compressed {
             return (INVALID, b"err Failed during database backup compression".to_vec());
@@ -1811,7 +1817,8 @@ impl Engine {
         let global = format!("{DB_DIR}/{GLOBAL_NAME}.db");
         let tmp = format!("{DB_DIR}/{GLOBAL_NAME}.db.back");
         let src = format!("{}/{}", crate::BACKUP_DIR, String::from_utf8_lossy(&b));
-        if !gunzip_file(&self.path(&src), &self.path(&tmp)) {
+        if let Err(e) = gunzip_file(&self.path(&src), &self.path(&tmp)) {
+            self.error(cat!("Global database backup decompression failed: ", e));
             self.debug(b"Failed during backup decompression".to_vec());
             return (INVALID, b"err Failed during backup decompression".to_vec());
         }
@@ -1839,18 +1846,20 @@ fn sql_status(s: i32) -> i32 {
     }
 }
 
-fn gzip_file(src: &std::path::Path, dst: &std::path::Path) -> bool {
+/// Compresses a file; the reason when it fails.
+fn gzip_file(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     use std::io::Write;
-    let Ok(data) = std::fs::read(src) else { return false };
-    let Ok(f) = std::fs::File::create(dst) else { return false };
+    let data = std::fs::read(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
+    let f = std::fs::File::create(dst).map_err(|e| format!("cannot create {}: {e}", dst.display()))?;
     let mut e = flate2::write::GzEncoder::new(f, flate2::Compression::default());
-    e.write_all(&data).is_ok() && e.finish().is_ok()
+    e.write_all(&data).and_then(|_| e.finish().map(|_| ())).map_err(|e| format!("compressing into {}: {e}", dst.display()))
 }
 
-fn gunzip_file(src: &std::path::Path, dst: &std::path::Path) -> bool {
+/// Decompresses a file; the reason when it fails.
+fn gunzip_file(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     use std::io::Read;
-    let Ok(f) = std::fs::File::open(src) else { return false };
-    let mut d = flate2::read::GzDecoder::new(f);
+    let f = std::fs::File::open(src).map_err(|e| format!("cannot open {}: {e}", src.display()))?;
     let mut v = Vec::new();
-    d.read_to_end(&mut v).is_ok() && std::fs::write(dst, v).is_ok()
+    flate2::read::GzDecoder::new(f).read_to_end(&mut v).map_err(|e| format!("decompressing {}: {e}", src.display()))?;
+    std::fs::write(dst, v).map_err(|e| format!("cannot write {}: {e}", dst.display()))
 }

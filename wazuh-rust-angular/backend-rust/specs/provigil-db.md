@@ -33,7 +33,8 @@ the comparison tests still use it as a library), the programs are `provigil-db` 
 `provigil-mitredb`, the settings keys are `provigil_db.*` (`worker_pool_size` is no longer used:
 one thread per client). Live: both services on copies of the manager data, 242 read requests
 (every table of the 7 agents, package/hotfix lists, MITRE) and 17 write requests identical.
-Still to do: final review against `provigil-db-texts.md`.
+Final review done: all 2,167 old texts checked (`provigil-db-texts.md`, review result and
+decision D-7: the Linux-only HTTP interface is not carried over). **The rewrite is complete.**
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,
@@ -597,7 +598,7 @@ sqlite3_bind_text(): <error>`). `get-agents-by-connection-status`: inside a tran
 - Oldest = largest age (ties: later in directory order).
 - `get-distinct-groups [hash]`: distinct group texts/hashes after the given hash, sized.
 
-<!-- next: fim.rs (recalculate hash, sync-agent-groups-get, agent info set, disconnect, backups), then fim.rs, syscollector.rs, sca.rs, agentdb.rs, delta.rs, integrity.rs, state.rs (getstats), config.rs, pool/upgrade/metadata, daemon_portable + bin, mitredb, ProVigilDbManager -->
+<!-- done 13 Nov 2026; old next: fim.rs (recalculate hash, sync-agent-groups-get, agent info set, disconnect, backups), then fim.rs, syscollector.rs, sca.rs, agentdb.rs, delta.rs, integrity.rs, state.rs (getstats), config.rs, pool/upgrade/metadata, daemon_portable + bin, mitredb, ProVigilDbManager -->
 
 
 <!-- next after that: parser_agent.rs (§ 2), task.rs (§ 5), global.rs internals -->

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use siem_cjson::Json;
-use siem_sqlite::{SQLITE_DONE, SQLITE_OK};
+use siem_sqlite::SQLITE_DONE;
 
 use crate::text::read_long;
 use crate::{Engine, Handle, DB_DIR, GLOBAL_NAME, INVALID};
@@ -59,15 +59,9 @@ impl Engine {
                 continue;
             }
             h.drop_statements();
-            let vacuumed = {
-                let (rc, st, _) = h.db().prepare_v2(b"VACUUM;");
-                match st.filter(|_| rc == SQLITE_OK) {
-                    Some(st) => self.step(&st) == SQLITE_DONE,
-                    None => {
-                        self.debug(cat!("SQLite: ", h.errmsg()));
-                        false
-                    }
-                }
+            let vacuumed = match self.prepared_plain(&h, b"VACUUM;") {
+                Some(st) => self.step(&st) == SQLITE_DONE,
+                None => false,
             };
             if !vacuumed {
                 self.error(cat!("Couldn't execute vacuum for the database '", id, "'"));

@@ -26,7 +26,6 @@ pub const USERS: i32 = 14;
 pub const GROUPS: i32 = 15;
 pub const BROWSER_EXTENSIONS: i32 = 16;
 pub const SERVICES: i32 = 17;
-pub const GENERIC: i32 = 18;
 
 /// The component name stored in `sync_info.component` (and used in log lines).
 pub const NAMES: [&str; 19] = [

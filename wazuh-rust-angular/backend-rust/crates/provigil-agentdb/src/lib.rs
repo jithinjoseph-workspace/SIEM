@@ -370,8 +370,7 @@ impl Engine {
             self.debug(cat!("Couldn't open SQLite database '", rel, "': ", db.errmsg()));
             return false;
         }
-        let (rc, st, _) = db.prepare_v2(b"INSERT INTO info (key, value) VALUES (?, ?);");
-        let Some(st) = st.filter(|_| rc == SQLITE_OK) else {
+        let Some(st) = self.prepare_busy(&db, b"INSERT INTO info (key, value) VALUES (?, ?);") else {
             self.debug(cat!("SQLite: ", db.errmsg()));
             return false;
         };
@@ -616,18 +615,23 @@ impl Engine {
         (OK, answer(cat!("ok ", j.print_unformatted())))
     }
 
-    fn prepared_plain(&self, h: &Handle, sql: &[u8]) -> Option<Stmt> {
-        for _ in 0..=1000 {
-            let (rc, st, _) = h.db().prepare_v2(sql);
-            if rc == SQLITE_BUSY {
-                continue;
-            }
-            if rc != SQLITE_OK {
-                self.debug(cat!("SQLite: ", h.errmsg()));
-                return None;
-            }
-            return st;
+    pub(crate) fn prepared_plain(&self, h: &Handle, sql: &[u8]) -> Option<Stmt> {
+        let st = self.prepare_busy(h.db(), sql);
+        if st.is_none() {
+            self.debug(cat!("SQLite: ", h.errmsg()));
         }
+        st
+    }
+
+    /// Prepares a statement, retried while the file is busy (at most 1,000 more times).
+    pub(crate) fn prepare_busy(&self, db: &Db, sql: &[u8]) -> Option<Stmt> {
+        for _ in 0..=1000 {
+            let (rc, st, _) = db.prepare_v2(sql);
+            if rc != SQLITE_BUSY {
+                return st.filter(|_| rc == SQLITE_OK);
+            }
+        }
+        self.debug(b"Maximum attempts exceeded for sqlite3_prepare_v2()".to_vec());
         None
     }
 

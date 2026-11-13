@@ -10,7 +10,7 @@ use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
 use crate::integrity::{self, HOTFIXES, PACKAGES};
 use crate::legacy::{Kind, Val, Words};
 use crate::rows::SEND_FAILED;
-use crate::text::{answer, near, read_long, read_ulong, until_nul};
+use crate::text::{answer, near, read_long, until_nul};
 use crate::{Answer, Engine, Handle, INVALID, OK};
 
 /// The checksum value of rows written by the old protocol.
@@ -737,9 +737,4 @@ impl Engine {
             (status, answer(cat!("err ", p)))
         }
     }
-}
-
-/// `strtoul` as a signed 64-bit value (process start time).
-pub fn ulong_as_long(f: &[u8]) -> i64 {
-    read_ulong(f) as i64
 }

@@ -92,7 +92,7 @@ pub struct Pair {
     pub old: siem_wdb::wdb::Wdbd,
     pub new: Engine,
     so: Arc<Seen>,
-    sn: Arc<Seen>,
+    pub sn: Arc<Seen>,
     ho: tempfile::TempDir,
     hn: tempfile::TempDir,
 }

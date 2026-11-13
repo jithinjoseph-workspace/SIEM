@@ -13,10 +13,13 @@ request layer + generic commands (`compare_agent_base.rs`), rootcheck + CIS-CAT
 (`compare_sca.rs`), legacy inventory + package/hotfix lists (`compare_inventory_legacy.rs`),
 FIM + integrity commands (`compare_fim.rs`: scan info, control, old-format save with Windows
 permissions/attributes, load, delete, cleandb, JSON save v1/v2/v3, `integrity_check_*` on all five
-FIM components incl. the duplicate-key removal, `integrity_clear`; run with and without router).
-Still to do in the agent actor: `dbsync` (13 delta tables),
-`syscollector_<kind> save2` (13 kinds). Then: `wazuhdb remove`, `mitre`, background jobs,
-socket server, statistics, MITRE builder, wiring.
+FIM components incl. the duplicate-key removal, `integrity_clear`; run with and without router),
+`syscollector_<kind>` save2 + integrity on all 13 inventory kinds (`compare_syscollector.rs`:
+full rows, rows without key fields (removal by id), refused rows, odd value types, range checks,
+clears, and every removal message published on the router).
+Still to do in the agent actor: `dbsync` (13 delta tables). Then: `wazuhdb remove`, `mitre`,
+background jobs, socket server, statistics (incl. the per-kind inventory query counters, not
+counted yet), MITRE builder, wiring.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,

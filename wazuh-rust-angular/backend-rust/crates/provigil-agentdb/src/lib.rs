@@ -10,6 +10,7 @@ mod integrity;
 mod integrity_sql;
 mod checksum;
 pub mod fim;
+mod syscollector;
 mod inventory;
 mod layout;
 mod legacy;

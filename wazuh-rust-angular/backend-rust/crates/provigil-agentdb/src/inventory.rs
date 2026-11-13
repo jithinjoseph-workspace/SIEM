@@ -58,7 +58,7 @@ impl Engine {
     }
 
     /// DONE, or a UNIQUE constraint (logged at debug level), counts as written.
-    fn written_unique(&self, h: &Handle, st: &Stmt) -> bool {
+    pub(crate) fn written_unique(&self, h: &Handle, st: &Stmt) -> bool {
         match self.step(st) {
             SQLITE_DONE => true,
             SQLITE_CONSTRAINT => {
@@ -78,7 +78,7 @@ impl Engine {
         }
     }
 
-    fn written_done(&self, h: &Handle, st: &Stmt) -> bool {
+    pub(crate) fn written_done(&self, h: &Handle, st: &Stmt) -> bool {
         if self.step(st) == SQLITE_DONE {
             true
         } else {

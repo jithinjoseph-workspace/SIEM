@@ -235,9 +235,6 @@ impl Engine {
         }
     }
 
-    pub(crate) fn syscollector_command(&self, _h: &mut Handle, cmd: &[u8], _args: &[u8]) -> Answer {
-        (INVALID, near("err not implemented", cmd))
-    }
 }
 
 /// The operating system's text for an I/O error (without Rust's "(os error N)" suffix).

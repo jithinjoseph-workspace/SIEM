@@ -22,7 +22,9 @@ rules, syntax and JSON errors). The delta column lists are our own compact descr
 `src/delta.rs` (column, type, key / fixed / keep-empty flags; defaults follow the type).
 Agent actor complete. Also done: `wazuhdb remove` and `mitre` (`compare_remove_mitre.rs`),
 background jobs (`compare_maintenance.rs`), the local server and the service program
-(`tests/server.rs`, D-5) and statistics (D-6). Still to do: MITRE builder, siem-api's in-memory
+(`tests/server.rs`, D-5), statistics (D-6) and the MITRE builder (`src/bin/provigil-mitre.rs`, our
+own code: old and new run on the full enterprise-attack.json give all 19 tables identical,
+24,000+ rows; `tests/mitre_builder.rs`). Still to do: siem-api's in-memory
 store check, switch-over (program name, settings keys, siem-api), live test, final review.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in

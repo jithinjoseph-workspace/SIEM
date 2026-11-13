@@ -1,7 +1,7 @@
 //! The configuration XML reader, old against new: the same documents must give the same
 //! elements, attributes and contents, or the same error text and line.
 
-use provigil_daemon::xml::{self, Node};
+use provigil_daemon::xml::{self, Node, RawNode};
 use siem_xml::{OsXml, XmlNode};
 
 struct Rng(u64);
@@ -31,13 +31,50 @@ fn old_tree(x: &OsXml, parent: Option<&XmlNode>) -> Vec<Node> {
             content: n.content.clone().unwrap_or_default(),
             children: old_tree(x, Some(n)),
             from_var: false,
+            more_attributes: false,
         })
         .collect()
 }
 
 /// The new reader's tree without the `var` marks.
 fn new_tree(nodes: &[Node]) -> Vec<Node> {
-    nodes.iter().map(|n| Node { children: new_tree(&n.children), from_var: false, ..n.clone() }).collect()
+    nodes.iter().map(|n| Node { children: new_tree(&n.children), from_var: false, more_attributes: false, ..n.clone() }).collect()
+}
+
+/// The old reader's tree with its bytes.
+fn old_raw(x: &OsXml, key: Option<usize>) -> Vec<RawNode> {
+    x.get_elements_by_node_raw(key)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|n| RawNode {
+            children: old_raw(x, Some(n.key)),
+            name: n.element,
+            attributes: n.attributes.into_iter().zip(n.values).collect(),
+            content: n.content.unwrap_or_default(),
+            from_var: false,
+            more_attributes: false,
+        })
+        .collect()
+}
+
+fn new_raw(nodes: &[RawNode]) -> Vec<RawNode> {
+    nodes.iter().map(|n| RawNode { children: new_raw(&n.children), from_var: false, more_attributes: false, ..n.clone() }).collect()
+}
+
+/// Variables, and the raw text reading, old against new.
+fn check_more(doc: &[u8]) {
+    let old = OsXml::read_bytes(doc, false).and_then(|mut x| x.apply_variables().map(|_| x));
+    match (&old, xml::parse_with_variables(doc)) {
+        (Ok(o), Ok(n)) => assert_eq!(old_tree(o, None), new_tree(&n), "variables in {:?}", String::from_utf8_lossy(doc)),
+        (Err(o), Err(n)) => assert_eq!((o.message.as_str(), o.line), (n.message.as_str(), n.line), "variables in {:?}", String::from_utf8_lossy(doc)),
+        (o, n) => panic!("variables in {:?}\n old: {:?}\n new: {:?}", String::from_utf8_lossy(doc), o.as_ref().map(|o| old_tree(o, None)), n),
+    }
+    let old = OsXml::read_string_bytes(doc, false);
+    match (&old, xml::parse_text_raw(doc)) {
+        (Ok(o), Ok(n)) => assert_eq!(old_raw(o, None), new_raw(&n), "text {:?}", String::from_utf8_lossy(doc)),
+        (Err(o), Err(n)) => assert_eq!((o.message.as_str(), o.line), (n.message.as_str(), n.line), "text {:?}", String::from_utf8_lossy(doc)),
+        (o, n) => panic!("text {:?}\n old: {:?}\n new: {:?}", String::from_utf8_lossy(doc), o.as_ref().map(|o| old_raw(o, None)), n),
+    }
 }
 
 fn lines(nodes: &[Node], depth: usize) -> Vec<String> {
@@ -45,6 +82,7 @@ fn lines(nodes: &[Node], depth: usize) -> Vec<String> {
 }
 
 fn check(doc: &[u8]) {
+    check_more(doc);
     let old = OsXml::read_bytes(doc, false);
     let new = xml::parse(doc);
     match (&old, &new) {
@@ -73,7 +111,7 @@ fn random_text() {
     let mut r = Rng(0x9E3779B97F4A7C15);
     let parts: Vec<&[u8]> = vec![
         b"<", b">", b"/", b"\\", b"!", b"-", b"=", b"\"", b"'", b" ", b"\n", b"\t", b"a", b"b", b"x", b"\0", b"<a>", b"</a>", b"<b>", b"</b>", b"<a/>", b"<!--", b"-->", b"<!", b"!>", b"x=\"1\"", b"y='2'",
-        b"<var>", b"</var>", b"\xC3\xA9", b"\xFF", b"&lt;",
+        b"<var>", b"</var>", b"\xC3\xA9", b"\xFF", b"&lt;", b"$", b"$v", b"$V.", b"$(x)", b"name=\"v\"", b"<var name=\"v\">", b"var='1'", b" ",
     ];
     for _ in 0..300_000 {
         let n = r.below(16);
@@ -88,16 +126,20 @@ fn name(r: &mut Rng) -> String {
 
 fn element(r: &mut Rng, depth: usize) -> String {
     let n = name(r);
+    if n.eq_ignore_ascii_case("var") && r.below(2) == 0 {
+        return format!("<{n} name=\"{}\">{}</{n}>", r.pick(&["v", "V", "w", ""]), r.pick(&["val", "", "a b", "$v"]));
+    }
     let ws = |r: &mut Rng| r.pick(&["", "", " ", "\n", "\n  ", "\t"]).to_string();
     let mut attrs = String::new();
     for i in 0..r.below(4) {
         let q = *r.pick(&["\"", "'"]);
-        attrs.push_str(&format!("{}{}k{i}={q}{}{q}", r.pick(&[" ", "  ", "\n"]), ws(r), r.pick(&["v", "", "a b", "x/y", "<", "1"])));
+        let k = if r.below(4) == 0 { r.pick(&["var", "VAR", "name", "k0"]).to_string() } else { format!("k{i}") };
+        attrs.push_str(&format!("{}{}{k}={q}{}{q}", r.pick(&[" ", "  ", "\n"]), ws(r), r.pick(&["v", "", "a b", "x/y", "<", "1", "$v", "x$V|y", "$(a)$v", "$", "$nope"])));
     }
     match r.below(if depth > 4 { 3 } else { 6 }) {
         0 => format!("<{n}{attrs}/>"),
         1 => format!("<{n}{attrs} />"),
-        2 => format!("<{n}{attrs}>{}</{n}>", r.pick(&["yes", "no", " yes ", "", "a\\<b", "x\\\\", "&amp;", "1,2, 3", "<!-- c -->v", "v<! c !>w"])),
+        2 => format!("<{n}{attrs}>{}</{n}>", r.pick(&["yes", "no", " yes ", "", "a\\<b", "x\\\\", "&amp;", "1,2, 3", "<!-- c -->v", "v<! c !>w", "$v", "a $v b", "$v.$V,$v", "$(x) $v", "$$v", "x$", "$nope", "$v$"])),
         _ => {
             let kids: String = (0..r.below(4)).map(|_| format!("{}{}{}", ws(r), element(r, depth + 1), r.pick(&["", "text", "\n"]))).collect();
             format!("<{n}{attrs}>{kids}{}</{n}>", ws(r))
@@ -143,4 +185,37 @@ fn limit_cases() {
         check(format!("<a{attrs}></a>").as_bytes());
         check(format!("<a{attrs} ></a>").as_bytes());
     }
+}
+
+/// Each variable rule by hand, old against new, and the replacements really happen.
+#[test]
+fn variable_cases() {
+    let docs: &[&[u8]] = &[
+        b"<var name=\"v\">X</var><a>$v $V.$v,$v|$v$v</a>",
+        b"<var name=\"v\">X</var><a k=\"$v\">ab$</a>",
+        b"<var name=\"v\">X</var><a>$(x) $v</a>",
+        b"<var name=\"v\">X</var><a>$nope</a>",
+        b"<var name=\"v\">X</var><a>$</a><b>$$v</b>",
+        b"<var>X</var><a name=\"v\">$v</a>",
+        b"<var>X</var><a k=\"v\">t</a>",
+        b"<var>X</var>",
+        b"<var name=\"v\"/><a>x$v</a>",
+        b"<a><var name=\"v\">in</var></a><b>$v!</b>",
+        b"<var var=\"1\" name=\"v\">X</var><a>$v!</a>",
+        b"<var name=\"v\">$w</var><a>$v!</a>",
+        b"<var name=\"v\">1</var><var name=\"V\">2</var><a>$v!</a>",
+        b"<a var=\"1\" b=\"2\">t</a><a b=\"1\" var=\"2\" b=\"3\">t</a>",
+        b"<a b=\"1\" b=\"2\">t</a>",
+    ];
+    for d in docs {
+        check(d);
+    }
+    let long = format!("<var name=\"v\">X</var><a>${}</a>", "n".repeat(300));
+    check(long.as_bytes());
+    let longname = format!("<var name=\"{}\">X</var>", "n".repeat(256));
+    check(longname.as_bytes());
+    let n = xml::parse_with_variables(b"<var name=\"v\">X</var><a k=\"$v.\">$v $V</a>").unwrap();
+    assert_eq!((n[0].content.as_str(), n[0].attributes[0].1.as_str()), ("X X", "X."));
+    let n = xml::parse_with_variables(b"<var>X</var><a name=\"v\">$v.</a>").unwrap();
+    assert_eq!(n[0].content, "X.");
 }

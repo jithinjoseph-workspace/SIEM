@@ -19,6 +19,11 @@
 //!   next element at its level or above that is not a `var`. So the children of a `var` that
 //!   follows an element at the same level are listed under that element (marked
 //!   [`Node::from_var`]); a lookup by path ([`first_content`]) does not reach them.
+//! * an attribute named `var` (any case) ends the attribute list: it and the attributes after
+//!   it are not listed, but the element still counts as having attributes for a lookup.
+//!
+//! Decoder and rule files may define variables ([`parse_with_variables`]); the Windows event
+//! decoder reads a text up to its first zero byte with the bytes as written ([`parse_text_raw`]).
 
 /// The longest name, content part or attribute value, plus one.
 const MAX_TEXT: usize = 20480;
@@ -36,6 +41,33 @@ pub struct Node {
     /// Listed here through a `var` element (not inside this element): not reached by
     /// [`first_content`].
     pub from_var: bool,
+    /// Attributes from a `var` attribute on, not listed.
+    pub more_attributes: bool,
+}
+
+/// [`Node`] with the bytes as written (names and contents up to a zero byte).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawNode {
+    pub name: Vec<u8>,
+    pub attributes: Vec<(Vec<u8>, Vec<u8>)>,
+    pub content: Vec<u8>,
+    pub children: Vec<RawNode>,
+    pub from_var: bool,
+    pub more_attributes: bool,
+}
+
+impl RawNode {
+    fn lossy(self) -> Node {
+        let s = |b: Vec<u8>| String::from_utf8_lossy(&b).into_owned();
+        Node {
+            name: s(self.name),
+            attributes: self.attributes.into_iter().map(|(k, v)| (s(k), s(v))).collect(),
+            content: s(self.content),
+            children: self.children.into_iter().map(RawNode::lossy).collect(),
+            from_var: self.from_var,
+            more_attributes: self.more_attributes,
+        }
+    }
 }
 
 /// A reading error: the text (`XMLERR: ...`) and the line it was found on.
@@ -67,7 +99,7 @@ pub fn first_content<'a>(roots: &'a [Node], path: &[&str]) -> Option<&'a str> {
 
 fn below<'a>(n: &'a Node, path: &[&str]) -> Option<&'a str> {
     let Some((head, rest)) = path.split_first() else { return Some(&n.content) };
-    if !n.attributes.is_empty() {
+    if !n.attributes.is_empty() || n.more_attributes {
         return None;
     }
     below(n.children.iter().find(|c| !c.from_var && c.name == *head)?, rest)
@@ -75,16 +107,23 @@ fn below<'a>(n: &'a Node, path: &[&str]) -> Option<&'a str> {
 
 /// An element as read, in document order (by its start tag).
 struct Raw {
-    name: String,
-    attributes: Vec<(String, String)>,
-    content: String,
+    name: Vec<u8>,
+    /// name, value, the line its closing quote was on
+    attributes: Vec<(Vec<u8>, Vec<u8>, u32)>,
+    content: Vec<u8>,
     depth: u32,
     var: bool,
     parent: Option<usize>,
+    /// the line its name ended on
+    line: u32,
+}
+
+fn is_var(name: &[u8]) -> bool {
+    name.eq_ignore_ascii_case(b"var")
 }
 
 /// The listed tree of element `i` (see the module notes).
-fn build(all: &[Raw], i: usize) -> Node {
+fn build(all: &[Raw], i: usize) -> RawNode {
     let d = all[i].depth;
     let mut children = Vec::new();
     for (j, e) in all.iter().enumerate().skip(i + 1) {
@@ -101,7 +140,15 @@ fn build(all: &[Raw], i: usize) -> Node {
         }
     }
     let r = &all[i];
-    Node { name: r.name.clone(), attributes: r.attributes.clone(), content: r.content.clone(), children, from_var: false }
+    let listed = r.attributes.iter().position(|(k, _, _)| is_var(k)).unwrap_or(r.attributes.len());
+    RawNode {
+        name: r.name.clone(),
+        attributes: r.attributes[..listed].iter().map(|(k, v, _)| (k.clone(), v.clone())).collect(),
+        content: r.content.clone(),
+        children,
+        from_var: false,
+        more_attributes: listed < r.attributes.len(),
+    }
 }
 
 /// Reads the file at `path`.
@@ -114,6 +161,29 @@ pub fn read_file(path: &std::path::Path) -> Result<Vec<Node>, XmlError> {
 
 /// Reads a document (the root elements).
 pub fn parse(data: &[u8]) -> Result<Vec<Node>, XmlError> {
+    Ok(read(data, false)?.into_iter().map(RawNode::lossy).collect())
+}
+
+/// Reads a decoder or rule file: `<var name="X">value</var>` defines `$X` for the texts
+/// after it (see [`apply_variables`]).
+pub fn parse_with_variables(data: &[u8]) -> Result<Vec<Node>, XmlError> {
+    Ok(read(data, true)?.into_iter().map(RawNode::lossy).collect())
+}
+
+/// Reads [`parse_with_variables`] from a file.
+pub fn read_file_with_variables(path: &std::path::Path) -> Result<Vec<Node>, XmlError> {
+    match std::fs::read(path) {
+        Ok(data) => parse_with_variables(&data),
+        Err(_) => Err(XmlError { message: cut(format!("XMLERR: File '{}' not found.", path.display())), line: 0 }),
+    }
+}
+
+/// Reads a text up to its first zero byte, keeping the bytes as written.
+pub fn parse_text_raw(data: &[u8]) -> Result<Vec<RawNode>, XmlError> {
+    read(&data[..data.iter().position(|&c| c == 0).unwrap_or(data.len())], false)
+}
+
+fn read(data: &[u8], variables: bool) -> Result<Vec<RawNode>, XmlError> {
     let mut r = Reader { b: data, pos: 0, line: 1, all: Vec::new() };
     let mut escaped = false;
     while let Some(c) = r.next() {
@@ -135,6 +205,9 @@ pub fn parse(data: &[u8]) -> Result<Vec<Node>, XmlError> {
         // the roots share the document's escape state
         r.element(1, &mut escaped, None)?;
     }
+    if variables {
+        apply_variables(&mut r.all)?;
+    }
     Ok((0..r.all.len()).filter(|&i| r.all[i].depth == 0 && !r.all[i].var).map(|i| build(&r.all, i)).collect())
 }
 
@@ -147,9 +220,114 @@ fn escape(escaped: &mut bool, c: u8) {
     }
 }
 
-/// The text up to its first zero byte.
-fn text(b: &[u8]) -> String {
-    String::from_utf8_lossy(&b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())]).into_owned()
+/// The bytes up to the first zero byte.
+fn text(b: &[u8]) -> Vec<u8> {
+    b[..b.iter().position(|&c| c == 0).unwrap_or(b.len())].to_vec()
+}
+
+const MAX_VARIABLE: usize = 256;
+
+/// Replaces `$NAME` in contents and attribute values by the value of a `var` defined before
+/// them (in the order the start tags and attributes were read).
+///
+/// * A `var` element takes its name from the first plain attribute read after it at its depth
+///   or below (not necessarily its own); that attribute must be `name`, under 256 bytes.
+/// * Only texts longer than 2 bytes are looked at, and only once a variable exists.
+/// * A name runs to `$`, `.`, `|`, `,`, a space or the end, and is compared without case.
+///   An unknown name is an error, except an empty one (a lone `$` stays) or one starting with
+///   `(`, which is dropped from the text.
+fn apply_variables(all: &mut [Raw]) -> Result<(), XmlError> {
+    // the entries in reading order: (element index, attribute index or None)
+    let order: Vec<(usize, Option<usize>)> = all
+        .iter()
+        .enumerate()
+        .flat_map(|(i, e)| std::iter::once((i, None)).chain((0..e.attributes.len()).map(move |a| (i, Some(a)))))
+        .collect();
+    let fail = |m: String, line: u32| XmlError { message: cut(m), line };
+    let mut vars: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    for (pos, &(i, a)) in order.iter().enumerate() {
+        let depth = all[i].depth;
+        let (name, line) = match a {
+            None => (&all[i].name, all[i].line),
+            Some(a) => (&all[i].attributes[a].0, all[i].attributes[a].2),
+        };
+        let ct = match a {
+            None => all[i].content.clone(),
+            Some(a) => text(&all[i].attributes[a].1),
+        };
+        if is_var(name) {
+            let mut found = None;
+            for &(j, b) in &order[pos + 1..] {
+                if all[j].depth < depth {
+                    break;
+                }
+                let Some(b) = b else { continue };
+                let (k, v, l) = &all[j].attributes[b];
+                if is_var(k) {
+                    continue;
+                }
+                if !k.eq_ignore_ascii_case(b"name") {
+                    return Err(fail("XMLERR: Only \"name\" is allowed as an attribute for a variable.".into(), *l));
+                }
+                let v = text(v);
+                if v.len() >= MAX_VARIABLE {
+                    return Err(fail("XMLERR: Invalid variable name size.".into(), *l));
+                }
+                found = Some(v);
+                break;
+            }
+            let Some(v) = found else { return Err(fail("XMLERR: No value set for variable.".into(), line)) };
+            vars.push((v, ct));
+            continue;
+        }
+        if ct.len() <= 2 || vars.is_empty() {
+            continue;
+        }
+        let new = substitute(&ct, &vars).map_err(|m| fail(m, line))?;
+        match a {
+            None => all[i].content = new,
+            Some(a) => all[i].attributes[a].1 = new,
+        }
+    }
+    Ok(())
+}
+
+fn substitute(ct: &[u8], vars: &[(Vec<u8>, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    let at = |k: usize| ct.get(k).copied().unwrap_or(0);
+    let ends = |c: u8| matches!(c, b'$' | 0 | b'.' | b'|' | b',' | b' ');
+    let mut out = ct.to_vec();
+    // `kept`: how much of `out` is final; after it `out` holds `ct` from the last replacement on
+    let (mut p, mut kept) = (0, 0);
+    while at(p) != 0 {
+        if at(p) != b'$' {
+            p += 1;
+            kept += 1;
+            continue;
+        }
+        p += 1;
+        let start = p;
+        while !ends(at(p)) {
+            if p - start >= MAX_VARIABLE - 1 {
+                return Err(format!("XMLERR: Invalid variable name size: '{}'.", p - start));
+            }
+            p += 1;
+        }
+        let name = &ct[start..p];
+        if let Some((_, v)) = vars.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)) {
+            out.truncate(kept);
+            out.extend_from_slice(v);
+            kept = out.len();
+            out.extend_from_slice(&ct[p..]);
+        } else if name.first() == Some(&b'(') {
+            // dropped by the next replacement, which cuts `out` at `kept`
+        } else if !name.is_empty() {
+            let shown: String = String::from_utf8_lossy(name).chars().take(95).collect();
+            return Err(format!("XMLERR: Unknown variable: '{shown}'."));
+        } else {
+            kept += 1;
+        }
+    }
+    Ok(out)
 }
 
 fn cut(m: String) -> String {
@@ -239,8 +417,8 @@ impl Reader<'_> {
             name.pop();
         }
         let me = self.all.len();
-        let shown = text(&name);
-        self.all.push(Raw { var: shown.eq_ignore_ascii_case("var"), name: shown, attributes: Vec::new(), content: String::new(), depth: level - 1, parent });
+        let name = text(&name);
+        self.all.push(Raw { var: is_var(&name), name: name.clone(), attributes: Vec::new(), content: Vec::new(), depth: level - 1, parent, line: self.line });
         if is_space(end) {
             let mut attributes = Vec::new();
             empty |= self.attributes(&mut attributes, 0)?;
@@ -295,8 +473,8 @@ impl Reader<'_> {
                 *escaped = false;
             }
         }
-        if text(&tag) != text(name) {
-            return Err(self.fail(format!("XMLERR: Element '{}' not closed.", text(name))));
+        if text(&tag) != name {
+            return Err(self.fail(format!("XMLERR: Element '{}' not closed.", String::from_utf8_lossy(name))));
         }
         self.all[me].content = text(content);
         Ok(())
@@ -304,7 +482,7 @@ impl Reader<'_> {
 
     /// The attributes after a name and white space, one per call (`count` before it). True when
     /// the element ends with `/` (its `>` is left unread).
-    fn attributes(&mut self, out: &mut Vec<(String, String)>, count: u32) -> Result<bool, XmlError> {
+    fn attributes(&mut self, out: &mut Vec<(Vec<u8>, Vec<u8>, u32)>, count: u32) -> Result<bool, XmlError> {
         if count > MAX_ATTRIBUTES {
             return Err(self.fail("XMLERR: Too many attributes.".into()));
         }
@@ -329,7 +507,8 @@ impl Reader<'_> {
             }
         }
         let shown = lossy(&name);
-        if out.iter().any(|(k, _)| *k == shown) {
+        // a `var` attribute hides the ones before it from this check
+        if out.iter().rev().take_while(|(k, _, _)| !is_var(k)).any(|(k, _, _)| *k == name) {
             return Err(self.fail(format!("XMLERR: Attribute '{shown}' already defined.")));
         }
         // the opening quote, after optional white space
@@ -357,7 +536,7 @@ impl Reader<'_> {
             }
             value.push(c);
         }
-        out.push((shown.clone(), lossy(&value)));
+        out.push((name, value.clone(), self.line));
         match self.next() {
             Some(c) if is_space(c) => self.attributes(out, count + 1),
             Some(b'>') => Ok(false),

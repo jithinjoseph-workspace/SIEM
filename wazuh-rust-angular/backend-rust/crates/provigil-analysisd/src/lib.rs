@@ -11,4 +11,5 @@ pub mod mitre;
 pub mod plugins;
 pub mod process;
 pub mod rules;
+pub mod text_logs;
 pub mod time;

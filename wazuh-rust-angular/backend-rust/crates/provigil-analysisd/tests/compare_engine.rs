@@ -250,6 +250,28 @@ fn shipped_ruleset_on_test_logs() {
                 assert_eq!(String::from_utf8_lossy(&ja), String::from_utf8_lossy(&jb), "{msg}");
                 assert_eq!(ol2.msgs.iter().map(|m| m.msg.clone()).collect::<Vec<_>>(), nl2.list.iter().map(|m| m.text.clone()).collect::<Vec<_>>());
                 jsons += 1;
+                // alerts.log, the custom format and the json lines
+                let (mut wa, mut wb) = (Vec::new(), Vec::new());
+                siem_analysisd::output::os_log(&o, a, &mut wa).unwrap();
+                provigil_analysisd::text_logs::alert(&n, b, &mut wb).unwrap();
+                let fmt = b"$TIMESTAMP $FTELL $RULEALERT$HOSTNAME $LOCATION $RULEID $RULELEVEL $SRCIP $DSTUSER $FULLLOG $RULECOMMENT $RULEGROUP $X";
+                siem_analysisd::output::os_custom_log(&o, a, fmt, &mut wa).unwrap();
+                provigil_analysisd::text_logs::custom_alert(&n, b, fmt, &mut wb).unwrap();
+                assert_eq!(String::from_utf8_lossy(&wa), String::from_utf8_lossy(&wb), "{msg}");
+            }
+            for (p, q) in [(&x.archive, &y.archive), (&x.firewall, &y.firewall)] {
+                if let (Some(a), Some(b)) = (p, q) {
+                    let (mut wa, mut wb) = (Vec::new(), Vec::new());
+                    siem_analysisd::output::os_store(a, &mut wa).unwrap();
+                    provigil_analysisd::text_logs::archive(b, &mut wb).unwrap();
+                    let (mut a2, mut b2) = (a.clone(), b.clone());
+                    siem_analysisd::output::fw_log(&mut a2, &mut wa).unwrap();
+                    provigil_analysisd::text_logs::firewall(&mut b2, &mut wb).unwrap();
+                    let (mut ol3, mut nl3) = (LogList::default(), Messages::default());
+                    wa.extend(siem_analysisd::output::json_archive(&o, a, &mut ol3).unwrap_or_default());
+                    wb.extend(provigil_analysisd::text_logs::json_archive(&n, b, &mut nl3).unwrap_or_default());
+                    assert_eq!(String::from_utf8_lossy(&wa), String::from_utf8_lossy(&wb), "{msg}");
+                }
             }
             let (xa, ya) = (old_outcome(&x, &o), new_outcome(&y, &n));
             for (p, q) in xa.iter().zip(&ya) {

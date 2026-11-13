@@ -2925,6 +2925,7 @@ dependencies = [
 name = "provigil-analysisd"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "provigil-daemon",
  "provigil-fileop",
  "provigil-regex",

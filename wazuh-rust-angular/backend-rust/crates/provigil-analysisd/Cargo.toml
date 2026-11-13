@@ -9,6 +9,7 @@ provigil-daemon = { path = "../provigil-daemon" }
 provigil-fileop = { path = "../provigil-fileop" }
 provigil-regex = { path = "../provigil-regex" }
 regex = "1.10"
+chrono = "0.4"
 
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)

@@ -38,3 +38,4 @@ by the owner's decision (2026-11-03) to compare old against new, feature by feat
 | `siem-vulnerability-scanner` | `crates/provigil-vulnscan` (own code from `specs/vulnerability-scanner.md`; matched old vs new, 12 Nov 2026) |
 
 Each later replaced crate is moved here instead of being deleted.
+| `siem-wdb` | `crates/provigil-agentdb` (own code; its comparison tests still use this folder as a library, `specs/provigil-db.md`) |

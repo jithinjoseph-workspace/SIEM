@@ -461,7 +461,7 @@ fn install_binaries(home: &Path) -> Result<(), String> {
             .filter(|p| p.is_file())
             .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {
-            return Err(format!("{n} not built (cargo build --release -p siem-wdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
+            return Err(format!("{n} not built (cargo build --release -p provigil-agentdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
         };
         let newer = match (
             src.metadata().and_then(|m| m.modified()),
@@ -500,7 +500,7 @@ fn build_mitre_db(home: &Path) {
         .and_then(|e| e.parent().map(|d| d.join(exe_name("provigil-mitredb"))))
         .filter(|p| p.is_file())
     else {
-        warn!("ProVigil manager: provigil-mitredb not built (cargo build --release -p siem-wdb); alerts have no MITRE data");
+        warn!("ProVigil manager: provigil-mitredb not built (cargo build --release -p provigil-agentdb); alerts have no MITRE data");
         return;
     };
     // built under another name: a half-built file must not look finished

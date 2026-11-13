@@ -1,4 +1,4 @@
-//! The agent database service (spec § 1): `provigil-agentdb [-d] [-t] [-f]`, run by siem-api
+//! The agent database service (spec § 1): `provigil-db [-d] [-t] [-f]`, run by siem-api
 //! from the manager home folder. Serves the local socket, runs the maintenance jobs, opens every
 //! agent database once at start and takes the scheduled global backup.
 //! `-d` more logging (twice for the most), `-t` check the settings and stop, `-f` stay in the

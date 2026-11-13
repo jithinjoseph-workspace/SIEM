@@ -36,7 +36,7 @@ fn builds_a_small_attack_file() {
     )
     .unwrap();
     let db = dir.path().join("mitre.db");
-    let st = Command::new(env!("CARGO_BIN_EXE_provigil-mitre")).arg("-d").arg(&db).arg("-j").arg(&json).status().unwrap();
+    let st = Command::new(env!("CARGO_BIN_EXE_provigil-mitredb")).arg("-d").arg(&db).arg("-j").arg(&json).status().unwrap();
     assert!(st.success());
     let s = |v: &str| Some(v.to_string());
     assert_eq!(query(&db, "SELECT value FROM metadata ORDER BY key"), vec![vec![s("1")], vec![s("2.1")]]);
@@ -55,7 +55,7 @@ fn builds_a_small_attack_file() {
 
     // a phase with no tactic: refused, the file removed
     std::fs::write(&json, r#"{"spec_version":"2.1","objects":[{"type":"attack-pattern","id":"attack-pattern--9","name":"X","kill_chain_phases":[{"phase_name":"nowhere"}]}]}"#).unwrap();
-    let st = Command::new(env!("CARGO_BIN_EXE_provigil-mitre")).arg("-d").arg(&db).arg("-j").arg(&json).output().unwrap();
+    let st = Command::new(env!("CARGO_BIN_EXE_provigil-mitredb")).arg("-d").arg(&db).arg("-j").arg(&json).output().unwrap();
     assert!(!st.status.success());
     assert!(!db.exists());
 }

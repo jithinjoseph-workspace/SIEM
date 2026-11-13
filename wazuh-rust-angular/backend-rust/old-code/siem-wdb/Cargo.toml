@@ -5,7 +5,7 @@ edition = "2021"
 description = " global state management engine (global.db, FIM inventory, Syscollector, SCA, Rootcheck, wire protocol)"
 
 [dependencies]
-siem-core = { path = "../siem-core" }
+siem-core = { path = "../../crates/siem-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -13,13 +13,13 @@ thiserror = "1.0"
 tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"
 sha1 = "0.10"
-siem-sqlite = { path = "../siem-sqlite" }
-siem-njson = { path = "../siem-njson" }
-siem-config = { path = "../siem-config" }
-siem-xml = { path = "../siem-xml" }
-siem-log = { path = "../siem-log" }
-siem-daemon = { path = "../siem-daemon" }
-siem-cjson = { path = "../siem-cjson" }
+siem-sqlite = { path = "../../crates/siem-sqlite" }
+siem-njson = { path = "../../crates/siem-njson" }
+siem-config = { path = "../../crates/siem-config" }
+siem-xml = { path = "../../crates/siem-xml" }
+siem-log = { path = "../../crates/siem-log" }
+siem-daemon = { path = "../../crates/siem-daemon" }
+siem-cjson = { path = "../../crates/siem-cjson" }
 sha2 = "0.10"
 # zlib itself (bundled, static): gzip output identical to the C build
 libz-sys = { version = "1.1", features = ["static"] }
@@ -27,4 +27,4 @@ libc = "0.2"
 parking_lot = { version = "0.12", features = ["arc_lock"] }
 
 [target.'cfg(any(target_os = "linux", windows))'.dependencies]
-siem-router = { path = "../siem-router" }
+siem-router = { path = "../../crates/siem-router" }

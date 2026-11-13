@@ -1,5 +1,5 @@
 //! Builds `var/db/mitre.db` (served as the `mitre` actor) from MITRE ATT&CK's
-//! `enterprise-attack.json` (spec § 8): `provigil-mitre -d <mitre.db> -j <enterprise-attack.json>`.
+//! `enterprise-attack.json` (spec § 8): `provigil-mitredb -d <mitre.db> -j <enterprise-attack.json>`.
 //! Exit 0 when built; otherwise a message on stdout/stderr, the half-built file removed, exit 1.
 
 use std::collections::{BTreeSet, HashMap};
@@ -394,21 +394,21 @@ fn main() {
             "-d" | "--database" => database = args.next().map(PathBuf::from),
             "-j" | "--json" => json = args.next().map(PathBuf::from),
             "-h" | "--help" => {
-                println!("usage: provigil-mitre -d <mitre.db> -j <enterprise-attack.json>");
+                println!("usage: provigil-mitredb -d <mitre.db> -j <enterprise-attack.json>");
                 return;
             }
             other => {
-                eprintln!("provigil-mitre: unknown argument: {other}");
+                eprintln!("provigil-mitredb: unknown argument: {other}");
                 std::process::exit(2);
             }
         }
     }
     let (Some(database), Some(json)) = (database, json) else {
-        eprintln!("provigil-mitre: -d <mitre.db> and -j <enterprise-attack.json> are both needed");
+        eprintln!("provigil-mitredb: -d <mitre.db> and -j <enterprise-attack.json> are both needed");
         std::process::exit(2);
     };
     if let Some(dir) = database.parent().filter(|d| !d.as_os_str().is_empty() && !d.is_dir()) {
-        eprintln!("provigil-mitre: folder not found: {}", dir.display());
+        eprintln!("provigil-mitredb: folder not found: {}", dir.display());
         std::process::exit(1);
     }
     if let Err(Fail(msg)) = build(&database, &json) {

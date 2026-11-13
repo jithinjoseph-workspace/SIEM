@@ -84,7 +84,7 @@ pub trait Env: Send + Sync {
     }
 }
 
-/// Settings (internal options `wazuh_db.*` and the backup section).
+/// Settings (internal options `provigil_db.*` and the backup section).
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub commit_time_min: i64,

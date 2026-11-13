@@ -20,5 +20,5 @@ serde_json = "1"
 
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)
-siem-wdb = { path = "../siem-wdb" }
+siem-wdb = { path = "../../old-code/siem-wdb" }
 tempfile = "3"

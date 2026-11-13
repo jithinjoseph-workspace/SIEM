@@ -28,8 +28,12 @@ own code: old and new run on the full enterprise-attack.json give all 19 tables 
 store for siem-agent hosts (our own code) moved to `siem-api/src/agent_store.rs`; the
 agent-server tests run on the new engine (they never linked before: two SQLite copies; now
 `siem-sqlite` has a `shared` option and agent databases open with foreign keys off explicitly,
-since SQLite builds differ in that default). Still to do: switch-over (program names, settings
-keys, siem-api), live test, final review.
+since SQLite builds differ in that default). Switch-over done: the old crate is in `old-code/siem-wdb` (outside the workspace;
+the comparison tests still use it as a library), the programs are `provigil-db` and
+`provigil-mitredb`, the settings keys are `provigil_db.*` (`worker_pool_size` is no longer used:
+one thread per client). Live: both services on copies of the manager data, 242 read requests
+(every table of the 7 agents, package/hotfix lists, MITRE) and 17 write requests identical.
+Still to do: final review against `provigil-db-texts.md`.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,

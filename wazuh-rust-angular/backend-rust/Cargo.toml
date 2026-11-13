@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# old code is kept for comparison only; never a member
+exclude = ["old-code"]
 members = [
     "crates/siem-core",
     "crates/provigil-posture",
@@ -16,7 +18,6 @@ members = [
     "crates/provigil-gateway",
     "crates/auth-service",
     "crates/siem-sqlite",
-    "crates/siem-wdb",
     "crates/siem-cdb",
     "crates/siem-execd",
     "crates/siem-agentlessd",

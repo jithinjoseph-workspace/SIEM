@@ -262,6 +262,26 @@ it has a row.)
 | `full_log` unless the rule has `no_full_log` (archives always); `agent.id`; the syscheck section and its audit part for syscheck decoders; `predecoder` (program_name, timestamp); `decoder` (accumulate, parent, name, ftscomment) | Same |
 | **Post-processing** (`W_ParseJSON`): `agent.name` (the location's agent name, or the manager's name for agent 000); `predecoder.hostname` from a syslog header in the full log; `agent.ip` (the agent-IP label, else from the location, not `any`); `location` (after `->` for agent locations); `agentless` {script, user, host} for agentless locations of agent 000 (then `agent` is removed); `rule.groups` and the compliance arrays (`pci_dss_`, `cis_`, `gdpr_`, `gpg13_`, `hipaa_`, `nist_800_53_`, `tsc_`), plus the SCA check's compliance values; for rootcheck alerts, `{name: a, b}` pairs from the full log (at most 10, 29 bytes each) as arrays; `agent.labels` (not system ones, hidden only when shown) | Same |
 
+### 2.12 Active responses (`ar.rs`)
+
+| Feature | New |
+|---|---|
+| **Source IP:** `::ffff:` removed; an IP in the whitelist, or matching a host-name whitelist pattern, means no response; no srcip is `-` | Same |
+| User = dstuser or `-`; for syscheck decoders the file name, shell-escaped (`\\"'\t;\`><\|#*[]{}&$!:()`, an already escaped character kept); the command's extra arguments shell-escaped; the rule id | Same |
+| **Local** (`location` AS_ONLY, or remote for agent 000): only when local AR is on; the JSON message to `queue/alerts/execq` | Same |
+| **Remote** (when remote AR is on): to all active agents (provigil-db, "Unable to get agent's ID array."), a specific agent (its id), or the event's agent ("Unable to get agent ID."). Per agent: its version ("Failed to get agent 'N' information from provigil-db.", no version: nothing). A `ProVigil ...` version: the JSON message to `queue/alerts/provigil-ar`. Other versions (`<product> v<major>.<minor>.<patch>`, else "Unable to read agent version."): below 4.2 the text message, otherwise JSON (4.2.0–4.2.4 with `!$'\`` written as `\\xNN`), to `queue/alerts/ar`. | Same, all paths (the old-version paths serve agents other than ProVigil's, e.g. the Linux agent) |
+| **JSON message:** `{"version":1,"origin":{"name":<node>,"module":"provigil-analysisd"},"command":<name>,"parameters":{"extra_args":[words of up to 2,047 bytes],"alert":<the alert JSON>}}`, at most 65,536 bytes | Same |
+| **Text message:** `<name> <user> <ip> <sec>.<id> <rule> <location> <file or -> <extra args or ->`, at most 1,023 bytes | Same |
+| **Envelope:** `(local_source) [] N<R or N><S or N> <agent id> <message>` (R remote, S specific or all), the head at most 1,023 bytes, all at most 65,536 | Same |
+
+### 2.13 The syscheck part of an alert (`syscheck_json.rs`)
+
+| Feature | New |
+|---|---|
+| The 51 syscheck field positions (file, hard_links, mode, size and size_before, perm, uid, gid, md5, sha1, uname, gname, mtime, inode, sha256, diff, attrs, changed fields, the audit user/group/process/login/effective fields, tag, symbolic path, registry arch, value name, value type, registry hash, entry type, event type) | Same positions |
+| `syscheck`: path, hard_links (parsed JSON), mode, symbolic_path, arch, value_name, value_type; `*_before` only when set and different from the after value; size_after; permissions (`perm_*`, or `win_perm_*` arrays of `{name, <type>: [PERMS]}` for Windows lists, with their warning/error when they cannot be read); uid, gid, md5, sha1, sha256; attrs as arrays; uname, gname; mtime as local `YYYY-MM-DDThh:mm:ss` (the old 20-byte buffer cuts the zone; an invalid value is `Invalid: '<v>'` cut to 23 bytes, and the two mtimes share that buffer); inode as a 32-bit number (after only when not 0); diff (unless `0`, only when the order size reaches it); tags and changed_attributes as arrays; event | Same, the buffer quirks kept |
+| `syscheck.audit`: user, process (id, name, cwd, parent_name, parent_cwd, ppid), group, login_user, effective_user, each only when set | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -287,4 +307,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats and the alert JSON written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses and the syscheck JSON written.

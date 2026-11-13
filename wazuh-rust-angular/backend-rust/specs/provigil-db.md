@@ -16,8 +16,11 @@ permissions/attributes, load, delete, cleandb, JSON save v1/v2/v3, `integrity_ch
 FIM components incl. the duplicate-key removal, `integrity_clear`; run with and without router),
 `syscollector_<kind>` save2 + integrity on all 13 inventory kinds (`compare_syscollector.rs`:
 full rows, rows without key fields (removal by id), refused rows, odd value types, range checks,
-clears, and every removal message published on the router).
-Still to do in the agent actor: `dbsync` (13 delta tables). Then: `wazuhdb remove`, `mitre`,
+clears, and every removal message published on the router), `dbsync` deltas on all 13 kinds
+(`compare_dbsync.rs`: insert, partial modify, delete, value types against column types, range
+rules, syntax and JSON errors). The delta column lists are our own compact description in
+`src/delta.rs` (column, type, key / fixed / keep-empty flags; defaults follow the type).
+Agent actor complete. Then: `wazuhdb remove`, `mitre`,
 background jobs, socket server, statistics (incl. the per-kind inventory query counters, not
 counted yet), MITRE builder, wiring.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old

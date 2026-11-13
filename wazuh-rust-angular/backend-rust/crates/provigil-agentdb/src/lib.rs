@@ -11,6 +11,7 @@ mod integrity_sql;
 mod checksum;
 pub mod fim;
 mod syscollector;
+mod delta;
 mod inventory;
 mod layout;
 mod legacy;

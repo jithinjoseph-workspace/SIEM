@@ -36,6 +36,10 @@ by the owner's decision (2026-11-03) to compare old against new, feature by feat
 | `siem-shared-modules` | nothing: used only by moved crates |
 | `siem-harvester` | nothing: inventory is read from provigil-db |
 | `siem-vulnerability-scanner` | `crates/provigil-vulnscan` (own code from `specs/vulnerability-scanner.md`; matched old vs new, 12 Nov 2026) |
+| `siem-wdb` | `crates/provigil-agentdb` (`specs/provigil-db.md`) |
+| `siem-modulesd`, `siem-router`, `siem-njson` | `crates/provigil-modulesd` (`specs/provigil-modulesd.md`) |
+| `siem-sqlite` | `crates/provigil-sqlite` (on the bundled SQLite; kept as the comparison reference) |
+| `siem-execd`, `siem-agentlessd` | `crates/provigil-execd`, `crates/provigil-agentlessd` (`specs/provigil-execd.md`) |
 
 Each later replaced crate is moved here instead of being deleted.
 | `siem-wdb` | `crates/provigil-agentdb` (own code; its comparison tests still use this folder as a library, `specs/provigil-db.md`) |

@@ -18,8 +18,6 @@ members = [
     "crates/provigil-gateway",
     "crates/auth-service",
     "crates/siem-cdb",
-    "crates/siem-execd",
-    "crates/siem-agentlessd",
     "crates/siem-ai",
     "crates/siem-triage",
     "crates/siem-suppression",
@@ -52,6 +50,8 @@ members = [
     "crates/provigil-modulesd",
     "crates/provigil-json",
     "crates/provigil-sqlite",
+    "crates/provigil-execd",
+    "crates/provigil-agentlessd",
 ]
 
 # strip: windows-gnu links the standard library's debug symbols into every exe.

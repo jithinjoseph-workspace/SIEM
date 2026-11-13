@@ -14,7 +14,7 @@ siem-regex = { package = "provigil-regex", path = "../../crates/provigil-regex" 
 siem-fileop = { package = "provigil-fileop", path = "../../crates/provigil-fileop" }
 siem-xml = { path = "../../crates/siem-xml" }
 siem-cjson = { path = "../../crates/siem-cjson" }
-siem-execd = { path = "../../crates/siem-execd" }
+siem-execd = { path = "../siem-execd" }
 provigil-vulnscan = { path = "../../crates/provigil-vulnscan" }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

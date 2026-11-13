@@ -124,6 +124,11 @@ fn random_documents() {
 
 #[test]
 fn limits() {
+    // both readers go one call deeper per level; debug builds need more than a test thread's stack
+    std::thread::Builder::new().stack_size(256 << 20).spawn(limit_cases).unwrap().join().unwrap();
+}
+
+fn limit_cases() {
     for n in [1023, 1024, 1025] {
         check(&[b"<a>".repeat(n), b"</a>".repeat(n)].concat());
     }

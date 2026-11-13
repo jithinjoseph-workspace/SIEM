@@ -9,14 +9,14 @@ name = "provigil-execd"
 path = "src/bin/provigil-execd.rs"
 
 [dependencies]
-siem-log = { path = "../siem-log" }
-siem-config = { path = "../siem-config" }
-siem-ipc = { path = "../siem-ipc" }
-siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
-siem-daemon = { path = "../siem-daemon" }
-siem-cjson = { path = "../siem-cjson" }
-siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
-siem-xml = { path = "../siem-xml" }
+siem-log = { path = "../../crates/siem-log" }
+siem-config = { path = "../../crates/siem-config" }
+siem-ipc = { path = "../../crates/siem-ipc" }
+siem-fileop = { package = "provigil-fileop", path = "../../crates/provigil-fileop" }
+siem-daemon = { path = "../../crates/siem-daemon" }
+siem-cjson = { path = "../../crates/siem-cjson" }
+siem-regex = { package = "provigil-regex", path = "../../crates/provigil-regex" }
+siem-xml = { path = "../../crates/siem-xml" }
 flate2 = "1"
 
 [target.'cfg(unix)'.dependencies]

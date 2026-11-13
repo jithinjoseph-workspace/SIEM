@@ -1,0 +1,29 @@
+[package]
+name = "provigil-execd"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil manager active responses: the response programs of ar.conf, the timeout list, repeated offenders and the com requests"
+
+[[bin]]
+name = "provigil-execd"
+path = "src/bin/provigil-execd.rs"
+
+[dependencies]
+provigil-daemon = { path = "../provigil-daemon" }
+provigil-ipc = { path = "../provigil-ipc" }
+provigil-json = { path = "../provigil-json" }
+provigil-fileop = { path = "../provigil-fileop" }
+provigil-regex = { path = "../provigil-regex" }
+flate2 = "1"
+tokio = { version = "1.40", features = ["rt", "time", "macros", "signal", "net"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# the old implementation, as the reference of the comparison tests (removed with it)
+siem-execd = { path = "../../old-code/siem-execd" }
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+tempfile = "3"
+flate2 = "1"

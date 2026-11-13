@@ -7,6 +7,9 @@ description = "Shared pieces of the ProVigil manager services: log writer, inter
 [dependencies]
 chrono = "0.4"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 # the comparison test only
 siem-xml = { path = "../siem-xml" }

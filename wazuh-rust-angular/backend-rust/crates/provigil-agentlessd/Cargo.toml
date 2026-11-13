@@ -1,0 +1,29 @@
+[package]
+name = "provigil-agentlessd"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil agentless monitoring: the agentless scripts on their schedule, their events, stored states and differences"
+
+[[bin]]
+name = "provigil-agentlessd"
+path = "src/bin/provigil-agentlessd.rs"
+
+[dependencies]
+provigil-daemon = { path = "../provigil-daemon" }
+provigil-execd = { path = "../provigil-execd" }
+provigil-ipc = { path = "../provigil-ipc" }
+provigil-json = { path = "../provigil-json" }
+provigil-fileop = { path = "../provigil-fileop" }
+provigil-regex = { path = "../provigil-regex" }
+tokio = { version = "1.40", features = ["rt-multi-thread", "time", "macros", "signal", "net"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# the old implementation, as the reference of the comparison tests (removed with it)
+siem-agentlessd = { path = "../../old-code/siem-agentlessd" }
+siem-log = { path = "../siem-log" }
+siem-config = { path = "../siem-config" }
+tempfile = "3"
+tokio = { version = "1.40", features = ["full"] }

@@ -5,14 +5,14 @@ edition = "2021"
 description = "Port of provigil-agentlessd (src/agentlessd): periodic integrity and diff checks of agentless hosts over SSH"
 
 [dependencies]
-siem-config = { path = "../siem-config" }
-siem-cjson = { path = "../siem-cjson" }
-siem-ipc = { path = "../siem-ipc" }
-siem-log = { path = "../siem-log" }
-siem-daemon = { path = "../siem-daemon" }
-siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
-siem-xml = { path = "../siem-xml" }
-siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
+siem-config = { path = "../../crates/siem-config" }
+siem-cjson = { path = "../../crates/siem-cjson" }
+siem-ipc = { path = "../../crates/siem-ipc" }
+siem-log = { path = "../../crates/siem-log" }
+siem-daemon = { path = "../../crates/siem-daemon" }
+siem-regex = { package = "provigil-regex", path = "../../crates/provigil-regex" }
+siem-xml = { path = "../../crates/siem-xml" }
+siem-fileop = { package = "provigil-fileop", path = "../../crates/provigil-fileop" }
 siem-execd = { path = "../siem-execd" }
 tokio = { version = "1.40", features = ["full"] }
 

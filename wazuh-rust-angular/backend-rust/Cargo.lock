@@ -2900,6 +2900,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-agentlessd"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "provigil-daemon",
+ "provigil-execd",
+ "provigil-fileop",
+ "provigil-ipc",
+ "provigil-json",
+ "provigil-regex",
+ "siem-agentlessd",
+ "siem-config",
+ "siem-log",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "provigil-collect"
 version = "0.1.0"
 dependencies = [
@@ -2959,6 +2977,7 @@ name = "provigil-daemon"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
  "siem-xml",
 ]
 
@@ -2972,6 +2991,24 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "provigil-execd"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "libc",
+ "provigil-daemon",
+ "provigil-fileop",
+ "provigil-ipc",
+ "provigil-json",
+ "provigil-regex",
+ "siem-config",
+ "siem-execd",
+ "siem-log",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -4081,7 +4118,6 @@ dependencies = [
  "siem-ipc",
  "siem-log",
  "siem-xml",
- "tempfile",
  "tokio",
 ]
 
@@ -4281,7 +4317,6 @@ dependencies = [
  "siem-ipc",
  "siem-log",
  "siem-xml",
- "tempfile",
  "windows-sys 0.61.2",
 ]
 

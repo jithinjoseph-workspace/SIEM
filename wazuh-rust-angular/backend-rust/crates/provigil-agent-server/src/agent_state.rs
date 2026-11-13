@@ -253,6 +253,33 @@ pub async fn stopped(agent_id: &str) {
     global_sql(&format!("UPDATE agent SET connection_status = 'disconnected', disconnection_time = {now} WHERE id = {n}")).await;
 }
 
+/// Agents shown connected but silent for `after_secs` become disconnected (a PC switched off or
+/// asleep never says goodbye). Uses provigil-db's `disconnect-agents`, a page at a time; returns
+/// how many were marked.
+pub async fn disconnect_silent(after_secs: u64) -> usize {
+    let threshold = Utc::now().timestamp() - after_secs as i64;
+    let (mut last, mut marked) = (0i64, 0usize);
+    // pages: "due" means more agents follow the last id of this page
+    for _ in 0..1000 {
+        let Ok(r) = host().wdb().query(&format!("global disconnect-agents {last} {threshold} synced")).await else { return marked };
+        let (more, body) = match (r.strip_prefix("due "), r.strip_prefix("ok ")) {
+            (Some(b), _) => (true, b),
+            (None, Some(b)) => (false, b),
+            _ => {
+                warn!("disconnect-agents: {}", &r[..r.floor_char_boundary(160)]);
+                return marked;
+            }
+        };
+        let ids: Vec<i64> = serde_json::from_str::<Vec<Value>>(body).unwrap_or_default().iter().filter_map(|a| a["id"].as_i64()).collect();
+        marked += ids.len();
+        match ids.iter().max() {
+            Some(m) if more => last = *m,
+            _ => return marked,
+        }
+    }
+    marked
+}
+
 /// An agent's row was replaced (enrolled again): what was stored for it is gone with the old row.
 pub fn forget(agent_id: &str) {
     let Some(id) = agent_key(agent_id) else { return };

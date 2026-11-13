@@ -209,7 +209,63 @@ fn engine_message(i: &Value) -> Option<(u8, String, String)> {
         Some("sca") => queues::SCA_MQ,
         _ => queues::LOCALFILE_MQ,
     };
-    Some((q, i["location"].as_str().filter(|l| !l.is_empty())?.to_string(), ruleset_text(i["message"].as_str()?)))
+    let mut text = ruleset_text(i["message"].as_str()?);
+    if q == queues::WIN_EVT_MQ {
+        text = fit_event_values(&text);
+    }
+    Some((q, i["location"].as_str().filter(|l| !l.is_empty())?.to_string(), text))
+}
+
+/// The longest single value (the text between two tags) of a Windows event the engine gets:
+/// its XML reader refuses an event with a value over 20,480 bytes, which would then go through
+/// without its fields, unchecked by the rules (a long encoded command line, for example).
+const EVENT_VALUE_MAX: usize = 16 * 1024;
+const CUT_MARK: &str = "...(truncated)";
+
+/// A Windows event payload (`{"Message":..,"Event":"<Event>..</Event>"}`) with every value of
+/// its XML longer than [`EVENT_VALUE_MAX`] cut there; anything else unchanged.
+fn fit_event_values(payload: &str) -> String {
+    if payload.len() <= EVENT_VALUE_MAX {
+        return payload.to_string();
+    }
+    let Ok(Value::Object(mut v)) = serde_json::from_str::<Value>(payload) else { return payload.to_string() };
+    let Some(xml) = v.get("Event").and_then(Value::as_str) else { return payload.to_string() };
+    let mut out = String::with_capacity(xml.len());
+    let mut rest = xml;
+    let mut cut = false;
+    // values are the text after a '>' up to the next '<'
+    while let Some(gt) = rest.find('>') {
+        out.push_str(&rest[..=gt]);
+        rest = &rest[gt + 1..];
+        let end = rest.find('<').unwrap_or(rest.len());
+        let value = &rest[..end];
+        if value.len() > EVENT_VALUE_MAX {
+            let mut at = value.floor_char_boundary(EVENT_VALUE_MAX);
+            // never split an entity such as &amp;
+            if let Some(amp) = value[..at].rfind('&') {
+                if !value[amp..at].contains(';') {
+                    at = amp;
+                }
+            }
+            out.push_str(&value[..at]);
+            out.push_str(CUT_MARK);
+            cut = true;
+        } else {
+            out.push_str(value);
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    if !cut {
+        return payload.to_string();
+    }
+    v.insert("Event".into(), Value::String(out));
+    // the order the agent writes: Message first
+    let js = |x: &Value| x.to_string();
+    match v.get("Message") {
+        Some(m) => format!("{{\"Message\":{},\"Event\":{}}}", js(m), js(&v["Event"])),
+        None => format!("{{\"Event\":{}}}", js(&v["Event"])),
+    }
 }
 
 /// The ProVigil agent's own texts in the form the current ruleset's decoders read (its command
@@ -381,5 +437,23 @@ mod ruleset_text_tests {
         assert_eq!(super::ruleset_text("provigil: output: 'df -P': /dev/sda1 100%"), "ossec: output: 'df -P': /dev/sda1 100%");
         assert_eq!(super::ruleset_text("provigil: Agent buffer: 'full'."), "wazuh: Agent buffer: 'full'.");
         assert_eq!(super::ruleset_text("sshd[1]: Failed password"), "sshd[1]: Failed password");
+    }
+
+    #[test]
+    fn oversized_event_values_are_cut() {
+        use super::{fit_event_values, EVENT_VALUE_MAX};
+        let small = r#"{"Message":"m","Event":"<Event><Data Name='a'>x</Data></Event>"}"#;
+        assert_eq!(fit_event_values(small), small);
+        let long = format!("{}&amp;{}", "A".repeat(EVENT_VALUE_MAX - 3), "B".repeat(10_000));
+        let xml = format!("<Event><System><EventID>1</EventID></System><EventData><Data Name='CommandLine'>{long}</Data><Data Name='User'>u</Data></EventData></Event>");
+        let payload = serde_json::json!({ "Message": "Process Create", "Event": xml }).to_string();
+        let out = fit_event_values(&payload);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(out.starts_with(r#"{"Message":"Process Create","Event":"#));
+        let ev = v["Event"].as_str().unwrap();
+        // cut before the entity, marked, the rest of the event intact
+        assert!(ev.contains(&format!("{}...(truncated)</Data>", "A".repeat(EVENT_VALUE_MAX - 3))));
+        assert!(ev.ends_with("<Data Name='User'>u</Data></EventData></Event>"));
+        assert!(ev.split(['>', '<']).all(|t| t.len() <= EVENT_VALUE_MAX + 20));
     }
 }

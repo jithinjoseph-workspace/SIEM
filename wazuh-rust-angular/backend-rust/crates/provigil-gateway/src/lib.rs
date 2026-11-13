@@ -171,6 +171,13 @@ async fn flush_loop(gw: Arc<Gw>) {
         }
         flush_keepalives(&gw).await;
         gw.agents.prune(queue::now_ms(), gw.s.disconnection_secs * 1000);
+        // once a minute: agents gone silent are shown disconnected
+        if flushes.is_multiple_of(6) {
+            let n = agent_state::disconnect_silent(gw.s.disconnection_secs).await;
+            if n > 0 {
+                tracing::info!("{n} silent agent(s) marked disconnected");
+            }
+        }
     }
 }
 

@@ -1065,6 +1065,45 @@ impl Ruleset {
     }
 }
 
+/// The `<ruleset>` (and with `alerts`, `<alerts>`) blocks of a configuration file, for
+/// logtest sessions and ruleset reloads. `shown` is the file name in messages.
+pub fn ruleset_from_file(conf: &Path, shown: &str, home: &Path, alerts: bool, msgs: &mut crate::messages::Messages) -> Option<Ruleset> {
+    use crate::messages as m;
+    let roots = match xml::read_file(conf) {
+        Ok(r) => r,
+        Err(e) => {
+            msgs.error(m::xml_failed(shown, &e.message, e.line));
+            return None;
+        }
+    };
+    if roots.is_empty() {
+        msgs.error(format!("There are no configuration blocks inside of '{shown}'"));
+        return None;
+    }
+    let mut r = Ruleset::default();
+    for root in roots.iter().filter(|n| n.name == "ossec_config") {
+        for section in &root.children {
+            // any section without options fails the read
+            if section.children.is_empty() {
+                msgs.error(m::NULL_ELEMENT);
+                msgs.error(m::config_error(shown));
+                return None;
+            }
+            let result = match section.name.as_str() {
+                "ruleset" => r.read(&section.children, home),
+                "alerts" if alerts => r.read_alerts(&section.children),
+                _ => Ok(()),
+            };
+            if let Err(e) = result {
+                msgs.error(e);
+                msgs.error(m::config_error(shown));
+                return None;
+            }
+        }
+    }
+    Some(r)
+}
+
 // ---------------------------------------------------------------- the whole file
 
 /// Everything this service reads at start.

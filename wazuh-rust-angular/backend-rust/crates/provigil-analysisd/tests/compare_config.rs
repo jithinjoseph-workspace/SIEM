@@ -423,10 +423,27 @@ fn generated_settings() {
         let doc = document(&mut r);
         std::fs::write(&conf, &doc).unwrap();
         let write = round % 7 == 0;
-        let old = AnalysisdConfig::load(home, &conf, write).map(|c| old_lines(&c)).map_err(|e| e.0);
+        let oc = AnalysisdConfig::load(home, &conf, write);
         let old_ar = std::fs::read(home.join("etc/shared/ar.conf")).ok();
         let _ = std::fs::remove_file(home.join("etc/shared/ar.conf"));
-        let new = Config::load(home, &conf, write).map(|c| new_lines(&c));
+        let nc = Config::load(home, &conf, write);
+        if let (Ok(x), Ok(y)) = (&oc, &nc) {
+            use provigil_analysisd::getconfig as ng;
+            use siem_analysisd::config_json as og;
+            for (a, b) in [
+                (og::global(x), ng::global(y)),
+                (og::active_response(x), ng::active_response(y)),
+                (og::commands(x), ng::commands(y)),
+                (og::alerts(x), ng::alerts(y)),
+                (og::internal(x), ng::internal(y)),
+                (og::labels(x), ng::labels(y)),
+                (og::rule_test(x), ng::rule_test(y)),
+            ] {
+                assert_eq!(String::from_utf8_lossy(&a.print_unformatted()), String::from_utf8_lossy(&b.print_unformatted()), "getconfig of {doc}");
+            }
+        }
+        let old = oc.map(|c| old_lines(&c)).map_err(|e| e.0);
+        let new = nc.map(|c| new_lines(&c));
         let new_ar = std::fs::read(home.join("etc/shared/ar.conf")).ok();
         let _ = std::fs::remove_file(home.join("etc/shared/ar.conf"));
         assert_eq!(old_ar, new_ar, "ar.conf for {doc}\n{local}");
@@ -463,4 +480,20 @@ fn shipped_settings() {
     assert_eq!(old, new);
     let lines = new.unwrap();
     assert!(lines.iter().any(|l| l.starts_with("ruleset [\"")), "the shipped ruleset lists files: {lines:?}");
+}
+
+/// getconfig of the shipped decoders and rules.
+#[test]
+fn shipped_decoders_and_rules_config() {
+    let home = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/manager");
+    let cfg = Config::load(&home, &home.join("etc/ossec.conf"), false).unwrap();
+    let mut o = siem_analysisd::engine::Engine::new(siem_analysisd::engine::EngineConfig { rule: siem_analysisd::rules::RuleConfig { home: home.clone(), ..Default::default() }, ..Default::default() });
+    let mut n = provigil_analysisd::engine::Engine::new(provigil_analysisd::engine::EngineSettings { rules: provigil_analysisd::rules::RuleSettings { home: home.clone(), ..Default::default() }, ..Default::default() });
+    let (mut a, mut b) = (siem_analysisd::logmsg::LogList::default(), provigil_analysisd::messages::Messages::default());
+    assert!(o.load_ruleset(&cfg.ruleset.decoders, &cfg.ruleset.lists, &cfg.ruleset.rules, None, &mut a));
+    assert!(n.load_ruleset(&cfg.ruleset.decoders, &cfg.ruleset.lists, &cfg.ruleset.rules, None, &mut b));
+    for order in [256, 0, 5] {
+        assert_eq!(siem_analysisd::config_json::decoders(&o.decoders, order).print_unformatted(), provigil_analysisd::getconfig::decoders(&n.decoders, order).print_unformatted());
+    }
+    assert_eq!(siem_analysisd::config_json::rules(&o.rules).print_unformatted(), provigil_analysisd::getconfig::rules(&n.rules).print_unformatted());
 }

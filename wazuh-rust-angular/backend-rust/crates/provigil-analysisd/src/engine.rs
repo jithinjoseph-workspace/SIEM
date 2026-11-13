@@ -848,6 +848,50 @@ impl Engine {
         }
     }
 
+    /// Logtest: one event through cleaning, decoding, the accumulator and the rules. The
+    /// output JSON and whether it alerts (kept and at least `log_level`); None when the
+    /// message cannot be read or there are no rules.
+    pub fn logtest(&mut self, event: &[u8], location: &[u8], log_level: i32, debug: Option<&mut Vec<String>>, msgs: &mut Messages) -> Option<(provigil_json::Json, bool)> {
+        let mut debug = debug;
+        let mut ev = self.new_event();
+        let msg = [&b"1:"[..], &escape(location, b'|', b':', 2049), b":", event].concat();
+        let host = self.settings.manager_host.clone();
+        if ev.clean(&msg, &host, self.clock.now()).is_err() {
+            msgs.error(FORMAT_ERROR);
+            return None;
+        }
+        ev.size = ev.log().len();
+        self.decode(&mut ev);
+        if self.decoders.decoders[ev.decoder].accumulate == 1 {
+            self.accumulate(&mut ev);
+        }
+        let id = self.new_event_id();
+        let kept = self.logtest_rules(&mut ev, id, &mut debug);
+        if kept == -1 {
+            return None;
+        }
+        let mut alert = false;
+        if let Some(rule) = ev.generated_rule {
+            let c = self.rules.rules[rule].comment.clone().unwrap_or_default();
+            ev.comment = Some(ev.expand_comment(c.as_bytes()));
+            alert = kept == 1 && log_level <= self.rules.rules[rule].level;
+        }
+        let text = crate::alert_json::alert(self, &ev, false, msgs);
+        let mut out = provigil_json::parse(&text).unwrap_or(provigil_json::Json::Null);
+        if let Some(rule) = ev.generated_rule {
+            let level = self.rules.rules[rule].level;
+            if let Some(r) = out.get_mut("rule") {
+                if r.get_exact("level").is_none() {
+                    r.add("level", provigil_json::Json::number(f64::from(level)));
+                }
+            }
+        }
+        if kept == 1 {
+            self.keep(id, ev);
+        }
+        Some((out, alert))
+    }
+
     /// The logtest rule stage: -1 no rules, 1 the event is kept, 0 not.
     pub fn logtest_rules(&mut self, ev: &mut Event, id: u64, debug: &mut Option<&mut Vec<String>>) -> i32 {
         let tree = std::mem::take(&mut self.rules.tree);

@@ -98,6 +98,14 @@ impl Json {
         }
     }
 
+    /// The first member whose key is exactly `key` (case counts).
+    pub fn get_exact(&self, key: &str) -> Option<&Json> {
+        match self {
+            Json::Object(m) => m.iter().find(|(k, _)| k.as_slice() == key.as_bytes()).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
     /// [`get`](Self::get) with a key in bytes.
     pub fn get_bytes(&self, key: &[u8]) -> Option<&Json> {
         let i = self.position(key)?;

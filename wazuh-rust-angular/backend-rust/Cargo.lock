@@ -2932,6 +2932,7 @@ dependencies = [
  "provigil-regex",
  "regex",
  "siem-analysisd",
+ "siem-config",
  "tempfile",
 ]
 

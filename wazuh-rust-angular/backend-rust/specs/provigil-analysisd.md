@@ -112,7 +112,7 @@ it has a row.)
 | **Decoding** while EPS credits last: fast queues (events, winevt, hostinfo) inline; slow ones (syscheck, syscollector, SCA, rootcheck, dbsync, upgrade, CIS-CAT) on 4 database worker threads (a window of in-flight work), results taken in arrival order. An unformatted message is 1106 + 1222. Per-component decoded counters. CIS-CAT goes through the JSON plugin first. The FIM decoder's id and name are taken over from the worker. | Same |
 | **Rule matching** per decoded event (`process_event`), with labels from the cache, the hour and weekday, and `logall` forced on with the stream; the firewall-event counter | Same |
 | **Labels cache:** agent 000 uses the configured labels. Others come from provigil-db (`global get-labels <id>`), cached for `label_cache_maxage`; a stale entry is served while a background read refreshes it; the first time is read inline. | Same |
-| **AR delivery:** `queue/alerts/execq` (local), `queue/alerts/ar` (remote), `queue/alerts/provigil-ar` (ProVigil agents), each kept connected. A failure is "(1321): Error communicating with queue", and the next message reconnects; a connect failure is 1210. The agent version comes from the `_wazuh_version` label, else provigil-db (`global get-agent-info`). The active agents list comes from provigil-db in pages. | Same |
+| **AR delivery:** `queue/alerts/execq` (local), `queue/alerts/ar` (remote), `queue/alerts/provigil-ar` (ProVigil agents), each kept connected. A failure is "(1321): Error communicating with queue", and the next message reconnects; a connect failure is 1210. The agent version comes from the agent-version label, else provigil-db (`global get-agent-info`). The active agents list comes from provigil-db in pages. | Same |
 | **Once a second:** EPS bookkeeping (`seconds_over_limit`, available credits, limit update); the state file every `state_interval` (agents no longer active on this node are removed first); decoding resumes | Same |
 | **Start-up messages:** the deprecated `<queue_size>`; with AR, the IP and host-name whitelists (or "No IP/Hostname in the white list ..."); "Started (pid: N)." | Same |
 | **Run order:** MITRE, logs, internal decoders, limits message, state file (or "State file is disabled."), logtest (socket `queue/sockets/logtest`, "(7200): Logtest started" / "(7201): Logtest disabled" / 7300 bind error, the session expiry timer, oversized requests answered with the oversize error), workers, input queue (1210 critical when the queue cannot be bound) | Same |
@@ -138,7 +138,7 @@ decoder files and 7 lists is GPL. After the engine is ours and proven:
    alert on must produce an alert from ours, same level or higher. Gaps are filled before
    removal.
 4. Ship ProVigil's own `internal_options.conf`, `local_decoder.xml` and agentless scripts, and
-   stop siem-api reading the upstream folder `wazuh/wazuh-4.14.7` at start.
+   stop siem-api reading the upstream source folder at start.
 5. Remove the old ruleset files.
 
 Not part of this work: `ruleset/sca` (used by the Linux agent, another developer's work).

@@ -7,6 +7,16 @@ log lines, router messages, messages to the client and every row of the six glob
 identical (backup create/restore compared on Linux; on Windows covered by `backups_work`, D-4).
 **Task actor done 13 Nov 2026**: `tests/compare_task.rs` (50 requests: every upgrade-task command,
 status move, time-out, cancel and error) identical to the old implementation.
+**Agent actor so far (13 Nov 2026)**, each with its comparison test, all identical to the old code:
+request layer + generic commands (`compare_agent_base.rs`), rootcheck + CIS-CAT
+(`compare_rootcheck_ciscat.rs`, plus the C-style decimal reader on 4,350 inputs), SCA
+(`compare_sca.rs`), legacy inventory + package/hotfix lists (`compare_inventory_legacy.rs`),
+FIM + integrity commands (`compare_fim.rs`: scan info, control, old-format save with Windows
+permissions/attributes, load, delete, cleandb, JSON save v1/v2/v3, `integrity_check_*` on all five
+FIM components incl. the duplicate-key removal, `integrity_clear`; run with and without router).
+Still to do in the agent actor: `dbsync` (13 delta tables),
+`syscollector_<kind> save2` (13 kinds). Then: `wazuhdb remove`, `mitre`, background jobs,
+socket server, statistics, MITRE builder, wiring.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,

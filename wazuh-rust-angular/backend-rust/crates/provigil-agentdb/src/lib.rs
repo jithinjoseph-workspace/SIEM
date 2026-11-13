@@ -7,6 +7,9 @@ pub mod text;
 mod agent;
 mod global;
 mod integrity;
+mod integrity_sql;
+mod checksum;
+pub mod fim;
 mod inventory;
 mod layout;
 mod legacy;
@@ -85,11 +88,13 @@ pub struct Settings {
     pub is_worker_node: bool,
     /// Whether deleted agents are published on the agent router topic.
     pub router_agent: bool,
+    /// Whether deleted inventory rows are published on the inventory router topic.
+    pub router_inventory: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { commit_time_min: 10, commit_time_max: 60, open_db_limit: 64, backup_max_files: 3, is_worker_node: false, router_agent: false }
+        Settings { commit_time_min: 10, commit_time_max: 60, open_db_limit: 64, backup_max_files: 3, is_worker_node: false, router_agent: false, router_inventory: false }
     }
 }
 

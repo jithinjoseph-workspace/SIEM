@@ -99,10 +99,20 @@ pub struct Pair {
 
 impl Pair {
     pub fn new() -> Pair {
+        Pair::make(false)
+    }
+
+    /// Both publish deleted inventory rows on the router.
+    pub fn routed() -> Pair {
+        Pair::make(true)
+    }
+
+    fn make(router: bool) -> Pair {
         let (ho, hn) = (home(), home());
         let (so, sn) = (Arc::new(Seen::default()), Arc::new(Seen::default()));
-        let old = siem_wdb::wdb::Wdbd::new(siem_wdb::wdb::WdbConfig::default(), ho.path().to_path_buf(), Arc::new(OldEnv(so.clone())));
-        let new = Engine::new(hn.path(), Settings::default(), Arc::new(NewEnv(sn.clone())));
+        let mut old = siem_wdb::wdb::Wdbd::new(siem_wdb::wdb::WdbConfig::default(), ho.path().to_path_buf(), Arc::new(OldEnv(so.clone())));
+        old.router_inventory = router;
+        let new = Engine::new(hn.path(), Settings { router_inventory: router, ..Settings::default() }, Arc::new(NewEnv(sn.clone())));
         Pair { old, new, so, sn, ho, hn }
     }
 

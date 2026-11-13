@@ -23,6 +23,9 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+/// The product and version shown for records this service makes up (simulations, demo data).
+const PRODUCT_VERSION: &str = concat!("ProVigil v", env!("CARGO_PKG_VERSION"));
+
 pub mod agent_commands;
 pub mod agent_store;
 pub mod agent_tls;
@@ -419,7 +422,7 @@ async fn main() {
                                     name: e.name.clone(),
                                     ip: "127.0.0.1".into(),
                                     os: os.to_string(),
-                                    version: "v4.14.7".into(),
+                                    version: PRODUCT_VERSION.into(),
                                     status: AgentStatus::Active,
                                     last_keepalive: Utc::now(),
                                     os_type: os.to_string(),
@@ -430,7 +433,7 @@ async fn main() {
                                     name: "windows-target".into(),
                                     ip: "192.168.1.100".into(),
                                     os: "Windows".into(),
-                                    version: "v4.14.7".into(),
+                                    version: PRODUCT_VERSION.into(),
                                     status: AgentStatus::Active,
                                     last_keepalive: Utc::now(),
                                     os_type: "windows".into(),
@@ -1575,7 +1578,7 @@ fn seed_sample_data(state: &AppState) {
             name: "srv-prod-ubuntu-01".into(),
             ip: "192.168.10.15".into(),
             os: "Ubuntu 24.04 LTS (x86_64)".into(),
-            version: "v4.14.7-rust".into(),
+            version: PRODUCT_VERSION.into(),
             status: AgentStatus::Active,
             last_keepalive: Utc::now(),
             os_type: "linux".into(),
@@ -1589,7 +1592,7 @@ fn seed_sample_data(state: &AppState) {
             name: "win-ad-dc01".into(),
             ip: "192.168.10.20".into(),
             os: "Windows Server 2022 Datacenter".into(),
-            version: "v4.14.7-rust".into(),
+            version: PRODUCT_VERSION.into(),
             status: AgentStatus::Active,
             last_keepalive: Utc::now(),
             os_type: "windows".into(),
@@ -1603,7 +1606,7 @@ fn seed_sample_data(state: &AppState) {
             name: "sec-analyst-macbook".into(),
             ip: "192.168.10.105".into(),
             os: "macOS Sonoma 14.5 (arm64)".into(),
-            version: "v4.14.7-rust".into(),
+            version: PRODUCT_VERSION.into(),
             status: AgentStatus::Active,
             last_keepalive: Utc::now(),
             os_type: "macos".into(),
@@ -1617,7 +1620,7 @@ fn seed_sample_data(state: &AppState) {
             name: "dmz-web-nginx".into(),
             ip: "192.168.1.50".into(),
             os: "Debian GNU/Linux 12 (bookworm)".into(),
-            version: "v4.14.7-rust".into(),
+            version: PRODUCT_VERSION.into(),
             status: AgentStatus::Disconnected,
             last_keepalive: Utc::now() - chrono::Duration::hours(14),
             os_type: "linux".into(),
@@ -3042,7 +3045,7 @@ async fn simulate_attack(
                 name: "agent-sim".into(),
                 ip: "10.0.0.50".into(),
                 os: "Linux".into(),
-                version: "v4.14.7".into(),
+                version: PRODUCT_VERSION.into(),
                 status: AgentStatus::Active,
                 last_keepalive: Utc::now(),
                 os_type: "linux".into(),

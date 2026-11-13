@@ -83,7 +83,7 @@ fn home(conf: &str) -> (tempfile::TempDir, Arc<Recorder>) {
 
 fn dump(db: &Recorder) -> Vec<String> {
     [
-        "global sql SELECT id, name, register_ip, internal_key, CASE WHEN id = 0 THEN 0 ELSE date_add END AS date_add, `group`, connection_status, node_name, version FROM agent ORDER BY id",
+        "global sql SELECT id, name, register_ip, internal_key, CASE WHEN id = 0 THEN 0 ELSE date_add END AS date_add, `group`, connection_status, node_name, CASE WHEN id = 0 THEN 'manager' ELSE version END AS version FROM agent ORDER BY id",
         "global sql SELECT name FROM `group` ORDER BY name",
         "global sql SELECT id_agent, id_group FROM belongs ORDER BY id_agent, id_group",
     ]
@@ -124,6 +124,8 @@ fn without_times(l: String) -> String {
         None => l,
     }
 }
+
+// the manager row's version is ProVigil's own (spec M-5); the old code wrote its upstream name
 
 /// A cluster section without a node type: counts as a worker (legacy group files only deleted).
 const WORKER_CONF: &str = "<ossec_config>\n  <cluster>\n    <node_name>node01</node_name>\n    <disabled>yes</disabled>\n  </cluster>\n</ossec_config>\n";
@@ -167,7 +169,9 @@ fn compare(conf: &str) {
     }
 
     let mut diffs = Vec::new();
-    let (qo, qn) = (old_db.seen.lock().unwrap().clone(), new_db.seen.lock().unwrap().clone());
+    // the manager's version differs on purpose (spec M-5)
+    let mask = |v: Vec<String>| v.into_iter().map(|q| q.replace("\"version\":\"Wazuh v4.14.7\"", "\"version\":\"<manager>\"").replace(&format!("\"version\":\"ProVigil v{}\"", env!("CARGO_PKG_VERSION")), "\"version\":\"<manager>\"")).collect::<Vec<_>>();
+    let (qo, qn) = (mask(old_db.seen.lock().unwrap().clone()), mask(new_db.seen.lock().unwrap().clone()));
     if qo != qn {
         diffs.push(format!("requests\n  old: {qo:#?}\n  new: {qn:#?}"));
     }

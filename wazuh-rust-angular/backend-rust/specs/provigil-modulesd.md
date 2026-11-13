@@ -61,6 +61,8 @@ siem-api's key service and without `client.keys` (a manual start). Now an empty 
 are registered only logs `The key list is empty: none of the N registered agents is removed.`; a
 list that lacks some agents still removes those (`tests/compare_database.rs`).
 
+- **M-5 Manager version (2026-11-13).** The manager row (agent 0) carries `ProVigil v<version>` (the service's own version), no longer the upstream product name and version. Nothing reads it to decide anything; the console's agent list comes from siem-api's registry.
+
 ## 3. Progress
 
 Done 13 Nov 2026: `provigil-ipc` (stream moved, db client, local sockets), `provigil-daemon` (with the

@@ -21,7 +21,7 @@ const TIMESTAMP_FILE: &str = "queue/agents-timestamp";
 /// At most this many groups per agent (the newest kept).
 const MAX_GROUPS: usize = 128;
 /// The version written in the manager's row.
-const MANAGER_VERSION: &str = "Wazuh v4.14.7";
+const MANAGER_VERSION: &str = concat!("ProVigil v", env!("CARGO_PKG_VERSION"));
 
 /// The module's settings (internal options `provigil_database.*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! Query rows as JSON (spec § 6): a row is an object of its columns in order (numbers as numbers,
 //! texts and blobs as strings, NULL columns left out); a result is an array of rows.
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_BLOB, SQLITE_DONE, SQLITE_ERROR, SQLITE_FLOAT, SQLITE_INTEGER, SQLITE_OK, SQLITE_ROW, SQLITE_TEXT};
 
 use crate::{Engine, Handle, INVALID, OK};

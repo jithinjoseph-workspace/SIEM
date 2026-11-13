@@ -1,0 +1,9 @@
+[package]
+name = "provigil-json"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil JSON documents of the agent-database protocol: ordered members, byte strings, exact number printing"
+
+[dev-dependencies]
+# the comparison test only
+siem-cjson = { path = "../siem-cjson" }

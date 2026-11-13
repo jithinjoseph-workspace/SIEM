@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
 
 use crate::integrity::{self, HOTFIXES, PACKAGES};

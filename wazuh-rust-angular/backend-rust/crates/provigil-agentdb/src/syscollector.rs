@@ -1,7 +1,7 @@
 //! `agent <id> syscollector_<kind> save2|integrity_check_*|integrity_clear <payload>`
 //! (spec § 2.6): inventory rows from the JSON sync messages of the 13 inventory kinds.
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_DONE};
 
 use crate::fim::d2long;
@@ -152,7 +152,7 @@ impl Engine {
 
     /// One inventory row from a sync message: 0 or -1.
     fn syscollector_save2(&self, h: &mut Handle, component: i32, payload: &[u8]) -> i32 {
-        let Some(data) = siem_cjson::parse(until_nul(payload)) else {
+        let Some(data) = provigil_json::parse(until_nul(payload)) else {
             self.debug(b"at wdb_syscollector_save2(): no payload".to_vec());
             return -1;
         };

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 
 use crate::text::{split_word, until_nul};
 use crate::Engine;
@@ -138,7 +138,7 @@ impl Engine {
             root.add("data", data.unwrap_or_else(Json::object));
             root.print_unformatted()
         };
-        let Ok((req, _)) = siem_cjson::parse_with_opts(until_nul(request), false) else { return reply(1, None) };
+        let Ok((req, _)) = provigil_json::parse_with_opts(until_nul(request), false) else { return reply(1, None) };
         let text = |j: Option<&Json>| match j {
             Some(Json::String(s)) => Some(until_nul(s).to_vec()),
             _ => None,

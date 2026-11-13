@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_MISUSE, SQLITE_ROW};
 
 use crate::checksum::{self, Sum};
@@ -468,7 +468,7 @@ impl Engine {
     /// `save2 <json>`: a FIM entry from the JSON sync message.
     fn fim_save2(&self, h: &mut Handle, payload: &[u8]) -> i32 {
         let id = h.id.clone();
-        let Some(data) = siem_cjson::parse(until_nul(payload)) else {
+        let Some(data) = provigil_json::parse(until_nul(payload)) else {
             self.debug(cat!("DB(", id, "): cannot parse FIM payload: '", until_nul(payload), "'"));
             return -1;
         };

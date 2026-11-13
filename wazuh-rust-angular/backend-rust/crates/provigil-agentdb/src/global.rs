@@ -2,7 +2,7 @@
 
 use sha1::{Digest as _, Sha1};
 use sha2::Sha256;
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_ERROR, SQLITE_ROW};
 
 use crate::rows::Columns;
@@ -123,7 +123,7 @@ impl Engine {
 
     /// Strict JSON (nothing may follow it).
     fn global_json(&self, input: &[u8], m1: &str) -> Result<Json, Answer> {
-        match siem_cjson::parse_with_opts(input, true) {
+        match provigil_json::parse_with_opts(input, true) {
             Ok((j, _)) => Ok(j),
             Err(off) => {
                 self.debug(m1.as_bytes().to_vec());
@@ -1049,7 +1049,7 @@ impl Engine {
     }
 
     fn cmd_set_agent_groups(&self, h: &mut Handle, input: &[u8]) -> Answer {
-        let args = match siem_cjson::parse_with_opts(input, true) {
+        let args = match provigil_json::parse_with_opts(input, true) {
             Ok((j, _)) => j,
             Err(off) => {
                 self.debug(b"Global DB Invalid JSON syntax when parsing set_agent_groups".to_vec());
@@ -1217,7 +1217,7 @@ impl Engine {
     // ------------------------------------------------------------------ sync
 
     fn cmd_sync_agent_groups_get(&self, h: &mut Handle, input: &[u8]) -> Answer {
-        let args = match siem_cjson::parse_with_opts(input, true) {
+        let args = match provigil_json::parse_with_opts(input, true) {
             Ok((j, _)) => j,
             Err(off) => {
                 self.debug(b"Global DB Invalid JSON syntax when parsing sync-agent-groups-get".to_vec());
@@ -1445,7 +1445,7 @@ impl Engine {
     }
 
     fn cmd_sync_agent_info_set(&self, h: &mut Handle, input: &[u8]) -> Answer {
-        let root = match siem_cjson::parse_with_opts(input, true) {
+        let root = match provigil_json::parse_with_opts(input, true) {
             Ok((j, _)) => j,
             Err(off) => {
                 self.debug(b"Global DB Invalid JSON syntax updating unsynced agents.".to_vec());
@@ -1677,7 +1677,7 @@ impl Engine {
             },
             b"restore" => {
                 let input = until_nul(rest);
-                let params = siem_cjson::parse_with_opts(input, true);
+                let params = provigil_json::parse_with_opts(input, true);
                 if let Err(off) = &params {
                     if !input.is_empty() {
                         self.debug(b"Invalid backup JSON syntax when restoring snapshot.".to_vec());

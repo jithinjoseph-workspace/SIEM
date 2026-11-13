@@ -9,7 +9,7 @@ description = "ProVigil agent database (provigil-db): per-agent, global and task
 shared-sqlite = ["siem-sqlite/shared"]
 
 [dependencies]
-siem-cjson = { path = "../siem-cjson" }
+provigil-json = { path = "../provigil-json" }
 siem-sqlite = { path = "../siem-sqlite" }
 sha2 = "0.10"
 sha1 = "0.10"

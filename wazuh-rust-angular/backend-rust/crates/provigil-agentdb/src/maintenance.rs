@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::SQLITE_DONE;
 
 use crate::text::read_long;

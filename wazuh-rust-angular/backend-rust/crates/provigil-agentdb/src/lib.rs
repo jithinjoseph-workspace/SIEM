@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::{ArcMutexGuard, Mutex, RawMutex};
-pub use siem_cjson::Json;
+pub use provigil_json::Json;
 use siem_sqlite::{Db, Stmt, SQLITE_BUSY, SQLITE_DONE, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_READWRITE, SQLITE_ROW};
 
 use text::{answer, near, split_word};

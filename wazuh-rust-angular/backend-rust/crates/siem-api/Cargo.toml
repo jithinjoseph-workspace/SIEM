@@ -33,7 +33,6 @@ siem-cdb = { path = "../siem-cdb" }
 siem-parser-gen = { path = "../siem-parser-gen" }
 siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
 provigil-ipc = { path = "../provigil-ipc" }
-siem-cjson = { path = "../siem-cjson" }
 siem-ai = { path = "../siem-ai" }
 siem-triage = { path = "../siem-triage" }
 siem-suppression = { path = "../siem-suppression" }

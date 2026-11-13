@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_OK, SQLITE_ROW};
 
 use crate::text::{answer, near, split_word, until_nul};
@@ -89,7 +89,7 @@ impl Engine {
             self.debug2(cat!("DB query error near: ", cmd));
             return (INVALID, near("err Invalid DB query syntax", cmd));
         };
-        let json = || siem_cjson::parse_with_opts(until_nul(args), false).map(|(j, _)| j);
+        let json = || provigil_json::parse_with_opts(until_nul(args), false).map(|(j, _)| j);
         let with_params = |f: &dyn Fn(&mut Handle, &Json) -> Answer, h: &mut Handle| match json() {
             Err(_) => (INVALID, near("err Invalid command parameters", until_nul(args))),
             Ok(p) => f(h, &p),

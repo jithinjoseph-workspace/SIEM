@@ -2,7 +2,7 @@
 //! the `sync_info` table.
 
 use sha1::{Digest, Sha1};
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_ROW};
 
 use crate::{Engine, Handle, INVALID};
@@ -425,7 +425,7 @@ impl Engine {
 
     fn parse_payload(&self, h: &Handle, payload: &[u8]) -> Option<Json> {
         let payload = crate::text::until_nul(payload);
-        let data = siem_cjson::parse(payload);
+        let data = provigil_json::parse(payload);
         if data.is_none() {
             self.debug(cat!("DB(", h.id.clone(), "): cannot parse checksum range payload: '", payload, "'"));
         }

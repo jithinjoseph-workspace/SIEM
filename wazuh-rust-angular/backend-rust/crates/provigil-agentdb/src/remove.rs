@@ -1,7 +1,7 @@
 //! `wazuhdb remove <ids>` (spec § 1): deletes the databases of several agents, and the `mitre`
 //! actor (`mitre sql <query>` on the read-only ATT&CK database).
 
-use siem_cjson::Json;
+use provigil_json::Json;
 
 use crate::text::{answer, near, read_long, split_word, until_nul};
 use crate::{Answer, Engine, DB_DIR, INVALID, OK};

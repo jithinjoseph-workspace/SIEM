@@ -1,7 +1,7 @@
 //! `agent <id> sca …` (spec § 2.3): security policy checks, scans and policies.
 
 use sha2::{Digest, Sha256};
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_CONSTRAINT, SQLITE_DONE, SQLITE_ROW};
 use std::sync::Arc;
 
@@ -444,7 +444,7 @@ impl Engine {
             self.debug(m.as_bytes().to_vec());
             (INVALID, near(BAD, text))
         };
-        let Ok((event, _)) = siem_cjson::parse_with_opts(text, false) else {
+        let Ok((event, _)) = provigil_json::parse_with_opts(text, false) else {
             return bad("Invalid Security Configuration Assessment query syntax. JSON object not found or invalid");
         };
         let Some(scan) = event.get("id") else {

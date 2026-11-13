@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use siem_cjson::Json;
+use provigil_json::Json;
 use siem_sqlite::{Stmt, SQLITE_DONE, SQLITE_OK};
 
 use crate::text::{near, read_long, read_real, until_nul};
@@ -101,7 +101,7 @@ fn bind(st: &Stmt, i: i32, c: &Col, v: &Json, table: &str) -> bool {
             }
         }
         (b't', Json::Number { double, int }) => {
-            let mut t = if *int as f64 == *double { int.to_string() } else { siem_cjson::fmt_f6(*double) }.into_bytes();
+            let mut t = if *int as f64 == *double { int.to_string() } else { provigil_json::fmt_f6(*double) }.into_bytes();
             t.truncate(1023);
             ok(st.bind_text(i, Some(&t)))
         }
@@ -163,7 +163,7 @@ impl Engine {
     }
 
     fn dbsync_apply(&self, h: &mut Handle, kind: &str, table: &str, spec: &str, operation: &[u8], raw: &[u8]) -> bool {
-        match siem_cjson::parse_with_opts(raw, true) {
+        match provigil_json::parse_with_opts(raw, true) {
             Ok((data, _)) => match operation {
                 b"INSERTED" | b"MODIFIED" => self.dbsync_upsert(h, kind, table, &columns(spec), &data),
                 b"DELETED" => {

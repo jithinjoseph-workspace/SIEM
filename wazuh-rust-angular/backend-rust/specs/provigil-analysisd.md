@@ -392,6 +392,17 @@ it has a row.)
 | **The JSON alert text:** `File/Registry Key/Registry Value '<path>' <event type>`, hard links, `Mode:`, changed attributes, then the change lines; long paths shortened to 756 bytes with ` [...] ` and the last 30 bytes; registry paths with the architecture and value name (`Unknown key:Unknown Value` when missing) | Same |
 | After the alert: added / modified events are saved (`syscheck save2 <event without mode, type, tags, content_changes, changed_attributes, hard_links, old_attributes, audit>`), deleted ones removed (`syscheck delete <path or index>`); database errors "FIM decoder: Cannot communicate with database." / "Cannot get response from database." / "Bad response from database: ..." ("Agent not found" ignored); "Can't generate fim alert for event: ..." | Same |
 
+### 2.25 File integrity helpers (`internal/syscheck_op.rs`)
+
+| Feature | New |
+|---|---|
+| **Checksum decoding** `size:perm:uid:gid:md5:sha1[:uname:gname:mtime:inode[:sha256[:attrs]]]`: `-1` = deleted; a perm starting with `\|` is a Windows permission list; numeric attributes turned into the Windows attribute names; a leading `+` = silent; the whodata part (14 fields), tag and symbolic path | Same |
+| **Extra data** `!changes:date[:symbolic path]` | Same |
+| Filling the event from a decoded sum (perm printed `%06o`) | Same |
+| **Windows attributes:** the 19 names joined with ", " | Same names and order |
+| **Windows permissions:** `\|account,type,mask` → "account (allowed\|denied): PERM\|PERM..." (20,480-byte buffer) | Same text and limit |
+| Unix permission text (rwx with the s/t bits); field escape/unescape; path normalising; the C `strtol`-style number reading | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -417,4 +428,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels, time, statistics, the analysis socket, getconfig, the Windows decoder and file integrity written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels, time, statistics, the analysis socket, getconfig, the Windows decoder, file integrity and its helpers written.

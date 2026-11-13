@@ -150,6 +150,112 @@ pub fn read_ulong(s: &[u8]) -> u64 {
     }
 }
 
+/// A decimal number the way C's `strtod` reads one: white space, sign, `inf`/`infinity`,
+/// `nan[(chars)]`, hexadecimal `0x…[p…]`, or decimal digits with fraction and exponent. Returns
+/// the value and where it ended (0 = nothing read, value 0).
+pub fn read_real(s: &[u8]) -> (f64, usize) {
+    let s = until_nul(s);
+    let mut i = 0;
+    while i < s.len() && matches!(s[i], b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') {
+        i += 1;
+    }
+    let mut neg = false;
+    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
+        neg = s[i] == b'-';
+        i += 1;
+    }
+    let sign = |v: f64| if neg { -v } else { v };
+    let lower: Vec<u8> = s[i..].iter().take(8).map(|c| c.to_ascii_lowercase()).collect();
+    if lower.starts_with(b"infinity") {
+        return (sign(f64::INFINITY), i + 8);
+    }
+    if lower.starts_with(b"inf") {
+        return (sign(f64::INFINITY), i + 3);
+    }
+    if lower.starts_with(b"nan") {
+        let mut j = i + 3;
+        if s.get(j) == Some(&b'(') {
+            let mut k = j + 1;
+            while k < s.len() && (s[k].is_ascii_alphanumeric() || s[k] == b'_') {
+                k += 1;
+            }
+            if s.get(k) == Some(&b')') {
+                j = k + 1;
+            }
+        }
+        return (sign(f64::NAN), j);
+    }
+    if s.len() > i + 1 && s[i] == b'0' && (s[i + 1] | 0x20) == b'x' {
+        let mut j = i + 2;
+        let (mut mant, mut digits, mut scale) = (0f64, 0, 0i32);
+        while j < s.len() && s[j].is_ascii_hexdigit() {
+            mant = mant * 16.0 + (s[j] as char).to_digit(16).unwrap_or(0) as f64;
+            j += 1;
+            digits += 1;
+        }
+        if s.get(j) == Some(&b'.') {
+            let mut k = j + 1;
+            while k < s.len() && s[k].is_ascii_hexdigit() {
+                mant = mant * 16.0 + (s[k] as char).to_digit(16).unwrap_or(0) as f64;
+                scale -= 4;
+                k += 1;
+                digits += 1;
+            }
+            if digits > 0 {
+                j = k;
+            }
+        }
+        if digits == 0 {
+            // just "0": the x is not part of the number
+            return (sign(0.0), i + 1);
+        }
+        if j < s.len() && (s[j] | 0x20) == b'p' {
+            let (e, n) = read_long(&s[j + 1..]);
+            if n > 0 && !s[j + 1..].first().is_some_and(|c| c.is_ascii_whitespace()) {
+                scale = scale.saturating_add(e.clamp(-100_000, 100_000) as i32);
+                j += 1 + n;
+            }
+        }
+        return (sign(mant * 2f64.powi(scale)), j);
+    }
+    // decimal: digits [. digits] [e [sign] digits]
+    let start = i;
+    let mut j = i;
+    while j < s.len() && s[j].is_ascii_digit() {
+        j += 1;
+    }
+    let int_digits = j - start;
+    let mut frac_digits = 0;
+    if s.get(j) == Some(&b'.') {
+        let mut k = j + 1;
+        while k < s.len() && s[k].is_ascii_digit() {
+            k += 1;
+        }
+        frac_digits = k - j - 1;
+        if int_digits + frac_digits > 0 {
+            j = k;
+        }
+    }
+    if int_digits + frac_digits == 0 {
+        return (0.0, 0);
+    }
+    if j < s.len() && (s[j] | 0x20) == b'e' {
+        let mut k = j + 1;
+        if k < s.len() && (s[k] == b'+' || s[k] == b'-') {
+            k += 1;
+        }
+        let d = k;
+        while k < s.len() && s[k].is_ascii_digit() {
+            k += 1;
+        }
+        if k > d {
+            j = k;
+        }
+    }
+    let text = std::str::from_utf8(&s[start..j]).unwrap_or("0");
+    (sign(text.parse::<f64>().unwrap_or(0.0)), j)
+}
+
 /// Position of the first `c` that is not escaped with a backslash.
 pub fn find_unescaped(s: &[u8], c: u8) -> Option<usize> {
     let mut escaped = false;

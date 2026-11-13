@@ -4,8 +4,10 @@
 
 #[macro_use]
 pub mod text;
+mod agent;
 mod global;
 mod layout;
+mod legacy;
 mod rows;
 mod task;
 
@@ -176,6 +178,7 @@ impl Engine {
         match actor {
             b"global" => self.global_actor(rest, peer),
             b"task" => self.task_actor(rest, peer),
+            b"agent" => self.agent_actor(rest, peer),
             _ => {
                 self.debug(cat!("DB(000) Invalid DB query actor: ", actor));
                 (INVALID, answer(cat!("err Invalid DB query actor: '", text::first32(actor), "'")))
@@ -248,7 +251,7 @@ impl Engine {
     }
 
     /// Refuses a file written with another layout version (decision D-1).
-    fn check_version(&self, h: &mut Handle, rel: &str, table: &str, want: &str) {
+    pub(crate) fn check_version(&self, h: &mut Handle, rel: &str, table: &str, want: &str) {
         match self.stored_version(h, table) {
             Some(v) if v == want.as_bytes() => {}
             v => {
@@ -372,6 +375,21 @@ impl Engine {
         true
     }
 
+    /// A statement without opening a transaction (reset and reused when cached); None when it
+    /// cannot be prepared (the caller logs).
+    pub fn stmt_plain(&self, h: &mut Handle, sql: &str) -> Option<Arc<Stmt>> {
+        if let Some(st) = h.stmts.get(sql) {
+            let st = st.clone();
+            st.reset();
+            st.clear_bindings();
+            return Some(st);
+        }
+        let (rc, st, _) = h.db().prepare_v2(sql.as_bytes());
+        let st = Arc::new(st.filter(|_| rc == SQLITE_OK)?);
+        h.stmts.insert(sql.to_string(), st.clone());
+        Some(st)
+    }
+
     /// Prepares a statement inside a transaction (begun when none is open); a statement used
     /// before is reset and reused.
     pub fn prepare(&self, h: &mut Handle, sql: &str) -> Option<Arc<Stmt>> {
@@ -426,7 +444,7 @@ impl Engine {
     }
 
     /// After an invalid result: a database file that vanished is closed (recreated next time).
-    fn check_file(&self, h: &mut Handle) {
+    pub(crate) fn check_file(&self, h: &mut Handle) {
         let rel = format!("{DB_DIR}/{}.db", h.id);
         if std::fs::File::open(self.path(&rel)).is_err() {
             self.warn(cat!("DB(", rel, ") not found. This behavior is unexpected, the database will be recreated."));

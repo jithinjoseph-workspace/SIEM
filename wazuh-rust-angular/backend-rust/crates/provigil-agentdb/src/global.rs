@@ -640,7 +640,7 @@ impl Engine {
         }
     }
 
-    fn agent_exists(&self, h: &mut Handle, id: i32) -> i32 {
+    pub(crate) fn agent_exists_in(&self, h: &mut Handle, id: i32) -> i32 {
         let Some(st) = self.stmt(h, "SELECT EXISTS(SELECT 1 FROM agent WHERE id=?);") else { return INVALID };
         st.bind_int(1, id);
         match self.step(&st) {
@@ -650,14 +650,6 @@ impl Engine {
                 self.debug(cat!("DB(", h.id.clone(), ") SQLite: ", h.errmsg()));
                 INVALID
             }
-        }
-    }
-
-    /// Whether the agent exists (for the `agent` actor; opens the global database itself).
-    pub(crate) fn agent_known(&self, id: i32) -> i32 {
-        match self.open_global() {
-            Some(mut g) if g.enabled => self.agent_exists(&mut g, id),
-            _ => INVALID,
         }
     }
 
@@ -845,7 +837,7 @@ impl Engine {
                 r = NOT_FOUND;
             }
             if r == INVALID {
-                if self.agent_exists(h, id) == 0 {
+                if self.agent_exists_in(h, id) == 0 {
                     let ip: &[u8] = b"0.0.0.0";
                     let now = self.time() as i32;
                     if !self.insert_agent(h, id, create_name, Some(ip), Some(ip), None, None, now) {

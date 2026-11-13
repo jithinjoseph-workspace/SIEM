@@ -1695,7 +1695,7 @@ impl Engine {
     }
 
     /// Backups of the global database: (name, modification time).
-    fn backup_names(&self) -> Option<Vec<(String, Option<i64>)>> {
+    pub(crate) fn backup_names(&self) -> Option<Vec<(String, Option<i64>)>> {
         let dir = std::fs::read_dir(self.path(crate::BACKUP_DIR)).ok()?;
         let mut v = Vec::new();
         for e in dir.flatten() {

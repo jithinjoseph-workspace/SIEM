@@ -108,12 +108,36 @@ impl Pair {
     }
 
     fn make(router: bool) -> Pair {
+        Pair::configured(siem_wdb::wdb::WdbConfig::default(), Settings { router_inventory: router, ..Settings::default() }, router)
+    }
+
+    /// Both with the given settings (they must say the same).
+    pub fn configured(cfg: siem_wdb::wdb::WdbConfig, settings: Settings, router: bool) -> Pair {
         let (ho, hn) = (home(), home());
         let (so, sn) = (Arc::new(Seen::default()), Arc::new(Seen::default()));
-        let mut old = siem_wdb::wdb::Wdbd::new(siem_wdb::wdb::WdbConfig::default(), ho.path().to_path_buf(), Arc::new(OldEnv(so.clone())));
+        let mut old = siem_wdb::wdb::Wdbd::new(cfg, ho.path().to_path_buf(), Arc::new(OldEnv(so.clone())));
         old.router_inventory = router;
-        let new = Engine::new(hn.path(), Settings { router_inventory: router, ..Settings::default() }, Arc::new(NewEnv(sn.clone())));
+        let new = Engine::new(hn.path(), settings, Arc::new(NewEnv(sn.clone())));
         Pair { old, new, so, sn, ho, hn }
+    }
+
+    /// Runs one job on each side; returns the differences in logs and router messages.
+    pub fn job(&self, name: &str, old: &dyn Fn(&siem_wdb::wdb::Wdbd), new: &dyn Fn(&Engine)) -> Vec<String> {
+        old(&self.old);
+        new(&self.new);
+        let (po, pn) = (self.ho.path().to_string_lossy().into_owned(), self.hn.path().to_string_lossy().into_owned());
+        let (lo, uo, _) = self.so.take();
+        let (ln, un, _) = self.sn.take();
+        let f = |v: Vec<(String, Vec<u8>)>, home: &str| v.into_iter().map(|(l, m)| format!("{l}: {}", without_home(&m, home))).collect::<Vec<_>>();
+        let (lo, ln) = (f(lo, &po), f(ln, &pn));
+        let mut d = Vec::new();
+        if lo != ln {
+            d.push(format!("{name}\n   logs old:\n      {}\n   logs new:\n      {}", lo.join("\n      "), ln.join("\n      ")));
+        }
+        if uo != un {
+            d.push(format!("{name}\n   router old {uo:?}\n   router new {un:?}"));
+        }
+        d
     }
 
     /// The two home folders (old, new).

@@ -13,6 +13,7 @@ pub mod fim;
 mod syscollector;
 mod delta;
 mod remove;
+mod maintenance;
 mod inventory;
 mod layout;
 mod legacy;
@@ -93,11 +94,31 @@ pub struct Settings {
     pub router_agent: bool,
     /// Whether deleted inventory rows are published on the inventory router topic.
     pub router_inventory: bool,
+    /// Vacuum rules: minimum free-page share, the fragmentation that always vacuums, the
+    /// threshold above which a rise of `fragmentation_delta` since the last vacuum does.
+    pub free_pages_percentage: i32,
+    pub max_fragmentation: i32,
+    pub fragmentation_threshold: i32,
+    pub fragmentation_delta: i32,
+    /// Seconds between fragmentation checks.
+    pub check_fragmentation_interval: i64,
+    /// The scheduled global backup and its interval in seconds.
+    pub backup_enabled: bool,
+    pub backup_interval: i64,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { commit_time_min: 10, commit_time_max: 60, open_db_limit: 64, backup_max_files: 3, is_worker_node: false, router_agent: false, router_inventory: false }
+        Settings { commit_time_min: 10, commit_time_max: 60, open_db_limit: 64, backup_max_files: 3, is_worker_node: false, router_agent: false,
+            router_inventory: false,
+            free_pages_percentage: 0,
+            max_fragmentation: 90,
+            fragmentation_threshold: 75,
+            fragmentation_delta: 5,
+            check_fragmentation_interval: 7200,
+            backup_enabled: true,
+            backup_interval: 86400,
+        }
     }
 }
 

@@ -223,6 +223,23 @@ it has a row.)
 | **Event store:** a fired rule with a sid list or group lists gets the event added (node ids kept to remove it later); the event list keeps the newest first; over `memory_size`, the oldest are dropped (at least 10, and while older than the highest frequency) and removed from the rule lists | Same |
 | **Logtest pipeline:** location escaped, `1:<location>:<event>`, pre-decoding, size, decoding, accumulator, rules (top rules of the event's category; an OSSEC alert without a rule stops; level 0 stops; ignore time; ignore check; stored), description fields expanded, alert when `logbylevel` is reached, the alert JSON with `rule.level` added when missing | Same (section logtest) |
 
+### 2.9 One event through the rules (`analysis.rs`)
+
+| Feature | New |
+|---|---|
+| Size = the log's length; the accumulator when the decoder asks | Same |
+| **Firewall events** (decoder type firewall): counted; with `log_fw`, an event missing any of action, srcip, dstip, srcport, dstport, protocol goes no further (not even to the archive); otherwise a copy goes to the firewall log | Same |
+| **Statistics alert** (with `<stats>`): the hour's and the weekday's counts; when above normal, a copy of the event with the statistics rule (id 11, group `stats,`, description "Excessive number of events (above normal).") and the log replaced by the message ("The average number of logs between H:00 and H+1:00 [on <weekday>] is N. We reached M.", at most 190 bytes) | Same |
+| **Statistics rules** (`stats.c`): no check until 3 days of averages; at most 3 alerts a day, once per hour; the threshold `n + max(mindiff, min(maxdiff, n × percent / 100 + 1))`; the daily update of the hourly and weekly averages (new: count + 20; else weighted with up to 7 days, +5, or +25 after 3 alerts) and the "Hour totals - h:n" / "Total events for day:n" lines | Same arithmetic |
+| Labels added to the event (and the processed counter) | Same |
+| **Rule walk:** top rules of the event's decoder type, in order; an OSSEC alert event uses the rule its plugin set (none: no archive at all); the first match wins | Same |
+| Level 0: stop (archived only) | Same |
+| **Ignore time:** first fire stores the time; within `ignore`, the previous rule (the matched child's parent) is used instead with its last events cleared, or nothing when there is none; after it, the time is reset | Same |
+| Ignore check (stop, no rule); ignore line; the description's `$(field)`s; the alert copy when the rule logs | Same |
+| **Active responses:** for each bound response, the dstuser must match `^[a-zA-Z._0-9@?-]*$` and the srcip `^[a-zA-Z.:_0-9-]*$` (else warnings 1272 / 1271 "Possible logging attack." and no response); a copy of the event per response | Same |
+| The event joins the rule lists and the event list (its last events dropped); the archive copy when archiving | Same |
+| No rule: the archive copy when archiving | Same |
+
 ## 3. Decisions
 
 - **A-1 Context search, different agent.** The original loops for ever on an event of another agent in the event-list search; the port skips that event, and the new code keeps the skip.
@@ -247,4 +264,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader and the matcher written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher and the event stage written.

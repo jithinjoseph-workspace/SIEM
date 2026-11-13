@@ -202,9 +202,30 @@ it has a row.)
 | **Context marks:** `if_matched_sid` searches the last events of the named rule (its event list is created); `if_matched_group` searches a group list filled by every rule whose group matches; other context rules search the last events; `check_diff` alone is not a context rule | Same |
 | **Levels:** 9900 becomes 0, other levels of 100 or more divided by 100 (`_setlevels`); the rule hash: id to the first rule found depth-first | Same |
 
+### 2.8 The matcher (`engine.rs`)
+
+| Feature | New |
+|---|---|
+| **Engine settings:** rule settings, `memory_size` (event list size), `fts_list_size`, `fts_min_size_for_str`, the manager's short and full host names, `queue/diff`, `queue/fts/ig-queue`, cluster name/node and `hide_cluster_info`, `show_hidden_labels`, the MITRE table | Same |
+| **Ruleset load** (also for logtest sessions): decoders, decoder ids, lists, rules (bound to the active responses), levels, the rule hash; a fork of a loaded ruleset with empty state | Same |
+| **Rule statistics** (`DumpLogstats`): `<hour>-<id>-<level>-<fired>` for every rule that fired (depth-first), counters reset | Same |
+| **FTS preload:** lines of `fts-queue` (at most 256 bytes each, without the line break, up to a zero byte) | Same |
+| **Accumulator** (decoders with `accumulate`): needs an id and a decoder name; key `<hostname or (null)> <decoder> <id>` (shorter than 256 bytes); a stored entry younger than 120 s fills the event's empty dstuser, srcuser, dstip, srcip, dstport, srcport, data (values of 1–80 bytes); the entry is then updated the same way; old entries purged every 200 lookups or 300 s | Same |
+| **FTS** (`if_fts` rules on decoders with `fts`): the line `<decoder> <id> <dstuser> <srcuser> <srcip> <dstip> <data> <system_name> <location>` (only the decoder's FTS fields; the decoder name or location `(null)` when absent), at most 255 bytes, then the FTS dynamic fields (` value` each, up to 256 bytes). Seen before: no match. IDS decoders keep a recent list: a line matching more than 2 recent lines in more than `fts_min_size_for_str` bytes is cut to that size. A new line is stored and written to `fts-queue`. An `FTS_DONE` mark (decoder or rootcheck) skips the check. | Same |
+| **Ignore check** (`check_if_ignored`): the same kind of line built from the rule's `ckignore` fields (data and system name taken from `ignore`, as in the original), compared with each line of `ig-queue` including its line break (255-byte chunks) | Same |
+| **Ignore line** (`ignore`): `\n<fields>[ <dynamic fields>]\n` appended to `ig-queue` | Same |
+| **check_diff:** host name `(x)` reduced to `x`; file `queue/diff/<host>/<rule id>/last-entry`; events of 65,536 bytes or more never match; first time: stored, no match; same log: no match; different: stored, the event gets `previous` and last events "Previous output:" + the old log; an empty stored file is removed | Same |
+| **Context searches** (frequency rules): over the rule's sid list, group list, or the whole event list (newest first). Stop at the first event older than the timeframe. Same agent unless `global_frequency`. Same id and same srcip when asked. Dynamic same/different fields (both events must have fields). With `SAME_EXTRAINFO` (or always, for the event list): the static same/different fields (same starts at dstip). The event list also needs the same decoder type and the `if_matched_regex` (its sub-strings kept). An event already matched at this level or higher stops. The first `frequency` events are counted (and kept as the last events, at most 10 shown), the next one fires: both the event and the first matched get the level. A failed search empties the last events. | Same; the one known C endless loop (`continue` without advancing, different agent) stays a skip, as now (decision A-1) |
+| **Rule match order** (`OS_CheckIfRuleMatch`): decoded_as (the syscheck decoder id when set); program name, id, system name, protocol, match (log), regex (log), action, url, location; dynamic `field`s; with packet info: srcip, dstip, srcport, dstport; with extra info: compiled rule, user (dstuser, else srcuser, else no match), srcgeoip, dstgeoip, maxsize, time, weekday, data, extra_data, hostname, status, check_diff; FTS; lists (user = srcuser else dstuser; a missing field: no match); the context search. A missing field for an option: no match; `negate` inverts. | Same order (the order matters: sub-strings and side effects) |
+| **Compiled rules:** comp_srcuser_dstuser (both present and equal, or either missing), check_id_size (id of 10 bytes or more), comp_mswin_targetuser_calleruser_diff (the values after "Target Account Name" and "Caller User Name" differ before a tab or two spaces), is_simple_http_request (url `/` or without `?`), is_valid_crawler (log starts with one of 8 crawler networks) | Same |
+| **Children:** after a match, children are tried in order; the first child that matches wins and the parent becomes the previous rule. `noalert` rules never alert. A fired rule counts `firedtimes` and the hourly alerts. | Same |
+| Logtest debug lines: "Trying rule: <id> - <description>" (1,055 bytes), "*Rule <id> matched" (31), "*Trying child rules" | Same |
+| **Event store:** a fired rule with a sid list or group lists gets the event added (node ids kept to remove it later); the event list keeps the newest first; over `memory_size`, the oldest are dropped (at least 10, and while older than the highest frequency) and removed from the rule lists | Same |
+| **Logtest pipeline:** location escaped, `1:<location>:<event>`, pre-decoding, size, decoding, accumulator, rules (top rules of the event's category; an OSSEC alert without a rule stops; level 0 stops; ignore time; ignore check; stored), description fields expanded, alert when `logbylevel` is reached, the alert JSON with `rule.level` added when missing | Same (section logtest) |
+
 ## 3. Decisions
 
-(None yet.)
+- **A-1 Context search, different agent.** The original loops for ever on an event of another agent in the event-list search; the port skips that event, and the new code keeps the skip.
 
 ## 4. The ruleset (GPL-free plan, after the engine)
 
@@ -226,4 +247,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders and the rule loader written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader and the matcher written.

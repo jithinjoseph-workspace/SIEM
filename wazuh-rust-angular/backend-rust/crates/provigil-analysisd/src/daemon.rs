@@ -251,7 +251,8 @@ fn totals_file(home: &Path, year: i32, mon: &str, day: i32) -> std::io::Result<F
 // ---------------------------------------------------------------- labels
 
 /// Agent labels from provigil-db's JSON list: `"key"`, `!"key"` (hidden), `#"key"`
-/// (system); a later duplicate does not replace.
+/// (system); a duplicate key is kept as another label; text that is not UTF-8 is replaced
+/// as UTF-8 text would be (as before).
 pub fn labels_of(json: &Json) -> Vec<Label> {
     let mut out: Vec<Label> = Vec::new();
     for item in json.children() {
@@ -264,10 +265,9 @@ pub fn labels_of(json: &Json) -> Vec<Label> {
         };
         let rest = &k[start..];
         let Some(end) = rest.iter().position(|&c| c == b'"') else { continue };
-        let key = rest[..end].to_vec();
-        if !out.iter().any(|l| l.key == key) {
-            out.push(Label { key, value: v.clone(), hidden, system });
-        }
+        let key = String::from_utf8_lossy(&rest[..end]).into_owned().into_bytes();
+        let value = String::from_utf8_lossy(v).into_owned().into_bytes();
+        out.push(Label { key, value, hidden, system });
     }
     out
 }
@@ -398,8 +398,10 @@ impl LiveHost {
         }
     }
 
-    /// Agents connected now, in pages from provigil-db (`node`: only this node's).
-    fn agents(&mut self, mut last: i32, tail: &str) -> Option<Vec<i32>> {
+    /// Agents connected now, in pages from provigil-db (`node`: only this node's). With
+    /// `keep_last` a page without agents keeps the previous last id (the active-agents
+    /// list), otherwise the next page starts from 0 (this node's list), as before.
+    fn agents(&mut self, mut last: i32, tail: &str, keep_last: bool) -> Option<Vec<i32>> {
         let mut out = Vec::new();
         loop {
             let a = self.ctx.db_text(&format!("global get-agents-by-connection-status {last} active{tail}"))?;
@@ -408,7 +410,7 @@ impl LiveHost {
                 return None;
             }
             let j = provigil_json::parse(payload.as_bytes())?;
-            let mut page_last = 0;
+            let mut page_last = if keep_last { last } else { 0 };
             for x in j.children() {
                 if let Some(Json::Number { int, .. }) = x.get("id") {
                     out.push(*int);
@@ -435,7 +437,7 @@ impl Host for LiveHost {
     }
     fn agents_of_node(&mut self, last: i32, limit: i32) -> Option<Vec<i32>> {
         let tail = format!(" {} {limit}", self.node);
-        self.agents(last, &tail)
+        self.agents(last, &tail, false)
     }
     fn db_query(&mut self, q: &[u8], room: usize) -> Result<Vec<u8>, i32> {
         let (db, q) = (self.ctx.db.clone(), q.to_vec());
@@ -498,7 +500,7 @@ impl ResponseSink for LiveHost {
         }
     }
     fn active_agents(&mut self) -> Option<Vec<i32>> {
-        self.agents(0, "")
+        self.agents(0, "", true)
     }
     fn node_name(&mut self) -> String {
         self.node.clone()
@@ -1504,7 +1506,7 @@ pub fn run(mut service: Service, log: Arc<ServiceLog>) -> std::io::Result<()> {
     // logtest
     let lt_cfg = service.cfg.logtest.clone();
     if lt_cfg.enabled {
-        let mut lt = Logtest::new(logtest::Settings {
+        let lt = Logtest::new(logtest::Settings {
             enabled: true,
             threads: lt_cfg.threads,
             max_sessions: lt_cfg.max_sessions,
@@ -1512,7 +1514,6 @@ pub fn run(mut service: Service, log: Arc<ServiceLog>) -> std::io::Result<()> {
             config_file: PathBuf::from("etc/ossec.conf"),
             engine: service.engine.settings.clone(),
         });
-        lt.rules_by_id = service.engine.rules_by_id.clone();
         let lt = Arc::new(Mutex::new(lt));
         let path = home.join("queue/sockets/logtest");
         let (l2, lt2) = (log.clone(), lt.clone());
@@ -1671,7 +1672,7 @@ mod tests {
         assert_eq!(String::from_utf8(Service::load_json(&load)).unwrap(), r#"{"error":0,"message":"ok","data":{"queue_usage":0.25,"received":5,"senders":{"3":70}}}"#);
         let j = provigil_json::parse(br##"[{"key":"\"a\"","value":"1"},{"key":"!\"b\"","value":"2"},{"key":"#\"c\"","value":"3"},{"key":"x","value":"4"},{"key":"\"a\"","value":"5"}]"##).unwrap();
         let l = labels_of(&j);
-        assert_eq!(l.len(), 3);
-        assert!(l[1].hidden && l[2].system && l[0].value == b"1");
+        assert_eq!(l.len(), 4, "a duplicate key stays");
+        assert!(l[1].hidden && l[2].system && l[0].value == b"1" && l[3].value == b"5");
     }
 }

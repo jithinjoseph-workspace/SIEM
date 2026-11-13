@@ -3,6 +3,7 @@
 pub mod alert_json;
 pub mod builtin;
 pub mod config;
+pub mod daemon;
 pub mod decoders;
 pub mod engine;
 pub mod host;

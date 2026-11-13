@@ -70,3 +70,94 @@ impl Kind {
         }
     }
 }
+
+impl Kind {
+    /// The dropped-events counter of a fixed queue (the event queue's depends on the message).
+    pub fn dropped_counter(self) -> Option<crate::stats::Component> {
+        use crate::stats::Component as C;
+        Some(match self {
+            Kind::Syscheck => C::Syscheck,
+            Kind::Rootcheck => C::Rootcheck,
+            Kind::Sca => C::Sca,
+            Kind::Syscollector => C::Syscollector,
+            Kind::Hostinfo => C::Others,
+            Kind::Winevt => C::Eventchannel,
+            Kind::Dbsync => C::Dbsync,
+            Kind::Upgrade => C::Upgrade,
+            Kind::Event => return None,
+        })
+    }
+}
+
+/// The decoder input queues: one arrival-ordered list with a count per queue (a queue of
+/// size n holds n - 1 messages); with `split`, messages that wait on provigil-db have their
+/// own list so they never hold up the rest.
+#[derive(Debug, Default)]
+pub struct InQueues {
+    fast: std::collections::VecDeque<(Kind, Vec<u8>)>,
+    slow: std::collections::VecDeque<(Kind, Vec<u8>)>,
+    pub split: bool,
+    count: [usize; KINDS],
+    size: [usize; KINDS],
+    /// The full warning was logged.
+    pub reported: [bool; KINDS],
+}
+
+impl InQueues {
+    /// Sizes per kind (in `Kind` order).
+    pub fn new(sizes: [usize; KINDS]) -> InQueues {
+        InQueues { size: sizes, ..InQueues::default() }
+    }
+
+    pub fn full(&self, k: Kind) -> bool {
+        self.count[k.index()] + 1 >= self.size[k.index()]
+    }
+
+    /// False when full.
+    pub fn push(&mut self, k: Kind, msg: Vec<u8>) -> bool {
+        if self.full(k) {
+            return false;
+        }
+        self.count[k.index()] += 1;
+        let q = if self.split && Kind::waits(msg[0]) { &mut self.slow } else { &mut self.fast };
+        q.push_back((k, msg));
+        true
+    }
+
+    pub fn pop(&mut self) -> Option<(Kind, Vec<u8>)> {
+        let (k, m) = self.fast.pop_front()?;
+        self.count[k.index()] -= 1;
+        Some((k, m))
+    }
+
+    pub fn pop_slow(&mut self) -> Option<(Kind, Vec<u8>)> {
+        let (k, m) = self.slow.pop_front()?;
+        self.count[k.index()] -= 1;
+        Some((k, m))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fast.is_empty() && self.slow.is_empty()
+    }
+
+    pub fn has_fast(&self) -> bool {
+        !self.fast.is_empty()
+    }
+
+    pub fn has_slow(&self) -> bool {
+        !self.slow.is_empty()
+    }
+
+    pub fn any_full(&self) -> bool {
+        (0..KINDS).any(|i| self.count[i] + 1 >= self.size[i])
+    }
+
+    /// How full the fullest queue is, 0 to 1.
+    pub fn max_usage(&self) -> f32 {
+        (0..KINDS).map(|i| self.count[i] as f32 / (self.size[i] as f32 - 1.0).max(1.0)).fold(0.0, f32::max)
+    }
+
+    pub fn usage(&self, k: Kind) -> crate::stats::QueueUse {
+        crate::stats::QueueUse::new(self.size[k.index()], self.count[k.index()])
+    }
+}

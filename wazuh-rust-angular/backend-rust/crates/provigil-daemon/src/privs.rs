@@ -50,6 +50,21 @@ pub fn set_user(uid: u32) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Allows `n` open files (both limits); the error text on failure.
+pub fn set_nofile(n: u64) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let r = libc::rlimit { rlim_cur: n as libc::rlim_t, rlim_max: n as libc::rlim_t };
+        // SAFETY: a valid pointer to an initialised rlimit
+        if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &r) } < 0 {
+            let e = std::io::Error::last_os_error();
+            return Err(format!("Could not set resource limit for file descriptors to {n}: {} ({})", e.to_string().split(" (os error").next().unwrap_or(""), e.raw_os_error().unwrap_or(0)));
+        }
+    }
+    let _ = n;
+    Ok(())
+}
+
 /// Moves the process to the background: the parent exits, the child leads a new session with
 /// its standard streams on the null device. Call before starting threads.
 pub fn daemonize() -> std::io::Result<()> {

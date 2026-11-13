@@ -70,4 +70,5 @@ rust_xlsxwriter = "0.102"
 # the internal API tests call the router directly
 tower = { version = "0.5", features = ["util"] }
 # the real engine, for the test of its active responses
-siem-analysisd = { path = "../siem-analysisd" }
+provigil-analysisd = { path = "../provigil-analysisd" }
+provigil-daemon = { path = "../provigil-daemon" }

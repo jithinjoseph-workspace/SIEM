@@ -3187,8 +3187,8 @@ mod stream_tests {
 #[cfg(test)]
 mod engine_responses_tests {
     use super::*;
-    use siem_analysisd::daemon::{run, Analysis, Logger, StderrLogger};
-    use siem_analysisd::daemon_config::AnalysisdConfig;
+    use provigil_analysisd::config::Config;
+    use provigil_analysisd::daemon::{run, Service, ServiceLog};
     use provigil_ipc::aio::{framing, StreamListener};
     use std::sync::Arc;
 
@@ -3260,10 +3260,10 @@ mod engine_responses_tests {
         restore_http_queue(vec!["783".into()]);
 
         tokio::spawn(engine_responses(home.clone()));
-        let cfg = AnalysisdConfig::load(&home, &home.join("etc/ossec.conf"), false).expect("config");
-        let log: Arc<dyn Logger> = Arc::new(StderrLogger);
-        let analysis = Analysis::new(cfg, &*log, false).expect("ruleset");
-        std::thread::spawn(move || run(analysis, log));
+        let cfg = Config::load(&home, &home.join("etc/ossec.conf"), false).expect("config");
+        let log = Arc::new(ServiceLog::new(provigil_daemon::Log::open(&home, "provigil-analysisd"), true));
+        let service = Service::new(cfg, &log, false).expect("ruleset");
+        std::thread::spawn(move || run(service, log));
 
         let t = std::time::Instant::now();
         let sender = loop {

@@ -9,6 +9,8 @@ provigil-daemon = { path = "../provigil-daemon" }
 provigil-fileop = { path = "../provigil-fileop" }
 provigil-regex = { path = "../provigil-regex" }
 provigil-json = { path = "../provigil-json" }
+provigil-ipc = { path = "../provigil-ipc" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
 regex = "1.10"
 chrono = "0.4"
 sha1 = "0.10"

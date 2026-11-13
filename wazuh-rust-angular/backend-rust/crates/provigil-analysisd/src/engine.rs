@@ -31,6 +31,8 @@ pub struct EngineSettings {
     pub cluster_name: Option<String>,
     pub node_name: Option<String>,
     pub show_hidden_labels: bool,
+    /// The MITRE table read at start: new engines (logtest sessions, a reload) get it.
+    pub mitre: Option<Arc<crate::mitre::Mitre>>,
 }
 
 impl Default for EngineSettings {
@@ -48,6 +50,7 @@ impl Default for EngineSettings {
             cluster_name: None,
             node_name: None,
             show_hidden_labels: false,
+            mitre: None,
         }
     }
 }
@@ -150,6 +153,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(settings: EngineSettings) -> Engine {
+        let mitre = settings.mitre.clone();
         Engine {
             settings,
             decoders: DecoderSet::default(),
@@ -172,7 +176,7 @@ impl Engine {
             hourly_alerts: 0,
             alert_counter: 0,
             fts_lines: Vec::new(),
-            mitre: None,
+            mitre,
         }
     }
 

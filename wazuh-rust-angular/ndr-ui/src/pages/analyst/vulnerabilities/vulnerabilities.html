@@ -193,6 +193,7 @@
               </td>
               <td class="p-3.5 font-semibold text-white">{{ a.name }}
                 @for (g of groupsOf().get(a.id) ?? []; track g) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-cyan-300 align-middle">{{ g }}</span> }
+                @if (offline(a.id); as off) { <span class="ml-1.5 px-1.5 py-0.5 rounded border border-slate-600 text-slate-400 text-[10px] font-semibold align-middle" [title]="off">Offline</span> }
                 @if (scanLabel(a.id); as sl) { <span class="ml-1.5 px-1.5 py-0.5 rounded border text-[10px] font-semibold align-middle" [ngClass]="sl.cls" role="status">{{ sl.text }}</span> }
                 @for (s of agentSegs(a.id); track s) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-amber-300 align-middle" [title]="segTitle(a.id)">{{ segLabel(s) }}{{ seg().agents[a.id]?.guessed ? ' ?' : '' }}</span> }
               </td>

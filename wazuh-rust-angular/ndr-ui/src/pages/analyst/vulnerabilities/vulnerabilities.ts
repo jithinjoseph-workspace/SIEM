@@ -383,6 +383,16 @@ export class Vulnerabilities implements OnInit, OnDestroy {
 
   ngOnDestroy() { this.stopFollowing(); }
 
+  /** For a disconnected agent: when it was last seen (the badge's tooltip); otherwise null. */
+  offline(id: string): string | null {
+    const a = this.agents().find(x => x.id === id);
+    if (!a || a.status !== 'disconnected') return null;
+    const seen = a.last_keepalive ? new Date(a.last_keepalive) : null;
+    return seen && !isNaN(seen.getTime()) && seen.getFullYear() > 1970
+      ? `Not connected. Last seen ${seen.toLocaleString()}; its results are from its last software list.`
+      : 'Not connected.';
+  }
+
   scanLabel(id: string): { text: string; cls: string } | null {
     const s = this.scanState()[id];
     if (!s) return null;
@@ -390,7 +400,10 @@ export class Vulnerabilities implements OnInit, OnDestroy {
     switch (s.state) {
       case 'queued': return { text: 'Queued', cls: 'text-slate-300 border-slate-600' };
       case 'scanning': return { text: 'Scanning…', cls: 'text-amber-300 border-amber-700 animate-pulse' };
-      case 'waiting': return { text: 'Waiting for agent details', cls: 'text-sky-300 border-sky-800' };
+      // no software list yet: an offline agent is scanned once it connects and sends one
+      case 'waiting': return this.offline(id)
+        ? { text: 'Scans when it reconnects', cls: 'text-slate-300 border-slate-600' }
+        : { text: 'Waiting for agent details', cls: 'text-sky-300 border-sky-800' };
       case 'failed': return recent ? { text: 'Scan failed', cls: 'text-rose-300 border-rose-800' } : null;
       case 'done': return recent ? { text: 'Scanned ✓', cls: 'text-emerald-300 border-emerald-800' } : null;
       default: return null;

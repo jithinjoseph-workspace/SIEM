@@ -29,7 +29,6 @@ redis = { version = "0.23", features = ["tokio-comp", "connection-manager"] }
 siem-sqlite = { path = "../siem-sqlite" }
 provigil-agent-server = { path = "../provigil-agent-server" }
 provigil-posture = { path = "../provigil-posture" }
-siem-wdb = { path = "../siem-wdb" }
 siem-cdb = { path = "../siem-cdb" }
 siem-parser-gen = { path = "../siem-parser-gen" }
 siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }

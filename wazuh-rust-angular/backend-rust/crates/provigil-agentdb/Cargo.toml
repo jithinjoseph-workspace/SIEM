@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "ProVigil agent database (provigil-db): per-agent, global and task SQLite databases behind a text protocol"
 
+[features]
+# build on the SQLite rusqlite bundles (see siem-sqlite)
+shared-sqlite = ["siem-sqlite/shared"]
+
 [dependencies]
 siem-cjson = { path = "../siem-cjson" }
 siem-sqlite = { path = "../siem-sqlite" }

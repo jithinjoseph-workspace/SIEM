@@ -1417,17 +1417,14 @@ mod tests {
 
     /// The real provigil-db on a folder of its own, in this process.
     // the folder lives as long as the database
-    struct RealDb(siem_wdb::wdb::Wdbd, #[allow(dead_code)] tempfile::TempDir);
+    struct RealDb(provigil_agentdb::Engine, #[allow(dead_code)] tempfile::TempDir);
 
     struct QuietEnv;
 
-    impl siem_wdb::wdb::WdbEnv for QuietEnv {
+    impl provigil_agentdb::Env for QuietEnv {
         fn log(&self, _: &str, _: &[u8]) {}
         fn time(&self) -> i64 {
             Utc::now().timestamp()
-        }
-        fn timeofday(&self) -> siem_wdb::wdb::state::Tv {
-            siem_wdb::wdb::state::Tv { sec: self.time(), usec: 0 }
         }
         fn router_send(&self, _: i32, _: &[u8]) {}
         fn send_peer(&self, _: i32, _: &[u8]) -> i32 {
@@ -1444,8 +1441,8 @@ mod tests {
             for d in ["queue/db", "queue/tasks", "backup/db"] {
                 std::fs::create_dir_all(home.path().join(d)).unwrap();
             }
-            let d = siem_wdb::wdb::Wdbd::new(siem_wdb::wdb::WdbConfig::default(), home.path().to_path_buf(), std::sync::Arc::new(QuietEnv));
-            d.create_profile();
+            let d = provigil_agentdb::Engine::new(home.path(), provigil_agentdb::Settings::default(), std::sync::Arc::new(QuietEnv));
+            d.create_template();
             let db = RealDb(d, home);
             let row = json!({ "id": agent, "name": format!("a{agent}"), "ip": null, "register_ip": "any", "internal_key": "k", "group": "default", "date_add": 1 });
             assert!(db.ask(&format!("global insert-agent {row}")).await.starts_with("ok"));
@@ -1491,7 +1488,7 @@ mod tests {
     #[tonic::async_trait]
     impl WdbQuery for RealDb {
         async fn query(&self, query: &str) -> Result<String, siem_ipc::wdbc::WdbcError> {
-            let r = self.0.parse(query.as_bytes(), 0).1;
+            let r = self.0.handle(query.as_bytes(), 0).1;
             Ok(String::from_utf8_lossy(&r[..r.iter().position(|&b| b == 0).unwrap_or(r.len())]).into_owned())
         }
     }

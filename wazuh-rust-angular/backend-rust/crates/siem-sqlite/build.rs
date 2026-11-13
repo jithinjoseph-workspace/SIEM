@@ -3,9 +3,12 @@ fn main() {
     println!("cargo:rerun-if-changed=sqlite/sqlite3.c");
     println!("cargo:rerun-if-changed=sqlite/sqlite3.h");
     println!("cargo:rerun-if-changed=sqlite/siem_fixed_time.c");
-    cc::Build::new()
-        .file("sqlite/sqlite3.c")
-        .file("sqlite/siem_fixed_time.c")
+    let shared = std::env::var_os("CARGO_FEATURE_SHARED").is_some();
+    let mut b = cc::Build::new();
+    if !shared {
+        b.file("sqlite/sqlite3.c");
+    }
+    b.file("sqlite/siem_fixed_time.c")
         .define("SQLITE_ENABLE_DBSTAT_VTAB", "1")
         .warnings(false)
         .opt_level(2)

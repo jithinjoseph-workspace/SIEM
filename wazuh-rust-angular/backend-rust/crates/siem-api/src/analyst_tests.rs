@@ -29,7 +29,7 @@ pub(crate) async fn state() -> AppState {
         broadcast_tx,
         pending_commands: Arc::new(RwLock::new(HashMap::new())),
         db: crate::db::ClickHouseDb::init().await,
-        wdb: Arc::new(siem_wdb::ProVigilDbManager::new()),
+        wdb: Arc::new(crate::agent_store::AgentStore::new()),
         threat_intel: Arc::new(siem_cdb::ThreatIntelManager::new()),
         active_responses: Arc::new(RwLock::new(Vec::new())),
         parser_registry: Arc::new(siem_parser_gen::DynamicParserRegistry::new("")),
@@ -838,7 +838,7 @@ async fn history_and_inventory_from_clickhouse() {
             db.write()
                 .unwrap()
                 .syscollector
-                .set_os_info(siem_wdb::SysOsInfo {
+                .set_os_info(crate::agent_store::SysOsInfo {
                     hostname: "host-901".into(),
                     architecture: "x86_64".into(),
                     os_name: "Ubuntu".into(),

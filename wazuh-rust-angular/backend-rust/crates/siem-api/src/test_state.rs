@@ -30,7 +30,7 @@ pub(crate) fn state_with(db: crate::db::ClickHouseDb) -> AppState {
         broadcast_tx,
         pending_commands: Arc::new(RwLock::new(HashMap::new())),
         db,
-        wdb: Arc::new(siem_wdb::ProVigilDbManager::new()),
+        wdb: Arc::new(crate::agent_store::AgentStore::new()),
         threat_intel: Arc::new(siem_cdb::ThreatIntelManager::new()),
         active_responses: Arc::new(RwLock::new(Vec::new())),
         parser_registry: Arc::new(siem_parser_gen::DynamicParserRegistry::new("")),

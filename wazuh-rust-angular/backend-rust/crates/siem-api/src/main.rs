@@ -24,6 +24,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod agent_commands;
+pub mod agent_store;
 pub mod agent_tls;
 pub mod gateway_api;
 #[cfg(test)]
@@ -161,7 +162,7 @@ pub struct AppState {
     pub pending_commands: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     pub db: ClickHouseDb,
     /// The vulnerability scanner's current detections (vulnerability.rs).
-    pub wdb: Arc<siem_wdb::ProVigilDbManager>,
+    pub wdb: Arc<crate::agent_store::AgentStore>,
     pub threat_intel: Arc<siem_cdb::ThreatIntelManager>,
     pub active_responses: Arc<RwLock<Vec<ActiveResponseRecord>>>,
     /// The default tenant's learned parsers (other tenants: `parser_tenants`, parsers_store::for_tenant).
@@ -227,7 +228,7 @@ async fn main() {
     let (broadcast_tx, _) = broadcast::channel::<Alert>(1000);
     let db = ClickHouseDb::init().await;
 
-    let wdb = Arc::new(siem_wdb::ProVigilDbManager::new());
+    let wdb = Arc::new(crate::agent_store::AgentStore::new());
     let threat_intel = Arc::new(siem_cdb::ThreatIntelManager::new());
     // Learned parsers live in ClickHouse (parsers_store.rs); the file only when ClickHouse is down.
     let parser_registry = Arc::new(siem_parser_gen::DynamicParserRegistry::new(
@@ -1657,7 +1658,7 @@ fn seed_sample_data(state: &AppState) {
     let agent_001_db = state.wdb.get_or_create("001", "srv-prod-ubuntu-01");
     {
         let mut db = agent_001_db.write().unwrap();
-        db.syscollector.set_os_info(siem_wdb::SysOsInfo {
+        db.syscollector.set_os_info(crate::agent_store::SysOsInfo {
             hostname: "srv-prod-ubuntu-01".to_string(),
             architecture: "x86_64".to_string(),
             os_name: "Ubuntu".to_string(),
@@ -1670,7 +1671,7 @@ fn seed_sample_data(state: &AppState) {
             release: "6.8.0-31-generic".to_string(),
         });
 
-        db.syscollector.set_hw_info(siem_wdb::SysHwInfo {
+        db.syscollector.set_hw_info(crate::agent_store::SysHwInfo {
             board_serial: Some("VMware-42 1a 8c...".to_string()),
             cpu_name: "AMD EPYC 7763 64-Core Processor".to_string(),
             cpu_cores: 8,
@@ -1681,7 +1682,7 @@ fn seed_sample_data(state: &AppState) {
         });
 
         db.syscollector.set_ports(vec![
-            siem_wdb::SysPort {
+            crate::agent_store::SysPort {
                 protocol: "tcp".to_string(),
                 local_ip: "0.0.0.0".to_string(),
                 local_port: 22,
@@ -1691,7 +1692,7 @@ fn seed_sample_data(state: &AppState) {
                 pid: Some(941),
                 process_name: Some("sshd".to_string()),
             },
-            siem_wdb::SysPort {
+            crate::agent_store::SysPort {
                 protocol: "tcp".to_string(),
                 local_ip: "0.0.0.0".to_string(),
                 local_port: 80,
@@ -1703,7 +1704,7 @@ fn seed_sample_data(state: &AppState) {
             },
         ]);
 
-        db.syscollector.set_netifaces(vec![siem_wdb::SysNetIface {
+        db.syscollector.set_netifaces(vec![crate::agent_store::SysNetIface {
             name: "eth0".to_string(),
             adapter: Some("Intel Corporation 82545EM".to_string()),
             iface_type: Some("ethernet".to_string()),
@@ -1718,10 +1719,10 @@ fn seed_sample_data(state: &AppState) {
             tx_errors: 0,
         }]);
 
-        let _ = db.fim.upsert(siem_wdb::FimEntry {
+        let _ = db.fim.upsert(crate::agent_store::FimEntry {
             full_path: "/etc/passwd".to_string(),
             file_name: "passwd".to_string(),
-            entry_type: siem_wdb::FimEntryType::File,
+            entry_type: crate::agent_store::FimEntryType::File,
             size: Some(2840),
             perm: Some("0644".to_string()),
             uid: Some("0".to_string()),
@@ -1738,7 +1739,7 @@ fn seed_sample_data(state: &AppState) {
         });
 
         let policy = db.sca.get_policy_mut("cis_ubuntu_linux_24.04");
-        policy.upsert_check(siem_wdb::ScaCheckResult {
+        policy.upsert_check(crate::agent_store::ScaCheckResult {
             policy_id: "cis_ubuntu_linux_24.04".to_string(),
             check_id: 1001,
             title: "Ensure SSH root login is disabled".to_string(),
@@ -1747,9 +1748,9 @@ fn seed_sample_data(state: &AppState) {
                 "Disallowing root logins over SSH enforces accountability.".to_string(),
             ),
             remediation: Some("Edit /etc/ssh/sshd_config and set PermitRootLogin no".to_string()),
-            status: siem_wdb::ScaStatus::Passed,
+            status: crate::agent_store::ScaStatus::Passed,
         });
-        policy.upsert_check(siem_wdb::ScaCheckResult {
+        policy.upsert_check(crate::agent_store::ScaCheckResult {
             policy_id: "cis_ubuntu_linux_24.04".to_string(),
             check_id: 1002,
             title: "Ensure auditing for processes that start prior to auditd is enabled"
@@ -1757,7 +1758,7 @@ fn seed_sample_data(state: &AppState) {
             description: "Configure GRUB with audit=1".to_string(),
             rationale: None,
             remediation: None,
-            status: siem_wdb::ScaStatus::Failed,
+            status: crate::agent_store::ScaStatus::Failed,
         });
     }
 }
@@ -2473,16 +2474,16 @@ pub(crate) async fn ingest_batch(
                 .map(|s| s.as_str())
                 .unwrap_or("UNKNOWN");
             let sca_status = match status_str {
-                "PASS" => siem_wdb::ScaStatus::Passed,
-                "FAIL" => siem_wdb::ScaStatus::Failed,
-                _ => siem_wdb::ScaStatus::NotApplicable,
+                "PASS" => crate::agent_store::ScaStatus::Passed,
+                "FAIL" => crate::agent_store::ScaStatus::Failed,
+                _ => crate::agent_store::ScaStatus::NotApplicable,
             };
 
             let agent_db = state.wdb.get_or_create(&event.agent_id, &agent_name);
             {
                 let mut db = agent_db.write().unwrap();
                 let policy = db.sca.get_policy_mut(&policy_id);
-                policy.upsert_check(siem_wdb::ScaCheckResult {
+                policy.upsert_check(crate::agent_store::ScaCheckResult {
                     policy_id: policy_id.clone(),
                     check_id,
                     title: title.clone(),
@@ -2493,7 +2494,7 @@ pub(crate) async fn ingest_batch(
                 });
             }
 
-            if sca_status == siem_wdb::ScaStatus::Failed {
+            if sca_status == crate::agent_store::ScaStatus::Failed {
                 let alert = Alert {
                     id: uuid::Uuid::new_v4(),
                     timestamp: Utc::now(),
@@ -2555,14 +2556,14 @@ pub(crate) async fn ingest_batch(
                 .map(|s| s.as_str())
                 .unwrap_or("modified");
             let fim_action = match action_str {
-                "added" => siem_wdb::FimAction::Added,
-                "deleted" => siem_wdb::FimAction::Deleted,
-                _ => siem_wdb::FimAction::Modified,
+                "added" => crate::agent_store::FimAction::Added,
+                "deleted" => crate::agent_store::FimAction::Deleted,
+                _ => crate::agent_store::FimAction::Modified,
             };
             let (rule_id, level) = match fim_action {
-                siem_wdb::FimAction::Added => (550, 7),
-                siem_wdb::FimAction::Modified => (554, 7),
-                siem_wdb::FimAction::Deleted => (553, 7),
+                crate::agent_store::FimAction::Added => (550, 7),
+                crate::agent_store::FimAction::Modified => (554, 7),
+                crate::agent_store::FimAction::Deleted => (553, 7),
             };
 
             let file_target = event
@@ -2611,10 +2612,10 @@ pub(crate) async fn ingest_batch(
                 .to_string();
             {
                 let mut db = agent_db.write().unwrap();
-                db.fim.upsert(siem_wdb::FimEntry {
+                db.fim.upsert(crate::agent_store::FimEntry {
                     full_path: file_target.clone(),
                     file_name,
-                    entry_type: siem_wdb::FimEntryType::File,
+                    entry_type: crate::agent_store::FimEntryType::File,
                     size: None,
                     perm: None,
                     uid: event.metadata.get("user_id").and_then(|s| s.parse().ok()),
@@ -2712,7 +2713,7 @@ pub(crate) async fn ingest_batch(
                         .unwrap_or("x86_64")
                         .to_string();
 
-                    db.syscollector.set_os_info(siem_wdb::SysOsInfo {
+                    db.syscollector.set_os_info(crate::agent_store::SysOsInfo {
                         hostname: hostname.clone(),
                         architecture: arch.clone(),
                         os_name: os_name.clone(),
@@ -2734,7 +2735,7 @@ pub(crate) async fn ingest_batch(
                         inv.get("cpu_cores").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
                     let ram_mb = inv.get("ram_mb").and_then(|v| v.as_u64()).unwrap_or(8192);
 
-                    db.syscollector.set_hw_info(siem_wdb::SysHwInfo {
+                    db.syscollector.set_hw_info(crate::agent_store::SysHwInfo {
                         board_serial: None,
                         cpu_name: format!("{} CPU", arch),
                         cpu_cores,
@@ -2751,7 +2752,7 @@ pub(crate) async fn ingest_batch(
                         let mut netifaces = Vec::new();
                         for iface in net_ifaces {
                             if let Some(name) = iface.get("name").and_then(|v| v.as_str()) {
-                                netifaces.push(siem_wdb::SysNetIface {
+                                netifaces.push(crate::agent_store::SysNetIface {
                                     name: name.to_string(),
                                     adapter: iface
                                         .get("adapter")
@@ -2797,7 +2798,7 @@ pub(crate) async fn ingest_batch(
                             if let Some(adapter_str) = adapter.as_str() {
                                 let parts: Vec<&str> = adapter_str.split(':').collect();
                                 let name = parts.first().unwrap_or(&"eth0").trim().to_string();
-                                netifaces.push(siem_wdb::SysNetIface {
+                                netifaces.push(crate::agent_store::SysNetIface {
                                     name: format!("{}_{}", name, idx),
                                     adapter: Some(name),
                                     iface_type: Some("ethernet".to_string()),
@@ -2827,7 +2828,7 @@ pub(crate) async fn ingest_batch(
                                 let parts: Vec<&str> = port_str.split(':').collect();
                                 if parts.len() == 2 {
                                     if let Ok(port_num) = parts[1].parse::<u16>() {
-                                        sys_ports.push(siem_wdb::SysPort {
+                                        sys_ports.push(crate::agent_store::SysPort {
                                             protocol: "tcp".to_string(),
                                             local_ip: parts[0].to_string(),
                                             local_port: port_num,
@@ -2849,7 +2850,7 @@ pub(crate) async fn ingest_batch(
                         let mut programs = Vec::new();
                         for pkg in pkgs {
                             if let Some(name) = pkg.get("name").and_then(|v| v.as_str()) {
-                                programs.push(siem_wdb::SysProgram {
+                                programs.push(crate::agent_store::SysProgram {
                                     name: name.to_string(),
                                     version: pkg
                                         .get("version")
@@ -2891,7 +2892,7 @@ pub(crate) async fn ingest_batch(
                                 let parts: Vec<&str> = sw_str.splitn(2, ':').collect();
                                 let name = parts.first().unwrap_or(&"unknown").to_string();
                                 let version = parts.get(1).unwrap_or(&"1.0.0").to_string();
-                                programs.push(siem_wdb::SysProgram {
+                                programs.push(crate::agent_store::SysProgram {
                                     name: name.clone(),
                                     version,
                                     architecture: Some(arch.clone()),
@@ -4884,7 +4885,7 @@ async fn get_agent_rootcheck_handler(
 async fn post_agent_fim_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-    Json(entry): Json<siem_wdb::FimEntry>,
+    Json(entry): Json<crate::agent_store::FimEntry>,
 ) -> impl IntoResponse {
     let agent_name = {
         let agents = state.agents.read().unwrap();
@@ -4899,9 +4900,9 @@ async fn post_agent_fim_handler(
 
     if let Some(ref d) = delta {
         let rule_id = match d.action {
-            siem_wdb::FimAction::Added => 550,
-            siem_wdb::FimAction::Modified => 554,
-            siem_wdb::FimAction::Deleted => 553,
+            crate::agent_store::FimAction::Added => 550,
+            crate::agent_store::FimAction::Modified => 554,
+            crate::agent_store::FimAction::Deleted => 553,
         };
         let level = 7;
 

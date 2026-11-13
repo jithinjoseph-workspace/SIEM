@@ -2865,6 +2865,7 @@ dependencies = [
  "clickhouse 0.13.3",
  "local-ip-address",
  "provigil-agent",
+ "provigil-agentdb",
  "quick-xml",
  "rcgen",
  "ring",
@@ -2872,7 +2873,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "siem-ipc",
- "siem-wdb",
  "sysinfo",
  "tempfile",
  "tokio",
@@ -4118,7 +4118,6 @@ dependencies = [
  "siem-suppression",
  "siem-swarm",
  "siem-triage",
- "siem-wdb",
  "siem-xml",
  "sysinfo",
  "tempfile",
@@ -4387,6 +4386,7 @@ name = "siem-sqlite"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "libsqlite3-sys",
 ]
 
 [[package]]

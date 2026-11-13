@@ -6,7 +6,13 @@ description = "SQLite 3.50.4 as pinned by upstream (deps v54), built with the up
 # no `links` key: the ProVigil agent builds its own SQLite (rusqlite) in the same workspace;
 # the two never end up in the same program
 
+[features]
+# use the SQLite that rusqlite bundles instead of building a second copy (for programs that
+# link both, such as the agent-server tests)
+shared = ["dep:libsqlite3-sys"]
+
 [dependencies]
+libsqlite3-sys = { version = "0.39", features = ["bundled"], optional = true }
 
 [build-dependencies]
 cc = "1"

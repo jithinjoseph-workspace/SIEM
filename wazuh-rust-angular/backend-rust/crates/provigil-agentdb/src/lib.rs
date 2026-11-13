@@ -291,6 +291,11 @@ impl Engine {
     /// Opens `rel` into the handle; false (handle kept for its error text) when it fails.
     pub(crate) fn open_into(&self, h: &mut Handle, rel: &str) -> bool {
         let (rc, db) = Db::open_v2(self.path(rel).to_string_lossy().as_bytes(), SQLITE_OPEN_READWRITE);
+        // foreign keys off unless asked for (the global database turns them on): SQLite builds
+        // differ in their default, and the agent layout only works with them off
+        if let (Some(d), SQLITE_OK) = (db.as_ref(), rc) {
+            let _ = d.exec(b"PRAGMA foreign_keys = OFF;");
+        }
         h.db = db;
         rc == SQLITE_OK
     }

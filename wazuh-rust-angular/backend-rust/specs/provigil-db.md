@@ -24,8 +24,12 @@ Agent actor complete. Also done: `wazuhdb remove` and `mitre` (`compare_remove_m
 background jobs (`compare_maintenance.rs`), the local server and the service program
 (`tests/server.rs`, D-5), statistics (D-6) and the MITRE builder (`src/bin/provigil-mitre.rs`, our
 own code: old and new run on the full enterprise-attack.json give all 19 tables identical,
-24,000+ rows; `tests/mitre_builder.rs`). Still to do: siem-api's in-memory
-store check, switch-over (program name, settings keys, siem-api), live test, final review.
+24,000+ rows; `tests/mitre_builder.rs`). siem-api no longer uses the old crate: its in-memory
+store for siem-agent hosts (our own code) moved to `siem-api/src/agent_store.rs`; the
+agent-server tests run on the new engine (they never linked before: two SQLite copies; now
+`siem-sqlite` has a `shared` option and agent databases open with foreign keys off explicitly,
+since SQLite builds differ in that default). Still to do: switch-over (program names, settings
+keys, siem-api), live test, final review.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,

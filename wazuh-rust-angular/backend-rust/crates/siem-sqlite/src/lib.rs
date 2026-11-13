@@ -8,6 +8,10 @@
 //! `sqlite3_close_v2` keeps a closed connection alive until its last
 //! statement goes), so the C code ports one call at a time.
 
+// the shared SQLite comes from libsqlite3-sys (linked through this use)
+#[cfg(feature = "shared")]
+use libsqlite3_sys as _;
+
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::ptr;
 

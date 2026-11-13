@@ -769,7 +769,7 @@ pub struct Response {
 pub struct ActiveResponses {
     pub commands: Vec<Command>,
     pub responses: Vec<Response>,
-    /// [`REMOTE_AR`] | [`LOCAL_AR`]; -1 while a `<disabled>yes` is being read
+    /// [`REMOTE_AR`] | [`LOCAL_AR`]
     pub flags: i32,
     pub ar_conf: String,
     /// What was skipped or adjusted, in order.
@@ -801,7 +801,7 @@ impl ActiveResponses {
 
     fn read_response(&mut self, items: &[Node]) -> Result<()> {
         let mut r = Response::default();
-        let (mut command, mut location, mut repeated) = (None, None, false);
+        let (mut command, mut location, mut repeated, mut disabled) = (None, None, false, false);
         for n in items {
             let (e, v) = (n.name.as_str(), n.content.as_str());
             match e {
@@ -820,18 +820,14 @@ impl ActiveResponses {
                     }
                 }
                 "timeout" => r.timeout = int(v),
-                "disabled" => {
-                    if yes_no(e, v)? {
-                        self.flags = -1;
-                    }
-                }
+                "disabled" => disabled |= yes_no(e, v)?,
                 "repeated_offenders" => repeated = true,
                 "ca_store" => {}
                 _ => return Err(invalid_element(e)),
             }
         }
-        if self.flags == -1 {
-            self.flags = 0;
+        // a disabled block skips only itself; the old reader also cleared the flags of the blocks before it (A-9)
+        if disabled {
             if let Some(c) = &command {
                 self.notes.push(format!("active response command '{c}' is disabled"));
             }
@@ -1295,5 +1291,15 @@ mod tests {
         assert!(looks_like_email("a@b"));
         assert!(!looks_like_email("@b"));
         assert_eq!(unescape("a\\;b\\"), "a;b");
+    }
+
+    #[test]
+    fn disabled_response_keeps_earlier_ones() {
+        let node = |name: &str, content: &str| Node { name: name.into(), attributes: vec![], content: content.into(), children: vec![], from_var: false, more_attributes: false };
+        let mut ar = ActiveResponses::default();
+        ar.read_command(&[node("name", "fw"), node("executable", "fw.sh")]).unwrap();
+        ar.read_response(&[node("command", "fw"), node("location", "local")]).unwrap();
+        ar.read_response(&[node("command", "fw"), node("location", "all"), node("disabled", "yes")]).unwrap();
+        assert_eq!((ar.flags, ar.responses.len()), (REMOTE_AR | LOCAL_AR, 1));
     }
 }

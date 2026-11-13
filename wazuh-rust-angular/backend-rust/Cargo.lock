@@ -2922,6 +2922,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-analysisd"
+version = "0.1.0"
+dependencies = [
+ "provigil-daemon",
+ "provigil-fileop",
+ "provigil-regex",
+ "regex",
+ "siem-analysisd",
+ "tempfile",
+]
+
+[[package]]
 name = "provigil-collect"
 version = "0.1.0"
 dependencies = [

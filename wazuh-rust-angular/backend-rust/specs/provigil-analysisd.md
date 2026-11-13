@@ -364,6 +364,20 @@ it has a row.)
 | **Socket requests:** `getstats`, `getagentsstats`, `getconfig` (sections global, active_response, alerts, decoders, rules, internal, command, labels, rule_test), `reload-ruleset` (the load messages; `due` when it failed); answers `{"error":N,"message":..,"data":..}` with the codes ok, due, Invalid JSON input, Empty command, Unrecognized command, Empty parameters, Empty section, Unrecognized or not configured section, Invalid agents parameter, Error getting agents from DB, Empty last id, Too many agents | Same |
 | **getconfig sections:** each section's JSON as the old one builds it (global options, active responses and commands, alert levels, internal options, labels, rule_test, the full decoder list with their options, the full rule list with their options), quirks included (the FTS list holds only the first flag; the dynamic FTS fields printed as a 0/1 string; a rule with `if_level` gets an extra `if_group`) | Same JSON, compared key by key with the old code |
 
+### 2.23 Internal decoders: the set (`internal/mod.rs`) and Windows events (`internal/winevt.rs`)
+
+| Feature | New |
+|---|---|
+| **Built-in decoders** (not in the decoder trees), created at start and again on hot reload, each with its id from the name store: rootcheck (fields title, file), hostinfo (with the ids of `hostinfo_new` / `hostinfo_modified`), ciscat, windows_eventchannel, sca, syscollector, the FIM decoder (the 51 syscheck field names) and the FIM decoder ids; all of type OSSEC rule list | Same |
+| **Windows event channel** (`f` queue): the decoder is set, program name and time stamp cleared; the log must be JSON ("Malformed EventChannel JSON event." error, else no `Event`: debug and stop) | Same |
+| The `Event` value is printed as compact JSON and read as XML (string mode: up to a zero byte; raw bytes); an unreadable one warns once "Could not read XML string: '...'" (later ones at debug 2) and the event goes on with what it has | Same; **the XML reader gets a raw-bytes, string-mode reading**, compared like the rest |
+| **System:** Provider (Name → providerName, Guid → providerGuid, EventSourceName → eventSourceName), TimeCreated SystemTime → systemTime, Execution ProcessID / ThreadID → processID / threadID, Channel → channel (and userID when the first attribute value is literally `UserID`), Security → securityUserID (same rule), Level and Keywords (kept for the severity), Correlation skipped, any other element with content → its name with the first letter lower-cased | Same, the quirks kept |
+| **EventData:** `<Data Name="x">v</Data>` → `x` (first letter lower-cased); `categoryId`, `subcategoryId` and `auditPolicyChanges` remembered (the last stored as `auditPolicyChangesId`); `(NULL)` and `-` skipped; other attributes logged at debug 2 and stored under their value; unnamed `<Data>` values joined with `, ` into `data` (at most 65,535 bytes); other elements stored by name. Values: trailing white space removed | Same |
+| **Other sections** (e.g. UserData): "Unexpected element (...). Decoding it." at debug; their child elements stored under the section's name | Same |
+| **Severity:** Level 1 CRITICAL, 2 ERROR, 3 WARNING, 4 INFORMATION, 5 VERBOSE, 0 with keyword bit audit failure / audit success, else UNKNOWN (only when both Level and Keywords exist) → severityValue; then category and subcategory names from `%%` ids (the 9 audit categories and their 56 subcategories) | Same table |
+| **Audit policy changes:** up to 4 `%%` ids → "Success removed" / "Success added" / "Failure removed" / "Failure added", joined with `, ` → auditPolicyChanges | Same |
+| `Message` (JSON-unescaped, trailing white space removed) → system.message; the result `{"win":{"system":{..},"eventdata":{..},<other>:{..}}}` replaces the log and goes through the JSON decoder | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -389,4 +403,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels, time, statistics, the analysis socket and getconfig written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON, the plugin decoders, lists, file selection, logtest, messages, MITRE, limits, labels, time, statistics, the analysis socket, getconfig and the Windows decoder written.

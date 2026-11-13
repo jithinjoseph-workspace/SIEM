@@ -2882,6 +2882,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-agentdb"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "parking_lot",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
+ "siem-cjson",
+ "siem-sqlite",
+ "siem-wdb",
+ "tempfile",
+]
+
+[[package]]
 name = "provigil-collect"
 version = "0.1.0"
 dependencies = [

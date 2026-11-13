@@ -35,7 +35,7 @@ fn valid_group(g: &str) -> bool {
 }
 
 /// The most groups one agent can be in.
-pub const MAX_GROUPS: usize = 256;
+pub const MAX_GROUPS: usize = 128;
 
 fn group_count_ok(n: usize) -> Result<(), String> {
     if n > MAX_GROUPS {
@@ -366,9 +366,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn at_most_256_groups() {
-        assert!(group_count_ok(256).is_ok());
-        assert_eq!(group_count_ok(257).unwrap_err(), "Maximum multigroup reached: Limit is 256");
+    fn at_most_128_groups() {
+        assert!(group_count_ok(128).is_ok());
+        assert_eq!(group_count_ok(129).unwrap_err(), "Maximum multigroup reached: Limit is 128");
     }
 
     #[test]

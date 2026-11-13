@@ -5,8 +5,8 @@ over HTTPS through provigil-gateway), so nothing else is needed. The new code li
 
 ## 1. Group limit
 
-An agent may be in at most **256** groups. `groups::resolve` refuses more with
-`Maximum multigroup reached: Limit is 256`.
+An agent may be in at most **128** groups (the agent database limit; was 256 until 13 Nov 2026). `groups::resolve` refuses more with
+`Maximum multigroup reached: Limit is 128`.
 
 ## 2. A new key for an enrolling agent
 
@@ -24,6 +24,6 @@ fields `agent_id`, `agent_name`, `agent_ip` and `raw_key` carry the same values.
 
 ## Tests
 
-- 256 groups pass, 257 are refused with the message above.
+- 128 groups pass, 129 are refused with the message above.
 - The new key has the given ID, name and address, 64 hex characters, is in the store, and two
   calls give different keys.

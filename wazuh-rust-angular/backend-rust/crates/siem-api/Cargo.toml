@@ -7,8 +7,6 @@ description = "High-performance Axum REST & WebSocket SIEM Manager Server in Rus
 [dependencies]
 siem-core = { path = "../siem-core" }
 siem-engine = { path = "../siem-engine" }
-siem-config = { path = "../siem-config" }
-siem-xml = { path = "../siem-xml" }
 # the ProVigil agent's central configuration (agent_config.rs)
 quick-xml = "0.36"
 axum = { version = "0.7", features = ["ws"] }

@@ -3,6 +3,7 @@
 //! readers of `etc/ossec.conf`, and the PID file.
 
 pub mod privs;
+pub mod sections;
 pub mod xml;
 
 use std::collections::HashMap;

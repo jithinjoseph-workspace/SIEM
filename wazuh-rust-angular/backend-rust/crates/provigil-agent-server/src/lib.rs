@@ -5,6 +5,7 @@
 pub mod agent_config;
 pub mod agent_state;
 pub mod commands;
+pub mod conf_check;
 pub mod engine;
 pub mod keys;
 pub mod published;

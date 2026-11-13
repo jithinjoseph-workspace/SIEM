@@ -110,40 +110,10 @@ pub fn resolve(tenant: &str, groups: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// `ReadConfig` callbacks of the agent's `Test_Localfile`; other sections are only checked by name.
-struct LocalfileCheck(siem_config::localfile::LogreaderConfig);
-
-impl siem_config::ConfigHandler for LocalfileCheck {
-    fn section(
-        &mut self,
-        ctx: &mut siem_config::ConfigContext,
-        _xml: &siem_xml::OsXml,
-        section: siem_config::Section,
-        _node: &siem_xml::XmlNode,
-        children: Option<&[siem_xml::XmlNode]>,
-    ) -> siem_config::Result<()> {
-        let ch = children.unwrap_or(&[]);
-        match section {
-            siem_config::Section::Localfile => siem_config::localfile::read_localfile(ctx, ch, &mut self.0),
-            siem_config::Section::LogcollectorSocket => siem_config::socket::read_socket(ch, &mut self.0.socket_list),
-            _ => Ok(()),
-        }
-    }
-}
-
-/// What an agent checks before it applies a received agent.conf (`verifyRemoteConf`):
-/// well-formed `<agent_config>` blocks, known sections, valid `<localfile>`s.
-/// shortcut: the syscheck/rootcheck/wodle option readers are not run (the agent skips them too); run them here once the agent does.
+/// What must hold before a group's agent.conf is saved: readable, only `<agent_config>` blocks,
+/// known sections, usable `<localfile>` and `<socket>` sections (see `conf_check`).
 fn verify_agent_conf(text: &str) -> Result<(), String> {
-    use siem_config::modules::*;
-    let xml = siem_xml::OsXml::read_string(text, false).map_err(|e| format!("XML error (line {}): {}", e.line, e.message))?;
-    let mut ctx = siem_config::ConfigContext::new(siem_config::Platform::MANAGER);
-    let mods = CAGENT_CONFIG | CSYSCHECK | CROOTCHECK | CLOCALFILE | CLGCSOCKET | CCLIENT | CBUFFER | CWMODULE | CLABELS;
-    let r = siem_config::read_config_xml(&mut ctx, mods, &xml, "agent.conf", &mut LocalfileCheck(Default::default()));
-    r.map_err(|e| {
-        let errors: Vec<String> = ctx.log.iter().filter(|(l, _)| matches!(l, siem_config::LogLevel::Error)).map(|(_, m)| m.clone()).collect();
-        if errors.is_empty() { e.0 } else { errors.join(" ") }
-    })
+    provigil_agent_server::conf_check::check(text)
 }
 
 fn manager_ready() -> Option<Response> {

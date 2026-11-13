@@ -41,48 +41,6 @@ fn invalid_value(e: &str, v: &str) -> String {
     format!("(1235): Invalid value for element '{e}': {v}.")
 }
 
-/// The sections a manager accepts in `<ossec_config>`: (name, must have child elements).
-const SECTIONS: &[(&str, bool)] = &[
-    ("global", true),
-    ("email_alerts", true),
-    ("database_output", true),
-    ("syslog_output", true),
-    ("integration", true),
-    ("agentless", true),
-    ("ruleset", true),
-    ("syscheck", false),
-    ("rootcheck", false),
-    ("alerts", true),
-    ("localfile", true),
-    ("remote", true),
-    ("client", true),
-    ("anti_tampering", true),
-    ("client_buffer", false),
-    ("command", true),
-    ("active-response", true),
-    ("reports", true),
-    ("wodle", false),
-    ("sca", false),
-    ("vulnerability-detection", false),
-    ("vulnerability-detector", false),
-    ("indexer", false),
-    ("gcp-pubsub", false),
-    ("gcp-bucket", false),
-    ("fluent-forward", false),
-    ("auth", false),
-    ("labels", true),
-    ("logging", false),
-    ("cluster", true),
-    ("socket", true),
-    ("rule_test", true),
-    ("agent-upgrade", true),
-    ("task-manager", true),
-    ("wdb", true),
-    ("github", true),
-    ("office365", true),
-    ("ms-graph", true),
-];
-
 /// A whole number of a field (digits only).
 fn number(e: &str, v: &str) -> Result<i32, String> {
     if !provigil_regex::str_is_num(v) {
@@ -162,7 +120,7 @@ pub fn read(home: &Path, conf: &str, notes: &mut Vec<Note>) -> Option<Vec<Entry>
         }
         for s in &root.children {
             let has = !s.children.is_empty();
-            let known = SECTIONS.iter().any(|(n, needs)| *n == s.name && (has || !needs));
+            let known = provigil_daemon::sections::known(&s.name, has);
             let outcome = if !known {
                 Err(invalid_element(&s.name))
             } else if s.name == "agentless" {

@@ -162,3 +162,35 @@ compared by tests, old code to `old-code/`.
 - 2026-11-13: both crates written, compared, old crates moved to `old-code/`. The Linux-only
   tests (the change event, the process start on Unix) have not run yet: the WSL Ubuntu on the
   dev PC has no Rust toolchain.
+
+## 5. The agent.conf check in siem-api (same day)
+
+The console checks a group's `agent.conf` before saving it. This was the last use of the old
+configuration crates in siem-api; it is now `provigil-agent-server::conf_check`, next to the
+translator that turns the file into the agent's settings. Same rules, same error texts:
+
+- readable XML (the reader of `provigil-daemon::xml`);
+- only `<agent_config>` roots (unknown attributes are listed with a failure, not one alone);
+- only known sections (`provigil-daemon::sections`, shared with agentlessd);
+- `<localfile>`: element names, `log_format` values, `multi-line:<n>`, the regular expressions
+  of `ignore`, `restrict` and `multiline_regex`, `frequency`, `age`, `reconnect_time`,
+  `ignore_binaries`, labels, the missing `log_format` / `location` / `multiline_regex` errors,
+  journal filters that drop their section, and the "Missing 'command' argument" note;
+- `<socket>`: name, location and mode.
+
+Decisions:
+
+- **E-13 Network paths.** The old check skipped a `<localfile>` whose `location` or `command`
+  was a network path (`\server\...`), but only when siem-api itself ran on Windows. The new
+  check behaves the same on every system: it checks such sections like any other.
+- **E-14 Glob note.** The old check, when it ran on Linux, also listed "Glob error" notes for
+  patterns the system could not expand. These were never a failure. The new check does not add
+  them.
+
+Compared old vs new (`provigil-agent-server/tests/compare_conf_check.rs`):
+
+- every rule: each piece alone and with its usual companions;
+- 12 whole files;
+- 30,000 generated files built from good and bad pieces.
+
+The answers are identical.

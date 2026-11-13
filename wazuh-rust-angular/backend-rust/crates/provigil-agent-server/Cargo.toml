@@ -6,6 +6,8 @@ description = "What provigil-gateway and siem-api share on the agent side: provi
 
 [dependencies]
 provigil-ipc = { path = "../provigil-ipc" }
+provigil-daemon = { path = "../provigil-daemon" }
+provigil-regex = { path = "../provigil-regex" }
 tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -26,3 +28,6 @@ tempfile = "3"
 provigil-agentdb = { path = "../provigil-agentdb" }
 provigil-agent = { path = "../provigil-agent" }
 tonic = { version = "0.12", default-features = false }
+# the old agent.conf check, as the reference of compare_conf_check (removed with it)
+siem-config = { path = "../siem-config" }
+siem-xml = { path = "../siem-xml" }

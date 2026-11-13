@@ -46,7 +46,6 @@ pub fn upgrade(host: &mut dyn Host, agent: &[u8], log: &[u8]) {
 
 // ---------------------------------------------------------------- host information
 
-pub const HOSTINFO_NAME: &str = "hostinfo";
 pub const HOSTINFO_NEW: &str = "hostinfo_new";
 pub const HOSTINFO_CHANGED: &str = "hostinfo_modified";
 pub const HOSTINFO_FILE: &str = "queue/fts/hostinfo";

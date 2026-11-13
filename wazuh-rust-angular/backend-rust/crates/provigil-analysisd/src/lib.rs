@@ -12,6 +12,7 @@ pub mod messages;
 pub mod mitre;
 pub mod plugins;
 pub mod process;
+pub mod queues;
 pub mod responses;
 pub mod rules;
 pub mod text_logs;

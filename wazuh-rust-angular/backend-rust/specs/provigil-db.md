@@ -5,6 +5,8 @@ Status: **inventory ~60% (global, task, agent command layer done); code started 
 command, valid and invalid, backups) to the old and the new implementation; answers, result codes,
 log lines, router messages, messages to the client and every row of the six global tables are
 identical (backup create/restore compared on Linux; on Windows covered by `backups_work`, D-4).
+**Task actor done 13 Nov 2026**: `tests/compare_task.rs` (50 requests: every upgrade-task command,
+status move, time-out, cancel and error) identical to the old implementation.
 Code progress: `crates/provigil-agentdb` created (workspace member), dev-dependency on the old
 `siem-wdb` as the reference; `tests/old_schema.rs` dumps the old layout (saved in
 `specs/provigil-db-layout.md`). Order: (1) core: dispatch, database files and layout, row-to-JSON,

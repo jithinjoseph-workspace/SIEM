@@ -7,6 +7,7 @@ pub mod text;
 mod global;
 mod layout;
 mod rows;
+mod task;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -98,7 +99,7 @@ pub struct Handle {
     pub peer: i32,
     /// Prepared statements kept open between requests (by SQL text), like a statement cache:
     /// SQLite's last error text then still describes the previous statement.
-    stmts: HashMap<String, Arc<Stmt>>,
+    pub(crate) stmts: HashMap<String, Arc<Stmt>>,
 }
 
 impl Handle {
@@ -174,6 +175,7 @@ impl Engine {
         };
         match actor {
             b"global" => self.global_actor(rest, peer),
+            b"task" => self.task_actor(rest, peer),
             _ => {
                 self.debug(cat!("DB(000) Invalid DB query actor: ", actor));
                 (INVALID, answer(cat!("err Invalid DB query actor: '", text::first32(actor), "'")))
@@ -183,7 +185,7 @@ impl Engine {
 
     // ------------------------------------------------------------------ database files
 
-    fn cached(&self, name: &str) -> Locked {
+    pub(crate) fn cached(&self, name: &str) -> Locked {
         let h = self
             .dbs
             .lock()
@@ -196,7 +198,7 @@ impl Engine {
     }
 
     /// Creates a database file from a layout: runs each statement, makes it private to the owner.
-    fn create_file(&self, rel: &str, layout: &[&str]) -> bool {
+    pub(crate) fn create_file(&self, rel: &str, layout: &[&str]) -> bool {
         let path = self.path(rel);
         let (rc, db) = Db::open_v2(path.to_string_lossy().as_bytes(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
         let Some(db) = db else { return false };
@@ -227,7 +229,7 @@ impl Engine {
     }
 
     /// Opens `rel` into the handle; false (handle kept for its error text) when it fails.
-    fn open_into(&self, h: &mut Handle, rel: &str) -> bool {
+    pub(crate) fn open_into(&self, h: &mut Handle, rel: &str) -> bool {
         let (rc, db) = Db::open_v2(self.path(rel).to_string_lossy().as_bytes(), SQLITE_OPEN_READWRITE);
         h.db = db;
         rc == SQLITE_OK

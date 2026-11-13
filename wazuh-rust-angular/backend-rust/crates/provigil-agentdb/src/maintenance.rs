@@ -12,7 +12,7 @@ use crate::{Engine, Handle, DB_DIR, GLOBAL_NAME, INVALID};
 
 impl Engine {
     /// The open handles, in name order.
-    fn handles(&self) -> Vec<(String, Arc<parking_lot::Mutex<Handle>>)> {
+    pub(crate) fn handles(&self) -> Vec<(String, Arc<parking_lot::Mutex<Handle>>)> {
         let mut v: Vec<_> = self.dbs.lock().iter().map(|(k, h)| (k.clone(), h.clone())).collect();
         v.sort_by(|a, b| a.0.cmp(&b.0));
         v

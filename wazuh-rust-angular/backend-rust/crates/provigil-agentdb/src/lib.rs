@@ -466,8 +466,7 @@ impl Engine {
 
     /// Commits transactions that have been idle or open too long (called every second).
     pub fn commit_old(&self) {
-        let handles: Vec<_> = self.dbs.lock().values().cloned().collect();
-        for h in handles {
+        for (_, h) in self.handles() {
             let mut h = h.lock();
             let now = self.time();
             if h.transaction && (now - h.last_use > self.settings.commit_time_min || now - h.begin_time > self.settings.commit_time_max) {

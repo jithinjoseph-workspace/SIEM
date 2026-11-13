@@ -132,6 +132,33 @@ it has a row.)
 | Warnings of all readers collected and logged at start | Same |
 | The siem-config readers used: `<global>` (and its syscheck options), `<cluster>`, `<socket>`, `<labels>`, `<command>`, `<active-response>`, `<rule_test>`, the time and day checks | Own readers on `provigil-daemon::xml` (section 2.4, filled when read) |
 
+### 2.2b Input queues (`input.rs`)
+
+| Feature | New |
+|---|---|
+| Queue by the message's first character: syscheck `8`, rootcheck `9`, SCA `p`, syscollector `d`, hostinfo `3`, Windows event channel `f`, dbsync `5`, upgrade `u`; everything else (CIS-CAT `e` included) is the event queue | Same |
+| A queue of size N holds N-1 messages; full means count + 1 >= size | Same |
+| Full-queue warnings (once each): "Syscheck decoder queue is full.", "Rootcheck decoder queue is full.", "Security Configuration Assessment decoder queue is full.", "Syscollector decoder queue is full.", "Hostinfo decoder queue is full.", "Windows eventchannel decoder queue is full.", "Database synchronization decoder queue is full.", "Upgrade module decoder queue is full.", "Input queue is full." | Same |
+| Dropped counters per queue (hostinfo counts as "others", winevt as "eventchannel") | Same |
+| Messages that wait on provigil-db (CIS-CAT, syscheck, rootcheck, SCA, syscollector, dbsync, upgrade) go to the worker queue; the others are decoded inline, in arrival order | Same |
+| Queue usage (count / (size - 1)), the fullest queue's usage for `getload`, per-queue figures for the state file | Same |
+
+### 2.5 The event and its pre-decoding (`event.rs`)
+
+| Feature | New |
+|---|---|
+| **Event fields:** the static fields in this order (also the bit order of the rule field flags): srcip, id, dstip, srcport, dstport, srcuser, dstuser, protocol, action, url, data, extra_data, status, system_name, srcgeoip, dstgeoip, location; dynamic fields (key, value or none) looked up case-insensitively; agent id, hostname, program name, comment, decoder time stamp, decoder, generated rule, the FTS and group bookkeeping, sizes, the time (seconds and nanoseconds) and its local day, year, `HH:MM:SS` and month, previous event, labels, syscheck decoder id, rootcheck FTS, copy flag, last events, fired times, thread id, previous rule. Event types: unknown 0, syslog 1, IDS 2, firewall 3, web log 7, squid 8, Windows 9, host info 10, OSSEC rule list 11, OSSEC alert 12. FTS flags: name, srcuser, dstuser, srcip, dstip, location, id, data, system_name, done, dynamic. | Same values |
+| **One buffer:** the full log and a working copy of the log in one buffer; decoders keep offsets into it and the C pointer arithmetic (including `end - 1` and the zero terminators) must behave byte for byte the same | Same model: the buffer with offsets is kept as the reference behaviour; proven by the comparison tests |
+| **Message form** `<q>:<location>:<log>`: the first 2 bytes are skipped; the location ends at the first `:` not escaped by `\|`, and is unescaped (`\|\|` to `\|`, `\|:` to `:`; at most 8,451 bytes); no `:` is the format error | Same |
+| **Month with an umlaut** (`Mär`): repaired to `Ma` for the header checks only | Same |
+| **Syslog-style time stamps** (the log after them, then the host name and program checks): `Mmm dd hh:mm:ss ` (16); `yyyy-mm-dd hh:mm:ss,` (24); ISO 8601 `yyyy-mm-ddThh:mm:ss` with an offset (26), with fractions and an offset (30, 33, 32); `yyyy Mmm dd hh:mm:ss ` (21); `yyyy-mm-dd hh:mm:ss.ffffff+zzzz ` (32) | Same, each length and position |
+| **Host name and program** after a syslog time stamp: a host name of host-name characters, then: `host: ` (Solaris: no host name, the word is the program); `host program:`; `host program[pid]:` or `program[pid] ` (other `[`: the weird-format fix that restores `[` and drops the program); AIX `\|x...:... program[: ]` forms; anything else: no host name / no program. Then `[ID n facility.severity]` is removed. The program name's length is kept. | Same |
+| **Other time stamp formats** (no host name parsing): xferlog (25), snort (23), suricata (28), apache `[...]` (27, time stamp from the next byte), macOS ASL `[T...]` (the `[Sender ...]` program, `[Message ...]` log, `[Host ...]` host name), squid epoch (14, then spaces) | Same |
+| **Location:** `[<id>] (<name>) <ip>-><location>`: agent id, the location after `] `, the host name inside `(...)` (empty when there is no `)`); a `[` without `]` is the format error. Otherwise agent `000`, the host name from the header or the manager's short host name. | Same |
+| **Time:** the event time (seconds, nanoseconds), local day, year, month name and `HH:MM:SS` | Same (`localtime` with a fixed offset for tests) |
+| **Rule description fields** (`$(field)`): dstuser, srcuser, srcip, dstip, srcgeoip / dstgeoip (only with GeoIP, which is off), srcport, dstport, protocol, action, id, url, data, status, extra_data, system_name, program_name, hostname, else a dynamic field; unknown fields expand to nothing; an unterminated `$(` keeps the rest as written; at most 1,023 bytes, else the description unchanged | Same |
+| Escape helpers (`wstr_chr_escape`, `wstr_unescape`, `wstr_escape`) with their size limits | Same (`provigil-ipc::queue::escape` already matches `wstr_escape`) |
+
 ## 3. Decisions
 
 (None yet.)
@@ -156,4 +183,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up and the daemon written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues and the event written.

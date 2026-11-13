@@ -2953,6 +2953,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-daemon"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "provigil-deploy"
 version = "0.1.0"
 dependencies = [
@@ -3012,6 +3019,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-ipc"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "provigil-loadtest"
 version = "0.1.0"
 dependencies = [
@@ -3029,6 +3043,10 @@ dependencies = [
  "tonic",
  "uuid",
 ]
+
+[[package]]
+name = "provigil-modulesd"
+version = "0.1.0"
 
 [[package]]
 name = "provigil-posture"
@@ -4250,6 +4268,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "libc",
+ "provigil-ipc",
  "provigil-regex",
  "serde_json",
  "siem-log",

@@ -1,0 +1,10 @@
+[package]
+name = "provigil-ipc"
+version = "0.1.0"
+edition = "2021"
+description = "ProVigil local IPC: local sockets at manager paths, length-prefixed framing, the agent-database client and the platform stream to siem-api"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

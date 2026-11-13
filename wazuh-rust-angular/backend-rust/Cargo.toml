@@ -51,6 +51,9 @@ members = [
     "crates/provigil-fileop",
     "crates/provigil-vulnscan",
     "crates/provigil-agentdb",
+    "crates/provigil-ipc",
+    "crates/provigil-daemon",
+    "crates/provigil-modulesd",
 ]
 
 # strip: windows-gnu links the standard library's debug symbols into every exe.

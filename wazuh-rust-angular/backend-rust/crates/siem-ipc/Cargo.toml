@@ -11,6 +11,7 @@ tracing = "0.1"
 serde_json = "1.0"
 async-trait = "0.1"
 siem-log = { path = "../siem-log" }
+provigil-ipc = { path = "../provigil-ipc" }
 siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
 
 [target.'cfg(unix)'.dependencies]

@@ -1,0 +1,8 @@
+[package]
+name = "provigil-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Shared pieces of the ProVigil manager services: log writer, internal options, ossec.conf readers, PID file"
+
+[dependencies]
+chrono = "0.4"

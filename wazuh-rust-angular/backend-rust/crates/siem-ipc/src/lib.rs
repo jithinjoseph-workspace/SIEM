@@ -23,4 +23,5 @@ pub mod wdbc;
 
 /// `OS_MAXSTR`
 pub const OS_MAXSTR: usize = 65536;
-pub mod platform_stream;
+/// Moved to `provigil-ipc` (own code); kept here for the crates not yet moved.
+pub use provigil_ipc::platform_stream;

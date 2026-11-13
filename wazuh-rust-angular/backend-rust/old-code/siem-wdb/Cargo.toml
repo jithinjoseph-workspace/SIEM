@@ -14,7 +14,7 @@ tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"
 sha1 = "0.10"
 siem-sqlite = { path = "../../crates/siem-sqlite" }
-siem-njson = { path = "../../crates/siem-njson" }
+siem-njson = { path = "../siem-njson" }
 siem-config = { path = "../../crates/siem-config" }
 siem-xml = { path = "../../crates/siem-xml" }
 siem-log = { path = "../../crates/siem-log" }
@@ -27,4 +27,4 @@ libc = "0.2"
 parking_lot = { version = "0.12", features = ["arc_lock"] }
 
 [target.'cfg(any(target_os = "linux", windows))'.dependencies]
-siem-router = { path = "../../crates/siem-router" }
+siem-router = { path = "../siem-router" }

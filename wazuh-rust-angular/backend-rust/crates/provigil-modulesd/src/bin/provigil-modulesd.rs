@@ -1,6 +1,5 @@
-//! `provigil-modulesd [-d] [-f] [-t] [-h]` (named `provigil-modules` until the old service is
-//! retired): the router, the vulnerability scanner and the database module, run by siem-api from
-//! the manager home folder. `-d` more logging (twice for the most), `-f` foreground (always),
+//! `provigil-modulesd [-d] [-f] [-t] [-h]`: the router, the vulnerability scanner and the database
+//! module, run by siem-api from the manager home folder. `-d` more logging (twice for the most), `-f` foreground (always),
 //! `-t` check the settings and stop, `-h` help.
 
 use std::path::PathBuf;

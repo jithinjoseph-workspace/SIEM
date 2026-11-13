@@ -5,17 +5,17 @@ edition = "2021"
 description = "Port of provigil-modulesd (wazuh_modules/): the manager modules database, agent-upgrade, task-manager and download"
 
 [dependencies]
-siem-log = { path = "../siem-log" }
-siem-config = { path = "../siem-config" }
-siem-ipc = { path = "../siem-ipc" }
-siem-daemon = { path = "../siem-daemon" }
-siem-crypto = { package = "provigil-crypto", path = "../provigil-crypto" }
-siem-regex = { package = "provigil-regex", path = "../provigil-regex" }
-siem-fileop = { package = "provigil-fileop", path = "../provigil-fileop" }
-siem-xml = { path = "../siem-xml" }
-siem-cjson = { path = "../siem-cjson" }
-siem-execd = { path = "../siem-execd" }
-provigil-vulnscan = { path = "../provigil-vulnscan" }
+siem-log = { path = "../../crates/siem-log" }
+siem-config = { path = "../../crates/siem-config" }
+siem-ipc = { path = "../../crates/siem-ipc" }
+siem-daemon = { path = "../../crates/siem-daemon" }
+siem-crypto = { package = "provigil-crypto", path = "../../crates/provigil-crypto" }
+siem-regex = { package = "provigil-regex", path = "../../crates/provigil-regex" }
+siem-fileop = { package = "provigil-fileop", path = "../../crates/provigil-fileop" }
+siem-xml = { path = "../../crates/siem-xml" }
+siem-cjson = { path = "../../crates/siem-cjson" }
+siem-execd = { path = "../../crates/siem-execd" }
+provigil-vulnscan = { path = "../../crates/provigil-vulnscan" }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1.40", features = ["full"] }

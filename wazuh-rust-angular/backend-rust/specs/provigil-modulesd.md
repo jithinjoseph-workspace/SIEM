@@ -65,4 +65,8 @@ the same manager setup, as worker and as master, gives the same requests, rows, 
 lines), the router broker (`router::tests`), the scanner host and the service program
 (`provigil-modules` until switch-over).
 
-<!-- next: siem-api upgrade endpoints (M-1), switch-over (names, settings keys, old crates to old-code), live test -->
+Switch-over done 13 Nov 2026: siem-api's upgrade endpoints no longer use the module (M-1); the
+program is `provigil-modulesd`; settings keys `provigil_database.*`; `siem-modulesd`, `siem-router`
+and `siem-njson` moved to `old-code/` (outside the workspace; the comparison test uses
+`siem-modulesd` as a library). Smoke test on a copy of the manager data: starts, opens the
+router, runs the database module's start-up. Still to do: live run under siem-api.

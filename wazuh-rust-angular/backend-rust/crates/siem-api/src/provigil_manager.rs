@@ -461,7 +461,7 @@ fn install_binaries(home: &Path) -> Result<(), String> {
             .filter(|p| p.is_file())
             .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
         let Some(src) = found else {
-            return Err(format!("{n} not built (cargo build --release -p provigil-agentdb -p siem-analysisd -p siem-remoted -p siem-modulesd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
+            return Err(format!("{n} not built (cargo build --release -p provigil-agentdb -p siem-analysisd -p provigil-modulesd -p siem-execd -p siem-agentlessd -p siem-active-response)"));
         };
         let newer = match (
             src.metadata().and_then(|m| m.modified()),

@@ -20,7 +20,7 @@ libc = "0.2"
 [dev-dependencies]
 tempfile = "3"
 # the old service, the reference of the comparison test (removed with it)
-siem-modulesd = { path = "../siem-modulesd" }
+siem-modulesd = { path = "../../old-code/siem-modulesd" }
 siem-ipc = { path = "../siem-ipc" }
 siem-log = { path = "../siem-log" }
 provigil-agentdb = { path = "../provigil-agentdb" }

@@ -6252,42 +6252,11 @@ fn upgrade_agent_id(
     Ok(id)
 }
 
-/// One request to modulesd's agent-upgrade socket (`queue/tasks/upgrade`), its JSON answer.
-async fn upgrade_module_request(req: serde_json::Value) -> axum::response::Response {
-    let path = provigil_manager::home().join("queue/tasks/upgrade");
-    let res = async {
-        let mut s = siem_ipc::local::LocalStream::connect(&path)
-            .await
-            .map_err(|e| e.to_string())?;
-        siem_ipc::framing::send(&mut s, req.to_string().as_bytes())
-            .await
-            .map_err(|e| e.to_string())?;
-        let r = siem_ipc::framing::recv(&mut s, 65536)
-            .await
-            .map_err(|e| e.to_string())?;
-        serde_json::from_slice::<serde_json::Value>(&r).map_err(|e| e.to_string())?;
-        Ok::<_, String>(r)
-    };
-    // the module answers after its 30 s start-up wait
-    match tokio::time::timeout(std::time::Duration::from_secs(60), res).await {
-        // the module's JSON as it wrote it (key order kept)
-        Ok(Ok(v)) => (
-            StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            v,
-        )
-            .into_response(),
-        Ok(Err(e)) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "error": format!("agent-upgrade module: {e}") })),
-        )
-            .into_response(),
-        Err(_) => (
-            StatusCode::GATEWAY_TIMEOUT,
-            Json(serde_json::json!({ "error": "agent-upgrade module did not answer" })),
-        )
-            .into_response(),
-    }
+/// What an agent that never had an upgrade task gets: the task manager's "no task" answer, which
+/// the console reads as "nothing to show". ProVigil agents upgrade over HTTPS (no tasks); agents of
+/// the old protocol cannot connect, so they have no tasks either (spec provigil-modulesd M-1).
+fn no_upgrade_task(id: i64) -> serde_json::Value {
+    serde_json::json!({ "error": 0, "data": [{ "error": 3, "message": "No task in DB", "agent": id }], "message": "Success" })
 }
 
 async fn post_agent_upgrade_handler(
@@ -6307,37 +6276,13 @@ async fn post_agent_upgrade_handler(
             Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
         };
     }
-    let mut params = serde_json::Map::new();
-    params.insert("agents".into(), serde_json::json!([id]));
-    let command = if let Some(f) = p.file_path {
-        params.insert("file_path".into(), f.into());
-        if let Some(i) = p.installer {
-            params.insert("installer".into(), i.into());
-        }
-        "upgrade_custom"
-    } else {
-        if let Some(v) = p.target_version {
-            params.insert("version".into(), v.into());
-        }
-        if let Some(r) = p.wpk_repo {
-            params.insert("wpk_repo".into(), r.into());
-        }
-        if let Some(h) = p.use_http {
-            params.insert("use_http".into(), h.into());
-        }
-        if let Some(f) = p.force {
-            params.insert("force_upgrade".into(), f.into());
-        }
-        if let Some(t) = p.package_type {
-            params.insert("package_type".into(), t.into());
-        }
-        "upgrade"
-    };
-    info!(
-        "Agent upgrade: {command} requested for agent {agent_id} by {}",
-        ctx.username
-    );
-    upgrade_module_request(serde_json::json!({ "command": command, "parameters": params })).await
+    // the old protocol's agents cannot connect any more, so they cannot be upgraded remotely
+    let _ = (p, id);
+    (
+        StatusCode::CONFLICT,
+        Json(serde_json::json!({ "error": "This agent uses the old protocol, which can no longer connect: it cannot be upgraded remotely. Install the ProVigil agent on it." })),
+    )
+        .into_response()
 }
 
 /// The agent's last upgrade task (`upgrade_result`).
@@ -6350,10 +6295,7 @@ async fn get_agent_upgrade_handler(
         Ok(id) => id,
         Err(r) => return r,
     };
-    upgrade_module_request(
-        serde_json::json!({ "command": "upgrade_result", "parameters": { "agents": [id] } }),
-    )
-    .await
+    Json(no_upgrade_task(id as i64)).into_response()
 }
 
 // ───────────────────────── tenant agents ─────────────────────────

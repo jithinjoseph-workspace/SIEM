@@ -282,6 +282,17 @@ it has a row.)
 | `syscheck`: path, hard_links (parsed JSON), mode, symbolic_path, arch, value_name, value_type; `*_before` only when set and different from the after value; size_after; permissions (`perm_*`, or `win_perm_*` arrays of `{name, <type>: [PERMS]}` for Windows lists, with their warning/error when they cannot be read); uid, gid, md5, sha1, sha256; attrs as arrays; uname, gname; mtime as local `YYYY-MM-DDThh:mm:ss` (the old 20-byte buffer cuts the zone; an invalid value is `Invalid: '<v>'` cut to 23 bytes, and the two mtimes share that buffer); inode as a 32-bit number (after only when not 0); diff (unless `0`, only when the order size reaches it); tags and changed_attributes as arrays; event | Same, the buffer quirks kept |
 | `syscheck.audit`: user, process (id, name, cwd, parent_name, parent_cwd, ppid), group, login_user, effective_user, each only when set | Same |
 
+### 2.14 Plugin decoders (`plugins.rs`)
+
+| Feature | New |
+|---|---|
+| Names (exact): `PF_Decoder`, `SymantecWS_Decoder`, `SonicWall_Decoder`, `OSSECAlert_Decoder`, `JSON_Decoder` | Same |
+| **JSON_Decoder:** reads from the log, after the parent or after the prematch (the plugin offset); the JSON's members flattened with dotted keys; strings up to a zero byte; numbers as integers or `%f`; booleans `true`/`false`; null as `null` (default) or dropped (`json_null_field discard`); arrays as JSON text (default) or a CSV string (`json_array_structure csv`: strings, numbers, null, true, false; other items skipped; over 65,535 bytes empty, and an empty value is not set). Keys srcip, dstip, dstport, srcport, protocol, action, srcuser, dstuser, id, status, url, data, extra_data, `systemname` set the static fields (`user` sets dstuser only when it is empty); other keys are dynamic fields, at most `decoder_order_size` | Same |
+| **PF_Decoder:** after `) `: `p` pass / `b` block; after `: `: `srcip[.port] > dstip[.port]:` (the port after the 4th dot); protocol from the next word: `u` UDP, `i` ICMP, else TCP | Same |
+| **SymantecWS_Decoder:** comma-separated `10=` dstuser (128), `11=` srcip (128), `60=` url (1,024), `3=`/`2=` id (9 bytes, not stopping at commas); first value wins | Same |
+| **SonicWall_Decoder:** sets its decoder's type to syslog, then `pri=(\d) c=(\d+) m=(\d+) ` (status, category (7 bytes), id), `src=ip:port:x dst=ip:port:`, `proto=` (up to 6 host-name characters before `/`); category 32 makes the type IDS; ids 98/597/598 firewall `pass`; 38/36/173/174/37 firewall `drop`; 537 firewall `close`; 97 squid with `result= dstname= arg=` (id = result, url = dstname + arg). The type change is on the decoder itself, so it lasts for later events (original behaviour, kept) | Same |
+| **OSSECAlert_Decoder:** sets its decoder's type to OSSEC alert; `Alert Level: ...; Rule: <id> ...; Location: <loc>; [srcip: x;] [user: y;] <log>`: the rule must exist (by id); location becomes `<location>\|<loc>` (254 bytes) and also the host name; srcip and dstuser; the log becomes the rest (4,094 bytes); the event carries that rule | Same |
+
 ## 3. Decisions
 
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
@@ -307,4 +318,4 @@ Not part of this work: `ruleset/sca` (used by the Linux agent, another developer
 
 ## 5. Progress
 
-- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses and the syscheck JSON written.
+- 2026-11-13: module map, method, plan; features of start-up, daemon, settings, input queues, the event, the decoders, the rule loader, the matcher, the event stage, the text formats, the alert JSON, active responses, the syscheck JSON and the plugin decoders written.

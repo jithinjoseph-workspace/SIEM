@@ -265,7 +265,8 @@ export class SiemConsole implements OnInit, OnDestroy {
   alertProcessGuid(alert: Alert): string | null {
     const ed = alert.data?.['win']?.['eventdata'] ?? {};
     const g = ed.processGuid || ed.sourceProcessGuid;
-    return typeof g === 'string' && /^\{?[0-9a-fA-F-]{32,38}\}?$/.test(g) ? g : null;
+    // all zeros: Sysmon's "process already gone", not a process to build a tree for
+    return typeof g === 'string' && /^\{?[0-9a-fA-F-]{32,38}\}?$/.test(g) && /[1-9a-fA-F]/.test(g) ? g : null;
   }
 
   loadProcessTree(alert: Alert) {
@@ -277,7 +278,12 @@ export class SiemConsole implements OnInit, OnDestroy {
     this.siemService.getProcessTree(alert.agent.id, guid, new Date(alert.timestamp).getTime() || Date.now()).subscribe({
       next: r => {
         if (this.selectedAlert()?.id !== alert.id) return;
-        this.processTree.set(r.nodes ?? []);
+        // start not found anywhere: the alert's own event still names the process
+        const ed = alert.data?.['win']?.['eventdata'] ?? {};
+        const own = ed.processGuid ? { image: ed.image, pid: ed.processId } : { image: ed.sourceImage, pid: ed.sourceProcessId };
+        const nodes = (r.nodes ?? []).map(n => n.role === 'focal' && !n.image && typeof own.image === 'string'
+          ? { ...n, image: own.image.replace(/\\\\/g, '\\'), pid: n.pid ?? (Number(own.pid) || null) } : n);
+        this.processTree.set(nodes);
         this.processTreeState.set(r.found ? 'idle' : 'not-found');
       },
       error: () => this.processTreeState.set('error'),

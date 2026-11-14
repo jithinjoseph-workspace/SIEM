@@ -419,6 +419,13 @@ export class SiemService {
     );
   }
 
+  /** When each agent's software list was last stored (unix seconds): what its results come from. */
+  getSoftwareLists(): Observable<{ agents: Record<string, number> }> {
+    return this.http.get<{ agents: Record<string, number> }>(`${this.apiUrl}/api/v1/vulnerabilities/software-lists`).pipe(
+      catchError(() => of({ agents: {} }))
+    );
+  }
+
   getFimSummary(): Observable<FimSummaryResponse> {
     return this.http.get<FimSummaryResponse>(`${this.apiUrl}/api/v1/fim/summary`);
   }

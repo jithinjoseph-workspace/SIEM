@@ -502,7 +502,7 @@
           <div class="section-title mt-4">Process Tree</div>
           <div class="text-xs text-dim" *ngIf="processTreeState() === 'loading'">Reading the agent's Sysmon events…</div>
           <div class="text-xs text-rose" *ngIf="processTreeState() === 'error'">The agent's events cannot be read right now.</div>
-          <div class="text-xs text-dim" *ngIf="processTreeState() === 'not-found'">The process's start is not in the agent's Sysmon events of the 24 hours before the alert; what it started is shown below.</div>
+          <div class="text-xs text-dim" *ngIf="processTreeState() === 'not-found'">This process started more than 7 days before the alert (or Sysmon did not record its start), so what started it is not known.{{ (processTree()?.length ?? 0) > 1 ? ' What it started is shown below.' : '' }}</div>
           <div class="process-tree mono text-xs" *ngIf="processTree()?.length">
             <div *ngFor="let n of processTree()" class="pt-row" [style.padding-left.px]="8 + n.depth * 16"
                  [class.pt-focal]="n.role === 'focal'" [class.pt-unknown]="!n.known">
@@ -511,9 +511,9 @@
                 <b [title]="n.image">{{ processName(n.image) }}</b>
                 <span class="text-dim" *ngIf="n.pid">PID {{ n.pid }}</span>
                 <span class="text-dim" *ngIf="n.user">{{ n.user }}</span>
-                <span class="text-dim" *ngIf="n.started">{{ n.started | date:'HH:mm:ss' }}</span>
+                <span class="text-dim" *ngIf="n.started">{{ n.started | date:'d MMM HH:mm:ss' }}</span>
                 <span class="text-dim" *ngIf="n.ended">ended {{ n.ended | date:'HH:mm:ss' }}</span>
-                <span class="text-dim" *ngIf="!n.known">(started before the window)</span>
+                <span class="text-dim" *ngIf="!n.known">(started earlier)</span>
                 <span *ngFor="let k of activityKinds(n)" class="pt-chip">{{ k[0] }} {{ k[1] }}</span>
               </div>
               <div class="pt-cmd text-dim" [title]="n.command_line">{{ n.command_line }}</div>

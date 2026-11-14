@@ -44,3 +44,4 @@ by the owner's decision (2026-11-03) to compare old against new, feature by feat
 Each later replaced crate is moved here instead of being deleted.
 | `siem-wdb` | `crates/provigil-agentdb` (own code; its comparison tests still use this folder as a library, `specs/provigil-db.md`) |
 | `siem-modulesd`, `siem-router`, `siem-njson` | `crates/provigil-modulesd` (own code; its comparison test still uses `siem-modulesd` as a library, `specs/provigil-modulesd.md`) |
+| `siem-analysisd` | `crates/provigil-analysisd` (own code; its comparison tests still use this folder as a library, `specs/provigil-analysisd.md`) |

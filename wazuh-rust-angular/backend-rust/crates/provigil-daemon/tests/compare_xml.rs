@@ -73,6 +73,9 @@ fn check_more(doc: &[u8]) {
     match (&old, xml::parse_text_raw(doc)) {
         (Ok(o), Ok(n)) => assert_eq!(old_raw(o, None), new_raw(&n), "text {:?}", String::from_utf8_lossy(doc)),
         (Err(o), Err(n)) => assert_eq!((o.message.as_str(), o.line), (n.message.as_str(), n.line), "text {:?}", String::from_utf8_lossy(doc)),
+        // decision A-10 (specs/provigil-analysisd.md): an event's long texts are read, its nesting stops at 64
+        (Err(o), Ok(_)) if o.message.contains("verflow") => {}
+        (Ok(_), Err(n)) if n.message == "XMLERR: Max recursion level reached" => {}
         (o, n) => panic!("text {:?}\n old: {:?}\n new: {:?}", String::from_utf8_lossy(doc), o.as_ref().map(|o| old_raw(o, None)), n),
     }
 }

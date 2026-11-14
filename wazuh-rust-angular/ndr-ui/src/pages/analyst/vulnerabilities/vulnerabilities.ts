@@ -313,6 +313,7 @@ export class Vulnerabilities implements OnInit, OnDestroy {
   loadVulnerabilities() {
     this.loading.set(true);
     this.siem.getAgents().subscribe(a => this.agents.set(a));
+    this.siem.getSoftwareLists().subscribe(r => this.softwareLists.set(r.agents));
     this.siem.getVulnerabilities().subscribe({
       next: (res) => {
         this.vulnItems.set(res.vulnerabilities);
@@ -383,14 +384,28 @@ export class Vulnerabilities implements OnInit, OnDestroy {
 
   ngOnDestroy() { this.stopFollowing(); }
 
+  /** When each agent's software list was last stored (unix seconds). */
+  softwareLists = signal<Record<string, number>>({});
+
+  /** For a disconnected agent: when its results' software list was stored ("list from …"). */
+  listFrom(id: string): string | null {
+    const t = this.softwareLists()[id];
+    if (!t || !this.offline(id)) return null;
+    const d = new Date(t * 1000);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
   /** For a disconnected agent: when it was last seen (the badge's tooltip); otherwise null. */
   offline(id: string): string | null {
     const a = this.agents().find(x => x.id === id);
     if (!a || a.status !== 'disconnected') return null;
     const seen = a.last_keepalive ? new Date(a.last_keepalive) : null;
+    const t = this.softwareLists()[id];
+    const list = t ? ` Its results are from the software list it sent ${new Date(t * 1000).toLocaleString()}.` : ' Its results are from its last software list.';
     return seen && !isNaN(seen.getTime()) && seen.getFullYear() > 1970
-      ? `Not connected. Last seen ${seen.toLocaleString()}; its results are from its last software list.`
-      : 'Not connected.';
+      ? `Not connected. Last seen ${seen.toLocaleString()}.${list}`
+      : `Not connected.${list}`;
   }
 
   scanLabel(id: string): { text: string; cls: string } | null {

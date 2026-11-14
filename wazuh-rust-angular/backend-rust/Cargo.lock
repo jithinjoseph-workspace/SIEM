@@ -4158,7 +4158,6 @@ name = "siem-analysisd"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "libc",
  "provigil-regex",
  "regex",
  "sha1 0.10.7",
@@ -4168,7 +4167,6 @@ dependencies = [
  "siem-ipc",
  "siem-log",
  "siem-xml",
- "tempfile",
  "tokio",
 ]
 

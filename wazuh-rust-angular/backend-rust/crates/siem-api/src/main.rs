@@ -1182,6 +1182,7 @@ async fn main() {
         .route("/api/v1/simulate", post(simulate_attack))
         .route("/api/v1/vulnerabilities", get(get_vulnerabilities).post(post_scan_now))
         .route("/api/v1/vulnerabilities/scan-status", get(get_scan_status))
+        .route("/api/v1/vulnerabilities/software-lists", get(get_software_lists))
         .route("/api/v1/agents/:id/vulnerabilities", get(get_agent_vulnerabilities))
         .route("/api/v1/agents/:id/syscollector/packages", get(get_agent_packages_handler))
         .route("/api/v1/vulnerabilities/report.xlsx", get(vuln_report::get_report))
@@ -4671,19 +4672,12 @@ async fn post_scan_now(
             .into_iter()
             .map(|v| v.agent_id),
     );
-    let sent = agents
-        .iter()
-        .filter(|a| match vulnerability::request_rescan(a, true) {
-            Ok(()) => {
-                vulnerability::set_scan_status(a, "queued");
-                true
-            }
-            Err(e) => {
-                tracing::warn!("vulnerability re-scan of agent {a} not requested: {e}");
-                false
-            }
-        })
-        .count();
+    // connected agents send a fresh software list first; the scan follows in the background
+    for a in &agents {
+        vulnerability::set_scan_status(a, "queued");
+        vulnerability::scan_now(a.clone());
+    }
+    let sent = agents.len();
     // the console follows each agent with GET /api/v1/vulnerabilities/scan-status
     Json(serde_json::json!({
         "status": "ok",
@@ -4691,6 +4685,19 @@ async fn post_scan_now(
         "message": format!("Re-scan requested for {sent} agent(s)."),
     }))
     .into_response()
+}
+
+/// `GET /api/v1/vulnerabilities/software-lists`: when each in-scope agent's software list was
+/// last stored (unix seconds), the list its vulnerability results come from.
+async fn get_software_lists(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    let agents: Vec<String> = state.agents.read().unwrap().keys().filter(|a| agent_in_scope(&state, &ctx, a)).cloned().collect();
+    let mut lists = serde_json::Map::new();
+    for a in agents {
+        if let Some(t) = vulnerability::software_list_at(&a).await {
+            lists.insert(a, t.into());
+        }
+    }
+    Json(serde_json::json!({ "agents": lists })).into_response()
 }
 
 /// `GET /api/v1/vulnerabilities/scan-status`: each in-scope agent's re-scan state.

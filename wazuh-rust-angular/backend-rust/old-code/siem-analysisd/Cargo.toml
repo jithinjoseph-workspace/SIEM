@@ -1,0 +1,22 @@
+[package]
+name = "siem-analysisd"
+version = "0.1.0"
+edition = "2021"
+description = "(src/analysis): pre-decoding, XML decoders, rules engine, CDB lists, FTS, accumulator, JSON alerts and logtest"
+
+[dependencies]
+siem-regex = { package = "provigil-regex", path = "../../crates/provigil-regex" }
+siem-xml = { path = "../../crates/siem-xml" }
+siem-cjson = { path = "../../crates/siem-cjson" }
+siem-config = { path = "../../crates/siem-config" }
+siem-ipc = { path = "../../crates/siem-ipc" }
+siem-log = { path = "../../crates/siem-log" }
+siem-daemon = { path = "../../crates/siem-daemon" }
+tokio = { version = "1.40", features = ["full"] }
+chrono = "0.4"
+sha1 = "0.10"
+regex = "1.10"
+
+[dev-dependencies]
+libc = "0.2"
+tempfile = "3"

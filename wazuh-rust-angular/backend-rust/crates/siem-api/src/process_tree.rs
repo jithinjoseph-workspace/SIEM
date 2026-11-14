@@ -22,6 +22,8 @@ use crate::AppState;
 /// (what it started then).
 const BEFORE_MS: u64 = 24 * 3600 * 1000;
 const AFTER_MS: u64 = 3600 * 1000;
+/// How much further back the alert's own process start is looked for (one process only).
+const OLDER_START_MS: u64 = 6 * 24 * 3600 * 1000;
 /// Bounds of one tree, so a busy host cannot make it slow or big.
 const MAX_STARTS: u64 = 50_000;
 const MAX_ANCESTORS: usize = 32;
@@ -177,6 +179,14 @@ pub fn attach_activity(nodes: &mut [Value], activity: &[Activity]) {
     }
 }
 
+/// The columns of a [`Start`] read from the Sysmon events.
+fn start_columns() -> String {
+    format!(
+        "timestamp AS ts, {EVENT_ID} AS event_id, {} AS guid, {} AS parent_guid, {} AS pid, {} AS image, {} AS command_line, {} AS user, {} AS hashes, {} AS parent_pid, {} AS parent_image, {} AS parent_command_line",
+        ed("processGuid"), ed("parentProcessGuid"), ed("processId"), ed("image"), ed("commandLine"), ed("user"), ed("hashes"), ed("parentProcessId"), ed("parentImage"), ed("parentCommandLine"),
+    )
+}
+
 #[derive(Deserialize)]
 pub struct TreeQuery {
     guid: String,
@@ -198,11 +208,7 @@ pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
     let at = q.at.unwrap_or(now).min(now);
     let (from, to) = (at.saturating_sub(BEFORE_MS), at + AFTER_MS);
     let client = state.db.tenant_client(&ctx.scope());
-    let starts_sql = format!(
-        "SELECT timestamp AS ts, {EVENT_ID} AS event_id, {} AS guid, {} AS parent_guid, {} AS pid, {} AS image, {} AS command_line, {} AS user, {} AS hashes, {} AS parent_pid, {} AS parent_image, {} AS parent_command_line \
-         FROM ({SYSMON}) WHERE event_id IN ('1', '5') ORDER BY ts LIMIT ?",
-        ed("processGuid"), ed("parentProcessGuid"), ed("processId"), ed("image"), ed("commandLine"), ed("user"), ed("hashes"), ed("parentProcessId"), ed("parentImage"), ed("parentCommandLine"),
-    );
+    let starts_sql = format!("SELECT {} FROM ({SYSMON}) WHERE event_id IN ('1', '5') ORDER BY ts LIMIT ?", start_columns());
     let rows = match client.query(&starts_sql).bind(from).bind(to).bind(&agent_id).bind(MAX_STARTS).fetch_all::<Start>().await {
         Ok(r) => r,
         Err(e) => {
@@ -210,9 +216,25 @@ pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
             return err(StatusCode::SERVICE_UNAVAILABLE, "The agent's events cannot be read right now");
         }
     };
-    let (starts, ends): (Vec<Start>, Vec<Start>) = rows.into_iter().partition(|r| r.event_id == "1");
+    let (mut starts, ends): (Vec<Start>, Vec<Start>) = rows.into_iter().partition(|r| r.event_id == "1");
     let ends: HashMap<String, u64> = ends.into_iter().map(|e| (e.guid, e.ts)).collect();
+    // a long-running process (a service since boot, an open browser): its own start further back
+    if !starts.iter().any(|s| s.guid == guid) {
+        let one = format!("SELECT {} FROM ({SYSMON} AND position(raw_metadata, ?) > 0) WHERE event_id = '1' AND guid = ? LIMIT 1", start_columns());
+        match client.query(&one).bind(from.saturating_sub(OLDER_START_MS)).bind(from).bind(&agent_id).bind(&guid).bind(&guid).fetch_all::<Start>().await {
+            Ok(mut r) => starts.append(&mut r),
+            Err(e) => tracing::warn!("process tree of agent {agent_id}: older start not read: {e}"),
+        }
+    }
     let mut nodes = assemble(&guid, &starts, &ends);
+    // still unknown: its name and PID from any of its own events in the window
+    if let Some(f) = nodes.iter_mut().find(|n| n["role"] == "focal" && n["known"] == false) {
+        let q = format!("SELECT {} AS image, {} AS pid FROM ({SYSMON} AND position(raw_metadata, ?) > 0) WHERE {} = ? AND image != '' LIMIT 1", ed("image"), ed("processId"), ed("processGuid"));
+        if let Ok(Some((image, pid))) = client.query(&q).bind(from).bind(to).bind(&agent_id).bind(&guid).bind(&guid).fetch_optional::<(String, String)>().await {
+            f["image"] = undouble(&image).into();
+            f["pid"] = pid.parse::<u64>().ok().into();
+        }
+    }
     let guids: Vec<String> = nodes.iter().filter_map(|n| n["guid"].as_str().map(String::from)).collect();
     let activity_sql = format!(
         "SELECT timestamp AS ts, {EVENT_ID} AS event_id, if({p} != '', {p}, {sp}) AS guid, \

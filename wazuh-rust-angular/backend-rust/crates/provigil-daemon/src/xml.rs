@@ -28,6 +28,8 @@
 /// The longest name, content part or attribute value, plus one.
 const MAX_TEXT: usize = 20480;
 const MAX_DEPTH: u32 = 1024;
+/// Nesting of an event's text: a Windows event is about 4 deep.
+const MAX_EVENT_DEPTH: u32 = 64;
 const MAX_ATTRIBUTES: u32 = 48;
 /// Error texts are cut to this many bytes.
 const MAX_ERROR: usize = 126;
@@ -161,13 +163,13 @@ pub fn read_file(path: &std::path::Path) -> Result<Vec<Node>, XmlError> {
 
 /// Reads a document (the root elements).
 pub fn parse(data: &[u8]) -> Result<Vec<Node>, XmlError> {
-    Ok(read(data, false)?.into_iter().map(RawNode::lossy).collect())
+    Ok(read(data, false, MAX_TEXT, MAX_DEPTH)?.into_iter().map(RawNode::lossy).collect())
 }
 
 /// Reads a decoder or rule file: `<var name="X">value</var>` defines `$X` for the texts
 /// after it (see [`apply_variables`]).
 pub fn parse_with_variables(data: &[u8]) -> Result<Vec<Node>, XmlError> {
-    Ok(read(data, true)?.into_iter().map(RawNode::lossy).collect())
+    Ok(read(data, true, MAX_TEXT, MAX_DEPTH)?.into_iter().map(RawNode::lossy).collect())
 }
 
 /// Reads [`parse_with_variables`] from a file.
@@ -178,13 +180,17 @@ pub fn read_file_with_variables(path: &std::path::Path) -> Result<Vec<Node>, Xml
     }
 }
 
-/// Reads a text up to its first zero byte, keeping the bytes as written.
+/// Reads a text up to its first zero byte, keeping the bytes as written. It is an event from an
+/// agent: elements may be as long as the text itself (a Windows event's command line can pass
+/// 20 KB, and the file limit would drop the whole event; the message size already bounds it),
+/// and nesting stops at [`MAX_EVENT_DEPTH`] so a crafted event cannot exhaust the stack.
 pub fn parse_text_raw(data: &[u8]) -> Result<Vec<RawNode>, XmlError> {
-    read(&data[..data.iter().position(|&c| c == 0).unwrap_or(data.len())], false)
+    let text = &data[..data.iter().position(|&c| c == 0).unwrap_or(data.len())];
+    read(text, false, text.len().max(MAX_TEXT) + 1, MAX_EVENT_DEPTH)
 }
 
-fn read(data: &[u8], variables: bool) -> Result<Vec<RawNode>, XmlError> {
-    let mut r = Reader { b: data, pos: 0, line: 1, all: Vec::new() };
+fn read(data: &[u8], variables: bool, max_text: usize, max_depth: u32) -> Result<Vec<RawNode>, XmlError> {
+    let mut r = Reader { b: data, pos: 0, line: 1, all: Vec::new(), max_text, max_depth };
     let mut escaped = false;
     while let Some(c) = r.next() {
         escape(&mut escaped, c);
@@ -346,6 +352,10 @@ struct Reader<'a> {
     /// 1 + the line breaks read so far
     line: u32,
     all: Vec<Raw>,
+    /// Longest name, text or attribute value read.
+    max_text: usize,
+    /// Deepest nesting read (each level is a call: the stack bounds it).
+    max_depth: u32,
 }
 
 impl Reader<'_> {
@@ -371,7 +381,7 @@ impl Reader<'_> {
     }
 
     fn overflow(&self, len: usize) -> Result<(), XmlError> {
-        if len >= MAX_TEXT {
+        if len >= self.max_text {
             return Err(self.fail("XMLERR: String overflow.".into()));
         }
         Ok(())
@@ -440,7 +450,7 @@ impl Reader<'_> {
                     self.next();
                     return self.close(me, &name, &content, escaped);
                 }
-                if level + 1 > MAX_DEPTH {
+                if level + 1 > self.max_depth {
                     return Err(self.fail("XMLERR: Max recursion level reached".into()));
                 }
                 // a child has its own escape state; the content restarts after it
@@ -492,7 +502,7 @@ impl Reader<'_> {
         // the name, up to `=`
         loop {
             let c = self.next().ok_or_else(|| eof(self))?;
-            if name.len() >= MAX_TEXT {
+            if name.len() >= self.max_text {
                 let shown: String = lossy(&name[..name.len() - 1]).chars().take(20).collect();
                 return Err(self.fail(format!("XMLERR: Overflow attempt at attribute '{shown}'.")));
             }
@@ -524,7 +534,7 @@ impl Reader<'_> {
         let mut value = Vec::new();
         loop {
             let c = self.next().ok_or_else(|| eof(self))?;
-            if value.len() >= MAX_TEXT {
+            if value.len() >= self.max_text {
                 let shown: String = shown.chars().take(20).collect();
                 return Err(self.fail(format!("XMLERR: Overflow attempt at attribute '{shown}'.")));
             }
@@ -551,6 +561,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn long_event_text_is_read() {
+        let long = "x".repeat(30_000);
+        let doc = format!("<Event><EventData><Data Name='CommandLine'>{long}</Data></EventData></Event>");
+        let roots = parse_text_raw(doc.as_bytes()).expect("an event's long command line is read");
+        assert_eq!(roots[0].children[0].children[0].content.len(), 30_000);
+        // files keep their limit
+        assert!(parse(doc.as_bytes()).is_err());
+    }
+
+    #[test]
     fn reads_the_dialect() {
         let d = parse(b"junk <a x=\"1\" y='2'>t1<b>in</b> tail &lt;\\<c<!-- c -->d</a><e/><f />\n<!x !><g><h/>></g>").unwrap();
         assert_eq!(d.len(), 4);
@@ -567,7 +587,14 @@ mod tests {
         assert_eq!(parse(b"</a>").unwrap_err().message, "XMLERR: Element not opened.");
         assert_eq!(parse(b"<a x>").unwrap_err().message, "XMLERR: Attribute 'x' has no value.");
         assert_eq!(parse(b"<a><!-- x").unwrap_err().message, "XMLERR: Comment not closed.");
-        assert!(parse(&[b"<a>".repeat(1024), b"</a>".repeat(1024)].concat()).is_ok());
-        assert_eq!(parse(&b"<a>".repeat(1025)).unwrap_err().message, "XMLERR: Max recursion level reached");
+        // 1,024 levels of calls need more than a debug build's default test stack
+        let deep = std::thread::Builder::new().stack_size(64 << 20).spawn(|| {
+            assert!(parse(&[b"<a>".repeat(1024), b"</a>".repeat(1024)].concat()).is_ok());
+            assert_eq!(parse(&b"<a>".repeat(1025)).unwrap_err().message, "XMLERR: Max recursion level reached");
+        });
+        deep.unwrap().join().unwrap();
+        // an agent's event stops much earlier
+        assert!(parse_text_raw(&[b"<a>".repeat(64), b"</a>".repeat(64)].concat()).is_ok());
+        assert_eq!(parse_text_raw(&b"<a>".repeat(65)).unwrap_err().message, "XMLERR: Max recursion level reached");
     }
 }

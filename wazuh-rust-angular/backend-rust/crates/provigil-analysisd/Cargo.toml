@@ -17,6 +17,6 @@ sha1 = "0.10"
 
 [dev-dependencies]
 # the old implementation, as the reference of the comparison tests (removed with it)
-siem-analysisd = { path = "../siem-analysisd" }
+siem-analysisd = { path = "../../old-code/siem-analysisd" }
 siem-config = { path = "../siem-config" }
 tempfile = "3"

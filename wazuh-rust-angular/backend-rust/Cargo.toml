@@ -33,7 +33,6 @@ members = [
     "crates/siem-config",
     "crates/siem-ipc",
     "crates/siem-cjson",
-    "crates/siem-analysisd",
     "crates/siem-log",
     "crates/siem-daemon",
     "crates/siem-active-response",

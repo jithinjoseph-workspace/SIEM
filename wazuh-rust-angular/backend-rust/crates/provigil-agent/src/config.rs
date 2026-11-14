@@ -584,15 +584,8 @@ impl AgentConfig {
                 list.push(p);
             }
         }
-        #[cfg(not(windows))]
-        {
-            // Resilient VM / Host-Only failover targets so the agent never fails on host Wi-Fi IP changes
-            for fallback in ["https://192.168.56.1:8443", "https://10.0.2.2:8443"] {
-                if !list.iter().any(|u| u.contains("192.168.56.1") || u.contains("10.0.2.2")) {
-                    list.push(fallback.to_string());
-                }
-            }
-        }
+        // fallback managers come from the settings (`manager_urls`, also from the group settings),
+        // never from fixed addresses: on a customer network a fixed address is someone else's host
         // never empty: the transport needs one manager even when none is configured yet
         if list.is_empty() {
             list.push(tidy(&self.manager_url));
@@ -650,7 +643,9 @@ impl AgentConfig {
 }
 
 /// The settings an agent's groups can set (the console's Groups page).
-pub const GROUP_FIELDS: [&str; 29] = [
+pub const GROUP_FIELDS: [&str; 30] = [
+    // fallback managers an admin adds per group; added to the agent's own list, never replacing it
+    "manager_urls",
     "event_channels", "event_channel_queries", "localfiles", "fim_paths", "fim_realtime", "fim_whodata", "fim_ignore",
     "fim_scan_interval_secs", "fim_report_changes", "fim_nodiff", "fim_recursion_level", "registry_keys", "registry_ignore", "rootcheck_enabled", "rootcheck_interval_secs",
     "sca_interval_secs", "sca_enabled", "sca_disabled_policies", "labels", "buffer",
@@ -729,6 +724,16 @@ mod tests {
             localfiles: vec![LocalFile { location: r"C:\x.log".into(), ..LocalFile::default() }],
             ..AgentConfig::default()
         }
+    }
+
+    #[test]
+    fn fallback_managers_come_from_settings_only() {
+        let mut c = AgentConfig { manager_url: "https://siem.example:8443/".into(), ..AgentConfig::default() };
+        assert_eq!(c.manager_list(), ["https://siem.example:8443"], "no fixed addresses added");
+        c.manager_urls = vec!["https://a:8443".into()];
+        let g = c.overlay(&json!({ "manager_urls": ["https://b:8443", "https://a:8443"] })).unwrap();
+        assert_eq!(g.manager_list(), ["https://a:8443", "https://b:8443"], "a group adds fallbacks, never replaces");
+        assert_eq!(AgentConfig::default().manager_list().len(), 1, "never empty");
     }
 
     #[test]

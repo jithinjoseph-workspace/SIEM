@@ -49,7 +49,7 @@ pub struct AgentConfig {
     #[serde(default = "default_fim_interval")]
     pub fim_scan_interval_secs: u64,
     /// Folders watched in real time (also scanned on schedule).
-    #[serde(default)]
+    #[serde(default = "default_fim_realtime")]
     pub fim_realtime: Vec<String>,
     /// Folders watched in real time with who-data; a folder in both lists is who-data.
     #[serde(default)]
@@ -167,7 +167,7 @@ pub struct AgentConfig {
     #[serde(default = "default_retry_interval")]
     pub retry_interval_secs: u64,
     /// Log files and commands whose lines / output are sent to the manager (`logfiles.rs`).
-    #[serde(default)]
+    #[serde(default = "default_localfiles")]
     pub localfiles: Vec<LocalFile>,
     /// Command entries (`command`, `full_command`) from the group configuration are run only
     /// when this is set in the local file; local ones always are.
@@ -326,13 +326,18 @@ fn default_registry_scan_interval() -> u64 { 3600 }
 fn default_inventory_interval() -> u64 { 3600 }
 fn default_sca_interval() -> u64 { 43200 }
 fn default_rootcheck_interval() -> u64 { 43200 }
-fn default_rootcheck_base_directory() -> String { "C:\\".into() }
+fn default_rootcheck_base_directory() -> String {
+    if cfg!(windows) { "C:\\".into() } else { "/".into() }
+}
 fn default_buffer_size() -> usize { 10_000 }
 fn default_max_diff() -> usize { 59_392 }
 fn default_log_level() -> String { "info".into() }
 fn default_true() -> bool { true }
 
 fn default_event_channels() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
     vec![
         "Security".into(),
         "System".into(),
@@ -349,6 +354,9 @@ fn default_event_channels() -> Vec<String> {
 pub const SECURITY_QUERY: &str = "Event/System[EventID != 5145 and EventID != 5156 and EventID != 5447 and EventID != 4656 and EventID != 4658 and EventID != 4663 and EventID != 4660 and EventID != 4670 and EventID != 4690 and EventID != 4703 and EventID != 4907 and EventID != 5152 and EventID != 5157]";
 
 fn default_event_channel_queries() -> HashMap<String, String> {
+    if !cfg!(windows) {
+        return HashMap::new();
+    }
     HashMap::from([
         ("Microsoft-Windows-PowerShell/Operational".into(), "Event/System[EventID=4103 or EventID=4104]".into()),
         ("Windows PowerShell".into(), "Event/System[EventID=400 or EventID=600 or EventID=800]".into()),
@@ -387,13 +395,60 @@ pub fn sysmon_installed() -> bool {
 }
 
 fn default_fim_paths() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        vec![
+            PathBuf::from("C:\\Windows\\System32\\drivers\\etc"),
+            PathBuf::from("C:\\ProgramData\\ProVigil"),
+        ]
+    } else {
+        vec![
+            PathBuf::from("/etc"),
+            PathBuf::from("/bin"),
+            PathBuf::from("/sbin"),
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/usr/sbin"),
+            PathBuf::from("/lib/systemd/system"),
+        ]
+    }
+}
+
+pub fn linux_default_fim_realtime() -> Vec<String> {
     vec![
-        PathBuf::from("C:\\Windows\\System32\\drivers\\etc"),
-        PathBuf::from("C:\\ProgramData\\ProVigil"),
+        "/etc".into(),
+        "/usr/local/bin".into(),
+        "/lib/systemd/system".into(),
     ]
 }
 
+pub fn default_fim_realtime() -> Vec<String> {
+    if cfg!(windows) {
+        Vec::new()
+    } else {
+        linux_default_fim_realtime()
+    }
+}
+
+pub fn linux_default_localfiles() -> Vec<LocalFile> {
+    vec![
+        LocalFile { location: "/var/log/auth.log".into(), ..LocalFile::default() },
+        LocalFile { location: "/var/log/secure".into(), ..LocalFile::default() },
+        LocalFile { location: "/var/log/syslog".into(), ..LocalFile::default() },
+        LocalFile { location: "/var/log/messages".into(), ..LocalFile::default() },
+    ]
+}
+
+pub fn default_localfiles() -> Vec<LocalFile> {
+    if cfg!(windows) {
+        Vec::new()
+    } else {
+        linux_default_localfiles()
+    }
+}
+
 fn default_registry_keys() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
     vec![
         "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run".into(),
         "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce".into(),
@@ -416,7 +471,7 @@ impl Default for AgentConfig {
             event_channel_reconnect_secs: default_event_channel_reconnect(),
             fim_paths: default_fim_paths(),
             fim_scan_interval_secs: default_fim_interval(),
-            fim_realtime: Vec::new(),
+            fim_realtime: default_fim_realtime(),
             fim_whodata: Vec::new(),
             fim_ignore: Vec::new(),
             fim_max_files_per_second: default_fim_max_files_per_second(),
@@ -454,7 +509,7 @@ impl Default for AgentConfig {
             manager_urls: Vec::new(),
             max_retries: default_max_retries(),
             retry_interval_secs: default_retry_interval(),
-            localfiles: Vec::new(),
+            localfiles: default_localfiles(),
             allow_remote_commands: false,
             commands: Vec::new(),
             osquery: Default::default(),
@@ -475,6 +530,8 @@ impl AgentConfig {
     pub fn load_or_default(config_path: Option<&Path>) -> Self {
         let possible_json_paths = [
             config_path.unwrap_or_else(|| Path::new(CONFIG_FILE)),
+            Path::new("/opt/provigil-agent/etc/provigil-agent.json"),
+            Path::new("/etc/provigil-agent/provigil-agent.json"),
             Path::new("C:\\Program Files (x86)\\ProVigil Agent\\provigil-agent.json"),
             Path::new("C:\\Program Files\\ProVigil Agent\\provigil-agent.json"),
         ];
@@ -520,8 +577,23 @@ impl AgentConfig {
     /// The managers in failover order: `manager_urls` when not empty, else `[manager_url]`.
     pub fn manager_list(&self) -> Vec<String> {
         let tidy = |u: &String| u.trim().trim_end_matches('/').to_string();
-        let list: Vec<String> = self.manager_urls.iter().map(tidy).filter(|u| !u.is_empty()).collect();
-        if list.is_empty() { vec![tidy(&self.manager_url)] } else { list }
+        let mut list: Vec<String> = self.manager_urls.iter().map(tidy).filter(|u| !u.is_empty()).collect();
+        if list.is_empty() {
+            let p = tidy(&self.manager_url);
+            if !p.is_empty() {
+                list.push(p);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            // Resilient VM / Host-Only failover targets so the agent never fails on host Wi-Fi IP changes
+            for fallback in ["https://192.168.56.1:8443", "https://10.0.2.2:8443"] {
+                if !list.iter().any(|u| u.contains("192.168.56.1") || u.contains("10.0.2.2")) {
+                    list.push(fallback.to_string());
+                }
+            }
+        }
+        list
     }
 
     /// These settings overlaid by a group `config`: a group list is added to the local one

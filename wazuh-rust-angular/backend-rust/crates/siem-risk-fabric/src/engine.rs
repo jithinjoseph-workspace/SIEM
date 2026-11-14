@@ -392,9 +392,16 @@ impl RiskFabricEngine {
         let mut medium = 0;
         let mut low = 0;
         let mut total_score: u64 = 0;
+        let mut evaluated_count: usize = 0;
         let mut proc_counts: HashMap<String, (String, usize, u8)> = HashMap::new();
 
         for a in alerts {
+            // Skip synthetic Red Swarm validation alerts from live business risk summaries
+            if a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
+                continue;
+            }
+            evaluated_count += 1;
+
             // Check attached score or dynamically evaluate on the fly
             let score = Self::get_score(a).unwrap_or_else(|| {
                 let mut cloned = a.clone();
@@ -421,8 +428,8 @@ impl RiskFabricEngine {
             }
         }
 
-        let avg_score = if !alerts.is_empty() {
-            (total_score as f64) / (alerts.len() as f64)
+        let avg_score = if evaluated_count > 0 {
+            (total_score as f64) / (evaluated_count as f64)
         } else {
             0.0
         };
@@ -731,6 +738,70 @@ mod tests {
         alert.data.clear();
         alert.data.insert("dstuser".into(), serde_json::Value::String("root".into()));
         assert_eq!(resolve_alert_user(&alert), "root");
+    }
+
+    #[test]
+    fn test_summary_excludes_redswarm_simulations() {
+        let temp_file = std::env::temp_dir().join(format!("test_rf_sum_{}.json", uuid::Uuid::new_v4()));
+        let engine = RiskFabricEngine::new(&temp_file);
+
+        let sim_alert = Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 99001,
+                level: 14,
+                description: "Red Swarm simulated attack".into(),
+                groups: vec!["redswarm_simulation".into(), "attack".into()],
+                mitre: None,
+            },
+            agent: siem_core::AgentAlertInfo {
+                id: "001".into(),
+                name: "srv-payment-01".into(),
+                ip: "192.168.10.15".into(),
+            },
+            manager: None,
+            decoder: None,
+            full_log: "".into(),
+            decoded: siem_core::DecodedFields::default(),
+            location: "redswarm".into(),
+            data: HashMap::new(),
+        };
+
+        let real_alert = Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 1001,
+                level: 3,
+                description: "Routine notice".into(),
+                groups: vec!["syslog".into()],
+                mitre: None,
+            },
+            agent: siem_core::AgentAlertInfo {
+                id: "002".into(),
+                name: "wks-generic-01".into(),
+                ip: "10.0.0.55".into(),
+            },
+            manager: None,
+            decoder: None,
+            full_log: "".into(),
+            decoded: siem_core::DecodedFields::default(),
+            location: "/var/log/syslog".into(),
+            data: HashMap::new(),
+        };
+
+        let summary = engine.get_summary(&[sim_alert, real_alert]);
+        assert_eq!(summary.catastrophic_alerts_count, 0);
+        assert_eq!(summary.critical_alerts_count, 0);
+        let total_counted = summary.catastrophic_alerts_count
+            + summary.critical_alerts_count
+            + summary.high_alerts_count
+            + summary.medium_alerts_count
+            + summary.low_alerts_count;
+        assert_eq!(total_counted, 1);
+
+        let _ = std::fs::remove_file(temp_file);
     }
 }
 

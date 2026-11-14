@@ -102,8 +102,23 @@ fn valid_name(name: &str) -> bool {
 }
 
 fn program_path(program: &str) -> PathBuf {
-    let exe = if cfg!(windows) { format!("{program}.exe") } else { program.to_string() };
-    PathBuf::from("active-response").join("bin").join(exe)
+    let dir = PathBuf::from("active-response").join("bin");
+    #[cfg(windows)]
+    {
+        dir.join(format!("{program}.exe"))
+    }
+    #[cfg(not(windows))]
+    {
+        let p = dir.join(program);
+        if p.is_file() {
+            return p;
+        }
+        let sh = dir.join(format!("{program}.sh"));
+        if sh.is_file() {
+            return sh;
+        }
+        p
+    }
 }
 
 /// The restart program stops this service before it starts it again: it must outlive the agent.
@@ -112,6 +127,15 @@ fn detach(c: &mut tokio::process::Command, detached: bool) {
     // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, else CREATE_NO_WINDOW
     #[cfg(windows)]
     c.creation_flags(if detached { 0x0000_0008 | 0x0000_0200 } else { 0x0800_0000 });
+    #[cfg(unix)]
+    if detached {
+        unsafe {
+            c.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
 }
 
 /// The request line a response program reads.
@@ -310,6 +334,17 @@ impl EdrExecutor {
     /// whose undo then moves to `timeout` from now) and the key it asked about.
     async fn run(&self, program: &str, name: &str, command: &str, params: &Value, timeout: u64) -> Result<(bool, Option<(String, String)>), String> {
         let path = program_path(program);
+        #[cfg(not(windows))]
+        if !path.is_file() && program == RESTART_PROGRAM && command == "add" {
+            let mut c = tokio::process::Command::new("sh");
+            c.args(["-c", "sleep 1 && systemctl restart provigil-agent"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            detach(&mut c, true);
+            c.spawn().map(drop).map_err(|e| format!("systemctl restart failed: {e}"))?;
+            return Ok((true, None));
+        }
         if !path.is_file() {
             return Err(format!("{} is not installed", path.display()));
         }
@@ -494,6 +529,7 @@ mod tests {
 
     /// The restart program survives the agent: no kill on drop, its own process group. Live check:
     /// "restart agent" from the console on an installed agent; the service is running again.
+    #[cfg(windows)]
     #[cfg(windows)]
     #[tokio::test]
     async fn restart_program_outlives_the_agent() {

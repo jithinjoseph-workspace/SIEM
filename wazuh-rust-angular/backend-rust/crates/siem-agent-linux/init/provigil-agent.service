@@ -1,0 +1,22 @@
+[Unit]
+Description=ProVigil Linux Endpoint Security Agent
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/provigil-agent
+EnvironmentFile=-/opt/provigil-agent/etc/agent.env
+ExecStart=/opt/provigil-agent/bin/provigil-agent-linux --run
+Restart=always
+RestartSec=10
+RestartPreventExitStatus=42
+KillMode=process
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

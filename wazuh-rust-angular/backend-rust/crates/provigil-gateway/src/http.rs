@@ -90,7 +90,7 @@ fn head<'a>(h: &'a HeaderMap, k: &str) -> Option<&'a str> {
     h.get(k).and_then(|v| v.to_str().ok())
 }
 
-/// The agent's key: `Authorization: Bearer`, or `X-Agent-Key` from the Linux prototype.
+/// The agent's key: `Authorization: Bearer`, or `X-Agent-Key`.
 fn agent_key(h: &HeaderMap) -> Option<&str> {
     head(h, "authorization").and_then(|v| v.strip_prefix("Bearer ")).or(head(h, "x-agent-key"))
 }
@@ -444,10 +444,24 @@ fn first_file(paths: &[std::path::PathBuf]) -> std::path::PathBuf {
     paths.iter().find(|p| p.is_file()).unwrap_or(&paths[0]).clone()
 }
 
-/// `GET /downloads/siem-agent-linux` and `/downloads/install.sh`: the Linux deploy script's files.
+/// `GET /downloads/provigil-agent-linux`, `/downloads/siem-agent-linux`, and `/downloads/install.sh`:
+/// the Linux deploy script's files.
 async fn download_linux(State(gw): State<Arc<Gw>>, slot: Option<Extension<Arc<crate::limits::Slot>>>) -> Response {
-    let path = first_file(&[gw.s.dist.join("linux").join("siem-agent-linux"), "target/release/siem-agent-linux".into(), "target/debug/siem-agent-linux".into()]);
-    send_file(path, "siem-agent-linux", slot).await
+    let path = first_file(&[
+        gw.s.dist.join("linux").join("provigil-agent-linux"),
+        gw.s.dist.join("linux").join("provigil-agent"),
+        "target/x86_64-unknown-linux-gnu/release/provigil-agent".into(),
+        "target/x86_64-unknown-linux-gnu/debug/provigil-agent".into(),
+        gw.s.dist.join("linux").join("siem-agent-linux"),
+        "target/release/siem-agent-linux".into(),
+        "target/debug/siem-agent-linux".into(),
+    ]);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("provigil-agent-linux")
+        .to_string();
+    send_file(path, &name, slot).await
 }
 
 async fn download_install(State(gw): State<Arc<Gw>>, slot: Option<Extension<Arc<crate::limits::Slot>>>) -> Response {
@@ -486,9 +500,8 @@ pub fn app(gw: Arc<Gw>) -> Router {
         .route("/api/v1/agent/state", get(agent_state_route))
         .route("/api/v1/deploy/report", post(deploy_report))
         .route("/downloads/provigil-agent.exe", get(download_agent))
-        // agents set up before the ProVigil rename ask for the old name
-        .route("/downloads/wazuh-agent.exe", get(download_agent))
         .route("/downloads/windows/:file", get(download_windows))
+        .route("/downloads/provigil-agent-linux", get(download_linux))
         .route("/downloads/siem-agent-linux", get(download_linux))
         .route("/downloads/install.sh", get(download_install))
         .route("/downloads/sca/:file", get(download_sca))

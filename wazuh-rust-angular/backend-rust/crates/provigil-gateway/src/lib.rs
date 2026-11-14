@@ -154,10 +154,25 @@ async fn marks_loop(gw: Arc<Gw>, db: clickhouse::Client) {
 }
 
 async fn flush_keepalives(gw: &Gw) {
-    let seen = gw.agents.take_seen();
+    let (seen, meta) = gw.agents.take_seen_with_meta();
+    if seen.is_empty() && meta.is_empty() {
+        return;
+    }
+    let items: Vec<Value> = meta
+        .into_iter()
+        .map(|(id, ip, ver)| serde_json::json!({ "agent_id": id, "version": ver, "ip": ip }))
+        .collect();
     let n = seen.len() as u64;
-    agent_state::flush_seen(seen).await;
-    gw.stats.c.keepalive_rows_flushed.fetch_add(n, Relaxed);
+    if !seen.is_empty() {
+        agent_state::flush_seen(seen).await;
+        gw.stats.c.keepalive_rows_flushed.fetch_add(n, Relaxed);
+    }
+    if !gw.up.is_empty() && !items.is_empty() {
+        let up = gw.up.clone();
+        tokio::spawn(async move {
+            let _ = up.keepalives(&items).await;
+        });
+    }
 }
 
 async fn flush_loop(gw: Arc<Gw>) {

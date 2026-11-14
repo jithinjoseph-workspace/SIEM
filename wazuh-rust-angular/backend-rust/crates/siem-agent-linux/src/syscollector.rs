@@ -37,7 +37,7 @@ impl LinuxSyscollector {
         Self { _agent_id: agent_id }
     }
 
-    /// Gather full Linux system hardware and software inventory (mirroring syscollector)
+    /// Gather full Linux system hardware and software inventory.
     pub fn collect_inventory(&self) -> LinuxSystemInventory {
         let hostname = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("COMPUTERNAME"))

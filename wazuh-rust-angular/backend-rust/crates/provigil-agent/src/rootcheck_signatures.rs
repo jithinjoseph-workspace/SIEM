@@ -53,9 +53,15 @@ pub enum PolicyList {
 impl PolicyList {
     pub fn title(self) -> &'static str {
         match self {
+            #[cfg(windows)]
             PolicyList::Malware => "Windows Malware:",
+            #[cfg(not(windows))]
+            PolicyList::Malware => "System Malware:",
             PolicyList::Application => "Application Found:",
+            #[cfg(windows)]
             PolicyList::Audit => "Windows Audit:",
+            #[cfg(not(windows))]
+            PolicyList::Audit => "System Audit:",
         }
     }
 }
@@ -196,18 +202,28 @@ pub fn parse_policies(text: &str) -> Result<Vec<Policy>, String> {
 }
 
 pub fn builtin_files() -> Vec<FileSig> {
-    parse_files(FILES).expect("built-in files list")
+    #[cfg(windows)]
+    { parse_files(FILES).expect("built-in files list") }
+    #[cfg(not(windows))]
+    { parse_files(LINUX_FILES).expect("built-in linux files list") }
 }
 
 pub fn builtin_trojans() -> Vec<TrojanSig> {
-    parse_trojans(TROJANS).expect("built-in trojans list")
+    #[cfg(windows)]
+    { parse_trojans(TROJANS).expect("built-in trojans list") }
+    #[cfg(not(windows))]
+    { parse_trojans(LINUX_TROJANS).expect("built-in linux trojans list") }
 }
 
 pub fn builtin_policies() -> Vec<Policy> {
-    parse_policies(POLICIES).expect("built-in policies")
+    #[cfg(windows)]
+    { parse_policies(POLICIES).expect("built-in policies") }
+    #[cfg(not(windows))]
+    { parse_policies(LINUX_POLICIES).expect("built-in linux policies") }
 }
 
 /// Well-known Windows malware, hacktool and rootkit artefacts.
+#[cfg(any(windows, test))]
 pub const FILES: &str = r"
 # Credential theft tools
 *mimikatz.exe ; Mimikatz ; https://attack.mitre.org/software/S0002/
@@ -265,6 +281,7 @@ pub const FILES: &str = r"
 
 /// Tampered System32 programs. The `W\x00i\x00...` patterns are UTF-16 version-resource text
 /// (the program's description), so a program replaced by another one is recognised.
+#[cfg(any(windows, test))]
 pub const TROJANS: &str = r"
 %WINDIR%\System32\sethc.exe ; Sticky Keys replaced by the command prompt ; https://attack.mitre.org/techniques/T1546/008/ ; W\x00i\x00n\x00d\x00o\x00w\x00s\x00 \x00C\x00o\x00m\x00m\x00a\x00n\x00d\x00 \x00P\x00r\x00o\x00c\x00e\x00s\x00s\x00o\x00r\x00
 %WINDIR%\System32\utilman.exe ; Utility Manager replaced by the command prompt ; https://attack.mitre.org/techniques/T1546/008/ ; W\x00i\x00n\x00d\x00o\x00w\x00s\x00 \x00C\x00o\x00m\x00m\x00a\x00n\x00d\x00 \x00P\x00r\x00o\x00c\x00e\x00s\x00s\x00o\x00r\x00
@@ -285,6 +302,7 @@ pub const TROJANS: &str = r"
 ";
 
 /// Malware indicators, risky applications and hardening settings.
+#[cfg(any(windows, test))]
 pub const POLICIES: &str = r"
 # --- Windows Malware ---
 malware ; Mimikatz running ; any ; https://attack.mitre.org/software/S0002/
@@ -471,4 +489,107 @@ r:HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer -> AlwaysInstallElevated ->
 r:HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer -> AlwaysInstallElevated -> ^1$
 audit ; PowerShell script block logging not enabled ; all ; https://attack.mitre.org/techniques/T1059/001/
 !r:HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging -> EnableScriptBlockLogging -> ^1$
+";
+
+/// Well-known Linux rootkit and implant filesystem artefacts.
+pub const LINUX_FILES: &str = r"
+# Classic and kernel-level Linux rootkits
+/tmp/mcliZokhb ; Bash door rootkit ; https://attack.mitre.org/techniques/T1014/
+/tmp/mclzaKmfa ; Bash door rootkit ; https://attack.mitre.org/techniques/T1014/
+/dev/.shit/red.tgz ; Adore Worm rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/lib/libt ; Adore Worm rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/adore ; Adore rootkit binary ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/soucemask ; TRK rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/sourcemask ; TRK rootkit ; https://attack.mitre.org/techniques/T1014/
+/tmp/.../a ; 55808.A Worm ; https://attack.mitre.org/techniques/T1014/
+/tmp/.../r ; 55808.A Worm ; https://attack.mitre.org/techniques/T1014/
+/usr/lib/volc ; Volc rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/volc ; Volc rootkit ; https://attack.mitre.org/techniques/T1014/
+/lib/security/.config ; Illogic rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/sia ; Illogic rootkit ; https://attack.mitre.org/techniques/T1014/
+/etc/ld.so.hash ; Illogic rootkit hash table ; https://attack.mitre.org/techniques/T1014/
+/usr/src/.puta ; t0rn rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/info/.t0rn ; t0rn rootkit ; https://attack.mitre.org/techniques/T1014/
+/lib/ldlib.tk ; t0rn rootkit ; https://attack.mitre.org/techniques/T1014/
+/etc/ttyhash ; t0rn rootkit ; https://attack.mitre.org/techniques/T1014/
+/sbin/init.tk ; t0rn rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/xsf ; RK17 rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/xchk ; RK17 rootkit ; https://attack.mitre.org/techniques/T1014/
+/dev/tux ; T.R.K / Tuxkit rootkit ; https://attack.mitre.org/techniques/T1014/
+/usr/bin/.tux ; Tuxkit rootkit ; https://attack.mitre.org/techniques/T1014/
+/lib/libproc.a ; Lion Worm / t0rn library ; https://attack.mitre.org/techniques/T1014/
+/dev/.lib/lib/lib/t0rn ; t0rn rootkit v8 ; https://attack.mitre.org/techniques/T1014/
+/usr/include/file.h ; Rootkit file hiding header ; https://attack.mitre.org/techniques/T1014/
+/usr/include/proc.h ; Rootkit process hiding header ; https://attack.mitre.org/techniques/T1014/
+/dev/hda06 ; SuckIT / FuLin rootkit device ; https://attack.mitre.org/techniques/T1014/
+/sbin/in.telnetd ; Trojaned telnet daemon ; https://attack.mitre.org/techniques/T1014/
+/usr/lib/.fx ; Fu rootkit directory ; https://attack.mitre.org/techniques/T1014/
+/var/run/.pid ; Diamorphine / LKM hidden pid marker ; https://attack.mitre.org/techniques/T1014/
+/etc/cron.d/core ; Core rootkit cron persistence ; https://attack.mitre.org/techniques/T1053/003/
+/dev/shm/.x ; Shared-memory malware dropper ; https://attack.mitre.org/techniques/T1059/004/
+/tmp/.X11-unix/.k ; Hidden X11 socket malware dropper ; https://attack.mitre.org/techniques/T1564/001/
+/tmp/.ICE-unix/.k ; Hidden ICE socket malware dropper ; https://attack.mitre.org/techniques/T1564/001/
+/etc/init.d/.rcS ; Suspicious hidden SysV init script ; https://attack.mitre.org/techniques/T1037/004/
+/var/tmp/.cache.bin ; Suspicious hidden executable cache ; https://attack.mitre.org/techniques/T1564/001/
+";
+
+/// ELF trojan signatures (avoid generic OS strings to prevent false positives).
+pub const LINUX_TROJANS: &str = r"
+/bin/ls ; ls trojaned with rootkit signature ; https://attack.mitre.org/techniques/T1014/ ; duarawkz|file\.h|proc\.h|UPX0\x00\x00\x00\x00
+/usr/bin/ls ; ls trojaned with rootkit signature ; https://attack.mitre.org/techniques/T1014/ ; duarawkz|file\.h|proc\.h|UPX0\x00\x00\x00\x00
+/bin/ps ; ps trojaned with process-hiding rootkit ; https://attack.mitre.org/techniques/T1014/ ; proc\.h|dev/ttyo|duarawkz|UPX0\x00\x00\x00\x00
+/usr/bin/ps ; ps trojaned with process-hiding rootkit ; https://attack.mitre.org/techniques/T1014/ ; proc\.h|dev/ttyo|duarawkz|UPX0\x00\x00\x00\x00
+/bin/netstat ; netstat trojaned with socket-hiding rootkit ; https://attack.mitre.org/techniques/T1014/ ; proc\.h|/dev/tux|libshow\.so|UPX0\x00\x00\x00\x00
+/usr/bin/netstat ; netstat trojaned with socket-hiding rootkit ; https://attack.mitre.org/techniques/T1014/ ; proc\.h|/dev/tux|libshow\.so|UPX0\x00\x00\x00\x00
+/bin/login ; login trojaned with backdoor credentials ; https://attack.mitre.org/techniques/T1556/ ; SucKIT|xlogin|vejeta|porcao|lets_log|sukasuk
+/usr/bin/login ; login trojaned with backdoor credentials ; https://attack.mitre.org/techniques/T1556/ ; SucKIT|xlogin|vejeta|porcao|lets_log|sukasuk
+/bin/su ; su trojaned with rootkit signature ; https://attack.mitre.org/techniques/T1548/003/ ; satori|vejeta|conf\.inv
+/usr/bin/su ; su trojaned with rootkit signature ; https://attack.mitre.org/techniques/T1548/003/ ; satori|vejeta|conf\.inv
+/usr/bin/sudo ; sudo trojaned with rootkit signature ; https://attack.mitre.org/techniques/T1548/003/ ; satori|vejeta|conf\.inv
+/usr/sbin/sshd ; sshd carrying trojan/miner payload ; https://attack.mitre.org/techniques/T1014/ ; SucKIT|stratum\+tcp://|libshow\.so|UPX0\x00\x00\x00\x00
+/usr/bin/ldd ; ldd referencing rootkit preload libraries ; https://attack.mitre.org/techniques/T1574/006/ ; libshow\.so|libproc\.a
+/sbin/ifconfig ; ifconfig trojaned with sniffing/hiding code ; https://attack.mitre.org/techniques/T1014/ ; /dev/tux|session\.null
+";
+
+/// Linux malware indicators, risky applications, and system audit policies.
+pub const LINUX_POLICIES: &str = r"
+# --- Linux Malware ---
+malware ; XMRig cryptominer running ; any ; https://attack.mitre.org/techniques/T1496/
+p:xmrig
+p:r:^(xmr-stak|minerd|cpuminer|kthreaddi|kinsing|kdevtmpfsi)$
+malware ; Known Linux cryptominer or botnet payload present ; any ; https://attack.mitre.org/techniques/T1496/
+f:/tmp/kdevtmpfsi
+f:/var/tmp/kinsing
+f:/tmp/.kinsing
+malware ; BPFdoor / passive backdoor running ; any ; https://attack.mitre.org/techniques/T1205/002/
+p:r:^(bpfdoor|hpasmmld|kdmtmpfs)$
+malware ; Reverse-shell / C2 implant process running ; any ; https://attack.mitre.org/techniques/T1059/004/
+p:r:^(sliver-implant|meterpreter|chisel|ligolo|gs-netcat)$
+malware ; Suspicious LD_PRELOAD configuration exists ; all ; https://attack.mitre.org/techniques/T1574/006/
+f:/etc/ld.so.preload -> \S
+
+# --- Applications ---
+application ; Packet sniffer running ; any ; https://attack.mitre.org/techniques/T1040/
+p:r:^(tcpdump|tshark|wireshark|dumpcap|ettercap|bettercap)$
+application ; Network scanner running ; any ; https://attack.mitre.org/techniques/T1046/
+p:r:^(nmap|masscan|zmap)$
+application ; Netcat / tunneling utility present ; any ; https://attack.mitre.org/techniques/T1090/
+f:/usr/bin/ncat
+f:/usr/bin/socat
+
+# --- System Audit ---
+audit ; SSH root login permitted ; all ; https://attack.mitre.org/techniques/T1078/
+f:/etc/ssh/sshd_config -> (?m)^\s*PermitRootLogin\s+(yes|without-password|prohibit-password)
+audit ; SSH empty passwords permitted ; all ; https://attack.mitre.org/techniques/T1078/
+f:/etc/ssh/sshd_config -> (?m)^\s*PermitEmptyPasswords\s+yes
+audit ; SSH password authentication explicitly enabled ; all ; https://attack.mitre.org/techniques/T1078/
+f:/etc/ssh/sshd_config -> (?m)^\s*PasswordAuthentication\s+yes
+audit ; SSH HostbasedAuthentication or IgnoreRhosts weakened ; any ; https://attack.mitre.org/techniques/T1078/
+f:/etc/ssh/sshd_config -> (?m)^\s*HostbasedAuthentication\s+yes
+f:/etc/ssh/sshd_config -> (?m)^\s*IgnoreRhosts\s+no
+audit ; Legacy insecure inetd/xinetd/telnet configuration present ; any ; https://attack.mitre.org/techniques/T1021/
+f:/etc/inetd.conf -> (?m)^(telnet|rsh|rlogin|tftp)
+f:/etc/hosts.equiv -> \S
+audit ; Core dumps not restricted in limits.conf ; all ; https://www.cisecurity.org/benchmark/distribution_independent_linux
+f:/etc/security/limits.conf -> (?m)^\*\s+soft\s+core\s+[1-9]
 ";

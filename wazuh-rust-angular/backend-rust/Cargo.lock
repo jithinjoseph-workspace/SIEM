@@ -2828,6 +2828,7 @@ dependencies = [
  "chrono",
  "flate2",
  "hyper-util",
+ "libc",
  "md-5",
  "provigil-collect",
  "provigil-common",
@@ -4109,7 +4110,7 @@ dependencies = [
 
 [[package]]
 name = "siem-agent-linux"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "hex",

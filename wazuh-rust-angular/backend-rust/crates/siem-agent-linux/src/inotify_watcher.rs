@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+#[cfg(target_os = "linux")]
+use tracing::debug;
+use tracing::info;
 
 /// File Integrity Monitoring event action type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,7 +127,7 @@ impl LinuxInotifyWatcher {
         }
 
         info!(
-            "wazuh-syscheckd: inotify recursive watch established on '{}' ({} nested directories tracked)",
+            "provigil-syscheckd: inotify recursive watch established on '{}' ({} nested directories tracked)",
             root.display(),
             count
         );
@@ -159,9 +161,9 @@ impl LinuxInotifyWatcher {
                 let pb = path.to_path_buf();
                 self.wd_to_path.insert(wd, pb.clone());
                 self.path_to_wd.insert(pb, wd);
-                debug!("wazuh-syscheckd: inotify added watch [wd={}] for '{}'", wd, path.display());
+                debug!("provigil-syscheckd: inotify added watch [wd={}] for '{}'", wd, path.display());
             } else {
-                debug!("wazuh-syscheckd: Could not attach inotify watch to '{}': {}", path.display(), std::io::Error::last_os_error());
+                debug!("provigil-syscheckd: Could not attach inotify watch to '{}': {}", path.display(), std::io::Error::last_os_error());
             }
         }
         #[cfg(not(target_os = "linux"))]
@@ -219,7 +221,7 @@ impl LinuxInotifyWatcher {
 
                 // If a new directory is created inside any watched path, automatically watch it!
                 if is_dir && ((mask & libc::IN_CREATE) != 0 || (mask & libc::IN_MOVED_TO) != 0) {
-                    info!("wazuh-syscheckd: Dynamic subfolder creation detected. Watching '{}' recursively.", target_path.display());
+                    info!("provigil-syscheckd: Dynamic subfolder creation detected. Watching '{}' recursively.", target_path.display());
                     self.watch_tree(&target_path);
                 }
 

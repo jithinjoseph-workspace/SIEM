@@ -210,8 +210,26 @@ impl Agents {
 
     /// What the flush writes: agent number -> version, for those heard from since the last one.
     pub fn take_seen(&self) -> BTreeMap<u32, Option<String>> {
+        self.take_seen_with_meta().0
+    }
+
+    /// Like [`Self::take_seen`], also returning `(raw_id, ip, version)` per agent for API keepalive sync.
+    pub fn take_seen_with_meta(&self) -> (BTreeMap<u32, Option<String>>, Vec<(String, String, Option<String>)>) {
         let all: Vec<_> = self.map.read().unwrap().values().cloned().collect();
-        all.iter().filter(|a| a.seen.swap(false, Relaxed)).filter_map(|a| Some((a.id.parse().ok()?, a.version.lock().unwrap().clone()))).collect()
+        let mut by_num = BTreeMap::new();
+        let mut meta = Vec::new();
+        for a in all {
+            if !a.seen.swap(false, Relaxed) {
+                continue;
+            }
+            let ver = a.version.lock().unwrap().clone();
+            let ip = a.ip.lock().unwrap().clone();
+            if let Ok(n) = a.id.parse::<u32>() {
+                by_num.insert(n, ver.clone());
+            }
+            meta.push((a.id.clone(), ip, ver));
+        }
+        (by_num, meta)
     }
 
     /// One page of `/state/agents`: agents after `last`, by id.

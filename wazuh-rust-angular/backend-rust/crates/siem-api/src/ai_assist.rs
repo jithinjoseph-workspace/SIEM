@@ -73,8 +73,8 @@ fn ai_off() -> (StatusCode, String) {
     (StatusCode::FORBIDDEN, "AI is switched off for this tenant".into())
 }
 
-const CHAT_SYSTEM: &str = "You are the SOC assistant of a Wazuh-based SIEM. You help security analysts triage alerts, \
-understand Windows and Linux logs, write Wazuh decoders and rules, and plan defensive investigation and remediation. \
+const CHAT_SYSTEM: &str = "You are the SOC assistant of ProVigil SIEM. You help security analysts triage alerts, \
+understand Windows and Linux logs, write detection decoders and rules, and plan defensive investigation and remediation. \
 Be concise and technical; put commands and rules in code blocks. Only suggest defensive actions. \
 When you use the tenant summary below, say so; do not invent alerts, hosts or numbers that are not in it.";
 
@@ -107,7 +107,7 @@ pub async fn chat(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     }
 }
 
-const ANALYZE_SYSTEM: &str = r#"You are a Tier-3 SOC and detection engineer analyzing one event or alert from a Wazuh SIEM.
+const ANALYZE_SYSTEM: &str = r#"You are a Tier-3 SOC and detection engineer analyzing one event or alert from ProVigil SIEM.
 Output ONLY a JSON object, no markdown fences, with exactly these keys:
 {
   "classification": "Benign Administrative Activity | Suspicious Activity | High-Severity Threat",

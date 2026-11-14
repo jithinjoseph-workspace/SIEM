@@ -750,10 +750,10 @@ impl AgentTransport {
         let r = link.keepalive(&payload).await;
         self.done(m, grpc, &r).await;
         match &r {
-            Err(Fail::Status(401 | 404 | 410, _)) => {
+            Err(Fail::Status(401 | 404, _)) => {
                 self.refused.fetch_add(1, Ordering::SeqCst);
             }
-            Err(Fail::Down(_)) => {}
+            Err(Fail::Down(_)) | Err(Fail::Status(403 | 410, _)) => {}
             _ => self.refused.store(0, Ordering::SeqCst),
         }
         let commands = r.map_err(|e| format!("Heartbeat failed: {e}"))?;

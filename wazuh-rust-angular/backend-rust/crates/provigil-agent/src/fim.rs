@@ -510,9 +510,80 @@ pub fn read_file(path: &Path) -> Option<FileMetadata> {
         .unwrap_or(0);
     #[cfg(windows)]
     let ((owner, owner_sid, permissions), attributes) = (win::security(path), win::attribute_names(&meta));
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    let ((owner, owner_sid, permissions), attributes) = unix::metadata(&meta);
+    #[cfg(not(any(windows, unix)))]
     let ((owner, owner_sid, permissions), attributes) = (Default::default(), String::new());
+    let _ = path;
     Some(FileMetadata { size_bytes: meta.len(), sha256, modified_timestamp, md5, sha1, owner, owner_sid, permissions, attributes })
+}
+
+#[cfg(any(unix, test))]
+pub(crate) fn format_posix_mode(mode: u32) -> String {
+    let bit = |mask: u32, ch: char| if (mode & mask) != 0 { ch } else { '-' };
+    let exec_special = |exec: u32, spec: u32, low: char, high: char| match ((mode & exec) != 0, (mode & spec) != 0) {
+        (true, true) => low,
+        (false, true) => high,
+        (true, false) => 'x',
+        (false, false) => '-',
+    };
+    let mut s = String::with_capacity(9);
+    s.push(bit(0o400, 'r'));
+    s.push(bit(0o200, 'w'));
+    s.push(exec_special(0o100, 0o4000, 's', 'S'));
+    s.push(bit(0o040, 'r'));
+    s.push(bit(0o020, 'w'));
+    s.push(exec_special(0o010, 0o2000, 's', 'S'));
+    s.push(bit(0o004, 'r'));
+    s.push(bit(0o002, 'w'));
+    s.push(exec_special(0o001, 0o1000, 't', 'T'));
+    s
+}
+
+#[cfg(unix)]
+mod unix {
+    use super::format_posix_mode;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::os::unix::fs::MetadataExt;
+    use std::sync::OnceLock;
+
+    fn passwd_users() -> &'static HashMap<u32, String> {
+        static USERS: OnceLock<HashMap<u32, String>> = OnceLock::new();
+        USERS.get_or_init(|| {
+            let mut m = HashMap::new();
+            if let Ok(text) = fs::read_to_string("/etc/passwd") {
+                for line in text.lines() {
+                    let mut p = line.split(':');
+                    if let (Some(name), Some(_pw), Some(uid)) = (p.next(), p.next(), p.next()) {
+                        if let Ok(u) = uid.parse::<u32>() {
+                            m.entry(u).or_insert_with(|| name.to_string());
+                        }
+                    }
+                }
+            }
+            m
+        })
+    }
+
+    pub(super) fn metadata(meta: &fs::Metadata) -> ((String, String, String), String) {
+        let uid = meta.uid();
+        let owner_sid = uid.to_string();
+        let owner = passwd_users().get(&uid).cloned().unwrap_or_else(|| owner_sid.clone());
+        let mode = meta.mode();
+        let permissions = format_posix_mode(mode);
+        let mut attrs = Vec::new();
+        if (mode & 0o222) == 0 {
+            attrs.push("READONLY");
+        }
+        if (mode & 0o4000) != 0 {
+            attrs.push("SUID");
+        }
+        if (mode & 0o2000) != 0 {
+            attrs.push("SGID");
+        }
+        ((owner, owner_sid, permissions), attrs.join(","))
+    }
 }
 
 #[cfg(windows)]
@@ -1110,5 +1181,12 @@ mod tests {
         RUN.store(false, Ordering::SeqCst);
         send.join().unwrap();
         assert!(!state_sent(&synced, "files", "7"));
+    }
+
+    #[test]
+    fn posix_mode_formats_rwx_and_special_bits() {
+        assert_eq!(format_posix_mode(0o100644), "rw-r--r--");
+        assert_eq!(format_posix_mode(0o104755), "rwsr-xr-x");
+        assert_eq!(format_posix_mode(0o041777), "rwxrwxrwt");
     }
 }

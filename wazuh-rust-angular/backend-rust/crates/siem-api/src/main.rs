@@ -940,7 +940,11 @@ async fn main() {
                 state.risk_fabric.clone(),
                 alerts_reader.clone(),
                 Some(rich_fleet_reader.clone()),
-            ),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                scope_risk_fabric_summary_middleware,
+            )),
         )
         .nest_service(
             "/api/v1/intent",
@@ -964,6 +968,9 @@ async fn main() {
         .route("/api/v1/alerts", get(get_alerts))
         .route("/api/v1/agents", get(get_agents))
         .route("/api/v1/agents/:id", delete(delete_agent_handler))
+        .route("/api/v1/agents/:id/keepalive", post(api_agent_keepalive_handler))
+        .route("/api/v1/events/ingest", post(api_events_ingest_handler))
+        .route("/api/events/ingest", post(api_events_ingest_handler))
         .route("/api/agents/:id", delete(delete_agent_handler))
         .route("/agents", delete(delete_agents_provigil_handler))
         .route("/api/v1/events", get(get_events))
@@ -1252,12 +1259,8 @@ async fn main() {
             "/downloads/provigil-agent.exe",
             get(|| download_windows_binary("provigil-agent.exe".to_string())),
         )
-        // agents set up before the ProVigil rename ask for the old name
-        .route(
-            "/downloads/wazuh-agent.exe",
-            get(|| download_windows_binary("provigil-agent.exe".to_string())),
-        )
         .route("/downloads/windows/:file", get(download_windows_file))
+        .route("/downloads/provigil-agent-linux", get(download_linux_agent))
         .route("/downloads/siem-agent-linux", get(download_linux_agent))
         .route("/downloads/install.sh", get(download_install_script))
         .route("/downloads/sca/:file", get(download_sca_file))
@@ -1809,6 +1812,22 @@ pub fn keep_events(state: &AppState, events: impl IntoIterator<Item = RawEvent>)
     trim(&mut l, MEM_EVENTS);
 }
 
+/// Injects caller tenant-scoped alerts for Risk Fabric summary requests.
+async fn scope_risk_fabric_summary_middleware(
+    State(state): State<AppState>,
+    mut req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if matches!(req.uri().path(), "/summary" | "/api/v1/risk-fabric/summary") {
+        if let Some(ctx) = req.extensions().get::<tenancy::AuthCtx>().cloned() {
+            let alerts = scoped_alerts(&state, &ctx);
+            req.extensions_mut()
+                .insert(siem_risk_fabric::api::ScopedAlerts(alerts));
+        }
+    }
+    next.run(req).await
+}
+
 /// Alerts visible in the caller's tenant scope (oldest first).
 fn scoped_alerts(state: &AppState, ctx: &AuthCtx) -> Vec<Alert> {
     let scope = ctx.scope();
@@ -2321,8 +2340,58 @@ fn parse_agent_telemetry_to_raw_event(
     })
 }
 
+async fn api_events_ingest_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    match ingest_batch(&state, &headers, payload).await {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response(),
+        Err(code) => code.into_response(),
+    }
+}
+
+async fn api_agent_keepalive_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let tenant = match resolve_agent_tenant(&state, &headers, &agent_id) {
+        Ok(t) => t,
+        Err(code) => return code.into_response(),
+    };
+    let now = Utc::now();
+    let ag_clone = {
+        let mut agents = state.agents.write().unwrap();
+        let ag = agents.entry(agent_id.clone()).or_insert_with(|| {
+            let host = body.get("agent_name").and_then(serde_json::Value::as_str).unwrap_or("linux-node").to_string();
+            let ip = body.get("agent_ip").and_then(serde_json::Value::as_str).unwrap_or("127.0.0.1").to_string();
+            Agent {
+                id: agent_id.clone(),
+                name: host,
+                ip,
+                os: "Linux".into(),
+                version: "4.14.7".into(),
+                status: AgentStatus::Active,
+                last_keepalive: now,
+                os_type: "linux".into(),
+            }
+        });
+        ag.last_keepalive = now;
+        ag.status = AgentStatus::Active;
+        if let Some(ip) = body.get("agent_ip").and_then(serde_json::Value::as_str) {
+            ag.ip = ip.to_string();
+        }
+        ag.clone()
+    };
+    state.db.save_agent_row(&tenant, &ag_clone);
+    provigil_manager::update_agent_keepalive(&agent_id, "active").await;
+    (StatusCode::OK, Json(serde_json::json!({ "status": "acknowledged", "commands": [] }))).into_response()
+}
+
 /// The events of one agent provigil-gateway passes on (`gateway_api`): everything it does not
-/// hand to the engine or provigil-db itself (agent status, upgrade notices, the Linux prototype's
+/// hand to the engine or provigil-db itself (agent status, upgrade notices, Linux agent
 /// events, inventories for the event store), through the in-process rules and the event store.
 pub(crate) async fn ingest_batch(
     state: &AppState,
@@ -3131,7 +3200,7 @@ async fn download_agent() -> Result<impl IntoResponse, StatusCode> {
 }
 
 /// `GET /downloads/windows/:file`: the Windows agent package
-/// (`wazuh-agent.exe` and the files installed next to it).
+/// (`provigil-agent.exe` and the files installed next to it).
 async fn download_windows_file(
     Path(file): Path<String>,
     Query(q): Query<HashMap<String, String>>,
@@ -3174,23 +3243,29 @@ async fn download_windows_binary(file: String) -> Result<impl IntoResponse, Stat
 
 async fn download_linux_agent() -> Result<impl IntoResponse, StatusCode> {
     let possible_paths = [
-        "data/agent-dist/linux/siem-agent-linux",
-        "backend-rust/data/agent-dist/linux/siem-agent-linux",
-        "target/release/siem-agent-linux",
-        "backend-rust/target/release/siem-agent-linux",
-        "target/debug/siem-agent-linux",
-        "backend-rust/target/debug/siem-agent-linux",
+        ("data/agent-dist/linux/provigil-agent-linux", "provigil-agent-linux"),
+        ("backend-rust/data/agent-dist/linux/provigil-agent-linux", "provigil-agent-linux"),
+        ("data/agent-dist/linux/provigil-agent", "provigil-agent-linux"),
+        ("backend-rust/data/agent-dist/linux/provigil-agent", "provigil-agent-linux"),
+        ("target/x86_64-unknown-linux-gnu/release/provigil-agent", "provigil-agent-linux"),
+        ("backend-rust/target/x86_64-unknown-linux-gnu/release/provigil-agent", "provigil-agent-linux"),
+        ("target/x86_64-unknown-linux-gnu/debug/provigil-agent", "provigil-agent-linux"),
+        ("backend-rust/target/x86_64-unknown-linux-gnu/debug/provigil-agent", "provigil-agent-linux"),
+        ("data/agent-dist/linux/siem-agent-linux", "siem-agent-linux"),
+        ("backend-rust/data/agent-dist/linux/siem-agent-linux", "siem-agent-linux"),
+        ("target/release/siem-agent-linux", "siem-agent-linux"),
+        ("backend-rust/target/release/siem-agent-linux", "siem-agent-linux"),
+        ("target/debug/siem-agent-linux", "siem-agent-linux"),
+        ("backend-rust/target/debug/siem-agent-linux", "siem-agent-linux"),
     ];
 
-    for path in possible_paths {
+    for (path, filename) in possible_paths {
         if let Ok(bytes) = tokio::fs::read(path).await {
+            let disposition = format!("attachment; filename=\"{filename}\"");
             return Ok((
                 [
-                    (header::CONTENT_TYPE, "application/octet-stream"),
-                    (
-                        header::CONTENT_DISPOSITION,
-                        "attachment; filename=\"siem-agent-linux\"",
-                    ),
+                    (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+                    (header::CONTENT_DISPOSITION, disposition),
                 ],
                 bytes,
             ));
@@ -6128,12 +6203,22 @@ pub(crate) async fn enroll_agent(
     }
 
     // Persist to ClickHouse database for this tenant
+    let initial_os = match payload
+        .os_type
+        .as_deref()
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("linux") => "Linux / Registered",
+        Some("macos") | Some("darwin") => "macOS / Registered",
+        _ => "Windows / Registered",
+    };
     let agent_to_save = Agent {
         id: agent_id.clone(),
         name: name.clone(),
         ip: client_key.ip.clone(),
         status: AgentStatus::Active,
-        os: "Windows / Registered".to_string(),
+        os: initial_os.to_string(),
         version: "v4.14.7".to_string(),
         last_keepalive: Utc::now(),
         os_type: payload
@@ -6281,7 +6366,8 @@ async fn post_agent_upgrade_handler(
     };
     // a ProVigil agent (HTTPS) upgrades itself from the published package
     if provigil_manager::is_http_agent(&agent_id) {
-        return match provigil_manager::queue_http_upgrade(&agent_id) {
+        let is_windows = agent_is_windows(&state, &agent_id);
+        return match provigil_manager::queue_http_upgrade(&agent_id, is_windows) {
             Ok(sha) => Json(serde_json::json!({ "status": "queued", "message": "Upgrade sent with the next keepalive", "sha256": sha })).into_response(),
             Err(e) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
         };
@@ -6562,6 +6648,7 @@ async fn deactivate_agent_handler(
     };
     state.agents.write().unwrap().remove(&id);
     state.db.delete_agent(&ctx.scope(), &id).await;
+    provigil_manager::update_agent_keepalive(&id, "disconnected").await;
     // The agent stops on its next command poll (or on its next upload: 410).
     let cmd = serde_json::json!({
         "command_id": format!("deactivate-{}", uuid::Uuid::new_v4()),
@@ -6598,26 +6685,58 @@ async fn activate_agent_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "status": "error", "message": "No deactivated agent with this id" }))).into_response();
     }
     let entry = set_agent_disabled(&state, &id, false);
-    if let Some(e) = entry {
-        state
-            .agents
-            .write()
-            .unwrap()
-            .entry(id.clone())
-            .or_insert_with(|| Agent {
-                id: id.clone(),
-                name: e.name.clone(),
-                ip: "any".into(),
-                os: "Reactivated".into(),
-                version: "v4.14.7".into(),
-                status: AgentStatus::Pending,
-                last_keepalive: Utc::now(),
-                os_type: if e.os_type.is_empty() {
-                    "linux".into()
+    // Discard any unconsumed "deactivate" commands so a restarting agent does not re-pause itself.
+    let cleared_deactivates: Vec<serde_json::Value> = {
+        let mut map = state.pending_commands.write().unwrap();
+        let mut removed = Vec::new();
+        if let Some(cmds) = map.get_mut(&id) {
+            let mut kept = Vec::with_capacity(cmds.len());
+            for c in cmds.drain(..) {
+                if c.get("action").and_then(|v| v.as_str()) == Some("deactivate") {
+                    removed.push(c);
                 } else {
-                    e.os_type.clone()
-                },
-            });
+                    kept.push(c);
+                }
+            }
+            *cmds = kept;
+        }
+        removed
+    };
+    if !cleared_deactivates.is_empty() {
+        persist::save_commands(&state, &id, &cleared_deactivates, true).await;
+    }
+    if let Some(e) = entry {
+        let now = Utc::now();
+        let restored = {
+            let mut agents = state.agents.write().unwrap();
+            let a = agents
+                .entry(id.clone())
+                .and_modify(|ag| {
+                    ag.name = e.name.clone();
+                    ag.status = AgentStatus::Active;
+                    ag.last_keepalive = now;
+                    if !e.os_type.is_empty() {
+                        ag.os_type = e.os_type.clone();
+                    }
+                })
+                .or_insert_with(|| Agent {
+                    id: id.clone(),
+                    name: e.name.clone(),
+                    ip: "any".into(),
+                    os: "Reactivated".into(),
+                    version: "1.0.0".into(),
+                    status: AgentStatus::Active,
+                    last_keepalive: now,
+                    os_type: if e.os_type.is_empty() {
+                        "linux".into()
+                    } else {
+                        e.os_type.clone()
+                    },
+                });
+            a.clone()
+        };
+        state.db.insert_or_update_agent(&ctx.scope(), &restored).await;
+        provigil_manager::update_agent_keepalive(&id, "active").await;
         info!(
             "Agent {} ('{}') reactivated in tenant {} by {}",
             id,

@@ -6,12 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
 
-/// Wazuh Rootcheck Engine
-/// Mirrors official Wazuh rootcheck subsystem:
-/// - check_rc_dev.c: scans /dev and /dev/shm for hidden files & unauthorized devices
-/// - check_rc_if.c: detects promiscuous network interfaces (sniffers)
-/// - check_rc_pids.c: detects hidden processes
-/// - check_rc_trojans.c: detects trojanized system binaries (/bin/ps, /bin/netstat, /bin/ls)
+/// ProVigil Linux Rootcheck Engine
+/// Scans `/dev` and `/dev/shm`, detects promiscuous interfaces, checks core system binaries, and inspects `/tmp`.
 pub struct RootcheckEngine {
     agent_id: String,
 }
@@ -21,28 +17,21 @@ impl RootcheckEngine {
         Self { agent_id }
     }
 
-    /// Run full rootcheck scan across the Linux system
+    /// Run rootcheck anomaly scan across the Linux host.
     pub async fn run_scan(&self, buffer: &AgentBuffer) {
-        info!("wazuh-rootcheck: Starting rootkit anomaly and hidden threat scan...");
+        info!("provigil-rootcheck: Starting rootkit anomaly and hidden threat scan...");
 
         let mut issues_found = 0;
 
-        // 1. Scan /dev and /dev/shm for hidden files (mirroring check_rc_dev.c)
         issues_found += self.scan_dev_shm(buffer).await;
-
-        // 2. Check network interfaces for promiscuous mode (mirroring check_rc_if.c)
         issues_found += self.check_promiscuous_interfaces(buffer).await;
-
-        // 3. Check for trojanized core system binaries (mirroring check_rc_trojans.c)
         issues_found += self.check_trojans(buffer).await;
-
-        // 4. Scan /tmp for hidden executables and backdoors
         issues_found += self.scan_tmp_hidden(buffer).await;
 
         if issues_found == 0 {
-            info!("wazuh-rootcheck: Scan completed. System clean. No rootkits, sniffers, or trojans detected.");
+            info!("provigil-rootcheck: Scan completed. System clean. No rootkits, sniffers, or trojans detected.");
         } else {
-            warn!("wazuh-rootcheck: Scan completed. Flagged {} potential rootkit anomalies!", issues_found);
+            warn!("provigil-rootcheck: Scan completed. Flagged {} potential rootkit anomalies!", issues_found);
         }
     }
 

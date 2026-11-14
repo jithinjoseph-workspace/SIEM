@@ -35,7 +35,7 @@ pub fn parse_notifications(buf: &[u8]) -> Vec<(u32, String)> {
     out
 }
 
-/// One watch thread per folder; non-Windows starts nothing.
+/// One watch thread per folder; real-time watchers run on Windows (`ReadDirectoryChangesW`) and Linux (`inotify`).
 pub fn spawn(
     folders: &[PathBuf],
     fim: Arc<Mutex<FimScanner>>,
@@ -55,13 +55,264 @@ pub fn spawn(
             })
             .collect()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        folders
+            .iter()
+            .filter_map(|root| {
+                let (root, fim, buffer, agent) = (root.clone(), fim.clone(), buffer.clone(), agent.clone());
+                crate::thread(format!("realtime {}", root.display()), move || linux::run(root, fim, buffer, agent, running))
+                    .map_err(|e| tracing::error!(error = %e, "Real-time inotify watch thread not started"))
+                    .ok()
+            })
+            .collect()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         if !folders.is_empty() {
-            tracing::warn!("Real-time file monitoring needs Windows; those folders are scanned on schedule only");
+            tracing::warn!("Real-time file monitoring is unavailable on this OS; those folders are scanned on schedule only");
         }
         let _ = (fim, buffer, agent, running);
         Vec::new()
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug, PartialEq)]
+struct InotifyRecord {
+    wd: i32,
+    mask: u32,
+    name: String,
+}
+
+#[cfg(any(target_os = "linux", test))]
+const IN_ISDIR_FLAG: u32 = 0x4000_0000;
+#[cfg(any(target_os = "linux", test))]
+const IN_CREATE_FLAG: u32 = 0x0000_0100;
+#[cfg(any(target_os = "linux", test))]
+const IN_MOVED_TO_FLAG: u32 = 0x0000_0080;
+#[cfg(any(target_os = "linux", test))]
+const IN_Q_OVERFLOW_FLAG: u32 = 0x0000_4000;
+
+/// Decode Linux kernel `struct inotify_event` stream (`wd: i32, mask: u32, cookie: u32, len: u32, name: [u8; len]`).
+#[cfg(any(target_os = "linux", test))]
+fn parse_inotify_buffer(buf: &[u8]) -> Vec<InotifyRecord> {
+    let mut out = Vec::new();
+    let mut off = 0usize;
+    while off + 16 <= buf.len() {
+        let wd = i32::from_ne_bytes(buf[off..off + 4].try_into().unwrap());
+        let mask = u32::from_ne_bytes(buf[off + 4..off + 8].try_into().unwrap());
+        let name_len = u32::from_ne_bytes(buf[off + 12..off + 16].try_into().unwrap()) as usize;
+        off += 16;
+        let end = off.saturating_add(name_len).min(buf.len());
+        let raw_name = &buf[off..end];
+        let nul = raw_name.iter().position(|&b| b == 0).unwrap_or(raw_name.len());
+        let name = String::from_utf8_lossy(&raw_name[..nul]).into_owned();
+        out.push(InotifyRecord { wd, mask, name });
+        if off + name_len > buf.len() {
+            break;
+        }
+        off += name_len;
+    }
+    out
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use serde_json::Value;
+    use std::collections::HashMap;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+    use tracing::{info, warn};
+
+    const MERGE: Duration = Duration::from_secs(1);
+    const RETRY: Duration = Duration::from_secs(60);
+
+    const WATCH_MASK: u32 = libc::IN_CREATE
+        | libc::IN_MODIFY
+        | libc::IN_CLOSE_WRITE
+        | libc::IN_DELETE
+        | libc::IN_MOVED_FROM
+        | libc::IN_MOVED_TO
+        | libc::IN_ATTRIB
+        | libc::IN_DELETE_SELF
+        | libc::IN_MOVE_SELF;
+
+    struct InotifyWatch {
+        fd: i32,
+        wd_to_dir: HashMap<i32, PathBuf>,
+    }
+
+    impl Drop for InotifyWatch {
+        fn drop(&mut self) {
+            unsafe { libc::close(self.fd) };
+        }
+    }
+
+    impl InotifyWatch {
+        fn open(root: &Path) -> Result<Self, std::io::Error> {
+            let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+            if fd < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let mut w = Self { fd, wd_to_dir: HashMap::new() };
+            w.add_tree(root, 0)?;
+            Ok(w)
+        }
+
+        fn add_dir(&mut self, dir: &Path) -> bool {
+            let Ok(cpath) = CString::new(dir.as_os_str().as_bytes()) else { return false };
+            let wd = unsafe { libc::inotify_add_watch(self.fd, cpath.as_ptr(), WATCH_MASK) };
+            if wd >= 0 {
+                self.wd_to_dir.insert(wd, dir.to_path_buf());
+                true
+            } else {
+                false
+            }
+        }
+
+        fn add_tree(&mut self, dir: &Path, depth: usize) -> Result<(), std::io::Error> {
+            if !dir.is_dir() {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "folder missing"));
+            }
+            if !self.add_dir(dir) {
+                return Err(std::io::Error::last_os_error());
+            }
+            if depth >= 64 {
+                return Ok(());
+            }
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if let Ok(meta) = std::fs::symlink_metadata(&p) {
+                        if meta.is_dir() && !meta.file_type().is_symlink() {
+                            let _ = self.add_tree(&p, depth + 1);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn poll_read(&self, buf: &mut [u8], timeout_ms: i32) -> Option<Result<usize, std::io::Error>> {
+            let mut pfd = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
+            let rc = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+            if rc <= 0 {
+                return None;
+            }
+            let n = unsafe { libc::read(self.fd, buf.as_mut_ptr().cast(), buf.len()) };
+            if n < 0 {
+                let err = std::io::Error::last_os_error();
+                if err.kind() == std::io::ErrorKind::WouldBlock {
+                    None
+                } else {
+                    Some(Err(err))
+                }
+            } else {
+                Some(Ok(n as usize))
+            }
+        }
+    }
+
+    pub(super) fn run(
+        root: PathBuf,
+        fim: Arc<Mutex<FimScanner>>,
+        buffer: Arc<EventBuffer>,
+        agent: (String, String),
+        running: fn() -> bool,
+    ) {
+        let recheck = |paths: &[PathBuf]| {
+            let mut events: Vec<Value> = Vec::new();
+            {
+                let mut f = fim.lock().unwrap_or_else(|e| e.into_inner());
+                for p in paths {
+                    events.extend(f.recheck(p, true, None, &agent.0, &agent.1));
+                }
+            }
+            events.into_iter().for_each(|e| buffer.push(e));
+        };
+
+        let (mut warned, mut resync) = (false, false);
+        let mut buf = vec![0u8; 64 * 1024];
+        while running() {
+            let mut w = match InotifyWatch::open(&root) {
+                Ok(w) => w,
+                Err(e) => {
+                    if !warned {
+                        warn!(folder = %root.display(), error = %e, "Real-time inotify watch not open; trying again every 60 s");
+                        warned = true;
+                    }
+                    resync = true;
+                    crate::nap(RETRY, running);
+                    continue;
+                }
+            };
+            info!(folder = %root.display(), watches = w.wd_to_dir.len(), "Real-time inotify watch started");
+            warned = false;
+            if std::mem::take(&mut resync) {
+                recheck(std::slice::from_ref(&root));
+            }
+            let mut pending: HashMap<PathBuf, Instant> = HashMap::new();
+            while running() {
+                if let Some(res) = w.poll_read(&mut buf, 250) {
+                    match res {
+                        Ok(n) => {
+                            for ev in parse_inotify_buffer(&buf[..n]) {
+                                if (ev.mask & IN_Q_OVERFLOW_FLAG) != 0 {
+                                    warn!(folder = %root.display(), "inotify queue overflowed; re-scanning folder");
+                                    OVERFLOW_RESCANS.fetch_add(1, Ordering::SeqCst);
+                                    pending.clear();
+                                    recheck(std::slice::from_ref(&root));
+                                    break;
+                                }
+                                let Some(dir) = w.wd_to_dir.get(&ev.wd).cloned() else { continue };
+                                let p = if ev.name.is_empty() { dir.clone() } else { dir.join(&ev.name) };
+                                if (ev.mask & IN_ISDIR_FLAG) != 0 && (ev.mask & (IN_CREATE_FLAG | IN_MOVED_TO_FLAG)) != 0 {
+                                    let _ = w.add_tree(&p, 0);
+                                }
+                                if (ev.mask & libc::IN_DELETE_SELF) != 0 && p == root {
+                                    resync = true;
+                                    break;
+                                }
+                                if !p.is_dir() || (ev.mask & libc::IN_DELETE) != 0 {
+                                    pending.entry(p).or_insert_with(Instant::now);
+                                }
+                            }
+                            if resync {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            warn!(folder = %root.display(), error = %e, "inotify read error; reopening watch");
+                            resync = true;
+                            break;
+                        }
+                    }
+                }
+                let now = Instant::now();
+                let due: Vec<PathBuf> = pending
+                    .iter()
+                    .filter(|(_, t)| now.duration_since(**t) >= MERGE)
+                    .map(|(p, _)| p.clone())
+                    .collect();
+                if !due.is_empty() {
+                    due.iter().for_each(|p| { pending.remove(p); });
+                    recheck(&due);
+                }
+                if !root.is_dir() {
+                    resync = true;
+                    break;
+                }
+            }
+            drop(w);
+            if resync && running() && !root.is_dir() {
+                crate::nap(RETRY, running);
+            }
+        }
     }
 }
 
@@ -383,5 +634,29 @@ mod tests {
 
         RUN.store(false, Ordering::SeqCst);
         threads.into_iter().for_each(|t| t.join().unwrap());
+    }
+
+    #[test]
+    fn parses_raw_inotify_event_stream() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&3i32.to_ne_bytes());
+        buf.extend_from_slice(&(libc_like_close_write()).to_ne_bytes());
+        buf.extend_from_slice(&0u32.to_ne_bytes());
+        buf.extend_from_slice(&8u32.to_ne_bytes());
+        buf.extend_from_slice(b"test\0\0\0\0");
+        buf.extend_from_slice(&(-1i32).to_ne_bytes());
+        buf.extend_from_slice(&IN_Q_OVERFLOW_FLAG.to_ne_bytes());
+        buf.extend_from_slice(&0u32.to_ne_bytes());
+        buf.extend_from_slice(&0u32.to_ne_bytes());
+
+        let recs = parse_inotify_buffer(&buf);
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].wd, 3);
+        assert_eq!(recs[0].name, "test");
+        assert_eq!(recs[1].mask, IN_Q_OVERFLOW_FLAG);
+    }
+
+    fn libc_like_close_write() -> u32 {
+        0x0000_0008
     }
 }

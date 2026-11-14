@@ -1,11 +1,9 @@
 #!/bin/sh
-# ==============================================================================
-# Wazuh Linux Agent - RPM pre-install script
-# ==============================================================================
-if ! getent group wazuh >/dev/null 2>&1; then
-    groupadd -r wazuh >/dev/null 2>&1 || true
+# ProVigil Linux Agent - RPM pre-install script
+if ! getent group provigil >/dev/null 2>&1; then
+    groupadd -r provigil >/dev/null 2>&1 || true
 fi
-if ! getent passwd wazuh >/dev/null 2>&1; then
-    useradd -r -g wazuh -d /var/ossec -s /sbin/nologin -c "Wazuh Agent" wazuh >/dev/null 2>&1 || true
+if ! getent passwd provigil >/dev/null 2>&1; then
+    useradd -r -g provigil -d /opt/provigil-agent -s /sbin/nologin -c "ProVigil Agent" provigil >/dev/null 2>&1 || true
 fi
 exit 0

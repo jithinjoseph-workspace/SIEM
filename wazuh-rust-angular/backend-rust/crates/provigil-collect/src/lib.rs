@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 pub mod win;
 
+#[cfg(unix)]
+pub mod linux;
+#[cfg(all(not(unix), test))]
+#[allow(dead_code)]
+mod linux;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessInfo {
     pub pid: u32,

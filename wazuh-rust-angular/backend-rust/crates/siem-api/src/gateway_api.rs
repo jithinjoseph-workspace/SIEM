@@ -81,12 +81,79 @@ async fn deploy_report(State(state): State<AppState>, Json(v): Json<Value>) -> R
     }
 }
 
+/// `POST /internal/gateway/keepalives`: batched agent keepalive updates from `provigil-gateway`.
+async fn keepalives(State(state): State<AppState>, Json(v): Json<Value>) -> Response {
+    let Some(items) = v["items"].as_array() else {
+        return refused(StatusCode::BAD_REQUEST, "items array is required");
+    };
+    let now = chrono::Utc::now();
+    let mut updated = 0usize;
+    let mut to_save: Vec<(String, siem_core::Agent)> = Vec::new();
+    for item in items {
+        let Some(agent_id) = item["agent_id"].as_str().map(str::trim).filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if state.deleted_agents.read().unwrap().contains(agent_id)
+            || crate::is_deactivated(&state, agent_id)
+        {
+            continue;
+        }
+        let enrolled_opt = state.enrolled.read().unwrap().get(agent_id).cloned();
+        let tenant = crate::tenancy::tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
+        let ip = item["ip"].as_str().map(str::trim).filter(|s| !s.is_empty());
+        let version = item["version"].as_str().map(str::trim).filter(|s| !s.is_empty());
+
+        let ag_clone = {
+            let mut agents = state.agents.write().unwrap();
+            let ag = agents.entry(agent_id.to_string()).or_insert_with(|| {
+                let (name, os_type) = enrolled_opt
+                    .as_ref()
+                    .map(|e| {
+                        (
+                            e.name.clone(),
+                            if e.os_type.is_empty() { "linux".to_string() } else { e.os_type.clone() },
+                        )
+                    })
+                    .unwrap_or_else(|| (agent_id.to_string(), "linux".to_string()));
+                siem_core::Agent {
+                    id: agent_id.to_string(),
+                    name,
+                    ip: ip.unwrap_or("any").to_string(),
+                    os: if os_type.eq_ignore_ascii_case("windows") { "Windows".into() } else { "Linux".into() },
+                    version: version.unwrap_or("1.0.0").to_string(),
+                    status: siem_core::AgentStatus::Active,
+                    last_keepalive: now,
+                    os_type,
+                }
+            });
+            ag.last_keepalive = now;
+            ag.status = siem_core::AgentStatus::Active;
+            if let Some(ip_val) = ip {
+                if ip_val != "any" {
+                    ag.ip = ip_val.to_string();
+                }
+            }
+            if let Some(ver_val) = version {
+                ag.version = ver_val.to_string();
+            }
+            ag.clone()
+        };
+        to_save.push((tenant, ag_clone));
+        updated += 1;
+    }
+    for (tenant, ag) in to_save {
+        state.db.save_agent_row(&tenant, &ag);
+    }
+    Json(json!({ "status": "ok", "updated": updated })).into_response()
+}
+
 pub fn app(state: AppState, token: String) -> Router {
     Router::new()
         .route("/internal/gateway/enroll", post(enroll))
         .route("/internal/gateway/ar_log", post(ar_log))
         .route("/internal/gateway/events", post(events))
         .route("/internal/gateway/deploy_report", post(deploy_report))
+        .route("/internal/gateway/keepalives", post(keepalives))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(from_fn_with_state(token, guard))
         .with_state(state)
@@ -143,5 +210,11 @@ mod tests {
         assert_eq!(call(&app, "/internal/gateway/events", "secret", json!({ "agent_id": id, "events": [ev] })).await.0, 200);
         assert_eq!(call(&app, "/internal/gateway/events", "secret", json!({ "agent_id": "99999", "events": [] })).await.0, 404);
         assert_eq!(call(&app, "/internal/gateway/ar_log", "secret", json!({ "agent_id": id, "lines": [] })).await.0, 200);
+        if let Some(ag) = state.agents.write().unwrap().get_mut(id) {
+            ag.status = siem_core::AgentStatus::Disconnected;
+        }
+        let (code, kresp) = call(&app, "/internal/gateway/keepalives", "secret", json!({ "items": [{ "agent_id": id, "ip": "10.0.0.5", "version": "1.0.0" }] })).await;
+        assert_eq!((code, kresp["updated"].as_u64()), (200, Some(1)));
+        assert_eq!(state.agents.read().unwrap().get(id).map(|a| a.status.clone()), Some(siem_core::AgentStatus::Active));
     }
 }

@@ -21,7 +21,8 @@ use tracing::warn;
 
 use crate::rootcheck_signatures::{self as sigs, FileSig, Policy, PolicyList, Test, TrojanSig};
 
-/// Known critical system binaries that must ONLY reside in System32 / SysWOW64.
+/// Known critical system binaries that must only reside in trusted system directories.
+#[cfg(windows)]
 const SYSTEM_CORE_BINARIES: &[&str] = &[
     "smss.exe",
     "csrss.exe",
@@ -32,6 +33,24 @@ const SYSTEM_CORE_BINARIES: &[&str] = &[
     "svchost.exe",
     "taskhostw.exe",
     "explorer.exe",
+];
+
+#[cfg(not(windows))]
+const SYSTEM_CORE_BINARIES: &[&str] = &[
+    "sh",
+    "bash",
+    "dash",
+    "sshd",
+    "sudo",
+    "su",
+    "login",
+    "passwd",
+    "ps",
+    "ls",
+    "ss",
+    "netstat",
+    "lsof",
+    "cron",
 ];
 
 /// Suspicious directory substrings where core system binaries must never reside.
@@ -116,19 +135,35 @@ impl Default for RootcheckConfig {
             scan_processes: true,
             scan_drivers: true,
             scan_system_binaries: true,
-            scan_alternate_streams: true,
+            scan_alternate_streams: cfg!(windows),
+            #[cfg(windows)]
             scan_paths: vec![
                 PathBuf::from("C:\\Windows\\Temp"),
                 PathBuf::from("C:\\Users\\Public"),
             ],
+            #[cfg(not(windows))]
+            scan_paths: vec![
+                PathBuf::from("/tmp"),
+                PathBuf::from("/var/tmp"),
+                PathBuf::from("/dev/shm"),
+            ],
+            #[cfg(windows)]
             drivers_dir: PathBuf::from("C:\\Windows\\System32\\drivers"),
+            #[cfg(not(windows))]
+            drivers_dir: PathBuf::from("/lib/modules"),
+            #[cfg(windows)]
             search_root: PathBuf::from(expand("%SystemDrive%\\")),
+            #[cfg(not(windows))]
+            search_root: PathBuf::from("/"),
+            #[cfg(windows)]
             ads_paths: ["%WINDIR%", "%WINDIR%\\System32", "%ProgramFiles%", "%ProgramFiles(x86)%"]
                 .iter()
                 .map(|p| expand(p))
                 .filter(|p| !p.contains('%'))
                 .map(PathBuf::from)
                 .collect(),
+            #[cfg(not(windows))]
+            ads_paths: Vec::new(),
             files: sigs::builtin_files(),
             trojans: sigs::builtin_trojans(),
             policies: sigs::builtin_policies(),
@@ -211,6 +246,10 @@ pub(crate) fn walk(dir: &Path, levels: usize, f: &mut dyn FnMut(&Path)) {
     let Ok(entries) = fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let p = e.path();
+        #[cfg(unix)]
+        if matches!(p.to_str(), Some("/proc" | "/sys" | "/run" | "/dev/fd")) {
+            continue;
+        }
         f(&p);
         if e.file_type().is_ok_and(|t| t.is_dir()) {
             walk(&p, levels - 1, f);
@@ -315,6 +354,10 @@ impl RootcheckScanner {
         }
         if self.config.scan_drivers {
             findings.extend(self.check_drivers_directory());
+        }
+        #[cfg(not(windows))]
+        if self.config.scan_files || self.config.scan_drivers {
+            findings.extend(self.check_linux_system());
         }
 
         for finding in findings {
@@ -516,6 +559,202 @@ impl RootcheckScanner {
         }
 
         findings
+    }
+
+    /// Native Linux rootkit and host anomaly checks.
+    #[cfg_attr(windows, allow(dead_code))]
+    pub fn check_linux_system(&self) -> Vec<RootcheckFinding> {
+        linux_checks::run_live()
+    }
+}
+
+/// Pure Linux rootkit and host anomaly detectors (callable directly in cross-platform tests).
+pub mod linux_checks {
+    use super::*;
+
+    const DEV_ALLOWLIST: &[&str] = &[".udev", ".static", ".initramfs", ".mount", ".blkid.tab", ".lxc", ".tmp", ".containerenv"];
+
+    pub fn run_live() -> Vec<RootcheckFinding> {
+        let mut out = Vec::new();
+        out.extend(check_dev_hidden(Path::new("/dev")));
+        out.extend(check_ld_preload(Path::new("/etc/ld.so.preload")));
+        out.extend(check_promiscuous_interfaces(Path::new("/sys/class/net")));
+        out.extend(check_uid_zero_accounts(Path::new("/etc/passwd")));
+        #[cfg(unix)]
+        out.extend(check_world_writable_sensitive(&[
+            Path::new("/etc/passwd"),
+            Path::new("/etc/shadow"),
+            Path::new("/etc/sudoers"),
+            Path::new("/etc/ssh/sshd_config"),
+            Path::new("/etc/crontab"),
+        ]));
+        #[cfg(target_os = "linux")]
+        out.extend(check_hidden_pids());
+        out
+    }
+
+    pub fn check_dev_hidden(dev_dir: &Path) -> Vec<RootcheckFinding> {
+        let Ok(entries) = fs::read_dir(dev_dir) else { return Vec::new() };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with('.') || DEV_ALLOWLIST.iter().any(|ok| name.starts_with(ok)) {
+                continue;
+            }
+            let p = entry.path().display().to_string();
+            out.push(RootcheckFinding {
+                rule_id: 5109,
+                severity: "HIGH".into(),
+                title: format!("Hidden file or directory in /dev: {name}"),
+                description: format!("File '{p}' present on /dev. Possible hidden file."),
+                evidence: format!("Path: {p}"),
+                path: Some(p),
+            });
+        }
+        out
+    }
+
+    pub fn check_ld_preload(preload_path: &Path) -> Vec<RootcheckFinding> {
+        let Ok(text) = fs::read_to_string(preload_path) else { return Vec::new() };
+        let libs: Vec<&str> = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        if libs.is_empty() {
+            return Vec::new();
+        }
+        let p = preload_path.display().to_string();
+        vec![RootcheckFinding {
+            rule_id: 5110,
+            severity: "CRITICAL".into(),
+            title: "Dynamic linker preload hijack configured (/etc/ld.so.preload)".into(),
+            description: format!("System Audit: Dynamic linker preload file '{p}' forces shared libraries ({}). Possible userland rootkit.", libs.join(", ")),
+            evidence: libs.join(", "),
+            path: Some(p),
+        }]
+    }
+
+    pub fn check_promiscuous_interfaces(net_dir: &Path) -> Vec<RootcheckFinding> {
+        let Ok(entries) = fs::read_dir(net_dir) else { return Vec::new() };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            let iface = entry.file_name().to_string_lossy().into_owned();
+            if iface == "lo" || iface.starts_with("veth") || iface.starts_with("docker") || iface.starts_with("br-") || iface.starts_with("virbr") {
+                continue;
+            }
+            let flags_path = entry.path().join("flags");
+            let Ok(raw) = fs::read_to_string(&flags_path) else { continue };
+            let hex = raw.trim().trim_start_matches("0x").trim_start_matches("0X");
+            let Ok(flags) = u32::from_str_radix(hex, 16) else { continue };
+            if flags & 0x100 != 0 {
+                out.push(RootcheckFinding {
+                    rule_id: 5111,
+                    severity: "MEDIUM".into(),
+                    title: format!("Network interface in promiscuous mode: {iface}"),
+                    description: format!("System Audit: Network interface '{iface}' has IFF_PROMISC enabled (flags=0x{flags:x}). Possible packet sniffer."),
+                    evidence: format!("{} = 0x{flags:x}", flags_path.display()),
+                    path: Some(flags_path.display().to_string()),
+                });
+            }
+        }
+        out
+    }
+
+    pub fn check_uid_zero_accounts(passwd_path: &Path) -> Vec<RootcheckFinding> {
+        let Ok(text) = fs::read_to_string(passwd_path) else { return Vec::new() };
+        let mut out = Vec::new();
+        for line in text.lines() {
+            let mut cols = line.split(':');
+            let Some(user) = cols.next().map(str::trim).filter(|u| !u.is_empty() && !u.starts_with('#')) else { continue };
+            let _pw = cols.next();
+            let Some(uid) = cols.next().and_then(|u| u.trim().parse::<u32>().ok()) else { continue };
+            if uid == 0 && user != "root" {
+                out.push(RootcheckFinding {
+                    rule_id: 5112,
+                    severity: "CRITICAL".into(),
+                    title: format!("Non-root UID 0 account detected: {user}"),
+                    description: format!("System Audit: Account '{user}' in {} has UID 0 (root privileges).", passwd_path.display()),
+                    evidence: line.to_string(),
+                    path: Some(passwd_path.display().to_string()),
+                });
+            }
+        }
+        out
+    }
+
+    #[cfg(unix)]
+    fn check_world_writable_sensitive(paths: &[&Path]) -> Vec<RootcheckFinding> {
+        use std::os::unix::fs::MetadataExt;
+        let mut out = Vec::new();
+        for path in paths {
+            let Ok(meta) = fs::symlink_metadata(path) else { continue };
+            if meta.uid() == 0 && (meta.mode() & 0o002) != 0 {
+                let p = path.display().to_string();
+                out.push(RootcheckFinding {
+                    rule_id: 5113,
+                    severity: "HIGH".into(),
+                    title: format!("World-writable critical system file: {p}"),
+                    description: format!("File '{p}' is owned by root and has written permissions to anyone (mode={:o}).", meta.mode() & 0o7777),
+                    evidence: format!("uid={} mode={:o}", meta.uid(), meta.mode() & 0o7777),
+                    path: Some(p),
+                });
+            }
+        }
+        out
+    }
+
+    #[cfg(target_os = "linux")]
+    fn check_hidden_pids() -> Vec<RootcheckFinding> {
+        let max_pid: i32 = fs::read_to_string("/proc/sys/kernel/pid_max")
+            .ok()
+            .and_then(|s| s.trim().parse::<i32>().ok())
+            .unwrap_or(32768)
+            .min(131_072);
+        let visible_pids = || -> std::collections::HashSet<i32> {
+            let mut set = std::collections::HashSet::new();
+            let Ok(entries) = fs::read_dir("/proc") else { return set };
+            for e in entries.flatten() {
+                if let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) {
+                    set.insert(pid);
+                    if let Ok(tasks) = fs::read_dir(e.path().join("task")) {
+                        for t in tasks.flatten() {
+                            if let Some(tid) = t.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) {
+                                set.insert(tid);
+                            }
+                        }
+                    }
+                }
+            }
+            set
+        };
+        let visible = visible_pids();
+        let mut suspect = Vec::new();
+        for pid in 2..=max_pid {
+            if visible.contains(&pid) {
+                continue;
+            }
+            if unsafe { libc::kill(pid, 0) } == 0 && !Path::new(&format!("/proc/{pid}")).exists() {
+                suspect.push(pid);
+            }
+        }
+        if suspect.is_empty() {
+            return Vec::new();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let recheck = visible_pids();
+        suspect
+            .into_iter()
+            .filter(|pid| !recheck.contains(pid) && unsafe { libc::kill(*pid, 0) } == 0 && !Path::new(&format!("/proc/{pid}")).exists())
+            .map(|pid| RootcheckFinding {
+                rule_id: 5114,
+                severity: "CRITICAL".into(),
+                title: format!("Hidden process detected: PID {pid}"),
+                description: format!("Process '{pid}' hidden from /proc. Possible kernel level rootkit."),
+                evidence: format!("kill({pid}, 0) succeeded without /proc/{pid}"),
+                path: Some(format!("/proc/{pid}")),
+            })
+            .collect()
     }
 }
 

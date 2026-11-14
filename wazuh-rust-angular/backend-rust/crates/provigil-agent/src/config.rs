@@ -593,6 +593,10 @@ impl AgentConfig {
                 }
             }
         }
+        // never empty: the transport needs one manager even when none is configured yet
+        if list.is_empty() {
+            list.push(tidy(&self.manager_url));
+        }
         list
     }
 

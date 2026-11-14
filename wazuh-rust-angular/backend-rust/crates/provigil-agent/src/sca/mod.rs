@@ -396,14 +396,12 @@ impl Rule {
             ("f" | "c", 1..=usize::MAX) => 1,
             _ => return Err(bad()),
         };
-        let expect = if content_at > 0 && parts.len() > content_at {
-            if parts.len() > content_at + 1 {
-                Some(Content::parse(&parts[content_at..].join(" && "))?)
-            } else {
-                Some(Content::parse(parts[content_at])?)
-            }
+        // a process rule's pattern is its first part (content_at 0); file and command rules may
+        // give several contents, which must all hold
+        let expect = if content_at > 0 && parts.len() > content_at + 1 {
+            Some(Content::parse(&parts[content_at..].join(" && "))?)
         } else {
-            None
+            parts.get(content_at).map(|p| Content::parse(p)).transpose()?
         };
         let mut broken = expect.as_ref().and_then(Content::bad);
         let name = match (kind, parts.get(1)) {

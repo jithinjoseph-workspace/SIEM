@@ -87,6 +87,25 @@ if [ -z "${MANAGER_PORT}" ] || [ "${MANAGER_PORT}" = "${MANAGER_URL}" ] || [ "${
         *) MANAGER_PORT="8088" ;;
     esac
 fi
+# Fallback managers: only the ones given at install, as SIEM_MANAGER_URLS (comma separated, e.g.
+# "https://siem2.company:8443,10.20.0.5"); none otherwise. An admin can add more later in the
+# group settings (manager_urls). No fixed addresses: on a customer network they are someone else's.
+MANAGER_URLS_JSON="\"${MANAGER_URL}\""
+set -f
+OLD_IFS="$IFS"; IFS=','
+for u in ${SIEM_MANAGER_URLS:-${PROVIGIL_MANAGER_URLS:-}}; do
+    u=$(printf '%s' "$u" | tr -d ' \t'); u="${u%/}"
+    case "$u" in
+        "") continue ;;
+        http://*|https://*) ;;
+        *:*) u="https://${u}" ;;
+        *) u="https://${u}:8443" ;;
+    esac
+    case "$u" in *\"*|*\*) echo "[!] Fallback manager '${u}' skipped (quote or backslash)."; continue ;; esac
+    case "${MANAGER_URLS_JSON}" in *"\"${u}\""*) continue ;; esac
+    MANAGER_URLS_JSON="${MANAGER_URLS_JSON}, \"${u}\""
+done
+IFS="$OLD_IFS"; set +f
 AGENT_NAME=${SIEM_AGENT_NAME:-${PROVIGIL_AGENT_NAME:-$(hostname)}}
 AGENT_GROUP=${SIEM_AGENT_GROUP:-${PROVIGIL_AGENT_GROUP:-"default"}}
 TENANT_KEY=${SIEM_TENANT_KEY:-${PROVIGIL_TENANT_KEY:-""}}
@@ -354,11 +373,7 @@ fi
 cat <<EOF > "${INSTALL_DIR}/etc/provigil-agent.json"
 {
   "manager_url": "${MANAGER_URL}",
-  "manager_urls": [
-    "${MANAGER_URL}",
-    "https://192.168.56.1:8443",
-    "https://10.0.2.2:8443"
-  ],
+  "manager_urls": [${MANAGER_URLS_JSON}],
   "tenant_key": "${TENANT_KEY}",
   "agent_name": "${AGENT_NAME}",
   "groups": "${AGENT_GROUP}",

@@ -1,7 +1,4 @@
-//! The provigil-analysisd daemon: input queue, rule matching thread, alert /
-//! archive / firewall / FTS writers with daily files and rotation
-//! (alerts/getloglocation.c), hourly statistics files (stats.c), labels
-//! cache (labels.c), active responses and the logtest socket.
+
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -85,7 +82,7 @@ impl Logger for StderrLogger {
 
 /* ------------------------------------------------------------ log files */
 
-/// One output file of `getloglocation.c`.
+
 #[derive(Default)]
 struct LogFile {
     fp: Option<BufWriter<File>>,

@@ -80,7 +80,8 @@ struct CaseRow {
     closed_at_ts: Option<u32>,
 }
 
-const CASE_COLUMNS: &str = "id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, tags, tenant_id, created_at, updated_at, closed_at";
+// hit_ids included: an update re-inserts the row, and a column left out would fall back to empty
+const CASE_COLUMNS: &str = "id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, hit_ids, tags, tenant_id, created_at, updated_at, closed_at";
 
 impl Store {
     fn db(&self, tenant: &str) -> clickhouse::Client {
@@ -912,6 +913,11 @@ fn ok_data(v: impl serde::Serialize) -> Json<Value> {
 
 fn err(e: impl std::fmt::Display) -> Json<Value> {
     Json(json!({ "status": "error", "message": e.to_string() }))
+}
+
+/// The next case number of the tenant (`INC-<year>-<n>`).
+pub(crate) async fn next_case_number(state: &AppState, tenant: &str) -> String {
+    store(state).soar_next_case_number(tenant).await
 }
 
 pub(crate) fn store(state: &AppState) -> Store {

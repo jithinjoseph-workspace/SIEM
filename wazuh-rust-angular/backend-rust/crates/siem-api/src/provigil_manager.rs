@@ -2775,6 +2775,8 @@ pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<se
     crate::soar::on_alerts(state, soar);
     // each tenant's alert e-mails (alert_mail.rs)
     crate::alert_mail::on_alerts(&shown);
+    // related alerts become one incident (incidents.rs)
+    crate::incidents::on_alerts(state, &shown);
     crate::keep_alerts(state, shown);
 }
 

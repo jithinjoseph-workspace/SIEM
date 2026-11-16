@@ -34,6 +34,7 @@ pub mod gateway_api;
 pub(crate) mod test_state;
 pub mod agent_keys_store;
 pub mod corroboration;
+pub mod incidents;
 pub mod db;
 pub mod groups;
 pub mod live_response;
@@ -512,6 +513,7 @@ async fn main() {
     }
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
+    incidents::spawn(state.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed

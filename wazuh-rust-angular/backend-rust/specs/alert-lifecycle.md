@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phases 1 and 2 done (2026-11-16), phase 3 next.
+Status: phases 1 to 3 done (2026-11-16, phase 3 without the console view of an alert's incident), phase 4 next.
 
 ## 1. Goal
 
@@ -63,8 +63,26 @@ Problems, from the live data of tenant acm:
 - **L-5 Shipped and Sigma alerts of one event** are joined by phase 3's incident grouping (same
   host, process and time), not by a second mechanism. Red Swarm alerts are already tagged and never
   stored, so they are out of the queue.
+- **L-6 Incidents are cases.** Key = tenant + agent + entity (the process image when the alert
+  names one, else the user, else the host). Level 7+ opens an incident when none is open for its
+  key; any alert of the key joins while the last one is at most 1 hour old. The case (`INC-<year>-<n>`,
+  tag `auto-incident`, the key as tag `key:<tenant>|<agent>|<entity>`) gets the alert ids in
+  `hit_ids` (500 at most), severity and priority from its highest level (12+ CRITICAL/P1, 10-11
+  HIGH/P2, 7-9 MEDIUM/P3). Writes every 15 s keep what people set (status, owner, ...); a case
+  people closed takes no more alerts, the next alert opens a new incident. Open incidents of the last
+  hour are reloaded after a restart. Code: `siem-api/src/incidents.rs`.
+- **L-7 Case updates keep their alerts.** A case update re-inserts the row from a column list that
+  left out `hit_ids`, so any update (status, owner, disposition) would have emptied it; `hit_ids`
+  is now in that list (`CASE_COLUMNS` in `soar.rs`). Until now nothing wrote `hit_ids`, so no case
+  page showed alerts.
+- **L-8 Open: the case table key.** `soar_cases` replaces rows by (tenant, `created_at` in seconds),
+  not by case id: two cases created in the same second become one (checked in a scratch table). New
+  incidents therefore take a second after the newest case (`unique_second`). The real fix is a table
+  keyed by (tenant, id); it needs a migration of every tenant's replicated table, so it waits for
+  the owner's approval.
 
 ## 5. Progress
 
 - 2026-11-16: plan written. Phase 1 done: `record_alert` (agent HTTP ingest, FIM handler, simulations) and the syslog engine hand their alerts to `deliver` (`siem-api/src/provigil_manager.rs`); decisions L-1 to L-3. siem-api tests: 153 passed.
 - 2026-11-16: phase 2 done: field exceptions (`siem-suppression/src/lib.rs`, `siem-api/src/suppressions.rs`, the Suppressions page `/siem-suppressions`), decisions L-4 and L-5. Example: rule 960270 when `data.win.eventdata.image` contains `docker.exe`, permanent.
+- 2026-11-16: phase 3 done (backend): incidents (L-6), case updates keep `hit_ids` (L-7), same-second case collapse found (L-8, open). SQL checked in a scratch database (create, analyst update, incident update, reload, a burst of 3 incidents and a manual case in one second: 4 cases). siem-api tests: 156 passed. Next in phase 3: the alert list shows each alert's incident.

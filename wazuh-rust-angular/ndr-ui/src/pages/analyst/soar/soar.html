@@ -289,6 +289,12 @@
                 → {{ ns }}
               </button>
             </div>
+            <!-- a false positive can become an exception, on the full case page -->
+            <div *ngIf="selectedCase().status === 'False Positive'" class="mt-3 text-xs text-amber-300">
+              Marked as a false positive.
+              <a [routerLink]="['/analyst/cases', selectedCase().id]" class="underline">Open the full page</a>
+              to create an exception, so these alerts stop opening incidents.
+            </div>
           </div>
 
           <!-- Description -->

@@ -724,6 +724,8 @@ impl<'a> Run<'a> {
             .await
             .map_err(|e| format!("The case was not opened: {e}"))?;
         if let Some(a) = &alert {
+            // the alert is the case's first alert: the case page lists it
+            crate::soar::set_hit_ids(self.state, &self.tenant, &id, &[a.id.to_string()]).await;
             let evidence = format!("Evidence (alert {}):\n{}\n\nFields: {}", a.id, clip(&a.full_log, 2000), alert_detail(a)["fields"].as_str().unwrap_or(""));
             store.soar_add_comment(&id, "AI Copilot", &evidence, &self.tenant).await;
             self.last.alert_id = Some(a.id.to_string());

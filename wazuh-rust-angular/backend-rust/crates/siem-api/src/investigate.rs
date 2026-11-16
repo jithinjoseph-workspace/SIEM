@@ -275,7 +275,7 @@ pub async fn run_focused(state: &AppState, tenant: &str, q: &str, days: u32, foc
             Kind::Ip => s.src_ip.as_deref() == Some(q.as_str()),
             _ => false,
         })
-        .map(|s| json!({ "id": s.id, "rule_id": s.rule_id, "rule": s.rule_name, "reason": s.reason, "expires_at": s.expires_at, "by": s.created_by }))
+        .map(|s| json!({ "id": s.id, "rule_id": s.rule_id, "rule": s.rule_name, "reason": s.reason, "expires_at": s.expires_at, "permanent": s.permanent, "by": s.created_by }))
         .collect();
 
     // ── SOAR cases and runs, AI decisions ──

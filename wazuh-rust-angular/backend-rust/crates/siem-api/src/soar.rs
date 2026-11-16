@@ -915,6 +915,17 @@ fn err(e: impl std::fmt::Display) -> Json<Value> {
     Json(json!({ "status": "error", "message": e.to_string() }))
 }
 
+/// Sets a case's alerts (`hit_ids`), keeping everything else: the case page lists them.
+pub(crate) async fn set_hit_ids(state: &AppState, tenant: &str, case_id: &str, ids: &[String]) {
+    let sql = format!(
+        "INSERT INTO soar_cases ({CASE_COLUMNS}) SELECT {} FROM soar_cases FINAL WHERE id = ?",
+        CASE_COLUMNS.replace("hit_ids", "? AS hit_ids").replace("updated_at", "now() AS updated_at")
+    );
+    if let Err(e) = state.db.tenant_client(tenant).query(&sql).bind(ids).bind(case_id).execute().await {
+        tracing::warn!("alerts of case {case_id} not saved: {e}");
+    }
+}
+
 /// The next case number of the tenant (`INC-<year>-<n>`).
 pub(crate) async fn next_case_number(state: &AppState, tenant: &str) -> String {
     store(state).soar_next_case_number(tenant).await
@@ -1357,6 +1368,11 @@ pub async fn create_case(
         .await
     {
         Ok(()) => {
+            // the SIEM alerts the case is about, when given: its page lists them
+            let hits: Vec<String> = p["hit_ids"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).take(500).collect()).unwrap_or_default();
+            if !hits.is_empty() {
+                set_hit_ids(&state, &tenant, &id, &hits).await;
+            }
             crate::case_detail::created(&state, &tenant, &id, &ctx.username).await;
             Json(json!({ "status": "success", "id": id, "case_number": number }))
         }

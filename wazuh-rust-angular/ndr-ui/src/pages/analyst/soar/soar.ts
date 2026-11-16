@@ -191,6 +191,28 @@ export class Soar implements OnInit {
 
     @ViewChild('paChartCanvas') paChartCanvas?: ElementRef<HTMLCanvasElement>;
 
+    /** The analyst queue (specs/alert-lifecycle.md): open first, then priority, then the triage
+     *  verdict, then the least SLA time left (`queue_rank` from the server); or newest first. */
+    queueOrder = signal(true);
+    orderedCases = computed(() => {
+        const list = [...this.cases()];
+        return this.queueOrder() ? list.sort((a, b) => (a.queue_rank ?? 0) - (b.queue_rank ?? 0)) : list;
+    });
+
+    /** Time left on the SLA of an open case ("2 h 10 min", "overdue 3 h"); '' when closed. */
+    slaLeft(c: any): string {
+        if (!c.sla_due || ['Closed', 'Resolved', 'False Positive'].includes(c.status)) return '';
+        const s = c.sla_due - Math.floor(Date.now() / 1000);
+        const a = Math.abs(s), h = Math.floor(a / 3600), m = Math.floor((a % 3600) / 60);
+        const t = h ? `${h} h ${m} min` : `${m} min`;
+        return s < 0 ? `overdue ${t}` : t;
+    }
+
+    verdictText(c: any): string {
+        const names: Record<string, string> = { compromised: 'Compromised', malicious: 'Malicious', attack_attempt: 'Attack attempt', likely_benign: 'Likely benign', needs_review: 'Needs review' };
+        return c.verdict ? `${names[c.verdict] || c.verdict} ${c.verdict_confidence}%` : '';
+    }
+
     // ── Computed ──────────────────────────────────────────────────────────────
     caseStats = computed(() => {
         const cases = this.cases();

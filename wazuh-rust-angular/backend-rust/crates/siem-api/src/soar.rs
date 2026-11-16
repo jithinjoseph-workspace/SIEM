@@ -259,14 +259,32 @@ impl Store {
 
     async fn cases(&self, tenant: &str) -> anyhow::Result<Vec<Value>> {
         let rows = self.db(tenant).query("SELECT id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, tags, toUnixTimestamp(created_at) AS created_at_ts, toUnixTimestamp(updated_at) AS updated_at_ts, toUnixTimestamp(closed_at) AS closed_at_ts FROM soar_cases FINAL ORDER BY created_at DESC").fetch_all::<CaseRow>().await?;
+        // each case's triage verdict (the case investigation), for the queue order
+        let verdicts: std::collections::HashMap<String, (String, u8)> = self
+            .db(tenant)
+            .query("SELECT id, JSONExtractString(doc, 'verdict', 'label') AS label, toUInt8(JSONExtractUInt(doc, 'verdict', 'confidence')) AS confidence FROM siem_case_investigations FINAL")
+            .fetch_all::<(String, String, u8)>()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, l, c)| (id, (l, c)))
+            .collect();
+        let now = chrono::Utc::now().timestamp();
         Ok(rows
             .into_iter()
-            .map(|r| json!({
-                "id": r.id, "case_number": r.case_number, "title": r.title, "description": r.description,
-                "severity": r.severity, "priority": r.priority, "status": r.status, "assigned_to": r.assigned_to,
-                "src_ip": r.src_ip, "dst_ip": r.dst_ip, "community_id": r.community_id, "tags": r.tags,
-                "created_at": r.created_at_ts, "updated_at": r.updated_at_ts, "closed_at": r.closed_at_ts,
-            }))
+            .map(|r| {
+                let due = r.created_at_ts as i64 + crate::case_detail::sla_hours(&r.priority) as i64 * 3600;
+                let (label, confidence) = verdicts.get(&r.id).cloned().unwrap_or_default();
+                let open = !["Closed", "Resolved", "False Positive"].contains(&r.status.as_str());
+                json!({
+                    "id": r.id, "case_number": r.case_number, "title": r.title, "description": r.description,
+                    "severity": r.severity, "priority": r.priority, "status": r.status, "assigned_to": r.assigned_to,
+                    "src_ip": r.src_ip, "dst_ip": r.dst_ip, "community_id": r.community_id, "tags": r.tags,
+                    "created_at": r.created_at_ts, "updated_at": r.updated_at_ts, "closed_at": r.closed_at_ts,
+                    "sla_due": due, "verdict": label, "verdict_confidence": confidence,
+                    "queue_rank": queue_rank(open, &r.priority, &label, confidence, due - now),
+                })
+            })
             .collect())
     }
 
@@ -915,6 +933,21 @@ fn err(e: impl std::fmt::Display) -> Json<Value> {
     Json(json!({ "status": "error", "message": e.to_string() }))
 }
 
+/// Where a case stands in the analyst queue, lower first (specs/alert-lifecycle.md): open before
+/// closed, then priority, then the triage verdict (a likely-benign one goes last only when it is
+/// confident, 70% or more), then the least time left on the SLA.
+pub fn queue_rank(open: bool, priority: &str, verdict: &str, confidence: u8, secs_left: i64) -> u64 {
+    let p = match priority { "P1" => 0, "P2" => 1, "P3" => 2, _ => 3 };
+    let v = match verdict {
+        "compromised" | "malicious" => 0,
+        "attack_attempt" => 1,
+        "likely_benign" if confidence >= 70 => 3,
+        _ => 2,
+    };
+    let minutes = (secs_left / 60).clamp(0, 99_999) as u64;
+    (u64::from(!open) * 10 + p) * 1_000_000_000 + v * 100_000_000 + minutes
+}
+
 /// Sets a case's alerts (`hit_ids`), keeping everything else: the case page lists them.
 pub(crate) async fn set_hit_ids(state: &AppState, tenant: &str, case_id: &str, ids: &[String]) {
     let sql = format!(
@@ -1479,6 +1512,23 @@ pub async fn add_case_comment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_order_open_priority_verdict_then_sla() {
+        let r = |open, p, v, c, left| queue_rank(open, p, v, c, left);
+        let mut cases = vec![
+            ("closed P1", r(false, "P1", "malicious", 90, 0)),
+            ("P2 benign, sure", r(true, "P2", "likely_benign", 85, 60)),
+            ("P2 benign, unsure", r(true, "P2", "likely_benign", 40, 3600)),
+            ("P2 malicious, 5 h left", r(true, "P2", "malicious", 80, 5 * 3600)),
+            ("P2 malicious, 1 h left", r(true, "P2", "malicious", 80, 3600)),
+            ("P1 not triaged", r(true, "P1", "", 0, 3 * 3600)),
+        ];
+        cases.sort_by_key(|c| c.1);
+        let order: Vec<&str> = cases.iter().map(|c| c.0).collect();
+        assert_eq!(order, ["P1 not triaged", "P2 malicious, 1 h left", "P2 malicious, 5 h left", "P2 benign, unsure", "P2 benign, sure", "closed P1"]);
+        assert_eq!(r(true, "P3", "", 0, -500), r(true, "P3", "", 0, 0), "an SLA already missed sorts as due now");
+    }
 
     fn alert() -> Value {
         json!({

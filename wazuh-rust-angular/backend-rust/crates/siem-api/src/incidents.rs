@@ -210,7 +210,7 @@ pub fn on_alerts(state: &AppState, alerts: &[Alert]) {
     let tenants = state.agent_tenants.read().unwrap().clone();
     let mut map = open().lock().unwrap();
     for a in alerts {
-        if a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
+        if crate::is_simulation(a) {
             continue;
         }
         let tenant = crate::tenancy::alert_tenant(a, &tenants);

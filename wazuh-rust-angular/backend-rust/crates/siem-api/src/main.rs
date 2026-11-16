@@ -1759,9 +1759,9 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
-            // a Red Swarm simulation must not raise the real agent's risk
+            // a simulation must not raise the real agent's risk
             if !a.data.contains_key("risk_fabric")
-                && !a.rule.groups.iter().any(|g| g == "redswarm_simulation")
+                && !is_simulation(&a)
             {
                 state.risk_fabric.evaluate_alert(&mut a);
             }
@@ -1769,7 +1769,8 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
         })
         .collect();
     let deleted = state.deleted_agents.read().unwrap();
-    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+    // nor feed the agent's intent dossier
+    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id) && !is_simulation(a)).cloned().collect();
     drop(deleted);
     state.intent_engine.ingest_live_alerts(&active_alerts);
     let mut l = state.alerts.write().unwrap();
@@ -6737,6 +6738,12 @@ async fn get_deactivated_agents_handler(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A Red Swarm alert says it is a simulation (the round injected the telemetry).
+/// A simulated alert (the attack simulator's `simulation`, Red Swarm's `redswarm_simulation`):
+/// shown live, labelled, but never stored, scored, grouped into an incident, acted on or mailed.
+pub fn is_simulation(a: &Alert) -> bool {
+    a.rule.groups.iter().any(|g| g == "simulation" || g == "redswarm_simulation")
+}
+
 fn redswarm_simulated(mut a: Alert) -> Alert {
     a.rule.description = format!("[Red Swarm simulation] {}", a.rule.description);
     a.rule.groups.push("redswarm_simulation".into());

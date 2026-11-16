@@ -2715,9 +2715,16 @@ async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
 /// Every alert, whatever found it, goes through here (specs/alert-lifecycle.md, phase 1): risk
 /// score, store, suppression, live feed, deception tripwires, playbooks, e-mail, memory.
 pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
+    // a simulation is shown live and nothing more: never stored, scored, grouped, acted on or mailed
+    let (sims, real): (Vec<(Alert, serde_json::Value)>, Vec<(Alert, serde_json::Value)>) = alerts.into_iter().zip(soar_json).partition(|(a, _)| crate::is_simulation(a));
+    for (a, _) in &sims {
+        let _ = state.broadcast_tx.send(a.clone());
+    }
+    let (alerts_real, soar_json): (Vec<Alert>, Vec<serde_json::Value>) = real.into_iter().unzip();
+    alerts = alerts_real;
     // scored before it is stored, so the stored alert carries its business risk too
     for a in &mut alerts {
-        if !a.data.contains_key("risk_fabric") && !a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
+        if !a.data.contains_key("risk_fabric") && !crate::is_simulation(a) {
             state.risk_fabric.evaluate_alert(a);
         }
     }

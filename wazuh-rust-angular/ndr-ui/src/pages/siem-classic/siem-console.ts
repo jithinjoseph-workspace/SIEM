@@ -77,13 +77,29 @@ export class SiemConsole implements OnInit, OnDestroy {
   copiedCmdIndex = signal<number | null>(null);
   activeResponseStatus = signal<string | null>(null);
 
+  /** The work queue: level 7+ (the level that opens an incident); lower levels stay stored and
+   *  searchable behind "All levels" (specs/alert-lifecycle.md, issue 1). */
+  static readonly QUEUE_LEVEL = 7;
+  queueOnly = signal(true);
+
+  toggleQueue() {
+    this.queueOnly.set(!this.queueOnly());
+    this.siemService.getAlerts(100, this.queueOnly() ? SiemConsole.QUEUE_LEVEL : 0).subscribe({
+      next: (data) => this.alerts.set(data),
+      error: (e) => console.warn('Could not fetch alerts', e)
+    });
+  }
+
   // Computed filtered alerts
   filteredAlerts = computed(() => {
     const list = this.alerts();
     const query = this.searchQuery().toLowerCase().trim();
     const severity = this.selectedSeverity();
+    const minLevel = this.queueOnly() ? SiemConsole.QUEUE_LEVEL : 0;
 
     return list.filter(alert => {
+      // live alerts arrive at every level: the queue keeps level 7+
+      if (alert.rule.level < minLevel) return false;
       // Filter by severity
       if (severity === 'critical' && alert.rule.level < 12) return false;
       if (severity === 'high' && (alert.rule.level < 8 || alert.rule.level >= 12)) return false;
@@ -174,7 +190,7 @@ export class SiemConsole implements OnInit, OnDestroy {
   fetchData() {
     this.refreshStats();
 
-    this.siemService.getAlerts(100).subscribe({
+    this.siemService.getAlerts(100, this.queueOnly() ? SiemConsole.QUEUE_LEVEL : 0).subscribe({
       next: (data) => this.alerts.set(data),
       error: (e) => console.warn('Could not fetch alerts', e)
     });

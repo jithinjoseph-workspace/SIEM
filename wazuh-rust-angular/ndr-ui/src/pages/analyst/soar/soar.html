@@ -138,6 +138,12 @@
           </button>
         </div>
 
+        <!-- Queue order or newest first -->
+        <div *ngIf="cases().length > 0 && !selectedCase()" class="flex items-center gap-2 mb-2 text-xs">
+          <button (click)="queueOrder.set(true)" [class]="'px-2.5 py-1 rounded-md border ' + (queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Queue order</button>
+          <button (click)="queueOrder.set(false)" [class]="'px-2.5 py-1 rounded-md border ' + (!queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Newest first</button>
+          <span class="text-on-surface-variant/70">Queue: open first, then priority, triage verdict and SLA time left.</span>
+        </div>
         <!-- Full table (no detail open) -->
         <div *ngIf="cases().length > 0 && !selectedCase()" class="case-table-wrap">
           <table class="case-table w-full">
@@ -149,11 +155,13 @@
                 <th class="w-28">Severity</th>
                 <th class="w-28">Status</th>
                 <th class="w-28">Assigned To</th>
+                <th class="w-32">Triage</th>
+                <th class="w-28">SLA left</th>
                 <th class="w-36">Created</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let c of cases()" (click)="openCase(c)" class="case-row">
+              <tr *ngFor="let c of orderedCases()" (click)="openCase(c)" class="case-row">
                 <td><span class="ticket-id">{{ c.case_number || '—' }}</span></td>
                 <td><span [class]="'prio-badge ' + priorityClass(c.priority)">{{ c.priority || 'P2' }}</span></td>
                 <td>
@@ -163,6 +171,8 @@
                 <td><span [class]="'sev-badge ' + severityClass(c.severity)">{{ c.severity }}</span></td>
                 <td><span [class]="'status-badge ' + statusClass(c.status)">{{ c.status }}</span></td>
                 <td><span class="text-xs text-on-surface-variant font-mono">{{ c.assigned_to || '—' }}</span></td>
+                <td><span class="text-xs text-on-surface-variant">{{ verdictText(c) || '—' }}</span></td>
+                <td><span class="text-xs font-mono" [class.text-red-400]="slaLeft(c).startsWith('overdue')">{{ slaLeft(c) || '—' }}</span></td>
                 <td><span class="text-xs font-mono text-on-surface-variant/70">{{ formatDateShort(c.created_at) }}</span></td>
               </tr>
             </tbody>
@@ -171,7 +181,7 @@
 
         <!-- Compact list (detail open — left rail) -->
         <div *ngIf="cases().length > 0 && selectedCase()" class="case-compact-list">
-          <div *ngFor="let c of cases()" (click)="openCase(c)"
+          <div *ngFor="let c of orderedCases()" (click)="openCase(c)"
             [class]="'case-compact-row' + (selectedCase()?.id === c.id ? ' active' : '')">
             <div class="ccr-top">
               <span class="ticket-id-sm">{{ c.case_number || '—' }}</span>
@@ -995,6 +1005,7 @@
 
     <!-- Starter playbooks: fill the form, nothing is saved until the admin saves it -->
     <div class="flex flex-wrap items-center gap-2 mb-4">
+      <span class="w-full text-xs text-on-surface-variant/80">Runs automatically, no setup needed: incidents from related alerts, their triage verdict, and alert e-mails (tenant settings). Playbooks act through your own integrations (Slack, PagerDuty, VirusTotal...), so they start when you save one.</span>
       <span class="text-xs text-on-surface-variant">Start from:</span>
       <button *ngFor="let t of starters" (click)="useStarter(t)" [title]="t.desc"
         class="text-[11px] px-2.5 py-1 rounded-md border border-white/10 bg-[#121212] text-on-surface-variant hover:text-white hover:border-primary/50 transition-colors">{{ t.name }}</button>

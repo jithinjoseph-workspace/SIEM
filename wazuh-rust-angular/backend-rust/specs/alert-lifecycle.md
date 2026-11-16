@@ -106,6 +106,24 @@ Problems, from the live data of tenant acm:
   cases, open, opened automatically, mean time to the first action (the first status change, edit,
   note, disposition or resolution in the case history) and to closing, and per rule how many
   incidents ended as false positives. Shown at the top of the SOAR page.
+- **L-13 The work queue is level 7+.** The SIEM console's alert list asks the server for level 7
+  and up (the level that opens an incident) and filters live alerts the same way; "All levels"
+  shows the rest, which stay stored and searchable (issue 1).
+- **L-14 Simulations never count.** One check, `is_simulation` (the attack simulator's `simulation`
+  and Red Swarm's `redswarm_simulation` groups), keeps simulated alerts out of everything with a
+  real effect: `deliver` only shows them live (never stored, scored, grouped, acted on or mailed),
+  and the in-memory window no longer scores them or feeds them to the intent engine. Until now the
+  attack simulator raised the real PC's risk and fed its intent dossier (issue 8). Alerts caused by
+  people testing on real PCs (a rescan, a test file) are real events and stay real alerts.
+- **L-15 Queue order with the triage verdict.** The case list carries `sla_due`, the triage verdict
+  and its confidence, and `queue_rank` (`soar.rs`): open first, then priority, then the verdict
+  (compromised and malicious first; likely benign last only at 70% confidence or more), then the
+  least SLA time left. The SOAR page lists cases in that order by default ("Newest first" on
+  request) with Triage and SLA-left columns. This is the "confidence" of the plan (issue 7): a
+  confident benign verdict moves a case down, never out of the queue.
+- **L-16 Automation without setup.** Incidents, their triage and alert e-mails run with no setup;
+  playbooks act through the tenant's own integrations and start when one is saved. The SOAR page
+  says so above the starters (issue 5).
 
 ## 5. Progress
 
@@ -116,3 +134,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: phase 5 done: starter playbooks on the SOAR page (L-10); their conditions are all evaluated by `provigil-common/src/soar/conditions.rs` (its tests cover each).
 - 2026-11-16: phase 6 done: exception from a false-positive incident (L-11), metrics (L-12). The metrics SQL was run read-only on tenant acm (8 cases, 6 open, 8 min to close, 21 h to first action). siem-api tests: 157 passed.
 - 2026-11-16: case tables rebuilt keyed by case id (L-8); definitions changed for new tenants.
+- 2026-11-16: issues 1, 5, 7 and 8 completed (L-13 to L-16); incidents are triaged when they open; cases opened from an alert list it. siem-api tests: 158 passed.

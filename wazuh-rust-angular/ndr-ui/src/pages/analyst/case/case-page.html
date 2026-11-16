@@ -178,11 +178,52 @@
       <div *ngIf="!inv()?.evidence?.length" class="text-sm text-slate-400">No evidence gathered yet: run "Investigate again".</div>
       <section *ngFor="let e of inv()?.evidence" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <div class="font-semibold text-white"><span class="text-xs uppercase text-slate-500 mr-2">{{ e.role }}</span>{{ e.value }}</div>
-        <pre class="mt-2 text-xs text-slate-300 whitespace-pre-wrap break-all">{{ e.summary | json }}</pre>
+        <ng-container *ngIf="e.summary as s">
+          <p class="mt-2 text-slate-300">
+            <b class="text-white">{{ s.alerts }}</b> alert{{ s.alerts === 1 ? '' : 's' }}<span *ngIf="s.alerts_capped" class="text-slate-500"> (the {{ s.alerts_listed || s.alerts }} newest were examined)</span>,
+            <b class="text-white">{{ s.events }}</b> raw event{{ s.events === 1 ? '' : 's' }} nearby, highest level <b class="text-white">{{ s.max_level }}</b>
+            <span *ngIf="s.first_seen">, from {{ date(s.first_seen) }} to {{ date(s.last_seen) }}</span>.
+            Assessment: <b class="text-white">{{ label(s.verdict) }}</b>.
+          </p>
+          <p *ngIf="s.hosts?.length || s.locations?.length" class="mt-1 text-xs text-slate-400">
+            <span *ngIf="s.hosts?.length">Hosts: {{ s.hosts.join(', ') }}</span>
+            <span *ngIf="s.locations?.length"> · Sources: {{ s.locations.join(', ') }}</span>
+          </p>
+          <table *ngIf="s.top_rules?.length" class="mt-3 w-full text-xs">
+            <thead class="text-slate-500 text-left"><tr><th class="py-1">Most frequent rules</th><th class="py-1 text-right">Alerts</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let r of s.top_rules" class="border-t border-slate-800">
+                <td class="py-1 text-slate-200">{{ r.description }} <span class="text-slate-500">({{ r.rule_id }})</span></td>
+                <td class="py-1 text-right text-slate-200">{{ r.count }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="(s.techniques | keyvalue)?.length" class="mt-3 flex flex-wrap gap-1 text-xs">
+            <span class="text-slate-500 mr-1">ATT&amp;CK:</span>
+            <span *ngFor="let t of s.techniques | keyvalue" class="px-2 py-0.5 rounded bg-slate-800 text-slate-200">{{ t.key }} × {{ t.value }}</span>
+          </div>
+        </ng-container>
+        <div *ngIf="e.cases?.length" class="mt-3 text-xs">
+          <div class="text-slate-500">Other cases about it</div>
+          <div *ngFor="let k of e.cases" class="text-slate-200">{{ k.case_number }} {{ k.title }} <span class="text-slate-500">· {{ k.severity }} · {{ k.status }}</span></div>
+        </div>
+        <div *ngIf="e.memory?.length" class="mt-3 text-xs">
+          <div class="text-slate-500">Decided before</div>
+          <div *ngFor="let m of e.memory" class="text-slate-200">{{ m.title }}: <b>{{ m.outcome }}</b> by {{ m.by }} <span class="text-slate-500">· {{ m.reason }}</span></div>
+        </div>
+        <details class="mt-3 text-xs"><summary class="cursor-pointer text-slate-500">Raw data</summary>
+          <pre class="mt-2 text-slate-300 whitespace-pre-wrap break-all">{{ e.summary | json }}</pre>
+        </details>
       </section>
       <section *ngIf="inv()?.intel?.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <h2 class="font-semibold text-white mb-2">Threat intelligence</h2>
-        <pre class="text-xs text-slate-300 whitespace-pre-wrap break-all">{{ inv().intel | json }}</pre>
+        <div *ngFor="let i of inv().intel" class="py-1">
+          <span class="font-mono text-slate-200">{{ i.value }}</span>
+          <span class="text-xs text-slate-400"> · listed by {{ i.hits?.length || 0 }} feed{{ i.hits?.length === 1 ? '' : 's' }}</span>
+        </div>
+        <details class="mt-2 text-xs"><summary class="cursor-pointer text-slate-500">Raw data</summary>
+          <pre class="mt-2 text-slate-300 whitespace-pre-wrap break-all">{{ inv().intel | json }}</pre>
+        </details>
       </section>
       <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <h2 class="font-semibold text-white mb-2">Attachments ({{ d().attachments.length }})</h2>

@@ -417,10 +417,24 @@ pub async fn explain(State(state): State<AppState>, Extension(ctx): Extension<Au
 /// `GET /api/soar/cases/:id/investigation`
 pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     match state.db.doc(&ctx.scope(), DocTable::CaseInvestigations, &id).await {
-        Ok(Some(d)) => Json(json!({ "status": "ok", "investigation": serde_json::from_str::<Value>(&d).unwrap_or_default() })).into_response(),
+        Ok(Some(d)) => {
+            let mut doc = serde_json::from_str::<Value>(&d).unwrap_or_default();
+            // written before the real alert count (it gave the 500 listed as the count): redo it once
+            if is_stale(&doc) {
+                if let Ok(fresh) = investigate_case(&state, &ctx.scope(), &id).await {
+                    doc = fresh;
+                }
+            }
+            Json(json!({ "status": "ok", "investigation": doc })).into_response()
+        }
         Ok(None) => Json(json!({ "status": "none" })).into_response(),
         Err(e) => bad(StatusCode::SERVICE_UNAVAILABLE, &e),
     }
+}
+
+/// An investigation whose evidence has no `alerts_listed` counted only the alerts it listed.
+fn is_stale(doc: &Value) -> bool {
+    doc["evidence"].as_array().is_some_and(|ev| ev.iter().any(|e| e["summary"].is_object() && e["summary"].get("alerts_listed").is_none()))
 }
 
 /// `POST /api/soar/cases/:id/investigation`: investigate (again) now.
@@ -435,6 +449,13 @@ pub async fn run(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_investigations_are_redone() {
+        assert!(is_stale(&json!({ "evidence": [{ "summary": { "alerts": 500 } }] })));
+        assert!(!is_stale(&json!({ "evidence": [{ "summary": { "alerts": 812, "alerts_listed": 500 } }] })));
+        assert!(!is_stale(&json!({ "evidence": [{ "summary": null }] })), "a failed investigation has no summary");
+    }
 
     #[test]
     fn logins_decide_the_verdict() {

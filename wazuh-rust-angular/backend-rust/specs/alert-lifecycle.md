@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phases 1 to 6 done (2026-11-16); not yet tested live (services stopped). Open: L-8 (case table key).
+Status: phases 1 to 6 done (2026-11-16); not yet tested live (services stopped). L-8 resolved.
 
 ## 1. Goal
 
@@ -75,11 +75,17 @@ Problems, from the live data of tenant acm:
   left out `hit_ids`, so any update (status, owner, disposition) would have emptied it; `hit_ids`
   is now in that list (`CASE_COLUMNS` in `soar.rs`). Until now nothing wrote `hit_ids`, so no case
   page showed alerts.
-- **L-8 Open: the case table key.** `soar_cases` replaces rows by (tenant, `created_at` in seconds),
-  not by case id: two cases created in the same second become one (checked in a scratch table). New
-  incidents therefore take a second after the newest case (`unique_second`). The real fix is a table
-  keyed by (tenant, id); it needs a migration of every tenant's replicated table, so it waits for
-  the owner's approval.
+- **L-8 The case table is keyed by case id.** `soar_cases` replaced rows by (tenant, `created_at` in
+  seconds), not by case id, so two cases created in the same second became one (checked in a scratch
+  table). On 2026-11-16, with the owner's approval, both existing tables (`ndr.soar_cases`, 0 cases,
+  and `ndr_acm.soar_cases`, 8 cases) were rebuilt keyed by `(tenant_id, id)`: a new replicated table
+  (Keeper path `.../soar_cases_by_id`), every stored row copied (not only the deduplicated view, so
+  a case hidden by a collision but not yet merged away would come back), the counts compared, the
+  tables exchanged; the old ones stay as `soar_cases_bak_20261116`. No case was lost (8 before, 8
+  after; the one extra old row was an earlier version of INC-2026-0008). New tenants get the new key
+  from `ndr/config/clickhouse/init.sql`, SIEM-only installs from `SOAR_DDL` in `siem-api/src/db.rs`.
+  Incidents still take a second after the newest case (`unique_second`), which costs one query and
+  protects an install whose table is not migrated yet.
 - **L-9 Priority from level and business risk.** An incident's severity is the higher of its
   highest level's (12+ critical, 10-11 high, 7-9 medium) and its highest business risk's (risk
   fabric score 70+ critical, 45-69 high, 25-44 medium, by the risk fabric's own tiers). The
@@ -109,3 +115,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: phase 4 done: severity from level and business risk (L-9, `severity_of` in `incidents.rs`). siem-api tests: 157 passed.
 - 2026-11-16: phase 5 done: starter playbooks on the SOAR page (L-10); their conditions are all evaluated by `provigil-common/src/soar/conditions.rs` (its tests cover each).
 - 2026-11-16: phase 6 done: exception from a false-positive incident (L-11), metrics (L-12). The metrics SQL was run read-only on tenant acm (8 cases, 6 open, 8 min to close, 21 h to first action). siem-api tests: 157 passed.
+- 2026-11-16: case tables rebuilt keyed by case id (L-8); definitions changed for new tenants.

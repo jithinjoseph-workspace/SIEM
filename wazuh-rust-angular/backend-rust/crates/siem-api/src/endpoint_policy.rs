@@ -38,8 +38,8 @@ pub const RULE_APP: u32 = 940301;
 pub const RULE_APPLY_FAILED: u32 = 940303;
 pub const RULE_TAMPER: u32 = 940304;
 
-/// The blocker the agent starts in a blocked program's place.
-const BLOCKER: &str = "provigil-blocked.exe";
+/// Windows starts the agent itself (`--blocked`) in a blocked program's place.
+const BLOCKER: &str = "provigil-agent.exe";
 
 #[derive(clickhouse::Row, Serialize, Deserialize)]
 struct Row {
@@ -248,16 +248,27 @@ fn sha256_of(hashes: &str) -> String {
     hashes.split(',').find_map(|h| h.trim().strip_prefix("SHA256=").map(str::to_string)).unwrap_or_default()
 }
 
-/// The program a blocker run stood in for: Windows starts it as `provigil-blocked.exe "<program>" <args>`.
-fn blocked_program(command_line: &str) -> String {
-    let rest = command_line.trim();
-    let rest = if let Some(r) = rest.strip_prefix('"') { r.split_once('"').map(|x| x.1).unwrap_or("") } else { rest.split_once(' ').map(|x| x.1).unwrap_or("") };
-    let rest = rest.trim();
-    if let Some(r) = rest.strip_prefix('"') {
-        r.split('"').next().unwrap_or("").to_string()
-    } else {
-        rest.split(' ').next().unwrap_or("").to_string()
+/// The program a blocker run stood in for: Windows starts the agent as
+/// `"...\provigil-agent.exe" --blocked <rule> "<program>" <args>`. None: not a blocker run.
+fn blocked_program(command_line: &str) -> Option<String> {
+    let mut words = Vec::new();
+    let (mut cur, mut quoted) = (String::new(), false);
+    for c in command_line.chars() {
+        match c {
+            '"' => quoted = !quoted,
+            ' ' | '\t' if !quoted => {
+                if !cur.is_empty() {
+                    words.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
     }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    let i = words.iter().position(|w| w == "--blocked")?;
+    words.get(i + 2).cloned()
 }
 
 /// Alerts for a batch of archived events; `groups` = agent id -> its manager groups.
@@ -299,7 +310,10 @@ pub fn check(events: &[(Value, String)], groups: &HashMap<String, Vec<String>>) 
             "1" | "4688" => {
                 let image = [ed("image"), ed("newProcessName")].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
                 let cmd = ed("commandLine");
-                let (image, ours) = if file(&image).eq_ignore_ascii_case(BLOCKER) { (blocked_program(&cmd), true) } else { (image, false) };
+                let (image, ours) = match blocked_program(&cmd).filter(|_| file(&image).eq_ignore_ascii_case(BLOCKER)) {
+                    Some(p) => (p, true),
+                    None => (image, false),
+                };
                 let sha = sha256_of(&ed("hashes"));
                 rules.iter().filter(|r| r.kind == "app" && r.applies(ag, "windows")).find_map(|r| r.app_hit(&image, &sha).map(|t| (r, t.to_string()))).map(|(r, t)| {
                     let blocked = ours || r.mode == "enforce";
@@ -363,7 +377,7 @@ mod tests {
             (ev("22", json!({ "queryName": "example.com" })), t.to_string()),
             (ev("1", json!({ "image": "C:\\\\Users\\\\x\\\\ChatGPT.exe", "hashes": "SHA256=AB,MD5=CD", "user": "ACME\\\\jdoe" })), t.to_string()),
             // the blocker in its place
-            (ev("1", json!({ "image": "C:\\\\Program Files\\\\ProVigil\\\\provigil-blocked.exe", "commandLine": "\"C:\\\\Program Files\\\\ProVigil\\\\provigil-blocked.exe\" \"C:\\\\Apps\\\\chatgpt.exe\" --x", "user": "ACME\\\\ann" })), t.to_string()),
+            (ev("1", json!({ "image": "C:\\\\Program Files\\\\ProVigil\\\\provigil-agent.exe", "commandLine": "\"C:\\\\Program Files\\\\ProVigil\\\\provigil-agent.exe\" --blocked a1 \"C:\\\\Apps\\\\chatgpt.exe\" --x", "user": "ACME\\\\ann" })), t.to_string()),
         ];
         let a = check(&events, &groups);
         let d: Vec<(u32, u8, &str)> = a.iter().map(|(x, _)| (x.rule.id, x.rule.level, x.rule.description.as_str())).collect();
@@ -390,7 +404,8 @@ mod tests {
 
     #[test]
     fn blocker_command_line() {
-        assert_eq!(blocked_program("\"C:\\P\\provigil-blocked.exe\" \"C:\\A B\\chatgpt.exe\" -x"), "C:\\A B\\chatgpt.exe");
-        assert_eq!(blocked_program("C:\\P\\provigil-blocked.exe C:\\A\\x.exe"), "C:\\A\\x.exe");
+        assert_eq!(blocked_program("\"C:\\P\\provigil-agent.exe\" --blocked a1 \"C:\\A B\\chatgpt.exe\" -x").as_deref(), Some("C:\\A B\\chatgpt.exe"));
+        assert_eq!(blocked_program("C:\\P\\provigil-agent.exe --blocked a1 C:\\A\\x.exe").as_deref(), Some("C:\\A\\x.exe"));
+        assert_eq!(blocked_program("C:\\P\\provigil-agent.exe --service"), None, "the agent itself");
     }
 }

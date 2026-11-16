@@ -13,6 +13,7 @@ pub mod commands;
 pub mod config;
 pub mod diff;
 pub mod edr;
+pub mod endpoint_policy;
 pub mod events;
 pub mod fim;
 pub mod fim_db;
@@ -356,6 +357,15 @@ fn start_collection(config: &AgentConfig, identity: &AgentIdentity, buffer: &Arc
                 }
             }
         }));
+    }
+
+    // The tenant's endpoint control rules: applied now and every 10 minutes, blocked programs
+    // stopped within 2 seconds (endpoint_policy.rs)
+    {
+        let rules = config.endpoint_policies.clone();
+        let never = endpoint_policy::manager_hosts(&config.manager_list());
+        let (b, id, name) = (buffer.clone(), identity.agent_id.clone(), identity.agent_name.clone());
+        tasks.push(tokio::spawn(endpoint_policy::run(rules, never, b, id, name)));
     }
 
     // Log files and command output (localfiles), on their own threads

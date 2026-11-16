@@ -113,6 +113,10 @@ pub struct AgentConfig {
     /// send of an install, 3600 for later ones (a new policy text, the manager asking).
     #[serde(default)]
     pub full_send_splay_secs: Option<u64>,
+    /// The tenant's endpoint control rules for this agent (`endpoint_policy.rs`); set by the
+    /// manager in the group settings.
+    #[serde(default)]
+    pub endpoint_policies: Vec<Value>,
     /// Diffs for every monitored file's changes (off: only `fim_report_changes`).
     #[serde(default)]
     pub diff_enabled: bool,
@@ -491,6 +495,7 @@ impl Default for AgentConfig {
             sca_enabled: default_true(),
             sca_disabled_policies: Vec::new(),
             full_send_splay_secs: None,
+            endpoint_policies: Vec::new(),
             diff_enabled: false,
             diff_max_size: default_max_diff(),
             whodata_enabled: default_true(),
@@ -643,7 +648,7 @@ impl AgentConfig {
 }
 
 /// The settings an agent's groups can set (the console's Groups page).
-pub const GROUP_FIELDS: [&str; 30] = [
+pub const GROUP_FIELDS: [&str; 31] = [
     // fallback managers an admin adds per group; added to the agent's own list, never replacing it
     "manager_urls",
     "event_channels", "event_channel_queries", "localfiles", "fim_paths", "fim_realtime", "fim_whodata", "fim_ignore",
@@ -651,6 +656,8 @@ pub const GROUP_FIELDS: [&str; 30] = [
     "sca_interval_secs", "sca_enabled", "sca_disabled_policies", "labels", "buffer",
     "commands", "osquery", "rootcheck_checks", "rootcheck_base_directory", "ar_repeated_offenders",
     "registry_restrict_key", "registry_restrict_value", "registry_report_changes", "full_send_splay_secs",
+    // the tenant's endpoint control rules (the manager adds them; endpoint_policy.rs)
+    "endpoint_policies",
 ];
 
 /// The last group answer the agent received, used at the next start.

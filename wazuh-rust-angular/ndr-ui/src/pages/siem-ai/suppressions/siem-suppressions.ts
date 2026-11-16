@@ -32,7 +32,7 @@ export class SiemSuppressions implements OnInit {
   error = signal<string | null>(null);
   message = signal<string | null>(null);
   showInactive = signal(false);
-  form = { rule_id: '', agent_id: '', src_ip: '', hours: 24, reason: '' };
+  form = { rule_id: '', agent_id: '', src_ip: '', hours: 24, reason: '', field_path: '', field_contains: '', permanent: false };
   hourChoices = [1, 8, 24, 72, 168];
 
   shown = computed(() => this.showInactive() ? this.suppressions() : this.suppressions().filter(s => s.active));
@@ -78,6 +78,15 @@ export class SiemSuppressions implements OnInit {
       this.error.set('Give a rule id, a source IP or both.');
       return;
     }
+    const field = this.form.field_path.trim();
+    if (field && !this.form.field_contains.trim()) {
+      this.error.set('Give the text the field must contain.');
+      return;
+    }
+    if (this.form.permanent && (!rule || !field)) {
+      this.error.set('Only an exception (a rule and a field condition) can be permanent.');
+      return;
+    }
     this.saving.set(true);
     this.siem.createSiemSuppression({
       rule_id: rule ? Number(rule) : undefined,
@@ -85,10 +94,13 @@ export class SiemSuppressions implements OnInit {
       src_ip: this.form.src_ip.trim(),
       duration_hours: this.form.hours,
       reason: this.form.reason.trim(),
+      field_path: field || undefined,
+      field_contains: field ? this.form.field_contains.trim() : undefined,
+      permanent: this.form.permanent || undefined,
     }).subscribe({
       next: r => {
         this.saving.set(false);
-        if (!r?.error) this.form = { rule_id: '', agent_id: '', src_ip: '', hours: 24, reason: '' };
+        if (!r?.error) this.form = { rule_id: '', agent_id: '', src_ip: '', hours: 24, reason: '', field_path: '', field_contains: '', permanent: false };
         this.done(r, 'Suppression added.');
       },
       error: () => { this.saving.set(false); this.error.set('The suppression could not be saved.'); },
@@ -112,6 +124,7 @@ export class SiemSuppressions implements OnInit {
     const parts = [];
     if (s.dst_ip) parts.push(`host ${s.dst_ip}`);
     if (s.src_ip) parts.push(`source ${s.src_ip}`);
+    if (s.field_path) parts.push(`${s.field_path} contains "${s.field_contains}"`);
     return parts.length ? parts.join(', ') : 'all hosts and sources';
   }
 }

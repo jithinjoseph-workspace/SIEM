@@ -259,6 +259,7 @@ pub async fn apply(State(state): State<AppState>, Extension(ctx): Extension<Auth
         src_ip: Some(rec.src_ip.clone()).filter(|s| s.parse::<std::net::IpAddr>().is_ok()),
         hours: Some(hours),
         reason: format!("Applied from alert triage ({} verdict, {}%): {}", if rec.source == Source::Ai { "AI" } else { "rule" }, rec.confidence, rec.reason),
+        ..Default::default()
     };
     // hiding alerts on an AI verdict is a high-impact decision: the policy decides first
     let decision = match crate::decisions::gate_suppress(&state, &t, &ctx.username, &rec, &req).await {

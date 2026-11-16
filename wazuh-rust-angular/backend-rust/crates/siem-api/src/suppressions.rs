@@ -59,7 +59,9 @@ pub async fn is_suppressed(state: &AppState, tenant: &str, a: &siem_core::Alert)
         return false;
     }
     let src = a.decoded.src_ip.clone().unwrap_or_default();
-    let key = AlertKey { rule_id: a.rule.id, level: a.rule.level as u32, agent_id: &a.agent.id, src_ip: &src };
+    // the whole alert only when a field condition needs it
+    let whole = list.iter().any(|s| s.field.is_some()).then(|| serde_json::to_value(a).unwrap_or_default());
+    let key = AlertKey { rule_id: a.rule.id, level: a.rule.level as u32, agent_id: &a.agent.id, src_ip: &src, alert: whole.as_ref() };
     siem_suppression::find(&list, &key, now()).is_some()
 }
 
@@ -91,6 +93,14 @@ pub struct ManualBody {
     pub duration_hours: Option<u32>,
     #[serde(default)]
     pub reason: String,
+    /// An exception: only alerts whose field (a dot path, `data.win.eventdata.image`) contains
+    /// this text; with a rule it may be permanent.
+    #[serde(default)]
+    pub field_path: String,
+    #[serde(default)]
+    pub field_contains: String,
+    #[serde(default)]
+    pub permanent: bool,
 }
 
 /// `POST /api/v1/siem/suppressions`
@@ -105,6 +115,8 @@ pub async fn create_manual(State(state): State<AppState>, Extension(ctx): Extens
         src_ip: Some(b.src_ip),
         hours: b.duration_hours,
         reason: b.reason,
+        field: (!b.field_path.trim().is_empty()).then(|| siem_suppression::FieldMatch { path: b.field_path.trim().to_string(), contains: b.field_contains }),
+        permanent: b.permanent,
     };
     match create(&state, &ctx.scope(), r, "manual", 100, &ctx.username).await {
         Ok(s) => {

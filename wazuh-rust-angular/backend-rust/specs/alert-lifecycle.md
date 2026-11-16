@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phase 1 done (2026-11-16), phase 2 next.
+Status: phases 1 and 2 done (2026-11-16), phase 3 next.
 
 ## 1. Goal
 
@@ -55,7 +55,16 @@ Problems, from the live data of tenant acm:
   scored, as before.
 - **L-3 Deception on every alert.** The tripwire check ran only for side-path alerts; it now runs in
   `deliver` for every shown alert (never for deception's own alerts, so no loop).
+- **L-4 Exceptions may be permanent.** A suppression may add a field condition: a dot path into the
+  alert (`data.win.eventdata.image`) that must contain a text, without case. Only a suppression
+  with both a rule and a field condition may be permanent: that narrow it cannot hide anything
+  broad. Every other one still expires (1 hour to 7 days); level 12+ is never hidden; a field the
+  alert does not have never hides it.
+- **L-5 Shipped and Sigma alerts of one event** are joined by phase 3's incident grouping (same
+  host, process and time), not by a second mechanism. Red Swarm alerts are already tagged and never
+  stored, so they are out of the queue.
 
 ## 5. Progress
 
 - 2026-11-16: plan written. Phase 1 done: `record_alert` (agent HTTP ingest, FIM handler, simulations) and the syslog engine hand their alerts to `deliver` (`siem-api/src/provigil_manager.rs`); decisions L-1 to L-3. siem-api tests: 153 passed.
+- 2026-11-16: phase 2 done: field exceptions (`siem-suppression/src/lib.rs`, `siem-api/src/suppressions.rs`, the Suppressions page `/siem-suppressions`), decisions L-4 and L-5. Example: rule 960270 when `data.win.eventdata.image` contains `docker.exe`, permanent.

@@ -715,7 +715,7 @@ export class SiemService {
     return this.http.get(`${this.apiUrl}/api/v1/siem/ai-activity`);
   }
 
-  createSiemSuppression(body: { rule_id?: number; agent_id?: string; src_ip?: string; duration_hours: number; reason?: string }): Observable<any> {
+  createSiemSuppression(body: { rule_id?: number; agent_id?: string; src_ip?: string; duration_hours: number; reason?: string; field_path?: string; field_contains?: string; permanent?: boolean }): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/suppressions`, body);
   }
 

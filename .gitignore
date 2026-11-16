@@ -109,3 +109,4 @@ wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 # ProVigil comparison harnesses (hold multi-GB feed copies)
 wazuh-rust-angular/backend-rust/scratch/vulnscan-compare/
 wazuh-rust-angular/backend-rust/scratch/vulnscan-e2e/
+wazuh-rust-angular/backend-rust/src/

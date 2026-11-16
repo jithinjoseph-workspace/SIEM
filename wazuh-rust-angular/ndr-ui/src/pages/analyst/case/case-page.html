@@ -43,12 +43,17 @@
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Category</div>
         <div>{{ d().details?.category || '—' }}<span *ngIf="d().details?.subcategory" class="text-slate-400"> / {{ d().details.subcategory }}</span></div>
+        <div *ngIf="!d().details?.category && tactics()" class="text-xs text-slate-400 mt-0.5" title="From the ATT&CK tags of the case's alerts; set a category with Edit">ATT&amp;CK: {{ tactics() }}</div>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Assigned to</div><div>{{ c.assigned_to || 'Unassigned' }}</div>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
-        <div class="text-xs text-slate-500">Source → destination</div><div class="font-mono text-xs">{{ c.src_ip || '—' }} → {{ c.dst_ip || '—' }}</div>
+        <ng-container *ngIf="c.src_ip || !hosts(); else onHost">
+          <div class="text-xs text-slate-500">Source → destination</div><div class="font-mono text-xs">{{ c.src_ip || '—' }} → {{ c.dst_ip || '—' }}</div>
+        </ng-container>
+        <!-- an endpoint case has no network addresses: the host it happened on -->
+        <ng-template #onHost><div class="text-xs text-slate-500">Host</div><div class="text-xs">{{ hosts() }}</div></ng-template>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Alerts / entities</div><div>{{ d().alerts.length }} / {{ d().entities.length }}</div>
@@ -64,6 +69,28 @@
     <!-- Overview -->
     <div *ngIf="tab() === 'overview'" class="grid lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 space-y-4">
+        <!-- what happened: each alert's own event (process, file or key, command line, parent, hashes) -->
+        <section *ngIf="d().alerts.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">What happened <span class="text-xs font-normal text-slate-400">({{ d().alerts.length }} alert{{ d().alerts.length === 1 ? '' : 's' }}{{ d().alerts.length > 10 ? ', first 10 shown; all in Sequence' : '' }})</span></h2>
+          <div *ngFor="let a of d().alerts.slice(0, 10)" class="py-2 border-t border-slate-800 first:border-t-0 text-sm">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-slate-400 text-xs">{{ date(a.timestamp / 1000) }}</span>
+              <span class="font-mono text-cyan-300 text-xs">#{{ a.rule_id }} · level {{ a.rule_level }}</span>
+              <span class="text-white">{{ a.rule_description }}</span>
+              <span *ngIf="a.mitre_id" class="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">{{ a.mitre_id }} {{ a.mitre_tactic }}</span>
+              <span class="text-xs text-slate-400">on {{ a.agent_name }}</span>
+            </div>
+            <dl class="mt-1 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <ng-container *ngIf="a.process"><dt class="text-slate-500">Process</dt><dd class="font-mono text-slate-200 break-all">{{ a.process }}</dd></ng-container>
+              <ng-container *ngIf="a.command_line"><dt class="text-slate-500">Command line</dt><dd class="font-mono text-slate-200 break-all">{{ a.command_line }}</dd></ng-container>
+              <ng-container *ngIf="a.target"><dt class="text-slate-500">File / key</dt><dd class="font-mono text-slate-200 break-all">{{ a.target }}</dd></ng-container>
+              <ng-container *ngIf="a.parent"><dt class="text-slate-500">Started by</dt><dd class="font-mono text-slate-200 break-all">{{ a.parent }}<span *ngIf="a.parent_command_line" class="block text-slate-400">{{ a.parent_command_line }}</span></dd></ng-container>
+              <ng-container *ngIf="a.user"><dt class="text-slate-500">User</dt><dd class="text-slate-200">{{ a.user }}</dd></ng-container>
+              <ng-container *ngIf="a.hashes"><dt class="text-slate-500">Hashes</dt><dd class="font-mono text-slate-400 break-all">{{ a.hashes }}</dd></ng-container>
+              <ng-container *ngIf="!a.process && !a.target && a.log"><dt class="text-slate-500">Log</dt><dd class="font-mono text-slate-300 break-all">{{ a.log }}</dd></ng-container>
+            </dl>
+          </div>
+        </section>
         <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
           <h2 class="text-sm font-semibold text-white mb-2">Description</h2>
           <p class="text-sm text-slate-300 whitespace-pre-wrap">{{ c.description || 'No description.' }}</p>

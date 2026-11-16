@@ -74,6 +74,11 @@ export class CasePage implements OnInit {
   /** An incident opened automatically and closed as a false positive: the exception it suggests
    *  (its most frequent rule and agent, and its process or user), created only when a person asks
    *  (specs/alert-lifecycle.md, phase 6). */
+  /** The hosts of the case's alerts, for an endpoint case without network addresses. */
+  hosts = computed(() => [...new Set((this.d()?.alerts || []).map((a: any) => a.agent_name ? `${a.agent_name} (${a.agent_id})` : ''))].filter(Boolean).join(', '));
+  /** The ATT&CK tactics of the case's alerts: a category hint when none is set. */
+  tactics = computed(() => [...new Set((this.d()?.alerts || []).map((a: any) => a.mitre_tactic).filter(Boolean))].join(', '));
+
   exception = computed(() => {
     const d = this.d();
     // judged a false positive either way: the disposition (Resolve) or the status (the case list's workflow)

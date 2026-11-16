@@ -158,7 +158,8 @@ pub async fn investigate(State(state): State<AppState>, Extension(ctx): Extensio
 /// The first and last alert of a SOAR case (epoch seconds), any rule.
 pub(crate) async fn case_window(state: &AppState, tenant: &str, case_id: &str) -> Option<Focus> {
     let db = state.db.tenant_client(tenant);
-    let ids: Vec<String> = db.query("SELECT hit_ids FROM soar_cases FINAL WHERE id = ?").bind(case_id).fetch_optional().await.ok()??;
+    // a case opened from an alert before cases kept their alerts has it in community_id
+    let ids: Vec<String> = db.query("SELECT if(empty(hit_ids) AND community_id != '', [community_id], hit_ids) FROM soar_cases FINAL WHERE id = ?").bind(case_id).fetch_optional().await.ok()??;
     if ids.is_empty() {
         return None;
     }
@@ -217,6 +218,19 @@ pub async fn run_focused(state: &AppState, tenant: &str, q: &str, days: u32, foc
     let alerts = match alerts {
         Ok(a) => a,
         Err(e) => return fail(&format!("The alerts could not be read: {e}")),
+    };
+    // the real number: at most MAX_ALERTS are listed, and the listed count is not the count
+    let total: u64 = if alerts.len() as u64 == MAX_ALERTS {
+        tc.query(&format!("SELECT count() FROM siem_alerts WHERE timestamp >= ? AND timestamp <= ? AND {}{rule_clause}", alert_filter(&kind)))
+            .bind(since)
+            .bind(until)
+            .bind(&a1)
+            .bind(&a2)
+            .fetch_one()
+            .await
+            .unwrap_or(MAX_ALERTS)
+    } else {
+        alerts.len() as u64
     };
     let events = match &kind {
         Kind::Host(id, _) => tc.query("SELECT id, timestamp, agent_id, location, message FROM siem_events WHERE timestamp >= ? AND timestamp <= ? AND agent_id = ? ORDER BY timestamp DESC LIMIT 100").bind(since).bind(until).bind(id),
@@ -384,8 +398,9 @@ pub async fn run_focused(state: &AppState, tenant: &str, q: &str, days: u32, foc
         "focus": focus.map(|f| json!({ "rule": f.rule, "from": f.from, "to": f.to, "margin_seconds": FOCUS_MARGIN })),
         "summary": {
             "verdict": verdict,
-            "alerts": alerts.len(),
-            "alerts_capped": alerts.len() as u64 == MAX_ALERTS,
+            "alerts": total,
+            "alerts_listed": alerts.len(),
+            "alerts_capped": total > alerts.len() as u64,
             "events": events.len(),
             "first_seen": alerts.last().map(|a| a.timestamp / 1000),
             "last_seen": alerts.first().map(|a| a.timestamp / 1000),

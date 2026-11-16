@@ -154,6 +154,26 @@ struct AlertRow {
     dst_ip: String,
     user: String,
     location: String,
+    /// what the alert is about, from its event: the process, its command line, the file or
+    /// registry key it touched, its parent, the file hashes and the raw log
+    process: String,
+    command_line: String,
+    target: String,
+    parent: String,
+    parent_command_line: String,
+    hashes: String,
+    process_guid: String,
+    log: String,
+}
+
+impl AlertRow {
+    /// Windows event data is stored with doubled backslashes: shown as written.
+    fn tidy(mut self) -> AlertRow {
+        for f in [&mut self.process, &mut self.command_line, &mut self.target, &mut self.parent, &mut self.parent_command_line, &mut self.log] {
+            *f = f.replace("\\\\", "\\");
+        }
+        self
+    }
 }
 
 fn bad(m: &str) -> Response {
@@ -186,11 +206,14 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
     let alerts: Vec<AlertRow> = if c.hit_ids.is_empty() {
         Vec::new()
     } else {
-        db.query("SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, src_ip, dst_ip, user, location FROM siem_alerts WHERE id IN ? ORDER BY timestamp LIMIT 500")
+        db.query("SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, src_ip, dst_ip, user, location, if(JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'image') != '', JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'image'), JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'sourceImage')) AS process, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'commandLine') AS command_line, if(JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetFilename') != '', JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetFilename'), JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetObject')) AS target, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'parentImage') AS parent, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'parentCommandLine') AS parent_command_line, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'hashes') AS hashes, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'processGuid') AS process_guid, substring(full_log, 1, 600) AS log FROM siem_alerts WHERE id IN ? ORDER BY timestamp LIMIT 500")
             .bind(&c.hit_ids)
-            .fetch_all()
+            .fetch_all::<AlertRow>()
             .await
             .unwrap_or_default()
+            .into_iter()
+            .map(AlertRow::tidy)
+            .collect()
     };
 
     // the entities: hosts, users and addresses from the case and its alerts, with their risk

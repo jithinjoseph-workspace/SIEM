@@ -174,6 +174,7 @@ struct Case {
     severity: String,
     src_ip: String,
     community_id: String,
+    hit_ids: Vec<String>,
 }
 
 #[derive(clickhouse::Row, Deserialize)]
@@ -199,18 +200,21 @@ fn n(v: &Value) -> u64 {
 pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> Result<Value, String> {
     let tc = state.db.tenant_client(tenant);
     let case = tc
-        .query("SELECT case_number, title, severity, src_ip, community_id FROM soar_cases FINAL WHERE id = ? LIMIT 1")
+        .query("SELECT case_number, title, severity, src_ip, community_id, hit_ids FROM soar_cases FINAL WHERE id = ? LIMIT 1")
         .bind(case_id)
         .fetch_optional::<Case>()
         .await
         .map_err(|e| e.to_string())?
         .ok_or("Case not found")?;
-    let first = if case.community_id.is_empty() {
+    // the case's first alert: the one it was opened from (community_id), else the first of its
+    // alerts (an incident, or a case given its alerts)
+    let first_id = if case.community_id.is_empty() { case.hit_ids.first().cloned().unwrap_or_default() } else { case.community_id.clone() };
+    let first = if first_id.is_empty() {
         None
     } else {
         tc.query("SELECT agent_id, user FROM siem_alerts WHERE id = ? OR JSONExtractString(alert_json, 'data', 'wazuh_alert_id') = ? ORDER BY timestamp LIMIT 1")
-            .bind(&case.community_id)
-            .bind(&case.community_id)
+            .bind(&first_id)
+            .bind(&first_id)
             .fetch_optional::<FirstAlert>()
             .await
             .ok()

@@ -397,8 +397,12 @@ pub fn for_agent(home: &Path, tenant: &str, name: &str, groups: &str) -> Value {
     let shared = home.join("etc").join("shared");
     let confs: Vec<String> = agent_groups(groups).iter().filter_map(|g| manager_name(tenant, g)).filter_map(|m| std::fs::read_to_string(shared.join(m).join("agent.conf")).ok()).collect();
     let config = translate(&confs, name);
-    let version: String = Sha256::digest(config.to_string().as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect();
-    json!({ "version": version, "config": config })
+    json!({ "version": version_of(&config), "config": config })
+}
+
+/// The version of a group configuration: the first 8 bytes of the SHA-256 of its text, in hex.
+pub fn version_of(config: &Value) -> String {
+    Sha256::digest(config.to_string().as_bytes())[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

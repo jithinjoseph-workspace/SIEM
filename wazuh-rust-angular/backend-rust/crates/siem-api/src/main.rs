@@ -85,6 +85,7 @@ pub mod engine_docs;
 pub mod posture;
 pub mod case_detail;
 pub mod deploy_tokens;
+pub mod endpoint_policy;
 pub mod deploy_kit;
 pub mod posture_store;
 pub mod predictions;
@@ -496,6 +497,7 @@ async fn main() {
     load_agent_registry(&state).await;
     state.agent_keys.load_from(&state.db).await;
     deploy_tokens::load(&state).await;
+    endpoint_policy::load(&state).await;
 
     // Tenants come from the shared auth-service registry (ndr.tenants).
     tenancy::sync_tenants(&state).await;
@@ -974,6 +976,8 @@ async fn main() {
             post(rotate_tenant_agent_key_handler),
         )
         .route("/api/v1/deploy/tokens", get(deploy_tokens::list).post(deploy_tokens::create))
+        .route("/api/v1/endpoint-policies", get(endpoint_policy::list))
+        .route("/api/v1/endpoint-policies/:id", axum::routing::put(endpoint_policy::put).delete(endpoint_policy::delete))
         .route("/api/v1/deploy/tokens/:id", axum::routing::delete(deploy_tokens::revoke))
         .route("/api/v1/deploy/tokens/:id/targets", get(deploy_tokens::targets))
         .route("/api/v1/deploy/kit", post(deploy_kit::kit))

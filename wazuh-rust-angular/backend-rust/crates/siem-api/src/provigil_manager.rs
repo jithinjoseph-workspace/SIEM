@@ -2855,8 +2855,12 @@ pub(crate) async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
                 .unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string())
         }))
         .collect();
+    // each agent's groups, for the endpoint policy rules' scope
+    let agent_groups: std::collections::HashMap<String, Vec<String>> =
+        state.enrolled.read().unwrap().iter().map(|(id, e)| (id.clone(), crate::groups::agent_groups(&e.groups))).collect();
     let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
         let mut m = crate::sigma::check(&tagged);
+        m.extend(crate::endpoint_policy::check(&tagged, &agent_groups));
         let mut tamper = crate::tamper::check(&tagged);
         m.append(&mut tamper.alerts);
         m.extend(crate::file_reputation::check(&tagged));

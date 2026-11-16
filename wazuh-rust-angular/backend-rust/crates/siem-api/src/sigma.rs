@@ -90,21 +90,41 @@ async fn stored(state: &AppState) -> u64 {
     state.db.root().query("SELECT count() FROM ndr.sigma_rules FINAL").fetch_one::<u64>().await.unwrap_or(0)
 }
 
+/// `ndr.settings` key: when the last SigmaHQ sync succeeded (unix seconds), so the weekly sync
+/// keeps its schedule across restarts.
+const LAST_SYNC_KEY: &str = "sigma_last_sync";
+
+async fn last_sync(state: &AppState) -> Option<i64> {
+    let v: String = state.db.root().query("SELECT value FROM ndr.settings FINAL WHERE key = ?").bind(LAST_SYNC_KEY).fetch_one().await.ok()?;
+    v.trim().parse().ok()
+}
+
+async fn mark_synced(state: &AppState, at: i64) {
+    if let Err(e) = state.db.root().query("INSERT INTO ndr.settings (key, value) VALUES (?, ?)").bind(LAST_SYNC_KEY).bind(at.to_string()).execute().await {
+        tracing::warn!("sigma: sync time not saved: {e}");
+    }
+}
+
+/// A sync is due without rules, without a recorded sync, or a week after the last one.
+fn sync_due(stored: u64, last: Option<i64>, now: i64) -> bool {
+    stored == 0 || last.is_none_or(|t| now - t >= SYNC_SECS as i64)
+}
+
 pub fn spawn(state: AppState) {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(20)).await;
-        let mut last_sync = None::<std::time::Instant>;
         loop {
             if state.db.is_connected() {
-                if stored(&state).await == 0 || last_sync.is_some_and(|t| t.elapsed() >= Duration::from_secs(SYNC_SECS)) {
+                let now = chrono::Utc::now().timestamp();
+                if sync_due(stored(&state).await, last_sync(&state).await, now) {
                     match provigil_common::sigma_sync::sync_now(&common_config().build_client(), &rules_dir()).await {
-                        Ok(n) => tracing::info!("sigma: {n} new SigmaHQ rule(s) saved"),
+                        Ok(n) => {
+                            tracing::info!("sigma: {n} new SigmaHQ rule(s) saved");
+                            mark_synced(&state, now).await;
+                        }
+                        // not recorded: tried again at the next check
                         Err(e) => tracing::warn!("sigma: SigmaHQ sync failed: {e}"),
                     }
-                    last_sync = Some(std::time::Instant::now());
-                }
-                if last_sync.is_none() {
-                    last_sync = Some(std::time::Instant::now());
                 }
                 match reload(&state).await {
                     Ok(n) => tracing::info!("sigma: {n} rule(s) loaded"),
@@ -334,6 +354,15 @@ pub async fn sync_community(state: &AppState) -> Result<(usize, usize), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weekly_sync_survives_restarts() {
+        let now = 1_800_000_000;
+        assert!(sync_due(0, Some(now), now), "no rules: sync");
+        assert!(sync_due(1440, None, now), "rules but no recorded sync: sync once");
+        assert!(!sync_due(1440, Some(now - 3600), now), "synced an hour ago: wait");
+        assert!(sync_due(1440, Some(now - SYNC_SECS as i64), now), "a week ago: sync");
+    }
 
     const RULE: &str = r#"
 title: Local Accounts Discovery via net1

@@ -420,7 +420,7 @@ pub struct MetricsQuery {
 /// `GET /api/v1/siem/incidents/metrics?days=30` (phase 6): the tenant's cases over the last days
 /// (1 to 90): how many, how many open or opened automatically, the mean time to the first action
 /// (status, edit, note, disposition) and to closing, and per rule how many incidents ended as false
-/// positives, most first: the rules worth tuning.
+/// positives (the Resolve disposition or the False Positive status), most first: the rules worth tuning.
 pub async fn metrics(
     axum::extract::State(state): axum::extract::State<AppState>,
     axum::Extension(ctx): axum::Extension<crate::tenancy::AuthCtx>,
@@ -442,7 +442,7 @@ pub async fn metrics(
         .await
         .unwrap_or(0.0);
     let rules: Vec<RuleOutcome> = db
-        .query("WITH c AS (SELECT id, hit_ids FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY AND notEmpty(hit_ids)), d AS (SELECT case_id, JSONExtractString(doc, 'disposition') AS disp FROM soar_case_details FINAL), a AS (SELECT id, rule_id, rule_description FROM siem_alerts WHERE id IN (SELECT arrayJoin(hit_ids) FROM c)) SELECT a.rule_id AS rule_id, any(a.rule_description) AS rule, toUInt64(uniqExact(c.id)) AS incidents, toUInt64(uniqExactIf(c.id, d.disp = 'False Positive')) AS false_positive FROM c ARRAY JOIN c.hit_ids AS hid INNER JOIN a ON a.id = hid LEFT JOIN d ON d.case_id = c.id GROUP BY a.rule_id ORDER BY false_positive DESC, incidents DESC LIMIT 20")
+        .query("WITH c AS (SELECT id, hit_ids, status FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY AND notEmpty(hit_ids)), d AS (SELECT case_id, JSONExtractString(doc, 'disposition') AS disp FROM soar_case_details FINAL), a AS (SELECT id, rule_id, rule_description FROM siem_alerts WHERE id IN (SELECT arrayJoin(hit_ids) FROM c)) SELECT a.rule_id AS rule_id, any(a.rule_description) AS rule, toUInt64(uniqExact(c.id)) AS incidents, toUInt64(uniqExactIf(c.id, d.disp = 'False Positive' OR c.status = 'False Positive')) AS false_positive FROM c ARRAY JOIN c.hit_ids AS hid INNER JOIN a ON a.id = hid LEFT JOIN d ON d.case_id = c.id GROUP BY a.rule_id ORDER BY false_positive DESC, incidents DESC LIMIT 20")
         .bind(days)
         .fetch_all()
         .await

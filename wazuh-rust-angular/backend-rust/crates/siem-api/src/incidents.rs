@@ -289,6 +289,44 @@ async fn flush(state: &AppState) {
     }
 }
 
+#[derive(clickhouse::Row, serde::Deserialize)]
+struct CaseOf {
+    id: String,
+    case_number: String,
+    status: String,
+    hit_ids: Vec<String>,
+}
+
+/// Each alert's case, as `data.incident` = `{id, number, status}`: an alert's state is its case's.
+pub async fn attach(state: &AppState, tenant: &str, alerts: &mut [Alert]) {
+    if alerts.is_empty() || !state.db.is_connected() {
+        return;
+    }
+    let ids: Vec<String> = alerts.iter().map(|a| a.id.to_string()).collect();
+    let cases: Vec<CaseOf> = state
+        .db
+        .tenant_client(tenant)
+        .query("SELECT id, case_number, status, hit_ids FROM soar_cases FINAL WHERE hasAny(hit_ids, ?)")
+        .bind(&ids)
+        .fetch_all()
+        .await
+        .unwrap_or_default();
+    if cases.is_empty() {
+        return;
+    }
+    let mut of: HashMap<&str, &CaseOf> = HashMap::new();
+    for c in &cases {
+        for h in &c.hit_ids {
+            of.insert(h.as_str(), c);
+        }
+    }
+    for a in alerts.iter_mut() {
+        if let Some(c) = of.get(a.id.to_string().as_str()) {
+            a.data.insert("incident".into(), serde_json::json!({ "id": c.id, "number": c.case_number, "status": c.status }));
+        }
+    }
+}
+
 /// A creation second later than the newest case's (cases of one second would merge).
 pub fn unique_second(now: i64, newest: i64) -> i64 {
     now.max(newest + 1)

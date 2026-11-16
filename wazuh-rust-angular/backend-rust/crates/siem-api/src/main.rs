@@ -1910,10 +1910,11 @@ async fn get_alerts(
     if state.db.is_connected() {
         if let Some(ch_rows) = state.db.fetch_alerts(&scope, limit, min_level).await {
             if !ch_rows.is_empty() {
-                let alerts: Vec<Alert> = ch_rows
+                let mut alerts: Vec<Alert> = ch_rows
                     .into_iter()
                     .map(|r| tenancy::tag_alert(r.to_alert(), &scope))
                     .collect();
+                incidents::attach(&state, &scope, &mut alerts).await;
                 return Json(alerts);
             }
         }
@@ -1925,6 +1926,7 @@ async fn get_alerts(
         .collect();
     filtered.reverse(); // Most recent first
     filtered.truncate(limit);
+    incidents::attach(&state, &scope, &mut filtered).await;
     Json(filtered)
 }
 

@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -22,7 +22,7 @@ export const CONSOLE_TAB_PATHS: Record<string, string> = {
 @Component({
   selector: 'app-siem-console',
   standalone: true,
-  imports: [CommonModule, FormsModule, CyberThreatGlobeComponent],
+  imports: [CommonModule, FormsModule, RouterLink, CyberThreatGlobeComponent],
   templateUrl: './siem-console.html',
   styleUrls: ['./siem-console.css']
 })

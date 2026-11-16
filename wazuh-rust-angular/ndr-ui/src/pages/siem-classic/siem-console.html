@@ -263,6 +263,8 @@
                 <td class="mono text-cyan">#{{ a.rule.id }}</td>
                 <td>
                   <div class="desc-text">{{ a.rule.description }}</div>
+                  <a *ngIf="a.data?.['incident'] as inc" [routerLink]="['/cases', inc.id]" (click)="$event.stopPropagation()"
+                     class="text-xs mono text-cyan" [title]="'This alert belongs to incident ' + inc.number">{{ inc.number }} · {{ inc.status }}</a>
                   <div class="raw-preview mono text-dim text-xs">{{ a.full_log }}</div>
                 </td>
                 <td>
@@ -420,6 +422,7 @@
             LEVEL {{ selectedAlert()!.rule.level }}
           </span>
           <h3>Rule #{{ selectedAlert()!.rule.id }}: {{ selectedAlert()!.rule.description }}</h3>
+          <a *ngIf="selectedAlert()!.data?.['incident'] as inc" [routerLink]="['/cases', inc.id]" class="text-xs mono text-cyan">Incident {{ inc.number }} · {{ inc.status }}</a>
         </div>
         <button class="close-btn" (click)="closeAlertDetails()">✕</button>
       </div>

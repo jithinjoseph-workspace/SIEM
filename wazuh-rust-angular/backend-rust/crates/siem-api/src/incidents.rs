@@ -320,6 +320,10 @@ async fn flush(state: &AppState) {
                     if let Some(x) = open().lock().unwrap().get_mut(&k) {
                         x.new = false;
                     }
+                    // like every new case: its history starts, and it is triaged (evidence and a
+                    // verdict by rules and, when the tenant has one, its AI; recommend only)
+                    crate::case_detail::created(state, &o.tenant, &o.id, "ProVigil").await;
+                    crate::case_ai::spawn_for_new_case(state.clone(), o.tenant.clone(), o.id.clone());
                 }
             }
             Err(e) => {

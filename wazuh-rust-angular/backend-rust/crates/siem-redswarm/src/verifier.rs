@@ -111,7 +111,7 @@ impl PurpleLoopVerifier {
                 if matches_mitre {
                     evaluated_signals.push(format!("mitre_id_match:{}", mitre.id));
                     info!(
-                        "VERIFIED DEFENDED: Technique {} triggered Alert {} (Rule #{}: {})",
+                        "DEFENDED (built-in rule engine, sample events): Technique {} triggered Alert {} (Rule #{}: {})",
                         technique.id, alert.id, alert.rule.id, alert.rule.description
                     );
                     return VerificationEvidence {

@@ -403,44 +403,13 @@ async fn main() {
         swarm_engine.start_background_loop(
             move |events| {
                 for ev in events {
-                    let (name, ip) = {
-                        let agents = swarm_state.agents.read().unwrap();
-                        let ag = agents.get(&ev.agent_id).cloned().unwrap_or_else(|| {
-                            let enrolled = swarm_state.enrolled.read().unwrap();
-                            if let Some(e) = enrolled.get(&ev.agent_id) {
-                                let os = if e.os_type.is_empty() {
-                                    if e.name.to_lowercase().contains("win") {
-                                        "windows"
-                                    } else {
-                                        "linux"
-                                    }
-                                } else {
-                                    &e.os_type
-                                };
-                                Agent {
-                                    id: ev.agent_id.clone(),
-                                    name: e.name.clone(),
-                                    ip: "127.0.0.1".into(),
-                                    os: os.to_string(),
-                                    version: PRODUCT_VERSION.into(),
-                                    status: AgentStatus::Active,
-                                    last_keepalive: Utc::now(),
-                                    os_type: os.to_string(),
-                                }
-                            } else {
-                                Agent {
-                                    id: ev.agent_id.clone(),
-                                    name: "windows-target".into(),
-                                    ip: "192.168.1.100".into(),
-                                    os: "Windows".into(),
-                                    version: PRODUCT_VERSION.into(),
-                                    status: AgentStatus::Active,
-                                    last_keepalive: Utc::now(),
-                                    os_type: "windows".into(),
-                                }
-                            }
-                        });
-                        (ag.name, ag.ip)
+                    // the target as the manager knows it (connected or enrolled); an unknown target is
+                    // skipped, never replaced by a made-up host
+                    let known = swarm_state.agents.read().unwrap().get(&ev.agent_id).map(|a| (a.name.clone(), a.ip.clone()));
+                    let known = known.or_else(|| swarm_state.enrolled.read().unwrap().get(&ev.agent_id).map(|e| (e.name.clone(), "127.0.0.1".to_string())));
+                    let Some((name, ip)) = known else {
+                        tracing::warn!("Red Swarm: target agent {} is not known to this manager; its events were not injected", ev.agent_id);
+                        continue;
                     };
                     // the target agent's tenant (set by the round), never another one
                     let tenant = ev.metadata.get("tenant_id").cloned().unwrap_or_else(|| {

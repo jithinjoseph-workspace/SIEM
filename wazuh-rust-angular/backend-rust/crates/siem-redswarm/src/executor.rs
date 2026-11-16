@@ -138,7 +138,7 @@ impl SwarmExecutor {
                     target_os: target_os.to_string(),
                     execution_success: true,
                     execution_output: format!(
-                        "SafeTelemetryOnly: Injected {} attack telemetry events into engine for technique {}.",
+                        "SafeTelemetryOnly: injected {} sample events for technique {} into the built-in rule engine (not the analysis service that handles the PCs' real events).",
                         events.len(), technique.id
                     ),
                     cleanup_status: CleanupStatus::NotApplicable,

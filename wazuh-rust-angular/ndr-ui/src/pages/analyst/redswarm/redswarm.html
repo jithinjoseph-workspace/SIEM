@@ -75,6 +75,7 @@
       </div>
       <div class="text-2xl font-extrabold font-mono text-white mt-2">{{ status()?.active_campaigns_count || 0 }} Active Campaigns</div>
       <div class="text-[11px] text-slate-400 mt-1">Default: <span class="font-mono text-cyan-400">SafeTelemetryOnly</span></div>
+      <div class="text-[11px] text-amber-300/80 mt-1">Sample events checked by the built-in rule engine: a "defended" result does not yet prove that real PC events are detected.</div>
     </div>
 
     <!-- Fleet Defense Rate -->
@@ -131,7 +132,7 @@
       </select>
 
       <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
-        <option value="safe_telemetry_only">SafeTelemetryOnly (Zero Endpoint Risk)</option>
+        <option value="safe_telemetry_only">SafeTelemetryOnly (sample events, built-in rule engine)</option>
         <option value="controlled_live" disabled>ControlledLive (not available: no safe command channel to agents)</option>
       </select>
     </div>

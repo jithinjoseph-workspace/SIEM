@@ -11,6 +11,7 @@ mod lifecycle;
 mod logcollector;
 mod rootcheck;
 mod sca;
+mod endpoint_policy;
 mod syscheck;
 mod syscollector;
 pub mod whodata;
@@ -210,6 +211,15 @@ async fn run_linux_agent() {
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
         Duration::from_secs(5),
+    );
+
+    info!(" - provigil-policy (the organisation's site and program rules)");
+    let _policy_handle = endpoint_policy::spawn_worker(
+        config.agent_id.clone(),
+        config.agent_key.clone(),
+        config.manager_url.clone(),
+        Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
     );
 
     info!(" - provigil-rootcheck (anomaly & rootkit scanner)");

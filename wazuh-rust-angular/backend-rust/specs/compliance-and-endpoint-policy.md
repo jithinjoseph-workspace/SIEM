@@ -282,8 +282,21 @@ picks (e.g. a family-safe resolver, or their own), keeps the organisation's inte
 going to their own DNS servers, and the attempt is seen as a lookup answered "blocked". To be
 built and tried on a test VM, not the development PC.
 
-Not yet: the Linux agent (`siem-agent-linux`, its developer; each change agreed first), the
-filtering DNS option, Windows App Control policies (P7).
+**Linux agent** (built 2026-11-17, owner's approval; `siem-agent-linux/src/endpoint_policy.rs`):
+fetches the group settings (`GET /api/v1/agents/:id/config`) every 5 minutes and keeps the last
+rules for starts without the manager. Sites: its `/etc/hosts` section points blocked names (and
+`www.`, IPv4 and IPv6 forms) at `127.65.43.21`, where the agent listens on ports 80 and 443: it
+reads the site from the Host header or the TLS server name and the person from `/proc/net/tcp`,
+answers http with a "blocked" page, and reports `site_attempt`; managed policy files for Chrome,
+Chromium and Edge (private DNS off, strict block lists, safe search); Firefox's only when the
+computer has none of its own. Programs: new processes checked every second by file name or
+SHA-256, stopped in enforce mode, reported (`app_attempt`) in both modes. Files re-checked every
+10 minutes, tamper reported. The server reads these reports in its event ingest (Linux events do
+not go through the archive). Limits: no monitor-mode site detection on Linux yet (no DNS log
+like Sysmon's); programs are stopped just after starting, not refused before (the kernel's exec
+permission check waits for a test machine, because a mistake there can stop every program start).
+
+Not yet: the filtering DNS option, Windows App Control policies (P7).
 
 ## 6. One policy core for both agents
 

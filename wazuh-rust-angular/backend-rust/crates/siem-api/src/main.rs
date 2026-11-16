@@ -2500,6 +2500,14 @@ pub(crate) async fn ingest_batch(
             record_alert(state, &tenant, alert).await;
         }
 
+        // the Linux agent's endpoint policy reports (Windows agents' come through the archive)
+        if event.message.contains("provigil_policy:") {
+            let v = serde_json::json!({ "agent": { "id": event.agent_id, "name": agent_name, "ip": agent_ip }, "full_log": event.message, "location": event.location });
+            for (a, t) in endpoint_policy::check(&[(v, tenant.clone())], &HashMap::new()) {
+                record_alert(state, &t, a).await;
+            }
+        }
+
         // Automated SCA Evaluation: store check results in ProVigil DB and raise alert on failure
         if event.source == EventSource::Sca {
             let policy_id = event.metadata.get("policy_id").cloned().unwrap_or_else(|| {

@@ -285,7 +285,7 @@ pub fn check(events: &[(Value, String)], groups: &HashMap<String, Vec<String>>) 
         // the agent's own report on its rules
         if let Some(i) = log.find("provigil_policy:") {
             if let Ok(r) = serde_json::from_str::<Value>(log[i + 16..].trim()) {
-                if let Some(a) = report(v, tenant, &agent, &r) {
+                if let Some(a) = report(v, tenant, &agent, &r, all.get(tenant)) {
                     out.push((a, tenant.clone()));
                 }
             }
@@ -344,10 +344,28 @@ fn file(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
 }
 
-/// An agent's report: `{"kind": "applied" | "apply_failed" | "tamper", "version", "error", "what"}`.
-fn report(v: &Value, tenant: &str, agent: &str, r: &Value) -> Option<siem_core::Alert> {
+/// An agent's report: `{"kind": "applied" | "apply_failed" | "tamper", "version", "error", "what"}`,
+/// or an attempt the agent saw itself (the Linux agent, which has no Sysmon):
+/// `{"kind": "site_attempt" | "app_attempt", "rule_id", "mode", "target", "user", "process", "stopped"}`.
+fn report(v: &Value, tenant: &str, agent: &str, r: &Value, rules: Option<&Vec<Rule>>) -> Option<siem_core::Alert> {
     let s = |k: &str| r[k].as_str().unwrap_or_default().chars().take(500).collect::<String>();
     let kind = s("kind");
+    if kind == "site_attempt" || kind == "app_attempt" {
+        let name = rules.and_then(|rs| rs.iter().find(|x| x.id == s("rule_id"))).map(|x| x.name.clone()).unwrap_or_else(|| s("rule_id"));
+        let blocked = s("mode") == "enforce";
+        let (target, user) = (s("target"), s("user"));
+        let key = format!("policy:{}:{target}:{user}", s("rule_id"));
+        if crate::file_reputation::reported_recently(tenant, agent, &key) {
+            return None;
+        }
+        let (rule, level, what) = match (kind.as_str(), blocked) {
+            ("site_attempt", _) => (RULE_SITE, 5, "Blocked site attempt"),
+            (_, true) => (RULE_APP, 6, "Blocked application attempt"),
+            _ => (RULE_APP, 3, "Application in policy started"),
+        };
+        let policy = json!({ "rule_id": s("rule_id"), "rule": name, "kind": if rule == RULE_SITE { "site" } else { "app" }, "mode": s("mode"), "target": target, "user": user, "process": s("process") });
+        return Some(alert(v, rule, level, format!("{what}: {}{} ({name})", if s("name").is_empty() { target.clone() } else { s("name") }, by(&user)), s("process"), policy));
+    }
     let state = AgentState { state: kind.clone(), version: s("version"), error: s("error"), at: now_ms() };
     STATES.write().unwrap().entry(tenant.to_string()).or_default().insert(agent.to_string(), state);
     match kind.as_str() {
@@ -398,8 +416,17 @@ mod tests {
         let a = check(&[(e.clone(), "t2".into())], &HashMap::new());
         assert_eq!((a[0].0.rule.id, a[0].0.rule.level), (RULE_TAMPER, 12));
         e["full_log"] = json!("provigil_policy: {\"kind\":\"applied\",\"version\":\"ab12\"}");
-        assert!(check(&[(e, "t2".into())], &HashMap::new()).is_empty());
+        assert!(check(&[(e.clone(), "t2".into())], &HashMap::new()).is_empty());
         assert_eq!(STATES.read().unwrap()["t2"]["008"].version, "ab12");
+        // the Linux agent's own attempt reports
+        RULES.write().unwrap().insert("t2".into(), vec![Rule { id: "s9".into(), name: "AI sites".into(), ..Default::default() }]);
+        e["full_log"] = json!("provigil_policy: {\"kind\":\"site_attempt\",\"rule_id\":\"s9\",\"mode\":\"enforce\",\"target\":\"chatgpt.com\",\"name\":\"www.chatgpt.com\",\"user\":\"ann\"}");
+        let a = check(&[(e.clone(), "t2".into())], &HashMap::new());
+        assert_eq!((a[0].0.rule.id, a[0].0.rule.description.as_str()), (RULE_SITE, "Blocked site attempt: www.chatgpt.com by ann (AI sites)"));
+        assert_eq!(STATES.read().unwrap()["t2"]["008"].state, "applied", "an attempt is not the agent's state");
+        e["full_log"] = json!("provigil_policy: {\"kind\":\"app_attempt\",\"rule_id\":\"x\",\"mode\":\"monitor\",\"target\":\"discord\",\"user\":\"bob\",\"process\":\"/usr/bin/discord\"}");
+        let a = check(&[(e, "t2".into())], &HashMap::new());
+        assert_eq!((a[0].0.rule.id, a[0].0.rule.level), (RULE_APP, 3));
     }
 
     #[test]

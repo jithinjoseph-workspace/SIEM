@@ -63,8 +63,10 @@ Problems, from the live data of tenant acm:
 - **L-5 Shipped and Sigma alerts of one event** are joined by phase 3's incident grouping (same
   host, process and time), not by a second mechanism. Red Swarm alerts are already tagged and never
   stored, so they are out of the queue.
-- **L-6 Incidents are cases.** Key = tenant + agent + entity (the process image when the alert
-  names one, else the user, else the host). Level 7+ opens an incident when none is open for its
+- **L-6 Incidents are cases.** Key = tenant + agent + rule (changed 2026-11-16 after the live test:
+  keyed by process, one rule on four processes made four incidents; now one, listing the processes
+  or users involved, 20 at most). The entity of each alert is the process image when it names one,
+  else the user, else the host. Level 7+ opens an incident when none is open for its
   key; any alert of the key joins while the last one is at most 1 hour old. The case (`INC-<year>-<n>`,
   tag `auto-incident`, the key as tag `key:<tenant>|<agent>|<entity>`) gets the alert ids in
   `hit_ids` (500 at most), severity and priority from its highest level (12+ CRITICAL/P1, 10-11
@@ -135,3 +137,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: phase 6 done: exception from a false-positive incident (L-11), metrics (L-12). The metrics SQL was run read-only on tenant acm (8 cases, 6 open, 8 min to close, 21 h to first action). siem-api tests: 157 passed.
 - 2026-11-16: case tables rebuilt keyed by case id (L-8); definitions changed for new tenants.
 - 2026-11-16: issues 1, 5, 7 and 8 completed (L-13 to L-16); incidents are triaged when they open; cases opened from an alert list it. siem-api tests: 158 passed.
+- 2026-11-16 live test (services restarted 17:01): 445 alerts in 18 min, all stored with their risk score; 20 level 7+ alerts became 7 incidents; shipped and Sigma alerts of one process joined; incidents got their history entry. Found: no triage verdict (the investigation looked only at community_id; fixed, falls back to hit_ids) and too many incidents (one per process; now one per rule, L-6). The owner approved two permanent exceptions for build output on the development PC (rules 92213 and 962881 on agent 8084 when the path contains the repository folder).

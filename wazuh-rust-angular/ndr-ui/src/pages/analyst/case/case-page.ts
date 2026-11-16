@@ -83,7 +83,9 @@ export class CasePage implements OnInit {
       for (const a of d.alerts) n.set(a[key], (n.get(a[key]) || 0) + 1);
       return [...n.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
     };
-    const entity = tags.find(t => t.startsWith('process:') || t.startsWith('user:')) || '';
+    // one process or user: a permanent exception on it; several: the rule on the agent for 7 days
+    const entities = tags.filter(t => t.startsWith('process:') || t.startsWith('user:'));
+    const entity = entities.length === 1 ? entities[0] : '';
     const [kind, value] = entity ? [entity.slice(0, entity.indexOf(':')), entity.slice(entity.indexOf(':') + 1)] : ['', ''];
     // the field the incident's entity came from (tag field:<path>); older incidents: the usual one
     const recorded = tags.find(t => t.startsWith('field:'))?.slice(6) || '';

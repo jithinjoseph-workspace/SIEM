@@ -1,8 +1,9 @@
 //! Incidents (specs/alert-lifecycle.md, phase 3): related alerts become one case, so an analyst
 //! works on dozens of incidents instead of thousands of alerts.
 //!
-//! Alerts of one tenant, one agent and one entity (the process image when the alert names one,
-//! else the user, else the host) belong together. An alert of level [`OPEN_LEVEL`] or more opens
+//! Alerts of one tenant, one agent and one rule belong together; the incident lists the entities
+//! involved (the process image when an alert names one, else the user, else the host), so one rule
+//! hitting four processes is one incident, not four. An alert of level [`OPEN_LEVEL`] or more opens
 //! an incident when none is open for its key; any alert of that key joins an open one while the
 //! last alert is at most [`WINDOW_SECS`] old. An incident is an ordinary case (`soar_cases`,
 //! number `INC-<year>-<n>`, tag `auto-incident`): its alerts in `hit_ids`, severity and priority
@@ -55,10 +56,13 @@ pub fn entity_at(a: &Value) -> (String, Option<&'static str>) {
     }
 }
 
-/// The group an alert belongs to.
-pub fn key(tenant: &str, agent_id: &str, entity: &str) -> String {
-    format!("{tenant}|{agent_id}|{entity}")
+/// The group an alert belongs to: tenant, agent and rule.
+pub fn key(tenant: &str, agent_id: &str, rule_id: u32) -> String {
+    format!("{tenant}|{agent_id}|rule:{rule_id}")
 }
+
+/// Entities listed per incident.
+const MAX_ENTITIES: usize = 20;
 
 pub fn severity(level: u8) -> &'static str {
     match level {
@@ -113,9 +117,8 @@ pub struct Open {
     pub agent_name: String,
     pub agent_ip: String,
     pub src_ip: String,
-    pub entity: String,
-    /// the alert field the entity came from
-    pub field: Option<&'static str>,
+    /// the processes or users involved, each with the alert field it came from
+    pub entities: Vec<(String, Option<String>)>,
     pub first_rule: String,
     pub first_seen: i64,
     pub last_seen: i64,
@@ -132,7 +135,10 @@ pub struct Open {
 }
 
 impl Open {
-    fn take(&mut self, a: &Alert, ts: i64) {
+    fn take(&mut self, a: &Alert, ts: i64, (entity, field): (String, Option<&'static str>)) {
+        if entity != "host" && self.entities.len() < MAX_ENTITIES && !self.entities.iter().any(|(e, _)| *e == entity) {
+            self.entities.push((entity, field.map(String::from)));
+        }
         self.last_seen = self.last_seen.max(ts);
         self.max_level = self.max_level.max(a.rule.level);
         let risk = a.data.get("risk_fabric").and_then(|r| r["dynamic_risk_score"].as_u64()).unwrap_or(0).min(100) as u8;
@@ -151,8 +157,23 @@ impl Open {
     }
 
     pub fn title(&self) -> String {
-        let what = self.entity.split_once(':').map_or(String::new(), |(k, v)| format!(" ({k} {v})"));
+        let what = match self.entities.as_slice() {
+            [] => String::new(),
+            [(e, _)] => e.split_once(':').map_or(String::new(), |(k, v)| format!(" ({k} {v})")),
+            many => format!(" ({} processes or users)", many.len()),
+        };
         format!("{}{}: {}", self.agent_name, what, self.first_rule)
+    }
+
+    /// The case's tags: the marker, the key, each entity, and the field of a single entity (an
+    /// exception for the incident can then name it; with several it covers the rule on the agent).
+    pub fn tags(&self, key: &str) -> Vec<String> {
+        let mut t = vec![TAG.to_string(), format!("key:{key}")];
+        t.extend(self.entities.iter().map(|(e, _)| e.clone()));
+        if let [(_, Some(f))] = self.entities.as_slice() {
+            t.push(format!("field:{f}"));
+        }
+        t
     }
 
     pub fn description(&self) -> String {
@@ -170,11 +191,11 @@ impl Open {
 }
 
 /// Puts one alert into the open incidents: joins one, opens one, or neither (`None`).
-pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, (entity, field): (String, Option<&'static str>), ts: i64) -> Option<String> {
-    let k = key(tenant, &a.agent.id, &entity);
+pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, ent: (String, Option<&'static str>), ts: i64) -> Option<String> {
+    let k = key(tenant, &a.agent.id, a.rule.id);
     if let Some(o) = open.get_mut(&k) {
         if ts - o.last_seen <= WINDOW_SECS {
-            o.take(a, ts);
+            o.take(a, ts, ent);
             return Some(k);
         }
         // too old: a new alert of level OPEN_LEVEL starts a new incident below
@@ -187,15 +208,13 @@ pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, (entity,
         tenant: tenant.into(),
         agent_name: a.agent.name.clone(),
         agent_ip: a.agent.ip.clone(),
-        entity,
-        field,
         first_rule: a.rule.description.clone(),
         first_seen: ts,
         last_seen: ts,
         new: true,
         ..Open::default()
     };
-    o.take(a, ts);
+    o.take(a, ts, ent);
     open.insert(k.clone(), o);
     Some(k)
 }
@@ -253,12 +272,17 @@ async fn load(state: &AppState, tenant: &str) {
     let mut map = open().lock().unwrap();
     for r in rows {
         let Some(k) = r.tags.iter().find_map(|t| t.strip_prefix("key:")) else { continue };
-        let entity = k.splitn(3, '|').nth(2).unwrap_or("host").to_string();
+        // an incident of the earlier per-process grouping is not continued (another key)
+        if !k.contains("|rule:") {
+            continue;
+        }
+        let field = r.tags.iter().find_map(|t| t.strip_prefix("field:")).map(String::from);
+        let entities: Vec<(String, Option<String>)> = r.tags.iter().filter(|t| t.starts_with("process:") || t.starts_with("user:")).map(|t| (t.clone(), field.clone())).collect();
         map.entry(k.to_string()).or_insert(Open {
             id: r.id,
             tenant: tenant.into(),
             agent_name: r.title.split(':').next().unwrap_or("").split(" (").next().unwrap_or("").into(),
-            entity,
+            entities,
             first_rule: r.title.splitn(2, ": ").nth(1).unwrap_or("").into(),
             first_seen: r.updated as i64,
             last_seen: r.updated as i64,
@@ -285,10 +309,7 @@ async fn flush(state: &AppState) {
         let sev = severity_of(o.max_level, o.max_risk);
         let result = if o.new {
             let number = crate::soar::next_case_number(state, &o.tenant).await;
-            let mut tags = vec![TAG.to_string(), format!("key:{k}"), o.entity.clone()];
-            if let Some(f) = o.field {
-                tags.push(format!("field:{f}"));
-            }
+            let tags = o.tags(&k);
             // soar_cases replaces rows by (tenant, created_at in seconds): two cases of one second
             // would become one, so each incident takes a second after the newest case
             let newest: u32 = client.query("SELECT toUInt32(toUnixTimestamp(max(created_at))) FROM soar_cases").fetch_one().await.unwrap_or(0);
@@ -307,12 +328,13 @@ async fn flush(state: &AppState) {
                 open().lock().unwrap().remove(&k);
                 continue;
             }
-            // what people set stays; only the alerts, the text and the severity move on
+            // what people set stays; only the alerts, the title and text (the entities grow), the
+            // tags and the severity move on
             let sql = format!(
-                "INSERT INTO soar_cases ({}) SELECT id, case_number, title, ? AS description, ? AS severity, priority, status, assigned_to, src_ip, dst_ip, community_id, ? AS hit_ids, tags, tenant_id, created_at, now() AS updated_at, closed_at FROM soar_cases FINAL WHERE id = ? AND status NOT IN {CLOSED}",
+                "INSERT INTO soar_cases ({}) SELECT id, case_number, ? AS title, ? AS description, ? AS severity, priority, status, assigned_to, src_ip, dst_ip, community_id, ? AS hit_ids, ? AS tags, tenant_id, created_at, now() AS updated_at, closed_at FROM soar_cases FINAL WHERE id = ? AND status NOT IN {CLOSED}",
                 "id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, hit_ids, tags, tenant_id, created_at, updated_at, closed_at"
             );
-            client.query(&sql).bind(o.description()).bind(sev).bind(&o.ids).bind(&o.id).execute().await.map(|_| false)
+            client.query(&sql).bind(o.title()).bind(o.description()).bind(sev).bind(&o.ids).bind(o.tags(&k)).bind(&o.id).execute().await.map(|_| false)
         };
         match result {
             Ok(created) => {
@@ -486,20 +508,35 @@ mod tests {
         assert_eq!(entity_at(&json!({"data": {"dstuser": "alice"}})), ("user:alice".to_string(), Some("data.dstuser")), "the field it came from");
     }
 
+    fn alert_r(level: u8, agent: &str, rule: u32, desc: &str) -> Alert {
+        let mut a = alert(level, agent, desc);
+        a.rule.id = rule;
+        a
+    }
+
     #[test]
-    fn alerts_group_by_agent_and_entity_within_the_window() {
+    fn alerts_group_by_agent_and_rule_within_the_window() {
         let mut m = HashMap::new();
         let t0 = 1_800_000_000;
-        assert_eq!(place(&mut m, "acm", &alert(4, "8084", "low"), ("host".into(), None), t0), None, "a low alert opens nothing");
-        let k = place(&mut m, "acm", &alert(10, "8084", "Logon failures"), ("user:bob".into(), None), t0).unwrap();
-        assert_eq!(place(&mut m, "acm", &alert(3, "8084", "Logon audit"), ("user:bob".into(), None), t0 + 600), Some(k.clone()), "a low alert joins an open incident");
-        assert_ne!(place(&mut m, "acm", &alert(10, "8087", "Logon failures"), ("user:bob".into(), None), t0).unwrap(), k, "another agent: another incident");
+        let p = |e: &str| (e.to_string(), Some("data.win.eventdata.image"));
+        assert_eq!(place(&mut m, "acm", &alert_r(4, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0), None, "a low alert opens nothing");
+        let k = place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p("process:winword.exe"), t0).unwrap();
+        assert_eq!(m[&k].tags(&k).last().map(String::as_str), Some("field:data.win.eventdata.image"), "one process: its field is named");
+        // the same rule on other processes joins the same incident (it opened 4 before)
+        for proc_ in ["process:svchost.exe", "process:backgroundtaskhost.exe", "process:winword.exe"] {
+            assert_eq!(place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p(proc_), t0 + 60), Some(k.clone()));
+        }
+        assert_eq!(place(&mut m, "acm", &alert_r(3, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600), Some(k.clone()), "a low alert joins an open incident");
+        assert_ne!(place(&mut m, "acm", &alert_r(10, "8084", 92078, "Cmd"), p("process:winword.exe"), t0).unwrap(), k, "another rule: another incident");
+        assert_ne!(place(&mut m, "acm", &alert_r(10, "8087", 92153, "VaultCli"), p("process:winword.exe"), t0).unwrap(), k, "another agent: another incident");
         let o = &m[&k];
-        assert_eq!((o.count, o.max_level, o.ids.len(), severity(o.max_level)), (2, 10, 2, "HIGH"));
-        assert_eq!(o.title(), "pc-8084 (user bob): Logon failures");
+        assert_eq!((o.count, o.entities.len(), severity(o.max_level)), (5, 3, "HIGH"));
+        assert_eq!(o.title(), "pc-8084 (3 processes or users): VaultCli");
+        assert!(!o.tags(&k).iter().any(|t| t.starts_with("field:")), "several processes: no single field");
         // past the window: a new incident
         let id = m[&k].id.clone();
-        place(&mut m, "acm", &alert(8, "8084", "Logon failures"), ("user:bob".into(), None), t0 + 600 + WINDOW_SECS + 1);
+        place(&mut m, "acm", &alert_r(8, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600 + WINDOW_SECS + 1);
         assert_ne!(m[&k].id, id);
+        assert_eq!(m[&k].title(), "pc-8084 (process svchost.exe): VaultCli");
     }
 }

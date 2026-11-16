@@ -164,7 +164,7 @@ async fn case_row(state: &AppState, tenant: &str, id: &str) -> Option<CaseRow> {
     state
         .db
         .tenant_client(tenant)
-        .query("SELECT id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, hit_ids, tags, toUInt32(toUnixTimestamp(created_at)) AS created, toUInt32(toUnixTimestamp(updated_at)) AS updated, toUInt32(toUnixTimestamp(closed_at)) AS closed FROM soar_cases FINAL WHERE id = ?")
+        .query("SELECT id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, if(empty(hit_ids) AND community_id != '', [community_id], hit_ids) AS hit_ids, tags, toUInt32(toUnixTimestamp(created_at)) AS created, toUInt32(toUnixTimestamp(updated_at)) AS updated, toUInt32(toUnixTimestamp(closed_at)) AS closed FROM soar_cases FINAL WHERE id = ?")
         .bind(id)
         .fetch_optional::<CaseRow>()
         .await
@@ -172,7 +172,8 @@ async fn case_row(state: &AppState, tenant: &str, id: &str) -> Option<CaseRow> {
         .flatten()
 }
 
-/// `GET /api/soar/cases/:id/detail`
+/// `GET /api/soar/cases/:id/detail`. A case opened from an alert before cases kept their alerts
+/// (`hit_ids` empty, the alert in `community_id`) shows that alert.
 pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     let t = ctx.scope();
     let Some(c) = case_row(&state, &t, &id).await else {

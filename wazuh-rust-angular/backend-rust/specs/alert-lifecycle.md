@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phases 1 to 4 done (2026-11-16), phase 5 next.
+Status: phases 1 to 5 done (2026-11-16), phase 6 next.
 
 ## 1. Goal
 
@@ -86,6 +86,12 @@ Problems, from the live data of tenant acm:
   priority (P1 to P4, which sets the SLA) is set when the incident opens; later alerts raise the
   severity, while the priority stays as opened or as people changed it. Alerts carry no
   confidence value, so the planned "× confidence" part is left out until a detection gives one.
+- **L-10 Starter playbooks, not default ones.** Incidents (phase 3) already open a case for level 7+
+  and tenants already have alert e-mails; every other action needs the tenant's own credentials
+  (Slack, PagerDuty, VirusTotal). Playbooks created by default would run as silent no-ops, so the
+  SOAR page (`/soar`) offers five starters that fill the form instead: critical alert to the team
+  chat, critical alert pages on-call, known-bad source blocked, brute-force source blocked, changed
+  file checked on VirusTotal. Blocking still passes the decision policy.
 
 ## 5. Progress
 
@@ -93,3 +99,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: phase 2 done: field exceptions (`siem-suppression/src/lib.rs`, `siem-api/src/suppressions.rs`, the Suppressions page `/siem-suppressions`), decisions L-4 and L-5. Example: rule 960270 when `data.win.eventdata.image` contains `docker.exe`, permanent.
 - 2026-11-16: phase 3 done (backend): incidents (L-6), case updates keep `hit_ids` (L-7), same-second case collapse found (L-8, open). SQL checked in a scratch database (create, analyst update, incident update, reload, a burst of 3 incidents and a manual case in one second: 4 cases). siem-api tests: 156 passed. Then: the alert list (`/api/v1/alerts`) gives each alert its case as `data.incident` (id, number, status; `incidents::attach`), and the console's alert list and alert detail link to it.
 - 2026-11-16: phase 4 done: severity from level and business risk (L-9, `severity_of` in `incidents.rs`). siem-api tests: 157 passed.
+- 2026-11-16: phase 5 done: starter playbooks on the SOAR page (L-10); their conditions are all evaluated by `provigil-common/src/soar/conditions.rs` (its tests cover each).

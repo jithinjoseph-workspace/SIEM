@@ -1861,6 +1861,26 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
         this.showNewPlaybook.set(true);
     }
 
+    /** Starter playbooks (specs/alert-lifecycle.md, phase 5): a click fills the form; the admin
+     *  adds the integration's credentials and saves. Nothing is created on its own. */
+    readonly starters = [
+        { name: 'Critical alert to the team chat', desc: 'Every level 12+ alert goes to the team channel.', field: 'rule_level', op: '>=', value: '12', action: 'slack' },
+        { name: 'Critical alert pages on-call', desc: 'Critical alerts open a PagerDuty incident.', field: 'severity', op: '==', value: 'CRITICAL', action: 'pagerduty' },
+        { name: 'Known-bad source is blocked', desc: 'A source on a threat-intel list is blocked (the decision policy checks it first).', field: 'threat_intel', op: '==', value: 'true', action: 'block_ip' },
+        { name: 'Brute force source is blocked', desc: 'Repeated authentication failures block the source (the decision policy checks it first).', field: 'rule_group', op: 'contains', value: 'authentication_failures', action: 'block_ip' },
+        { name: 'Changed file checked on VirusTotal', desc: 'File integrity alerts are looked up on VirusTotal.', field: 'rule_group', op: 'contains', value: 'syscheck', action: 'virustotal' },
+    ];
+
+    useStarter(t: { name: string; desc: string; field: string; op: string; value: string; action: string }) {
+        this.initPlaybookModal();
+        this.pbName = t.name;
+        this.pbDesc = t.desc;
+        this.pbCondField = t.field;
+        this.pbCondOp = t.op;
+        this.pbCondValue = t.value;
+        this.pbActionType = t.action;
+    }
+
     openEditPlaybook(pb: any) {
         this.editingPbId = pb.id;
         this.pbName = pb.name;

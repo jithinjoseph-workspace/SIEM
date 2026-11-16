@@ -76,10 +76,17 @@ export class CasePage implements OnInit {
    *  (specs/alert-lifecycle.md, phase 6). */
   exception = computed(() => {
     const d = this.d();
-    const tags: string[] = d?.case?.tags || [];
     // judged a false positive either way: the disposition (Resolve) or the status (the case list's workflow)
     const falsePositive = d?.details?.disposition === 'False Positive' || d?.case?.status === 'False Positive';
-    if (!falsePositive || !d?.alerts?.length) return null;
+    return falsePositive ? this.exceptionDraft() : null;
+  });
+
+  /** The exception this case would give (null without alerts), offered in the Resolve dialog when
+   *  the disposition is False Positive, and on the page once the case is one. */
+  exceptionDraft = computed(() => {
+    const d = this.d();
+    const tags: string[] = d?.case?.tags || [];
+    if (!d?.alerts?.length) return null;
     const most = (key: string) => {
       const n = new Map<any, number>();
       for (const a of d.alerts) n.set(a[key], (n.get(a[key]) || 0) + 1);
@@ -98,8 +105,8 @@ export class CasePage implements OnInit {
   });
 
   makeException() {
-    const x = this.exception();
-    if (!x) return;
+    const x = this.exceptionDraft();
+    if (!x || x.critical) return;
     this.busy.set(true);
     this.siem.createSiemSuppression({
       rule_id: x.rule_id, agent_id: x.agent_id || undefined, duration_hours: 168,
@@ -127,15 +134,21 @@ export class CasePage implements OnInit {
     this.form = kind === 'edit'
       ? { title: c.title, description: c.description, priority: c.priority || 'P2', severity: c.severity || 'MEDIUM', assigned_to: c.assigned_to,
           category: this.d().details?.category || '', subcategory: this.d().details?.subcategory || '' }
-      : { disposition: disposition || this.d().details?.disposition || '', text: '' };
+      : { disposition: disposition || this.d().details?.disposition || '', text: '', exception: true };
     this.dialog.set(kind);
   }
 
   save() {
     const f = this.form, k = this.dialog();
     this.busy.set(true);
-    if (k === 'resolve') this.siem.resolveCase(this.id, f.disposition, f.text).subscribe(this.done('Case resolved.'));
-    else if (k === 'disposition') this.siem.setCaseDisposition(this.id, f.disposition, f.text).subscribe(this.done('Disposition changed.'));
+    // a false positive with "also create an exception" ticked: the exception follows once the case is saved
+    const withException = (r: any) => {
+      const x = this.exceptionDraft();
+      if (r?.status !== 'error' && f.disposition === 'False Positive' && f.exception && x && !x.critical) this.makeException();
+    };
+    const then = (text: string) => { const d = this.done(text); return { next: (r: any) => { d.next(r); withException(r); }, error: d.error }; };
+    if (k === 'resolve') this.siem.resolveCase(this.id, f.disposition, f.text).subscribe(then('Case resolved.'));
+    else if (k === 'disposition') this.siem.setCaseDisposition(this.id, f.disposition, f.text).subscribe(then('Disposition changed.'));
     else if (k === 'edit') {
       const { category, subcategory, ...c } = f;
       this.api.updateSoarCase(this.id, c).subscribe({

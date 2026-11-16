@@ -249,6 +249,16 @@
         <label class="block">{{ dialog() === 'resolve' ? 'Resolution' : 'Note (optional)' }}
           <textarea [(ngModel)]="form.text" name="text" rows="4" [required]="dialog() === 'resolve'" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></textarea>
         </label>
+        <!-- a false positive can stop these alerts from coming back -->
+        <ng-container *ngIf="form.disposition === 'False Positive'">
+          <div *ngIf="!exceptionDraft()" class="text-xs text-slate-400">This case has no alerts, so no exception can be made from it.</div>
+          <div *ngIf="exceptionDraft()?.critical" class="text-xs text-slate-400">No exception: this case has level 12+ alerts, and those are never hidden (tampering and similar alerts must always reach the queue).</div>
+          <label *ngIf="exceptionDraft() as x" [hidden]="x.critical" class="flex items-start gap-2 text-amber-300">
+            <input type="checkbox" [(ngModel)]="form.exception" name="exception" class="mt-1">
+            <span>Also create an exception: rule {{ x.rule_id }}{{ x.agent_id ? ' on agent ' + x.agent_id : '' }}{{ x.field_path ? ' when ' + x.field_path + ' contains ' + x.field_contains + ' (permanent)' : ' for 7 days' }}.
+              <span class="block text-xs text-slate-400">These alerts are still stored, but no longer open incidents, reach the queue, run playbooks or send e-mail.</span></span>
+          </label>
+        </ng-container>
       </ng-container>
       <ng-container *ngIf="dialog() === 'edit'">
         <label class="block">Title<input [(ngModel)]="form.title" name="title" required class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>

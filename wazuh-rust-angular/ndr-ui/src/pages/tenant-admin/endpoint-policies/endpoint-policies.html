@@ -1,0 +1,136 @@
+<div class="p-6 w-full max-w-[1200px] mx-auto space-y-6 text-slate-200">
+  <div class="border-b border-slate-800 pb-5">
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+      <lucide-angular [img]="BanIcon" class="w-6 h-6 text-cyan-400"></lucide-angular>
+      Endpoint Policies
+    </h1>
+    <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+      Your organisation's own rules for its computers: websites that may not be opened, applications that may not run, safe search.
+      <b>Monitor</b> only raises an alert when someone tries; <b>Enforce</b> blocks it and raises the alert. Start with monitor to see
+      who is affected, then switch to enforce. Agents apply changes within 5 minutes.
+    </p>
+  </div>
+
+  <div *ngIf="error()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngIf="message()" role="status" class="p-3 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm">{{ message() }}</div>
+
+  <!-- the rules -->
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-3">
+    <div class="flex flex-wrap items-center gap-2">
+      <h3 class="text-base font-semibold text-white">Rules ({{ rules().length }})</h3>
+      <button *ngIf="canEdit()" (click)="edit({})" class="ml-auto px-3 py-1.5 text-sm bg-cyan-700 hover:bg-cyan-600 text-white rounded">New rule</button>
+    </div>
+    <p *ngIf="rules().length === 0" class="text-sm text-slate-500">No rules yet. Start from a ready-made one below, or create your own.</p>
+    <div *ngFor="let r of rules()" class="border-t border-slate-800/60 pt-3 flex flex-wrap items-start gap-3">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <span class="font-semibold text-white">{{ r.name }}</span>
+          <span class="px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-300">{{ kinds[r.kind] }}</span>
+          <span class="px-2 py-0.5 rounded text-xs" [ngClass]="r.mode === 'enforce' ? 'bg-rose-900/60 text-rose-200' : 'bg-amber-900/50 text-amber-200'">{{ r.mode === 'enforce' ? 'Enforce: block and alert' : 'Monitor: alert only' }}</span>
+          <span *ngIf="!r.enabled" class="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-300">Off</span>
+          <span *ngIf="r.strict" class="px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-300">Strict</span>
+        </div>
+        <div class="text-sm text-slate-300 mt-1 break-words">{{ summary(r) }}</div>
+        <div class="text-xs text-slate-500 mt-1">
+          {{ r.groups.length ? 'Groups: ' + r.groups.join(', ') : 'All computers' }}{{ r.os !== 'any' ? ' · ' + r.os + ' only' : '' }}
+          <span *ngIf="r.updated_by"> · changed by {{ r.updated_by }} {{ when(r.updated_at) }}</span>
+        </div>
+      </div>
+      <div *ngIf="canEdit()" class="flex gap-2">
+        <button (click)="setEnabled(r, !r.enabled)" class="px-3 py-1 text-xs border border-slate-700 rounded hover:bg-slate-800">{{ r.enabled ? 'Turn off' : 'Turn on' }}</button>
+        <button (click)="edit(r)" class="px-3 py-1 text-xs border border-slate-700 rounded hover:bg-slate-800">Edit</button>
+        <button (click)="remove(r)" class="px-3 py-1 text-xs bg-rose-900 hover:bg-rose-800 text-white rounded">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- editor -->
+  <form *ngIf="draft() as d" (ngSubmit)="save()" class="bg-slate-900/60 rounded-xl border border-cyan-900/60 p-4 space-y-4">
+    <h3 class="text-base font-semibold text-white">{{ d.id === 'new' ? 'New rule' : 'Edit rule' }}</h3>
+    <div *ngIf="d.note" class="text-xs text-amber-300">{{ d.note }}</div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <label class="block text-sm">Name
+        <input [(ngModel)]="d.name" name="name" maxlength="80" required class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5" placeholder="e.g. No generative AI">
+      </label>
+      <label class="block text-sm">Type
+        <select [(ngModel)]="d.kind" name="kind" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5">
+          <option value="site">Websites</option>
+          <option value="app">Applications</option>
+          <option value="safe_search">Safe search in browsers</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="text-sm">
+      <legend class="mb-1">Mode</legend>
+      <label class="mr-4"><input type="radio" [(ngModel)]="d.mode" name="mode" value="monitor"> Monitor: alert only</label>
+      <label><input type="radio" [(ngModel)]="d.mode" name="mode" value="enforce"> Enforce: block and alert</label>
+    </fieldset>
+
+    <div *ngIf="d.kind !== 'safe_search'">
+      <label class="block text-sm">{{ d.kind === 'site' ? 'Websites (one per line; each covers its sub-domains)' : 'Programs (file name like chatgpt.exe, or a SHA-256; one per line)' }}
+        <textarea [(ngModel)]="d.text" name="text" rows="8" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 font-mono text-xs" [placeholder]="d.kind === 'site' ? 'chatgpt.com\nclaude.ai' : 'chatgpt.exe'"></textarea>
+      </label>
+      <label class="inline-block mt-1 text-xs text-cyan-300 cursor-pointer hover:underline">
+        Add from a file (text or hosts list, max 2 MB)<input type="file" accept=".txt,.csv,.list,text/plain" class="hidden" (change)="upload($event)">
+      </label>
+      <p class="text-xs text-slate-500 mt-1">{{ lines(d.text).length }} entries. System programs (Explorer, PowerShell...) and ProVigil itself are refused, so a rule can never break a computer.</p>
+    </div>
+
+    <label *ngIf="d.kind === 'site'" class="block text-sm">
+      <input type="checkbox" [(ngModel)]="d.strict" name="strict"> Strict: also in the browsers' own block lists (every sub-domain and page).
+      <span class="block text-xs text-slate-500 ml-5">Browsers then block before looking the site up, so attempts made in a browser raise no alert.</span>
+    </label>
+
+    <label *ngIf="d.kind !== 'safe_search'" class="block text-sm">Message shown when blocked (plain text)
+      <input [(ngModel)]="d.message" name="message" maxlength="300" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5" placeholder="This is not allowed by our policy. Contact IT for help.">
+    </label>
+
+    <div class="text-sm">
+      <div class="mb-1">Applies to</div>
+      <p *ngIf="!d.groups.length" class="text-xs text-slate-400 mb-1">All computers (or pick groups):</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" *ngFor="let g of groups()" (click)="toggleGroup(g)" class="px-2 py-1 text-xs rounded border" [ngClass]="d.groups.includes(g) ? 'border-cyan-500 bg-cyan-900/40 text-cyan-200' : 'border-slate-700 text-slate-300'">{{ g }}</button>
+      </div>
+      <label class="block mt-2">Operating system
+        <select [(ngModel)]="d.os" name="os" class="ml-2 bg-slate-950 border border-slate-700 rounded px-2 py-1">
+          <option value="any">Any</option><option value="windows">Windows</option><option value="linux">Linux</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="flex gap-2">
+      <button type="submit" [disabled]="saving()" class="px-4 py-1.5 text-sm bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white rounded">{{ saving() ? 'Saving…' : 'Save' }}</button>
+      <button type="button" (click)="draft.set(null)" class="px-4 py-1.5 text-sm border border-slate-700 rounded hover:bg-slate-800">Cancel</button>
+    </div>
+  </form>
+
+  <!-- presets -->
+  <div *ngIf="canEdit()" class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-2">
+    <h3 class="text-base font-semibold text-white">Ready-made rules</h3>
+    <p class="text-xs text-slate-500">Open one, change what you need, then save it.</p>
+    <div class="grid md:grid-cols-2 gap-2">
+      <button *ngFor="let p of presets()" (click)="edit(p)" class="text-left p-3 rounded-lg border border-slate-800 hover:border-cyan-700 hover:bg-slate-800/50">
+        <div class="text-sm font-semibold text-white">{{ p.name }}</div>
+        <div class="text-xs text-slate-400 mt-0.5">{{ kinds[p.kind] }} · {{ p.targets.length ? summary(p) : (p.note || summary(p)) }}</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- agents -->
+  <div class="bg-slate-900/60 rounded-xl border border-slate-800 p-4 space-y-2">
+    <h3 class="text-base font-semibold text-white">On the computers</h3>
+    <p *ngIf="agents().length === 0" class="text-sm text-slate-500">No computer has reported its rules yet (they report when they apply them).</p>
+    <p *ngIf="agents().length" class="text-sm text-slate-300">{{ agents().length - failing().length }} of {{ agents().length }} computers have their rules applied.</p>
+    <div *ngFor="let a of failing()" class="text-sm border-t border-slate-800/60 pt-2">
+      <span class="font-semibold text-white">{{ a.agent_name || a.agent_id }}</span>
+      <span class="text-rose-300"> · {{ a.state === 'tamper' ? 'rules changed on the computer (put back)' : 'could not apply' }}</span>
+      <span class="text-slate-400"> · {{ a.error }} · {{ when(a.at) }}</span>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-2">
+      Attempts appear as alerts ("Blocked site attempt", "Blocked application attempt"). Site attempts are seen in the computers' DNS lookups and
+      program starts in their process events, which need Sysmon (or process auditing) on Windows. Someone with administrator rights or a personal
+      VPN can get around website blocking; changes to the rules on a computer raise an alert and are put back.
+    </p>
+  </div>
+</div>

@@ -80,6 +80,10 @@
             <lucide-icon [name]="ScaleIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
             <span class="crm-link-text">AI Guardrails</span>
           </a>
+          <a *ngIf="hasSiemInsights" routerLink="/tenant-admin/endpoint-policies" routerLinkActive="active" class="crm-nav-link">
+            <lucide-icon [name]="BanIcon" class="w-4 h-4 crm-link-icon"></lucide-icon>
+            <span class="crm-link-text">Endpoint Policies</span>
+          </a>
         </div>
       </div>
 

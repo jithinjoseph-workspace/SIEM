@@ -253,6 +253,38 @@ Draft → **monitor** on a pilot group → review impact → **enforce** on the 
 (who, when, before / after). A tenant-wide **"stop enforcing"** switch puts every rule in
 monitor within one keepalive.
 
+### 5.5 Built (2026-11-17): custom site and application rules, Windows
+
+| Part | Where | What |
+|---|---|---|
+| Rule format, checks, matching | `provigil-agent-server/src/endpoint_policy.rs` | site (domain, sub-domains included), app (file name or `sha256:`), safe search; monitor / enforce; groups and OS scope; refused: system and ProVigil programs, whole country domains (`co.uk`...), addresses, local names, more than 200 rules or 5,000 entries a rule |
+| Storage, API, attempt alerts | `siem-api/src/endpoint_policy.rs` | `endpoint_policies` (main database, key tenant + id) and `endpoint_policy_changes` (who, when, before, after); `GET /api/v1/endpoint-policies` (rules, presets, agents' state), `PUT` / `DELETE /api/v1/endpoint-policies/:id` (tenant admin); alerts 940300 site, 940301 application, 940303 could not apply, 940304 changed on the computer, from Sysmon 22, Sysmon 1 / 4688 and the agent's `provigil_policy:` lines, once an hour per agent, rule, target and person |
+| Delivery | `provigil-gateway/src/cache.rs`, `core.rs` | rules read with the other cached tables; each agent's added to its group settings (`endpoint_policies`), in the settings version |
+| Enforcement | `provigil-agent/src/endpoint_policy.rs` | hosts file section (domain and `www.`), browser DNS settings so the hosts file is used, strict: browser block lists; programs: Windows starts `provigil-agent.exe --blocked <rule>` in their place (message box), renamed ones stopped by SHA-256 within 2 s; safe search; every value restored when the rule goes; re-applied every 10 minutes, changes reported as tamper |
+| Page | console: tenant admin → Endpoint Policies | rules list, editor (paste or upload a list, also hosts-format lists), presets, computers' state |
+
+Decisions made while building:
+
+- **Site enforcement default is the hosts file, not the browsers' block lists**: a browser that blocks
+  by its own list never looks the name up, so the attempt would never be seen. The hosts file
+  keeps the lookup (Sysmon 22 sees it) and makes it lead nowhere. Wildcards and paths need the
+  browsers' lists: the rule's **strict** option, with that trade-off said on the page.
+- **The blocker is the agent itself** (`--blocked`), so nothing new has to be installed.
+- **Rules stored in the main database** (key tenant + id), like the deployment tokens, because
+  the gateway reads it there; every API call filters by the caller's tenant.
+
+**Whole categories (e.g. adult sites)**: browsers accept at most 1,000 block-list entries, and a
+hosts file with hundreds of thousands of names slows Windows name lookups. So a category is not a
+list pushed to every PC. Built now: the tenant pastes or uploads any list it holds (hosts-format
+lists work), plus forced safe search. ProVigil ships no such list. Next (planned): a **filtering
+DNS** option per rule: the agent points the computer's DNS at a filtering service the tenant
+picks (e.g. a family-safe resolver, or their own), keeps the organisation's internal domains
+going to their own DNS servers, and the attempt is seen as a lookup answered "blocked". To be
+built and tried on a test VM, not the development PC.
+
+Not yet: the Linux agent (`siem-agent-linux`, its developer; each change agreed first), the
+filtering DNS option, Windows App Control policies (P7).
+
 ## 6. One policy core for both agents
 
 A new shared crate **`provigil-policy`**, used by both agents, so both behave the same:

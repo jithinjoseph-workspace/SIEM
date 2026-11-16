@@ -1,303 +1,373 @@
 # Compliance frameworks and endpoint control policies (per tenant)
 
-Status: plan (2026-11-16). Asked by the owner after the scrum master and the client (Oman)
-asked for: (1) compliance frameworks a tenant admin chooses (including Oman's own standards),
-pushed to that tenant's agents so they run only those checks, with the full life cycle;
-(2) the tenant's own endpoint rules: block websites, block applications (e.g. ChatGPT not
-allowed), and alert when someone tries. Designed for scale, reliability, security and
-availability. Design choices were made here (owner delegates them); each has its reason in
-section 12.
+Status: plan (2026-11-16, revised the same day). Asked by the owner after the scrum master and
+the client (Oman) asked for:
+
+1. compliance frameworks a tenant admin chooses, including Oman's own (the ITA framework),
+   pushed to that tenant's agents so they run only those checks, with the full life cycle;
+2. the tenant's own endpoint rules: block websites, block applications (e.g. ChatGPT not
+   allowed), and alert when someone tries.
+
+Revision: **both agents, Windows and Linux, cover everything** (owner, 2026-11-16). Any
+framework is added as data, even when no official document is at hand yet.
+
+Design choices were made here (owner delegates them); each has its reason in section 14.
 
 ## 1. What exists today, and what is missing
 
 | Area | Today | Missing |
 |---|---|---|
-| Frameworks | Six, fixed in code (`compliance.rs` `FRAMEWORKS`): PCI DSS, HIPAA, NIST 800-53, GDPR, SOC 2, ISO 27001 | Adding one (e.g. Oman's) needs a code change and a release |
-| Tenant choice | A profile (`siem_compliance_profile`): frameworks reported on, agent groups in scope, checks not needed | It only filters the **report**. Every agent still runs **every** built-in check |
-| Checks | ProVigil configuration policies compiled into the agent (`provigil-agent/src/sca/policies`), each check tagged with the frameworks it serves | A tenant can't add its own checks, or map a new framework onto existing checks |
-| Life cycle | Score, failing checks, alerts per requirement, a printable report | No exceptions with an approver and an expiry, no history (trend), no evidence pack, no remediation tasks, no rollout status per agent |
-| Endpoint rules | Response actions after an alert (`siem-active-response`: block IP, kill process, quarantine file, isolate host) | No standing policy: "this site is never allowed", "this app never runs", and no "attempt" alert |
-| Delivery to agents | Group settings pushed with the agent's connection, last copy kept on the agent (`data/group_config.json`, `GROUP_FIELDS` in `provigil-agent/src/config.rs`) | Reused as is. Only new fields are added (section 6) |
+| Frameworks | Six, fixed in code (`compliance.rs` `FRAMEWORKS`): PCI DSS, HIPAA, NIST 800-53, GDPR, SOC 2, ISO 27001 | Adding one (Oman ITA, NIST CSF) needs a code change and a release |
+| Tenant choice | Profile (`siem_compliance_profile`): frameworks reported on, groups in scope, checks not needed | It only filters the **report**. Every agent still runs **every** check |
+| Windows checks | ProVigil's own YAML policies compiled into `provigil-agent` (`src/sca/policies`), checks tagged with frameworks | No tenant checks, no "run only these" |
+| Linux checks | `siem-agent-linux` `sca.rs`: a few fixed checks plus CIS YAML files read from disk, own simpler rule reader | Different dialect from Windows, no framework tags, no tenant checks |
+| Settings push | Windows: group settings with each connection, last copy kept (`data/group_config.json`, `GROUP_FIELDS` in `provigil-agent/src/config.rs`). Linux: local `agent.conf` / `agent-config.json` only | Linux has no central push |
+| Life cycle | Score, failing checks, alerts per requirement, printable report | No exceptions with approver and expiry, no history, no evidence pack, no tasks, no rollout status, no reporting deadlines |
+| Endpoint rules | Response actions after an alert: Windows `siem-active-response` (block IP, kill, quarantine, isolate), Linux `execd.rs` (nft/iptables block, kill, quarantine, disable account) | No standing "never allowed" site or app rule, no attempt alert |
 
 ## 2. Words used
 
-- **Framework pack**: a standard as data: its controls, and for each control how it is checked.
-  Built-in packs ship with ProVigil; a tenant can import its own (e.g. an Oman standard).
-- **Control**: one requirement of a framework (e.g. "passwords at least 14 characters").
-- **Check**: one test an agent runs (registry value, file, service, audit policy...). A control
-  is met when its checks pass, its alert rules stay quiet, and any manual evidence is attached.
-- **Crosswalk**: "control X of this framework = control Y of ISO 27001 / NIST". An imported
-  framework then inherits the checks already mapped to ISO 27001 or NIST without listing them.
-- **Endpoint policy**: a tenant rule enforced on the PC: a site rule or an application rule,
-  in **monitor** (alert only) or **enforce** (block and alert) mode.
-- **Policy bundle**: everything one agent group must run: the checks to run, the tenant's
-  own checks, and the endpoint policies. Versioned by hash, signed, pushed with the group
-  settings.
+- **Framework pack**: a standard as data. A tree (function → category → control, any depth), and
+  for each control the evidence that proves it (section 3). Built-in or imported by the tenant.
+- **Control**: one requirement (e.g. "remote access requires multi-factor authentication").
+- **Evidence source**: what proves a control (seven kinds, section 3.2).
+- **Crosswalk**: "control X of framework A = control Y of framework B". A control mapped to a
+  NIST CSF or ISO 27001 control inherits all evidence already mapped to it.
+- **Obligation**: a duty with a deadline triggered by an event (e.g. report an incident to the
+  national CERT within N hours). Part of a pack.
+- **Endpoint policy**: a site rule or an application rule, in **monitor** (alert only) or
+  **enforce** (block and alert) mode.
+- **Policy bundle**: everything one agent group must run: the checks, the tenant's own checks,
+  the endpoint rules. Versioned by hash, signed, pushed. The same format for both agents.
 
-## 3. Part A: compliance frameworks, the full life cycle
+## 3. The framework engine (what makes any framework possible)
 
-Each stage: what the user does, the page, the API, where it is stored.
+### 3.1 Is it possible? Yes, with one honest limit
 
-| # | Stage | What happens | Page (tenant admin) | API | Stored in |
+Any framework can be added as data: its structure, its controls, and how each is proven. The
+limit is that **no tool makes an organisation compliant or certifies it**. ProVigil proves the
+**technical** controls automatically (configuration, detection, blocking, logging, response
+times) and collects **evidence** for the rest (policies, training, governance: manual controls
+with uploads and sign-off). The result is audit readiness: a live status per control and an
+evidence pack the auditor accepts or questions. The page says this plainly.
+
+### 3.2 Seven kinds of evidence per control
+
+| Kind | Proves | Example | Checked by |
+|---|---|---|---|
+| Configuration check | a setting on each PC or server | password length ≥ 14, firewall on, disk encrypted | agents (both) |
+| Detection | that the attack or misuse is watched for | "brute force on logins" rule enabled and alerts handled | the rules, `siem_alerts`, case times |
+| Endpoint policy | that a forbidden use is blocked | unapproved software blocked | Part B |
+| Platform fact | something ProVigil measures about itself | logs kept ≥ 180 days, ≥ 95 % of PCs reporting, critical alerts answered within 4 h, critical CVEs patched within 30 days, data stored in-country | computed by siem-api from its own data |
+| Manual attestation | a person confirms, repeating | "incident response plan reviewed this year" | sign-off with name, date, next due |
+| Document | a file shows it | the signed security policy PDF | upload, hash kept |
+| Crosswalk | another framework's control already proves it | Oman ITA control → NIST CSF PR.AC-7 | resolved by the engine, transitively, no loops |
+
+A control's status is one of: **met**, **partly met** (some evidence met), **not met**,
+**accepted risk** (exception), **evidence due** (manual, overdue), **not assessed** (no
+evidence mapped yet). Each status also shows how it is known: **direct**, **via crosswalk**, or
+**manual**. Someone reading it then knows how strong the claim is.
+
+### 3.3 Built-in reference packs
+
+- **NIST CSF 1.1 and 2.0**: functions, categories, sub-categories, with NIST's own published
+  mapping (informative references) to NIST SP 800-53, which our checks already carry. This is
+  the backbone most national frameworks (Oman's included) align to.
+- **NIST SP 800-53, PCI DSS, HIPAA, GDPR, SOC 2, ISO 27001**: today's six, moved from code
+  into packs with the same scores (checked before and after, nothing lost).
+- **CIS Controls v8**: control ids, which our policies' checks are organised around.
+- **Copyright**: ISO 27001 and PCI DSS texts belong to their publishers. Packs carry the control
+  **ids and our own short titles**. A tenant who holds the standard may paste the official text
+  into its own copy. NIST texts are public and are included.
+
+### 3.4 Adding a framework without its official document
+
+1. **Provisional pack** from what is public. For Oman ITA: the five functions (Identify,
+   Protect, Detect, Respond, Recover) as NIST CSF 1.1 structured them. Each category is
+   crosswalked to the NIST CSF categories it aligns to. The Oman-specific areas named publicly
+   (incident reporting to national authorities, national security, sector requirements, data
+   protection law) are manual controls and obligations with **deadlines left for the tenant to
+   set**. The pack is marked **"Provisional: not from the official text"** everywhere it shows,
+   including the evidence pack, so nobody presents it to an auditor as the official mapping.
+2. **The official text arrives later** (from the client, the regulator, or the ministry's
+   publication). It is imported (CSV / YAML / pasted text), as a new **version** of the same
+   pack.
+3. **Mapping workbench**: for each control, its text on the left; on the right the suggested
+   evidence (crosswalk targets, checks, rules, platform facts) with a confidence and a reason.
+   Suggestions come from text similarity against the NIST CSF / 800-53 / CIS texts, and, if the
+   tenant's AI is on, from the AI (budget respected). **Nothing is mapped until a person approves
+   it.** Every approval keeps who and when.
+4. **Version switch**: a diff (controls added, removed, reworded), side-by-side scores, then the
+   tenant admin switches. History keeps which version each snapshot was measured against.
+
+The pasted public summary says organisations with ISO 27001 find most controls transfer and the
+gaps are Oman-specific reporting, national security and sector requirements. That is exactly
+what the crosswalk gives automatically and the manual controls and obligations cover. Its
+"70–80 %" figure is not ours to repeat: the real coverage is computed and shown per tenant
+("38 of 52 controls have automatic evidence").
+
+### 3.5 Obligations (regulatory deadlines)
+
+A pack can carry obligations: `{trigger, deadline_hours, recipient, template}`. Examples:
+"confirmed incident of severity high or above → report to the national CERT within N hours", or
+"personal data breach → notify the authority within N hours". The tenant sets N from the
+official text. When a case meets the trigger (case resolved as true positive at that severity,
+or tagged `personal-data`), the case gets a **reporting timer**. The report is pre-filled from
+the case (what, when, hosts, actions taken) and appears in the case page. Sending it is marked
+with time and person. Overdue reports raise an alert, and the evidence pack lists every
+obligation met or missed.
+
+## 4. Part A: compliance life cycle
+
+| # | Stage | What happens | Page (tenant admin unless noted) | API | Stored in |
 |---|---|---|---|---|---|
-| A1 | Catalog | Browse the available frameworks: built-in packs, and the tenant's imported ones, with version and number of controls | Compliance frameworks → Catalog | `GET /api/v1/compliance/catalog` | built-in: `ndr.compliance_packs` (shared, read only for tenants); imported: tenant DB `compliance_packs` |
-| A2 | Import | Upload a framework as YAML or CSV (control id, title, text, crosswalk, explicit checks). Checked strictly, previewed with its coverage ("41 of 58 controls have automatic checks, 17 need manual evidence") before saving | Catalog → Import | `POST /api/v1/compliance/packs` (preview with `?dry_run=1`) | tenant `compliance_packs` |
-| A3 | Adopt | Choose the frameworks the organisation must meet | Frameworks → Adopt | `PUT /api/v1/compliance/profile` (exists, extended) | `siem_compliance_profile` |
-| A4 | Scope | Per framework, the agent groups it covers (e.g. PCI only on the payment servers) | Frameworks → Scope | same | same |
-| A5 | Tailor | Turn off controls that don't apply, set parameters where the standard allows a choice (e.g. minimum password length 12 or 14), map a manual control to evidence | Frameworks → Tailor | same | same |
-| A6 | Deploy | ProVigil works out, per agent group, the **union of checks needed** by the frameworks in scope, and pushes only those. Rollout per agent: pending / applied / failed, with the reason | Frameworks → Deployment | `GET /api/v1/policy/rollout` | tenant `policy_bundles`, `policy_rollout` |
-| A7 | Assess | Agents run the checks on their schedule (and "scan now"), sending only changes (exists) | Compliance (analyst) | `GET /api/v1/compliance` (exists) | `siem_sca_checks` (exists) |
-| A8 | Score | Per framework, control and host: passed / failed / not applicable / manual, with the score as the passed share | Compliance (analyst) | same | computed in ClickHouse |
-| A9 | Remediate | A failed control opens a **task** with the fix text (from the check) on the failing hosts, assigned and tracked like a case; closed by the next passing scan | Compliance → Fix queue | `POST /api/v1/compliance/tasks` | `soar_cases` with tag `compliance` |
-| A10 | Exceptions | Accept a failing control for a reason, with an approver and an **expiry**; it then counts as "accepted risk", not "passed". Expired exceptions fail again. Replaces today's "checks not needed" (migrated as exceptions without expiry, so nothing is lost) | Compliance → Exceptions | `POST/DELETE /api/v1/compliance/exceptions` | tenant `compliance_exceptions` |
-| A11 | Monitor drift | A control that passed and now fails raises an alert ("compliance drift") with the host and the change; it is grouped like other alerts (alert life cycle) | Alerts / cases | — | `siem_alerts` |
-| A12 | History | A snapshot per framework per day (score, controls, exceptions), so trend charts and "what was our state on 1 March" work | Compliance → Trend | `GET /api/v1/compliance/history` | tenant `compliance_snapshots` |
-| A13 | Evidence pack | One export per framework for an auditor: scope, score, each control's status with its checks and hosts, exceptions with approvers, related alerts, manual evidence files, timestamps, and a SHA-256 of the pack | Compliance → Export | `GET /api/v1/compliance/evidence?framework=` | generated on request |
-| A14 | Review / retire | Periodic review reminder (e.g. quarterly attestation by the tenant admin); a new version of a pack is adopted side by side, compared, then switched; a dropped framework stops being pushed | Frameworks | `PUT /api/v1/compliance/profile` | same |
+| A1 | Catalog | Built-in and imported packs, version, controls, provisional mark | Compliance frameworks → Catalog | `GET /api/v1/compliance/catalog` | `ndr.compliance_packs` (shared, read only) / tenant `compliance_packs` |
+| A2 | Import | YAML / CSV / pasted text; strict checks; preview with coverage before saving | Catalog → Import | `POST /api/v1/compliance/packs?dry_run=1` | tenant `compliance_packs` |
+| A3 | Map | Mapping workbench (3.4) | Catalog → Map | `GET/PUT /api/v1/compliance/packs/:id/mappings` | tenant `compliance_mappings` |
+| A4 | Adopt | Choose the frameworks the organisation must meet | Frameworks → Adopt | `PUT /api/v1/compliance/profile` (extended) | `siem_compliance_profile` |
+| A5 | Scope | Per framework, the agent groups it covers (Windows and Linux groups alike) | Frameworks → Scope | same | same |
+| A6 | Tailor | Controls not applicable (with reason), parameters (password length 12 or 14), obligation deadlines | Frameworks → Tailor | same | same |
+| A7 | Deploy | Per group, the union of checks the frameworks in scope need, pushed to both agents; status per agent: pending / applied / failed + reason | Frameworks → Deployment | `GET /api/v1/policy/rollout` | `policy_bundles`, `policy_rollout` |
+| A8 | Assess | Agents run their checks on schedule and "scan now", send changes only; platform facts computed hourly | Compliance (analyst) | `GET /api/v1/compliance` | `siem_sca_checks` (exists), `compliance_facts` |
+| A9 | Score | Per framework, control, host: status (3.2) with how it is known | Compliance (analyst) | same | ClickHouse aggregates |
+| A10 | Remediate | A failed control opens a task with the fix text on the failing hosts; closed by the next passing scan | Compliance → Fix queue | `POST /api/v1/compliance/tasks` | `soar_cases` tag `compliance` |
+| A11 | Exceptions | Accepted risk with reason, approver, expiry; expired ones fail again. Replaces "checks not needed" (migrated, nothing lost) | Compliance → Exceptions | `POST/DELETE /api/v1/compliance/exceptions` | `compliance_exceptions` |
+| A12 | Manual evidence | Attestations and documents with due dates and reminders | Compliance → Evidence | `POST /api/v1/compliance/evidence` | `compliance_evidence` + attachments |
+| A13 | Obligations | Reporting timers on cases (3.5) | Case page | `GET /api/v1/compliance/obligations` | `compliance_obligation_runs` |
+| A14 | Drift | Met → not met raises a "compliance drift" alert, grouped like all alerts | Alerts / cases | — | `siem_alerts` |
+| A15 | History | Daily snapshot per framework (version, score, statuses) | Compliance → Trend | `GET /api/v1/compliance/history` | `compliance_snapshots` |
+| A16 | Evidence pack | Per framework for the auditor: scope, version (provisional mark), statuses and how known, hosts, exceptions with approvers, obligations, attestations, documents, related alerts, SHA-256 of the pack | Compliance → Export | `GET /api/v1/compliance/evidence-pack?framework=` | generated |
+| A17 | Review / retire | Quarterly attestation reminder; new pack version side by side then switch; dropped framework stops being pushed | Frameworks | profile | same |
 
-### How an Oman standard gets in
+## 5. Part B: endpoint control policies
 
-ProVigil does not invent control texts. The client gives the official document of the standard
-(e.g. the national basic security controls, the central bank's cyber security framework for
-banks, or the Personal Data Protection Law (Royal Decree 6/2022)). We build the pack once from
-it, or the tenant admin imports it (A2). Most controls are then mapped by **crosswalk** to ISO
-27001 / NIST controls we already check, plus explicit checks for the rest. Controls nothing can
-check automatically (policies, training) become **manual** controls with evidence upload.
-
-## 4. Part B: endpoint control policies
-
-### 4.1 What the tenant admin writes
-
-One page, Endpoint policies, with ready presets and custom rules:
+### 5.1 What the tenant admin writes
 
 | Rule type | Matches on | Example |
 |---|---|---|
-| Site rule | domain (and sub-domains), URL pattern, category preset | `chatgpt.com`, `*.openai.com`, preset "Generative AI" |
-| Application rule | file name, path, SHA-256, signer (publisher), product name | `ChatGPT.exe`, signer "OpenAI", hash of a tool |
-| Preset (bundle of both) | a named list we maintain | "Generative AI: ChatGPT site and desktop app, Claude, Gemini, Copilot web..." |
+| Site rule | domain (and sub-domains), URL pattern, preset | `chatgpt.com`, `*.openai.com` |
+| Application rule | name, path, SHA-256, signer / package, product name | `ChatGPT.exe`, signer "OpenAI", a snap or flatpak id |
+| Preset | a named list we maintain | "Generative AI": ChatGPT, Claude, Gemini, Copilot web and desktop apps |
 
-Each rule has: mode **monitor** or **enforce**, scope (agent groups, or all), allowed users or
-groups (exceptions, e.g. the IT team), a message shown to the user when blocked, and the
-compliance controls it satisfies (e.g. ISO 27001 "installation of software"), so endpoint
-rules count as evidence in Part A.
+Each rule has: mode **monitor** / **enforce**; scope (groups, or all, Windows and Linux
+alike); allowed users or groups; the message shown when blocked; and the compliance controls it
+satisfies (it then counts as evidence in Part A).
 
-### 4.2 How the Windows agent enforces it (layered, honest about limits)
+### 5.2 Enforcement on each agent
 
-**Sites**, three layers, each closing a gap of the one before:
+| Layer | Windows (`provigil-agent`) | Linux (`siem-agent-linux`) |
+|---|---|---|
+| Sites 1: browser policy (main) | Edge, Chrome, Firefox enterprise policy in the registry: URL block list, private DNS (DoH) off | the same browsers' managed policy files (`/etc/opt/chrome/policies/managed/`, `/etc/opt/edge/policies/managed/`, `/etc/chromium/policies/managed/`, Firefox `policies.json`) |
+| Sites 2: name resolution | an agent-owned section of the hosts file, between markers | the same in `/etc/hosts` |
+| Sites 3: strict (off by default) | Windows firewall rules on addresses resolved every 10 min | an nftables set refreshed every 10 min (the agent already uses nft / iptables) |
+| Site attempt detection | DNS lookups: Sysmon event 22 (process, user) or the Windows DNS client log, switched on by the agent where Sysmon is absent | DNS lookups read by the agent from the network (port 53, root), the process found from its socket where possible |
+| Apps 1: prevent | the program name redirected to ProVigil's blocker (message, event, exit). Every edition including Home | exec permission check (fanotify `FAN_OPEN_EXEC_PERM`, kernel 5.0+): refused before it runs, by path or hash |
+| Apps 2: stop by identity | process starts watched, matching hash / signer / product stopped at once | process starts watched (process events from the kernel; audit as fallback), matching ones stopped at once; snap / flatpak by package id |
+| Apps 3 (later, P6) | Windows App Control deny policy on Pro / Enterprise / Education | — (layer 1 already prevents) |
+| Tamper | tamper protection (exists) watches the hosts section, registry policies, the blocker | file watch on `/etc/hosts`, the policy files and the agent's files |
 
-1. **Browser policy** (main layer): the agent writes the browsers' own managed block lists
-   (Edge, Chrome, Firefox enterprise policy). Blocks HTTPS addresses including paths, shows
-   the browser's block page, and can't be undone by the user. It also turns off the browsers'
-   private DNS ("DNS over HTTPS"), which would otherwise skip layer 2.
-2. **Name resolution**: blocked domains go to a section of the hosts file that the agent owns,
-   between its own markers, so other apps (desktop clients) can't reach them by name either.
-3. **Strict mode** (off by default): the agent resolves the blocked domains every 10 minutes
-   and blocks those addresses in the Windows firewall. Off by default because cloud providers
-   share addresses, which would block unrelated sites.
+**Monitor mode** runs only the detection. Same events, no block, so the impact is visible
+before switching to enforce.
 
-**Detection of attempts**: every lookup of a blocked domain is seen in the DNS events: Sysmon
-event 22 (process, user), or the Windows DNS client log, which the agent turns on where Sysmon
-is absent. The agent matches lookups against the bundle on the PC and sends one **policy
-event** per user, rule and process every 10 minutes, with the count.
+**Limits** (shown in the UI): local administrators (root) and personal VPNs can work around web
+blocking. Tamper alerts then show it. Portable browsers are covered by application rules.
 
-**Applications**, two layers:
+### 5.3 The alert
 
-1. **Prevent by name**: the agent registers the blocked program names so that Windows starts
-   ProVigil's small blocker program instead. The blocker shows the tenant's message ("ChatGPT
-   is not allowed by <organisation> policy"), sends the policy event, and exits. This works on
-   every Windows edition, including Home.
-2. **Stop by identity**: the agent watches process starts and stops at once any process
-   matching a blocked hash, signer or product name, even if renamed. It then sends the policy
-   event with the parent, user and command line.
-
-Later (P6) on Pro, Enterprise and Education editions: also generate a Windows App Control deny
-policy (by signer and hash), which blocks before the program runs at all.
-
-**Monitor mode** does the detection only: no block, the same events, so the tenant sees the
-impact ("37 people opened chatgpt.com this week") before switching to enforce.
-
-**Limits** (shown in the UI): a person with local admin rights or a personal VPN can work around
-web blocking. Tamper protection (exists) re-applies the agent's hosts section and registry
-policies and alerts when they are changed. Portable browsers are covered by the application
-rules (block unapproved browsers). Store apps are stopped by the identity layer.
-
-**Linux agent**: belongs to the other developer. This spec gives the bundle format and the
-policy event format (sections 6 and 7) as the contract; he implements it in his agent (hosts
-file, browser policy folders, process blocking). We change nothing in `siem-agent-linux`.
-
-### 4.3 The alert
-
-The manager turns each policy event into an alert from our own rule group `endpoint_policy`,
-with rule ids from our own range (chosen free in P3):
+Policy events become alerts of our own rule group `endpoint_policy`, ids from our own range
+(chosen free in P3):
 
 - "Blocked site attempt: chatgpt.com by ACME\\jdoe in msedge.exe on PC-17 (12 times)", level 5;
 - "Blocked application attempt", level 6;
-- "Policy removed or changed on the PC" (tamper), level 12;
+- "Policy removed or changed on the endpoint" (tamper), level 12;
 - "Policy could not be applied", level 7.
 
-Monitor mode uses the same rules at level 3. They go through the alert life cycle like every
-alert (incidents grouped by PC and rule, exceptions, metrics). A dashboard on the policy page:
-top blocked sites and apps, by user and department, trend.
+Monitor mode uses level 3. They follow the alert life cycle (incidents per PC and rule,
+exceptions, metrics). The policy page shows top blocked sites and apps, by user and group, with
+the trend.
 
-### 4.4 Endpoint policy life cycle
+### 5.4 Endpoint policy life cycle
 
-Draft → test on a pilot group in **monitor** → review impact → **enforce** on the pilot → widen
-to all groups (staged) → watch attempts and tamper alerts → edit or retire. Every change is
-recorded in the decision log with who, when, before and after. A tenant-wide **"stop
-enforcing"** switch moves every rule to monitor within one keepalive, for emergencies.
+Draft → **monitor** on a pilot group → review impact → **enforce** on the pilot → widen
+(staged) → watch attempts and tamper → edit or retire. Every change goes in the decision log
+(who, when, before / after). A tenant-wide **"stop enforcing"** switch puts every rule in
+monitor within one keepalive.
 
-## 5. Safety rules (so a policy can never break a PC or blind ProVigil)
+## 6. One policy core for both agents
 
-Rejected when saved, and again on the agent:
+A new shared crate **`provigil-policy`**, used by both agents, so both behave the same:
 
-- a rule matching the ProVigil manager addresses, update servers, or ProVigil's own programs;
-- a rule matching Windows core programs (e.g. `explorer.exe`, `svchost.exe`, `lsass.exe`,
-  `winlogon.exe`, anything under `C:\Windows\System32` by path) or a whole drive or folder;
-- wildcards that are too wide (`*`, `*.com`), regexes that can run too long, more than 5,000
-  rules per tenant;
-- tenant-written checks that run commands, unless that agent has opted in with
-  `allow_remote_commands` (the existing safeguard for commands from the group settings).
+- the bundle format, its schema and size checks, the signature check;
+- the check rule dialect (`r:`, `f:`, `d:`, `p:`, `c:`, content patterns, conditions), moved
+  from `provigil-agent/src/sca/mod.rs` with its tests. Each OS supplies only the probes
+  (registry on Windows; files, `/proc`, `sysctl`, commands on Linux);
+- site and application matching (domain suffix sets, hash sets, name sets) and the safety rules
+  (section 7);
+- the policy event builder and its counting (one event per user, rule, process per 10 minutes).
 
-## 6. Delivery to agents: the policy bundle
+Linux agent work (in `siem-agent-linux`, done with its developer, each change agreed with the
+owner):
 
-- **Built per (tenant, group)** whenever something it depends on changes: profile, pack,
-  exception, endpoint rule. One JSON document with the checks to run per policy (ids), the
-  tenant's own checks (YAML, same dialect as the built-in policies), the endpoint rules, the
-  safety allowlist, the version (SHA-256 of the content) and a signature.
-- **Pushed with the group settings** (existing path). New agent group fields:
-  `sca_only_checks`, `sca_custom_policies`, `endpoint_policies`, `policy_bundle_version`,
-  `policy_signature`.
-- **Signed** with an Ed25519 key held by the control plane. The agent pins the public key at
-  enrollment and refuses a bundle with a bad signature. So a worker node or anything else in
-  the path cannot add a rule.
-- **Applied atomically**: the agent applies the new bundle as a whole; if any step fails it
-  restores the previous one and reports `apply_failed` with the reason. It keeps the last good
-  bundle on disk and enforces it while offline and after restarts.
-- **Reconciled** every 10 minutes: the agent checks its hosts section, registry policies and
-  name registrations against the bundle, re-applies them, and reports the drift (that is the
-  tamper alert).
-- **Staged rollout**: a bundle change goes first to the pilot group (if the tenant set one),
-  then to the rest after a hold time or on the admin's click. Rollout status per agent is
-  shown on the page.
-- **Only checks needed**: frameworks in scope → their controls → crosswalks → the check ids,
-  united per group. An agent in no framework's scope runs only the checks the tenant asked
-  for directly (or none). This cuts scan time and the data stored.
+- receive group settings like Windows does (the manager already serves them), keep the last
+  good copy;
+- use `provigil-policy` for checks instead of its own reader. Its current fixed checks become a
+  ProVigil Linux policy file, so nothing is lost;
+- enforcement layers of 5.2 and the policy event.
 
-## 7. Data (tenant database unless marked)
+ProVigil's own Linux policies (Ubuntu, Debian, RHEL family) replace the CIS files the agents
+read today, as part of the own-ruleset work (`provigil-analysisd.md` section 4).
+
+## 7. Safety rules (a policy can never break a PC or blind ProVigil)
+
+Refused when saved, and again on the agent:
+
+- matching the ProVigil manager addresses, update servers, or ProVigil's own programs;
+- matching core system programs (Windows: `explorer.exe`, `svchost.exe`, `lsass.exe`,
+  `winlogon.exe`, anything under `C:\Windows\System32`; Linux: `/sbin/init`, `systemd`,
+  `sshd`, anything under `/usr/lib/systemd`, the package manager), a whole drive or folder;
+- wildcards too wide (`*`, `*.com`), regexes that can run too long, more than 5,000 rules per
+  tenant;
+- tenant-written checks that run commands, unless that agent opted in with
+  `allow_remote_commands` (existing Windows safeguard; the same flag on Linux).
+
+## 8. Delivery: the policy bundle
+
+- Built **per (tenant, group)** when anything it depends on changes. Cached by version
+  (SHA-256 of the content).
+- Pushed with the group settings. New Windows group fields `sca_only_checks`,
+  `sca_custom_policies`, `endpoint_policies`, `policy_bundle_version`, `policy_signature`; the
+  same names on Linux.
+- **Signed** (Ed25519, control plane key, public key pinned by the agent at enrollment). A bad
+  signature is refused.
+- **Atomic apply** with rollback to the last good bundle, reported as `apply_failed` with the
+  reason. The last good bundle is kept on disk and enforced offline and after restarts.
+- **Reconciled** every 10 minutes: re-applies, reports drift (the tamper alert).
+- **Staged**: pilot group first, then the rest after a hold time or on a click. A bundle failing
+  on more than 20 % of the pilot stops by itself.
+- **Only the checks needed**: frameworks in scope → controls → crosswalks → check ids, united per
+  group.
+
+## 9. Data (tenant database unless marked)
 
 | Table | Content | Key |
 |---|---|---|
-| `ndr.compliance_packs` (shared) | built-in packs: id, version, controls JSON | (pack_id, version) |
-| `compliance_packs` | the tenant's imported packs | (pack_id, version) |
-| `siem_compliance_profile` (exists) | adopted, scope, tailoring | id |
-| `compliance_exceptions` | control or check, scope, reason, approver, expires_at | id |
-| `compliance_snapshots` | day, framework, score, control states | (framework, day) |
-| `endpoint_policies` | rules, mode, scope, message, controls | id |
-| `policy_bundles` | group, version, JSON, signature, created_at | (group, version) |
-| `policy_rollout` | agent, version, state, reason, at | agent |
-| `siem_alerts` (exists) | policy events as alerts | — |
+| `ndr.compliance_packs` (shared) | built-in packs, versions | (pack_id, version) |
+| `compliance_packs` | imported packs | (pack_id, version) |
+| `compliance_mappings` | control → evidence, approved by, at | (pack_id, version, control) |
+| `siem_compliance_profile` (exists) | adopted, scope, tailoring, deadlines | id |
+| `compliance_exceptions` | target, scope, reason, approver, expires_at | id |
+| `compliance_evidence` | attestations and documents, due dates | id |
+| `compliance_facts` | platform facts per hour | (fact, hour) |
+| `compliance_obligation_runs` | case, obligation, due, done_at, by | (case, obligation) |
+| `compliance_snapshots` | day, framework, version, score, statuses | (framework, day) |
+| `endpoint_policies` | rules | id |
+| `policy_bundles` | group, version, JSON, signature | (group, version) |
+| `policy_rollout` | agent, version, state, reason | agent |
 
-All ReplacingMergeTree with a version column, replicated like the other tenant tables, keys
-leading with the tenant where shared. Following the storage rule: everything in ClickHouse, no
-files; agent check results stay where they are (provigil-db, copied for compliance as today).
+ReplacingMergeTree with a version column, replicated like the other tenant tables. Everything
+in ClickHouse, no files (storage rule). Agent check results stay in provigil-db and are copied
+for compliance as today.
 
-Policy event from the agent (also the contract for the Linux agent):
+Policy event (both agents send the same):
 
 ```json
 {"type":"policy","rule_id":"pol-7","kind":"site|app|tamper|apply_failed","mode":"enforce",
- "target":"chatgpt.com","user":"ACME\\jdoe","process":"C:\\...\\msedge.exe","parent":"...",
- "hash":"sha256","count":12,"first":1794829411,"last":1794830011,"bundle":"<version>"}
+ "target":"chatgpt.com","user":"ACME\\jdoe","process":"/usr/bin/firefox","parent":"...",
+ "hash":"sha256","count":12,"first":1794829411,"last":1794830011,"bundle":"<version>","os":"linux"}
 ```
 
-## 8. Scalability
+## 10. Scalability
 
 Sized for 50 tenants × 2,000 agents = 100,000 agents (today 500 per tenant):
 
-- Bundles are built per group on change, not per agent, and cached by version. An agent
-  downloads only when the version in its keepalive answer differs. Spreading uses the
-  existing splay (`full_send_splay_secs`), so a change to 2,000 agents doesn't come as one
-  burst.
-- Agents send only check results that changed (exists). With "only checks needed", the
-  checks per agent drop from all built-in ones to the frameworks in scope.
-- Policy events are counted on the agent (one per user, rule and process every 10 minutes), so
-  a script retrying a blocked site 10,000 times is one event with `count: 10000`.
-- Scores and trends are ClickHouse aggregates per tenant database, never held in memory;
-  daily snapshots keep trend queries small.
-- Matching on the agent: domains in a hash set (suffix walk), hashes in a hash set, names in a
-  set. O(1) per lookup, so 5,000 rules cost nothing per process start or DNS query.
+- bundles built per group on change, cached by version. Agents download only when the version
+  differs, spread by the existing splay;
+- agents send only changed check results. "Only checks needed" cuts checks per agent to the
+  frameworks in scope;
+- policy events counted on the agent, so 10,000 retries are one event with `count: 10000`;
+- scores, facts and trends are ClickHouse aggregates per tenant database, never held in memory.
+  Daily snapshots keep history queries small;
+- crosswalks resolved once per pack version and cached;
+- matching on the agent is O(1) per DNS lookup or process start (hash sets, suffix walk), so
+  5,000 rules cost nothing.
 
-## 9. Reliability
+## 11. Reliability
 
-- Enforcement runs on the PC and doesn't depend on the manager being reachable.
-- Atomic apply with rollback, last good bundle kept, reconcile loop (section 6).
-- Every apply step is idempotent: the agent owns only its marked hosts section and the
-  registry values it lists, and never touches the user's own entries.
-- Rollout state per agent with the failure reason. A bundle that fails on more than 20 % of
-  the pilot stops the rollout by itself.
-- Tests: unit tests for matching, the safety rules and bundle building. A Windows test (on a
-  test VM, not the dev PC) for each layer in monitor and enforce. A load test of bundle
-  pushes to 2,000 simulated agents (`provigil-loadtest`).
+- Enforcement runs on the endpoint. It does not depend on the manager.
+- Atomic apply, rollback, last good bundle, reconcile loop, idempotent steps (the agent touches
+  only its own marked hosts section, its policy files and the registry values it lists).
+- Rollout state per agent with the reason. Auto-stop on a failing pilot.
+- The same `provigil-policy` tests run for both agents. Windows and Linux test VMs (not the dev
+  PC) for each layer in monitor and enforce. A load test of bundle pushes to 2,000 simulated
+  agents (`provigil-loadtest`). Pack migration test: today's six frameworks give the same
+  scores from packs.
 
-## 10. Security
+## 12. Security
 
-- Only the tenant admin role edits frameworks, exceptions and endpoint policies. Analysts see
-  them. Each change goes in the decision log (who, when, before and after).
-- Enforce mode on more than 50 agents, or any "stop enforcing", can require a second
-  approver (tenant setting, off by default).
-- Tenant isolation: packs, rules and bundles live in the tenant's database. An agent gets only
-  its own tenant's group bundle. Imported packs never leave the tenant.
-- Signed bundles, pinned key, schema and size checks on the agent (section 6).
-- Uploaded framework files: size limit (2 MB), strict YAML/CSV parsing without aliases, every
-  field length-checked. Never executed.
-- The blocker program and the agent's policy files are covered by tamper protection.
-- Messages shown to users are plain text only (no markup, no links), limited to 300
-  characters.
+- Only the tenant admin edits packs, mappings, exceptions, deadlines and policies. Analysts
+  read. Every change goes in the decision log.
+- Optional second approver for enforce on more than 50 agents, for "stop enforcing", and for
+  approving mappings (tenant setting).
+- Tenant isolation: packs, mappings, rules, bundles in the tenant's database. Agents get only
+  their own tenant's group bundle.
+- Signed bundles, pinned key, schema and size checks on the agent.
+- Imports: 2 MB limit, strict YAML / CSV without aliases, every field length-checked, never
+  executed. AI suggestions are only suggestions; the AI never maps or approves.
+- The blocker, the policy files and the agent are covered by tamper protection.
+- User-facing messages: plain text, no markup or links, at most 300 characters.
 
-## 11. Availability
+## 13. Availability
 
-- Agents keep enforcing and keep events in their buffer while the manager is down (exists:
-  `buffer.rs`).
-- In the cluster design (`provigil-cluster.md`) bundles are built by the control plane and
-  served by every worker. If the control plane is down, workers keep serving the last bundles
-  and agents keep their last good one. Only editing waits.
-- ClickHouse tables are replicated. Built-in packs are also compiled into the server as a
-  fallback, so the catalog never shows empty.
+- Agents keep enforcing, and keep events in their buffer, while the manager is down.
+- In the cluster design (`provigil-cluster.md`) the control plane builds bundles and every
+  worker serves them. With the control plane down, workers serve the last bundles; only
+  editing waits.
+- Replicated tables. Built-in packs are also compiled into the server as a fallback.
 
-## 12. Decisions
+## 14. Decisions
 
 | # | Decision | Reason |
 |---|---|---|
-| D-1 | Frameworks become data (packs), not code | Oman and future standards without a release |
-| D-2 | Crosswalk to ISO 27001 / NIST instead of re-mapping every check | National standards derive from them; one mapping serves many frameworks |
-| D-3 | Agents run only the checks their groups' frameworks need | What the client asked; less scan time and data |
-| D-4 | Reuse the group settings path, add fields | It already pushes, keeps a last copy and works offline |
-| D-5 | Sign bundles (Ed25519, pinned at enrollment) | Defense in depth beyond TLS: a bad node can't push blocking rules |
-| D-6 | Web blocking primarily through browser policy, hosts file second, firewall strict mode optional and off | Browser policy handles HTTPS and paths; firewall by address causes collateral blocks |
-| D-7 | App blocking by name redirect plus stop-by-identity; App Control policies later | Works on every edition now (customer PCs include Home); the stronger layer where supported later |
-| D-8 | Monitor mode first, always available | Impact visible before blocking; safe rollout |
-| D-9 | Exceptions with approver and expiry replace "checks not needed" (migrated) | Auditors want accepted risk visible and time-limited |
-| D-10 | Remediation as tasks, no automatic fixing in this plan | Automatic fixes on customer PCs are risky; tasks are tracked and safe |
-| D-11 | Linux agent: contract only | It belongs to the other developer |
+| D-1 | Frameworks are data (packs), not code | Oman ITA and future standards without a release |
+| D-2 | NIST CSF as the backbone, with NIST's published mapping to 800-53 | National frameworks (Oman ITA included) align to CSF; our checks already carry 800-53 |
+| D-3 | Seven evidence kinds, status shows how it is known | Honest audit readiness: technical controls automatic, the rest evidenced |
+| D-4 | Provisional packs allowed, clearly marked, versioned | Work starts now without the official text; the official one replaces it with a diff |
+| D-5 | Mappings only by human approval; AI and text similarity only suggest | An auditor needs a person accountable for every mapping |
+| D-6 | Obligations with tenant-set deadlines | We don't know the official hours; the tenant takes them from the text |
+| D-7 | Pack texts: ids and own titles for copyrighted standards | ISO and PCI texts belong to their publishers |
+| D-8 | Agents run only the checks their groups need | What the client asked; less scan time and data |
+| D-9 | One shared `provigil-policy` crate for both agents | Same behaviour, one test suite, one bundle format |
+| D-10 | Reuse the group settings path (Windows), add it to Linux | Already pushes, keeps a last copy, works offline |
+| D-11 | Signed bundles (Ed25519, pinned) | A bad node or anything in between can't push blocking rules |
+| D-12 | Sites: browser policy first, hosts second, firewall strict optional and off | HTTPS and paths handled; address blocking hits shared cloud addresses |
+| D-13 | Apps: Windows name redirect + stop by identity (App Control later); Linux exec permission check + stop by identity | Prevention on every Windows edition and Linux kernel 5.0+ |
+| D-14 | Monitor mode first, always available | Impact visible before blocking |
+| D-15 | Exceptions with approver and expiry replace "checks not needed" (migrated) | Auditors want accepted risk visible and time-limited |
+| D-16 | Remediation as tasks, no automatic fixing in this plan | Automatic changes on customer machines are risky |
 
-## 13. Phases (2-week sprints)
+## 15. Phases (2-week sprints)
 
 | Phase | Content | Done when |
 |---|---|---|
-| P1 | Packs as data (the six current ones moved into packs, no loss), import with preview, crosswalk, tenant admin Frameworks page (catalog, adopt, scope, tailor). `compliance.rs` reads packs | The same scores as today from packs; an imported test pack shows coverage |
-| P2 | Bundle per group with only the needed checks, new agent fields, signing, rollout status, exceptions with expiry (migration), daily snapshots, evidence export, drift alert | An agent in a PCI-only group runs only PCI checks; the evidence pack opens and its hash checks |
-| P3 | Endpoint site rules: browser policy, hosts section, DNS attempt detection, monitor/enforce, alerts, policy page with presets | chatgpt.com blocked in Edge/Chrome/Firefox on the test VM; attempt alert with user and process |
-| P4 | Application rules: blocker program, stop by identity, Generative AI preset, tamper reconcile, dashboard | ChatGPT.exe blocked by name and when renamed; tamper alert when the hosts section is edited |
-| P5 | Staged rollout, "stop enforcing" switch, second approver, load test 2,000 agents, guide | Load test within limits; feature guide updated |
-| P6 (later) | Windows App Control policies on Pro/Enterprise; Oman pack(s) once the documents arrive (can start in P1 as soon as they do) | — |
+| P1 | Framework engine: packs, versions, the seven evidence kinds, crosswalk resolution, platform facts; NIST CSF 1.1 / 2.0 packs; today's six moved into packs; import with preview; **provisional Oman ITA pack**; Catalog / Adopt / Scope / Tailor pages | Same scores as today from packs; Oman ITA (provisional) shows a live status per control, marked provisional |
+| P2 | Mapping workbench (similarity + AI suggestions, approval); exceptions with expiry (migration); manual evidence; obligations with case timers; snapshots; evidence pack; drift alert | An imported test framework mapped in the workbench; a true-positive case gets its reporting timer; the evidence pack opens and its hash checks |
+| P3 | `provigil-policy` crate (check dialect moved with its tests), bundle build / sign / push, rollout status; Windows "only needed checks"; Linux receives group settings and runs checks through `provigil-policy` | A PCI-only group runs only PCI checks on Windows and on Linux; a bad signature is refused |
+| P4 | Site rules on both agents: browser policy, hosts section, DNS attempt detection, monitor / enforce, alerts, policy page, presets | chatgpt.com blocked in Edge / Chrome / Firefox on Windows and Linux test VMs; attempt alert with user and process |
+| P5 | Application rules on both: Windows blocker + stop by identity, Linux exec permission + stop by identity; Generative AI preset; tamper reconcile; dashboard | ChatGPT blocked by name and when renamed on both; tamper alert when the hosts section is edited |
+| P6 | Staged rollout, "stop enforcing", second approver, load test 2,000 agents, feature guide | Load test within limits; guide updated |
+| P7 (later) | Windows App Control policies; the official Oman ITA pack when the document arrives (can start in any phase) | — |
 
-That is 5 sprints for P1–P5. Against the plan to v1.0 (27 Jan 2027) this has to be agreed with
-the scrum master: either P1–P3 in v1.0 and P4–P5 after, or a later v1.0.
+About 6 sprints for P1–P6 (Linux adds one to the first plan). Against v1.0 (27 Jan 2027) this
+needs the scrum master's call: e.g. P1–P3 in v1.0, so frameworks including provisional Oman ITA
+run on both agents, and P4–P6 (blocking) right after.
 
-## 14. Open questions for the client
+## 16. Open questions for the client
 
-1. Which Oman standard(s) exactly, and the official document of each (control list). We need
-   it to build the pack; we don't write control texts ourselves.
-2. The message the user sees when a site or app is blocked, and whether users may ask for an
-   exception from that message.
-3. Which Windows editions the customer PCs run (Home / Pro / Enterprise). It decides when the
-   strongest app blocking layer (P6) is worth doing.
+1. The official Oman ITA framework document (or which ministry publication they are audited
+   against), and whether sector rules apply (e.g. banking). Until then the provisional pack is
+   used.
+2. The reporting deadlines and recipient for incidents and personal data breaches they are held
+   to (for the obligations).
+3. The message users see when blocked, and whether users may ask for an exception from it.
+4. Windows editions and Linux distributions / kernel versions on their machines (decides P7 and
+   the Linux kernel 5.0 requirement).

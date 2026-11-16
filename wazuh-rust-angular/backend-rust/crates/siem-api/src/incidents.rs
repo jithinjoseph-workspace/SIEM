@@ -64,6 +64,33 @@ pub fn severity(level: u8) -> &'static str {
     }
 }
 
+/// The risk fabric's business risk (0-100) as a severity, by its own tiers: 70+ Critical or
+/// Catastrophic, 45+ High, 25+ Medium.
+pub fn risk_severity(risk: u8) -> &'static str {
+    match risk {
+        70.. => "CRITICAL",
+        45..=69 => "HIGH",
+        25..=44 => "MEDIUM",
+        _ => "LOW",
+    }
+}
+
+fn rank(severity: &str) -> u8 {
+    match severity {
+        "CRITICAL" => 3,
+        "HIGH" => 2,
+        "MEDIUM" => 1,
+        _ => 0,
+    }
+}
+
+/// An incident's severity: the higher of its level's and its business risk's (phase 4), so the
+/// same alert ranks higher on a payment server than on a test PC.
+pub fn severity_of(level: u8, risk: u8) -> &'static str {
+    let (a, b) = (severity(level), risk_severity(risk));
+    if rank(b) > rank(a) { b } else { a }
+}
+
 fn priority(severity: &str) -> &'static str {
     match severity {
         "CRITICAL" => "P1",
@@ -86,6 +113,8 @@ pub struct Open {
     pub first_seen: i64,
     pub last_seen: i64,
     pub max_level: u8,
+    /// the highest business risk of its alerts (risk fabric, 0-100)
+    pub max_risk: u8,
     pub count: u64,
     pub ids: Vec<String>,
     /// rule descriptions, first ones only
@@ -99,6 +128,8 @@ impl Open {
     fn take(&mut self, a: &Alert, ts: i64) {
         self.last_seen = self.last_seen.max(ts);
         self.max_level = self.max_level.max(a.rule.level);
+        let risk = a.data.get("risk_fabric").and_then(|r| r["dynamic_risk_score"].as_u64()).unwrap_or(0).min(100) as u8;
+        self.max_risk = self.max_risk.max(risk);
         self.count += 1;
         if self.ids.len() < MAX_IDS {
             self.ids.push(a.id.to_string());
@@ -119,12 +150,13 @@ impl Open {
 
     pub fn description(&self) -> String {
         format!(
-            "Incident opened automatically: {} alert(s) on {} between {} and {} UTC, highest level {}. Rules: {}.",
+            "Incident opened automatically: {} alert(s) on {} between {} and {} UTC, highest level {}, business risk {}. Rules: {}.",
             self.count,
             self.agent_name,
             chrono::DateTime::from_timestamp(self.first_seen, 0).map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default(),
             chrono::DateTime::from_timestamp(self.last_seen, 0).map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default(),
             self.max_level,
+            self.max_risk,
             self.rules.join("; ")
         )
     }
@@ -242,7 +274,7 @@ async fn flush(state: &AppState) {
     };
     for (k, o) in work {
         let client = state.db.tenant_client(&o.tenant);
-        let sev = severity(o.max_level);
+        let sev = severity_of(o.max_level, o.max_risk);
         let result = if o.new {
             let number = crate::soar::next_case_number(state, &o.tenant).await;
             let tags = vec![TAG.to_string(), format!("key:{k}"), o.entity.clone()];
@@ -347,6 +379,19 @@ mod tests {
         .unwrap();
         a.rule.level = level;
         a
+    }
+
+    #[test]
+    fn severity_is_the_higher_of_level_and_business_risk() {
+        assert_eq!(severity_of(7, 10), "MEDIUM");
+        assert_eq!(severity_of(7, 88), "CRITICAL", "a payment server");
+        assert_eq!(severity_of(12, 0), "CRITICAL");
+        assert_eq!(severity_of(4, 50), "HIGH", "low level, high business risk");
+        let mut m = HashMap::new();
+        let mut a = alert(8, "8084", "Suspicious process");
+        a.data.insert("risk_fabric".into(), json!({"dynamic_risk_score": 72}));
+        let k = place(&mut m, "acm", &a, "process:x.exe".into(), 0).unwrap();
+        assert_eq!((m[&k].max_risk, severity_of(m[&k].max_level, m[&k].max_risk)), (72, "CRITICAL"));
     }
 
     #[test]

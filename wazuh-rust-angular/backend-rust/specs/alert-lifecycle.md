@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phases 1 to 3 done (2026-11-16), phase 4 next.
+Status: phases 1 to 4 done (2026-11-16), phase 5 next.
 
 ## 1. Goal
 
@@ -80,9 +80,16 @@ Problems, from the live data of tenant acm:
   incidents therefore take a second after the newest case (`unique_second`). The real fix is a table
   keyed by (tenant, id); it needs a migration of every tenant's replicated table, so it waits for
   the owner's approval.
+- **L-9 Priority from level and business risk.** An incident's severity is the higher of its
+  highest level's (12+ critical, 10-11 high, 7-9 medium) and its highest business risk's (risk
+  fabric score 70+ critical, 45-69 high, 25-44 medium, by the risk fabric's own tiers). The
+  priority (P1 to P4, which sets the SLA) is set when the incident opens; later alerts raise the
+  severity, while the priority stays as opened or as people changed it. Alerts carry no
+  confidence value, so the planned "× confidence" part is left out until a detection gives one.
 
 ## 5. Progress
 
 - 2026-11-16: plan written. Phase 1 done: `record_alert` (agent HTTP ingest, FIM handler, simulations) and the syslog engine hand their alerts to `deliver` (`siem-api/src/provigil_manager.rs`); decisions L-1 to L-3. siem-api tests: 153 passed.
 - 2026-11-16: phase 2 done: field exceptions (`siem-suppression/src/lib.rs`, `siem-api/src/suppressions.rs`, the Suppressions page `/siem-suppressions`), decisions L-4 and L-5. Example: rule 960270 when `data.win.eventdata.image` contains `docker.exe`, permanent.
 - 2026-11-16: phase 3 done (backend): incidents (L-6), case updates keep `hit_ids` (L-7), same-second case collapse found (L-8, open). SQL checked in a scratch database (create, analyst update, incident update, reload, a burst of 3 incidents and a manual case in one second: 4 cases). siem-api tests: 156 passed. Then: the alert list (`/api/v1/alerts`) gives each alert its case as `data.incident` (id, number, status; `incidents::attach`), and the console's alert list and alert detail link to it.
+- 2026-11-16: phase 4 done: severity from level and business risk (L-9, `severity_of` in `incidents.rs`). siem-api tests: 157 passed.

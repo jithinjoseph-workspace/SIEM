@@ -36,17 +36,22 @@ fn at<'a>(v: &'a Value, path: &str) -> Option<&'a str> {
 
 /// What the alert is about on its host: `process:<image file>`, `user:<name>` or `host`.
 pub fn entity(a: &Value) -> String {
-    let image = ["data.win.eventdata.image", "data.win.eventdata.sourceImage", "data.win.eventdata.newProcessName"].iter().find_map(|p| at(a, p));
-    if let Some(i) = image {
+    entity_at(a).0
+}
+
+/// The entity and the alert field it came from (an exception for the incident matches on it).
+pub fn entity_at(a: &Value) -> (String, Option<&'static str>) {
+    let image = ["data.win.eventdata.image", "data.win.eventdata.sourceImage", "data.win.eventdata.newProcessName"].into_iter().find_map(|p| at(a, p).map(|v| (p, v)));
+    if let Some((p, i)) = image {
         let file = i.rsplit(['\\', '/']).next().unwrap_or(i).to_lowercase();
         if !file.is_empty() && file != "<unknown process>" && file != "&lt;unknown process&gt;" {
-            return format!("process:{file}");
+            return (format!("process:{file}"), Some(p));
         }
     }
-    let user = ["decoded.user", "data.dstuser", "data.srcuser", "data.win.eventdata.targetUserName", "data.win.eventdata.subjectUserName"].iter().find_map(|p| at(a, p));
+    let user = ["decoded.user", "data.dstuser", "data.srcuser", "data.win.eventdata.targetUserName", "data.win.eventdata.subjectUserName"].into_iter().find_map(|p| at(a, p).map(|v| (p, v)));
     match user {
-        Some(u) => format!("user:{}", u.to_lowercase()),
-        None => "host".into(),
+        Some((p, u)) => (format!("user:{}", u.to_lowercase()), Some(p)),
+        None => ("host".into(), None),
     }
 }
 
@@ -109,6 +114,8 @@ pub struct Open {
     pub agent_ip: String,
     pub src_ip: String,
     pub entity: String,
+    /// the alert field the entity came from
+    pub field: Option<&'static str>,
     pub first_rule: String,
     pub first_seen: i64,
     pub last_seen: i64,
@@ -163,7 +170,7 @@ impl Open {
 }
 
 /// Puts one alert into the open incidents: joins one, opens one, or neither (`None`).
-pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, entity: String, ts: i64) -> Option<String> {
+pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, (entity, field): (String, Option<&'static str>), ts: i64) -> Option<String> {
     let k = key(tenant, &a.agent.id, &entity);
     if let Some(o) = open.get_mut(&k) {
         if ts - o.last_seen <= WINDOW_SECS {
@@ -181,6 +188,7 @@ pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, entity: 
         agent_name: a.agent.name.clone(),
         agent_ip: a.agent.ip.clone(),
         entity,
+        field,
         first_rule: a.rule.description.clone(),
         first_seen: ts,
         last_seen: ts,
@@ -207,7 +215,7 @@ pub fn on_alerts(state: &AppState, alerts: &[Alert]) {
         }
         let tenant = crate::tenancy::alert_tenant(a, &tenants);
         let v = serde_json::to_value(a).unwrap_or_default();
-        place(&mut map, &tenant, a, entity(&v), a.timestamp.timestamp());
+        place(&mut map, &tenant, a, entity_at(&v), a.timestamp.timestamp());
     }
 }
 
@@ -277,7 +285,10 @@ async fn flush(state: &AppState) {
         let sev = severity_of(o.max_level, o.max_risk);
         let result = if o.new {
             let number = crate::soar::next_case_number(state, &o.tenant).await;
-            let tags = vec![TAG.to_string(), format!("key:{k}"), o.entity.clone()];
+            let mut tags = vec![TAG.to_string(), format!("key:{k}"), o.entity.clone()];
+            if let Some(f) = o.field {
+                tags.push(format!("field:{f}"));
+            }
             // soar_cases replaces rows by (tenant, created_at in seconds): two cases of one second
             // would become one, so each incident takes a second after the newest case
             let newest: u32 = client.query("SELECT toUInt32(toUnixTimestamp(max(created_at))) FROM soar_cases").fetch_one().await.unwrap_or(0);
@@ -359,6 +370,68 @@ pub async fn attach(state: &AppState, tenant: &str, alerts: &mut [Alert]) {
     }
 }
 
+#[derive(clickhouse::Row, serde::Deserialize)]
+struct Totals {
+    cases: u64,
+    open: u64,
+    auto_incidents: u64,
+    mttr: f64,
+}
+
+#[derive(clickhouse::Row, serde::Deserialize, serde::Serialize)]
+struct RuleOutcome {
+    rule_id: u32,
+    rule: String,
+    incidents: u64,
+    false_positive: u64,
+}
+
+#[derive(serde::Deserialize)]
+pub struct MetricsQuery {
+    days: Option<u32>,
+}
+
+/// `GET /api/v1/siem/incidents/metrics?days=30` (phase 6): the tenant's cases over the last days
+/// (1 to 90): how many, how many open or opened automatically, the mean time to the first action
+/// (status, edit, note, disposition) and to closing, and per rule how many incidents ended as false
+/// positives, most first: the rules worth tuning.
+pub async fn metrics(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::Extension(ctx): axum::Extension<crate::tenancy::AuthCtx>,
+    axum::extract::Query(q): axum::extract::Query<MetricsQuery>,
+) -> axum::Json<Value> {
+    let days = q.days.unwrap_or(30).clamp(1, 90);
+    let db = state.db.tenant_client(&ctx.scope());
+    let totals: Option<Totals> = db
+        .query(&format!("SELECT toUInt64(count()) AS cases, toUInt64(countIf(status NOT IN {CLOSED})) AS open, toUInt64(countIf(has(tags, 'auto-incident'))) AS auto_incidents, toFloat64(ifNotFinite(ifNull(avgIf(dateDiff('second', created_at, closed_at), closed_at IS NOT NULL), 0), 0)) AS mttr FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY"))
+        .bind(days)
+        .fetch_optional()
+        .await
+        .ok()
+        .flatten();
+    let mtta: f64 = db
+        .query("SELECT toFloat64(ifNotFinite(avg(first_s), 0)) FROM (SELECT c.id, dateDiff('second', any(c.created_at), min(e.at)) AS first_s FROM soar_cases AS c FINAL INNER JOIN soar_case_events AS e ON e.case_id = c.id WHERE c.created_at >= now() - INTERVAL ? DAY AND e.kind IN ('status', 'edited', 'note', 'disposition', 'resolved') GROUP BY c.id)")
+        .bind(days)
+        .fetch_one()
+        .await
+        .unwrap_or(0.0);
+    let rules: Vec<RuleOutcome> = db
+        .query("WITH c AS (SELECT id, hit_ids FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY AND notEmpty(hit_ids)), d AS (SELECT case_id, JSONExtractString(doc, 'disposition') AS disp FROM soar_case_details FINAL), a AS (SELECT id, rule_id, rule_description FROM siem_alerts WHERE id IN (SELECT arrayJoin(hit_ids) FROM c)) SELECT a.rule_id AS rule_id, any(a.rule_description) AS rule, toUInt64(uniqExact(c.id)) AS incidents, toUInt64(uniqExactIf(c.id, d.disp = 'False Positive')) AS false_positive FROM c ARRAY JOIN c.hit_ids AS hid INNER JOIN a ON a.id = hid LEFT JOIN d ON d.case_id = c.id GROUP BY a.rule_id ORDER BY false_positive DESC, incidents DESC LIMIT 20")
+        .bind(days)
+        .fetch_all()
+        .await
+        .unwrap_or_default();
+    let t = totals.unwrap_or(Totals { cases: 0, open: 0, auto_incidents: 0, mttr: 0.0 });
+    axum::Json(serde_json::json!({
+        "days": days, "cases": t.cases, "open": t.open, "auto_incidents": t.auto_incidents,
+        "mean_secs_to_first_action": mtta.round() as u64, "mean_secs_to_close": t.mttr.round() as u64,
+        "rules": rules.iter().map(|r| serde_json::json!({
+            "rule_id": r.rule_id, "rule": r.rule, "incidents": r.incidents, "false_positive": r.false_positive,
+            "false_positive_rate": if r.incidents == 0 { 0.0 } else { (r.false_positive as f64 / r.incidents as f64 * 100.0).round() / 100.0 },
+        })).collect::<Vec<_>>(),
+    }))
+}
+
 /// A creation second later than the newest case's (cases of one second would merge).
 pub fn unique_second(now: i64, newest: i64) -> i64 {
     now.max(newest + 1)
@@ -390,7 +463,7 @@ mod tests {
         let mut m = HashMap::new();
         let mut a = alert(8, "8084", "Suspicious process");
         a.data.insert("risk_fabric".into(), json!({"dynamic_risk_score": 72}));
-        let k = place(&mut m, "acm", &a, "process:x.exe".into(), 0).unwrap();
+        let k = place(&mut m, "acm", &a, ("process:x.exe".into(), None), 0).unwrap();
         assert_eq!((m[&k].max_risk, severity_of(m[&k].max_level, m[&k].max_risk)), (72, "CRITICAL"));
     }
 
@@ -406,22 +479,23 @@ mod tests {
         assert_eq!(entity(&json!({"data": {"win": {"eventdata": {"image": r"C:\Program Files\Docker\docker.exe", "targetUserName": "bob"}}}})), "process:docker.exe");
         assert_eq!(entity(&json!({"data": {"win": {"eventdata": {"image": "<unknown process>", "targetUserName": "Bob"}}}})), "user:bob");
         assert_eq!(entity(&json!({"data": {}})), "host");
+        assert_eq!(entity_at(&json!({"data": {"dstuser": "alice"}})), ("user:alice".to_string(), Some("data.dstuser")), "the field it came from");
     }
 
     #[test]
     fn alerts_group_by_agent_and_entity_within_the_window() {
         let mut m = HashMap::new();
         let t0 = 1_800_000_000;
-        assert_eq!(place(&mut m, "acm", &alert(4, "8084", "low"), "host".into(), t0), None, "a low alert opens nothing");
-        let k = place(&mut m, "acm", &alert(10, "8084", "Logon failures"), "user:bob".into(), t0).unwrap();
-        assert_eq!(place(&mut m, "acm", &alert(3, "8084", "Logon audit"), "user:bob".into(), t0 + 600), Some(k.clone()), "a low alert joins an open incident");
-        assert_ne!(place(&mut m, "acm", &alert(10, "8087", "Logon failures"), "user:bob".into(), t0).unwrap(), k, "another agent: another incident");
+        assert_eq!(place(&mut m, "acm", &alert(4, "8084", "low"), ("host".into(), None), t0), None, "a low alert opens nothing");
+        let k = place(&mut m, "acm", &alert(10, "8084", "Logon failures"), ("user:bob".into(), None), t0).unwrap();
+        assert_eq!(place(&mut m, "acm", &alert(3, "8084", "Logon audit"), ("user:bob".into(), None), t0 + 600), Some(k.clone()), "a low alert joins an open incident");
+        assert_ne!(place(&mut m, "acm", &alert(10, "8087", "Logon failures"), ("user:bob".into(), None), t0).unwrap(), k, "another agent: another incident");
         let o = &m[&k];
         assert_eq!((o.count, o.max_level, o.ids.len(), severity(o.max_level)), (2, 10, 2, "HIGH"));
         assert_eq!(o.title(), "pc-8084 (user bob): Logon failures");
         // past the window: a new incident
         let id = m[&k].id.clone();
-        place(&mut m, "acm", &alert(8, "8084", "Logon failures"), "user:bob".into(), t0 + 600 + WINDOW_SECS + 1);
+        place(&mut m, "acm", &alert(8, "8084", "Logon failures"), ("user:bob".into(), None), t0 + 600 + WINDOW_SECS + 1);
         assert_ne!(m[&k].id, id);
     }
 }

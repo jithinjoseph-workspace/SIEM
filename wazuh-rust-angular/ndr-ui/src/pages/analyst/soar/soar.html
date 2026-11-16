@@ -15,6 +15,19 @@
       ENGINE RUNNING
     </div>
   </div>
+  <!-- Last 30 days of cases: how fast they are handled, which rules end as false positives -->
+  <div *ngIf="incidentMetrics() as m" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="bg-[#121212] border border-white/10 rounded-lg px-4 py-3"><div class="text-[11px] text-on-surface-variant uppercase">Cases (30 days)</div><div class="text-xl font-bold">{{ m.cases }}</div><div class="text-[11px] text-on-surface-variant">{{ m.auto_incidents }} opened automatically</div></div>
+    <div class="bg-[#121212] border border-white/10 rounded-lg px-4 py-3"><div class="text-[11px] text-on-surface-variant uppercase">Open</div><div class="text-xl font-bold">{{ m.open }}</div></div>
+    <div class="bg-[#121212] border border-white/10 rounded-lg px-4 py-3"><div class="text-[11px] text-on-surface-variant uppercase">Mean time to first action</div><div class="text-xl font-bold">{{ duration(m.mean_secs_to_first_action) }}</div></div>
+    <div class="bg-[#121212] border border-white/10 rounded-lg px-4 py-3"><div class="text-[11px] text-on-surface-variant uppercase">Mean time to close</div><div class="text-xl font-bold">{{ duration(m.mean_secs_to_close) }}</div></div>
+    <div class="bg-[#121212] border border-white/10 rounded-lg px-4 py-3 col-span-2 md:col-span-1">
+      <div class="text-[11px] text-on-surface-variant uppercase">Most false positives</div>
+      <div *ngIf="!m.rules?.length" class="text-xs text-on-surface-variant mt-1">No closed incidents with alerts yet.</div>
+      <div *ngFor="let r of (m.rules || []).slice(0, 3)" class="text-xs mt-1" [title]="r.rule"><span class="mono text-primary">#{{ r.rule_id }}</span> {{ r.false_positive }}/{{ r.incidents }} false</div>
+    </div>
+  </div>
+
   <!-- ══ Tab Bar ════════════════════════════════════════════════════════════ -->
   <div class="flex items-center gap-1 mb-10 bg-[#121212] p-1.5 rounded-full border border-white/5 w-fit shadow-lg">
 

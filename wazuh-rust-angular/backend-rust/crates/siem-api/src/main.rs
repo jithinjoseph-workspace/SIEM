@@ -1306,6 +1306,7 @@ async fn main() {
         // per-tenant SOAR (the analyst SOAR page; the same API as ndr-engine's)
         // SIEM analyst AI: the SIEM's own pages (ndr-ui pages/siem-ai), apart from the NDR's /api/triage etc.
         .route("/api/v1/siem/triage", get(triage::get))
+        .route("/api/v1/siem/incidents/metrics", get(incidents::metrics))
         .route("/api/v1/siem/triage/run", post(triage::run_now))
         .route("/api/v1/siem/triage/:id/apply", post(triage::apply))
         .route("/api/v1/siem/triage/:id/dismiss", post(triage::dismiss))

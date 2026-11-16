@@ -1,6 +1,6 @@
 # Alert lifecycle: from detection to closed
 
-Status: phases 1 to 5 done (2026-11-16), phase 6 next.
+Status: phases 1 to 6 done (2026-11-16); not yet tested live (services stopped). Open: L-8 (case table key).
 
 ## 1. Goal
 
@@ -92,6 +92,14 @@ Problems, from the live data of tenant acm:
   SOAR page (`/soar`) offers five starters that fill the form instead: critical alert to the team
   chat, critical alert pages on-call, known-bad source blocked, brute-force source blocked, changed
   file checked on VirusTotal. Blocking still passes the decision policy.
+- **L-11 Learning stays with people.** An automatically opened incident closed as "False Positive"
+  shows a "Create exception" button on its case page: its most frequent rule and agent, and its
+  process or user on the field the incident recorded (tag `field:<path>`); permanent when it has a
+  field, else 7 days. Nothing is created until a person clicks it.
+- **L-12 Metrics from what is stored.** `GET /api/v1/siem/incidents/metrics?days=30` (1 to 90):
+  cases, open, opened automatically, mean time to the first action (the first status change, edit,
+  note, disposition or resolution in the case history) and to closing, and per rule how many
+  incidents ended as false positives. Shown at the top of the SOAR page.
 
 ## 5. Progress
 
@@ -100,3 +108,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: phase 3 done (backend): incidents (L-6), case updates keep `hit_ids` (L-7), same-second case collapse found (L-8, open). SQL checked in a scratch database (create, analyst update, incident update, reload, a burst of 3 incidents and a manual case in one second: 4 cases). siem-api tests: 156 passed. Then: the alert list (`/api/v1/alerts`) gives each alert its case as `data.incident` (id, number, status; `incidents::attach`), and the console's alert list and alert detail link to it.
 - 2026-11-16: phase 4 done: severity from level and business risk (L-9, `severity_of` in `incidents.rs`). siem-api tests: 157 passed.
 - 2026-11-16: phase 5 done: starter playbooks on the SOAR page (L-10); their conditions are all evaluated by `provigil-common/src/soar/conditions.rs` (its tests cover each).
+- 2026-11-16: phase 6 done: exception from a false-positive incident (L-11), metrics (L-12). The metrics SQL was run read-only on tenant acm (8 cases, 6 open, 8 min to close, 21 h to first action). siem-api tests: 157 passed.

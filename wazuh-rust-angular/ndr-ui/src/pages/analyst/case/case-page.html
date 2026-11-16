@@ -23,6 +23,9 @@
         <button (click)="open('resolve')" [disabled]="closed()" class="px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white">Resolve</button>
         <button (click)="open('disposition')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Change disposition</button>
         <button (click)="open('edit')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Edit</button>
+        <button *ngIf="exception() as x" (click)="makeException()" [disabled]="busy()"
+          [title]="'Hide rule ' + x.rule_id + (x.agent_id ? ' on agent ' + x.agent_id : '') + (x.field_path ? ' when ' + x.field_path + ' contains ' + x.field_contains + ' (permanent)' : ' for 7 days')"
+          class="px-3 py-2 text-sm rounded-lg border border-amber-700 text-amber-300 hover:bg-amber-950/40 disabled:opacity-40">Create exception: rule {{ x.rule_id }}{{ x.field_contains ? ', ' + x.field_contains : '' }}</button>
         <a *ngFor="let s of inv()?.subjects" routerLink="/analyst/siem-investigate" [queryParams]="{ q: s.value, case: c.id }" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Evidence: {{ s.role }} {{ s.value }}</a>
         <button (click)="reinvestigate()" [disabled]="busy()" class="px-3 py-2 text-sm rounded-lg border border-cyan-800 text-cyan-300 hover:bg-cyan-950/40 disabled:opacity-40">Investigate again</button>
       </div>

@@ -866,6 +866,17 @@ export class Soar implements OnInit {
         this.loadPlaybooks();
         this.loadIntegrations();
         this.loadRuns();
+        this.siem.getIncidentMetrics(30).subscribe(m => this.incidentMetrics.set(m));
+    }
+
+    /** Last 30 days of cases (specs/alert-lifecycle.md, phase 6); null when it cannot be read. */
+    incidentMetrics = signal<any>(null);
+
+    /** Seconds as "3 h 20 min" / "45 min" / "40 s". */
+    duration(secs: number): string {
+        if (!secs) return '—';
+        const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
+        return h ? `${h} h ${m} min` : m ? `${m} min` : `${secs} s`;
     }
 
     // ── Data loaders ──────────────────────────────────────────────────────────

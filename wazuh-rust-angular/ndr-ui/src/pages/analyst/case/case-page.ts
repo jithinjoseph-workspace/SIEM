@@ -71,6 +71,40 @@ export class CasePage implements OnInit {
     this.api.getSoarCaseComments(this.id).subscribe({ next: (r: any) => r?.status === 'success' && this.comments.set(r.data || []) });
   }
 
+  /** An incident opened automatically and closed as a false positive: the exception it suggests
+   *  (its most frequent rule and agent, and its process or user), created only when a person asks
+   *  (specs/alert-lifecycle.md, phase 6). */
+  exception = computed(() => {
+    const d = this.d();
+    const tags: string[] = d?.case?.tags || [];
+    if (!tags.includes('auto-incident') || d?.details?.disposition !== 'False Positive' || !d?.alerts?.length) return null;
+    const most = (key: string) => {
+      const n = new Map<any, number>();
+      for (const a of d.alerts) n.set(a[key], (n.get(a[key]) || 0) + 1);
+      return [...n.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
+    };
+    const entity = tags.find(t => t.startsWith('process:') || t.startsWith('user:')) || '';
+    const [kind, value] = entity ? [entity.slice(0, entity.indexOf(':')), entity.slice(entity.indexOf(':') + 1)] : ['', ''];
+    // the field the incident's entity came from (tag field:<path>); older incidents: the usual one
+    const recorded = tags.find(t => t.startsWith('field:'))?.slice(6) || '';
+    const field_path = !kind ? '' : recorded || (kind === 'process' ? 'data.win.eventdata.image' : 'data.win.eventdata.targetUserName');
+    return { rule_id: Number(most('rule_id')), agent_id: String(most('agent_id') || ''), field_path, field_contains: value, permanent: !!field_path };
+  });
+
+  makeException() {
+    const x = this.exception();
+    if (!x) return;
+    this.busy.set(true);
+    this.siem.createSiemSuppression({
+      rule_id: x.rule_id, agent_id: x.agent_id || undefined, duration_hours: 168,
+      field_path: x.field_path || undefined, field_contains: x.field_path ? x.field_contains : undefined, permanent: x.permanent || undefined,
+      reason: `Incident ${this.d()?.case?.case_number} closed as a false positive`,
+    }).subscribe({
+      next: (r: any) => { this.busy.set(false); if (r?.error) this.error.set(r.error); else this.message.set('Exception created: these alerts no longer reach the queue (Suppressions page to stop it).'); },
+      error: () => { this.busy.set(false); this.error.set('The exception could not be created.'); },
+    });
+  }
+
   private done(text: string) {
     return {
       next: (r: any) => {

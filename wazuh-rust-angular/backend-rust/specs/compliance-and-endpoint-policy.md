@@ -3,13 +3,16 @@
 Status: plan (2026-11-16, revised the same day). Asked by the owner after the scrum master and
 the client (Oman) asked for:
 
-1. compliance frameworks a tenant admin chooses, including Oman's own (the ITA framework),
+1. compliance frameworks a tenant admin adds and chooses (any framework, e.g. the one the client is audited against),
    pushed to that tenant's agents so they run only those checks, with the full life cycle;
 2. the tenant's own endpoint rules: block websites, block applications (e.g. ChatGPT not
    allowed), and alert when someone tries.
 
-Revision: **both agents, Windows and Linux, cover everything** (owner, 2026-11-16). Any
-framework is added as data, even when no official document is at hand yet.
+Revisions (owner, 2026-11-16): **both agents, Windows and Linux, cover everything**; and
+**nothing framework-specific is built in for any one country or client**. Any framework (Oman
+ITA or any other) is added by the tenant admin by **uploading its document**; ProVigil turns
+it into controls, maps them to checks (creating new checks where none exist), and applies them
+on the agents (section 3.4).
 
 Design choices were made here (owner delegates them); each has its reason in section 14.
 
@@ -17,7 +20,7 @@ Design choices were made here (owner delegates them); each has its reason in sec
 
 | Area | Today | Missing |
 |---|---|---|
-| Frameworks | Six, fixed in code (`compliance.rs` `FRAMEWORKS`): PCI DSS, HIPAA, NIST 800-53, GDPR, SOC 2, ISO 27001 | Adding one (Oman ITA, NIST CSF) needs a code change and a release |
+| Frameworks | Six, fixed in code (`compliance.rs` `FRAMEWORKS`): PCI DSS, HIPAA, NIST 800-53, GDPR, SOC 2, ISO 27001 | Adding any other framework needs a code change and a release |
 | Tenant choice | Profile (`siem_compliance_profile`): frameworks reported on, groups in scope, checks not needed | It only filters the **report**. Every agent still runs **every** check |
 | Windows checks | ProVigil's own YAML policies compiled into `provigil-agent` (`src/sca/policies`), checks tagged with frameworks | No tenant checks, no "run only these" |
 | Linux checks | `siem-agent-linux` `sca.rs`: a few fixed checks plus CIS YAML files read from disk, own simpler rule reader | Different dialect from Windows, no framework tags, no tenant checks |
@@ -61,7 +64,7 @@ evidence pack the auditor accepts or questions. The page says this plainly.
 | Platform fact | something ProVigil measures about itself | logs kept ≥ 180 days, ≥ 95 % of PCs reporting, critical alerts answered within 4 h, critical CVEs patched within 30 days, data stored in-country | computed by siem-api from its own data |
 | Manual attestation | a person confirms, repeating | "incident response plan reviewed this year" | sign-off with name, date, next due |
 | Document | a file shows it | the signed security policy PDF | upload, hash kept |
-| Crosswalk | another framework's control already proves it | Oman ITA control → NIST CSF PR.AC-7 | resolved by the engine, transitively, no loops |
+| Crosswalk | another framework's control already proves it | an uploaded framework's control → NIST CSF PR.AC-7 | resolved by the engine, transitively, no loops |
 
 A control's status is one of: **met**, **partly met** (some evidence met), **not met**,
 **accepted risk** (exception), **evidence due** (manual, overdue), **not assessed** (no
@@ -72,7 +75,7 @@ evidence mapped yet). Each status also shows how it is known: **direct**, **via 
 
 - **NIST CSF 1.1 and 2.0**: functions, categories, sub-categories, with NIST's own published
   mapping (informative references) to NIST SP 800-53, which our checks already carry. This is
-  the backbone most national frameworks (Oman's included) align to.
+  the reference most national and sector frameworks align to (used for mapping, step 4 of 3.4).
 - **NIST SP 800-53, PCI DSS, HIPAA, GDPR, SOC 2, ISO 27001**: today's six, moved from code
   into packs with the same scores (checked before and after, nothing lost).
 - **CIS Controls v8**: control ids, which our policies' checks are organised around.
@@ -80,31 +83,88 @@ evidence mapped yet). Each status also shows how it is known: **direct**, **via 
   **ids and our own short titles**. A tenant who holds the standard may paste the official text
   into its own copy. NIST texts are public and are included.
 
-### 3.4 Adding a framework without its official document
+### 3.4 Adding any framework: upload its document, its rules get applied
 
-1. **Provisional pack** from what is public. For Oman ITA: the five functions (Identify,
-   Protect, Detect, Respond, Recover) as NIST CSF 1.1 structured them. Each category is
-   crosswalked to the NIST CSF categories it aligns to. The Oman-specific areas named publicly
-   (incident reporting to national authorities, national security, sector requirements, data
-   protection law) are manual controls and obligations with **deadlines left for the tenant to
-   set**. The pack is marked **"Provisional: not from the official text"** everywhere it shows,
-   including the evidence pack, so nobody presents it to an auditor as the official mapping.
-2. **The official text arrives later** (from the client, the regulator, or the ministry's
-   publication). It is imported (CSV / YAML / pasted text), as a new **version** of the same
-   pack.
-3. **Mapping workbench**: for each control, its text on the left; on the right the suggested
-   evidence (crosswalk targets, checks, rules, platform facts) with a confidence and a reason.
-   Suggestions come from text similarity against the NIST CSF / 800-53 / CIS texts, and, if the
-   tenant's AI is on, from the AI (budget respected). **Nothing is mapped until a person approves
-   it.** Every approval keeps who and when.
-4. **Version switch**: a diff (controls added, removed, reworded), side-by-side scores, then the
-   tenant admin switches. History keeps which version each snapshot was measured against.
+Nothing country- or client-specific is built in. The same seven steps serve Oman ITA, a
+central bank's rules, a company's internal security standard, or anything else.
 
-The pasted public summary says organisations with ISO 27001 find most controls transfer and the
-gaps are Oman-specific reporting, national security and sector requirements. That is exactly
-what the crosswalk gives automatically and the manual controls and obligations cover. Its
-"70–80 %" figure is not ours to repeat: the real coverage is computed and shown per tenant
-("38 of 52 controls have automatic evidence").
+**Step 1: Upload.** Tenant admin → Compliance frameworks → **Add framework**. Accepted: PDF,
+DOCX, XLSX, CSV, or pasted text; up to 50 MB, 1,000 pages. The file is kept as the source
+(hash, uploader, date), so every control can point back to its page.
+
+**Step 2: Read the controls out of it.**
+
+- **Spreadsheet / CSV**: the admin picks which columns are the id, title, text and parent
+  (remembered per file layout). Exact, no guessing.
+- **PDF / DOCX**: the text is extracted with page numbers. Controls are found by their
+  numbering (`1.2.3`, `PR.AC-1`, `A.5.1`, `OM-IAM-04`...) and headings, which gives the tree
+  (function → category → control). If the tenant's AI is on, it also reads each section and
+  proposes the controls with their page. Both are only proposals.
+- **Review screen**: the document page on one side, the controls found on the other. The admin
+  fixes, merges, splits, adds or deletes controls before going on. Each control keeps its
+  **source page and paragraph**.
+
+**Step 3: Sort each control.** Proposed, the admin confirms:
+
+- **technical**: can be checked on machines or measured by ProVigil;
+- **procedural**: policy, training, governance, so it needs a manual attestation or a document;
+- **obligation**: a duty with a deadline ("report incidents within N hours").
+
+**Values** in the text are picked out and become the control's parameters: "at least 12
+characters", "locked after 10 minutes", "kept 12 months", "within 72 hours". Changing the
+number later changes the check, not the mapping.
+
+**Step 4: Find what proves each control.** For each technical control, the **mapping screen**
+shows the control text and its page, then the suggested evidence, each with a confidence and
+the reason:
+
+- **existing checks** from the full check library (every check of every ProVigil policy, with
+  its title, description and tags, Windows and Linux), found by text similarity and the AI;
+- **reference controls** (NIST CSF, NIST 800-53, CIS, ISO 27001 ids). Kept built in only as
+  **reference libraries for mapping**, never as a client's framework. Mapping to one brings
+  every check already linked to it;
+- **detection rules** already in ProVigil (e.g. a "monitor privileged logins" control → the
+  rules that watch them);
+- **platform facts** (log retention, agent coverage, response times, patch times);
+- **endpoint policies** (a "no unapproved software" control → an application rule).
+
+**Step 5: Create the checks that don't exist yet.** When nothing covers a technical control, a
+**new check** is drafted in our check language: by the AI from the control text and its
+parameters, or written by the admin with a form (setting, file, registry value, service,
+package, permission). There is one per OS where it applies, e.g. "screen lock ≤ 10 minutes":
+a Windows registry check and a Linux desktop setting check. Before it can be approved:
+
+- it is **dry-run** on a pilot machine of each OS, showing pass / fail / not applicable and what
+  it read;
+- it is checked by the safety rules (section 7): read only, no commands unless that agent opted
+  in.
+
+Missing detections are listed as gaps (and can be drafted the same way as a rule, reviewed in
+the Rules page).
+
+**Step 6: Approve.** Nothing is used until a person approves each mapping and each new check
+(optionally a second person: tenant setting). The screen shows the **coverage**: "52 controls:
+31 checked automatically, 6 measured by ProVigil, 12 need evidence, 3 obligations, 0 not
+covered". The coverage is computed from the approvals, never estimated.
+
+**Step 7: Apply.** Publishing makes it a framework **version**. The admin adopts it and picks
+the groups in scope (section 4). ProVigil builds each group's bundle with exactly the checks
+this framework (and the others adopted) need, including the new ones, and pushes it to the
+Windows and Linux agents. Results come back per control: the live status and the evidence pack
+from then on.
+
+**A new edition of the document**: uploaded as a new version of the same framework. Unchanged
+controls (same text) keep their approved mappings. Changed and new ones go through steps 3–6
+alone. A diff shows what changed, both versions are scored side by side, then the admin
+switches.
+
+**Without AI** every step still works: spreadsheets map columns exactly, PDF numbering
+detection still finds the controls, similarity still suggests checks, and the admin writes
+missing checks with the form. The AI only saves time. Its use follows the tenant's AI switch
+and hourly budget, and documents go only to the provider the tenant configured.
+
+**Honest limit, shown on the page**: technical controls are proven automatically; procedural
+ones are evidenced. The result is audit readiness, not a certificate.
 
 ### 3.5 Obligations (regulatory deadlines)
 
@@ -121,9 +181,9 @@ obligation met or missed.
 
 | # | Stage | What happens | Page (tenant admin unless noted) | API | Stored in |
 |---|---|---|---|---|---|
-| A1 | Catalog | Built-in and imported packs, version, controls, provisional mark | Compliance frameworks → Catalog | `GET /api/v1/compliance/catalog` | `ndr.compliance_packs` (shared, read only) / tenant `compliance_packs` |
-| A2 | Import | YAML / CSV / pasted text; strict checks; preview with coverage before saving | Catalog → Import | `POST /api/v1/compliance/packs?dry_run=1` | tenant `compliance_packs` |
-| A3 | Map | Mapping workbench (3.4) | Catalog → Map | `GET/PUT /api/v1/compliance/packs/:id/mappings` | tenant `compliance_mappings` |
+| A1 | Catalog | Built-in and uploaded frameworks, version, controls, coverage | Compliance frameworks → Catalog | `GET /api/v1/compliance/catalog` | `ndr.compliance_packs` (shared, read only) / tenant `compliance_packs` |
+| A2 | Upload | The framework's document (PDF / DOCX / XLSX / CSV / text); controls read out and reviewed with their source page (3.4 steps 1–3) | Catalog → Add framework | `POST /api/v1/compliance/documents`, `GET/PUT /api/v1/compliance/documents/:id/controls` | tenant `compliance_documents`, `compliance_packs` |
+| A3 | Map and create checks | Mapping screen, new checks with dry run, approval, coverage (3.4 steps 4–6) | Catalog → Map | `GET/PUT /api/v1/compliance/packs/:id/mappings`, `POST /api/v1/compliance/checks/dry-run` | tenant `compliance_mappings`, `compliance_custom_checks` |
 | A4 | Adopt | Choose the frameworks the organisation must meet | Frameworks → Adopt | `PUT /api/v1/compliance/profile` (extended) | `siem_compliance_profile` |
 | A5 | Scope | Per framework, the agent groups it covers (Windows and Linux groups alike) | Frameworks → Scope | same | same |
 | A6 | Tailor | Controls not applicable (with reason), parameters (password length 12 or 14), obligation deadlines | Frameworks → Tailor | same | same |
@@ -136,7 +196,7 @@ obligation met or missed.
 | A13 | Obligations | Reporting timers on cases (3.5) | Case page | `GET /api/v1/compliance/obligations` | `compliance_obligation_runs` |
 | A14 | Drift | Met → not met raises a "compliance drift" alert, grouped like all alerts | Alerts / cases | — | `siem_alerts` |
 | A15 | History | Daily snapshot per framework (version, score, statuses) | Compliance → Trend | `GET /api/v1/compliance/history` | `compliance_snapshots` |
-| A16 | Evidence pack | Per framework for the auditor: scope, version (provisional mark), statuses and how known, hosts, exceptions with approvers, obligations, attestations, documents, related alerts, SHA-256 of the pack | Compliance → Export | `GET /api/v1/compliance/evidence-pack?framework=` | generated |
+| A16 | Evidence pack | Per framework for the auditor: scope, version and source document, statuses and how known, hosts, exceptions with approvers, obligations, attestations, documents, related alerts, SHA-256 of the pack | Compliance → Export | `GET /api/v1/compliance/evidence-pack?framework=` | generated |
 | A17 | Review / retire | Quarterly attestation reminder; new pack version side by side then switch; dropped framework stops being pushed | Frameworks | profile | same |
 
 ## 5. Part B: endpoint control policies
@@ -253,7 +313,9 @@ Refused when saved, and again on the agent:
 |---|---|---|
 | `ndr.compliance_packs` (shared) | built-in packs, versions | (pack_id, version) |
 | `compliance_packs` | imported packs | (pack_id, version) |
+| `compliance_documents` | uploaded source: file hash, name, pages, extracted text per page, uploader | id |
 | `compliance_mappings` | control → evidence, approved by, at | (pack_id, version, control) |
+| `compliance_custom_checks` | checks created for controls: per OS, rule text, parameters, dry-run results, approved by | (check_id, version) |
 | `siem_compliance_profile` (exists) | adopted, scope, tailoring, deadlines | id |
 | `compliance_exceptions` | target, scope, reason, approver, expires_at | id |
 | `compliance_evidence` | attestations and documents, due dates | id |
@@ -328,11 +390,11 @@ Sized for 50 tenants × 2,000 agents = 100,000 agents (today 500 per tenant):
 
 | # | Decision | Reason |
 |---|---|---|
-| D-1 | Frameworks are data (packs), not code | Oman ITA and future standards without a release |
-| D-2 | NIST CSF as the backbone, with NIST's published mapping to 800-53 | National frameworks (Oman ITA included) align to CSF; our checks already carry 800-53 |
+| D-1 | Frameworks are data (packs), not code | Any standard added by its document, without a release |
+| D-2 | NIST CSF as the backbone, with NIST's published mapping to 800-53 | Most frameworks align to CSF; our checks already carry 800-53; it speeds up mapping uploaded ones |
 | D-3 | Seven evidence kinds, status shows how it is known | Honest audit readiness: technical controls automatic, the rest evidenced |
-| D-4 | Provisional packs allowed, clearly marked, versioned | Work starts now without the official text; the official one replaces it with a diff |
-| D-5 | Mappings only by human approval; AI and text similarity only suggest | An auditor needs a person accountable for every mapping |
+| D-4 | No client- or country-specific framework built in; every framework comes from an uploaded document, versioned | Owner's direction; one path for every standard; each control traceable to its page |
+| D-5 | Mappings and new checks only by human approval (new checks after a dry run); AI and text similarity only suggest; everything works without AI | An auditor needs a person accountable; AI may be off or out of budget |
 | D-6 | Obligations with tenant-set deadlines | We don't know the official hours; the tenant takes them from the text |
 | D-7 | Pack texts: ids and own titles for copyrighted standards | ISO and PCI texts belong to their publishers |
 | D-8 | Agents run only the checks their groups need | What the client asked; less scan time and data |
@@ -349,25 +411,23 @@ Sized for 50 tenants × 2,000 agents = 100,000 agents (today 500 per tenant):
 
 | Phase | Content | Done when |
 |---|---|---|
-| P1 | Framework engine: packs, versions, the seven evidence kinds, crosswalk resolution, platform facts; NIST CSF 1.1 / 2.0 packs; today's six moved into packs; import with preview; **provisional Oman ITA pack**; Catalog / Adopt / Scope / Tailor pages | Same scores as today from packs; Oman ITA (provisional) shows a live status per control, marked provisional |
-| P2 | Mapping workbench (similarity + AI suggestions, approval); exceptions with expiry (migration); manual evidence; obligations with case timers; snapshots; evidence pack; drift alert | An imported test framework mapped in the workbench; a true-positive case gets its reporting timer; the evidence pack opens and its hash checks |
-| P3 | `provigil-policy` crate (check dialect moved with its tests), bundle build / sign / push, rollout status; Windows "only needed checks"; Linux receives group settings and runs checks through `provigil-policy` | A PCI-only group runs only PCI checks on Windows and on Linux; a bad signature is refused |
+| P1 | Framework engine: packs, versions, the seven evidence kinds, crosswalk resolution, platform facts; reference libraries (NIST CSF, 800-53, CIS, ISO ids) for mapping; today's six frameworks moved into packs (kept: no feature lost); Catalog / Adopt / Scope / Tailor pages | Same scores as today from packs |
+| P2 | Document upload and control reading (spreadsheet columns, PDF / DOCX numbering, AI proposals), review screen with source pages; mapping screen; check library search | A framework uploaded as PDF and one as XLSX each produce their control tree, mapped and approved |
+| P3 | `provigil-policy` crate (check dialect moved with its tests); new checks (AI draft or form) with dry run on Windows and Linux; bundle build / sign / push with custom checks, rollout status; Linux receives group settings and runs checks through `provigil-policy` | An uploaded framework's new check runs only on its in-scope groups on both OSes; a bad signature is refused |
+| P3b | Exceptions with expiry (migration); manual evidence; obligations with case timers; snapshots; evidence pack with source pages; drift alert; new document version with diff | A true-positive case gets its reporting timer; the evidence pack opens and its hash checks; re-uploading a changed edition keeps unchanged mappings |
 | P4 | Site rules on both agents: browser policy, hosts section, DNS attempt detection, monitor / enforce, alerts, policy page, presets | chatgpt.com blocked in Edge / Chrome / Firefox on Windows and Linux test VMs; attempt alert with user and process |
 | P5 | Application rules on both: Windows blocker + stop by identity, Linux exec permission + stop by identity; Generative AI preset; tamper reconcile; dashboard | ChatGPT blocked by name and when renamed on both; tamper alert when the hosts section is edited |
 | P6 | Staged rollout, "stop enforcing", second approver, load test 2,000 agents, feature guide | Load test within limits; guide updated |
-| P7 (later) | Windows App Control policies; the official Oman ITA pack when the document arrives (can start in any phase) | — |
+| P7 (later) | Windows App Control policies | — |
 
-About 6 sprints for P1–P6 (Linux adds one to the first plan). Against v1.0 (27 Jan 2027) this
-needs the scrum master's call: e.g. P1–P3 in v1.0, so frameworks including provisional Oman ITA
-run on both agents, and P4–P6 (blocking) right after.
+About 7 sprints for P1–P6 (document upload and check creation add one). Against v1.0 (27 Jan
+2027) this needs the scrum master's call: e.g. P1–P3 in v1.0, so an uploaded framework runs on
+both agents, and P3b–P6 right after.
 
 ## 16. Open questions for the client
 
-1. The official Oman ITA framework document (or which ministry publication they are audited
-   against), and whether sector rules apply (e.g. banking). Until then the provisional pack is
-   used.
-2. The reporting deadlines and recipient for incidents and personal data breaches they are held
-   to (for the obligations).
-3. The message users see when blocked, and whether users may ask for an exception from it.
-4. Windows editions and Linux distributions / kernel versions on their machines (decides P7 and
+1. Any framework document they want to try first (any format), to test the upload with a real
+   one; its deadlines (for obligations) come from that document.
+2. The message users see when blocked, and whether users may ask for an exception from it.
+3. Windows editions and Linux distributions / kernel versions on their machines (decides P7 and
    the Linux kernel 5.0 requirement).

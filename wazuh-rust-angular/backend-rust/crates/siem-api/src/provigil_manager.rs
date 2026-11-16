@@ -2712,7 +2712,15 @@ async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
 
 /// Stores tenant-tagged alerts, then shows them and runs SOAR on them unless suppressed;
 /// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original ProVigil alert).
-pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
+/// Every alert, whatever found it, goes through here (specs/alert-lifecycle.md, phase 1): risk
+/// score, store, suppression, live feed, deception tripwires, playbooks, e-mail, memory.
+pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
+    // scored before it is stored, so the stored alert carries its business risk too
+    for a in &mut alerts {
+        if !a.data.contains_key("risk_fabric") && !a.rule.groups.iter().any(|g| g == "redswarm_simulation") {
+            state.risk_fabric.evaluate_alert(a);
+        }
+    }
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
     let mut pending: Vec<&Alert> = alerts.iter().collect();
     let mut wait = RETRY_MIN;
@@ -2753,6 +2761,15 @@ pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_
         let _ = state.broadcast_tx.send(a.clone());
         shown.push(a);
         soar.push((v, t));
+    }
+    // deception tripwires (never on deception's own alerts: no loop)
+    let live: Vec<Alert> = shown
+        .iter()
+        .filter(|a| a.rule.id != 100999 && a.rule.id != 100200 && !a.rule.groups.iter().any(|g| g == "deception" || g == "zero_false_positive"))
+        .cloned()
+        .collect();
+    if !live.is_empty() {
+        state.deception_engine.ingest_live_alerts(&live);
     }
     // each tenant's SOAR playbooks, on the original ProVigil alert
     crate::soar::on_alerts(state, soar);

@@ -6482,18 +6482,10 @@ async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     if !alert.data.contains_key("risk_fabric") {
         state.risk_fabric.evaluate_alert(&mut alert);
     }
-    keep_alerts(&state, [alert.clone()]);
-    state.db.insert_alert(&alert).await;
-    let _ = state.broadcast_tx.send(alert.clone());
-
-    // Evaluate live agent alert against Deception honeynet tripwires (ignore deception's own alerts to prevent cascading loops)
-    if alert.rule.id != 100999
-        && alert.rule.id != 100200
-        && !alert.rule.groups.iter().any(|g| g == "deception" || g == "zero_false_positive")
-    {
-        state.deception_engine.ingest_live_alerts(&[alert.clone()]);
-    }
-
+    // the same path as every other alert (suppression, playbooks, e-mail, deception), in the
+    // background so the request does not wait on ClickHouse retries (alert-lifecycle L-1)
+    let (st, a, json) = (state.clone(), alert.clone(), serde_json::to_value(&alert).unwrap_or_default());
+    tokio::spawn(async move { provigil_manager::deliver(&st, vec![a], vec![json]).await });
     alert
 }
 

@@ -206,9 +206,10 @@ async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: 
 
     if let Some(alert) = maybe_alert {
         let alert = tenancy::tag_alert(alert, &tenant);
-        crate::keep_alerts(&state, [alert.clone()]);
-        state.db.insert_alert(&alert).await;
-        let _ = state.broadcast_tx.send(alert);
+        // the same path as every other alert (alert-lifecycle phase 1)
+        let json = serde_json::to_value(&alert).unwrap_or_default();
+        let st = state.clone();
+        tokio::spawn(async move { crate::provigil_manager::deliver(&st, vec![alert], vec![json]).await });
     }
 
     state.db.insert_event(&raw_event).await;

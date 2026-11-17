@@ -110,3 +110,4 @@ wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 wazuh-rust-angular/backend-rust/scratch/vulnscan-compare/
 wazuh-rust-angular/backend-rust/scratch/vulnscan-e2e/
 wazuh-rust-angular/backend-rust/src/
+linux_agent_parity_plan.md

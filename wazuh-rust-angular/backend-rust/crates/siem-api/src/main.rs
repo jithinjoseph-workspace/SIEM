@@ -86,6 +86,7 @@ pub mod posture;
 pub mod case_detail;
 pub mod deploy_tokens;
 pub mod endpoint_policy;
+pub mod own_activity;
 pub mod deploy_kit;
 pub mod posture_store;
 pub mod predictions;
@@ -2489,9 +2490,11 @@ pub(crate) async fn ingest_batch(
             add_parsed_fields(&mut event.metadata, p);
         }
 
-        // the rule loop is CPU work: off the async workers
+        // the rule loop is CPU work: off the async workers. An inventory (the whole JSON of the
+        // computer's software, services, users) is not a log line: log rules matched words in it
         let (engine, name, ip) = (state.engine.clone(), agent_name.clone(), agent_ip.clone());
-        let (maybe_alert, ev) = tokio::task::spawn_blocking(move || (engine.process_event(&event, &name, &ip), event))
+        let inventory = event.source == EventSource::Syscollector;
+        let (maybe_alert, ev) = tokio::task::spawn_blocking(move || (if inventory { None } else { engine.process_event(&event, &name, &ip) }, event))
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         event = ev;

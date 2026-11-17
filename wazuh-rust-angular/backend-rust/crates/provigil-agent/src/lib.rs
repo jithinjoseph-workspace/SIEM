@@ -506,11 +506,11 @@ async fn run_enrolled(edr: &Arc<EdrExecutor>, enroll_again: bool) -> anyhow::Res
     let config = group.effective.clone();
 
     // Shared components
-    let buffer = Arc::new(EventBuffer::with_limits(
-        config.buffer_max_events,
-        &config.buffer,
-        json!({ "id": &identity.agent_id, "name": &identity.agent_name }),
-    ));
+    // what does not fit in memory (the manager unreachable) waits on disk
+    let buffer = Arc::new(
+        EventBuffer::with_limits(config.buffer_max_events, &config.buffer, json!({ "id": &identity.agent_id, "name": &identity.agent_name }))
+            .with_spool(std::path::Path::new("data/spool"), config.buffer_spool_max_mb.saturating_mul(1024 * 1024)),
+    );
     let transport = Arc::new(AgentTransport::new(&config, identity.clone(), buffer.clone(), edr.clone()));
     transport.set_group_version(group.version());
     info!("Manager in use: '{}'.", transport.manager());

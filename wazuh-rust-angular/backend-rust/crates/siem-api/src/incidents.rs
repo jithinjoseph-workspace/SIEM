@@ -229,7 +229,8 @@ pub fn on_alerts(state: &AppState, alerts: &[Alert]) {
     let tenants = state.agent_tenants.read().unwrap().clone();
     let mut map = open().lock().unwrap();
     for a in alerts {
-        if crate::is_simulation(a) {
+        // a configuration check that changed is a compliance finding (Compliance page), not an incident
+        if crate::is_simulation(a) || a.rule.groups.iter().any(|g| g == "sca") {
             continue;
         }
         let tenant = crate::tenancy::alert_tenant(a, &tenants);

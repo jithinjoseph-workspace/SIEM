@@ -152,6 +152,10 @@ pub struct AgentConfig {
     /// Maximum number of events to retain in offline ring buffer before dropping (default: 10,000).
     #[serde(default = "default_buffer_size")]
     pub buffer_max_events: usize,
+    /// Megabytes of events kept on disk (`data/spool`) when the queue is full, e.g. while the
+    /// manager is unreachable; 0: none (they are dropped).
+    #[serde(default = "default_spool_mb")]
+    pub buffer_spool_max_mb: u64,
     /// Log level (`trace`, `debug`, `info`, `warn`, `error`).
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -334,6 +338,7 @@ fn default_rootcheck_base_directory() -> String {
     if cfg!(windows) { "C:\\".into() } else { "/".into() }
 }
 fn default_buffer_size() -> usize { 10_000 }
+fn default_spool_mb() -> u64 { 512 }
 fn default_max_diff() -> usize { 59_392 }
 fn default_log_level() -> String { "info".into() }
 fn default_true() -> bool { true }
@@ -508,6 +513,7 @@ impl Default for AgentConfig {
             rootcheck_base_directory: default_rootcheck_base_directory(),
             upgrade_enabled: default_true(),
             buffer_max_events: default_buffer_size(),
+            buffer_spool_max_mb: default_spool_mb(),
             log_level: default_log_level(),
             labels: Vec::new(),
             buffer: BufferConfig::default(),

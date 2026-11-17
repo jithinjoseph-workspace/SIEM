@@ -2720,6 +2720,12 @@ pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<se
     for (a, _) in &sims {
         let _ = state.broadcast_tx.send(a.clone());
     }
+    // ProVigil's own activity (its agent's programs, its installer, a check baseline): no alert
+    let published = tokio::task::spawn_blocking(agent_files).await.unwrap_or_default();
+    let (own, real): (Vec<(Alert, serde_json::Value)>, Vec<(Alert, serde_json::Value)>) = real.into_iter().partition(|(a, _)| crate::own_activity::reason(a, &published).is_some());
+    if !own.is_empty() {
+        tracing::debug!(count = own.len(), "ProVigil's own activity: not alerted");
+    }
     let (alerts_real, soar_json): (Vec<Alert>, Vec<serde_json::Value>) = real.into_iter().unzip();
     alerts = alerts_real;
     // scored before it is stored, so the stored alert carries its business risk too
@@ -2859,6 +2865,8 @@ pub(crate) async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
     let agent_groups: std::collections::HashMap<String, Vec<String>> =
         state.enrolled.read().unwrap().iter().map(|(id, e)| (id.clone(), crate::groups::agent_groups(&e.groups))).collect();
     let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
+        // the processes the agent starts, known before any alert about them is judged
+        tagged.iter().for_each(|(v, _)| crate::own_activity::learn(v));
         let mut m = crate::sigma::check(&tagged);
         m.extend(crate::endpoint_policy::check(&tagged, &agent_groups));
         let mut tamper = crate::tamper::check(&tagged);

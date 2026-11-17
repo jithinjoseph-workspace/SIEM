@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::{Arc, RwLock};
 
 use clickhouse::{Client, Row};
+use provigil_agent_server::endpoint_policy::{self, Rule};
 use provigil_agent_server::keys;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -103,6 +104,8 @@ struct Inner {
     /// Hex SHA-256 of a deployment token -> its tenant and state.
     deploy_tokens: HashMap<String, DeployToken>,
     inactive: HashSet<String>,
+    /// Tenant -> its endpoint policy rules (siem-api `endpoint_policy.rs`).
+    policies: HashMap<String, Vec<Rule>>,
 }
 
 #[derive(Default)]
@@ -233,6 +236,12 @@ impl Cache {
         c.registry.insert(id.to_string(), Arc::new(reg));
     }
 
+    /// The endpoint policy rules for an agent of `tenant` in these groups (comma list), of this OS.
+    pub fn policies_for(&self, tenant: &str, groups: &str, os_type: &str) -> Vec<serde_json::Value> {
+        let groups = provigil_agent_server::agent_config::agent_groups(groups);
+        self.inner.read().unwrap().policies.get(tenant).map(|r| endpoint_policy::for_agent(r, &groups, os_type)).unwrap_or_default()
+    }
+
     pub fn registered(&self, id: &str) -> Option<Arc<Registered>> {
         self.inner.read().unwrap().registry.get(id).cloned()
     }
@@ -253,6 +262,8 @@ impl Cache {
         let tenants: Vec<TenantRow> = db.query("SELECT id, active FROM ndr.tenants FINAL").fetch_all().await?;
         // missing until siem-api created it: no tokens then
         let tokens: Vec<DeployTokenRow> = db.query("SELECT token_hash, tenant_id, expires_at, revoked FROM deploy_tokens FINAL").fetch_all().await.unwrap_or_default();
+        // missing until siem-api created it: no rules then; few rows, read whole
+        let rules: Vec<(String, String)> = db.query("SELECT tenant_id, doc FROM endpoint_policies FINAL WHERE deleted = 0").fetch_all().await.unwrap_or_default();
 
         let mut changed = Vec::new();
         let decoded: Vec<(KeyRow, Option<String>)> = key_rows
@@ -292,6 +303,17 @@ impl Cache {
         }
         c.tenant_keys = tk.into_iter().map(|r| (hash(&r.agent_key), (r.agent_key, normalize(&r.tenant_id)))).collect();
         c.inactive = tenants.into_iter().filter(|t| t.active == 0).map(|t| t.id).collect();
+        let mut policies: HashMap<String, Vec<Rule>> = HashMap::new();
+        for (t, doc) in rules {
+            match serde_json::from_str::<Rule>(&doc) {
+                Ok(r) => policies.entry(normalize(&t)).or_default().push(r),
+                Err(e) => warn!("endpoint_policies: a rule of tenant {t} unreadable: {e}"),
+            }
+        }
+        for v in policies.values_mut() {
+            v.sort_by(|a, b| a.id.cmp(&b.id));
+        }
+        c.policies = policies;
         c.deploy_tokens = tokens.into_iter().map(|r| (r.token_hash.to_ascii_lowercase(), DeployToken { tenant: normalize(&r.tenant_id), expires_at: r.expires_at, revoked: r.revoked != 0 })).collect();
         if !self.ready.swap(true, Relaxed) {
             info!("Caches loaded: {} keys, {} registry rows, {} tenant keys", c.by_hash.len(), c.registry.len(), c.tenant_keys.len());
@@ -346,6 +368,17 @@ mod tests {
             i.deploy_tokens.insert(hex_hash("pvd_gone"), tok("acme", u64::MAX, true));
         }
         c
+    }
+
+    #[test]
+    fn policies_only_for_the_tenant_groups_and_os() {
+        let c = cache();
+        let r = |id: &str, groups: &[&str], os: &str| Rule { id: id.into(), kind: "site".into(), mode: "enforce".into(), targets: vec!["chatgpt.com".into()], groups: groups.iter().map(|g| g.to_string()).collect(), os: os.into(), enabled: true, ..Default::default() };
+        c.inner.write().unwrap().policies.insert("acme".into(), vec![r("all", &[], "any"), r("office", &["acme.office"], "any"), r("lin", &[], "linux")]);
+        let ids = |g: &str, os: &str| c.policies_for("acme", g, os).iter().map(|v| v["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(ids("acme.office,default", "windows"), vec!["all", "office"]);
+        assert_eq!(ids("", "linux"), vec!["all", "lin"]);
+        assert!(c.policies_for("other", "", "windows").is_empty());
     }
 
     #[test]

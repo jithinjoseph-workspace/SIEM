@@ -235,6 +235,10 @@
           <button class="filter-btn btn-hi" [class.active]="selectedSeverity() === 'high'" (click)="selectedSeverity.set('high')">HIGH</button>
           <button class="filter-btn btn-med" [class.active]="selectedSeverity() === 'medium'" (click)="selectedSeverity.set('medium')">MEDIUM</button>
           <button class="filter-btn btn-lo" [class.active]="selectedSeverity() === 'low'" (click)="selectedSeverity.set('low')">LOW</button>
+          <button class="filter-btn" [class.active]="!queueOnly()" (click)="toggleQueue()"
+                  [title]="queueOnly() ? 'Showing the work queue: level 7 and up. Lower levels are stored; show them here.' : 'Showing every level. Back to the work queue (level 7 and up).'">
+            {{ queueOnly() ? 'QUEUE: LEVEL 7+' : 'ALL LEVELS' }}
+          </button>
         </div>
       </div>
 
@@ -263,6 +267,8 @@
                 <td class="mono text-cyan">#{{ a.rule.id }}</td>
                 <td>
                   <div class="desc-text">{{ a.rule.description }}</div>
+                  <a *ngIf="a.data?.['incident'] as inc" [routerLink]="['/cases', inc.id]" (click)="$event.stopPropagation()"
+                     class="text-xs mono text-cyan" [title]="'This alert belongs to incident ' + inc.number">{{ inc.number }} · {{ inc.status }}</a>
                   <div class="raw-preview mono text-dim text-xs">{{ a.full_log }}</div>
                 </td>
                 <td>
@@ -420,6 +426,7 @@
             LEVEL {{ selectedAlert()!.rule.level }}
           </span>
           <h3>Rule #{{ selectedAlert()!.rule.id }}: {{ selectedAlert()!.rule.description }}</h3>
+          <a *ngIf="selectedAlert()!.data?.['incident'] as inc" [routerLink]="['/cases', inc.id]" class="text-xs mono text-cyan">Incident {{ inc.number }} · {{ inc.status }}</a>
         </div>
         <button class="close-btn" (click)="closeAlertDetails()">✕</button>
       </div>

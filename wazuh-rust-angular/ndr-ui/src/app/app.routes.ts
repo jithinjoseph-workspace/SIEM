@@ -175,6 +175,7 @@ export const routes: Routes = [
       { path: 'analyst-insights', loadComponent: () => import('../pages/tenant-admin/analyst-insights/analyst-insights').then(m => m.AnalystInsights) },
       { path: 'threat-swarm',     loadComponent: () => import('../pages/tenant-admin/threat-swarm/threat-swarm').then(m => m.ThreatSwarm) },
       { path: 'ai-guardrails',    loadComponent: () => import('../pages/tenant-admin/ai-guardrails/ai-guardrails').then(m => m.AiGuardrails) },
+      { path: 'endpoint-policies', loadComponent: () => import('../pages/tenant-admin/endpoint-policies/endpoint-policies').then(m => m.EndpointPolicies) },
       { path: 'agent-deployment', loadComponent: () => import('../pages/tenant-admin/agent-deployment/agent-deployment').then(m => m.AgentDeployment) },
       { path: 'settings',       loadComponent: () => import('../pages/tenant-admin/settings/settings').then(m => m.TenantSettings) },
       { path: 'support',        loadComponent: () => import('../pages/tenant-admin/support/support').then(m => m.TenantSupport) },

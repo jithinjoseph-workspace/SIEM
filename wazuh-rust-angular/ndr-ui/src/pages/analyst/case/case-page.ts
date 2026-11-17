@@ -71,6 +71,96 @@ export class CasePage implements OnInit {
     this.api.getSoarCaseComments(this.id).subscribe({ next: (r: any) => r?.status === 'success' && this.comments.set(r.data || []) });
   }
 
+  /** An incident opened automatically and closed as a false positive: the exception it suggests
+   *  (its most frequent rule and agent, and its process or user), created only when a person asks
+   *  (specs/alert-lifecycle.md, phase 6). */
+  /** The hosts of the case's alerts, for an endpoint case without network addresses. */
+  hosts = computed(() => [...new Set((this.d()?.alerts || []).map((a: any) => a.agent_name ? `${a.agent_name} (${a.agent_id})` : ''))].filter(Boolean).join(', '));
+  /** The ATT&CK tactics of the case's alerts: a category hint when none is set. */
+  tactics = computed(() => [...new Set((this.d()?.alerts || []).map((a: any) => a.mitre_tactic).filter(Boolean))].join(', '));
+
+  exception = computed(() => {
+    const d = this.d();
+    // judged a false positive either way: the disposition (Resolve) or the status (the case list's workflow)
+    const falsePositive = d?.details?.disposition === 'False Positive' || d?.case?.status === 'False Positive';
+    return falsePositive ? this.exceptionDraft() : null;
+  });
+
+  /** The exception this case would give (null without alerts), offered in the Resolve dialog when
+   *  the disposition is False Positive, and on the page once the case is one. */
+  exceptionDraft = computed(() => {
+    const d = this.d();
+    const tags: string[] = d?.case?.tags || [];
+    if (!d?.alerts?.length) return null;
+    const most = (key: string) => {
+      const n = new Map<any, number>();
+      for (const a of d.alerts) n.set(a[key], (n.get(a[key]) || 0) + 1);
+      return [...n.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
+    };
+    // one process or user: a permanent exception on it; several: the rule on the agent for 7 days
+    const entities = tags.includes('auto-incident') ? tags.filter(t => t.startsWith('process:') || t.startsWith('user:')) : [];
+    const entity = entities.length === 1 ? entities[0] : '';
+    const [kind, value] = entity ? [entity.slice(0, entity.indexOf(':')), entity.slice(entity.indexOf(':') + 1)] : ['', ''];
+    // the field the incident's entity came from (tag field:<path>); older incidents: the usual one
+    const recorded = tags.find(t => t.startsWith('field:'))?.slice(6) || '';
+    const field_path = !kind ? '' : recorded || (kind === 'process' ? 'data.win.eventdata.image' : 'data.win.eventdata.targetUserName');
+    // level 12+ is never hidden (the suppression safety rule): say so instead of offering a button that cannot work
+    const critical = d.alerts.some((a: any) => Number(a.rule_level) >= 12);
+    return { rule_id: Number(most('rule_id')), agent_id: String(most('agent_id') || ''), field_path, field_contains: value, permanent: !!field_path, critical };
+  });
+
+  /** The case's alerts per rule, worst first: one case per computer lists every rule it set off. */
+  byRule = computed(() => {
+    const m = new Map<number, any>();
+    for (const a of this.d()?.alerts || []) {
+      const id = Number(a.rule_id);
+      const r = m.get(id) || { rule_id: id, description: a.rule_description, level: 0, count: 0, first: Infinity, last: 0, processes: new Set<string>(), agents: new Map<string, number>() };
+      r.level = Math.max(r.level, Number(a.rule_level));
+      r.count++;
+      r.first = Math.min(r.first, a.timestamp);
+      r.last = Math.max(r.last, a.timestamp);
+      const proc = String(a.process || '').split(/[\\/]/).pop();
+      if (proc) r.processes.add(proc);
+      r.agents.set(a.agent_id, (r.agents.get(a.agent_id) || 0) + 1);
+      m.set(id, r);
+    }
+    return [...m.values()].sort((x, y) => y.level - x.level || y.count - x.count);
+  });
+
+  ruleProcesses(r: any): string {
+    return [...r.processes].slice(0, 3).join(', ') + (r.processes.size > 3 ? ` +${r.processes.size - 3}` : '');
+  }
+
+  /** An exception for one rule of this case: on its one program for good, else on the computer for 7 days. */
+  ruleException(r: any) {
+    if (r.level >= 12) return;
+    const agent = [...r.agents.entries()].sort((x: any, y: any) => y[1] - x[1])[0]?.[0];
+    const one = r.processes.size === 1 ? [...r.processes][0] : '';
+    this.busy.set(true);
+    this.siem.createSiemSuppression({
+      rule_id: r.rule_id, agent_id: agent || undefined, duration_hours: 168,
+      field_path: one ? 'data.win.eventdata.image' : undefined, field_contains: one || undefined, permanent: one ? true : undefined,
+      reason: `Rule ${r.rule_id} in incident ${this.d()?.case?.case_number} judged a false positive`,
+    }).subscribe({
+      next: (x: any) => { this.busy.set(false); if (x?.error) this.error.set(x.error); else this.message.set(`Exception created for rule ${r.rule_id}${one ? ' on ' + one : ' on this computer for 7 days'} (Suppressions page to stop it).`); },
+      error: () => { this.busy.set(false); this.error.set('The exception could not be created.'); },
+    });
+  }
+
+  makeException() {
+    const x = this.exceptionDraft();
+    if (!x || x.critical) return;
+    this.busy.set(true);
+    this.siem.createSiemSuppression({
+      rule_id: x.rule_id, agent_id: x.agent_id || undefined, duration_hours: 168,
+      field_path: x.field_path || undefined, field_contains: x.field_path ? x.field_contains : undefined, permanent: x.permanent || undefined,
+      reason: `Incident ${this.d()?.case?.case_number} closed as a false positive`,
+    }).subscribe({
+      next: (r: any) => { this.busy.set(false); if (r?.error) this.error.set(r.error); else this.message.set('Exception created: these alerts no longer reach the queue (Suppressions page to stop it).'); },
+      error: () => { this.busy.set(false); this.error.set('The exception could not be created.'); },
+    });
+  }
+
   private done(text: string) {
     return {
       next: (r: any) => {
@@ -87,15 +177,21 @@ export class CasePage implements OnInit {
     this.form = kind === 'edit'
       ? { title: c.title, description: c.description, priority: c.priority || 'P2', severity: c.severity || 'MEDIUM', assigned_to: c.assigned_to,
           category: this.d().details?.category || '', subcategory: this.d().details?.subcategory || '' }
-      : { disposition: disposition || this.d().details?.disposition || '', text: '' };
+      : { disposition: disposition || this.d().details?.disposition || '', text: '', exception: true };
     this.dialog.set(kind);
   }
 
   save() {
     const f = this.form, k = this.dialog();
     this.busy.set(true);
-    if (k === 'resolve') this.siem.resolveCase(this.id, f.disposition, f.text).subscribe(this.done('Case resolved.'));
-    else if (k === 'disposition') this.siem.setCaseDisposition(this.id, f.disposition, f.text).subscribe(this.done('Disposition changed.'));
+    // a false positive with "also create an exception" ticked: the exception follows once the case is saved
+    const withException = (r: any) => {
+      const x = this.exceptionDraft();
+      if (r?.status !== 'error' && f.disposition === 'False Positive' && f.exception && x && !x.critical) this.makeException();
+    };
+    const then = (text: string) => { const d = this.done(text); return { next: (r: any) => { d.next(r); withException(r); }, error: d.error }; };
+    if (k === 'resolve') this.siem.resolveCase(this.id, f.disposition, f.text).subscribe(then('Case resolved.'));
+    else if (k === 'disposition') this.siem.setCaseDisposition(this.id, f.disposition, f.text).subscribe(then('Disposition changed.'));
     else if (k === 'edit') {
       const { category, subcategory, ...c } = f;
       this.api.updateSoarCase(this.id, c).subscribe({

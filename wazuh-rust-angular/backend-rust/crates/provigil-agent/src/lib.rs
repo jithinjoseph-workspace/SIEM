@@ -13,6 +13,7 @@ pub mod commands;
 pub mod config;
 pub mod diff;
 pub mod edr;
+pub mod endpoint_policy;
 pub mod events;
 pub mod fim;
 pub mod fim_db;
@@ -358,6 +359,15 @@ fn start_collection(config: &AgentConfig, identity: &AgentIdentity, buffer: &Arc
         }));
     }
 
+    // The tenant's endpoint control rules: applied now and every 10 minutes, blocked programs
+    // stopped within 2 seconds (endpoint_policy.rs)
+    {
+        let rules = config.endpoint_policies.clone();
+        let never = endpoint_policy::manager_hosts(&config.manager_list());
+        let (b, id, name) = (buffer.clone(), identity.agent_id.clone(), identity.agent_name.clone());
+        tasks.push(tokio::spawn(endpoint_policy::run(rules, never, b, id, name)));
+    }
+
     // Log files and command output (localfiles), on their own threads
     threads.extend(logfiles::spawn(
         &config.localfiles,
@@ -496,11 +506,11 @@ async fn run_enrolled(edr: &Arc<EdrExecutor>, enroll_again: bool) -> anyhow::Res
     let config = group.effective.clone();
 
     // Shared components
-    let buffer = Arc::new(EventBuffer::with_limits(
-        config.buffer_max_events,
-        &config.buffer,
-        json!({ "id": &identity.agent_id, "name": &identity.agent_name }),
-    ));
+    // what does not fit in memory (the manager unreachable) waits on disk
+    let buffer = Arc::new(
+        EventBuffer::with_limits(config.buffer_max_events, &config.buffer, json!({ "id": &identity.agent_id, "name": &identity.agent_name }))
+            .with_spool(std::path::Path::new("data/spool"), config.buffer_spool_max_mb.saturating_mul(1024 * 1024), config.buffer_spool_keep_secs),
+    );
     let transport = Arc::new(AgentTransport::new(&config, identity.clone(), buffer.clone(), edr.clone()));
     transport.set_group_version(group.version());
     info!("Manager in use: '{}'.", transport.manager());
@@ -637,6 +647,7 @@ async fn run_enrolled(edr: &Arc<EdrExecutor>, enroll_again: bool) -> anyhow::Res
                 collection.stop().await;
                 transport.set_config(cfg.clone());
                 buffer.set_limits(&cfg.buffer);
+                buffer.set_spool_limits(cfg.buffer_spool_max_mb.saturating_mul(1024 * 1024), cfg.buffer_spool_keep_secs);
                 collection = start_collection(&cfg, &identity, &buffer, edr);
             }
             _ = tokio::time::sleep(Duration::from_millis(500)) => {}
@@ -654,8 +665,12 @@ async fn run_enrolled(edr: &Arc<EdrExecutor>, enroll_again: bool) -> anyhow::Res
         return Ok(());
     }
 
-    // Flush remaining buffer on termination
+    // Flush remaining buffer on termination; what could not be sent waits on disk for the next start
     let _ = transport.flush_events().await;
+    let kept = buffer.persist();
+    if kept > 0 {
+        info!(events = kept, "Events not sent yet kept on disk for the next start");
+    }
     transport.send_stopping().await;
     info!("ProVigil Agent pipeline stopped gracefully.");
 

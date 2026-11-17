@@ -89,7 +89,8 @@ pub async fn state_worker(gw: Arc<Gw>, mut rx: mpsc::Receiver<Job>) {
                 let version = agent_state::clean_version(body["version"].as_str());
                 agent_state::labels(&id, &body, &manager_labels(&gw, version.as_deref())).await;
                 if let Some(applied) = body["group_config_version"].as_str() {
-                    let current = gw.agents.get(&id).group_version(now_ms(), || agent_config::for_agent(&gw.s.home, &tenant, &name, &groups)["version"].as_str().unwrap_or_default().to_string());
+                    let os = gw.cache.registered(&id).map(|r| r.os_type.clone()).unwrap_or_default();
+                    let current = gw.agents.get(&id).group_version(now_ms(), || settings(&gw, &tenant, &name, &groups, &os)["version"].as_str().unwrap_or_default().to_string());
                     agent_state::group_config(&id, current == applied).await;
                 }
             }
@@ -398,7 +399,18 @@ pub async fn enroll(gw: &Gw, body: &Value, tenant_key: &str, peer: &str) -> Resu
 
 /// `{"version", "config"}`.
 pub fn config(gw: &Gw, a: &Authed) -> Result<Value, Refuse> {
-    Ok(agent_config::for_agent(&gw.s.home, &a.tenant, &a.reg.name, &a.reg.groups))
+    Ok(settings(gw, &a.tenant, &a.reg.name, &a.reg.groups, &a.reg.os_type))
+}
+
+/// An agent's group settings: its groups' agent.conf, and its tenant's endpoint policy rules.
+fn settings(gw: &Gw, tenant: &str, name: &str, groups: &str, os_type: &str) -> Value {
+    let mut v = agent_config::for_agent(&gw.s.home, tenant, name, groups);
+    let rules = gw.cache.policies_for(tenant, groups, os_type);
+    if !rules.is_empty() {
+        v["config"]["endpoint_policies"] = Value::Array(rules);
+        v["version"] = Value::String(agent_config::version_of(&v["config"]));
+    }
+    v
 }
 
 /// The YARA rule file.

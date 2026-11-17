@@ -1,5 +1,6 @@
 import { SiemService } from '../../../services/siem/siem.service';
-import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -190,6 +191,28 @@ export class Soar implements OnInit {
     currentUsername   = '';
 
     @ViewChild('paChartCanvas') paChartCanvas?: ElementRef<HTMLCanvasElement>;
+
+    /** The analyst queue (specs/alert-lifecycle.md): open first, then priority, then the triage
+     *  verdict, then the least SLA time left (`queue_rank` from the server); or newest first. */
+    queueOrder = signal(true);
+    orderedCases = computed(() => {
+        const list = [...this.cases()];
+        return this.queueOrder() ? list.sort((a, b) => (a.queue_rank ?? 0) - (b.queue_rank ?? 0)) : list;
+    });
+
+    /** Time left on the SLA of an open case ("2 h 10 min", "overdue 3 h"); '' when closed. */
+    slaLeft(c: any): string {
+        if (!c.sla_due || ['Closed', 'Resolved', 'False Positive'].includes(c.status)) return '';
+        const s = c.sla_due - Math.floor(Date.now() / 1000);
+        const a = Math.abs(s), h = Math.floor(a / 3600), m = Math.floor((a % 3600) / 60);
+        const t = h ? `${h} h ${m} min` : `${m} min`;
+        return s < 0 ? `overdue ${t}` : t;
+    }
+
+    verdictText(c: any): string {
+        const names: Record<string, string> = { compromised: 'Compromised', malicious: 'Malicious', attack_attempt: 'Attack attempt', likely_benign: 'Likely benign', needs_review: 'Needs review' };
+        return c.verdict ? `${names[c.verdict] || c.verdict} ${c.verdict_confidence}%` : '';
+    }
 
     // ── Computed ──────────────────────────────────────────────────────────────
     caseStats = computed(() => {
@@ -866,6 +889,96 @@ export class Soar implements OnInit {
         this.loadPlaybooks();
         this.loadIntegrations();
         this.loadRuns();
+        this.siem.getIncidentMetrics(30).subscribe(m => this.incidentMetrics.set(m));
+        this.loadCaseSettings();
+    }
+
+    /** Last 30 days of cases (specs/alert-lifecycle.md, phase 6); null when it cannot be read. */
+    incidentMetrics = signal<any>(null);
+
+    // ── Case rules and risk (specs/alert-lifecycle.md section 6) ─────────────
+    private http = inject(HttpClient);
+    /** `{settings: {risk_enabled, risk_threshold, risk_tactics, rules: {id: {window_secs, open_after, never}}}, can_edit}` */
+    caseSettings = signal<any>(null);
+    showCaseRules = signal(false);
+    tuning = signal<any>(null);
+    caseSettingsMsg = signal('');
+    tuneRuleId = '';
+    readonly windows = [
+        { v: 300, l: '5 minutes' }, { v: 900, l: '15 minutes' }, { v: 3600, l: '1 hour (default)' },
+        { v: 14400, l: '4 hours' }, { v: 86400, l: '24 hours' }, { v: 604800, l: '7 days' },
+    ];
+
+    loadCaseSettings() {
+        this.http.get<any>('/api/v1/siem/incidents/settings').subscribe({ next: r => this.caseSettings.set(r), error: () => this.caseSettings.set(null) });
+    }
+
+    ruleCfg(id: number | string): any {
+        return this.caseSettings()?.settings?.rules?.[String(id)] || null;
+    }
+
+    /** "1 h window, case after 3 alerts" for a rule's settings; "" for the defaults. */
+    ruleCfgText(id: number | string): string {
+        const c = this.ruleCfg(id);
+        if (!c) return '';
+        if (c.never) return 'never opens a case';
+        const parts: string[] = [];
+        if (c.window_secs) parts.push((this.windows.find(w => w.v === c.window_secs)?.l || `${c.window_secs} s`) + ' window');
+        if (c.open_after && c.open_after > 1) parts.push(`case after ${c.open_after} alerts`);
+        return parts.join(', ');
+    }
+
+    /** Rules with their own settings that the 30-day list does not show. */
+    otherTunedRules = computed(() => {
+        const listed = new Set((this.incidentMetrics()?.rules || []).map((r: any) => String(r.rule_id)));
+        return Object.keys(this.caseSettings()?.settings?.rules || {}).filter(id => !listed.has(id));
+    });
+
+    tune(ruleId: number | string, rule = '') {
+        const c = this.ruleCfg(ruleId) || {};
+        this.caseSettingsMsg.set('');
+        this.tuning.set({ rule_id: Number(ruleId), rule, window: c.window_secs ?? 3600, open_after: c.open_after ?? 1, never: !!c.never });
+    }
+
+    tuneById() {
+        const id = Number(this.tuneRuleId.trim());
+        if (Number.isInteger(id) && id > 0) this.tune(id);
+    }
+
+    saveTuning() {
+        const t = this.tuning();
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        s.rules = s.rules || {};
+        const window = Number(t.window), after = Number(t.open_after);
+        s.rules[String(t.rule_id)] = { window_secs: window === 3600 ? null : window, open_after: after <= 1 ? null : after, never: !!t.never };
+        this.putCaseSettings(s, `Rule ${t.rule_id} saved. New alerts follow it at once.`);
+        this.tuning.set(null);
+    }
+
+    resetRule(id: number | string) {
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        delete (s.rules || {})[String(id)];
+        this.putCaseSettings(s, `Rule ${id} back to the defaults.`);
+    }
+
+    saveRisk(enabled: boolean, threshold: number, tactics: number) {
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        Object.assign(s, { risk_enabled: enabled, risk_threshold: Number(threshold), risk_tactics: Number(tactics) });
+        this.putCaseSettings(s, 'Risk incident settings saved.');
+    }
+
+    private putCaseSettings(s: any, msg: string) {
+        this.http.put<any>('/api/v1/siem/incidents/settings', s).subscribe({
+            next: r => { this.caseSettings.update(c => ({ ...c, settings: r.settings })); this.caseSettingsMsg.set(msg); },
+            error: e => this.caseSettingsMsg.set(e?.error?.message || 'Not saved.'),
+        });
+    }
+
+    /** Seconds as "3 h 20 min" / "45 min" / "40 s". */
+    duration(secs: number): string {
+        if (!secs) return '—';
+        const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
+        return h ? `${h} h ${m} min` : m ? `${m} min` : `${secs} s`;
     }
 
     // ── Data loaders ──────────────────────────────────────────────────────────
@@ -1859,6 +1972,26 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
         this.pbActionConfig = {};
         this.pbError.set('');
         this.showNewPlaybook.set(true);
+    }
+
+    /** Starter playbooks (specs/alert-lifecycle.md, phase 5): a click fills the form; the admin
+     *  adds the integration's credentials and saves. Nothing is created on its own. */
+    readonly starters = [
+        { name: 'Critical alert to the team chat', desc: 'Every level 12+ alert goes to the team channel.', field: 'rule_level', op: '>=', value: '12', action: 'slack' },
+        { name: 'Critical alert pages on-call', desc: 'Critical alerts open a PagerDuty incident.', field: 'severity', op: '==', value: 'CRITICAL', action: 'pagerduty' },
+        { name: 'Known-bad source is blocked', desc: 'A source on a threat-intel list is blocked (the decision policy checks it first).', field: 'threat_intel', op: '==', value: 'true', action: 'block_ip' },
+        { name: 'Brute force source is blocked', desc: 'Repeated authentication failures block the source (the decision policy checks it first).', field: 'rule_group', op: 'contains', value: 'authentication_failures', action: 'block_ip' },
+        { name: 'Changed file checked on VirusTotal', desc: 'File integrity alerts are looked up on VirusTotal.', field: 'rule_group', op: 'contains', value: 'syscheck', action: 'virustotal' },
+    ];
+
+    useStarter(t: { name: string; desc: string; field: string; op: string; value: string; action: string }) {
+        this.initPlaybookModal();
+        this.pbName = t.name;
+        this.pbDesc = t.desc;
+        this.pbCondField = t.field;
+        this.pbCondOp = t.op;
+        this.pbCondValue = t.value;
+        this.pbActionType = t.action;
     }
 
     openEditPlaybook(pb: any) {

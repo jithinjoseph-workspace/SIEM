@@ -133,7 +133,7 @@
             Rule {{ t.rule_id }} {{ t.rule }} <span class="text-xs text-slate-400">· {{ t.verdict }} ({{ t.source }}, {{ t.confidence }}%) · {{ t.status }}</span>
           </div>
           <div *ngFor="let s of d.suppressions" class="border-t border-slate-800/60 py-1.5 text-amber-200">
-            Hidden: rule {{ s.rule_id ?? 'any' }} {{ s.rule }} <span class="text-xs text-slate-400">until {{ when(s.expires_at) }} · by {{ s.by }}</span>
+            Hidden: rule {{ s.rule_id ?? 'any' }} {{ s.rule }} <span class="text-xs text-slate-400">{{ s.permanent ? 'permanent exception' : 'until ' + when(s.expires_at) }} · by {{ s.by }}</span>
           </div>
         </div>
 

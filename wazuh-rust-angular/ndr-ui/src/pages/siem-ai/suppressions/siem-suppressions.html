@@ -7,7 +7,7 @@
       </h1>
       <p class="text-sm text-slate-400 mt-1">
         Noisy ProVigil rules hidden for a while: from Alert Triage or added here. Suppressed alerts are still stored;
-        they are not shown live or acted on by SOAR. Critical alerts (level 12+) are never hidden, and every suppression expires.
+        they are not shown live or acted on by SOAR. Critical alerts (level 12+) are never hidden. A suppression expires, unless it is an exception: a rule plus a field condition (for example the process image), which may be permanent.
       </p>
     </div>
     <button (click)="load()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition">
@@ -42,6 +42,17 @@
       <label for="sup-reason" class="text-xs text-slate-400 block mb-1">Reason</label>
       <input id="sup-reason" name="reason" [(ngModel)]="form.reason" placeholder="Known scanner" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm">
     </div>
+    <div class="md:col-span-2">
+      <label for="sup-field" class="text-xs text-slate-400 block mb-1">Only when field (optional)</label>
+      <input id="sup-field" name="field" [(ngModel)]="form.field_path" placeholder="data.win.eventdata.image" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+    </div>
+    <div class="md:col-span-2">
+      <label for="sup-contains" class="text-xs text-slate-400 block mb-1">contains</label>
+      <input id="sup-contains" name="contains" [(ngModel)]="form.field_contains" placeholder="docker.exe" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm font-mono">
+    </div>
+    <label class="md:col-span-1 text-xs text-slate-300 flex items-center gap-2 pb-2">
+      <input type="checkbox" name="permanent" [(ngModel)]="form.permanent"> Permanent exception
+    </label>
     <button type="submit" [disabled]="saving()" class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg">
       <lucide-angular [img]="PlusIcon" class="w-4 h-4"></lucide-angular> Add suppression
     </button>
@@ -73,7 +84,7 @@
           <td class="px-4 py-3 text-slate-300">{{ scope(s) }}</td>
           <td class="px-4 py-3 text-slate-300 max-w-[360px]">{{ s.ai_reason }}</td>
           <td class="px-4 py-3 whitespace-nowrap">{{ s.source === 'triage' ? 'Triage' : 'Manual' }}<div class="text-[11px] text-slate-500">{{ s.created_by }}</div></td>
-          <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ when(s.expires_at) }}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ s.permanent ? 'Never' : when(s.expires_at) }}</td>
           <td class="px-4 py-3"><span class="text-xs font-semibold" [class.text-emerald-300]="s.active" [class.text-slate-500]="!s.active">{{ s.active ? 'Active' : 'Stopped / expired' }}</span></td>
           <td class="px-4 py-3">
             <div class="flex justify-end gap-2">

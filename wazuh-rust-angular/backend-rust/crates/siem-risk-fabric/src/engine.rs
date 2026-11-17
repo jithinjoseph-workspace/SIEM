@@ -43,25 +43,8 @@ impl RiskFabricEngine {
         let mut map = self.fleet.write().unwrap();
         map.clear();
         for (id, name, ip, os) in fleet {
-            let mut groups = Vec::new();
-            let name_lower = name.to_lowercase();
-            if name_lower.contains("dc") || name_lower.contains("ad") || name_lower.contains("iam") {
-                groups.push("domain-controllers".to_string());
-                groups.push("active-directory".to_string());
-            }
-            if name_lower.contains("pay") || name_lower.contains("pos") || name_lower.contains("swift") {
-                groups.push("pci-dss".to_string());
-                groups.push("payment-gateway".to_string());
-            }
-            if name_lower.contains("web") || name_lower.contains("dmz") || name_lower.contains("nginx") {
-                groups.push("dmz".to_string());
-                groups.push("webservers".to_string());
-            }
-            if name_lower.contains("erp") || name_lower.contains("db") || name_lower.contains("sql") {
-                groups.push("database".to_string());
-                groups.push("erp".to_string());
-            }
-
+            // the agent's real groups are not known here (sync_fleet_meta has them): none are guessed from its name
+            let groups = Vec::new();
             map.insert(
                 id.clone(),
                 FleetAgentMeta {
@@ -111,9 +94,13 @@ impl RiskFabricEngine {
 
     /// The stored document, at start.
     pub fn load(&self, doc: &str) {
-        if let Ok(c) = serde_json::from_str::<RiskFabricConfig>(doc) {
+        if let Ok(mut c) = serde_json::from_str::<RiskFabricConfig>(doc) {
+            let retired = storage::retire_old_defaults(&mut c.processes);
             *self.processes.write().unwrap() = c.processes;
             *self.time_windows.write().unwrap() = c.time_windows;
+            if retired {
+                self.save();
+            }
         }
     }
 
@@ -688,8 +675,9 @@ mod tests {
             rule_level: 10,
             rule_id: Some(100101),
             rule_description: Some("Brute Force Detection".into()),
-            agent_name: "srv-prod-ubuntu-01".into(),
-            agent_ip: "192.168.10.15".into(),
+            // a payment server by its name (no fixed test address)
+            agent_name: "srv-payment-01".into(),
+            agent_ip: "10.20.30.40".into(),
             user: Some("administrator".into()),
             os_type: Some("linux".into()),
         };

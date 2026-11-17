@@ -23,6 +23,11 @@
         <button (click)="open('resolve')" [disabled]="closed()" class="px-3 py-2 text-sm rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white">Resolve</button>
         <button (click)="open('disposition')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Change disposition</button>
         <button (click)="open('edit')" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Edit</button>
+        <span *ngIf="exception()?.critical" class="px-3 py-2 text-sm rounded-lg border border-slate-700 text-slate-400"
+          title="Alerts of level 12 and up are never hidden by a suppression or exception, so tampering and similar alerts always reach the queue.">No exception: level 12+ alerts are never hidden</span>
+        <button *ngIf="exception() as x" [hidden]="x.critical" (click)="makeException()" [disabled]="busy()"
+          [title]="'Hide rule ' + x.rule_id + (x.agent_id ? ' on agent ' + x.agent_id : '') + (x.field_path ? ' when ' + x.field_path + ' contains ' + x.field_contains + ' (permanent)' : ' for 7 days')"
+          class="px-3 py-2 text-sm rounded-lg border border-amber-700 text-amber-300 hover:bg-amber-950/40 disabled:opacity-40">Create exception: rule {{ x.rule_id }}{{ x.field_contains ? ', ' + x.field_contains : '' }}</button>
         <a *ngFor="let s of inv()?.subjects" routerLink="/analyst/siem-investigate" [queryParams]="{ q: s.value, case: c.id }" class="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700">Evidence: {{ s.role }} {{ s.value }}</a>
         <button (click)="reinvestigate()" [disabled]="busy()" class="px-3 py-2 text-sm rounded-lg border border-cyan-800 text-cyan-300 hover:bg-cyan-950/40 disabled:opacity-40">Investigate again</button>
       </div>
@@ -38,12 +43,17 @@
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Category</div>
         <div>{{ d().details?.category || '—' }}<span *ngIf="d().details?.subcategory" class="text-slate-400"> / {{ d().details.subcategory }}</span></div>
+        <div *ngIf="!d().details?.category && tactics()" class="text-xs text-slate-400 mt-0.5" title="From the ATT&CK tags of the case's alerts; set a category with Edit">ATT&amp;CK: {{ tactics() }}</div>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Assigned to</div><div>{{ c.assigned_to || 'Unassigned' }}</div>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
-        <div class="text-xs text-slate-500">Source → destination</div><div class="font-mono text-xs">{{ c.src_ip || '—' }} → {{ c.dst_ip || '—' }}</div>
+        <ng-container *ngIf="c.src_ip || !hosts(); else onHost">
+          <div class="text-xs text-slate-500">Source → destination</div><div class="font-mono text-xs">{{ c.src_ip || '—' }} → {{ c.dst_ip || '—' }}</div>
+        </ng-container>
+        <!-- an endpoint case has no network addresses: the host it happened on -->
+        <ng-template #onHost><div class="text-xs text-slate-500">Host</div><div class="text-xs">{{ hosts() }}</div></ng-template>
       </div>
       <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60">
         <div class="text-xs text-slate-500">Alerts / entities</div><div>{{ d().alerts.length }} / {{ d().entities.length }}</div>
@@ -59,6 +69,60 @@
     <!-- Overview -->
     <div *ngIf="tab() === 'overview'" class="grid lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 space-y-4">
+        <!-- risk incidents (incidents.rs): the per-rule cases a risk incident links, or the risk incidents a case is part of -->
+        <section *ngIf="d().linked?.length || d().risk_incidents?.length" class="p-4 rounded-xl border border-amber-900/60 bg-amber-950/20">
+          <h2 *ngIf="d().linked?.length" class="text-sm font-semibold text-white mb-2">Cases on this computer that add up to this risk ({{ d().linked.length }})</h2>
+          <h2 *ngIf="!d().linked?.length" class="text-sm font-semibold text-white mb-2">Part of a risk incident</h2>
+          <div *ngFor="let x of (d().linked?.length ? d().linked : d().risk_incidents)" class="text-sm py-1 border-t border-slate-800 first:border-t-0">
+            <a [routerLink]="['/analyst/cases', x.id]" class="text-cyan-300 hover:underline">{{ x.case_number }}</a>
+            <span class="text-slate-200"> {{ x.title }}</span>
+            <span class="text-xs text-slate-500"> · {{ x.status }}</span>
+          </div>
+        </section>
+
+        <!-- the case's rules: one case per computer, every rule it set off with its count -->
+        <section *ngIf="byRule().length > 1" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">By rule <span class="text-xs font-normal text-slate-400">({{ byRule().length }} rules; judge each: an exception hides only that rule)</span></h2>
+          <table class="w-full text-xs">
+            <thead class="text-slate-500 text-left"><tr><th class="py-1 pr-2">Rule</th><th class="pr-2">Level</th><th class="pr-2">Alerts</th><th class="pr-2">Programs</th><th class="pr-2">Last</th><th></th></tr></thead>
+            <tbody>
+              <tr *ngFor="let r of byRule()" class="border-t border-slate-800/60">
+                <td class="py-1 pr-2 text-slate-200">{{ r.description }} <span class="text-slate-500">#{{ r.rule_id }}</span></td>
+                <td class="pr-2" [ngClass]="r.level >= 12 ? 'text-rose-300' : r.level >= 10 ? 'text-amber-300' : 'text-slate-300'">{{ r.level }}</td>
+                <td class="pr-2">{{ r.count }}</td>
+                <td class="pr-2 font-mono text-slate-300">{{ ruleProcesses(r) }}</td>
+                <td class="pr-2 whitespace-nowrap text-slate-400">{{ date(r.last / 1000) }}</td>
+                <td class="text-right">
+                  <button *ngIf="r.level < 12" (click)="ruleException(r)" [disabled]="busy()" class="px-2 py-0.5 rounded border border-slate-700 hover:bg-slate-800 disabled:opacity-50">False positive: exception</button>
+                  <span *ngIf="r.level >= 12" class="text-slate-500" title="Level 12 and above is never hidden">never hidden</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- what happened: each alert's own event (process, file or key, command line, parent, hashes) -->
+        <section *ngIf="d().alerts.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">What happened <span class="text-xs font-normal text-slate-400">({{ d().alerts.length }} alert{{ d().alerts.length === 1 ? '' : 's' }}{{ d().alerts.length > 10 ? ', first 10 shown; all in Sequence' : '' }})</span></h2>
+          <div *ngFor="let a of d().alerts.slice(0, 10)" class="py-2 border-t border-slate-800 first:border-t-0 text-sm">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-slate-400 text-xs">{{ date(a.timestamp / 1000) }}</span>
+              <span class="font-mono text-cyan-300 text-xs">#{{ a.rule_id }} · level {{ a.rule_level }}</span>
+              <span class="text-white">{{ a.rule_description }}</span>
+              <span *ngIf="a.mitre_id" class="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">{{ a.mitre_id }} {{ a.mitre_tactic }}</span>
+              <span class="text-xs text-slate-400">on {{ a.agent_name }}</span>
+            </div>
+            <dl class="mt-1 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <ng-container *ngIf="a.process"><dt class="text-slate-500">Process</dt><dd class="font-mono text-slate-200 break-all">{{ a.process }}</dd></ng-container>
+              <ng-container *ngIf="a.command_line"><dt class="text-slate-500">Command line</dt><dd class="font-mono text-slate-200 break-all">{{ a.command_line }}</dd></ng-container>
+              <ng-container *ngIf="a.target"><dt class="text-slate-500">File / key</dt><dd class="font-mono text-slate-200 break-all">{{ a.target }}</dd></ng-container>
+              <ng-container *ngIf="a.parent"><dt class="text-slate-500">Started by</dt><dd class="font-mono text-slate-200 break-all">{{ a.parent }}<span *ngIf="a.parent_command_line" class="block text-slate-400">{{ a.parent_command_line }}</span></dd></ng-container>
+              <ng-container *ngIf="a.user"><dt class="text-slate-500">User</dt><dd class="text-slate-200">{{ a.user }}</dd></ng-container>
+              <ng-container *ngIf="a.hashes"><dt class="text-slate-500">Hashes</dt><dd class="font-mono text-slate-400 break-all">{{ a.hashes }}</dd></ng-container>
+              <ng-container *ngIf="!a.process && !a.target && a.log"><dt class="text-slate-500">Log</dt><dd class="font-mono text-slate-300 break-all">{{ a.log }}</dd></ng-container>
+            </dl>
+          </div>
+        </section>
         <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
           <h2 class="text-sm font-semibold text-white mb-2">Description</h2>
           <p class="text-sm text-slate-300 whitespace-pre-wrap">{{ c.description || 'No description.' }}</p>
@@ -146,11 +210,52 @@
       <div *ngIf="!inv()?.evidence?.length" class="text-sm text-slate-400">No evidence gathered yet: run "Investigate again".</div>
       <section *ngFor="let e of inv()?.evidence" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <div class="font-semibold text-white"><span class="text-xs uppercase text-slate-500 mr-2">{{ e.role }}</span>{{ e.value }}</div>
-        <pre class="mt-2 text-xs text-slate-300 whitespace-pre-wrap break-all">{{ e.summary | json }}</pre>
+        <ng-container *ngIf="e.summary as s">
+          <p class="mt-2 text-slate-300">
+            <b class="text-white">{{ s.alerts }}</b> alert{{ s.alerts === 1 ? '' : 's' }}<span *ngIf="s.alerts_capped" class="text-slate-500"> (the {{ s.alerts_listed || s.alerts }} newest were examined)</span>,
+            <b class="text-white">{{ s.events }}</b> raw event{{ s.events === 1 ? '' : 's' }} nearby, highest level <b class="text-white">{{ s.max_level }}</b>
+            <span *ngIf="s.first_seen">, from {{ date(s.first_seen) }} to {{ date(s.last_seen) }}</span>.
+            Assessment: <b class="text-white">{{ label(s.verdict) }}</b>.
+          </p>
+          <p *ngIf="s.hosts?.length || s.locations?.length" class="mt-1 text-xs text-slate-400">
+            <span *ngIf="s.hosts?.length">Hosts: {{ s.hosts.join(', ') }}</span>
+            <span *ngIf="s.locations?.length"> · Sources: {{ s.locations.join(', ') }}</span>
+          </p>
+          <table *ngIf="s.top_rules?.length" class="mt-3 w-full text-xs">
+            <thead class="text-slate-500 text-left"><tr><th class="py-1">Most frequent rules</th><th class="py-1 text-right">Alerts</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let r of s.top_rules" class="border-t border-slate-800">
+                <td class="py-1 text-slate-200">{{ r.description }} <span class="text-slate-500">({{ r.rule_id }})</span></td>
+                <td class="py-1 text-right text-slate-200">{{ r.count }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="(s.techniques | keyvalue)?.length" class="mt-3 flex flex-wrap gap-1 text-xs">
+            <span class="text-slate-500 mr-1">ATT&amp;CK:</span>
+            <span *ngFor="let t of s.techniques | keyvalue" class="px-2 py-0.5 rounded bg-slate-800 text-slate-200">{{ t.key }} × {{ t.value }}</span>
+          </div>
+        </ng-container>
+        <div *ngIf="e.cases?.length" class="mt-3 text-xs">
+          <div class="text-slate-500">Other cases about it</div>
+          <div *ngFor="let k of e.cases" class="text-slate-200">{{ k.case_number }} {{ k.title }} <span class="text-slate-500">· {{ k.severity }} · {{ k.status }}</span></div>
+        </div>
+        <div *ngIf="e.memory?.length" class="mt-3 text-xs">
+          <div class="text-slate-500">Decided before</div>
+          <div *ngFor="let m of e.memory" class="text-slate-200">{{ m.title }}: <b>{{ m.outcome }}</b> by {{ m.by }} <span class="text-slate-500">· {{ m.reason }}</span></div>
+        </div>
+        <details class="mt-3 text-xs"><summary class="cursor-pointer text-slate-500">Raw data</summary>
+          <pre class="mt-2 text-slate-300 whitespace-pre-wrap break-all">{{ e.summary | json }}</pre>
+        </details>
       </section>
       <section *ngIf="inv()?.intel?.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <h2 class="font-semibold text-white mb-2">Threat intelligence</h2>
-        <pre class="text-xs text-slate-300 whitespace-pre-wrap break-all">{{ inv().intel | json }}</pre>
+        <div *ngFor="let i of inv().intel" class="py-1">
+          <span class="font-mono text-slate-200">{{ i.value }}</span>
+          <span class="text-xs text-slate-400"> · listed by {{ i.hits?.length || 0 }} feed{{ i.hits?.length === 1 ? '' : 's' }}</span>
+        </div>
+        <details class="mt-2 text-xs"><summary class="cursor-pointer text-slate-500">Raw data</summary>
+          <pre class="mt-2 text-slate-300 whitespace-pre-wrap break-all">{{ inv().intel | json }}</pre>
+        </details>
       </section>
       <section class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-sm">
         <h2 class="font-semibold text-white mb-2">Attachments ({{ d().attachments.length }})</h2>
@@ -244,6 +349,16 @@
         <label class="block">{{ dialog() === 'resolve' ? 'Resolution' : 'Note (optional)' }}
           <textarea [(ngModel)]="form.text" name="text" rows="4" [required]="dialog() === 'resolve'" class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></textarea>
         </label>
+        <!-- a false positive can stop these alerts from coming back -->
+        <ng-container *ngIf="form.disposition === 'False Positive'">
+          <div *ngIf="!exceptionDraft()" class="text-xs text-slate-400">This case has no alerts, so no exception can be made from it.</div>
+          <div *ngIf="exceptionDraft()?.critical" class="text-xs text-slate-400">No exception: this case has level 12+ alerts, and those are never hidden (tampering and similar alerts must always reach the queue).</div>
+          <label *ngIf="exceptionDraft() as x" [hidden]="x.critical" class="flex items-start gap-2 text-amber-300">
+            <input type="checkbox" [(ngModel)]="form.exception" name="exception" class="mt-1">
+            <span>Also create an exception: rule {{ x.rule_id }}{{ x.agent_id ? ' on agent ' + x.agent_id : '' }}{{ x.field_path ? ' when ' + x.field_path + ' contains ' + x.field_contains + ' (permanent)' : ' for 7 days' }}.
+              <span class="block text-xs text-slate-400">These alerts are still stored, but no longer open incidents, reach the queue, run playbooks or send e-mail.</span></span>
+          </label>
+        </ng-container>
       </ng-container>
       <ng-container *ngIf="dialog() === 'edit'">
         <label class="block">Title<input [(ngModel)]="form.title" name="title" required class="mt-1 w-full px-3 py-2 rounded bg-slate-950 border border-slate-700"></label>

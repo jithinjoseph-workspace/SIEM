@@ -2712,7 +2712,28 @@ async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
 
 /// Stores tenant-tagged alerts, then shows them and runs SOAR on them unless suppressed;
 /// `soar_json[i]` is what SOAR sees for `alerts[i]` (the original ProVigil alert).
-pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
+/// Every alert, whatever found it, goes through here (specs/alert-lifecycle.md, phase 1): risk
+/// score, store, suppression, live feed, deception tripwires, playbooks, e-mail, memory.
+pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<serde_json::Value>) {
+    // a simulation is shown live and nothing more: never stored, scored, grouped, acted on or mailed
+    let (sims, real): (Vec<(Alert, serde_json::Value)>, Vec<(Alert, serde_json::Value)>) = alerts.into_iter().zip(soar_json).partition(|(a, _)| crate::is_simulation(a));
+    for (a, _) in &sims {
+        let _ = state.broadcast_tx.send(a.clone());
+    }
+    // ProVigil's own activity (its agent's programs, its installer, a check baseline): no alert
+    let published = tokio::task::spawn_blocking(agent_files).await.unwrap_or_default();
+    let (own, real): (Vec<(Alert, serde_json::Value)>, Vec<(Alert, serde_json::Value)>) = real.into_iter().partition(|(a, _)| crate::own_activity::reason(a, &published).is_some());
+    if !own.is_empty() {
+        tracing::debug!(count = own.len(), "ProVigil's own activity: not alerted");
+    }
+    let (alerts_real, soar_json): (Vec<Alert>, Vec<serde_json::Value>) = real.into_iter().unzip();
+    alerts = alerts_real;
+    // scored before it is stored, so the stored alert carries its business risk too
+    for a in &mut alerts {
+        if !a.data.contains_key("risk_fabric") && !crate::is_simulation(a) {
+            state.risk_fabric.evaluate_alert(a);
+        }
+    }
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row
     let mut pending: Vec<&Alert> = alerts.iter().collect();
     let mut wait = RETRY_MIN;
@@ -2754,10 +2775,21 @@ pub async fn deliver(state: &AppState, alerts: Vec<Alert>, soar_json: Vec<serde_
         shown.push(a);
         soar.push((v, t));
     }
+    // deception tripwires (never on deception's own alerts: no loop)
+    let live: Vec<Alert> = shown
+        .iter()
+        .filter(|a| a.rule.id != 100999 && a.rule.id != 100200 && !a.rule.groups.iter().any(|g| g == "deception" || g == "zero_false_positive"))
+        .cloned()
+        .collect();
+    if !live.is_empty() {
+        state.deception_engine.ingest_live_alerts(&live);
+    }
     // each tenant's SOAR playbooks, on the original ProVigil alert
     crate::soar::on_alerts(state, soar);
     // each tenant's alert e-mails (alert_mail.rs)
     crate::alert_mail::on_alerts(&shown);
+    // related alerts become one incident (incidents.rs)
+    crate::incidents::on_alerts(state, &shown);
     crate::keep_alerts(state, shown);
 }
 
@@ -2829,8 +2861,14 @@ pub(crate) async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
                 .unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string())
         }))
         .collect();
+    // each agent's groups, for the endpoint policy rules' scope
+    let agent_groups: std::collections::HashMap<String, Vec<String>> =
+        state.enrolled.read().unwrap().iter().map(|(id, e)| (id.clone(), crate::groups::agent_groups(&e.groups))).collect();
     let (matched, scans, tamper) = tokio::task::spawn_blocking(move || {
+        // the processes the agent starts, known before any alert about them is judged
+        tagged.iter().for_each(|(v, _)| crate::own_activity::learn(v));
         let mut m = crate::sigma::check(&tagged);
+        m.extend(crate::endpoint_policy::check(&tagged, &agent_groups));
         let mut tamper = crate::tamper::check(&tagged);
         m.append(&mut tamper.alerts);
         m.extend(crate::file_reputation::check(&tagged));

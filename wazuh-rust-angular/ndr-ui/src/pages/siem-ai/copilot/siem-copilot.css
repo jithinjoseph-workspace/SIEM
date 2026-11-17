@@ -63,3 +63,10 @@
 @media (prefers-reduced-motion: reduce) {
   .dots span, .conv-list { animation: none; transition: none; }
 }
+.answer :where(h3, h4, h5, h6) { margin: 0.75rem 0 0.35rem; font-weight: 600; color: #fff; }
+.answer :where(h3) { font-size: 1.05rem; }
+.answer :where(h4, h5, h6) { font-size: 0.95rem; color: #cbd5e1; }
+.answer .md-table { overflow-x: auto; margin: 0 0 0.6rem; }
+.answer :where(table) { border-collapse: collapse; font-size: 0.82rem; }
+.answer :where(th, td) { border: 1px solid rgba(71, 85, 105, 0.6); padding: 3px 8px; text-align: left; vertical-align: top; }
+.answer :where(th) { background: rgba(30, 41, 59, 0.8); color: #e2e8f0; font-weight: 600; }

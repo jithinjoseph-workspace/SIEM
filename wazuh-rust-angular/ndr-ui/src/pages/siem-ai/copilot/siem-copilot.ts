@@ -140,22 +140,34 @@ export class SiemCopilot implements OnInit {
     setTimeout(() => this.thread?.nativeElement.scrollTo({ top: this.thread.nativeElement.scrollHeight, behavior: 'smooth' }), 50);
   }
 
-  /** The answer's markdown (bold, inline code, lists, line breaks) after escaping. */
+  /** The answer's markdown (headings, tables, bold, italics, inline code, lists, line breaks) after escaping. */
   render(md: string): string {
     const esc = (md || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const lines = esc.split('\n');
-    let html = '', list = false;
-    for (const raw of lines) {
+    const inline = (s: string) => s
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+    let html = '', list = false, table = 0; // table: rows written so far
+    for (const raw of esc.split('\n')) {
       const item = /^\s*[-*•]\s+(.*)$/.exec(raw);
+      const row = /^\s*\|(.*)\|\s*$/.exec(raw);
+      if (list && !item) { html += '</ul>'; list = false; }
+      if (table && !row) { html += '</tbody></table></div>'; table = 0; }
+      if (row) {
+        if (/^[\s|:-]+$/.test(row[1])) continue; // the |---| line under the header
+        const cells = row[1].split('|').map(c => inline(c.trim()));
+        html += table ? `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
+          : `<div class="md-table"><table><thead><tr>${cells.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+        table++;
+        continue;
+      }
+      const head = /^(#{1,4})\s+(.*)$/.exec(raw);
+      if (head) { html += `<h${head[1].length + 2}>${inline(head[2])}</h${head[1].length + 2}>`; continue; }
       if (item && !list) { html += '<ul>'; list = true; }
-      if (!item && list) { html += '</ul>'; list = false; }
-      const text = (item ? item[1] : raw)
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>');
+      const text = inline(item ? item[1] : raw);
       html += item ? `<li>${text}</li>` : (text.trim() ? `<p>${text}</p>` : '');
     }
-    return list ? html + '</ul>' : html;
+    return html + (list ? '</ul>' : '') + (table ? '</tbody></table></div>' : '');
   }
 
   sevClass(sev: string): string {
@@ -171,6 +183,7 @@ export class SiemCopilot implements OnInit {
     return ({
       search_alerts: 'Searched alerts', search_events: 'Searched logs', agent_info: 'Read agents', get_alert: 'Read alert', alert_stats: 'Counted alerts', investigate: 'Investigated',
       create_case: 'Opened case', investigate_case: 'Investigated case', add_case_note: 'Added note', make_report: 'Wrote report',
+      case_info: 'Read case', set_verdict: 'Set disposition',
     } as Record<string, string>)[t] || t;
   }
 

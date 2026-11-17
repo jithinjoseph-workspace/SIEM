@@ -711,11 +711,16 @@ export class SiemService {
     return this.http.put(`${this.apiUrl}/api/v1/siem/insights/settings`, { enabled });
   }
 
+  /** Cases over the last days: counts, mean time to first action and to close, false positives per rule. */
+  getIncidentMetrics(days = 30): Observable<any> {
+    return this.http.get(`${this.apiUrl}/api/v1/siem/incidents/metrics`, { params: { days } }).pipe(catchError(() => of(null)));
+  }
+
   getSiemAiActivity(): Observable<any> {
     return this.http.get(`${this.apiUrl}/api/v1/siem/ai-activity`);
   }
 
-  createSiemSuppression(body: { rule_id?: number; agent_id?: string; src_ip?: string; duration_hours: number; reason?: string }): Observable<any> {
+  createSiemSuppression(body: { rule_id?: number; agent_id?: string; src_ip?: string; duration_hours: number; reason?: string; field_path?: string; field_contains?: string; permanent?: boolean }): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/siem/suppressions`, body);
   }
 

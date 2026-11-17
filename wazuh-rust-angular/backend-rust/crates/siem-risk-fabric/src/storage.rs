@@ -24,12 +24,13 @@ pub fn default_config() -> RiskFabricConfig {
             asset_weight: 2.4,
             identity_weight: 1.8,
             asset_patterns: vec![
-                "*pay*".into(),
+                "*payment*".into(),
+                "pay-*".into(),
+                "*-pay-*".into(),
                 "*swift*".into(),
-                "*pos*".into(),
+                "pos-*".into(),
+                "*-pos-*".into(),
                 "*checkout*".into(),
-                "192.168.10.15".into(),
-                "srv-prod-ubuntu-01".into(),
             ],
             group_patterns: vec![
                 "pci*".into(),
@@ -41,7 +42,6 @@ pub fn default_config() -> RiskFabricConfig {
                 "*finance*".into(),
                 "*settlement*".into(),
                 "*pci*".into(),
-                "admin*".into(),
             ],
             impact_template: "Direct threat to payment settlement pipeline; elevated risk of transaction manipulation, wire redirection, or PCI-DSS cardholder data compromise.".to_string(),
             enabled: true,
@@ -54,17 +54,20 @@ pub fn default_config() -> RiskFabricConfig {
             asset_weight: 2.5,
             identity_weight: 2.0,
             asset_patterns: vec![
-                "*dc*".into(),
-                "*ad*".into(),
+                "dc-*".into(),
+                "*-dc-*".into(),
+                "*-dc".into(),
+                "dc0*".into(),
+                "dc1*".into(),
+                "*domain-controller*".into(),
                 "*iam*".into(),
-                "*auth*".into(),
+                "auth-*".into(),
+                "*-auth-*".into(),
                 "*ldap*".into(),
                 "*vault*".into(),
                 "*kerberos*".into(),
-                "192.168.1.*".into(),
             ],
             group_patterns: vec![
-                "*dc*".into(),
                 "*domain-controllers*".into(),
                 "*iam*".into(),
                 "*active-directory*".into(),
@@ -73,10 +76,9 @@ pub fn default_config() -> RiskFabricConfig {
                 "administrator".into(),
                 "admin*".into(),
                 "root".into(),
-                "system".into(),
                 "svc_*".into(),
                 "*ciso*".into(),
-                "*cio*".into(),
+                "cio".into(),
                 "*secops*".into(),
             ],
             impact_template: "Core identity authority or privileged account impacted; high potential for domain-wide golden ticket creation, privilege escalation, and lateral movement.".to_string(),
@@ -90,12 +92,12 @@ pub fn default_config() -> RiskFabricConfig {
             asset_weight: 1.6,
             identity_weight: 1.2,
             asset_patterns: vec![
-                "dmz-web-nginx".into(),
                 "*web*".into(),
                 "*nginx*".into(),
                 "*apache*".into(),
                 "*ingress*".into(),
-                "*api*".into(),
+                "api-*".into(),
+                "*-api*".into(),
                 "*portal*".into(),
             ],
             group_patterns: vec![
@@ -107,7 +109,6 @@ pub fn default_config() -> RiskFabricConfig {
                 "www-data".into(),
                 "nginx".into(),
                 "apache".into(),
-                "*app*".into(),
             ],
             impact_template: "Perimeter service exploit or unauthorized ingress activity; threat to customer service availability and potential perimeter foothold.".to_string(),
             enabled: true,
@@ -149,7 +150,6 @@ pub fn default_config() -> RiskFabricConfig {
             identity_weight: 1.8,
             asset_patterns: vec![
                 "*win*".into(),
-                "win-node-*".into(),
             ],
             group_patterns: vec![
                 "*windows*".into(),
@@ -159,7 +159,6 @@ pub fn default_config() -> RiskFabricConfig {
             identity_patterns: vec![
                 "administrator".into(),
                 "admin*".into(),
-                "system".into(),
             ],
             impact_template: "Windows domain host security event detected; potential active lateral pivot, credential access, or defense evasion.".to_string(),
             enabled: true,
@@ -173,7 +172,6 @@ pub fn default_config() -> RiskFabricConfig {
             identity_weight: 1.8,
             asset_patterns: vec![
                 "*linux*".into(),
-                "linux-node-*".into(),
                 "*ubuntu*".into(),
                 "*debian*".into(),
                 "*rhel*".into(),
@@ -199,10 +197,13 @@ pub fn default_config() -> RiskFabricConfig {
             asset_weight: 0.4,
             identity_weight: 0.8,
             asset_patterns: vec![
-                "*dev*".into(),
+                "dev-*".into(),
+                "*-dev".into(),
+                "*-dev-*".into(),
                 "*test*".into(),
                 "*stage*".into(),
-                "*qa*".into(),
+                "qa-*".into(),
+                "*-qa".into(),
                 "*sandbox*".into(),
                 "*lab*".into(),
             ],
@@ -214,7 +215,8 @@ pub fn default_config() -> RiskFabricConfig {
             identity_patterns: vec![
                 "*tester*".into(),
                 "*intern*".into(),
-                "*dev*".into(),
+                "dev-*".into(),
+                "*-dev".into(),
             ],
             impact_template: "Isolated development or QA asset activity; low enterprise operational risk, suppressed from high-urgency SOC response.".to_string(),
             enabled: true,
@@ -261,5 +263,84 @@ pub fn default_config() -> RiskFabricConfig {
     RiskFabricConfig {
         processes,
         time_windows,
+    }
+}
+
+/// Entries of earlier default settings that matched far too much or named one test setup (an
+/// address, a host name, a LAN range): `(process id, field, old entry, what replaces it)`.
+const RETIRED: &[(&str, &str, &str, &[&str])] = &[
+    ("bp-pci-payment", "asset", "192.168.10.15", &[]),
+    ("bp-pci-payment", "asset", "srv-prod-ubuntu-01", &[]),
+    ("bp-pci-payment", "asset", "*pay*", &["*payment*", "pay-*", "*-pay-*"]),
+    ("bp-pci-payment", "asset", "*pos*", &["pos-*", "*-pos-*"]),
+    ("bp-pci-payment", "identity", "admin*", &[]),
+    ("bp-core-iam", "asset", "192.168.1.*", &[]),
+    ("bp-core-iam", "asset", "*ad*", &[]),
+    ("bp-core-iam", "asset", "*dc*", &["dc-*", "*-dc-*", "*-dc", "dc0*", "dc1*", "*domain-controller*"]),
+    ("bp-core-iam", "asset", "*auth*", &["auth-*", "*-auth-*"]),
+    ("bp-core-iam", "group", "*dc*", &[]),
+    ("bp-core-iam", "identity", "system", &[]),
+    ("bp-core-iam", "identity", "*cio*", &["cio"]),
+    ("bp-dmz-web", "asset", "dmz-web-nginx", &[]),
+    ("bp-dmz-web", "asset", "*api*", &["api-*", "*-api*"]),
+    ("bp-dmz-web", "identity", "*app*", &[]),
+    ("bp-win-corp", "asset", "win-node-*", &[]),
+    ("bp-win-corp", "identity", "system", &[]),
+    ("bp-linux-prod", "asset", "linux-node-*", &[]),
+    ("bp-dev-sandbox", "asset", "*dev*", &["dev-*", "*-dev", "*-dev-*"]),
+    ("bp-dev-sandbox", "asset", "*qa*", &["qa-*", "*-qa"]),
+    ("bp-dev-sandbox", "identity", "*dev*", &["dev-*", "*-dev"]),
+];
+
+/// Stored settings from an earlier version: the retired default entries are replaced; entries
+/// an admin added stay. Whether anything changed (the settings are then stored again).
+pub fn retire_old_defaults(processes: &mut [BusinessProcessDefinition]) -> bool {
+    let mut changed = false;
+    for p in processes.iter_mut() {
+        for (id, field, old, new) in RETIRED.iter().filter(|r| r.0 == p.id) {
+            let _ = id;
+            let list = match *field {
+                "asset" => &mut p.asset_patterns,
+                "group" => &mut p.group_patterns,
+                _ => &mut p.identity_patterns,
+            };
+            if let Some(i) = list.iter().position(|x| x == old) {
+                list.remove(i);
+                for (k, n) in new.iter().enumerate() {
+                    if !list.iter().any(|x| x == n) {
+                        list.insert((i + k).min(list.len()), n.to_string());
+                    }
+                }
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::matches_pattern;
+
+    #[test]
+    fn defaults_name_no_test_setup_and_old_entries_retire() {
+        let d = default_config();
+        let all: Vec<&String> = d.processes.iter().flat_map(|p| p.asset_patterns.iter().chain(&p.identity_patterns).chain(&p.group_patterns)).collect();
+        for bad in ["192.168.10.15", "srv-prod-ubuntu-01", "192.168.1.*", "*ad*", "win-node-*", "system"] {
+            assert!(!all.iter().any(|x| x.as_str() == bad), "{bad} still a default");
+        }
+        let iam = d.processes.iter().find(|p| p.id == "bp-core-iam").unwrap();
+        assert!(!iam.asset_patterns.iter().any(|p| matches_pattern(p, "LAPTOP-ADMIN") || matches_pattern(p, "road-warrior")), "ordinary names are no domain controller");
+        assert!(iam.asset_patterns.iter().any(|p| matches_pattern(p, "dc01")) && iam.asset_patterns.iter().any(|p| matches_pattern(p, "corp-dc-2")));
+
+        // settings stored by an earlier version: retired entries go, an admin's own entry stays
+        let mut old = default_config().processes;
+        let iam = old.iter_mut().find(|p| p.id == "bp-core-iam").unwrap();
+        iam.asset_patterns = vec!["*dc*".into(), "*ad*".into(), "192.168.1.*".into(), "hq-ldap-01".into()];
+        assert!(retire_old_defaults(&mut old));
+        let iam = old.iter().find(|p| p.id == "bp-core-iam").unwrap();
+        assert_eq!(iam.asset_patterns, ["dc-*", "*-dc-*", "*-dc", "dc0*", "dc1*", "*domain-controller*", "hq-ldap-01"]);
+        assert!(!retire_old_defaults(&mut old), "nothing left to retire");
     }
 }

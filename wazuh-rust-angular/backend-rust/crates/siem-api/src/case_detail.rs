@@ -154,6 +154,26 @@ struct AlertRow {
     dst_ip: String,
     user: String,
     location: String,
+    /// what the alert is about, from its event: the process, its command line, the file or
+    /// registry key it touched, its parent, the file hashes and the raw log
+    process: String,
+    command_line: String,
+    target: String,
+    parent: String,
+    parent_command_line: String,
+    hashes: String,
+    process_guid: String,
+    log: String,
+}
+
+impl AlertRow {
+    /// Windows event data is stored with doubled backslashes: shown as written.
+    fn tidy(mut self) -> AlertRow {
+        for f in [&mut self.process, &mut self.command_line, &mut self.target, &mut self.parent, &mut self.parent_command_line, &mut self.log] {
+            *f = f.replace("\\\\", "\\");
+        }
+        self
+    }
 }
 
 fn bad(m: &str) -> Response {
@@ -164,7 +184,7 @@ async fn case_row(state: &AppState, tenant: &str, id: &str) -> Option<CaseRow> {
     state
         .db
         .tenant_client(tenant)
-        .query("SELECT id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, hit_ids, tags, toUInt32(toUnixTimestamp(created_at)) AS created, toUInt32(toUnixTimestamp(updated_at)) AS updated, toUInt32(toUnixTimestamp(closed_at)) AS closed FROM soar_cases FINAL WHERE id = ?")
+        .query("SELECT id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, if(empty(hit_ids) AND community_id != '', [community_id], hit_ids) AS hit_ids, tags, toUInt32(toUnixTimestamp(created_at)) AS created, toUInt32(toUnixTimestamp(updated_at)) AS updated, toUInt32(toUnixTimestamp(closed_at)) AS closed FROM soar_cases FINAL WHERE id = ?")
         .bind(id)
         .fetch_optional::<CaseRow>()
         .await
@@ -172,7 +192,8 @@ async fn case_row(state: &AppState, tenant: &str, id: &str) -> Option<CaseRow> {
         .flatten()
 }
 
-/// `GET /api/soar/cases/:id/detail`
+/// `GET /api/soar/cases/:id/detail`. A case opened from an alert before cases kept their alerts
+/// (`hit_ids` empty, the alert in `community_id`) shows that alert.
 pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     let t = ctx.scope();
     let Some(c) = case_row(&state, &t, &id).await else {
@@ -185,11 +206,14 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
     let alerts: Vec<AlertRow> = if c.hit_ids.is_empty() {
         Vec::new()
     } else {
-        db.query("SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, src_ip, dst_ip, user, location FROM siem_alerts WHERE id IN ? ORDER BY timestamp LIMIT 500")
+        db.query("SELECT id, timestamp, agent_id, agent_name, rule_id, rule_level, rule_description, mitre_id, mitre_tactic, src_ip, dst_ip, user, location, if(JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'image') != '', JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'image'), JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'sourceImage')) AS process, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'commandLine') AS command_line, if(JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetFilename') != '', JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetFilename'), JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'targetObject')) AS target, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'parentImage') AS parent, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'parentCommandLine') AS parent_command_line, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'hashes') AS hashes, JSONExtractString(alert_json, 'data', 'win', 'eventdata', 'processGuid') AS process_guid, substring(full_log, 1, 600) AS log FROM siem_alerts WHERE id IN ? ORDER BY timestamp LIMIT 500")
             .bind(&c.hit_ids)
-            .fetch_all()
+            .fetch_all::<AlertRow>()
             .await
             .unwrap_or_default()
+            .into_iter()
+            .map(AlertRow::tidy)
+            .collect()
     };
 
     // the entities: hosts, users and addresses from the case and its alerts, with their risk
@@ -255,6 +279,30 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
         .into_iter()
         .map(|r| json!({ "id": r.0, "case_number": r.1, "title": r.2, "status": r.3, "created_at": r.4 }))
         .collect();
+    // a risk incident's linked per-rule cases; a per-rule case's risk incidents (incidents.rs)
+    let linked_ids: Vec<String> = c.tags.iter().filter_map(|t| t.strip_prefix("linked:")).map(String::from).collect();
+    let row = |r: (String, String, String, String, u32)| json!({ "id": r.0, "case_number": r.1, "title": r.2, "status": r.3, "created_at": r.4 });
+    let linked: Vec<Value> = if linked_ids.is_empty() {
+        Vec::new()
+    } else {
+        db.query("SELECT id, case_number, title, status, toUInt32(toUnixTimestamp(created_at)) FROM soar_cases FINAL WHERE id IN ? ORDER BY created_at")
+            .bind(&linked_ids)
+            .fetch_all::<(String, String, String, String, u32)>()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(row)
+            .collect()
+    };
+    let risk_incidents: Vec<Value> = db
+        .query("SELECT id, case_number, title, status, toUInt32(toUnixTimestamp(created_at)) FROM soar_cases FINAL WHERE has(tags, 'risk-incident') AND has(tags, ?) ORDER BY created_at DESC LIMIT 5")
+        .bind(format!("linked:{id}"))
+        .fetch_all::<(String, String, String, String, u32)>()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(row)
+        .collect();
 
     Json(json!({
         "status": "ok",
@@ -270,6 +318,8 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
         "journey": journey,
         "attachments": attachments,
         "similar": similar,
+        "linked": linked,
+        "risk_incidents": risk_incidents,
         "dispositions": DISPOSITIONS,
     }))
     .into_response()

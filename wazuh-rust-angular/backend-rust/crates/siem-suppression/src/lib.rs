@@ -5,7 +5,8 @@
 //!
 //! Safety rules, whoever created the suppression:
 //! - it names a rule, a source IP or both, so it can never hide everything;
-//! - it always expires (1 hour to 7 days);
+//! - it expires (1 hour to 7 days), unless it is an exception: a rule AND a field condition
+//!   ("rule 960270 when the process image contains docker.exe"), which may stay;
 //! - critical alerts (level >= [`NEVER_HIDE_LEVEL`]) are never hidden.
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,45 @@ use serde_json::{json, Value};
 pub const NEVER_HIDE_LEVEL: u32 = 12;
 pub const MIN_HOURS: u32 = 1;
 pub const MAX_HOURS: u32 = 168;
+
+/// A field of the alert (a dot path into the alert, `data.win.eventdata.image`) that must
+/// contain a text, compared without case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FieldMatch {
+    pub path: String,
+    pub contains: String,
+}
+
+impl FieldMatch {
+    fn check(&self) -> Result<(), String> {
+        let ok_path = !self.path.is_empty() && self.path.len() <= 120 && self.path.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        if !ok_path {
+            return Err(format!("'{}' is not a field path (letters, digits, _ and -, parts joined by dots)", self.path));
+        }
+        if self.contains.trim().is_empty() || self.contains.len() > 200 {
+            return Err("A field condition needs a text of 1 to 200 characters".into());
+        }
+        Ok(())
+    }
+
+    /// Whether the alert's field holds the text (a missing field never matches).
+    pub fn holds(&self, alert: &Value) -> bool {
+        let mut v = alert;
+        for part in self.path.split('.') {
+            match v.get(part) {
+                Some(x) => v = x,
+                None => return false,
+            }
+        }
+        let text = match v {
+            Value::String(t) => t.clone(),
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            _ => return false,
+        };
+        text.to_lowercase().contains(&self.contains.trim().to_lowercase())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Suppression {
@@ -27,6 +67,12 @@ pub struct Suppression {
     pub agent_name: String,
     /// `None` = any source.
     pub src_ip: Option<String>,
+    /// Only alerts whose field holds this text.
+    #[serde(default)]
+    pub field: Option<FieldMatch>,
+    /// An exception that does not expire (only with a rule and a field).
+    #[serde(default)]
+    pub permanent: bool,
     pub reason: String,
     /// "triage" (a recommendation a person applied) or "manual".
     pub source: String,
@@ -45,6 +91,8 @@ pub struct AlertKey<'a> {
     pub level: u32,
     pub agent_id: &'a str,
     pub src_ip: &'a str,
+    /// The whole alert, for field conditions (`None`: a suppression with a field never matches).
+    pub alert: Option<&'a Value>,
 }
 
 /// What a person asks for.
@@ -60,6 +108,10 @@ pub struct Request {
     pub hours: Option<u32>,
     #[serde(default)]
     pub reason: String,
+    #[serde(default)]
+    pub field: Option<FieldMatch>,
+    #[serde(default)]
+    pub permanent: bool,
 }
 
 impl Suppression {
@@ -76,6 +128,12 @@ impl Suppression {
                 return Err(format!("'{ip}' is not an IP address"));
             }
         }
+        if let Some(f) = &r.field {
+            f.check()?;
+        }
+        if r.permanent && (r.rule_id.is_none() || r.field.is_none()) {
+            return Err("Only an exception (a rule and a field condition) can be permanent".into());
+        }
         let hours = r.hours.unwrap_or(24).clamp(MIN_HOURS, MAX_HOURS);
         let reason: String = if r.reason.trim().is_empty() { format!("Suppressed by {created_by} for {hours}h") } else { r.reason.trim().to_string() };
         Ok(Suppression {
@@ -85,12 +143,14 @@ impl Suppression {
             agent_id,
             agent_name: r.agent_name.chars().take(100).collect(),
             src_ip,
+            field: r.field.map(|f| FieldMatch { path: f.path, contains: f.contains.trim().to_string() }),
+            permanent: r.permanent,
             reason: reason.chars().take(400).collect(),
             source: source.into(),
             confidence,
             created_by: created_by.into(),
             created_at: now,
-            expires_at: now + hours as u64 * 3600,
+            expires_at: if r.permanent { u64::MAX } else { now + hours as u64 * 3600 },
             active: true,
         })
     }
@@ -105,6 +165,7 @@ impl Suppression {
             && self.rule_id.map_or(true, |r| r == a.rule_id)
             && self.agent_id.as_deref().map_or(true, |g| g == a.agent_id)
             && self.src_ip.as_deref().map_or(true, |s| s == a.src_ip)
+            && self.field.as_ref().map_or(true, |f| a.alert.is_some_and(|v| f.holds(v)))
     }
 
     /// A row of the AI activity page.
@@ -125,6 +186,9 @@ impl Suppression {
             "src_ip": self.src_ip.clone().unwrap_or_default(),
             "dst_ip": if self.agent_name.is_empty() { self.agent_id.clone().unwrap_or_default() } else { self.agent_name.clone() },
             "community_id": "",
+            "field_path": self.field.as_ref().map(|f| f.path.clone()).unwrap_or_default(),
+            "field_contains": self.field.as_ref().map(|f| f.contains.clone()).unwrap_or_default(),
+            "permanent": self.permanent,
             "ai_reason": self.reason,
             "ai_confidence": self.confidence,
             "source": self.source,
@@ -149,6 +213,30 @@ mod tests {
     }
 
     #[test]
+    fn a_field_exception_hides_only_that_process_and_may_stay() {
+        let f = |p: &str, c: &str| Some(FieldMatch { path: p.into(), contains: c.into() });
+        let mut r = req(Some(960270), None, None, None);
+        r.field = f("data.win.eventdata.image", "DOCKER.exe");
+        r.permanent = true;
+        let s = Suppression::new("1".into(), r, "manual", 100, "ana", 1000).unwrap();
+        assert_eq!(s.expires_at, u64::MAX);
+        let docker = json!({"data": {"win": {"eventdata": {"image": r"C:\Users\x\docker.exe"}}}});
+        let other = json!({"data": {"win": {"eventdata": {"image": r"C:\Temp\evil.exe"}}}});
+        let key = |v| AlertKey { rule_id: 960270, level: 4, agent_id: "8084", src_ip: "", alert: Some(v) };
+        assert!(s.matches(&key(&docker), 5_000_000_000));
+        assert!(!s.matches(&key(&other), 1001), "another process stays visible");
+        assert!(!s.matches(&AlertKey { alert: None, ..key(&docker) }, 1001), "a field it cannot check never hides");
+        assert!(!s.matches(&AlertKey { level: 12, ..key(&docker) }, 1001), "critical never hidden");
+        // permanent needs a rule and a field
+        let mut wide = req(Some(960270), None, None, None);
+        wide.permanent = true;
+        assert!(Suppression::new("2".into(), wide, "manual", 100, "ana", 0).is_err());
+        let mut bad = req(Some(1), None, None, None);
+        bad.field = f("data..x", "y");
+        assert!(Suppression::new("3".into(), bad, "manual", 100, "ana", 0).is_err());
+    }
+
+    #[test]
     fn needs_a_rule_or_a_source() {
         assert!(Suppression::new("1".into(), req(None, Some("001"), None, None), "manual", 100, "ana", 0).is_err());
         assert!(Suppression::new("1".into(), req(None, None, Some("not-an-ip"), None), "manual", 100, "ana", 0).is_err());
@@ -158,7 +246,7 @@ mod tests {
     #[test]
     fn matching_scope_expiry_and_critical() {
         let s = Suppression::new("1".into(), req(Some(5710), Some("001"), None, Some(2)), "triage", 85, "ana", 1000).unwrap();
-        let a = |rule, level, agent| AlertKey { rule_id: rule, level, agent_id: agent, src_ip: "1.2.3.4" };
+        let a = |rule, level, agent| AlertKey { rule_id: rule, level, agent_id: agent, src_ip: "1.2.3.4", alert: None };
         assert!(s.matches(&a(5710, 5, "001"), 1000));
         assert!(!s.matches(&a(5710, 5, "002"), 1000), "other agent");
         assert!(!s.matches(&a(5711, 5, "001"), 1000), "other rule");

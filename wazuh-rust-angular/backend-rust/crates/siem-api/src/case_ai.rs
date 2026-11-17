@@ -151,7 +151,7 @@ pub fn ai_challenge(reply: &str) -> Option<Challenge> {
 }
 
 /// AI calls per tenant and hour (`SIEM_CASE_AI_PER_HOUR`, default 30).
-fn ai_allowed(tenant: &str) -> bool {
+pub(crate) fn ai_allowed(tenant: &str) -> bool {
     static USED: Mutex<Option<HashMap<String, (u64, u32)>>> = Mutex::new(None);
     let limit = std::env::var("SIEM_CASE_AI_PER_HOUR").ok().and_then(|v| v.parse().ok()).unwrap_or(30u32);
     let hour = now() / 3600;
@@ -174,6 +174,7 @@ struct Case {
     severity: String,
     src_ip: String,
     community_id: String,
+    hit_ids: Vec<String>,
 }
 
 #[derive(clickhouse::Row, Deserialize)]
@@ -199,18 +200,21 @@ fn n(v: &Value) -> u64 {
 pub async fn investigate_case(state: &AppState, tenant: &str, case_id: &str) -> Result<Value, String> {
     let tc = state.db.tenant_client(tenant);
     let case = tc
-        .query("SELECT case_number, title, severity, src_ip, community_id FROM soar_cases FINAL WHERE id = ? LIMIT 1")
+        .query("SELECT case_number, title, severity, src_ip, community_id, hit_ids FROM soar_cases FINAL WHERE id = ? LIMIT 1")
         .bind(case_id)
         .fetch_optional::<Case>()
         .await
         .map_err(|e| e.to_string())?
         .ok_or("Case not found")?;
-    let first = if case.community_id.is_empty() {
+    // the case's first alert: the one it was opened from (community_id), else the first of its
+    // alerts (an incident, or a case given its alerts)
+    let first_id = if case.community_id.is_empty() { case.hit_ids.first().cloned().unwrap_or_default() } else { case.community_id.clone() };
+    let first = if first_id.is_empty() {
         None
     } else {
         tc.query("SELECT agent_id, user FROM siem_alerts WHERE id = ? OR JSONExtractString(alert_json, 'data', 'wazuh_alert_id') = ? ORDER BY timestamp LIMIT 1")
-            .bind(&case.community_id)
-            .bind(&case.community_id)
+            .bind(&first_id)
+            .bind(&first_id)
             .fetch_optional::<FirstAlert>()
             .await
             .ok()
@@ -413,10 +417,24 @@ pub async fn explain(State(state): State<AppState>, Extension(ctx): Extension<Au
 /// `GET /api/soar/cases/:id/investigation`
 pub async fn get(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
     match state.db.doc(&ctx.scope(), DocTable::CaseInvestigations, &id).await {
-        Ok(Some(d)) => Json(json!({ "status": "ok", "investigation": serde_json::from_str::<Value>(&d).unwrap_or_default() })).into_response(),
+        Ok(Some(d)) => {
+            let mut doc = serde_json::from_str::<Value>(&d).unwrap_or_default();
+            // written before the real alert count (it gave the 500 listed as the count): redo it once
+            if is_stale(&doc) {
+                if let Ok(fresh) = investigate_case(&state, &ctx.scope(), &id).await {
+                    doc = fresh;
+                }
+            }
+            Json(json!({ "status": "ok", "investigation": doc })).into_response()
+        }
         Ok(None) => Json(json!({ "status": "none" })).into_response(),
         Err(e) => bad(StatusCode::SERVICE_UNAVAILABLE, &e),
     }
+}
+
+/// An investigation whose evidence has no `alerts_listed` counted only the alerts it listed.
+fn is_stale(doc: &Value) -> bool {
+    doc["evidence"].as_array().is_some_and(|ev| ev.iter().any(|e| e["summary"].is_object() && e["summary"].get("alerts_listed").is_none()))
 }
 
 /// `POST /api/soar/cases/:id/investigation`: investigate (again) now.
@@ -431,6 +449,13 @@ pub async fn run(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_investigations_are_redone() {
+        assert!(is_stale(&json!({ "evidence": [{ "summary": { "alerts": 500 } }] })));
+        assert!(!is_stale(&json!({ "evidence": [{ "summary": { "alerts": 812, "alerts_listed": 500 } }] })));
+        assert!(!is_stale(&json!({ "evidence": [{ "summary": null }] })), "a failed investigation has no summary");
+    }
 
     #[test]
     fn logins_decide_the_verdict() {

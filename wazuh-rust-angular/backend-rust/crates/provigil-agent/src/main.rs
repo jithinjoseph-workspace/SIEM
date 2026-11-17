@@ -11,6 +11,11 @@ async fn main() -> anyhow::Result<()> {
             let _ = std::env::set_current_dir(parent);
         }
     }
+    // started by Windows in a blocked program's place (endpoint_policy.rs): the message, then out
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--blocked") {
+        std::process::exit(provigil_agent::endpoint_policy::blocked(&args));
+    }
     // every DLL the agent loads must be signed, like the response programs
     #[cfg(windows)]
     siem_active_response::dll_guard::enable();
@@ -27,7 +32,6 @@ async fn main() -> anyhow::Result<()> {
         Err(_) => tracing_subscriber::fmt().with_env_filter(filter).init(),
     }
 
-    let args: Vec<String> = std::env::args().collect();
 
     // 1. Service Manager commands
     if args.iter().any(|a| a == "--install" || a == "install-service") {

@@ -34,6 +34,7 @@ pub mod gateway_api;
 pub(crate) mod test_state;
 pub mod agent_keys_store;
 pub mod corroboration;
+pub mod incidents;
 pub mod db;
 pub mod groups;
 pub mod live_response;
@@ -84,6 +85,8 @@ pub mod engine_docs;
 pub mod posture;
 pub mod case_detail;
 pub mod deploy_tokens;
+pub mod endpoint_policy;
+pub mod own_activity;
 pub mod deploy_kit;
 pub mod posture_store;
 pub mod predictions;
@@ -495,6 +498,7 @@ async fn main() {
     load_agent_registry(&state).await;
     state.agent_keys.load_from(&state.db).await;
     deploy_tokens::load(&state).await;
+    endpoint_policy::load(&state).await;
 
     // Tenants come from the shared auth-service registry (ndr.tenants).
     tenancy::sync_tenants(&state).await;
@@ -512,6 +516,7 @@ async fn main() {
     }
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
+    incidents::spawn(state.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed
@@ -972,6 +977,10 @@ async fn main() {
             post(rotate_tenant_agent_key_handler),
         )
         .route("/api/v1/deploy/tokens", get(deploy_tokens::list).post(deploy_tokens::create))
+        .route("/api/v1/endpoint-policies", get(endpoint_policy::list))
+        .route("/api/v1/endpoint-policies/activity", get(endpoint_policy::activity))
+        .route("/api/v1/endpoint-policies/suggest", axum::routing::post(endpoint_policy::suggest))
+        .route("/api/v1/endpoint-policies/:id", axum::routing::put(endpoint_policy::put).delete(endpoint_policy::delete))
         .route("/api/v1/deploy/tokens/:id", axum::routing::delete(deploy_tokens::revoke))
         .route("/api/v1/deploy/tokens/:id/targets", get(deploy_tokens::targets))
         .route("/api/v1/deploy/kit", post(deploy_kit::kit))
@@ -1304,6 +1313,8 @@ async fn main() {
         // per-tenant SOAR (the analyst SOAR page; the same API as ndr-engine's)
         // SIEM analyst AI: the SIEM's own pages (ndr-ui pages/siem-ai), apart from the NDR's /api/triage etc.
         .route("/api/v1/siem/triage", get(triage::get))
+        .route("/api/v1/siem/incidents/metrics", get(incidents::metrics))
+        .route("/api/v1/siem/incidents/settings", get(incidents::get_settings).put(incidents::put_settings))
         .route("/api/v1/siem/triage/run", post(triage::run_now))
         .route("/api/v1/siem/triage/:id/apply", post(triage::apply))
         .route("/api/v1/siem/triage/:id/dismiss", post(triage::dismiss))
@@ -1756,9 +1767,9 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
-            // a Red Swarm simulation must not raise the real agent's risk
+            // a simulation must not raise the real agent's risk
             if !a.data.contains_key("risk_fabric")
-                && !a.rule.groups.iter().any(|g| g == "redswarm_simulation")
+                && !is_simulation(&a)
             {
                 state.risk_fabric.evaluate_alert(&mut a);
             }
@@ -1766,7 +1777,8 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
         })
         .collect();
     let deleted = state.deleted_agents.read().unwrap();
-    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id)).cloned().collect();
+    // nor feed the agent's intent dossier
+    let active_alerts: Vec<_> = evaluated.iter().filter(|a| !deleted.contains(&a.agent.id) && !is_simulation(a)).cloned().collect();
     drop(deleted);
     state.intent_engine.ingest_live_alerts(&active_alerts);
     let mut l = state.alerts.write().unwrap();
@@ -1908,10 +1920,11 @@ async fn get_alerts(
     if state.db.is_connected() {
         if let Some(ch_rows) = state.db.fetch_alerts(&scope, limit, min_level).await {
             if !ch_rows.is_empty() {
-                let alerts: Vec<Alert> = ch_rows
+                let mut alerts: Vec<Alert> = ch_rows
                     .into_iter()
                     .map(|r| tenancy::tag_alert(r.to_alert(), &scope))
                     .collect();
+                incidents::attach(&state, &scope, &mut alerts).await;
                 return Json(alerts);
             }
         }
@@ -1923,6 +1936,7 @@ async fn get_alerts(
         .collect();
     filtered.reverse(); // Most recent first
     filtered.truncate(limit);
+    incidents::attach(&state, &scope, &mut filtered).await;
     Json(filtered)
 }
 
@@ -2479,15 +2493,25 @@ pub(crate) async fn ingest_batch(
             add_parsed_fields(&mut event.metadata, p);
         }
 
-        // the rule loop is CPU work: off the async workers
+        // the rule loop is CPU work: off the async workers. An inventory (the whole JSON of the
+        // computer's software, services, users) is not a log line: log rules matched words in it
         let (engine, name, ip) = (state.engine.clone(), agent_name.clone(), agent_ip.clone());
-        let (maybe_alert, ev) = tokio::task::spawn_blocking(move || (engine.process_event(&event, &name, &ip), event))
+        let inventory = event.source == EventSource::Syscollector;
+        let (maybe_alert, ev) = tokio::task::spawn_blocking(move || (if inventory { None } else { engine.process_event(&event, &name, &ip) }, event))
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         event = ev;
 
         if let Some(alert) = maybe_alert {
             record_alert(state, &tenant, alert).await;
+        }
+
+        // the Linux agent's endpoint policy reports (Windows agents' come through the archive)
+        if event.message.contains("provigil_policy:") {
+            let v = serde_json::json!({ "agent": { "id": event.agent_id, "name": agent_name, "ip": agent_ip }, "full_log": event.message, "location": event.location });
+            for (a, t) in endpoint_policy::check(&[(v, tenant.clone())], &HashMap::new()) {
+                record_alert(state, &t, a).await;
+            }
         }
 
         // Automated SCA Evaluation: store check results in ProVigil DB and raise alert on failure
@@ -6482,18 +6506,10 @@ async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     if !alert.data.contains_key("risk_fabric") {
         state.risk_fabric.evaluate_alert(&mut alert);
     }
-    keep_alerts(&state, [alert.clone()]);
-    state.db.insert_alert(&alert).await;
-    let _ = state.broadcast_tx.send(alert.clone());
-
-    // Evaluate live agent alert against Deception honeynet tripwires (ignore deception's own alerts to prevent cascading loops)
-    if alert.rule.id != 100999
-        && alert.rule.id != 100200
-        && !alert.rule.groups.iter().any(|g| g == "deception" || g == "zero_false_positive")
-    {
-        state.deception_engine.ingest_live_alerts(&[alert.clone()]);
-    }
-
+    // the same path as every other alert (suppression, playbooks, e-mail, deception), in the
+    // background so the request does not wait on ClickHouse retries (alert-lifecycle L-1)
+    let (st, a, json) = (state.clone(), alert.clone(), serde_json::to_value(&alert).unwrap_or_default());
+    tokio::spawn(async move { provigil_manager::deliver(&st, vec![a], vec![json]).await });
     alert
 }
 
@@ -6740,6 +6756,12 @@ async fn get_deactivated_agents_handler(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// A Red Swarm alert says it is a simulation (the round injected the telemetry).
+/// A simulated alert (the attack simulator's `simulation`, Red Swarm's `redswarm_simulation`):
+/// shown live, labelled, but never stored, scored, grouped into an incident, acted on or mailed.
+pub fn is_simulation(a: &Alert) -> bool {
+    a.rule.groups.iter().any(|g| g == "simulation" || g == "redswarm_simulation")
+}
+
 fn redswarm_simulated(mut a: Alert) -> Alert {
     a.rule.description = format!("[Red Swarm simulation] {}", a.rule.description);
     a.rule.groups.push("redswarm_simulation".into());

@@ -69,6 +69,27 @@
     <!-- Overview -->
     <div *ngIf="tab() === 'overview'" class="grid lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 space-y-4">
+        <!-- the case's rules: one case per computer, every rule it set off with its count -->
+        <section *ngIf="byRule().length > 1" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+          <h2 class="text-sm font-semibold text-white mb-2">By rule <span class="text-xs font-normal text-slate-400">({{ byRule().length }} rules; judge each: an exception hides only that rule)</span></h2>
+          <table class="w-full text-xs">
+            <thead class="text-slate-500 text-left"><tr><th class="py-1 pr-2">Rule</th><th class="pr-2">Level</th><th class="pr-2">Alerts</th><th class="pr-2">Programs</th><th class="pr-2">Last</th><th></th></tr></thead>
+            <tbody>
+              <tr *ngFor="let r of byRule()" class="border-t border-slate-800/60">
+                <td class="py-1 pr-2 text-slate-200">{{ r.description }} <span class="text-slate-500">#{{ r.rule_id }}</span></td>
+                <td class="pr-2" [ngClass]="r.level >= 12 ? 'text-rose-300' : r.level >= 10 ? 'text-amber-300' : 'text-slate-300'">{{ r.level }}</td>
+                <td class="pr-2">{{ r.count }}</td>
+                <td class="pr-2 font-mono text-slate-300">{{ ruleProcesses(r) }}</td>
+                <td class="pr-2 whitespace-nowrap text-slate-400">{{ date(r.last / 1000) }}</td>
+                <td class="text-right">
+                  <button *ngIf="r.level < 12" (click)="ruleException(r)" [disabled]="busy()" class="px-2 py-0.5 rounded border border-slate-700 hover:bg-slate-800 disabled:opacity-50">False positive: exception</button>
+                  <span *ngIf="r.level >= 12" class="text-slate-500" title="Level 12 and above is never hidden">never hidden</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
         <!-- what happened: each alert's own event (process, file or key, command line, parent, hashes) -->
         <section *ngIf="d().alerts.length" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
           <h2 class="text-sm font-semibold text-white mb-2">What happened <span class="text-xs font-normal text-slate-400">({{ d().alerts.length }} alert{{ d().alerts.length === 1 ? '' : 's' }}{{ d().alerts.length > 10 ? ', first 10 shown; all in Sequence' : '' }})</span></h2>

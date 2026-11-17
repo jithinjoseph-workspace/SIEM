@@ -1,14 +1,19 @@
 //! Incidents (specs/alert-lifecycle.md, phase 3): related alerts become one case, so an analyst
 //! works on dozens of incidents instead of thousands of alerts.
 //!
-//! Alerts of one tenant, one agent and one rule belong together; the incident lists the entities
-//! involved (the process image when an alert names one, else the user, else the host), so one rule
-//! hitting four processes is one incident, not four. An alert of level [`OPEN_LEVEL`] or more opens
-//! an incident when none is open for its key; any alert of that key joins an open one while the
-//! last alert is at most [`WINDOW_SECS`] old. An incident is an ordinary case (`soar_cases`,
+//! One computer, one incident (owner's choice 2026-11-17, after one busy PC opened 41 cases in two
+//! hours with one per agent and rule): the alerts of one tenant's agent belong together while its
+//! last alert is at most [`WINDOW_SECS`] old, and the case lists every rule with its count, so an
+//! attack that sets off ten rules is one story, not ten cases.
+//!
+//! Alerts of level [`OPEN_LEVEL`] or more are gathered per computer; they become a case when one
+//! is of level [`OPEN_ALONE`] or more, or when they span [`MIN_TACTICS`] different ATT&CK tactics
+//! (several stages of an attack). Until then they stay in the alert queue only. Once a case is
+//! open, every alert of that computer joins it (lower levels too). The incident lists the
+//! entities involved (process image, else user). An incident is an ordinary case (`soar_cases`,
 //! number `INC-<year>-<n>`, tag `auto-incident`): its alerts in `hit_ids`, severity and priority
-//! from its highest level. Changes are written every [`FLUSH_SECS`]; a write keeps what people
-//! set (status, owner, ...), and a case someone closed takes no more alerts.
+//! from its highest level and business risk. Changes are written every [`FLUSH_SECS`]; a write
+//! keeps what people set (status, owner, ...), and a case someone closed takes no more alerts.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -20,10 +25,16 @@ use tracing::warn;
 
 use crate::AppState;
 
-/// An alert from this level opens an incident.
+/// Alerts from this level are gathered towards a case.
 pub const OPEN_LEVEL: u8 = 7;
+/// One alert from this level opens the case on its own.
+pub const OPEN_ALONE: u8 = 10;
+/// Gathered alerts spanning this many ATT&CK tactics open the case.
+pub const MIN_TACTICS: usize = 2;
 /// An incident takes alerts while its last one is at most this old.
-pub const WINDOW_SECS: i64 = 3600;
+pub const WINDOW_SECS: i64 = 86_400;
+/// Rules listed per incident.
+const MAX_RULES: usize = 50;
 /// Alert ids kept per incident (the count goes on).
 pub const MAX_IDS: usize = 500;
 const FLUSH_SECS: u64 = 15;
@@ -56,9 +67,9 @@ pub fn entity_at(a: &Value) -> (String, Option<&'static str>) {
     }
 }
 
-/// The group an alert belongs to: tenant, agent and rule.
-pub fn key(tenant: &str, agent_id: &str, rule_id: u32) -> String {
-    format!("{tenant}|{agent_id}|rule:{rule_id}")
+/// The group an alert belongs to: tenant and agent (computer).
+pub fn key(tenant: &str, agent_id: &str) -> String {
+    format!("{tenant}|{agent_id}|host")
 }
 
 /// Entities listed per incident.
@@ -120,6 +131,8 @@ pub struct Open {
     /// the processes or users involved, each with the alert field it came from
     pub entities: Vec<(String, Option<String>)>,
     pub first_rule: String,
+    /// the description of its highest-level alert
+    pub top_rule: String,
     pub first_seen: i64,
     pub last_seen: i64,
     pub max_level: u8,
@@ -127,8 +140,12 @@ pub struct Open {
     pub max_risk: u8,
     pub count: u64,
     pub ids: Vec<String>,
-    /// rule descriptions, first ones only
-    pub rules: Vec<String>,
+    /// each rule: id, description, alerts, highest level
+    pub rules: Vec<(u32, String, u64, u8)>,
+    /// the ATT&CK tactics of its alerts
+    pub tactics: Vec<String>,
+    /// a case (else alerts gathered until one opens it)
+    pub opened: bool,
     /// not stored yet
     pub new: bool,
     pub dirty: bool,
@@ -140,15 +157,26 @@ impl Open {
             self.entities.push((entity, field.map(String::from)));
         }
         self.last_seen = self.last_seen.max(ts);
+        if a.rule.level > self.max_level || self.top_rule.is_empty() {
+            self.top_rule = a.rule.description.clone();
+        }
         self.max_level = self.max_level.max(a.rule.level);
+        for t in a.rule.mitre.iter().flat_map(|m| m.tactic.split(',')).map(str::trim).filter(|t| !t.is_empty()) {
+            if !self.tactics.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+                self.tactics.push(t.to_string());
+            }
+        }
         let risk = a.data.get("risk_fabric").and_then(|r| r["dynamic_risk_score"].as_u64()).unwrap_or(0).min(100) as u8;
         self.max_risk = self.max_risk.max(risk);
         self.count += 1;
         if self.ids.len() < MAX_IDS {
             self.ids.push(a.id.to_string());
         }
-        if self.rules.len() < 10 && !self.rules.contains(&a.rule.description) {
-            self.rules.push(a.rule.description.clone());
+        if let Some(r) = self.rules.iter_mut().find(|r| r.0 == a.rule.id) {
+            r.2 += 1;
+            r.3 = r.3.max(a.rule.level);
+        } else if self.rules.len() < MAX_RULES {
+            self.rules.push((a.rule.id, a.rule.description.clone(), 1, a.rule.level));
         }
         if self.src_ip.is_empty() {
             self.src_ip = a.decoded.src_ip.clone().unwrap_or_default();
@@ -157,12 +185,16 @@ impl Open {
     }
 
     pub fn title(&self) -> String {
-        let what = match self.entities.as_slice() {
-            [] => String::new(),
-            [(e, _)] => e.split_once(':').map_or(String::new(), |(k, v)| format!(" ({k} {v})")),
-            many => format!(" ({} processes or users)", many.len()),
-        };
-        format!("{}{}: {}", self.agent_name, what, self.first_rule)
+        let top = if self.top_rule.is_empty() { &self.first_rule } else { &self.top_rule };
+        match self.rules.len() {
+            0 | 1 => format!("{}: {}", self.agent_name, top),
+            n => format!("{}: {} (+{} more rule{})", self.agent_name, top, n - 1, if n == 2 { "" } else { "s" }),
+        }
+    }
+
+    /// Whether the gathered alerts are worth a case.
+    fn worth_a_case(&self) -> bool {
+        self.max_level >= OPEN_ALONE || self.tactics.len() >= MIN_TACTICS
     }
 
     /// The case's tags: the marker, the key, each entity, and the field of a single entity (an
@@ -185,20 +217,33 @@ impl Open {
             chrono::DateTime::from_timestamp(self.last_seen, 0).map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default(),
             self.max_level,
             self.max_risk,
-            self.rules.join("; ")
+            {
+                let mut r = self.rules.clone();
+                r.sort_by(|a, b| b.3.cmp(&a.3).then(b.2.cmp(&a.2)));
+                r.iter().map(|(id, d, n, l)| format!("{d} (rule {id}, level {l}, {n} alert{})", if *n == 1 { "" } else { "s" })).collect::<Vec<_>>().join("; ")
+            }
         )
     }
 }
 
 /// Puts one alert into the open incidents: joins one, opens one, or neither (`None`).
 pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, ent: (String, Option<&'static str>), ts: i64) -> Option<String> {
-    let k = key(tenant, &a.agent.id, a.rule.id);
+    let k = key(tenant, &a.agent.id);
     if let Some(o) = open.get_mut(&k) {
         if ts - o.last_seen <= WINDOW_SECS {
+            // a low alert joins a case, but does not gather towards one
+            if !o.opened && a.rule.level < OPEN_LEVEL {
+                return None;
+            }
             o.take(a, ts, ent);
-            return Some(k);
+            if !o.opened && o.worth_a_case() {
+                o.opened = true;
+                o.new = true;
+            }
+            return o.opened.then_some(k);
         }
-        // too old: a new alert of level OPEN_LEVEL starts a new incident below
+        // too old: a new alert of level OPEN_LEVEL starts gathering again below
+        open.remove(&k);
     }
     if a.rule.level < OPEN_LEVEL {
         return None;
@@ -211,12 +256,14 @@ pub fn place(open: &mut HashMap<String, Open>, tenant: &str, a: &Alert, ent: (St
         first_rule: a.rule.description.clone(),
         first_seen: ts,
         last_seen: ts,
-        new: true,
         ..Open::default()
     };
     o.take(a, ts, ent);
+    o.opened = o.worth_a_case();
+    o.new = o.opened;
+    let opened = o.opened;
     open.insert(k.clone(), o);
-    Some(k)
+    opened.then_some(k)
 }
 
 fn open() -> &'static Mutex<HashMap<String, Open>> {
@@ -268,13 +315,13 @@ struct OpenRow {
 }
 
 async fn load(state: &AppState, tenant: &str) {
-    let sql = format!("SELECT id, title, tags, hit_ids, toUInt32(toUnixTimestamp(updated_at)) AS updated FROM soar_cases FINAL WHERE has(tags, ?) AND status NOT IN {CLOSED} AND updated_at >= now() - INTERVAL 1 HOUR");
+    let sql = format!("SELECT id, title, tags, hit_ids, toUInt32(toUnixTimestamp(updated_at)) AS updated FROM soar_cases FINAL WHERE has(tags, ?) AND status NOT IN {CLOSED} AND updated_at >= now() - INTERVAL {WINDOW_SECS} SECOND");
     let rows: Vec<OpenRow> = state.db.tenant_client(tenant).query(&sql).bind(TAG).fetch_all().await.unwrap_or_default();
     let mut map = open().lock().unwrap();
     for r in rows {
         let Some(k) = r.tags.iter().find_map(|t| t.strip_prefix("key:")) else { continue };
-        // an incident of the earlier per-process grouping is not continued (another key)
-        if !k.contains("|rule:") {
+        // an incident of an earlier grouping (per process, per rule) is not continued (another key)
+        if !k.ends_with("|host") {
             continue;
         }
         let field = r.tags.iter().find_map(|t| t.strip_prefix("field:")).map(String::from);
@@ -289,6 +336,7 @@ async fn load(state: &AppState, tenant: &str) {
             last_seen: r.updated as i64,
             count: r.hit_ids.len() as u64,
             ids: r.hit_ids,
+            opened: true,
             ..Open::default()
         });
     }
@@ -300,7 +348,8 @@ async fn flush(state: &AppState) {
         let mut map = open().lock().unwrap();
         // incidents past their window are done: forgotten once written
         map.retain(|_, o| o.dirty || now - o.last_seen <= WINDOW_SECS);
-        map.iter_mut().filter(|(_, o)| o.dirty).map(|(k, o)| {
+        // alerts still gathering towards a case are not written
+        map.iter_mut().filter(|(_, o)| o.dirty && o.opened).map(|(k, o)| {
             o.dirty = false;
             (k.clone(), o.clone())
         }).collect()
@@ -488,7 +537,7 @@ mod tests {
         assert_eq!(severity_of(12, 0), "CRITICAL");
         assert_eq!(severity_of(4, 50), "HIGH", "low level, high business risk");
         let mut m = HashMap::new();
-        let mut a = alert(8, "8084", "Suspicious process");
+        let mut a = alert(10, "8084", "Suspicious process");
         a.data.insert("risk_fabric".into(), json!({"dynamic_risk_score": 72}));
         let k = place(&mut m, "acm", &a, ("process:x.exe".into(), None), 0).unwrap();
         assert_eq!((m[&k].max_risk, severity_of(m[&k].max_level, m[&k].max_risk)), (72, "CRITICAL"));
@@ -515,29 +564,37 @@ mod tests {
         a
     }
 
+    fn with_tactic(mut a: Alert, tactic: &str) -> Alert {
+        a.rule.mitre = Some(siem_core::MitreAttack { id: "T0000".into(), tactic: tactic.into(), technique: "t".into() });
+        a
+    }
+
     #[test]
-    fn alerts_group_by_agent_and_rule_within_the_window() {
+    fn one_case_per_computer_opened_when_it_matters() {
         let mut m = HashMap::new();
         let t0 = 1_800_000_000;
         let p = |e: &str| (e.to_string(), Some("data.win.eventdata.image"));
         assert_eq!(place(&mut m, "acm", &alert_r(4, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0), None, "a low alert opens nothing");
-        let k = place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p("process:winword.exe"), t0).unwrap();
-        assert_eq!(m[&k].tags(&k).last().map(String::as_str), Some("field:data.win.eventdata.image"), "one process: its field is named");
-        // the same rule on other processes joins the same incident (it opened 4 before)
-        for proc_ in ["process:svchost.exe", "process:backgroundtaskhost.exe", "process:winword.exe"] {
-            assert_eq!(place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p(proc_), t0 + 60), Some(k.clone()));
-        }
-        assert_eq!(place(&mut m, "acm", &alert_r(3, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600), Some(k.clone()), "a low alert joins an open incident");
-        assert_ne!(place(&mut m, "acm", &alert_r(10, "8084", 92078, "Cmd"), p("process:winword.exe"), t0).unwrap(), k, "another rule: another incident");
-        assert_ne!(place(&mut m, "acm", &alert_r(10, "8087", 92153, "VaultCli"), p("process:winword.exe"), t0).unwrap(), k, "another agent: another incident");
+        // level 7-9 of one tactic: gathered, no case yet
+        assert_eq!(place(&mut m, "acm", &with_tactic(alert_r(7, "8084", 92052, "Cmd by odd parent"), "Execution"), p("process:cmd.exe"), t0), None);
+        assert_eq!(place(&mut m, "acm", &with_tactic(alert_r(8, "8084", 92052, "Cmd by odd parent"), "Execution"), p("process:cmd.exe"), t0 + 10), None, "the same tactic again");
+        // a second tactic on the same computer: the case opens, with what was gathered
+        let k = place(&mut m, "acm", &with_tactic(alert_r(7, "8084", 92041, "Base64 registry value"), "Defense Evasion"), p("process:reg.exe"), t0 + 20).unwrap();
+        assert_eq!((m[&k].count, m[&k].new), (3, true));
+        // any later alert of that computer joins it, other rules and lower levels too
+        assert_eq!(place(&mut m, "acm", &alert_r(3, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600), Some(k.clone()));
+        assert_eq!(place(&mut m, "acm", &alert_r(12, "8084", 92213, "Executable dropped"), p("process:powershell.exe"), t0 + 700), Some(k.clone()));
         let o = &m[&k];
-        assert_eq!((o.count, o.entities.len(), severity(o.max_level)), (5, 3, "HIGH"));
-        assert_eq!(o.title(), "pc-8084 (3 processes or users): VaultCli");
-        assert!(!o.tags(&k).iter().any(|t| t.starts_with("field:")), "several processes: no single field");
-        // past the window: a new incident
+        assert_eq!((o.count, o.rules.len(), severity(o.max_level)), (5, 4, "CRITICAL"));
+        assert_eq!(o.title(), "pc-8084: Executable dropped (+3 more rules)", "named by its worst rule");
+        assert!(o.description().contains("Cmd by odd parent (rule 92052, level 8, 2 alerts)"), "{}", o.description());
+        // another computer: its own; level 10 opens on its own
+        let k2 = place(&mut m, "acm", &alert_r(10, "8087", 92153, "VaultCli"), p("process:winword.exe"), t0).unwrap();
+        assert_ne!(k2, k);
+        assert_eq!(m[&k2].tags(&k2).last().map(String::as_str), Some("field:data.win.eventdata.image"), "one process: its field is named");
+        // a day without alerts: the next one starts over
         let id = m[&k].id.clone();
-        place(&mut m, "acm", &alert_r(8, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600 + WINDOW_SECS + 1);
+        assert_eq!(place(&mut m, "acm", &alert_r(8, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 700 + WINDOW_SECS + 1), None, "gathering again");
         assert_ne!(m[&k].id, id);
-        assert_eq!(m[&k].title(), "pc-8084 (process svchost.exe): VaultCli");
     }
 }

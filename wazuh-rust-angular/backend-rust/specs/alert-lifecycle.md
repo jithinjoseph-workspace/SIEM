@@ -126,6 +126,18 @@ Problems, from the live data of tenant acm:
 - **L-16 Automation without setup.** Incidents, their triage and alert e-mails run with no setup;
   playbooks act through the tenant's own integrations and start when one is saved. The SOAR page
   says so above the starters (issue 5).
+- **L-17 One incident per computer, opened when it matters** (2026-11-17, replaces the
+  per-agent-and-rule grouping of L-6). One busy PC opened 41 cases in two hours, one per rule. Now
+  a computer's alerts form one incident while its last alert is at most 24 h old; the case lists
+  every rule with its count (case page "By rule", with an exception per rule). Level 7 alerts are
+  gathered; they become a case at level 10+, or when they span 2 different ATT&CK tactics (several
+  stages of an attack); until then they stay in the alert queue. Reason: an attack sets off many
+  rules on one computer, so one case tells the whole story, and a lone medium alert is not a case.
+  Earlier per-rule incidents are not continued (their key differs).
+- **L-18 ProVigil's own activity raises no alert** (2026-11-17): programs the agent starts from its
+  install path and what those start (by process id), the install command's verified files, and
+  configuration check results seen for the first time (`siem-api/src/own_activity.rs`). Changed
+  configuration checks still alert, but open no incident (Compliance page).
 
 ## 5. Progress
 
@@ -138,3 +150,4 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: case tables rebuilt keyed by case id (L-8); definitions changed for new tenants.
 - 2026-11-16: issues 1, 5, 7 and 8 completed (L-13 to L-16); incidents are triaged when they open; cases opened from an alert list it. siem-api tests: 158 passed.
 - 2026-11-16 live test (services restarted 17:01): 445 alerts in 18 min, all stored with their risk score; 20 level 7+ alerts became 7 incidents; shipped and Sigma alerts of one process joined; incidents got their history entry. Found: no triage verdict (the investigation looked only at community_id; fixed, falls back to hit_ids) and too many incidents (one per process; now one per rule, L-6). The owner approved two permanent exceptions for build output on the development PC (rules 92213 and 962881 on agent 8084 when the path contains the repository folder).
+- 2026-11-17: after an agent reinstall on win-node-e296 (26, then 41 cases, none an attack): L-17 and L-18, inventory events no longer checked by log rules, the agent keeps events on disk while the manager is unreachable (165,214 had been dropped overnight). siem-api tests: 168 passed.

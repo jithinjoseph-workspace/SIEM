@@ -109,6 +109,44 @@ export class CasePage implements OnInit {
     return { rule_id: Number(most('rule_id')), agent_id: String(most('agent_id') || ''), field_path, field_contains: value, permanent: !!field_path, critical };
   });
 
+  /** The case's alerts per rule, worst first: one case per computer lists every rule it set off. */
+  byRule = computed(() => {
+    const m = new Map<number, any>();
+    for (const a of this.d()?.alerts || []) {
+      const id = Number(a.rule_id);
+      const r = m.get(id) || { rule_id: id, description: a.rule_description, level: 0, count: 0, first: Infinity, last: 0, processes: new Set<string>(), agents: new Map<string, number>() };
+      r.level = Math.max(r.level, Number(a.rule_level));
+      r.count++;
+      r.first = Math.min(r.first, a.timestamp);
+      r.last = Math.max(r.last, a.timestamp);
+      const proc = String(a.process || '').split(/[\\/]/).pop();
+      if (proc) r.processes.add(proc);
+      r.agents.set(a.agent_id, (r.agents.get(a.agent_id) || 0) + 1);
+      m.set(id, r);
+    }
+    return [...m.values()].sort((x, y) => y.level - x.level || y.count - x.count);
+  });
+
+  ruleProcesses(r: any): string {
+    return [...r.processes].slice(0, 3).join(', ') + (r.processes.size > 3 ? ` +${r.processes.size - 3}` : '');
+  }
+
+  /** An exception for one rule of this case: on its one program for good, else on the computer for 7 days. */
+  ruleException(r: any) {
+    if (r.level >= 12) return;
+    const agent = [...r.agents.entries()].sort((x: any, y: any) => y[1] - x[1])[0]?.[0];
+    const one = r.processes.size === 1 ? [...r.processes][0] : '';
+    this.busy.set(true);
+    this.siem.createSiemSuppression({
+      rule_id: r.rule_id, agent_id: agent || undefined, duration_hours: 168,
+      field_path: one ? 'data.win.eventdata.image' : undefined, field_contains: one || undefined, permanent: one ? true : undefined,
+      reason: `Rule ${r.rule_id} in incident ${this.d()?.case?.case_number} judged a false positive`,
+    }).subscribe({
+      next: (x: any) => { this.busy.set(false); if (x?.error) this.error.set(x.error); else this.message.set(`Exception created for rule ${r.rule_id}${one ? ' on ' + one : ' on this computer for 7 days'} (Suppressions page to stop it).`); },
+      error: () => { this.busy.set(false); this.error.set('The exception could not be created.'); },
+    });
+  }
+
   makeException() {
     const x = this.exceptionDraft();
     if (!x || x.critical) return;

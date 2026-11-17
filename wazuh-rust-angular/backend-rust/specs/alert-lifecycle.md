@@ -126,14 +126,10 @@ Problems, from the live data of tenant acm:
 - **L-16 Automation without setup.** Incidents, their triage and alert e-mails run with no setup;
   playbooks act through the tenant's own integrations and start when one is saved. The SOAR page
   says so above the starters (issue 5).
-- **L-17 One incident per computer, opened when it matters** (2026-11-17, replaces the
-  per-agent-and-rule grouping of L-6). One busy PC opened 41 cases in two hours, one per rule. Now
-  a computer's alerts form one incident while its last alert is at most 24 h old; the case lists
-  every rule with its count (case page "By rule", with an exception per rule). Level 7 alerts are
-  gathered; they become a case at level 10+, or when they span 2 different ATT&CK tactics (several
-  stages of an attack); until then they stay in the alert queue. Reason: an attack sets off many
-  rules on one computer, so one case tells the whole story, and a lone medium alert is not a case.
-  Earlier per-rule incidents are not continued (their key differs).
+- **L-17 One incident per computer: tried and reverted** (2026-11-17). Grouping every alert of a
+  computer into one case for 24 h cut the case count, but the owner found it worse to work with:
+  unrelated noise and a real problem end up in one case. Back to L-6 (per agent and rule). What
+  replaces it is the plan in section 6 (per-rule cases, plus a risk-based layer that links them).
 - **L-18 ProVigil's own activity raises no alert** (2026-11-17): programs the agent starts from its
   install path and what those start (by process id), the install command's verified files, and
   configuration check results seen for the first time (`siem-api/src/own_activity.rs`). Changed
@@ -151,3 +147,42 @@ Problems, from the live data of tenant acm:
 - 2026-11-16: issues 1, 5, 7 and 8 completed (L-13 to L-16); incidents are triaged when they open; cases opened from an alert list it. siem-api tests: 158 passed.
 - 2026-11-16 live test (services restarted 17:01): 445 alerts in 18 min, all stored with their risk score; 20 level 7+ alerts became 7 incidents; shipped and Sigma alerts of one process joined; incidents got their history entry. Found: no triage verdict (the investigation looked only at community_id; fixed, falls back to hit_ids) and too many incidents (one per process; now one per rule, L-6). The owner approved two permanent exceptions for build output on the development PC (rules 92213 and 962881 on agent 8084 when the path contains the repository folder).
 - 2026-11-17: after an agent reinstall on win-node-e296 (26, then 41 cases, none an attack): L-17 and L-18, inventory events no longer checked by log rules, the agent keeps events on disk while the manager is unreachable (165,214 had been dropped overnight). siem-api tests: 168 passed.
+- 2026-11-17: L-17 (one incident per computer) reverted at the owner's request; per-rule incidents (L-6) again; plan for a risk-based cross-rule layer in section 6.
+
+## 6. Plan: how alerts become cases (research, 2026-11-17)
+
+How the common products do it:
+
+| Product | Unit of a case | How alerts join | Cross-rule view |
+|---|---|---|---|
+| Microsoft Sentinel | per analytics rule | each alert is an incident unless the rule groups them: when all entities match (recommended), selected entities match, or all of the rule's alerts; within a window (5 min to 7 days, 5 h default), at most 150 alerts; a closed incident is not reopened | none by default (Defender portal correlation, below) |
+| Microsoft Defender XDR | correlated incident | the engine merges alerts that share a device, user, IP or mailbox within a window, across rules | built in; users report unrelated alerts merged because they share an entity |
+| Splunk ES risk-based alerting | risk notable per entity | detections only add risk to their entity (host, user); a notable opens when the entity's risk passes a threshold (default 100 in 24 h) or its alerts span more than 3 ATT&CK tactics in 7 days | the risk notable is the cross-rule view |
+| IBM QRadar | offense per indexed property | rules indexed on the same property (e.g. source IP) add to one offense | the offense lists its contributing rules |
+
+What this means for ProVigil: per rule (Sentinel) is the clearest to work with, and is what the
+analysts here prefer; merging by entity (Defender) cuts the count but mixes noise with real
+problems, as our L-17 trial showed. The products that see multi-stage attacks do it with a separate
+layer (Splunk's risk per entity, QRadar's offense index) that does not swallow the per-rule cases.
+
+Plan (to build, in this order):
+
+1. **Per-rule cases stay** (L-6): one case per agent and rule within the window, entities listed.
+   Make the window a setting per rule (Sentinel: 5 min to 7 days), default 1 h; a closed case is
+   not reopened, a later alert opens a new one.
+2. **Fewer cases from noise, without merging**: our own activity (L-18), exceptions per rule and
+   program (L-11, case page "By rule"), configuration checks out of incidents. A per-rule
+   *case threshold* (level, or N alerts in the window) so a rule that fires constantly at low value
+   stays in the alert queue.
+3. **Risk per computer and per user (the cross-rule layer)**: each alert adds risk to its computer
+   and user: its level weighted by the business risk (risk fabric) and the triage verdict. A
+   **"risk incident"** opens when an entity's risk in 24 h passes a threshold, or its alerts span
+   3+ ATT&CK tactics in 7 days (Splunk's defaults, tenant-adjustable). It does not take the
+   per-rule cases' alerts: it **links** them (case page "Related cases", a parent case), so an
+   analyst sees the attack story without losing the per-rule cases.
+4. **Measure**: cases per day, per rule and per computer on the metrics strip, so a noisy rule is
+   visible and tuned (exception or threshold) instead of flooding the queue.
+
+Sources: Microsoft Learn (Sentinel analytics rules, Defender XDR incidents), Microsoft Tech
+Community (alert grouping), Splunk ES risk-based alerting documentation (default risk incident
+rules, thresholds), IBM QRadar documentation (offense indexing).

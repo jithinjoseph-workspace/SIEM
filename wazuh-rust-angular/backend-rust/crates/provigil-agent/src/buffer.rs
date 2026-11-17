@@ -36,28 +36,39 @@ enum State { Normal, Warn90, Full, Flooded }
 
 /// Lines per spool file.
 pub const SEG_LINES: u64 = 1000;
+/// How long events wait on disk by default (a week).
+pub const DEFAULT_KEEP_SECS: u64 = 7 * 86_400;
 
-/// One spool file: `<seq>.jsonl`.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// One spool file: the one being written, `<seq>.jsonl`, or a full one, compressed:
+/// `<seq>.<lines>.jsonl.gz` (the count in the name, so a restart need not read it).
 #[derive(Debug)]
 struct Seg {
     path: PathBuf,
     seq: i64,
     bytes: u64,
     lines: u64,
+    /// when its newest event was written (seconds)
+    at: u64,
+    gz: bool,
 }
 
-/// Events on disk, oldest file first.
+/// Events on disk, oldest file first, kept at most `keep_secs` and `max_bytes`.
 #[derive(Debug)]
 struct Spool {
     dir: PathBuf,
     max_bytes: u64,
+    keep_secs: u64,
     segs: VecDeque<Seg>,
     bytes: u64,
 }
 
 impl Spool {
     /// The folder's files from a previous run, oldest first.
-    fn open(dir: &Path, max_bytes: u64) -> Spool {
+    fn open(dir: &Path, max_bytes: u64, keep_secs: u64) -> Spool {
         let _ = std::fs::create_dir_all(dir);
         let mut segs: Vec<Seg> = std::fs::read_dir(dir)
             .into_iter()
@@ -65,14 +76,22 @@ impl Spool {
             .flatten()
             .filter_map(|e| {
                 let path = e.path();
-                let seq = path.file_name()?.to_str()?.strip_suffix(".jsonl")?.parse().ok()?;
-                let text = std::fs::read_to_string(&path).ok()?;
-                Some(Seg { bytes: text.len() as u64, lines: text.lines().count() as u64, path, seq })
+                let name = path.file_name()?.to_str()?.to_string();
+                let meta = e.metadata().ok()?;
+                let at = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+                if let Some(stem) = name.strip_suffix(".jsonl.gz") {
+                    let (seq, lines) = stem.split_once('.')?;
+                    Some(Seg { seq: seq.parse().ok()?, lines: lines.parse().ok()?, bytes: meta.len(), at, gz: true, path })
+                } else {
+                    let seq = name.strip_suffix(".jsonl")?.parse().ok()?;
+                    let text = std::fs::read_to_string(&path).ok()?;
+                    Some(Seg { seq, lines: text.lines().count() as u64, bytes: text.len() as u64, at, gz: false, path })
+                }
             })
             .collect();
         segs.sort_by_key(|s| s.seq);
         let bytes = segs.iter().map(|s| s.bytes).sum();
-        Spool { dir: dir.to_path_buf(), max_bytes, segs: segs.into(), bytes }
+        Spool { dir: dir.to_path_buf(), max_bytes, keep_secs, segs: segs.into(), bytes }
     }
 
     fn is_empty(&self) -> bool {
@@ -83,12 +102,55 @@ impl Spool {
         self.segs.iter().map(|s| s.lines).sum()
     }
 
+    /// Compresses a full file; it stays as it was when that fails.
+    fn close(seg: &mut Seg) {
+        if seg.gz {
+            return;
+        }
+        let Ok(text) = std::fs::read(&seg.path) else { return };
+        let gz_path = seg.path.with_file_name(format!("{}.{}.jsonl.gz", seg.seq, seg.lines));
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let packed = enc.write_all(&text).and_then(|_| enc.finish());
+        if let Ok(b) = packed {
+            if std::fs::write(&gz_path, &b).is_ok() {
+                let _ = std::fs::remove_file(&seg.path);
+                seg.path = gz_path;
+                seg.bytes = b.len() as u64;
+                seg.gz = true;
+            }
+        }
+    }
+
+    /// Drops the files whose newest event is older than `keep_secs` at `now`; the events dropped.
+    fn expire(&mut self, now: u64) -> u64 {
+        let mut dropped = 0;
+        while self.segs.front().is_some_and(|s| now.saturating_sub(s.at) > self.keep_secs) {
+            let old = self.segs.pop_front().unwrap();
+            let _ = std::fs::remove_file(&old.path);
+            self.bytes -= old.bytes;
+            dropped += old.lines;
+        }
+        if dropped > 0 {
+            warn!(dropped, days = self.keep_secs / 86_400, "Events kept on disk longer than the retention dropped");
+        }
+        dropped
+    }
+
     /// Appends events after the newest (`front`: before the oldest). Returns the events dropped
-    /// to stay under the size limit (the oldest file), and an error text when writing failed.
+    /// to stay within the limits (the oldest files), and an error text when writing failed.
     fn write(&mut self, events: &[Value], front: bool) -> (u64, Option<String>) {
         let text: String = events.iter().map(|e| format!("{e}\n")).collect();
         let n = events.len() as u64;
-        let tail_has_room = !front && self.segs.back().is_some_and(|s| s.lines + n <= SEG_LINES);
+        let now = now_secs();
+        let tail_has_room = !front && self.segs.back().is_some_and(|s| !s.gz && s.lines + n <= SEG_LINES);
+        if !front && !tail_has_room {
+            // the tail is full: compressed before a new one starts
+            let old_bytes = self.segs.back().map_or(0, |s| s.bytes);
+            if let Some(s) = self.segs.back_mut() {
+                Self::close(s);
+                self.bytes = self.bytes - old_bytes + s.bytes;
+            }
+        }
         let (path, seq) = if tail_has_room {
             let s = self.segs.back().unwrap();
             (s.path.clone(), s.seq)
@@ -105,13 +167,23 @@ impl Spool {
             let s = self.segs.back_mut().unwrap();
             s.bytes += b;
             s.lines += n;
-        } else if front {
-            self.segs.push_front(Seg { path, seq, bytes: b, lines: n });
+            s.at = now;
         } else {
-            self.segs.push_back(Seg { path, seq, bytes: b, lines: n });
+            let mut seg = Seg { path, seq, bytes: b, lines: n, at: now, gz: false };
+            if front {
+                // events put back in front are complete: compressed at once
+                Self::close(&mut seg);
+                self.bytes += seg.bytes;
+                self.segs.push_front(seg);
+            } else {
+                self.bytes += b;
+                self.segs.push_back(seg);
+            }
         }
-        self.bytes += b;
-        let mut dropped = 0;
+        if tail_has_room {
+            self.bytes += b;
+        }
+        let mut dropped = self.expire(now);
         while self.bytes > self.max_bytes && self.segs.len() > 1 {
             let old = self.segs.pop_front().unwrap();
             let _ = std::fs::remove_file(&old.path);
@@ -125,7 +197,16 @@ impl Spool {
     fn take_oldest(&mut self) -> Vec<Value> {
         let Some(s) = self.segs.pop_front() else { return Vec::new() };
         self.bytes -= s.bytes;
-        let text = std::fs::read_to_string(&s.path).unwrap_or_default();
+        let text = if s.gz {
+            let mut out = String::new();
+            let ok = std::fs::File::open(&s.path).and_then(|f| std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(f), &mut out));
+            if let Err(e) = ok {
+                warn!(file = %s.path.display(), error = %e, "A spool file could not be read; its events are lost");
+            }
+            out
+        } else {
+            std::fs::read_to_string(&s.path).unwrap_or_default()
+        };
         let _ = std::fs::remove_file(&s.path);
         text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
     }
@@ -195,17 +276,44 @@ impl EventBuffer {
         *self.limits.lock().unwrap()
     }
 
-    /// Keeps what does not fit in memory in `dir` (at most `max_bytes`; 0: no spool), and sends
-    /// what a previous run left there.
-    pub fn with_spool(self, dir: &Path, max_bytes: u64) -> Self {
+    /// Keeps what does not fit in memory in `dir` (at most `max_bytes` and `keep_secs`; 0 bytes:
+    /// no spool), and sends what a previous run left there.
+    pub fn with_spool(self, dir: &Path, max_bytes: u64, keep_secs: u64) -> Self {
         if max_bytes > 0 {
-            let s = Spool::open(dir, max_bytes);
+            let s = Spool::open(dir, max_bytes, keep_secs);
             if !s.is_empty() {
                 info!(events = s.lines(), bytes = s.bytes, "Events kept on disk by the previous run: sending them");
             }
             self.inner.lock().unwrap().spool = Some(s);
         }
         self
+    }
+
+    /// New spool limits (the group configuration changed); what is on disk stays within them.
+    pub fn set_spool_limits(&self, max_bytes: u64, keep_secs: u64) {
+        let mut q = self.inner.lock().unwrap();
+        if let Some(s) = q.spool.as_mut() {
+            s.max_bytes = max_bytes.max(1 << 20);
+            s.keep_secs = keep_secs;
+            let n = s.expire(now_secs());
+            if n > 0 {
+                Self::count_dropped(&mut q, n);
+            }
+        }
+    }
+
+    /// At stop: what is still in memory goes to disk in front of what is there (it is older), so
+    /// a computer shut down without the manager (a laptop on a trip) loses nothing. The events
+    /// written (0 without a spool).
+    pub fn persist(&self) -> usize {
+        let mut q = self.inner.lock().unwrap();
+        if q.spool.is_none() || q.queue.is_empty() {
+            return 0;
+        }
+        let events: Vec<Value> = q.queue.drain(..).collect();
+        let n = events.len();
+        Self::spool_write(&mut q, &events, true);
+        n
     }
 
     /// Events dropped: counted and logged once a minute.
@@ -485,7 +593,7 @@ mod tests {
     #[test]
     fn full_queue_spools_keeps_order_and_survives_a_restart() {
         let dir = tempfile::tempdir().unwrap();
-        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000);
+        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000, DEFAULT_KEEP_SECS);
         for n in 0..2500 {
             b.push(ev(n));
         }
@@ -508,21 +616,72 @@ mod tests {
         b.prepend_batch(first);
         assert_eq!(drain_all(&b), (0..20).map(|n| format!("e{n}")).collect::<Vec<_>>());
         // spooled events wait over a restart
-        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000);
+        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000, DEFAULT_KEEP_SECS);
         for n in 0..30 {
             b.push(ev(n));
         }
         drop(b);
-        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000);
+        let b = limited(10, 1000).with_spool(dir.path(), 10_000_000, DEFAULT_KEEP_SECS);
         assert_eq!(b.spooled(), 20, "the memory part of a stopped agent is gone, the disk part is not");
         assert_eq!(drain_all(&b), (10..30).map(|n| format!("e{n}")).collect::<Vec<_>>());
     }
 
     #[test]
+    fn full_spool_files_are_compressed_and_kept_a_week() {
+        let dir = tempfile::tempdir().unwrap();
+        let b = limited(10, 1000).with_spool(dir.path(), 100_000_000, DEFAULT_KEEP_SECS);
+        for n in 0..3010 {
+            b.push(ev(n));
+        }
+        let names: Vec<String> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        assert_eq!(names.iter().filter(|n| n.ends_with(".jsonl.gz")).count(), 2, "{names:?}");
+        assert_eq!(names.iter().filter(|n| n.ends_with(".jsonl")).count(), 1, "the one being written stays plain");
+        let disk = b.inner.lock().unwrap().spool.as_ref().unwrap().bytes;
+        assert!(disk < 3000 * 30, "compressed: {disk} bytes for 3000 events");
+        // a restart reads the counts from the names
+        drop(b);
+        let b = limited(10, 1000).with_spool(dir.path(), 100_000_000, DEFAULT_KEEP_SECS);
+        assert_eq!(b.spooled(), 3000);
+        // eight days later the old files are gone; the newest stays
+        let gone = b.inner.lock().unwrap().spool.as_mut().unwrap().expire(now_secs() + 8 * 86_400);
+        assert_eq!(gone, 3000);
+        // within the week nothing goes, and every event comes back in order
+        let b = limited(10, 1000).with_spool(&dir.path().join("w"), 100_000_000, DEFAULT_KEEP_SECS);
+        for n in 0..2500 {
+            b.push(ev(n));
+        }
+        assert_eq!(b.inner.lock().unwrap().spool.as_mut().unwrap().expire(now_secs() + 6 * 86_400), 0);
+        assert_eq!(drain_all(&b), (0..2500).map(|n| format!("e{n}")).collect::<Vec<_>>());
+        // a shorter retention from the group settings applies at once
+        let b = limited(10, 1000).with_spool(&dir.path().join("x"), 100_000_000, DEFAULT_KEEP_SECS);
+        for n in 0..20 {
+            b.push(ev(n));
+        }
+        b.set_spool_limits(100_000_000, 0);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        b.set_spool_limits(100_000_000, 0);
+        assert_eq!((b.spooled(), b.dropped()), (0, 10));
+    }
+
+    #[test]
+    fn a_stop_without_the_manager_keeps_memory_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let b = limited(10, 1000).with_spool(dir.path(), 100_000_000, DEFAULT_KEEP_SECS);
+        for n in 0..25 {
+            b.push(ev(n));
+        }
+        assert_eq!(b.persist(), 10, "the memory part");
+        drop(b);
+        let b = limited(10, 1000).with_spool(dir.path(), 100_000_000, DEFAULT_KEEP_SECS);
+        assert_eq!(drain_all(&b), (0..25).map(|n| format!("e{n}")).collect::<Vec<_>>(), "all of it, in order, after the restart");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "sent: deleted from the computer");
+    }
+
+    #[test]
     fn spool_limit_drops_the_oldest_file_and_says_so() {
         let dir = tempfile::tempdir().unwrap();
-        // about 60 bytes an event: room for roughly two files of 1000
-        let b = limited(10, 1000).with_spool(dir.path(), 130_000);
+        // compressed full files of 1000 small events: a few kB each, so 8 kB keeps very few
+        let b = limited(10, 1000).with_spool(dir.path(), 8_000, DEFAULT_KEEP_SECS);
         for n in 0..4000 {
             b.push(ev(n));
         }
@@ -532,7 +691,7 @@ mod tests {
         assert_eq!(got.last().map(String::as_str), Some("e3999"), "the newest kept");
         assert_eq!(got.len() as u64 + b.dropped(), 4000);
         // the state events measure the disk
-        let b = limited(10, 1000).with_spool(&dir.path().join("2"), 130_000);
+        let b = limited(10, 1000).with_spool(&dir.path().join("2"), 130_000, DEFAULT_KEEP_SECS);
         for n in 0..20 {
             b.push(ev(n));
         }

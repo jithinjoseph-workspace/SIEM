@@ -156,6 +156,9 @@ pub struct AgentConfig {
     /// manager is unreachable; 0: none (they are dropped).
     #[serde(default = "default_spool_mb")]
     pub buffer_spool_max_mb: u64,
+    /// Seconds events may wait on disk (default a week); older ones are dropped.
+    #[serde(default = "default_spool_keep")]
+    pub buffer_spool_keep_secs: u64,
     /// Log level (`trace`, `debug`, `info`, `warn`, `error`).
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -339,6 +342,7 @@ fn default_rootcheck_base_directory() -> String {
 }
 fn default_buffer_size() -> usize { 10_000 }
 fn default_spool_mb() -> u64 { 512 }
+fn default_spool_keep() -> u64 { crate::buffer::DEFAULT_KEEP_SECS }
 fn default_max_diff() -> usize { 59_392 }
 fn default_log_level() -> String { "info".into() }
 fn default_true() -> bool { true }
@@ -514,6 +518,7 @@ impl Default for AgentConfig {
             upgrade_enabled: default_true(),
             buffer_max_events: default_buffer_size(),
             buffer_spool_max_mb: default_spool_mb(),
+            buffer_spool_keep_secs: default_spool_keep(),
             log_level: default_log_level(),
             labels: Vec::new(),
             buffer: BufferConfig::default(),
@@ -654,7 +659,7 @@ impl AgentConfig {
 }
 
 /// The settings an agent's groups can set (the console's Groups page).
-pub const GROUP_FIELDS: [&str; 31] = [
+pub const GROUP_FIELDS: [&str; 33] = [
     // fallback managers an admin adds per group; added to the agent's own list, never replacing it
     "manager_urls",
     "event_channels", "event_channel_queries", "localfiles", "fim_paths", "fim_realtime", "fim_whodata", "fim_ignore",
@@ -664,6 +669,8 @@ pub const GROUP_FIELDS: [&str; 31] = [
     "registry_restrict_key", "registry_restrict_value", "registry_report_changes", "full_send_splay_secs",
     // the tenant's endpoint control rules (the manager adds them; endpoint_policy.rs)
     "endpoint_policies",
+    // how much and how long events wait on disk while the manager is unreachable
+    "buffer_spool_max_mb", "buffer_spool_keep_secs",
 ];
 
 /// The last group answer the agent received, used at the next start.

@@ -354,7 +354,17 @@ pub fn translate(confs: &[String], agent_name: &str) -> Value {
                         o.insert(out.into(), json!(n));
                     }
                 }
-                cfg.insert("buffer".into(), Value::Object(o));
+                // what waits on disk while the manager is unreachable (e.g. a laptop away from the
+                // office): how long ("7d", "2w", seconds) and how much ("512m", "2g")
+                if let Some(s) = b.kid_text("offline_retention").and_then(|v| seconds(&v)).filter(|s| *s >= 3600) {
+                    cfg.insert("buffer_spool_keep_secs".into(), json!(s.min(90 * 86_400)));
+                }
+                if let Some(mb) = b.kid_text("offline_max_size").and_then(|v| bytes(&v)).map(|b| b >> 20).filter(|mb| *mb >= 1) {
+                    cfg.insert("buffer_spool_max_mb".into(), json!(mb.min(100 * 1024)));
+                }
+                if !o.is_empty() {
+                    cfg.insert("buffer".into(), Value::Object(o));
+                }
             }
         }
     }
@@ -465,6 +475,21 @@ mod tests {
         assert_eq!(c["registry_restrict_value"], json!(["^evil"]));
         assert_eq!(c["registry_report_changes"], json!(["HKEY_LOCAL_MACHINE\\Software\\A"]));
         assert_eq!(c["buffer"], json!({ "min_eps": 100 }));
+    }
+
+    #[test]
+    fn offline_retention_and_size_per_group() {
+        let conf = |b: &str| format!("<agent_config><client_buffer>{b}</client_buffer></agent_config>");
+        let c = translate(&[conf("<offline_retention>2w</offline_retention><offline_max_size>2g</offline_max_size>")], "pc");
+        assert_eq!((c["buffer_spool_keep_secs"].as_u64(), c["buffer_spool_max_mb"].as_u64()), (Some(14 * 86_400), Some(2048)));
+        assert!(c.get("buffer").is_none(), "no queue settings given: the agent's own stay");
+        let c = translate(&[conf("<offline_retention>7d</offline_retention><offline_max_size>512m</offline_max_size>")], "pc");
+        assert_eq!((c["buffer_spool_keep_secs"].as_u64(), c["buffer_spool_max_mb"].as_u64()), (Some(7 * 86_400), Some(512)));
+        // nonsense is ignored: under an hour, over 90 days (capped), under a megabyte
+        let c = translate(&[conf("<offline_retention>10m</offline_retention><offline_max_size>10k</offline_max_size>")], "pc");
+        assert!(c.get("buffer_spool_keep_secs").is_none() && c.get("buffer_spool_max_mb").is_none());
+        let c = translate(&[conf("<offline_retention>365d</offline_retention>")], "pc");
+        assert_eq!(c["buffer_spool_keep_secs"].as_u64(), Some(90 * 86_400));
     }
 
     #[test]

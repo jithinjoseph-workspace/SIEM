@@ -365,6 +365,221 @@ impl LinuxActiveResponseHandler {
 
         true
     }
+
+    /// Execute on-demand YARA rule scan on target file or directory
+    pub async fn run_yara_scan(&self, target_raw: &str, buffer: &AgentBuffer) -> bool {
+        let clean_path_str = if let Some(p) = target_raw.strip_prefix("path=") {
+            p.trim()
+        } else {
+            target_raw.trim()
+        };
+
+        let path = Path::new(clean_path_str);
+        if !path.exists() {
+            warn!("provigil-execd: YARA scan target '{}' does not exist", clean_path_str);
+            let msg = format!("provigil-yara: Target file '{}' does not exist: not scanned", clean_path_str);
+            let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/yara-scan", msg);
+            event.metadata.insert("status".into(), "skipped".into());
+            event.metadata.insert("path".into(), clean_path_str.to_string());
+            buffer.push(event).await;
+            return false;
+        }
+
+        info!("provigil-execd: Executing YARA scan on '{}'", clean_path_str);
+
+        let candidate_rules = [
+            std::path::PathBuf::from("/opt/provigil-agent/shared/siem-yara.rules"),
+            std::path::PathBuf::from("shared/siem-yara.rules"),
+            std::path::PathBuf::from("data/shared/siem-yara.rules"),
+            std::path::PathBuf::from("siem-yara.rules"),
+        ];
+
+        let rules_content = candidate_rules
+            .iter()
+            .find(|p| p.exists())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|raw| siem_active_response::yara::decode_rules(&raw).ok())
+            .unwrap_or_else(|| siem_active_response::yara::TEST_RULE.to_string());
+
+        let scanner = match siem_active_response::yara::compile(&rules_content) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("provigil-execd: Failed to compile YARA rules: {}", e);
+                return false;
+            }
+        };
+
+        let file_sha256 = match std::fs::read(path) {
+            Ok(bytes) => {
+                let mut hasher = sha2::Sha256::new();
+                use sha2::Digest;
+                hasher.update(&bytes);
+                format!("{:x}", hasher.finalize())
+            }
+            Err(_) => String::new(),
+        };
+
+        match siem_active_response::yara::scan_file(&scanner, path) {
+            Ok(matches) => {
+                let is_match = !matches.is_empty();
+                let status_str = if is_match { "match" } else { "clean" };
+                let msg = if is_match {
+                    format!("provigil-yara: THREAT DETECTED! YARA rule(s) {:?} matched file '{}' (SHA256: {})", matches, clean_path_str, file_sha256)
+                } else {
+                    format!("provigil-yara: File '{}' clean. No YARA rules matched (SHA256: {})", clean_path_str, file_sha256)
+                };
+
+                info!("{}", msg);
+
+                let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/yara-scan", msg);
+                event.metadata.insert("status".into(), status_str.into());
+                event.metadata.insert("path".into(), clean_path_str.to_string());
+                event.metadata.insert("sha256".into(), file_sha256);
+                event.metadata.insert("rules_matched".into(), matches.join(","));
+                event.metadata.insert("os_type".into(), "linux".into());
+                if is_match {
+                    event.metadata.insert("severity".into(), "high".into());
+                }
+                buffer.push(event).await;
+                true
+            }
+            Err(err) => {
+                warn!("provigil-execd: YARA scan error on '{}': {}", clean_path_str, err);
+                let msg = format!("provigil-yara: Scan failed for '{}': {}", clean_path_str, err);
+                let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/yara-scan", msg);
+                event.metadata.insert("status".into(), "failed".into());
+                event.metadata.insert("path".into(), clean_path_str.to_string());
+                event.metadata.insert("error".into(), err);
+                buffer.push(event).await;
+                false
+            }
+        }
+    }
+
+    /// Execute interactive triage live-response query with strict action whitelisting
+    pub async fn execute_live_response(&self, target_arg: &str, buffer: &AgentBuffer) -> bool {
+        let mut id = format!("lr-{}", chrono::Utc::now().timestamp());
+        let mut action = "ps".to_string();
+        let mut path_target = String::new();
+
+        for part in target_arg.split_whitespace() {
+            if let Some(val) = part.strip_prefix("id=") {
+                id = val.to_string();
+            } else if let Some(val) = part.strip_prefix("action=") {
+                action = val.to_string();
+            } else if let Some(val) = part.strip_prefix("path=") {
+                path_target = val.to_string();
+            } else if !part.contains('=') {
+                if matches!(part, "ps" | "netstat" | "ls" | "cat" | "hash" | "env") {
+                    action = part.to_string();
+                } else if path_target.is_empty() {
+                    path_target = part.to_string();
+                }
+            }
+        }
+
+        info!("provigil-execd: Executing live response query (ID: {}, action: '{}', path: '{}')", id, action, path_target);
+
+        let clean_action = action.trim().to_ascii_lowercase();
+        let payload_result: Result<Vec<u8>, String> = match clean_action.as_str() {
+            "ps" | "process_list" | "processes" => {
+                let sys = crate::syscollector::LinuxSyscollector::new(self.agent_id.clone());
+                let processes = sys.collect_processes();
+                serde_json::to_vec_pretty(&processes).map_err(|e| e.to_string())
+            }
+            "netstat" | "ports" | "connections" => {
+                let sys = crate::syscollector::LinuxSyscollector::new(self.agent_id.clone());
+                let ports = sys.collect_ports();
+                serde_json::to_vec_pretty(&ports).map_err(|e| e.to_string())
+            }
+            "ls" | "dir" | "list_dir" => {
+                let p = Path::new(if path_target.is_empty() { "/" } else { &path_target });
+                if p.components().any(|c| c == std::path::Component::ParentDir) {
+                    Err("Relative path components (..) are forbidden".into())
+                } else if !p.exists() {
+                    Err(format!("Path '{}' does not exist", p.display()))
+                } else {
+                    siem_active_response::live::dir_listing(p)
+                }
+            }
+            "cat" | "read" | "read_file" => {
+                let p = Path::new(&path_target);
+                if path_target.is_empty() {
+                    Err("Target file path is required".into())
+                } else if p.components().any(|c| c == std::path::Component::ParentDir) {
+                    Err("Relative path components (..) are forbidden".into())
+                } else if !p.exists() {
+                    Err(format!("File '{}' does not exist", p.display()))
+                } else {
+                    siem_active_response::live::read_file(p).map(|(bytes, _sha)| bytes)
+                }
+            }
+            "hash" | "file_hash" => {
+                let p = Path::new(&path_target);
+                if !p.exists() {
+                    Err(format!("File '{}' does not exist", p.display()))
+                } else {
+                    match std::fs::read(p) {
+                        Ok(bytes) => {
+                            let mut sha = sha2::Sha256::new();
+                            use sha2::Digest;
+                            sha.update(&bytes);
+                            let sha_hex = format!("{:x}", sha.finalize());
+                            let res_json = serde_json::json!({
+                                "path": path_target,
+                                "sha256": sha_hex,
+                                "size": bytes.len()
+                            });
+                            serde_json::to_vec_pretty(&res_json).map_err(|e| e.to_string())
+                        }
+                        Err(e) => Err(format!("Cannot read file: {e}")),
+                    }
+                }
+            }
+            "env" | "environment" => {
+                let mut env_map = std::collections::BTreeMap::new();
+                for (k, v) in std::env::vars() {
+                    let k_lower = k.to_ascii_lowercase();
+                    if k_lower.contains("key") || k_lower.contains("secret") || k_lower.contains("pass") || k_lower.contains("token") || k_lower.contains("auth") {
+                        env_map.insert(k, "[REDACTED]".to_string());
+                    } else {
+                        env_map.insert(k, v);
+                    }
+                }
+                serde_json::to_vec_pretty(&env_map).map_err(|e| e.to_string())
+            }
+            unallowed => {
+                warn!("provigil-execd: Refusing unwhitelisted live response action: '{}'", unallowed);
+                Err(format!("Unwhitelisted live response action '{}'. Safe actions: ps, netstat, ls, cat, hash, env", unallowed))
+            }
+        };
+
+        match payload_result {
+            Ok(payload) => {
+                let lines = siem_active_response::live::result_lines(&id, &clean_action, &payload, "");
+                for line in lines {
+                    let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/live-response", line);
+                    event.metadata.insert("script".into(), "live-response".into());
+                    event.metadata.insert("id".into(), id.to_string());
+                    event.metadata.insert("action".into(), clean_action.clone());
+                    event.metadata.insert("os_type".into(), "linux".into());
+                    buffer.push(event).await;
+                }
+                true
+            }
+            Err(err_msg) => {
+                let fail_line = siem_active_response::live::failed_line(&id, &clean_action, &err_msg);
+                let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/live-response", fail_line);
+                event.metadata.insert("script".into(), "live-response".into());
+                event.metadata.insert("id".into(), id.to_string());
+                event.metadata.insert("status".into(), "failed".into());
+                event.metadata.insert("error".into(), err_msg);
+                event.metadata.insert("os_type".into(), "linux".into());
+                buffer.push(event).await;
+                false
+            }
+        }
+    }
 }
 
 /// Resolved command action + target extracted from either flat or gateway JSON command formats.
@@ -414,23 +629,30 @@ pub(crate) fn resolve_command_value(v: &serde_json::Value) -> Option<ResolvedCom
                 "quarantine-file" => "quarantine_file",
                 "isolate-host" => "isolate_host",
                 "release-host" => "release_host",
+                "yara-scan" | "yara_scan" => "yara_scan",
+                "live-response" | "live_response" => "live_response",
                 other => other,
             };
             let params = msg.get("parameters");
             let target = params
                 .and_then(|p| p.get("extra_args"))
                 .and_then(|a| a.as_array())
-                .and_then(|a| a.first())
-                .and_then(|x| x.as_str())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .filter(|s| !s.is_empty())
                 .or_else(|| {
                     params
                         .and_then(|p| p.get("alert"))
                         .and_then(|a| a.get("data"))
                         .and_then(|d| d.get("srcip"))
                         .and_then(|x| x.as_str())
+                        .map(|s| s.to_string())
                 })
-                .unwrap_or("")
-                .to_string();
+                .unwrap_or_default();
             Some(ResolvedCommand {
                 command_id,
                 action: action.to_string(),
@@ -493,6 +715,12 @@ pub(crate) async fn dispatch_commands(
             }
             "release_host" | "release-host" => {
                 handler.release_host(buffer).await;
+            }
+            "yara_scan" | "yara-scan" => {
+                handler.run_yara_scan(&cmd.target, buffer).await;
+            }
+            "live_response" | "live-response" => {
+                handler.execute_live_response(&cmd.target, buffer).await;
             }
             "sca_scan" => {
                 handler.run_sca_scan(buffer).await;
@@ -639,6 +867,30 @@ mod tests {
                 command_id: "c6".into(),
                 action: "release_host".into(),
                 target: String::new(),
+            })
+        );
+        assert_eq!(
+            resolve_command_value(&json!({
+                "command_id": "c7",
+                "type": "ar",
+                "message": { "command": "yara-scan", "parameters": { "extra_args": ["path=/tmp/suspicious.bin"] } }
+            })),
+            Some(ResolvedCommand {
+                command_id: "c7".into(),
+                action: "yara_scan".into(),
+                target: "path=/tmp/suspicious.bin".into(),
+            })
+        );
+        assert_eq!(
+            resolve_command_value(&json!({
+                "command_id": "c8",
+                "type": "ar",
+                "message": { "command": "live-response", "parameters": { "extra_args": ["id=req88", "action=ps"] } }
+            })),
+            Some(ResolvedCommand {
+                command_id: "c8".into(),
+                action: "live_response".into(),
+                target: "id=req88 action=ps".into(),
             })
         );
     }

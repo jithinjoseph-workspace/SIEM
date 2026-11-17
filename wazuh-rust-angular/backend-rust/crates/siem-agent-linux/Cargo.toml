@@ -20,7 +20,10 @@ hex = "0.4"
 libc = "0.2"
 rusqlite = { version = "0.41", features = ["bundled"] }
 flate2 = "1.0"
+base64 = "0.22"
+boreal = { version = "1.4", features = ["object", "hash"] }
 provigil-collect = { path = "../provigil-collect" }
+siem-active-response = { path = "../siem-active-response" }
 
 [package.metadata.deb]
 name = "provigil-agent"

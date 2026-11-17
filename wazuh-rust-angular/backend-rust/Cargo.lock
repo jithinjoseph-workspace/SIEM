@@ -4112,6 +4112,8 @@ dependencies = [
 name = "siem-agent-linux"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "boreal",
  "chrono",
  "flate2",
  "hex",
@@ -4123,6 +4125,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "siem-active-response",
  "siem-core",
  "tokio",
  "tracing",

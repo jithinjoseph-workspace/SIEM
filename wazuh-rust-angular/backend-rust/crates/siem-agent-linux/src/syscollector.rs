@@ -271,7 +271,7 @@ impl LinuxSyscollector {
         Vec::new()
     }
 
-    fn collect_processes(&self) -> Vec<ProcessItem> {
+    pub(crate) fn collect_processes(&self) -> Vec<ProcessItem> {
         let mut processes = Vec::new();
         let proc_dir = Path::new("/proc");
         if let Ok(entries) = std::fs::read_dir(proc_dir) {
@@ -329,7 +329,7 @@ impl LinuxSyscollector {
         processes
     }
 
-    fn collect_ports(&self) -> Vec<PortItem> {
+    pub(crate) fn collect_ports(&self) -> Vec<PortItem> {
         let mut ports = Vec::new();
 
         let tcp_files = [

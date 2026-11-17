@@ -27,12 +27,153 @@ impl RootcheckEngine {
         issues_found += self.check_promiscuous_interfaces(buffer).await;
         issues_found += self.check_trojans(buffer).await;
         issues_found += self.scan_tmp_hidden(buffer).await;
+        issues_found += self.check_hidden_kernel_modules(buffer).await;
+        issues_found += self.check_hidden_processes(buffer).await;
+        issues_found += self.check_ld_preload_hijack(buffer).await;
 
         if issues_found == 0 {
             info!("provigil-rootcheck: Scan completed. System clean. No rootkits, sniffers, or trojans detected.");
         } else {
             warn!("provigil-rootcheck: Scan completed. Flagged {} potential rootkit anomalies!", issues_found);
         }
+    }
+
+    /// Detects hidden Loadable Kernel Modules (LKM rootkits) by cross-referencing /proc/modules and /sys/module/
+    pub async fn check_hidden_kernel_modules(&self, buffer: &AgentBuffer) -> usize {
+        let mut count = 0;
+        let proc_modules = Path::new("/proc/modules");
+        let sys_modules = Path::new("/sys/module");
+
+        if !proc_modules.exists() || !sys_modules.exists() {
+            return 0;
+        }
+
+        let mut visible_modules = std::collections::HashSet::new();
+        if let Ok(content) = fs::read_to_string(proc_modules) {
+            for line in content.lines() {
+                if let Some(name) = line.split_whitespace().next() {
+                    visible_modules.insert(name.replace('-', "_"));
+                }
+            }
+        }
+
+        if let Ok(entries) = fs::read_dir(sys_modules) {
+            for entry in entries.flatten() {
+                let mod_name = entry.file_name().to_string_lossy().replace('-', "_");
+                let mod_path = entry.path();
+
+                let is_lkm = mod_path.join("initstate").exists() || mod_path.join("sections").exists();
+                if is_lkm && !visible_modules.contains(&mod_name) {
+                    count += 1;
+                    let msg = format!(
+                        "rootcheck: HIDDEN KERNEL MODULE DETECTED! Module '{}' present in sysfs (/sys/module/{}) but hidden from /proc/modules (LKM Rootkit behavior)",
+                        mod_name, mod_name
+                    );
+                    warn!("{}", msg);
+
+                    let mut event = RawEvent::new(&self.agent_id, EventSource::Custom("rootcheck".into()), "rootcheck/kernel-rootkit", msg);
+                    event.metadata.insert("category".into(), "hidden_kernel_module".into());
+                    event.metadata.insert("module_name".into(), mod_name);
+                    event.metadata.insert("os_type".into(), "linux".into());
+                    event.metadata.insert("severity".into(), "critical".into());
+                    buffer.push(event).await;
+                }
+            }
+        }
+
+        count
+    }
+
+    /// Detects hidden processes by comparing direct syscall probes against /proc directory enumeration
+    pub async fn check_hidden_processes(&self, buffer: &AgentBuffer) -> usize {
+        #[allow(unused_mut)]
+        let mut count = 0;
+
+        let proc_pids: std::collections::HashSet<u32> = fs::read_dir("/proc")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
+            .collect();
+
+        #[cfg(not(unix))]
+        {
+            let _ = buffer;
+            let _ = proc_pids;
+        }
+
+        #[cfg(unix)]
+        {
+            let max_pid = fs::read_to_string("/proc/sys/kernel/pid_max")
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .unwrap_or(32768)
+                .min(65536);
+
+            for pid in 2..max_pid {
+                let exists = unsafe {
+                    let ret = libc::kill(pid as libc::pid_t, 0);
+                    ret == 0 || (ret == -1 && *libc::__errno_location() == libc::EPERM)
+                };
+
+                if exists && !proc_pids.contains(&pid) {
+                    count += 1;
+                    let msg = format!(
+                        "rootcheck: HIDDEN PROCESS DETECTED! PID {} responds to syscalls but is unlinked from /proc enumeration (Process Hiding Rootkit)",
+                        pid
+                    );
+                    warn!("{}", msg);
+
+                    let mut event = RawEvent::new(&self.agent_id, EventSource::Custom("rootcheck".into()), "rootcheck/hidden-process", msg);
+                    event.metadata.insert("category".into(), "hidden_process".into());
+                    event.metadata.insert("hidden_pid".into(), pid.to_string());
+                    event.metadata.insert("os_type".into(), "linux".into());
+                    event.metadata.insert("severity".into(), "critical".into());
+                    buffer.push(event).await;
+
+                    if count >= 20 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        count
+    }
+
+    /// Checks /etc/ld.so.preload and environment for shared library hijacking
+    pub async fn check_ld_preload_hijack(&self, buffer: &AgentBuffer) -> usize {
+        let mut count = 0;
+        let preload_file = Path::new("/etc/ld.so.preload");
+
+        if preload_file.exists() {
+            if let Ok(content) = fs::read_to_string(preload_file) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    for line in trimmed.lines() {
+                        let line = line.trim();
+                        if line.is_empty() || line.starts_with('#') {
+                            continue;
+                        }
+                        count += 1;
+                        let msg = format!(
+                            "rootcheck: SYSTEM LIBRARY HIJACKING DETECTED! /etc/ld.so.preload contains active preload library: '{}'",
+                            line
+                        );
+                        warn!("{}", msg);
+
+                        let mut event = RawEvent::new(&self.agent_id, EventSource::Custom("rootcheck".into()), "rootcheck/ld-preload-hijack", msg);
+                        event.metadata.insert("category".into(), "dynamic_linker_hijacking".into());
+                        event.metadata.insert("preload_target".into(), line.to_string());
+                        event.metadata.insert("os_type".into(), "linux".into());
+                        event.metadata.insert("severity".into(), "high".into());
+                        buffer.push(event).await;
+                    }
+                }
+            }
+        }
+
+        count
     }
 
     /// Scans /dev and /dev/shm for hidden files (files starting with a dot or suspicious ELF binaries)
@@ -254,4 +395,22 @@ pub fn spawn_rootcheck_worker(
             engine.run_scan(&buffer).await;
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_rootcheck_engine_initialization() {
+        let engine = RootcheckEngine::new("agent-rk-test".into());
+        let (buf, _) = AgentBuffer::new(
+            "http://127.0.0.1:8088".into(),
+            100,
+            100,
+            Arc::new(crate::lifecycle::LifecycleCoordinator::new("agent-rk-test".into(), "http://127.0.0.1:8088".into())),
+        );
+        // Clean environment should execute scan safely
+        engine.run_scan(&buf).await;
+    }
 }

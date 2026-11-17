@@ -165,6 +165,14 @@ async fn run_linux_agent() {
         Duration::from_secs(60),
     );
 
+    let _yara_sync_handle = ClientAgent::spawn_yara_sync_worker(
+        config.agent_id.clone(),
+        config.agent_key.clone(),
+        failover.clone(),
+        Arc::clone(&lifecycle),
+        Duration::from_secs(3600),
+    );
+
     let mut fim_paths = Vec::new();
     let linux_fim_targets = [
         "/etc/passwd",

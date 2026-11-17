@@ -21,6 +21,7 @@ pub struct LinuxScaCheck {
     pub target_file: String,
     pub rule_type: ScaRuleType,
     pub rationale: String,
+    pub compliance: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -43,6 +44,87 @@ pub struct LinuxScaEngine {
     checks: Vec<LinuxScaCheck>,
 }
 
+pub const CIS_UBUNTU_HARDENING: &str = r#"
+policy:
+  id: "cis_ubuntu_linux"
+  name: "CIS Benchmark for Ubuntu Linux"
+checks:
+  - id: 2101
+    title: "CIS 1.1.1.1: Ensure mounting of cramfs filesystems is disabled"
+    rationale: "Disabling unused filesystems reduces the attack surface."
+    compliance:
+      - "CIS:1.1.1.1"
+      - "NIST-800-53:CM-7"
+    condition: all
+    rules:
+      - "c:modprobe -n -v cramfs -> r:install /bin/true|install /bin/false"
+  - id: 2102
+    title: "CIS 1.1.1.2: Ensure mounting of squashfs filesystems is disabled"
+    rationale: "Disabling unused filesystems reduces kernel attack surface."
+    compliance:
+      - "CIS:1.1.1.2"
+      - "NIST-800-53:CM-7"
+    condition: all
+    rules:
+      - "c:modprobe -n -v squashfs -> r:install /bin/true|install /bin/false"
+  - id: 2103
+    title: "CIS 5.2.2: Ensure SSH Protocol is set to 2"
+    rationale: "SSH v1 suffers from critical cryptographic vulnerabilities."
+    compliance:
+      - "CIS:5.2.2"
+      - "PCI-DSS:v4.0:2.2"
+      - "NIST-800-53:AC-17"
+    condition: all
+    rules:
+      - "f:/etc/ssh/sshd_config -> !r:^Protocol 1"
+  - id: 2104
+    title: "CIS 5.2.3: Ensure SSH LogLevel is set to INFO or higher"
+    rationale: "Detailed SSH logging ensures unauthorized login attempts are recorded."
+    compliance:
+      - "CIS:5.2.3"
+      - "PCI-DSS:v4.0:10.2"
+      - "NIST-800-53:AU-2"
+    condition: all
+    rules:
+      - "f:/etc/ssh/sshd_config -> r:^LogLevel (INFO|VERBOSE)"
+  - id: 2105
+    title: "CIS 3.3.1: Ensure TCP SYN Cookies is enabled"
+    rationale: "TCP SYN Cookies protect against SYN flood denial of service attacks."
+    compliance:
+      - "CIS:3.3.1"
+      - "NIST-800-53:SC-5"
+    condition: all
+    rules:
+      - "f:/proc/sys/net/ipv4/tcp_syncookies -> 1"
+"#;
+
+pub const CIS_RHEL_HARDENING: &str = r#"
+policy:
+  id: "cis_rhel_linux"
+  name: "CIS Benchmark for Red Hat Enterprise Linux"
+checks:
+  - id: 2201
+    title: "CIS 1.4.1: Ensure AIDE is installed"
+    rationale: "AIDE provides file and directory integrity monitoring."
+    compliance:
+      - "CIS:1.4.1"
+      - "PCI-DSS:v4.0:11.5"
+      - "NIST-800-53:SI-7"
+    condition: any
+    rules:
+      - "f:/usr/sbin/aide"
+      - "f:/usr/bin/aide"
+  - id: 2202
+    title: "CIS 3.2.2: Ensure ICMP redirects are not sent"
+    rationale: "Sending ICMP redirects may leak network topology."
+    compliance:
+      - "CIS:3.2.2"
+      - "NIST-800-53:SC-7"
+    condition: all
+    rules:
+      - "f:/proc/sys/net/ipv4/conf/all/send_redirects -> 0"
+"#;
+
 impl LinuxScaEngine {
     pub fn new(agent_id: String) -> Self {
         let mut all_checks = vec![
@@ -52,6 +134,7 @@ impl LinuxScaEngine {
                 target_file: "/etc/shadow".into(),
                 rule_type: ScaRuleType::FilePermissions { max_octal: 0o640 },
                 rationale: "The /etc/shadow file contains user password hashes and must be protected from unauthorized access.".into(),
+                compliance: vec!["CIS:1.1".into(), "PCI-DSS:v4.0:2.2".into(), "NIST-800-53:AC-3".into()],
             },
             LinuxScaCheck {
                 id: 2002,
@@ -59,6 +142,7 @@ impl LinuxScaEngine {
                 target_file: "/etc/passwd".into(),
                 rule_type: ScaRuleType::FilePermissions { max_octal: 0o644 },
                 rationale: "The /etc/passwd file contains user account details and must only be writable by root.".into(),
+                compliance: vec!["CIS:1.2".into(), "PCI-DSS:v4.0:2.2".into(), "NIST-800-53:AC-3".into()],
             },
             LinuxScaCheck {
                 id: 2003,
@@ -69,6 +153,7 @@ impl LinuxScaEngine {
                     expected: "no".into(),
                 },
                 rationale: "Disallowing direct root logins via SSH preserves auditability.".into(),
+                compliance: vec!["CIS:5.2.1".into(), "PCI-DSS:v4.0:2.2".into(), "NIST-800-53:AC-17".into()],
             },
             LinuxScaCheck {
                 id: 2004,
@@ -79,6 +164,7 @@ impl LinuxScaEngine {
                     expected: "0".into(),
                 },
                 rationale: "Endpoints should not route traffic between interfaces unless explicitly configured.".into(),
+                compliance: vec!["CIS:3.1.1".into(), "NIST-800-53:CM-7".into()],
             },
             LinuxScaCheck {
                 id: 2005,
@@ -89,6 +175,7 @@ impl LinuxScaEngine {
                     expected: "0".into(),
                 },
                 rationale: "ICMP redirects can allow an attacker on the same network to alter routing tables.".into(),
+                compliance: vec!["CIS:3.2.1".into(), "NIST-800-53:SC-7".into()],
             },
             LinuxScaCheck {
                 id: 2006,
@@ -99,8 +186,13 @@ impl LinuxScaEngine {
                     expected: "0".into(),
                 },
                 rationale: "Core dumps may contain sensitive memory contents including keys and credentials.".into(),
+                compliance: vec!["CIS:1.5.1".into(), "NIST-800-53:SI-11".into()],
             },
         ];
+
+        // Load embedded CIS distribution policies
+        Self::parse_cis_yaml_str(CIS_UBUNTU_HARDENING, &mut all_checks);
+        Self::parse_cis_yaml_str(CIS_RHEL_HARDENING, &mut all_checks);
 
         let sca_dir = Path::new("/opt/provigil-agent/ruleset/sca");
         if sca_dir.is_dir() {
@@ -119,23 +211,35 @@ impl LinuxScaEngine {
         Self { agent_id, checks: all_checks }
     }
 
+    pub fn parse_cis_yaml_str(yaml_str: &str, out_checks: &mut Vec<LinuxScaCheck>) {
+        let cursor = std::io::Cursor::new(yaml_str.as_bytes());
+        let reader = BufReader::new(cursor);
+        Self::parse_cis_yaml_reader(reader, out_checks);
+    }
+
     pub fn parse_cis_yaml(path: &Path, out_checks: &mut Vec<LinuxScaCheck>) {
         let Ok(file) = File::open(path) else { return };
         let reader = BufReader::new(file);
+        Self::parse_cis_yaml_reader(reader, out_checks);
+    }
 
+    pub fn parse_cis_yaml_reader<R: BufRead>(reader: R, out_checks: &mut Vec<LinuxScaCheck>) {
         let mut in_checks = false;
         let mut cur_id: Option<u32> = None;
         let mut cur_title: Option<String> = None;
         let mut cur_rationale: Option<String> = None;
         let mut cur_condition = ScaCondition::All;
         let mut cur_rules: Vec<String> = Vec::new();
+        let mut cur_compliance: Vec<String> = Vec::new();
         let mut reading_rules = false;
+        let mut reading_compliance = false;
 
         let mut flush = |id: &mut Option<u32>,
                      title: &mut Option<String>,
                      rat: &mut Option<String>,
                      cond: &mut ScaCondition,
-                     rules: &mut Vec<String>| {
+                     rules: &mut Vec<String>,
+                     comp: &mut Vec<String>| {
             if let (Some(cid), Some(ctitle)) = (id.take(), title.take()) {
                 if !rules.is_empty() {
                     let target = rules
@@ -153,12 +257,14 @@ impl LinuxScaEngine {
                         rationale: rat
                             .take()
                             .unwrap_or_else(|| "CIS Benchmark hardening guideline".into()),
+                        compliance: std::mem::take(comp),
                     });
                 }
             }
             *rat = None;
             *cond = ScaCondition::All;
             rules.clear();
+            comp.clear();
         };
 
         for raw in reader.lines().flatten() {
@@ -175,8 +281,9 @@ impl LinuxScaEngine {
             }
 
             if let Some(rest) = trimmed.strip_prefix("- id:") {
-                flush(&mut cur_id, &mut cur_title, &mut cur_rationale, &mut cur_condition, &mut cur_rules);
+                flush(&mut cur_id, &mut cur_title, &mut cur_rationale, &mut cur_condition, &mut cur_rules, &mut cur_compliance);
                 reading_rules = false;
+                reading_compliance = false;
                 cur_id = rest.trim().parse::<u32>().ok();
                 continue;
             }
@@ -186,15 +293,18 @@ impl LinuxScaEngine {
                     cur_id = rest.trim().parse::<u32>().ok();
                 }
                 reading_rules = false;
+                reading_compliance = false;
                 continue;
             }
 
             if let Some(rest) = trimmed.strip_prefix("title:") {
                 cur_title = Some(unquote_yaml(rest.trim()));
                 reading_rules = false;
+                reading_compliance = false;
             } else if let Some(rest) = trimmed.strip_prefix("rationale:") {
                 cur_rationale = Some(unquote_yaml(rest.trim()));
                 reading_rules = false;
+                reading_compliance = false;
             } else if let Some(rest) = trimmed.strip_prefix("condition:") {
                 cur_condition = match unquote_yaml(rest.trim()).to_lowercase().as_str() {
                     "any" => ScaCondition::Any,
@@ -202,16 +312,24 @@ impl LinuxScaEngine {
                     _ => ScaCondition::All,
                 };
                 reading_rules = false;
+                reading_compliance = false;
+            } else if trimmed == "compliance:" {
+                reading_compliance = true;
+                reading_rules = false;
+            } else if reading_compliance && trimmed.starts_with("- ") {
+                cur_compliance.push(unquote_yaml(trimmed.trim_start_matches("- ").trim()));
             } else if trimmed == "rules:" {
                 reading_rules = true;
+                reading_compliance = false;
             } else if reading_rules && trimmed.starts_with("- ") {
                 cur_rules.push(unquote_yaml(trimmed.trim_start_matches("- ").trim()));
             } else if !trimmed.starts_with('-') && trimmed.contains(':') {
                 reading_rules = false;
+                reading_compliance = false;
             }
         }
 
-        flush(&mut cur_id, &mut cur_title, &mut cur_rationale, &mut cur_condition, &mut cur_rules);
+        flush(&mut cur_id, &mut cur_title, &mut cur_rationale, &mut cur_condition, &mut cur_rules, &mut cur_compliance);
     }
 
     /// Run compliance assessment against the Linux host and return `(passed, total, score_pct)`.
@@ -240,6 +358,9 @@ impl LinuxScaEngine {
             event.metadata.insert("status".into(), status_str.to_lowercase());
             event.metadata.insert("rationale".into(), check.rationale.clone());
             event.metadata.insert("os_type".into(), "linux".into());
+            if !check.compliance.is_empty() {
+                event.metadata.insert("compliance".into(), check.compliance.join(","));
+            }
 
             buffer.push(event).await;
         }
@@ -531,5 +652,19 @@ mod tests {
         assert!(engine.evaluate_check(&engine.checks[0]));
         assert!(!engine.evaluate_check(&engine.checks[1]));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_embedded_cis_distribution_policies_and_compliance() {
+        let engine = LinuxScaEngine::new("agent-sca-test".into());
+        assert!(engine.checks.len() >= 13);
+
+        let ssh_root = engine.checks.iter().find(|c| c.id == 2003).expect("check 2003 exists");
+        assert!(ssh_root.compliance.contains(&"PCI-DSS:v4.0:2.2".to_string()));
+        assert!(ssh_root.compliance.contains(&"NIST-800-53:AC-17".to_string()));
+
+        let syn_cookies = engine.checks.iter().find(|c| c.id == 2105).expect("check 2105 exists");
+        assert!(syn_cookies.compliance.contains(&"CIS:3.3.1".to_string()));
+        assert!(syn_cookies.compliance.contains(&"NIST-800-53:SC-5".to_string()));
     }
 }

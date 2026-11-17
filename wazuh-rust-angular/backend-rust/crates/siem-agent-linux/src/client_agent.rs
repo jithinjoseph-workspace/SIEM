@@ -544,4 +544,67 @@ impl ClientAgent {
             }
         })
     }
+
+    /// Spawn hourly YARA rules background synchronization worker
+    pub fn spawn_yara_sync_worker(
+        agent_id: String,
+        agent_key: String,
+        failover: Arc<crate::failover::Failover>,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let key = std::env::var("SIEM_AGENT_KEY").ok().filter(|k| !k.trim().is_empty()).unwrap_or(agent_key);
+            let target_dirs = [
+                PathBuf::from("/opt/provigil-agent/shared"),
+                PathBuf::from("shared"),
+                PathBuf::from("data/shared"),
+            ];
+            let rules_dir = target_dirs.iter().find(|d| d.exists() || std::fs::create_dir_all(d).is_ok()).unwrap_or(&target_dirs[1]);
+            let rules_file = rules_dir.join("siem-yara.rules");
+
+            loop {
+                if lifecycle.is_terminated() {
+                    break;
+                }
+                if lifecycle.is_active() {
+                    let current_url = failover.current_url();
+                    let client = match crate::enroll::http_builder().timeout(Duration::from_secs(15)).build() {
+                        Ok(c) => c,
+                        Err(_) => {
+                            tokio::time::sleep(interval).await;
+                            continue;
+                        }
+                    };
+                    let url = format!("{}/api/v1/agents/{}/yara-rules", current_url.trim_end_matches('/'), agent_id);
+                    let mut req = client.get(&url);
+                    if !agent_id.trim().is_empty() {
+                        req = req.header("x-agent-id", agent_id.trim());
+                    }
+                    if !key.trim().is_empty() {
+                        req = req.header("x-agent-key", key.trim()).header("authorization", format!("Bearer {}", key.trim()));
+                    }
+
+                    match req.send().await {
+                        Ok(res) if res.status().is_success() => {
+                            if let Ok(content) = res.text().await {
+                                if !content.trim().is_empty() {
+                                    if let Err(e) = std::fs::write(&rules_file, &content) {
+                                        tracing::warn!("ClientAgent: Failed to write synced YARA rules to {}: {}", rules_file.display(), e);
+                                    } else {
+                                        info!("ClientAgent: Synchronized updated YARA rules into {}", rules_file.display());
+                                    }
+                                }
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            tracing::debug!("ClientAgent: YARA rules fetch error ({}): {}", url, err);
+                        }
+                    }
+                }
+                tokio::time::sleep(interval).await;
+            }
+        })
+    }
 }

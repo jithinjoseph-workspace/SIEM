@@ -6,7 +6,9 @@ mod config_parser;
 mod control;
 mod enroll;
 mod execd;
+pub mod failover;
 pub mod fim_db;
+pub mod group_config;
 pub mod inotify_watcher;
 mod lifecycle;
 mod logcollector;
@@ -124,23 +126,43 @@ async fn run_linux_agent() {
     info!("Platform:        {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     info!("===============================================================");
 
-    let (buffer, _buffer_worker) = AgentBuffer::new(
-        config.manager_url.clone(),
+    let failover = Arc::new(failover::Failover::new(
+        config.manager_list(),
+        3,
+        Duration::from_secs(2),
+    ));
+
+    let group_cfg = group_config::load_persisted_group_config();
+    let (group_tx, group_rx) = tokio::sync::watch::channel(group_cfg.clone());
+
+    let (buffer, _buffer_worker) = AgentBuffer::new_with_failover(
+        failover.clone(),
         config.buffer_capacity,
         config.events_per_second,
         Arc::clone(&lifecycle),
+        buffer::default_spool_dir(),
+        Some(group_rx.clone()),
     );
     let buffer = Arc::new(buffer);
 
     client.register(&buffer).await;
 
-    let _keepalive_handle = ClientAgent::spawn_keepalive_worker(
+    let _keepalive_handle = ClientAgent::spawn_keepalive_worker_with_failover(
         config.agent_id.clone(),
         config.agent_name.clone(),
-        config.manager_url.clone(),
+        failover.clone(),
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
         Duration::from_secs(10),
+    );
+
+    let _config_handle = ClientAgent::spawn_config_worker(
+        config.agent_id.clone(),
+        config.agent_key.clone(),
+        failover.clone(),
+        group_tx,
+        Arc::clone(&lifecycle),
+        Duration::from_secs(60),
     );
 
     let mut fim_paths = Vec::new();

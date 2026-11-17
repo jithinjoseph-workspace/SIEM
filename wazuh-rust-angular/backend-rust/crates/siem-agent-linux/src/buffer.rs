@@ -26,22 +26,45 @@ impl AgentBuffer {
         events_per_second: usize,
         lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     ) -> (Self, tokio::task::JoinHandle<()>) {
-        Self::new_with_spool(
-            manager_url,
+        let failover = Arc::new(crate::failover::Failover::new(vec![manager_url], 3, Duration::from_secs(2)));
+        Self::new_with_failover(
+            failover,
             capacity,
             events_per_second,
             lifecycle,
             default_spool_dir(),
+            None,
         )
     }
 
     /// Initialize agent buffer with an explicit spool directory (used in production or unit tests)
+    #[allow(dead_code)]
     pub fn new_with_spool(
         manager_url: String,
         capacity: usize,
         events_per_second: usize,
         lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
         spool_dir: PathBuf,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
+        let failover = Arc::new(crate::failover::Failover::new(vec![manager_url], 3, Duration::from_secs(2)));
+        Self::new_with_failover(
+            failover,
+            capacity,
+            events_per_second,
+            lifecycle,
+            spool_dir,
+            None,
+        )
+    }
+
+    /// Initialize agent buffer with multi-manager failover and central group config hot-reload
+    pub fn new_with_failover(
+        failover: Arc<crate::failover::Failover>,
+        capacity: usize,
+        events_per_second: usize,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+        spool_dir: PathBuf,
+        mut group_rx: Option<tokio::sync::watch::Receiver<crate::group_config::DynamicGroupConfig>>,
     ) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<RawEvent>(capacity);
         let dropped_count = Arc::new(AtomicUsize::new(0));
@@ -56,15 +79,14 @@ impl AgentBuffer {
                 .build()
                 .unwrap_or_default();
 
-            let endpoint = format!("{}/api/v1/events/ingest", manager_url.trim_end_matches('/'));
             info!(
-                "AgentBuffer: Initialized with capacity {}, spool directory '{}', and target endpoint '{}'",
+                "AgentBuffer: Initialized with capacity {}, spool directory '{}', active manager '{}'",
                 capacity,
                 spool_worker_dir.display(),
-                endpoint
+                failover.current_url()
             );
 
-            let delay_between_flushes = Duration::from_millis(
+            let mut delay_between_flushes = Duration::from_millis(
                 if events_per_second > 0 {
                     (1000 / events_per_second).max(5) as u64
                 } else {
@@ -75,6 +97,17 @@ impl AgentBuffer {
             let mut batch: Vec<RawEvent> = Vec::with_capacity(50);
 
             loop {
+                // Dynamic hot-reload: adapt EPS limit when central group configuration changes
+                if let Some(ref mut rx) = group_rx {
+                    if rx.has_changed().unwrap_or(false) {
+                        let new_eps = rx.borrow_and_update().events_per_second;
+                        if new_eps > 0 {
+                            delay_between_flushes = Duration::from_millis((1000 / new_eps).max(5) as u64);
+                            info!("AgentBuffer: Hot-reloaded events_per_second to {}", new_eps);
+                        }
+                    }
+                }
+
                 if lifecycle.is_terminated() {
                     // Flush any remaining in-memory events to disk spool before terminating
                     let mut remaining = Vec::new();
@@ -94,17 +127,22 @@ impl AgentBuffer {
                     continue;
                 }
 
+                let current_url = failover.current_url();
+                let endpoint = format!("{}/api/v1/events/ingest", current_url.trim_end_matches('/'));
+
                 // 1. Prioritize draining disk-persisted spool if manager is reachable
                 if let Some((spool_path, spooled_events)) = spool_drain_oldest(&spool_worker_dir) {
                     if !spooled_events.is_empty() {
                         match dispatch_batch(&client, &endpoint, &spooled_events).await {
                             Ok(()) => {
+                                failover.report_success();
                                 debug!("AgentBuffer: Transmitted {} spooled events from '{}'", spooled_events.len(), spool_path.display());
                                 let _ = std::fs::remove_file(&spool_path);
                                 tokio::time::sleep(delay_between_flushes).await;
                                 continue;
                             }
                             Err(e) => {
+                                failover.report_failure().await;
                                 debug!("AgentBuffer: Spool delivery paused (manager unreachable: {}).", e);
                                 tokio::time::sleep(Duration::from_secs(2)).await;
                                 continue;
@@ -149,9 +187,11 @@ impl AgentBuffer {
 
                     match req.send().await {
                         Ok(res) if res.status().is_success() => {
+                            failover.report_success();
                             debug!("AgentBuffer: Dispatched {} events to Manager", count);
                         }
                         Ok(res) if res.status() == reqwest::StatusCode::GONE => {
+                            failover.report_success();
                             warn!("AgentBuffer: Manager returned 410 GONE (agent deactivated or dormant). Updating state...");
                             if let Some(state) = lifecycle.fetch_state().await {
                                 lifecycle.set_state(state);
@@ -162,6 +202,7 @@ impl AgentBuffer {
                             spool_write(&spool_worker_dir, &to_send);
                         }
                         Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
+                            failover.report_success();
                             warn!("AgentBuffer: Manager returned 404 NOT FOUND. Checking agent lifecycle state...");
                             if let Some(state) = lifecycle.fetch_state().await {
                                 if state == crate::lifecycle::AgentLifecycleState::Decommissioned {
@@ -172,10 +213,14 @@ impl AgentBuffer {
                             spool_write(&spool_worker_dir, &to_send);
                         }
                         Ok(res) => {
+                            if res.status().is_server_error() {
+                                failover.report_failure().await;
+                            }
                             warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}. Persisting to disk spool.", res.status());
                             spool_write(&spool_worker_dir, &to_send);
                         }
                         Err(err) => {
+                            failover.report_failure().await;
                             debug!("AgentBuffer: Manager connection unreachable ({}). Persisting batch to disk spool.", err);
                             spool_write(&spool_worker_dir, &to_send);
                         }

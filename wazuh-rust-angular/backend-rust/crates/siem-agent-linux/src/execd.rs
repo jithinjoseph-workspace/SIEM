@@ -243,6 +243,128 @@ impl LinuxActiveResponseHandler {
         info!("provigil-sca: On-demand SCA CIS audit finished. Score: {}% ({}/{})", score, passed, total);
         true
     }
+
+    /// Isolate the Linux host from the network while preserving manager connectivity
+    pub async fn isolate_host(&self, target_arg: &str, buffer: &AgentBuffer) -> bool {
+        let mut isolation_id = format!("iso-{}", chrono::Utc::now().timestamp());
+        let mut allowed_ips = Vec::new();
+
+        for part in target_arg.split([',', ';', ' ']) {
+            let part = part.trim();
+            if let Some(id) = part.strip_prefix("id=") {
+                if !id.is_empty() {
+                    isolation_id = id.to_string();
+                }
+            } else if let Some(allow) = part.strip_prefix("allow=") {
+                for ip in allow.split(':') {
+                    if !ip.is_empty() {
+                        allowed_ips.push(ip.to_string());
+                    }
+                }
+            } else if !part.is_empty() && (part.contains('.') || part.contains(':')) && !part.contains('=') {
+                allowed_ips.push(part.to_string());
+            }
+        }
+
+        if allowed_ips.is_empty() {
+            if let Ok(mgr) = std::env::var("SIEM_MANAGER_URL").or_else(|_| std::env::var("PROVIGIL_MANAGER")) {
+                let clean = mgr.split("://").nth(1).unwrap_or(&mgr).split([':', '/']).next().unwrap_or("").trim().to_string();
+                if !clean.is_empty() {
+                    allowed_ips.push(clean);
+                }
+            }
+        }
+
+        info!("provigil-execd: Isolating Linux host (ID: {}). Whitelisting manager IPs: {:?}", isolation_id, allowed_ips);
+
+        let state_dir = Path::new("/opt/provigil-agent/data");
+        let _ = std::fs::create_dir_all(state_dir);
+        let state_file = state_dir.join("isolation.state");
+        let local_state = Path::new("data/isolation.state");
+        if let Some(p) = local_state.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+
+        // 1. Try nftables
+        let nft_ok = Command::new("nft")
+            .args(["add", "table", "inet", "provigil_isolation"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if nft_ok {
+            let _ = Command::new("nft").args(["add", "chain", "inet", "provigil_isolation", "input", "{ type filter hook input priority -10; policy drop; }"]).status();
+            let _ = Command::new("nft").args(["add", "chain", "inet", "provigil_isolation", "output", "{ type filter hook output priority -10; policy drop; }"]).status();
+            let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "input", "iif", "lo", "accept"]).status();
+            let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "output", "oif", "lo", "accept"]).status();
+            let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "input", "ct", "state", "established,related", "accept"]).status();
+            let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "output", "ct", "state", "established,related", "accept"]).status();
+
+            for ip in &allowed_ips {
+                let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "input", "ip", "saddr", ip, "accept"]).status();
+                let _ = Command::new("nft").args(["add", "rule", "inet", "provigil_isolation", "output", "ip", "daddr", ip, "accept"]).status();
+            }
+        } else {
+            // 2. Fallback to iptables
+            let _ = Command::new("iptables").args(["-N", "PROVIGIL_ISOLATION_IN"]).status();
+            let _ = Command::new("iptables").args(["-N", "PROVIGIL_ISOLATION_OUT"]).status();
+            let _ = Command::new("iptables").args(["-I", "INPUT", "1", "-j", "PROVIGIL_ISOLATION_IN"]).status();
+            let _ = Command::new("iptables").args(["-I", "OUTPUT", "1", "-j", "PROVIGIL_ISOLATION_OUT"]).status();
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_IN", "-i", "lo", "-j", "ACCEPT"]).status();
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_OUT", "-o", "lo", "-j", "ACCEPT"]).status();
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_IN", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]).status();
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_OUT", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]).status();
+
+            for ip in &allowed_ips {
+                let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_IN", "-s", ip, "-j", "ACCEPT"]).status();
+                let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_OUT", "-d", ip, "-j", "ACCEPT"]).status();
+            }
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_IN", "-j", "DROP"]).status();
+            let _ = Command::new("iptables").args(["-A", "PROVIGIL_ISOLATION_OUT", "-j", "DROP"]).status();
+        }
+
+        let state_content = format!("id={}\nisolated_at={}\nallowed={}\n", isolation_id, chrono::Utc::now().to_rfc3339(), allowed_ips.join(","));
+        let _ = std::fs::write(&state_file, &state_content);
+        let _ = std::fs::write(&local_state, &state_content);
+
+        let msg = format!("provigil-execd: Host isolated successfully (ID: {}). Allowed managers: {:?}", isolation_id, allowed_ips);
+        info!("{}", msg);
+
+        let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/isolate-host", msg);
+        event.metadata.insert("action".into(), "isolate_host".into());
+        event.metadata.insert("isolation_id".into(), isolation_id);
+        event.metadata.insert("os_type".into(), "linux".into());
+        buffer.push(event).await;
+
+        true
+    }
+
+    /// Release network isolation on the Linux host
+    pub async fn release_host(&self, buffer: &AgentBuffer) -> bool {
+        info!("provigil-execd: Releasing host isolation, restoring network access.");
+
+        let _ = Command::new("nft").args(["delete", "table", "inet", "provigil_isolation"]).status();
+
+        let _ = Command::new("iptables").args(["-D", "INPUT", "-j", "PROVIGIL_ISOLATION_IN"]).status();
+        let _ = Command::new("iptables").args(["-D", "OUTPUT", "-j", "PROVIGIL_ISOLATION_OUT"]).status();
+        let _ = Command::new("iptables").args(["-F", "PROVIGIL_ISOLATION_IN"]).status();
+        let _ = Command::new("iptables").args(["-F", "PROVIGIL_ISOLATION_OUT"]).status();
+        let _ = Command::new("iptables").args(["-X", "PROVIGIL_ISOLATION_IN"]).status();
+        let _ = Command::new("iptables").args(["-X", "PROVIGIL_ISOLATION_OUT"]).status();
+
+        let _ = std::fs::remove_file("/opt/provigil-agent/data/isolation.state");
+        let _ = std::fs::remove_file("data/isolation.state");
+
+        let msg = "provigil-execd: Host isolation released. Full network connectivity restored.".to_string();
+        info!("{}", msg);
+
+        let mut event = RawEvent::new(&self.agent_id, EventSource::ActiveResponse, "execd/release-host", msg);
+        event.metadata.insert("action".into(), "release_host".into());
+        event.metadata.insert("os_type".into(), "linux".into());
+        buffer.push(event).await;
+
+        true
+    }
 }
 
 /// Resolved command action + target extracted from either flat or gateway JSON command formats.
@@ -290,6 +412,8 @@ pub(crate) fn resolve_command_value(v: &serde_json::Value) -> Option<ResolvedCom
                 "firewall-drop" => "firewall_drop",
                 "kill-process" => "kill_process",
                 "quarantine-file" => "quarantine_file",
+                "isolate-host" => "isolate_host",
+                "release-host" => "release_host",
                 other => other,
             };
             let params = msg.get("parameters");
@@ -363,6 +487,12 @@ pub(crate) async fn dispatch_commands(
             }
             "delete" | "uninstall" => {
                 lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
+            }
+            "isolate_host" | "isolate-host" => {
+                handler.isolate_host(&cmd.target, buffer).await;
+            }
+            "release_host" | "release-host" => {
+                handler.release_host(buffer).await;
             }
             "sca_scan" => {
                 handler.run_sca_scan(buffer).await;
@@ -485,6 +615,30 @@ mod tests {
                 command_id: "c4".into(),
                 action: "restart_agent".into(),
                 target: "all".into(),
+            })
+        );
+        assert_eq!(
+            resolve_command_value(&json!({
+                "command_id": "c5",
+                "type": "ar",
+                "message": { "command": "isolate-host3600", "parameters": { "extra_args": ["id=iso99,allow=10.0.0.1"] } }
+            })),
+            Some(ResolvedCommand {
+                command_id: "c5".into(),
+                action: "isolate_host".into(),
+                target: "id=iso99,allow=10.0.0.1".into(),
+            })
+        );
+        assert_eq!(
+            resolve_command_value(&json!({
+                "command_id": "c6",
+                "type": "ar",
+                "message": { "command": "release-host", "parameters": { "extra_args": [] } }
+            })),
+            Some(ResolvedCommand {
+                command_id: "c6".into(),
+                action: "release_host".into(),
+                target: String::new(),
             })
         );
     }

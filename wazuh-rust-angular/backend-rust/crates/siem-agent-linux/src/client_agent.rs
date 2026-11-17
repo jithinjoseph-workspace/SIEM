@@ -9,6 +9,8 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub manager_url: String,
+    #[serde(default)]
+    pub manager_urls: Vec<String>,
     /// Empty until the agent is enrolled (client.keys / SIEM_AGENT_ID / enrollment).
     pub agent_id: String,
     pub agent_name: String,
@@ -23,10 +25,29 @@ pub struct AgentConfig {
     pub events_per_second: usize,
 }
 
+impl AgentConfig {
+    /// Managers in failover order; empty means `[manager_url]`.
+    pub fn manager_list(&self) -> Vec<String> {
+        let tidy = |u: &str| u.trim().trim_end_matches('/').to_string();
+        let mut list: Vec<String> = self.manager_urls.iter().map(|u| tidy(u)).filter(|u| !u.is_empty()).collect();
+        if list.is_empty() {
+            let p = tidy(&self.manager_url);
+            if !p.is_empty() {
+                list.push(p);
+            }
+        }
+        if list.is_empty() {
+            list.push("https://127.0.0.1:8443".to_string());
+        }
+        list
+    }
+}
+
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             manager_url: "https://127.0.0.1:8443".to_string(),
+            manager_urls: Vec::new(),
             agent_id: String::new(),
             agent_name: "provigil-linux-node".to_string(),
             agent_key: String::new(),
@@ -123,7 +144,13 @@ impl ClientAgent {
         }
 
         // Environment variable overrides
-        if let Ok(manager) = std::env::var("PROVIGIL_MANAGER").or_else(|_| std::env::var("PROVIGIL_MANAGER_IP")) {
+        if let Ok(urls_env) = std::env::var("SIEM_MANAGER_URLS").or_else(|_| std::env::var("PROVIGIL_MANAGER_URLS")) {
+            let list: Vec<String> = urls_env.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            if !list.is_empty() {
+                cfg.manager_url = list[0].clone();
+                cfg.manager_urls = list;
+            }
+        } else if let Ok(manager) = std::env::var("PROVIGIL_MANAGER").or_else(|_| std::env::var("PROVIGIL_MANAGER_IP")) {
             let port = std::env::var("PROVIGIL_MANAGER_PORT")
                 .or_else(|_| std::env::var("SIEM_MANAGER_PORT"))
                 .unwrap_or_else(|_| "8443".to_string());
@@ -135,6 +162,28 @@ impl ClientAgent {
             };
         } else if let Ok(url) = std::env::var("SIEM_MANAGER_URL") {
             cfg.manager_url = url;
+        }
+
+        if let Some(urls) = config_json.as_ref().and_then(|j| j.get("manager_urls")).and_then(|v| v.as_array()) {
+            for u in urls {
+                if let Some(s) = u.as_str() {
+                    let s_clean = s.trim().to_string();
+                    if !s_clean.is_empty() && !cfg.manager_urls.contains(&s_clean) {
+                        cfg.manager_urls.push(s_clean);
+                    }
+                }
+            }
+        }
+
+        // Overlay central group settings if previously saved
+        let group_cfg = crate::group_config::load_persisted_group_config();
+        for m in group_cfg.manager_urls {
+            if !cfg.manager_urls.contains(&m) {
+                cfg.manager_urls.push(m);
+            }
+        }
+        if group_cfg.events_per_second > 0 {
+            cfg.events_per_second = group_cfg.events_per_second;
         }
 
         // Enrolled agent keeps name in client.keys; otherwise env var, config file, or hostname.
@@ -359,10 +408,24 @@ impl ClientAgent {
     }
 
     /// Spawn periodic keepalive heartbeat worker.
+    #[allow(dead_code)]
     pub fn spawn_keepalive_worker(
         agent_id: String,
         agent_name: String,
         manager_url: String,
+        buffer: Arc<AgentBuffer>,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        let failover = Arc::new(crate::failover::Failover::new(vec![manager_url], 3, Duration::from_secs(2)));
+        Self::spawn_keepalive_worker_with_failover(agent_id, agent_name, failover, buffer, lifecycle, interval)
+    }
+
+    /// Spawn periodic keepalive heartbeat worker with multi-manager failover support.
+    pub fn spawn_keepalive_worker_with_failover(
+        agent_id: String,
+        agent_name: String,
+        failover: Arc<crate::failover::Failover>,
         buffer: Arc<AgentBuffer>,
         lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
         interval: Duration,
@@ -390,8 +453,16 @@ impl ClientAgent {
                     was_dormant = true;
                     continue;
                 }
-                let agent_ip = Self::detect_agent_ip(&manager_url);
-                let (status_code, cmds) = Self::send_keepalive_http(&manager_url, &agent_id, &agent_name, &agent_ip).await;
+
+                let current_manager = failover.current_url();
+                let agent_ip = Self::detect_agent_ip(&current_manager);
+                let (status_code, cmds) = Self::send_keepalive_http(&current_manager, &agent_id, &agent_name, &agent_ip).await;
+                if matches!(status_code, Some(200..=299)) {
+                    failover.report_success();
+                } else if status_code.is_none() || matches!(status_code, Some(500..=599)) {
+                    failover.report_failure().await;
+                }
+
                 if matches!(status_code, Some(404 | 410)) {
                     if let Some(st) = lifecycle.fetch_state().await {
                         lifecycle.set_state(st);
@@ -415,7 +486,61 @@ impl ClientAgent {
                 keepalive_event.metadata.insert("keepalive".into(), "true".into());
                 buffer.push(keepalive_event).await;
 
-                Self::write_state_file(&agent_id, &agent_name, &manager_url, "active");
+                Self::write_state_file(&agent_id, &agent_name, &current_manager, "active");
+            }
+        })
+    }
+
+    /// Spawn periodic central group configuration polling & dynamic hot-reload worker.
+    pub fn spawn_config_worker(
+        agent_id: String,
+        agent_key: String,
+        failover: Arc<crate::failover::Failover>,
+        group_tx: tokio::sync::watch::Sender<crate::group_config::DynamicGroupConfig>,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let key = std::env::var("SIEM_AGENT_KEY").ok().filter(|k| !k.trim().is_empty()).unwrap_or(agent_key);
+            loop {
+                tokio::time::sleep(interval).await;
+                if lifecycle.is_terminated() {
+                    break;
+                }
+                if !lifecycle.is_active() {
+                    continue;
+                }
+
+                let current_url = failover.current_url();
+                let client = match crate::enroll::http_builder().timeout(Duration::from_secs(10)).build() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let url = format!("{}/api/v1/agents/{}/config", current_url.trim_end_matches('/'), agent_id);
+                let mut req = client.get(&url);
+                if !agent_id.trim().is_empty() {
+                    req = req.header("x-agent-id", agent_id.trim());
+                }
+                if !key.trim().is_empty() {
+                    req = req.header("x-agent-key", key.trim()).header("authorization", format!("Bearer {}", key.trim()));
+                }
+
+                match req.send().await {
+                    Ok(res) if res.status().is_success() => {
+                        failover.report_success();
+                        if let Ok(val) = res.json::<serde_json::Value>().await {
+                            if let Some(dyn_cfg) = crate::group_config::parse_group_config_value(&val) {
+                                crate::group_config::save_group_config(&dyn_cfg);
+                                let _ = group_tx.send(dyn_cfg);
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        tracing::debug!("ClientAgent: Group config fetch error ({}): {}", url, err);
+                        failover.report_failure().await;
+                    }
+                }
             }
         })
     }

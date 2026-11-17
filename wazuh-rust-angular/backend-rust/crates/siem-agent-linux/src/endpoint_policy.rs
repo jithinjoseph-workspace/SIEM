@@ -366,6 +366,213 @@ fn page(message: &str) -> String {
 
 // ── the worker ──
 
+pub fn should_block_pre_exec(desired: &Desired, filename: &str, file_hash: Option<&str>) -> Option<(String, bool)> {
+    let lower_name = filename.to_ascii_lowercase();
+    if PROTECTED.contains(&lower_name.as_str()) {
+        return None;
+    }
+    if let Some(rule) = desired.names.get(&lower_name) {
+        return Some(rule.clone());
+    }
+    if let Some(h) = file_hash {
+        let lower_hash = h.to_ascii_lowercase();
+        if let Some(rule) = desired.hashes.get(&lower_hash) {
+            return Some(rule.clone());
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+mod fanotify_blocker {
+    use std::fs::File;
+    use std::io::Read;
+    use std::sync::Arc;
+    use tracing::{info, warn};
+    use sha2::{Digest, Sha256};
+    use super::{Desired, hex, should_block_pre_exec, event, report};
+    use crate::buffer::AgentBuffer;
+
+    const FAN_CLOEXEC: u32 = 0x00000001;
+    const FAN_NONBLOCK: u32 = 0x00000002;
+    const FAN_CLASS_CONTENT: u32 = 0x00000004;
+
+    const FAN_MARK_ADD: u32 = 0x00000001;
+    const FAN_MARK_MOUNT: u32 = 0x00000010;
+
+    const FAN_OPEN_EXEC_PERM: u64 = 0x00040000;
+
+    const FAN_ALLOW: u32 = 0x01;
+    const FAN_DENY: u32 = 0x02;
+
+    #[repr(C)]
+    struct fanotify_event_metadata {
+        event_len: u32,
+        vers: u8,
+        reserved: u8,
+        metadata_len: u16,
+        mask: u64,
+        fd: i32,
+        pid: i32,
+    }
+
+    #[repr(C)]
+    struct fanotify_response {
+        fd: i32,
+        response: u32,
+    }
+
+    pub fn start_fanotify_interceptor(
+        desired: Arc<std::sync::RwLock<Desired>>,
+        agent_id: String,
+        buffer: Arc<AgentBuffer>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        unsafe {
+            let fd = libc::fanotify_init(
+                FAN_CLOEXEC | FAN_CLASS_CONTENT | FAN_NONBLOCK,
+                libc::O_RDONLY as u32 | libc::O_LARGEFILE as u32,
+            );
+            if fd < 0 {
+                info!("provigil-policy: fanotify_init unavailable (requires Linux kernel 5.0+ and CAP_SYS_ADMIN). Using /proc poller.");
+                return None;
+            }
+
+            let path_c = std::ffi::CString::new("/").ok()?;
+            let mark_res = libc::fanotify_mark(
+                fd,
+                FAN_MARK_ADD | FAN_MARK_MOUNT,
+                FAN_OPEN_EXEC_PERM,
+                libc::AT_FDCWD,
+                path_c.as_ptr(),
+            );
+
+            if mark_res < 0 {
+                warn!("provigil-policy: fanotify_mark root mount failed, closing fanotify fd.");
+                libc::close(fd);
+                return None;
+            }
+
+            info!("provigil-policy: Kernel pre-execution interceptor active via fanotify (FAN_OPEN_EXEC_PERM).");
+
+            Some(tokio::task::spawn_blocking(move || {
+                let mut buf = [0u8; 4096];
+                loop {
+                    let mut pollfd = libc::pollfd {
+                        fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    };
+                    let ret = libc::poll(&mut pollfd, 1, 1000);
+                    if ret <= 0 {
+                        continue;
+                    }
+
+                    let n = libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len());
+                    if n <= 0 {
+                        continue;
+                    }
+
+                    let mut offset = 0;
+                    while offset + std::mem::size_of::<fanotify_event_metadata>() <= n as usize {
+                        let meta = &*(buf.as_ptr().add(offset) as *const fanotify_event_metadata);
+                        if meta.event_len == 0 {
+                            break;
+                        }
+
+                        let event_fd = meta.fd;
+                        let event_pid = meta.pid;
+                        let mut allow = true;
+                        let mut blocked_file = String::new();
+                        let mut blocked_rule = String::new();
+
+                        if event_fd >= 0 {
+                            let proc_path = format!("/proc/self/fd/{}", event_fd);
+                            if let Ok(target) = std::fs::read_link(&proc_path) {
+                                let filename = target
+                                    .file_name()
+                                    .map(|f| f.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+
+                                let mut file_hash = None;
+                                if let Ok(mut f) = File::open(&target) {
+                                    let mut hasher = Sha256::new();
+                                    let mut fbuf = [0u8; 8192];
+                                    while let Ok(bytes_read) = f.read(&mut fbuf) {
+                                        if bytes_read == 0 { break; }
+                                        hasher.update(&fbuf[..bytes_read]);
+                                    }
+                                    file_hash = Some(hex(&hasher.finalize()));
+                                }
+
+                                let d = desired.read().unwrap();
+                                if let Some((rule, enforce)) = should_block_pre_exec(&d, &filename, file_hash.as_deref()) {
+                                    if enforce {
+                                        allow = false;
+                                        blocked_file = target.to_string_lossy().to_string();
+                                        blocked_rule = rule;
+                                    }
+                                }
+                            }
+
+                            let resp = fanotify_response {
+                                fd: event_fd,
+                                response: if allow { FAN_ALLOW } else { FAN_DENY },
+                            };
+                            libc::write(
+                                fd,
+                                &resp as *const _ as *const libc::c_void,
+                                std::mem::size_of::<fanotify_response>(),
+                            );
+                            libc::close(event_fd);
+
+                            if !allow {
+                                info!(
+                                    "provigil-policy: PRE-EXEC BLOCKED by fanotify (PID {}): {} [rule: {}]",
+                                    event_pid, blocked_file, blocked_rule
+                                );
+                                let agent_id_clone = agent_id.clone();
+                                let buffer_clone = buffer.clone();
+                                let rule_id = blocked_rule.clone();
+                                let file_name = blocked_file.clone();
+                                tokio::spawn(async move {
+                                    let report_obj = serde_json::json!({
+                                        "kind": "app_blocked_pre_exec",
+                                        "rule_id": rule_id,
+                                        "mode": "enforce",
+                                        "target": file_name,
+                                        "process": file_name,
+                                        "pid": event_pid,
+                                        "interceptor": "fanotify",
+                                        "stopped": true
+                                    });
+                                    buffer_clone.push(event(&agent_id_clone, report(report_obj))).await;
+                                });
+                            }
+                        }
+
+                        offset += meta.event_len as usize;
+                    }
+                }
+            }))
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+mod fanotify_blocker {
+    use std::sync::Arc;
+    use super::Desired;
+    use crate::buffer::AgentBuffer;
+
+    pub fn start_fanotify_interceptor(
+        _desired: Arc<std::sync::RwLock<Desired>>,
+        _agent_id: String,
+        _buffer: Arc<AgentBuffer>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        None
+    }
+}
+
 fn event(agent_id: &str, line: String) -> RawEvent {
     let mut e = RawEvent::new(agent_id, EventSource::ActiveResponse, "provigil-policy", line);
     e.metadata.insert("os_type".into(), "linux".into());
@@ -398,6 +605,11 @@ pub fn spawn_worker(agent_id: String, agent_key: String, manager_url: String, bu
         // the last rules received, so a start without the manager still enforces them
         let mut rules: Vec<Value> = std::fs::read_to_string(&saved).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let d = Arc::new(std::sync::RwLock::new(desired(&rules, &never)));
+        let _fanotify_worker = fanotify_blocker::start_fanotify_interceptor(
+            d.clone(),
+            agent_id.clone(),
+            buffer.clone(),
+        );
         let sink_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut seen: HashMap<u32, ()> = HashMap::new();
         let mut hashes: HashMap<PathBuf, (u64, Option<std::time::SystemTime>, Option<String>)> = HashMap::new();
@@ -638,5 +850,49 @@ mod tests {
         assert_eq!(site_of(&hello).as_deref(), Some("chatgpt.com"));
         assert_eq!(site_of(b"\x16\x03"), None, "cut short");
         assert!(page("No <b>AI</b>").contains("No bAI/b"));
+    }
+
+    #[test]
+    fn test_pre_execution_blocking_rules() {
+        let rules = json!([
+            {
+                "id": "rule-block-nc",
+                "kind": "app",
+                "mode": "enforce",
+                "targets": ["nc", "netcat", "ncat"]
+            },
+            {
+                "id": "rule-block-hash",
+                "kind": "app",
+                "mode": "enforce",
+                "targets": ["sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+            },
+            {
+                "id": "rule-protected-override",
+                "kind": "app",
+                "mode": "enforce",
+                "targets": ["bash", "systemd"]
+            }
+        ]);
+
+        let d = desired(rules.as_array().unwrap(), &[]);
+
+        // 1. Blocked program should be matched for pre-execution denial
+        let hit = should_block_pre_exec(&d, "nc", None);
+        assert_eq!(hit, Some(("rule-block-nc".to_string(), true)));
+
+        // 2. Protected OS binaries must NEVER be blocked even if listed in rule
+        let protected_hit = should_block_pre_exec(&d, "bash", None);
+        assert_eq!(protected_hit, None);
+        let systemd_hit = should_block_pre_exec(&d, "systemd", None);
+        assert_eq!(systemd_hit, None);
+
+        // 3. Blocked SHA-256 hash
+        let hash_hit = should_block_pre_exec(&d, "some_unknown_binary", Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+        assert_eq!(hash_hit, Some(("rule-block-hash".to_string(), true)));
+
+        // 4. Benign binary
+        let benign = should_block_pre_exec(&d, "my_custom_service", Some("1111111111111111111111111111111111111111111111111111111111111111"));
+        assert_eq!(benign, None);
     }
 }

@@ -46,7 +46,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
     "Win32_System_Environment", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock",
     "Win32_NetworkManagement_NetManagement", "Win32_Security_Authorization",
     # the blocked-program message (src/endpoint_policy.rs)
-    "Win32_UI_WindowsAndMessaging"] }
+    "Win32_UI_WindowsAndMessaging",
+    # browsers reload their policies when told (src/endpoint_policy.rs)
+    "Win32_System_GroupPolicy"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

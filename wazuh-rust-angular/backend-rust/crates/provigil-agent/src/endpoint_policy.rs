@@ -244,6 +244,9 @@ pub trait Pc {
     fn restore(&mut self, key: &str, name: &str, before: Option<&str>, dword: bool) -> Result<(), String>;
     fn hosts(&self) -> Result<String, String>;
     fn write_hosts(&mut self, text: &str) -> Result<(), String>;
+    /// Policy values changed: tell the programs that read them (browsers reload their policies
+    /// only when Windows announces a change).
+    fn policies_changed(&mut self) {}
 }
 
 /// The outcome of one pass: what someone else changed, and whether every step held.
@@ -257,6 +260,7 @@ pub struct Outcome {
 /// changed by someone else since the last pass. Continues past a failed step and reports the first.
 pub fn apply(pc: &mut dyn Pc, d: &Desired, st: &mut State) -> Outcome {
     let mut out = Outcome::default();
+    let mut policy_changed = false;
     let fail = |e: String, out: &mut Outcome| {
         if out.error.is_none() {
             out.error = Some(e);
@@ -271,6 +275,8 @@ pub fn apply(pc: &mut dyn Pc, d: &Desired, st: &mut State) -> Outcome {
         } else if let Err(e) = pc.restore(&o.key, &o.name, o.before.as_deref(), o.dword) {
             fail(format!("{}\\{}: {e}", o.key, o.name), &mut out);
             keep.push(o);
+        } else {
+            policy_changed |= o.key.to_ascii_lowercase().contains("\\policies\\");
         }
     }
     st.owned = keep;
@@ -290,9 +296,13 @@ pub fn apply(pc: &mut dyn Pc, d: &Desired, st: &mut State) -> Outcome {
             Some(i) => st.owned[i].set = want.clone(),
             None => st.owned.push(Owned { key: v.key.clone(), name: v.name.clone(), set: want.clone(), before: now, dword: matches!(v.data, Data::Dword(_)) }),
         }
-        if let Err(e) = pc.set(v) {
-            fail(format!("{}\\{}: {e}", v.key, v.name), &mut out);
+        match pc.set(v) {
+            Ok(()) => policy_changed |= v.key.to_ascii_lowercase().contains("\\policies\\"),
+            Err(e) => fail(format!("{}\\{}: {e}", v.key, v.name), &mut out),
         }
+    }
+    if policy_changed {
+        pc.policies_changed();
     }
     match pc.hosts() {
         Ok(text) => {
@@ -519,6 +529,13 @@ impl Pc for Windows {
             Err(e) => Err(e.to_string()),
         }
     }
+    fn policies_changed(&mut self) {
+        // like gpupdate: Chrome and Edge reload their policies on this announcement, at once
+        use windows_sys::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
+        if unsafe { RefreshPolicyEx(1, RP_FORCE) } == 0 {
+            tracing::warn!("Policy refresh not announced; browsers pick the change up at their own next check");
+        }
+    }
     fn write_hosts(&mut self, text: &str) -> Result<(), String> {
         // a read-only hosts file (some tools set it) is made writable for this write only
         if let Ok(m) = std::fs::metadata(&self.hosts_path) {
@@ -547,6 +564,7 @@ mod tests {
         reg: HashMap<(String, String), String>,
         hosts: String,
         fail_hosts: bool,
+        announced: u32,
     }
 
     impl Pc for Fake {
@@ -573,6 +591,9 @@ mod tests {
             }
             self.hosts = text.into();
             Ok(())
+        }
+        fn policies_changed(&mut self) {
+            self.announced += 1;
         }
     }
 
@@ -625,8 +646,10 @@ mod tests {
         assert!(o.error.is_none() && o.tampered.is_empty(), "{o:?}");
         assert_eq!(pc.get(EDGE, "DnsOverHttpsMode").as_deref(), Some("off"));
         assert!(pc.hosts.contains("0.0.0.0 chatgpt.com"));
-        // nothing changed: a second pass reports nothing
+        assert_eq!(pc.announced, 1, "browsers told once");
+        // nothing changed: a second pass reports nothing, and announces nothing
         assert!(apply(&mut pc, &d, &mut st).tampered.is_empty());
+        assert_eq!(pc.announced, 1);
         // someone edits the hosts file and a policy value
         pc.hosts = "127.0.0.1 x\r\n".into();
         pc.reg.insert((CHROME.into(), "DnsOverHttpsMode".into()), "secure".into());

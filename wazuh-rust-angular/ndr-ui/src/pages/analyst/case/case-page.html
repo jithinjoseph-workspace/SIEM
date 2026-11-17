@@ -69,6 +69,17 @@
     <!-- Overview -->
     <div *ngIf="tab() === 'overview'" class="grid lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 space-y-4">
+        <!-- risk incidents (incidents.rs): the per-rule cases a risk incident links, or the risk incidents a case is part of -->
+        <section *ngIf="d().linked?.length || d().risk_incidents?.length" class="p-4 rounded-xl border border-amber-900/60 bg-amber-950/20">
+          <h2 *ngIf="d().linked?.length" class="text-sm font-semibold text-white mb-2">Cases on this computer that add up to this risk ({{ d().linked.length }})</h2>
+          <h2 *ngIf="!d().linked?.length" class="text-sm font-semibold text-white mb-2">Part of a risk incident</h2>
+          <div *ngFor="let x of (d().linked?.length ? d().linked : d().risk_incidents)" class="text-sm py-1 border-t border-slate-800 first:border-t-0">
+            <a [routerLink]="['/analyst/cases', x.id]" class="text-cyan-300 hover:underline">{{ x.case_number }}</a>
+            <span class="text-slate-200"> {{ x.title }}</span>
+            <span class="text-xs text-slate-500"> · {{ x.status }}</span>
+          </div>
+        </section>
+
         <!-- the case's rules: one case per computer, every rule it set off with its count -->
         <section *ngIf="byRule().length > 1" class="p-4 rounded-xl border border-slate-800 bg-slate-900/60">
           <h2 class="text-sm font-semibold text-white mb-2">By rule <span class="text-xs font-normal text-slate-400">({{ byRule().length }} rules; judge each: an exception hides only that rule)</span></h2>

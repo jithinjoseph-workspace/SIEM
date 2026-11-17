@@ -1,5 +1,6 @@
 import { SiemService } from '../../../services/siem/siem.service';
-import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy, ViewChild, ElementRef, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -889,10 +890,89 @@ export class Soar implements OnInit {
         this.loadIntegrations();
         this.loadRuns();
         this.siem.getIncidentMetrics(30).subscribe(m => this.incidentMetrics.set(m));
+        this.loadCaseSettings();
     }
 
     /** Last 30 days of cases (specs/alert-lifecycle.md, phase 6); null when it cannot be read. */
     incidentMetrics = signal<any>(null);
+
+    // ── Case rules and risk (specs/alert-lifecycle.md section 6) ─────────────
+    private http = inject(HttpClient);
+    /** `{settings: {risk_enabled, risk_threshold, risk_tactics, rules: {id: {window_secs, open_after, never}}}, can_edit}` */
+    caseSettings = signal<any>(null);
+    showCaseRules = signal(false);
+    tuning = signal<any>(null);
+    caseSettingsMsg = signal('');
+    tuneRuleId = '';
+    readonly windows = [
+        { v: 300, l: '5 minutes' }, { v: 900, l: '15 minutes' }, { v: 3600, l: '1 hour (default)' },
+        { v: 14400, l: '4 hours' }, { v: 86400, l: '24 hours' }, { v: 604800, l: '7 days' },
+    ];
+
+    loadCaseSettings() {
+        this.http.get<any>('/api/v1/siem/incidents/settings').subscribe({ next: r => this.caseSettings.set(r), error: () => this.caseSettings.set(null) });
+    }
+
+    ruleCfg(id: number | string): any {
+        return this.caseSettings()?.settings?.rules?.[String(id)] || null;
+    }
+
+    /** "1 h window, case after 3 alerts" for a rule's settings; "" for the defaults. */
+    ruleCfgText(id: number | string): string {
+        const c = this.ruleCfg(id);
+        if (!c) return '';
+        if (c.never) return 'never opens a case';
+        const parts: string[] = [];
+        if (c.window_secs) parts.push((this.windows.find(w => w.v === c.window_secs)?.l || `${c.window_secs} s`) + ' window');
+        if (c.open_after && c.open_after > 1) parts.push(`case after ${c.open_after} alerts`);
+        return parts.join(', ');
+    }
+
+    /** Rules with their own settings that the 30-day list does not show. */
+    otherTunedRules = computed(() => {
+        const listed = new Set((this.incidentMetrics()?.rules || []).map((r: any) => String(r.rule_id)));
+        return Object.keys(this.caseSettings()?.settings?.rules || {}).filter(id => !listed.has(id));
+    });
+
+    tune(ruleId: number | string, rule = '') {
+        const c = this.ruleCfg(ruleId) || {};
+        this.caseSettingsMsg.set('');
+        this.tuning.set({ rule_id: Number(ruleId), rule, window: c.window_secs ?? 3600, open_after: c.open_after ?? 1, never: !!c.never });
+    }
+
+    tuneById() {
+        const id = Number(this.tuneRuleId.trim());
+        if (Number.isInteger(id) && id > 0) this.tune(id);
+    }
+
+    saveTuning() {
+        const t = this.tuning();
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        s.rules = s.rules || {};
+        const window = Number(t.window), after = Number(t.open_after);
+        s.rules[String(t.rule_id)] = { window_secs: window === 3600 ? null : window, open_after: after <= 1 ? null : after, never: !!t.never };
+        this.putCaseSettings(s, `Rule ${t.rule_id} saved. New alerts follow it at once.`);
+        this.tuning.set(null);
+    }
+
+    resetRule(id: number | string) {
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        delete (s.rules || {})[String(id)];
+        this.putCaseSettings(s, `Rule ${id} back to the defaults.`);
+    }
+
+    saveRisk(enabled: boolean, threshold: number, tactics: number) {
+        const s = structuredClone(this.caseSettings()?.settings || {});
+        Object.assign(s, { risk_enabled: enabled, risk_threshold: Number(threshold), risk_tactics: Number(tactics) });
+        this.putCaseSettings(s, 'Risk incident settings saved.');
+    }
+
+    private putCaseSettings(s: any, msg: string) {
+        this.http.put<any>('/api/v1/siem/incidents/settings', s).subscribe({
+            next: r => { this.caseSettings.update(c => ({ ...c, settings: r.settings })); this.caseSettingsMsg.set(msg); },
+            error: e => this.caseSettingsMsg.set(e?.error?.message || 'Not saved.'),
+        });
+    }
 
     /** Seconds as "3 h 20 min" / "45 min" / "40 s". */
     duration(secs: number): string {

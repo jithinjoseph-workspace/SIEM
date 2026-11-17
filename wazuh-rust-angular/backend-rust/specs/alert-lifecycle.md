@@ -148,6 +148,7 @@ Problems, from the live data of tenant acm:
 - 2026-11-16 live test (services restarted 17:01): 445 alerts in 18 min, all stored with their risk score; 20 level 7+ alerts became 7 incidents; shipped and Sigma alerts of one process joined; incidents got their history entry. Found: no triage verdict (the investigation looked only at community_id; fixed, falls back to hit_ids) and too many incidents (one per process; now one per rule, L-6). The owner approved two permanent exceptions for build output on the development PC (rules 92213 and 962881 on agent 8084 when the path contains the repository folder).
 - 2026-11-17: after an agent reinstall on win-node-e296 (26, then 41 cases, none an attack): L-17 and L-18, inventory events no longer checked by log rules, the agent keeps events on disk while the manager is unreachable (165,214 had been dropped overnight). siem-api tests: 168 passed.
 - 2026-11-17: L-17 (one incident per computer) reverted at the owner's request; per-rule incidents (L-6) again; plan for a risk-based cross-rule layer in section 6.
+- 2026-11-17: section 6 built: per-rule window, case after N alerts, never (siem_incident_settings, GET/PUT /api/v1/siem/incidents/settings, SOAR page "Case rules and risk"); risk per computer with risk incidents linking the per-rule cases (tag risk-incident, linked:<case id>; case page shows the links both ways); risk incidents counted in the metrics. siem-api tests: 170 passed.
 
 ## 6. Plan: how alerts become cases (research, 2026-11-17)
 

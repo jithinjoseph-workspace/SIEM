@@ -279,6 +279,30 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
         .into_iter()
         .map(|r| json!({ "id": r.0, "case_number": r.1, "title": r.2, "status": r.3, "created_at": r.4 }))
         .collect();
+    // a risk incident's linked per-rule cases; a per-rule case's risk incidents (incidents.rs)
+    let linked_ids: Vec<String> = c.tags.iter().filter_map(|t| t.strip_prefix("linked:")).map(String::from).collect();
+    let row = |r: (String, String, String, String, u32)| json!({ "id": r.0, "case_number": r.1, "title": r.2, "status": r.3, "created_at": r.4 });
+    let linked: Vec<Value> = if linked_ids.is_empty() {
+        Vec::new()
+    } else {
+        db.query("SELECT id, case_number, title, status, toUInt32(toUnixTimestamp(created_at)) FROM soar_cases FINAL WHERE id IN ? ORDER BY created_at")
+            .bind(&linked_ids)
+            .fetch_all::<(String, String, String, String, u32)>()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(row)
+            .collect()
+    };
+    let risk_incidents: Vec<Value> = db
+        .query("SELECT id, case_number, title, status, toUInt32(toUnixTimestamp(created_at)) FROM soar_cases FINAL WHERE has(tags, 'risk-incident') AND has(tags, ?) ORDER BY created_at DESC LIMIT 5")
+        .bind(format!("linked:{id}"))
+        .fetch_all::<(String, String, String, String, u32)>()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(row)
+        .collect();
 
     Json(json!({
         "status": "ok",
@@ -294,6 +318,8 @@ pub async fn detail(State(state): State<AppState>, Extension(ctx): Extension<Aut
         "journey": journey,
         "attachments": attachments,
         "similar": similar,
+        "linked": linked,
+        "risk_incidents": risk_incidents,
         "dispositions": DISPOSITIONS,
     }))
     .into_response()

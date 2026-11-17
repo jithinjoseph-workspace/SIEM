@@ -220,6 +220,222 @@ pub async fn delete(State(state): State<AppState>, Extension(ctx): Extension<Aut
     Json(json!({ "status": "ok" })).into_response()
 }
 
+// ── drafting a rule from a sentence ──
+
+/// Well-known services: words that name them, their sites, their Windows programs. Used without
+/// AI, and given to the AI as the known part.
+const KNOWN: &[(&[&str], &str, &[&str], &[&str])] = &[
+    (&["chatgpt", "openai"], "ChatGPT", &["chatgpt.com", "chat.openai.com"], &["chatgpt.exe"]),
+    (&["claude", "anthropic"], "Claude", &["claude.ai"], &["claude.exe"]),
+    (&["gemini", "bard"], "Gemini", &["gemini.google.com"], &[]),
+    (&["copilot"], "Microsoft Copilot", &["copilot.microsoft.com"], &[]),
+    (&["perplexity"], "Perplexity", &["perplexity.ai"], &[]),
+    (&["deepseek"], "DeepSeek", &["chat.deepseek.com"], &[]),
+    (&["whatsapp"], "WhatsApp", &["web.whatsapp.com"], &["whatsapp.exe"]),
+    (&["telegram"], "Telegram", &["web.telegram.org"], &["telegram.exe"]),
+    (&["discord"], "Discord", &["discord.com"], &["discord.exe"]),
+    (&["facebook"], "Facebook", &["facebook.com"], &[]),
+    (&["instagram"], "Instagram", &["instagram.com"], &[]),
+    (&["tiktok"], "TikTok", &["tiktok.com"], &[]),
+    (&["youtube"], "YouTube", &["youtube.com", "youtu.be"], &[]),
+    (&["netflix"], "Netflix", &["netflix.com"], &[]),
+    (&["torrent", "utorrent", "bittorrent", "qbittorrent"], "Torrent clients", &[], &["utorrent.exe", "bittorrent.exe", "qbittorrent.exe"]),
+    (&["anydesk"], "AnyDesk", &["anydesk.com"], &["anydesk.exe"]),
+    (&["teamviewer"], "TeamViewer", &["teamviewer.com"], &["teamviewer.exe"]),
+    (&["dropbox"], "Dropbox", &["dropbox.com"], &["dropbox.exe"]),
+    (&["steam"], "Steam", &["store.steampowered.com"], &["steam.exe"]),
+];
+
+const SUGGEST: &str = "You help a company's IT administrator write endpoint control rules for the ProVigil security platform. From the administrator's request, list the websites (domain names only, e.g. chatgpt.com; each also covers its sub-domains) and the Windows program file names (e.g. chatgpt.exe) to block. Only give names you are confident are real and belong to what was asked; leave out anything you are unsure of. Never list system programs (explorer.exe, svchost.exe, cmd.exe, powershell.exe and the like) or whole country domains. Answer with one JSON object and nothing else: {\"name\": \"short rule name\", \"sites\": [\"...\"], \"apps\": [\"...\"], \"message\": \"one sentence shown to the person when blocked\", \"note\": \"what the administrator should check, or empty\"}";
+
+/// The drafts for `text`: a site rule and an app rule (whichever has entries), in monitor mode.
+fn drafts(name: &str, sites: &[String], apps: &[String], message: &str, note: &str) -> (Vec<Value>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut refused = Vec::new();
+    for (kind, list, label) in [("site", sites, "websites"), ("app", apps, "programs")] {
+        let mut ok = Vec::new();
+        for t in list {
+            match if kind == "site" { ep::domain(t) } else { ep::app(t) } {
+                Ok(v) => ok.push(v),
+                Err(e) => refused.push(e),
+            }
+        }
+        ok.sort();
+        ok.dedup();
+        if !ok.is_empty() {
+            out.push(json!({ "name": format!("{name} {label}"), "kind": kind, "mode": "monitor", "targets": ok, "message": message, "note": note }));
+        }
+    }
+    (out, refused)
+}
+
+/// `POST /api/v1/endpoint-policies/suggest` `{text}` (tenant admin): draft rules for a request such
+/// as "block ChatGPT and WhatsApp", from the known services and, when the tenant's AI is on, the
+/// AI. Drafts only: nothing is saved; every entry passes the same checks as a saved rule.
+pub async fn suggest(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Json(p): Json<Value>) -> Response {
+    let t = ctx.scope();
+    if !ctx.can_manage(&t) {
+        return crate::tenancy::forbidden();
+    }
+    let text: String = p["text"].as_str().unwrap_or("").trim().chars().filter(|c| !c.is_control()).take(500).collect();
+    if text.len() < 3 {
+        return bad(StatusCode::BAD_REQUEST, "Say what to block, e.g. \"block ChatGPT and WhatsApp\"");
+    }
+    let lower = text.to_ascii_lowercase();
+    let known: Vec<_> = KNOWN.iter().filter(|(words, ..)| words.iter().any(|w| lower.contains(w))).collect();
+    let mut name = known.iter().map(|k| k.1).collect::<Vec<_>>().join(", ");
+    let mut sites: Vec<String> = known.iter().flat_map(|k| k.2.iter().map(|s| s.to_string())).collect();
+    let mut apps: Vec<String> = known.iter().flat_map(|k| k.3.iter().map(|s| s.to_string())).collect();
+    let mut message = "This is not allowed by your organisation's policy.".to_string();
+    let mut note = String::new();
+    let mut source = "known services";
+    let ai_on = crate::ai_assist::tenant_ai_enabled(&state, &t);
+    let providers = if ai_on { crate::ai_assist::providers(&state, "chat").await } else { Vec::new() };
+    if !providers.is_empty() && crate::case_ai::ai_allowed(&t) {
+        let known_text = if known.is_empty() { String::new() } else { format!("\nAlready known for this request: sites {sites:?}, programs {apps:?}.") };
+        match siem_ai::generate(&providers, SUGGEST, &format!("Request: {text}{known_text}")).await {
+            Ok(r) => {
+                let reply = r.text.trim();
+                let json_part = reply.find('{').and_then(|a| reply.rfind('}').map(|b| &reply[a..=b])).unwrap_or("");
+                if let Ok(v) = serde_json::from_str::<Value>(json_part) {
+                    let list = |k: &str| v[k].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).take(200).collect::<Vec<_>>();
+                    sites.extend(list("sites"));
+                    apps.extend(list("apps"));
+                    if let Some(n) = v["name"].as_str().filter(|n| !n.trim().is_empty()) {
+                        name = n.trim().chars().take(60).collect();
+                    }
+                    if let Some(m) = v["message"].as_str().filter(|m| !m.trim().is_empty()) {
+                        message = m.trim().chars().take(300).collect();
+                    }
+                    note = v["note"].as_str().unwrap_or("").chars().take(300).collect();
+                    source = "AI";
+                }
+            }
+            Err(e) => tracing::warn!("endpoint policy suggestion: the AI did not answer: {e}"),
+        }
+    }
+    if name.is_empty() {
+        name = "Blocked".into();
+    }
+    let (out, refused) = drafts(&name, &sites, &apps, &message, &note);
+    if out.is_empty() {
+        let why = if providers.is_empty() { "No known service matched, and the AI is not available for this tenant: type the sites or programs in a new rule." } else { "Nothing usable came back: type the sites or programs in a new rule." };
+        return Json(json!({ "status": "ok", "drafts": [], "refused": refused, "source": source, "message": why })).into_response();
+    }
+    Json(json!({ "status": "ok", "drafts": out, "refused": refused, "source": source })).into_response()
+}
+
+// ── what the rules caught ──
+
+#[derive(clickhouse::Row, Deserialize)]
+struct Hit {
+    agent_id: String,
+    agent_name: String,
+    rule_level: u8,
+    timestamp: u64,
+    rule_id: String,
+    target: String,
+    user: String,
+}
+
+#[derive(Deserialize)]
+pub struct ActivityQuery {
+    days: Option<u32>,
+}
+
+/// The /24 (IPv4) or /64 (IPv6) network of an address, as the "network" an attempt came from.
+fn network_of(ip: &str) -> String {
+    match ip.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(a)) => {
+            let o = a.octets();
+            format!("{}.{}.{}.0/24", o[0], o[1], o[2])
+        }
+        Ok(std::net::IpAddr::V6(a)) => {
+            let s = a.segments();
+            format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+        }
+        Err(_) => "unknown".into(),
+    }
+}
+
+/// Counts per key, largest first, at most `n`.
+fn top(m: HashMap<String, u64>, n: usize) -> Vec<Value> {
+    let mut v: Vec<(String, u64)> = m.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v.into_iter().take(n).map(|(k, c)| json!({ "key": k, "count": c })).collect()
+}
+
+/// `GET /api/v1/endpoint-policies/activity?days=7`: per rule, the attempts (blocked or seen), by
+/// agent group, network, device, person and site / program, the devices the rule covers, and
+/// the latest attempts.
+pub async fn activity(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, axum::extract::Query(q): axum::extract::Query<ActivityQuery>) -> Response {
+    let t = ctx.scope();
+    let days = q.days.unwrap_or(7).clamp(1, 90);
+    let since = now_ms().saturating_sub(days as u64 * 86_400_000);
+    let hits: Vec<Hit> = match state
+        .db
+        .tenant_client(&t)
+        .query(
+            "SELECT agent_id, agent_name, rule_level, timestamp, JSONExtractString(alert_json, 'data', 'endpoint_policy', 'rule_id') AS rule_id, \
+             JSONExtractString(alert_json, 'data', 'endpoint_policy', 'target') AS target, JSONExtractString(alert_json, 'data', 'endpoint_policy', 'user') AS user \
+             FROM siem_alerts WHERE rule_id IN (?, ?) AND timestamp >= ? ORDER BY timestamp DESC LIMIT 100000",
+        )
+        .bind(RULE_SITE)
+        .bind(RULE_APP)
+        .bind(since)
+        .fetch_all()
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => return bad(StatusCode::SERVICE_UNAVAILABLE, &format!("The attempts could not be read: {e}")),
+    };
+    let rules = RULES.read().unwrap().get(&t).cloned().unwrap_or_default();
+    let (groups, ips, os): (HashMap<String, Vec<String>>, HashMap<String, String>, HashMap<String, String>) = {
+        let enrolled = state.enrolled.read().unwrap();
+        let agents = state.agents.read().unwrap();
+        let mine: Vec<(&String, &crate::EnrolledAgent)> = enrolled.iter().filter(|(_, e)| e.tenant == t && !e.disabled).collect();
+        (
+            mine.iter().map(|(id, e)| ((*id).clone(), crate::groups::agent_groups(&e.groups))).collect(),
+            mine.iter().map(|(id, _)| ((*id).clone(), agents.get(*id).map(|a| a.ip.clone()).unwrap_or_default())).collect(),
+            mine.iter().map(|(id, e)| ((*id).clone(), e.os_type.clone())).collect(),
+        )
+    };
+    let shown = |m: &str| crate::groups::display_name(&t, m).unwrap_or_else(|| m.to_string());
+    let per_rule: Vec<Value> = rules
+        .iter()
+        .map(|r| {
+            let mine: Vec<&Hit> = hits.iter().filter(|h| h.rule_id == r.id).collect();
+            let (mut by_group, mut by_net, mut by_dev, mut by_user, mut by_target) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
+            for h in &mine {
+                for g in groups.get(&h.agent_id).cloned().unwrap_or_else(|| vec!["default".into()]) {
+                    *by_group.entry(shown(&g)).or_insert(0u64) += 1;
+                }
+                *by_net.entry(network_of(ips.get(&h.agent_id).map(String::as_str).unwrap_or(""))).or_insert(0u64) += 1;
+                *by_dev.entry(h.agent_name.clone()).or_insert(0u64) += 1;
+                if !h.user.is_empty() {
+                    *by_user.entry(h.user.clone()).or_insert(0u64) += 1;
+                }
+                *by_target.entry(h.target.clone()).or_insert(0u64) += 1;
+            }
+            let covered = groups.iter().filter(|(id, g)| r.applies(g, os.get(*id).map(String::as_str).unwrap_or(""))).count();
+            json!({
+                "rule_id": r.id, "name": r.name, "kind": r.kind, "mode": r.mode, "enabled": r.enabled,
+                "attempts": mine.len(),
+                "blocked": mine.iter().filter(|h| h.rule_level >= 5).count(),
+                "devices": by_dev.len(), "people": by_user.len(), "covered_devices": covered,
+                "by_group": top(by_group, 20), "by_network": top(by_net, 20), "by_device": top(by_dev, 20), "by_user": top(by_user, 20), "by_target": top(by_target, 20),
+            })
+        })
+        .collect();
+    let names: HashMap<&str, &str> = rules.iter().map(|r| (r.id.as_str(), r.name.as_str())).collect();
+    let latest: Vec<Value> = hits
+        .iter()
+        .take(50)
+        .map(|h| json!({ "at": h.timestamp / 1000, "rule": names.get(h.rule_id.as_str()).copied().unwrap_or(h.rule_id.as_str()), "target": h.target, "device": h.agent_name, "user": h.user, "blocked": h.rule_level >= 5, "network": network_of(ips.get(&h.agent_id).map(String::as_str).unwrap_or("")) }))
+        .collect();
+    Json(json!({ "status": "ok", "days": days, "total": hits.len(), "devices_total": groups.len(), "rules": per_rule, "latest": latest })).into_response()
+}
+
 // ── attempts, in the events the agents send ──
 
 fn st(v: &Value, p: &str) -> String {
@@ -427,6 +643,25 @@ mod tests {
         e["full_log"] = json!("provigil_policy: {\"kind\":\"app_attempt\",\"rule_id\":\"x\",\"mode\":\"monitor\",\"target\":\"discord\",\"user\":\"bob\",\"process\":\"/usr/bin/discord\"}");
         let a = check(&[(e, "t2".into())], &HashMap::new());
         assert_eq!((a[0].0.rule.id, a[0].0.rule.level), (RULE_APP, 3));
+    }
+
+    #[test]
+    fn drafts_keep_only_valid_entries() {
+        let (d, refused) = drafts("ChatGPT", &["chatgpt.com".into(), "*.com".into()], &["ChatGPT.exe".into(), "explorer.exe".into()], "No", "");
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[0]["targets"], json!(["chatgpt.com"]));
+        assert_eq!(d[1]["targets"], json!(["chatgpt.exe"]));
+        assert_eq!((d[0]["mode"].as_str(), d[1]["kind"].as_str()), (Some("monitor"), Some("app")));
+        assert_eq!(refused.len(), 2, "a whole top-level domain and a system program");
+        assert!(drafts("x", &[], &[], "", "").0.is_empty());
+        assert!(KNOWN.iter().all(|k| k.2.iter().all(|s| ep::domain(s).is_ok()) && k.3.iter().all(|a| ep::app(a).is_ok())), "the known list passes the checks");
+    }
+
+    #[test]
+    fn networks() {
+        assert_eq!(network_of("192.168.1.70"), "192.168.1.0/24");
+        assert_eq!(network_of("fe80::1:2:3:4"), "fe80:0:0:0::/64");
+        assert_eq!(network_of(""), "unknown");
     }
 
     #[test]

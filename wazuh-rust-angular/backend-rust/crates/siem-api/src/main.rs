@@ -978,6 +978,8 @@ async fn main() {
         )
         .route("/api/v1/deploy/tokens", get(deploy_tokens::list).post(deploy_tokens::create))
         .route("/api/v1/endpoint-policies", get(endpoint_policy::list))
+        .route("/api/v1/endpoint-policies/activity", get(endpoint_policy::activity))
+        .route("/api/v1/endpoint-policies/suggest", axum::routing::post(endpoint_policy::suggest))
         .route("/api/v1/endpoint-policies/:id", axum::routing::put(endpoint_policy::put).delete(endpoint_policy::delete))
         .route("/api/v1/deploy/tokens/:id", axum::routing::delete(deploy_tokens::revoke))
         .route("/api/v1/deploy/tokens/:id/targets", get(deploy_tokens::targets))

@@ -151,7 +151,7 @@ pub fn ai_challenge(reply: &str) -> Option<Challenge> {
 }
 
 /// AI calls per tenant and hour (`SIEM_CASE_AI_PER_HOUR`, default 30).
-fn ai_allowed(tenant: &str) -> bool {
+pub(crate) fn ai_allowed(tenant: &str) -> bool {
     static USED: Mutex<Option<HashMap<String, (u64, u32)>>> = Mutex::new(None);
     let limit = std::env::var("SIEM_CASE_AI_PER_HOUR").ok().and_then(|v| v.parse().ok()).unwrap_or(30u32);
     let hour = now() / 3600;

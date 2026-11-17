@@ -49,6 +49,21 @@ export class EndpointPolicies implements OnInit {
   /** the rule being edited (a copy), with its targets as one entry per line */
   draft = signal<(Rule & { text: string }) | null>(null);
   failing = computed(() => this.agents().filter(a => a.state !== 'applied'));
+  /** "Ask AI": the request, the drafts that came back */
+  askText = '';
+  asking = signal(false);
+  suggestion = signal<any>(null);
+  /** what the rules caught, per rule, for the chosen period */
+  activity = signal<any>(null);
+  days = signal(7);
+  openRule = signal<string | null>(null);
+  readonly breakdowns = [
+    { key: 'by_group', label: 'Agent group' },
+    { key: 'by_network', label: 'Network (subnet)' },
+    { key: 'by_device', label: 'Device' },
+    { key: 'by_user', label: 'Person' },
+    { key: 'by_target', label: 'Site or program' },
+  ];
 
   readonly kinds: Record<string, string> = { site: 'Websites', app: 'Applications', safe_search: 'Safe search' };
 
@@ -57,7 +72,38 @@ export class EndpointPolicies implements OnInit {
     this.siem.getGroups().subscribe({ next: g => this.groups.set(g.map(x => x.name)), error: () => {} });
   }
 
+  loadActivity() {
+    this.http.get<any>(`/api/v1/endpoint-policies/activity?days=${this.days()}`).subscribe({
+      next: r => this.activity.set(r),
+      error: () => this.activity.set(null),
+    });
+  }
+
+  setDays(d: number) {
+    this.days.set(d);
+    this.loadActivity();
+  }
+
+  /** Drafts rules from a sentence ("block ChatGPT and WhatsApp"); nothing is saved. */
+  ask() {
+    const text = this.askText.trim();
+    if (text.length < 3) return;
+    this.asking.set(true);
+    this.suggestion.set(null);
+    this.http.post<any>('/api/v1/endpoint-policies/suggest', { text }).subscribe({
+      next: r => { this.asking.set(false); this.suggestion.set(r); },
+      error: e => { this.asking.set(false); this.error.set(e?.error?.message || 'No draft could be made.'); },
+    });
+  }
+
+  /** Bar width of a count against the largest in its list. */
+  width(list: any[], n: number) {
+    const max = Math.max(1, ...list.map(x => x.count));
+    return Math.max(4, Math.round((n / max) * 100));
+  }
+
   load() {
+    this.loadActivity();
     this.http.get<any>('/api/v1/endpoint-policies').subscribe({
       next: r => {
         this.rules.set(r.rules ?? []);

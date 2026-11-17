@@ -6,6 +6,7 @@ mod config_parser;
 mod control;
 mod enroll;
 mod execd;
+pub mod fim_db;
 pub mod inotify_watcher;
 mod lifecycle;
 mod logcollector;

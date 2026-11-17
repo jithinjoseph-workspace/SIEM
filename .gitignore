@@ -23,6 +23,7 @@ vendor/
 *.lib
 *.obj
 *.wasm
+*.db
 
 # Logs and runtime caches
 *.log

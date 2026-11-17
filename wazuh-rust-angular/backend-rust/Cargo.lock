@@ -4113,10 +4113,13 @@ name = "siem-agent-linux"
 version = "1.0.0"
 dependencies = [
  "chrono",
+ "flate2",
  "hex",
  "libc",
+ "provigil-collect",
  "quick-xml",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",

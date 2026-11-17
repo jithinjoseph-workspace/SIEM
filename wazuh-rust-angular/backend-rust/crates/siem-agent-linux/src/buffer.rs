@@ -1,26 +1,53 @@
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use siem_core::RawEvent;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-/// Thread-safe client buffer with flow control and manager dispatch
+/// Thread-safe client buffer with flow control, disk-persisted spooling, and manager dispatch
 pub struct AgentBuffer {
     tx: mpsc::Sender<RawEvent>,
     dropped_count: Arc<AtomicUsize>,
     capacity: usize,
+    spool_dir: PathBuf,
 }
 
 impl AgentBuffer {
+    /// Initialize standard agent buffer with default spool directory
     pub fn new(
         manager_url: String,
         capacity: usize,
         events_per_second: usize,
         lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
     ) -> (Self, tokio::task::JoinHandle<()>) {
+        Self::new_with_spool(
+            manager_url,
+            capacity,
+            events_per_second,
+            lifecycle,
+            default_spool_dir(),
+        )
+    }
+
+    /// Initialize agent buffer with an explicit spool directory (used in production or unit tests)
+    pub fn new_with_spool(
+        manager_url: String,
+        capacity: usize,
+        events_per_second: usize,
+        lifecycle: Arc<crate::lifecycle::LifecycleCoordinator>,
+        spool_dir: PathBuf,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<RawEvent>(capacity);
         let dropped_count = Arc::new(AtomicUsize::new(0));
+
+        let spool_worker_dir = spool_dir.clone();
+        let _dropped_worker = Arc::clone(&dropped_count);
 
         let worker = tokio::spawn(async move {
             let client = crate::enroll::http_builder()
@@ -30,16 +57,34 @@ impl AgentBuffer {
                 .unwrap_or_default();
 
             let endpoint = format!("{}/api/v1/events/ingest", manager_url.trim_end_matches('/'));
-            info!("AgentBuffer: Initialized with capacity {} and target endpoint '{}'", capacity, endpoint);
+            info!(
+                "AgentBuffer: Initialized with capacity {}, spool directory '{}', and target endpoint '{}'",
+                capacity,
+                spool_worker_dir.display(),
+                endpoint
+            );
 
             let delay_between_flushes = Duration::from_millis(
-                if events_per_second > 0 { (1000 / events_per_second).max(5) as u64 } else { 10 }
+                if events_per_second > 0 {
+                    (1000 / events_per_second).max(5) as u64
+                } else {
+                    10
+                },
             );
 
             let mut batch: Vec<RawEvent> = Vec::with_capacity(50);
 
             loop {
                 if lifecycle.is_terminated() {
+                    // Flush any remaining in-memory events to disk spool before terminating
+                    let mut remaining = Vec::new();
+                    while let Ok(ev) = rx.try_recv() {
+                        remaining.push(ev);
+                    }
+                    if !remaining.is_empty() {
+                        spool_write(&spool_worker_dir, &remaining);
+                        info!("AgentBuffer: Spooled {} pending events to disk on shutdown.", remaining.len());
+                    }
                     break;
                 }
 
@@ -49,7 +94,28 @@ impl AgentBuffer {
                     continue;
                 }
 
-                // Collect batch of events
+                // 1. Prioritize draining disk-persisted spool if manager is reachable
+                if let Some((spool_path, spooled_events)) = spool_drain_oldest(&spool_worker_dir) {
+                    if !spooled_events.is_empty() {
+                        match dispatch_batch(&client, &endpoint, &spooled_events).await {
+                            Ok(()) => {
+                                debug!("AgentBuffer: Transmitted {} spooled events from '{}'", spooled_events.len(), spool_path.display());
+                                let _ = std::fs::remove_file(&spool_path);
+                                tokio::time::sleep(delay_between_flushes).await;
+                                continue;
+                            }
+                            Err(e) => {
+                                debug!("AgentBuffer: Spool delivery paused (manager unreachable: {}).", e);
+                                tokio::time::sleep(Duration::from_secs(2)).await;
+                                continue;
+                            }
+                        }
+                    } else {
+                        let _ = std::fs::remove_file(&spool_path);
+                    }
+                }
+
+                // 2. Collect batch of real-time events from in-memory channel
                 while let Ok(event) = rx.try_recv() {
                     batch.push(event);
                     if batch.len() >= 50 {
@@ -73,7 +139,8 @@ impl AgentBuffer {
                     let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
                     let mut req = client.post(&endpoint).json(&to_send);
                     if !key_trim.is_empty() {
-                        req = req.header("x-agent-key", key_trim)
+                        req = req
+                            .header("x-agent-key", key_trim)
                             .header("authorization", format!("Bearer {}", key_trim));
                     }
                     if !agent_id.trim().is_empty() {
@@ -91,6 +158,8 @@ impl AgentBuffer {
                             } else {
                                 lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Dormant);
                             }
+                            // Save events to spool so they are not lost if reactivated
+                            spool_write(&spool_worker_dir, &to_send);
                         }
                         Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
                             warn!("AgentBuffer: Manager returned 404 NOT FOUND. Checking agent lifecycle state...");
@@ -100,12 +169,15 @@ impl AgentBuffer {
                                     lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
                                 }
                             }
+                            spool_write(&spool_worker_dir, &to_send);
                         }
                         Ok(res) => {
-                            warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());
+                            warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}. Persisting to disk spool.", res.status());
+                            spool_write(&spool_worker_dir, &to_send);
                         }
                         Err(err) => {
-                            debug!("AgentBuffer: Manager connection unreachable ({}). Buffered events queued.", err);
+                            debug!("AgentBuffer: Manager connection unreachable ({}). Persisting batch to disk spool.", err);
+                            spool_write(&spool_worker_dir, &to_send);
                         }
                     }
                 }
@@ -119,23 +191,35 @@ impl AgentBuffer {
                 tx,
                 dropped_count,
                 capacity,
+                spool_dir,
             },
             worker,
         )
     }
 
-    /// Push an event into the local buffer
+    /// Push an event into the local buffer. If memory queue is full, spools to disk instead of dropping.
     pub async fn push(&self, event: RawEvent) -> bool {
         match self.tx.try_send(event) {
             Ok(_) => true,
-            Err(_) => {
-                let dropped = self.dropped_count.fetch_add(1, Ordering::Relaxed);
-                if dropped % 100 == 0 {
-                    warn!("AgentBuffer: Queue full ({}/{})! Dropped {} events.", self.capacity, self.capacity, dropped + 1);
+            Err(tokio::sync::mpsc::error::TrySendError::Full(ev)) => {
+                // In-memory channel full: Spool directly to disk to prevent data loss
+                if spool_write(&self.spool_dir, &[ev]) {
+                    true
+                } else {
+                    let dropped = self.dropped_count.fetch_add(1, Ordering::Relaxed);
+                    if dropped % 100 == 0 {
+                        warn!("AgentBuffer: Spool full/failed! Dropped {} events.", dropped + 1);
+                    }
+                    false
                 }
-                false
             }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => false,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
 
     #[allow(dead_code)]
@@ -151,9 +235,99 @@ impl AgentBuffer {
                 tx,
                 dropped_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 capacity,
+                spool_dir: std::env::temp_dir().join(format!("test_spool_{}", uuid::Uuid::new_v4())),
             },
             rx,
         )
+    }
+}
+
+/// Transmit a batch of events directly to the ingest endpoint
+async fn dispatch_batch(
+    client: &reqwest::Client,
+    endpoint: &str,
+    events: &[RawEvent],
+) -> Result<(), String> {
+    let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+    let key_trim = key.trim();
+    let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
+
+    let mut req = client.post(endpoint).json(events);
+    if !key_trim.is_empty() {
+        req = req
+            .header("x-agent-key", key_trim)
+            .header("authorization", format!("Bearer {}", key_trim));
+    }
+    if !agent_id.trim().is_empty() {
+        req = req.header("x-agent-id", agent_id.trim());
+    }
+
+    let res = req.send().await.map_err(|e| e.to_string())?;
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("HTTP {}", res.status()))
+    }
+}
+
+/// Compress and write events to a new chunk file in the spool directory
+pub fn spool_write(dir: &Path, events: &[RawEvent]) -> bool {
+    if events.is_empty() {
+        return true;
+    }
+    if let Err(_) = std::fs::create_dir_all(dir) {
+        return false;
+    }
+    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+    let path = dir.join(format!("spool_{}.gz", now));
+
+    let Ok(bytes) = serde_json::to_vec(events) else {
+        return false;
+    };
+    let Ok(file) = std::fs::File::create(&path) else {
+        return false;
+    };
+
+    let mut encoder = GzEncoder::new(file, Compression::default());
+    if encoder.write_all(&bytes).is_err() {
+        return false;
+    }
+    encoder.finish().is_ok()
+}
+
+/// Read and decompress the oldest chunk file from the spool directory
+pub fn spool_drain_oldest(dir: &Path) -> Option<(PathBuf, Vec<RawEvent>)> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return None;
+    };
+    let mut gz_files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "gz"))
+        .collect();
+
+    if gz_files.is_empty() {
+        return None;
+    }
+    gz_files.sort();
+
+    let oldest = gz_files.into_iter().next()?;
+    let file = std::fs::File::open(&oldest).ok()?;
+    let decoder = GzDecoder::new(file);
+    let events: Vec<RawEvent> = serde_json::from_reader(decoder).ok()?;
+    Some((oldest, events))
+}
+
+/// Default spool directory path for Linux
+pub fn default_spool_dir() -> PathBuf {
+    let opt_dir = Path::new("/opt/provigil-agent/queue");
+    if opt_dir.is_dir() || Path::new("/opt/provigil-agent").is_dir() {
+        opt_dir.to_path_buf()
+    } else {
+        PathBuf::from("data/queue")
     }
 }
 
@@ -170,4 +344,36 @@ fn tenant_headers() -> reqwest::header::HeaderMap {
         }
     }
     h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_disk_spool_write_and_drain() {
+        let temp_dir = std::env::temp_dir().join(format!("test_spool_unit_{}", uuid::Uuid::new_v4()));
+        let mut ev1 = RawEvent::new("agent-1", siem_core::EventSource::Fim, "test/fim", "file changed");
+        ev1.metadata.insert("key1".into(), "val1".into());
+
+        let mut ev2 = RawEvent::new("agent-1", siem_core::EventSource::Syslog, "test/syslog", "login ok");
+        ev2.metadata.insert("user".into(), "root".into());
+
+        let events = vec![ev1.clone(), ev2.clone()];
+
+        // 1. Write to compressed disk spool
+        assert!(spool_write(&temp_dir, &events));
+
+        // 2. Drain oldest from disk spool
+        let (file_path, drained) = spool_drain_oldest(&temp_dir).expect("Should find spooled file");
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].message, "file changed");
+        assert_eq!(drained[1].message, "login ok");
+
+        // 3. Remove file and verify queue is empty
+        let _ = std::fs::remove_file(&file_path);
+        assert!(spool_drain_oldest(&temp_dir).is_none());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }

@@ -24,6 +24,9 @@ base64 = "0.22"
 boreal = { version = "1.4", features = ["object", "hash"] }
 provigil-collect = { path = "../provigil-collect" }
 siem-active-response = { path = "../siem-active-response" }
+provigil-proto = { path = "../provigil-proto" }
+tonic = { version = "0.12", default-features = false, features = ["transport", "codegen", "prost"] }
+prost = "0.13"
 
 [package.metadata.deb]
 name = "provigil-agent"

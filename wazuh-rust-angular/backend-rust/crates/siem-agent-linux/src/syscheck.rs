@@ -31,6 +31,7 @@ pub struct SyscheckEngine {
     watcher: Option<LinuxInotifyWatcher>,
     rx_events: Option<mpsc::Receiver<FimWatchEvent>>,
     db: Option<crate::fim_db::FimDb>,
+    pub diff: crate::diff::DiffEngine,
 }
 
 impl SyscheckEngine {
@@ -58,6 +59,7 @@ impl SyscheckEngine {
             watcher,
             rx_events: Some(rx),
             db: None,
+            diff: crate::diff::DiffEngine::new(crate::diff::DiffConfig::default()),
         }
     }
 
@@ -231,6 +233,7 @@ impl SyscheckEngine {
                 event.metadata.insert("mode".into(), mode.into());
                 event.metadata.insert("old_hash".into(), old_record.hash);
                 event.metadata.insert("os_type".into(), "linux".into());
+                self.diff.remove_snapshot(path);
 
                 Self::enrich_event_whodata(&mut event, whodata);
                 buffer.push(event.clone()).await;
@@ -287,6 +290,7 @@ impl SyscheckEngine {
                 event.metadata.insert("mode".into(), if whodata.is_some() { "whodata".into() } else { "realtime".into() });
                 event.metadata.insert("new_hash".into(), new_hash);
                 event.metadata.insert("os_type".into(), "linux".into());
+                self.diff.remove_snapshot(path);
                 Self::enrich_event_whodata(&mut event, whodata);
                 buffer.push(event.clone()).await;
                 return Some(event);
@@ -367,6 +371,16 @@ impl SyscheckEngine {
         event.metadata.insert("new_mode".into(), format!("{:o}", new_mode & 0o7777));
         event.metadata.insert("new_uid".into(), new_uid.to_string());
         event.metadata.insert("os_type".into(), "linux".into());
+
+        if action == "modified" {
+            if let Ok(Some(diff_res)) = self.diff.process_file_diff(path) {
+                if let Some(diff_txt) = diff_res.diff_content {
+                    event.metadata.insert("diff".into(), diff_txt);
+                }
+            }
+        } else if action == "added" {
+            let _ = self.diff.process_file_diff(path);
+        }
 
         Self::enrich_event_whodata(&mut event, whodata);
         buffer.push(event.clone()).await;

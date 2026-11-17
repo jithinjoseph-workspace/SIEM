@@ -618,6 +618,11 @@ pub(crate) fn resolve_command_value(v: &serde_json::Value) -> Option<ResolvedCom
             action: "syscollector_scan".to_string(),
             target: String::new(),
         }),
+        Some("upgrade") => Some(ResolvedCommand {
+            command_id,
+            action: "upgrade".to_string(),
+            target: v.get("version").or_else(|| v.get("target")).and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        }),
         Some("ar") => {
             let msg = v.get("message")?;
             let raw_cmd = msg.get("command").and_then(|x| x.as_str()).filter(|s| !s.is_empty())?;
@@ -631,6 +636,7 @@ pub(crate) fn resolve_command_value(v: &serde_json::Value) -> Option<ResolvedCom
                 "release-host" => "release_host",
                 "yara-scan" | "yara_scan" => "yara_scan",
                 "live-response" | "live_response" => "live_response",
+                "upgrade" => "upgrade",
                 other => other,
             };
             let params = msg.get("parameters");
@@ -727,6 +733,24 @@ pub(crate) async fn dispatch_commands(
             }
             "syscollector_scan" | "sync_inventory" => {
                 crate::syscollector::emit_inventory(agent_id, buffer).await;
+            }
+            "upgrade" => {
+                let supervisor = crate::upgrade::UpgradeSupervisor::new();
+                let res = supervisor.execute_upgrade(raw, "1.0.0").await;
+                let (success, result_msg) = match res {
+                    Ok(msg) => (true, format!("provigil-agentd[{}]: Upgrade to version '{}' initiated: {}", agent_id, cmd.target, msg)),
+                    Err(e) => (false, format!("provigil-agentd[{}]: Upgrade to version '{}' failed: {}", agent_id, cmd.target, e)),
+                };
+                let mut event = siem_core::RawEvent::new(
+                    agent_id,
+                    siem_core::EventSource::Syslog,
+                    "agent/upgrade",
+                    result_msg,
+                );
+                event.metadata.insert("action".into(), "upgrade".into());
+                event.metadata.insert("target_version".into(), cmd.target.clone());
+                event.metadata.insert("success".into(), success.to_string());
+                buffer.push(event).await;
             }
             "restart_agent" => {
                 info!("provigil-execd: restarting the agent service on manager request");
@@ -891,6 +915,18 @@ mod tests {
                 command_id: "c8".into(),
                 action: "live_response".into(),
                 target: "id=req88 action=ps".into(),
+            })
+        );
+        assert_eq!(
+            resolve_command_value(&json!({
+                "command_id": "c9",
+                "type": "upgrade",
+                "version": "1.1.0"
+            })),
+            Some(ResolvedCommand {
+                command_id: "c9".into(),
+                action: "upgrade".into(),
+                target: "1.1.0".into(),
             })
         );
     }

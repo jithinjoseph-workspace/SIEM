@@ -79,6 +79,8 @@ impl AgentBuffer {
                 .build()
                 .unwrap_or_default();
 
+            let grpc = crate::grpc_transport::GrpcTransport::new(&failover.current_url()).ok();
+
             info!(
                 "AgentBuffer: Initialized with capacity {}, spool directory '{}', active manager '{}'",
                 capacity,
@@ -133,7 +135,7 @@ impl AgentBuffer {
                 // 1. Prioritize draining disk-persisted spool if manager is reachable
                 if let Some((spool_path, spooled_events)) = spool_drain_oldest(&spool_worker_dir) {
                     if !spooled_events.is_empty() {
-                        match dispatch_batch(&client, &endpoint, &spooled_events).await {
+                        match dispatch_batch(&client, &endpoint, &spooled_events, grpc.as_ref()).await {
                             Ok(()) => {
                                 failover.report_success();
                                 debug!("AgentBuffer: Transmitted {} spooled events from '{}'", spooled_events.len(), spool_path.display());
@@ -175,6 +177,20 @@ impl AgentBuffer {
                     let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
                     let key_trim = key.trim();
                     let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
+
+                    // Prioritize high-performance gRPC streaming when available
+                    if let Some(ref g) = grpc {
+                        if g.is_available().await {
+                            let json_events: Vec<String> = to_send.iter().filter_map(|e| serde_json::to_string(e).ok()).collect();
+                            if let Ok(accepted) = g.send_events(&agent_id, key_trim, json_events).await {
+                                failover.report_success();
+                                debug!("AgentBuffer: Streamed {} events via gRPC (accepted: {})", count, accepted);
+                                tokio::time::sleep(delay_between_flushes).await;
+                                continue;
+                            }
+                        }
+                    }
+
                     let mut req = client.post(&endpoint).json(&to_send);
                     if !key_trim.is_empty() {
                         req = req
@@ -287,15 +303,25 @@ impl AgentBuffer {
     }
 }
 
-/// Transmit a batch of events directly to the ingest endpoint
+/// Transmit a batch of events directly to the ingest endpoint, attempting gRPC first
 async fn dispatch_batch(
     client: &reqwest::Client,
     endpoint: &str,
     events: &[RawEvent],
+    grpc: Option<&crate::grpc_transport::GrpcTransport>,
 ) -> Result<(), String> {
     let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
     let key_trim = key.trim();
     let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
+
+    if let Some(g) = grpc {
+        if g.is_available().await {
+            let json_events: Vec<String> = events.iter().filter_map(|e| serde_json::to_string(e).ok()).collect();
+            if g.send_events(&agent_id, key_trim, json_events).await.is_ok() {
+                return Ok(());
+            }
+        }
+    }
 
     let mut req = client.post(endpoint).json(events);
     if !key_trim.is_empty() {

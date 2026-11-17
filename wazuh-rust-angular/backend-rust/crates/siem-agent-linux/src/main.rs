@@ -4,19 +4,23 @@ mod client_agent;
 #[allow(dead_code)]
 mod config_parser;
 mod control;
+pub mod diff;
 mod enroll;
 mod execd;
 pub mod failover;
 pub mod fim_db;
 pub mod group_config;
+pub mod grpc_transport;
 pub mod inotify_watcher;
 mod lifecycle;
 mod logcollector;
+pub mod osquery;
 mod rootcheck;
 mod sca;
 mod endpoint_policy;
 mod syscheck;
 mod syscollector;
+pub mod upgrade;
 pub mod whodata;
 
 use buffer::AgentBuffer;
@@ -125,6 +129,9 @@ async fn run_linux_agent() {
     info!("Distribution:    {}", ClientAgent::detect_linux_distro());
     info!("Platform:        {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     info!("===============================================================");
+
+    // Verify status of any prior in-band binary upgrades
+    let _ = upgrade::UpgradeSupervisor::new().check_prior_result();
 
     let failover = Arc::new(failover::Failover::new(
         config.manager_list(),
@@ -259,6 +266,14 @@ async fn run_linux_agent() {
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
         Duration::from_secs(120),
+    );
+
+    info!(" - provigil-osquery (osquery daemon supervisor)");
+    let _osquery_handle = osquery::spawn_osquery_worker(
+        config.agent_id.clone(),
+        osquery::OsqueryConfig::default(),
+        Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
     );
 
     info!("===============================================================");

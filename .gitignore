@@ -75,6 +75,7 @@ SIEM Documentation
 lt-*.json
 # FIM diff copies of local system files, and old agent exe backups
 /data/diff/
+wazuh-rust-angular/backend-rust/crates/**/data/
 wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 
 # ========================================================

@@ -595,13 +595,19 @@ async fn fetch(manager_url: &str, agent_id: &str, key: &str) -> Result<Vec<Value
     Ok(v["config"]["endpoint_policies"].as_array().cloned().unwrap_or_default())
 }
 
+/// The hosts of every manager address: none of them is ever blocked.
+pub fn all_manager_hosts(urls: &[String]) -> Vec<String> {
+    urls.iter().flat_map(|u| manager_hosts(u)).collect()
+}
+
 /// Runs until the agent stops: settings every 5 minutes, files every 10, programs every second.
-pub fn spawn_worker(agent_id: String, agent_key: String, manager_url: String, buffer: Arc<AgentBuffer>, lifecycle: Arc<LifecycleCoordinator>) -> tokio::task::JoinHandle<()> {
+/// Settings come from the manager in use (`failover`), and no rule blocks any of the managers.
+pub fn spawn_worker(agent_id: String, agent_key: String, failover: Arc<crate::failover::Failover>, buffer: Arc<AgentBuffer>, lifecycle: Arc<LifecycleCoordinator>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let saved = data_dir().join("endpoint_policies.json");
         let state_path = data_dir().join("policy_state.json");
         let key = std::env::var("SIEM_AGENT_KEY").ok().filter(|k| !k.trim().is_empty()).unwrap_or(agent_key);
-        let never = manager_hosts(&manager_url);
+        let never = all_manager_hosts(&failover.all_urls());
         // the last rules received, so a start without the manager still enforces them
         let mut rules: Vec<Value> = std::fs::read_to_string(&saved).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let d = Arc::new(std::sync::RwLock::new(desired(&rules, &never)));
@@ -622,7 +628,7 @@ pub fn spawn_worker(agent_id: String, agent_key: String, manager_url: String, bu
             }
             let mut changed = tick == 0;
             if tick % 300 == 0 {
-                match fetch(&manager_url, &agent_id, &key).await {
+                match fetch(&failover.current_url(), &agent_id, &key).await {
                     Ok(r) if r != rules => {
                         info!("provigil-policy: {} endpoint policy rule(s) received", r.len());
                         let _ = std::fs::write(&saved, Value::Array(r.clone()).to_string());
@@ -767,6 +773,15 @@ mod tests {
             json!({ "id": "a2", "kind": "app", "mode": "monitor", "targets": ["discord"] }),
             json!({ "id": "q1", "kind": "safe_search", "mode": "enforce", "targets": [] }),
         ]
+    }
+
+    #[test]
+    fn no_manager_is_ever_blocked() {
+        let rule = vec![json!({ "id": "s9", "kind": "site", "mode": "enforce", "targets": ["siem-a.company.com", "siem-b.company.com", "chatgpt.com"] })];
+        let never = all_manager_hosts(&["https://siem-a.company.com:8443".into(), "https://SIEM-B.company.com:8443/".into()]);
+        let d = desired(&rule, &never);
+        assert!(!d.hosts.iter().any(|h| h.contains("siem-")), "the backup manager is protected too: {:?}", d.hosts);
+        assert!(d.hosts.contains(&"chatgpt.com".to_string()));
     }
 
     #[test]

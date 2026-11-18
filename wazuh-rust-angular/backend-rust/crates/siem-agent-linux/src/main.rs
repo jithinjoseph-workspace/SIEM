@@ -255,7 +255,7 @@ async fn run_linux_agent() {
     let _policy_handle = endpoint_policy::spawn_worker(
         config.agent_id.clone(),
         config.agent_key.clone(),
-        config.manager_url.clone(),
+        failover.clone(),
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
     );

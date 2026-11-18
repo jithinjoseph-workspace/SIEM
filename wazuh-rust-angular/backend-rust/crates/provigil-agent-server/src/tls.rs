@@ -52,7 +52,10 @@ pub fn server_cert(ca: &Certificate, ca_key: &KeyPair, cn: &str, hosts: Vec<Stri
 pub fn hosts(extra: &[String]) -> Vec<String> {
     let mut hosts: Vec<String> = ["SIEM_LAN_IP", "MANAGER_IP", "SITE_DOMAIN"].iter().filter_map(|k| std::env::var(k).ok()).flat_map(|v| v.split(',').map(|h| h.trim().to_string()).collect::<Vec<_>>()).collect();
     hosts.extend_from_slice(extra);
-    hosts.extend(sysinfo::System::host_name());
+    // the host name, also as its .local name (multicast DNS: labs and VMs without a DNS server)
+    let name = sysinfo::System::host_name().filter(|h| !h.is_empty());
+    hosts.extend(name.iter().filter(|h| !h.contains('.')).map(|h| format!("{h}.local")));
+    hosts.extend(name);
     hosts.extend(local_ip_address::list_afinet_netifas().into_iter().flatten().map(|(_, ip)| ip).filter(|ip| ip.is_ipv4()).map(|ip| ip.to_string()));
     hosts.extend(["localhost".to_string(), "127.0.0.1".to_string()]);
     hosts.retain(|h| !h.is_empty() && h.is_ascii());
@@ -79,5 +82,8 @@ mod tests {
         let h = hosts(&["manager.corp".into()]);
         assert!(h.iter().any(|x| x == "localhost") && h.iter().any(|x| x == "manager.corp"));
         assert!(h.windows(2).all(|w| w[0] < w[1]));
+        if let Some(n) = sysinfo::System::host_name().filter(|n| !n.is_empty() && !n.contains('.') && n.is_ascii()) {
+            assert!(h.contains(&format!("{n}.local")), "the .local name too");
+        }
     }
 }

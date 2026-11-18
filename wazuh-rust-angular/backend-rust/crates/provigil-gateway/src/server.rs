@@ -35,7 +35,9 @@ const CALLS_PER_CONNECTION: u32 = 8;
 const KEEPALIVE: Duration = Duration::from_secs(60);
 /// A certificate is renewed this long before it ends.
 const RENEW_BEFORE_SECS: i64 = 30 * 86_400;
-const RENEW_CHECK: Duration = Duration::from_secs(3600);
+/// How often the host's names and addresses are compared with the certificate's: a new Wi-Fi
+/// address is in the certificate within this time (agents using it are refused until then).
+const RENEW_CHECK: Duration = Duration::from_secs(60);
 
 static CONNECTION: AtomicU64 = AtomicU64::new(1);
 

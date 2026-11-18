@@ -43,6 +43,7 @@ pub mod mail_settings;
 pub mod parsers_store;
 pub mod persist;
 pub mod provigil_manager;
+pub mod redswarm_engine;
 pub mod redswarm_store;
 pub mod syslog;
 pub mod syslog_send;
@@ -405,26 +406,17 @@ async fn main() {
         let swarm_engine = state.redswarm.clone();
         swarm_engine.start_background_loop(
             move |events| {
-                for ev in events {
-                    // the target as the manager knows it (connected or enrolled); an unknown target is
-                    // skipped, never replaced by a made-up host
-                    let known = swarm_state.agents.read().unwrap().get(&ev.agent_id).map(|a| (a.name.clone(), a.ip.clone()));
-                    let known = known.or_else(|| swarm_state.enrolled.read().unwrap().get(&ev.agent_id).map(|e| (e.name.clone(), "127.0.0.1".to_string())));
-                    let Some((name, ip)) = known else {
-                        tracing::warn!("Red Swarm: target agent {} is not known to this manager; its events were not injected", ev.agent_id);
-                        continue;
-                    };
-                    // the target agent's tenant (set by the round), never another one
-                    let tenant = ev.metadata.get("tenant_id").cloned().unwrap_or_else(|| {
-                        tenancy::tenant_of(&swarm_state.agent_tenants.read().unwrap(), &ev.agent_id)
-                    });
-                    if let Some(alert) = swarm_state.engine.process_event(ev, &name, &ip) {
-                        let alert = tenancy::tag_alert(redswarm_simulated(alert), &tenant);
-                        keep_alerts(&swarm_state, [alert.clone()]);
-                        let _ = swarm_state.broadcast_tx.send(alert);
-                    }
-                    keep_events(&swarm_state, [ev.clone()]);
-                }
+                let Some(first) = events.first() else { return };
+                // the target as the manager knows it (connected or enrolled); an unknown target is
+                // skipped, never replaced by a made-up host
+                let id = first.agent_id.clone();
+                let known = swarm_state.agents.read().unwrap().get(&id).map(|a| (a.name.clone(), a.ip.clone()));
+                let known = known.or_else(|| swarm_state.enrolled.read().unwrap().get(&id).map(|e| (e.name.clone(), String::new())));
+                let Some((name, ip)) = known else {
+                    tracing::warn!("Red Swarm: target agent {id} is not known to this manager; its events were not sent");
+                    return;
+                };
+                redswarm_send(id, name, ip, events.to_vec());
             },
             move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
             {
@@ -1491,6 +1483,7 @@ async fn main() {
         .route("/api/v1/agents/:id/groups", put(groups::put_agent_groups))
         // ── Red Swarm & Perpetual Purple-Team Engine Routes ──
         .route("/api/v1/redswarm/status", get(get_redswarm_status_handler))
+        .route("/api/v1/redswarm/catalog", get(get_redswarm_catalog_handler))
         .route(
             "/api/v1/redswarm/campaigns",
             get(get_redswarm_campaigns_handler).post(post_redswarm_campaigns_handler),
@@ -6762,7 +6755,18 @@ pub fn is_simulation(a: &Alert) -> bool {
     a.rule.groups.iter().any(|g| g == "simulation" || g == "redswarm_simulation")
 }
 
-fn redswarm_simulated(mut a: Alert) -> Alert {
+/// A round's events to the analysis engine, as the target's own (redswarm_engine.rs); what it
+/// finds comes back through the alert stream as a simulation.
+fn redswarm_send(agent_id: String, name: String, ip: String, events: Vec<RawEvent>) {
+    tokio::spawn(async move {
+        match redswarm_engine::inject(&provigil_manager::home(), &agent_id, &name, &ip, &events).await {
+            Ok(n) => tracing::info!("Red Swarm: {n} simulated event(s) sent to the analysis engine for agent {agent_id}"),
+            Err(e) => tracing::warn!("Red Swarm: round for agent {agent_id} not sent: {e}"),
+        }
+    });
+}
+
+pub(crate) fn redswarm_simulated(mut a: Alert) -> Alert {
     a.rule.description = format!("[Red Swarm simulation] {}", a.rule.description);
     a.rule.groups.push("redswarm_simulation".into());
     a
@@ -6976,6 +6980,8 @@ async fn post_redswarm_toggle_campaign_handler(
 #[derive(Deserialize)]
 struct RunOncePayload {
     pub technique_id: Option<String>,
+    /// the attack's system (windows / linux): some ids exist for both
+    pub platform: Option<String>,
     pub target_agent_id: Option<String>,
     pub mode: Option<siem_redswarm::SwarmExecutionMode>,
 }
@@ -6989,29 +6995,34 @@ async fn post_redswarm_run_once_handler(
         return r;
     }
     let tenant = ctx.scope();
-    // one of the tenant's own agents
+    // one of the tenant's own agents, of the attack's system (active first)
     let target = {
         let agents = scoped_agent_map(&state, &ctx);
+        let platform = payload.platform.as_deref().map(str::to_lowercase).or_else(|| {
+            let id = payload.technique_id.as_deref()?;
+            siem_redswarm::get_curated_catalog().into_iter().find(|t| t.id == id).and_then(|t| t.platforms.first().cloned())
+        });
+        let fits = |a: &&Agent| platform.as_deref().map_or(true, |p| a.os_type.to_lowercase().contains(p));
         match payload.target_agent_id {
             Some(ref id) => agents.get(id).cloned(),
             None => agents
                 .values()
+                .filter(fits)
                 .find(|a| a.status == AgentStatus::Active)
-                .cloned()
-                .or_else(|| agents.values().next().cloned()),
+                .or_else(|| agents.values().find(fits))
+                .cloned(),
         }
     };
     let Some(ag) = target else {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "No agent of yours to run the technique on" }))).into_response();
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "No computer of yours runs the attack's system (Windows or Linux)" }))).into_response();
     };
     let (target_agent_id, agent_name, agent_ip, agent_os) = (ag.id, ag.name, ag.ip, ag.os_type);
 
     let target_tags = vec!["lab".into(), "redteam-allowed".into()];
 
-    let swarm_state = state.clone();
+    let cl_agent_id = target_agent_id.clone();
     let cl_agent_name = agent_name.clone();
     let cl_agent_ip = agent_ip.clone();
-    let cl_tenant = tenant.clone();
     let result = state
         .redswarm
         .run_single_round(
@@ -7023,20 +7034,7 @@ async fn post_redswarm_run_once_handler(
             &target_tags,
             payload.mode,
             &tenant,
-            move |events| {
-                for ev in events {
-                    if let Some(alert) =
-                        swarm_state
-                            .engine
-                            .process_event(ev, &cl_agent_name, &cl_agent_ip)
-                    {
-                        let alert = tenancy::tag_alert(redswarm_simulated(alert), &cl_tenant);
-                        keep_alerts(&swarm_state, [alert.clone()]);
-                        let _ = swarm_state.broadcast_tx.send(alert);
-                    }
-                    keep_events(&swarm_state, [ev.clone()]);
-                }
-            },
+            move |events| redswarm_send(cl_agent_id, cl_agent_name, cl_agent_ip, events.to_vec()),
             move |_ag_id, _cmd| Err(REDSWARM_NO_LIVE.to_string()),
             move || state.alerts.read().unwrap().clone(),
         )
@@ -7054,6 +7052,15 @@ async fn post_redswarm_run_once_handler(
         )
             .into_response(),
     }
+}
+
+/// `GET /api/v1/redswarm/catalog`: the attacks Red Swarm simulates, by system.
+async fn get_redswarm_catalog_handler() -> impl IntoResponse {
+    let list: Vec<serde_json::Value> = siem_redswarm::get_curated_catalog()
+        .into_iter()
+        .map(|t| serde_json::json!({ "id": t.id, "name": t.name, "tactic": t.tactic, "platform": t.platforms.first(), "expected_mitre_ids": t.expected_mitre_ids }))
+        .collect();
+    Json(list)
 }
 
 async fn get_redswarm_history_handler(

@@ -54,7 +54,9 @@ export class RedswarmComponent implements OnInit {
 
   // Modal / Execution state
   isExecutingManual = signal<boolean>(false);
-  manualTechniqueId = signal<string>('T1110.001');
+  /** `id|platform`: some technique ids exist for both systems */
+  manualTechniqueId = signal<string>('T1110.001|linux');
+  catalog = signal<{ id: string; name: string; tactic: string; platform: string }[]>([]);
   manualMode = signal<SwarmExecutionMode>('safe_telemetry_only');
   manualResult = signal<string | null>(null);
 
@@ -66,6 +68,7 @@ export class RedswarmComponent implements OnInit {
 
   ngOnInit() {
     this.refreshAll();
+    this.siem.getRedSwarmCatalog().subscribe({ next: (c) => this.catalog.set(c || []), error: () => this.catalog.set([]) });
   }
 
   refreshAll() {
@@ -124,8 +127,9 @@ export class RedswarmComponent implements OnInit {
     this.isExecutingManual.set(true);
     this.manualResult.set(null);
     this.siem.runRedSwarmSingleRound({
-      technique_id: this.manualTechniqueId(),
-      // the server picks one of the tenant's own agents
+      technique_id: this.manualTechniqueId().split('|')[0],
+      platform: this.manualTechniqueId().split('|')[1],
+      // the server picks one of the tenant's own computers of that system
       mode: this.manualMode()
     }).subscribe({
       next: (res) => {

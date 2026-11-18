@@ -1,28 +1,57 @@
-//! The purple loop end to end on the real engine and the official ruleset:
-//! a technique a built-in rule covers is Defended, an uncovered one is a gap whose
-//! drafted rule, once deployed, makes the next round Defended.
+//! The purple loop's verdict: only the alerts of a round's own events count (their location
+//! names the round), and the ATT&CK id the shipped rules give decides Defended. The attacks
+//! themselves go through the real analysis engine in siem-api (`redswarm_engine.rs`).
+use siem_core::{AgentAlertInfo, Alert, DecodedFields, MitreAttack, RuleAlertInfo};
 use siem_redswarm::*;
 
-fn verdict(eng: &siem_engine::AnalysisEngine, t: &AttackTechnique) -> DetectionVerdict {
-    let ev = siem_core::RawEvent::new("043", siem_core::EventSource::WindowsEvent, "redswarm", t.sample_raw_logs[0].clone());
-    let alerts: Vec<_> = eng.process_event(&ev, "win-node", "10.0.0.5").into_iter().collect();
-    PurpleLoopVerifier::verify_execution(t, "043", ev.timestamp, 15, &alerts).verdict
+fn alert(location: &str, rule: u32, mitre: Option<&str>) -> Alert {
+    Alert {
+        id: uuid::Uuid::new_v4(),
+        timestamp: chrono::Utc::now(),
+        rule: RuleAlertInfo {
+            id: rule,
+            level: 10,
+            description: "sshd: brute force trying to get access to the system".into(),
+            groups: vec!["sshd".into(), "authentication_failed".into()],
+            mitre: mitre.map(|m| MitreAttack { id: m.into(), tactic: "Credential Access".into(), technique: "Brute Force".into() }),
+        },
+        agent: AgentAlertInfo { id: "007".into(), name: "web01".into(), ip: "10.0.0.5".into() },
+        manager: None,
+        decoder: None,
+        full_log: "sshd[4102]: Failed password for root from 203.0.113.50 port 54820 ssh2".into(),
+        decoded: DecodedFields::default(),
+        location: location.into(),
+        data: Default::default(),
+    }
+}
+
+fn verdict(t: &AttackTechnique, round: &str, alerts: Vec<Alert>) -> DetectionVerdict {
+    let own: Vec<Alert> = alerts.into_iter().filter(|a| a.location.starts_with(&format!("redswarm/{round}/"))).collect();
+    PurpleLoopVerifier::verify_execution(t, "", chrono::Utc::now(), 60, &own).verdict
 }
 
 #[test]
-fn gap_closes_after_its_draft_is_deployed() {
-    std::env::set_var("WAZUH_RULESET_PATH", concat!(env!("CARGO_MANIFEST_DIR"), "/../../ruleset"));
-    let eng = siem_engine::AnalysisEngine::new();
+fn only_the_rounds_own_alerts_decide() {
+    let t = find_technique_for("T1110.001", "linux").unwrap();
+    assert_eq!(verdict(&t, "r1", vec![alert("redswarm/r1/T1110.001", 5763, Some("T1110"))]), DetectionVerdict::Defended);
+    // the computer's real brute force at the same time is not this round's detection
+    assert_eq!(verdict(&t, "r1", vec![alert("/var/log/auth.log", 5763, Some("T1110"))]), DetectionVerdict::HardGap);
+    assert_eq!(verdict(&t, "r1", vec![alert("redswarm/r2/T1110.001", 5763, Some("T1110"))]), DetectionVerdict::HardGap);
+    // caught by a low, generic rule, not as the attack it is
+    let mut generic = alert("redswarm/r1/T1110.001", 5700, None);
+    generic.rule.level = 3;
+    assert_eq!(verdict(&t, "r1", vec![generic]), DetectionVerdict::SoftGap);
+}
 
-    // covered by a built-in rule (a level-0 ruleset match used to hide it)
-    assert_eq!(verdict(&eng, &find_technique("T1070.001").unwrap()), DetectionVerdict::Defended);
-
-    let t = find_technique("T1036.005").unwrap();
-    assert_ne!(verdict(&eng, &t), DetectionVerdict::Defended);
-    let draft = RuleSynthesizer::synthesize_draft_rule(uuid::Uuid::new_v4(), &t, &t.sample_raw_logs[0]);
-    assert!(draft.logtest_passed, "{}", draft.logtest_output);
-
-    // deployed through a clone, as siem-api's AppState holds one
-    eng.clone().set_custom_rules_xml(&draft.rule_xml);
-    assert_eq!(verdict(&eng, &t), DetectionVerdict::Defended);
+#[test]
+fn every_attack_has_events_for_its_system() {
+    let c = get_curated_catalog();
+    assert!(c.iter().filter(|t| t.platforms == ["windows"]).count() >= 8 && c.iter().filter(|t| t.platforms == ["linux"]).count() >= 7);
+    for t in &c {
+        assert!(!t.sample_raw_logs.is_empty() && !t.expected_mitre_ids.is_empty(), "{}", t.id);
+        let windows = t.sample_raw_logs[0].starts_with("{\"Message\"");
+        assert_eq!(windows, t.platforms == ["windows"], "{}: a Windows attack has Windows events", t.id);
+    }
+    assert_eq!(find_technique_for("T1136.001", "linux").unwrap().platforms, ["linux"]);
+    assert_eq!(find_technique_for("T1136.001", "windows").unwrap().platforms, ["windows"]);
 }

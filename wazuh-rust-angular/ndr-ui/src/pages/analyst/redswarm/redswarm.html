@@ -74,8 +74,8 @@
         </span>
       </div>
       <div class="text-2xl font-extrabold font-mono text-white mt-2">{{ status()?.active_campaigns_count || 0 }} Active Campaigns</div>
-      <div class="text-[11px] text-slate-400 mt-1">Default: <span class="font-mono text-cyan-400">SafeTelemetryOnly</span></div>
-      <div class="text-[11px] text-amber-300/80 mt-1">Sample events checked by the built-in rule engine: a "defended" result does not yet prove that real PC events are detected.</div>
+      <div class="text-[11px] text-slate-400 mt-1">Mode: <span class="font-mono text-cyan-400">Simulation</span></div>
+      <div class="text-[11px] text-slate-400 mt-1">Each attack's events go through the same analysis engine and rules as the computers' real events. Nothing runs on the computer; the results are never stored as alerts, never open cases and never trigger an automatic response.</div>
     </div>
 
     <!-- Fleet Defense Rate -->
@@ -120,19 +120,17 @@
         <lucide-angular [img]="FlameIcon" class="w-4 h-4 text-orange-400"></lucide-angular>
         Manual Round:
       </span>
-      <select [(ngModel)]="manualTechniqueId" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
-        <option value="T1110.001">T1110.001 - SSH Password Guessing</option>
-        <option value="T1059.001">T1059.001 - PowerShell Encoded Command</option>
-        <option value="T1547.001">T1547.001 - Registry Run Keys Tamper</option>
-        <option value="T1082">T1082 - System Information Discovery</option>
-        <option value="T1003.008">T1003.008 - OS Credential Dumping (/etc/shadow)</option>
-        <option value="T1543.003">T1543.003 - Windows Service Creation</option>
-        <option value="T1053.003">T1053.003 - Cron Persistence Probe</option>
-        <option value="T1036.005">T1036.005 - Masquerading as svchost</option>
+      <select [ngModel]="manualTechniqueId()" (ngModelChange)="manualTechniqueId.set($event)" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
+        <optgroup label="Windows">
+          <ng-container *ngFor="let t of catalog()"><option *ngIf="t.platform === 'windows'" [value]="t.id + '|windows'">{{ t.id }} - {{ t.name }}</option></ng-container>
+        </optgroup>
+        <optgroup label="Linux">
+          <ng-container *ngFor="let t of catalog()"><option *ngIf="t.platform === 'linux'" [value]="t.id + '|linux'">{{ t.id }} - {{ t.name }}</option></ng-container>
+        </optgroup>
       </select>
 
       <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
-        <option value="safe_telemetry_only">SafeTelemetryOnly (sample events, built-in rule engine)</option>
+        <option value="safe_telemetry_only">Simulation (the attack's events through the real rules; nothing runs on the computer)</option>
         <option value="controlled_live" disabled>ControlledLive (not available: no safe command channel to agents)</option>
       </select>
     </div>

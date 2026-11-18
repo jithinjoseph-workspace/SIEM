@@ -117,6 +117,8 @@ impl SwarmExecutor {
                     ev.metadata.insert("tenant_id".into(), tenant_id.to_string());
                     ev.metadata.insert("redswarm_simulation".into(), "true".to_string());
                     ev.metadata.insert("technique_id".into(), technique.id.clone());
+                    // the round's own events: siem-api sends them to the analysis engine under it
+                    ev.metadata.insert("redswarm_round".into(), record_id.to_string());
                     events.push(ev);
                 }
 
@@ -138,7 +140,7 @@ impl SwarmExecutor {
                     target_os: target_os.to_string(),
                     execution_success: true,
                     execution_output: format!(
-                        "SafeTelemetryOnly: injected {} sample events for technique {} into the built-in rule engine (not the analysis service that handles the PCs' real events).",
+                        "Simulation: {} event(s) of technique {} sent to the analysis engine as this computer's own, through the rules that check its real events.",
                         events.len(), technique.id
                     ),
                     cleanup_status: CleanupStatus::NotApplicable,

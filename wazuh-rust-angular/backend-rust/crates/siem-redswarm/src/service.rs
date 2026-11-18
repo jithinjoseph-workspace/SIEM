@@ -1,5 +1,11 @@
 use crate::audit::AuditStore;
-use crate::catalog::{find_technique, get_curated_catalog};
+use crate::catalog::{find_technique_for, get_curated_catalog};
+
+/// A round's alerts come back from the analysis engine within seconds: they are looked for this
+/// long (tries x delay), in a window this wide.
+const VERIFY_WINDOW_SECS: i64 = 60;
+const VERIFY_TRIES: usize = 20;
+const VERIFY_DELAY_MS: u64 = 500;
 use crate::executor::SwarmExecutor;
 use crate::models::{
     AttackTechnique, CommandPayload, DetectionVerdict, ExecutionRecord, FleetAgentTarget,
@@ -42,12 +48,13 @@ impl RedSwarmService {
         // Default Production Campaign: SafeTelemetryOnly (Zero-Risk Default)
         let default_campaign = SwarmCampaign {
             id: "default-safe-swarm".into(),
-            name: "Continuous MITRE Adversarial Simulation (Safe)".into(),
-            description: "Continuous telemetry-based adversarial simulation against active detection rules."
+            name: "Continuous attack simulation (safe)".into(),
+            description: "Every 15 minutes, one attack's events go through the analysis engine as a computer's own: is it caught by the rules that check the real events? Nothing runs on the computer."
                 .into(),
             mode: SwarmExecutionMode::SafeTelemetryOnly,
             enabled: true,
-            interval_seconds: 60,
+            // the whole catalog (15 attacks) about every 4 hours; each round is a few events
+            interval_seconds: 900,
             roe: RulesOfEngagement::default(),
             owner: "admin".into(),
             tenant_id: String::new(),
@@ -195,7 +202,7 @@ impl RedSwarmService {
 
         // 1. Resolve technique
         let technique = if let Some(id) = technique_id {
-            find_technique(id).ok_or_else(|| format!("Technique {} not found in catalog", id))?
+            find_technique_for(id, target_os).ok_or_else(|| format!("Technique {} not found in catalog", id))?
         } else {
             // A curated technique for the target's OS, varied from one run to the next
             let catalog = get_curated_catalog();
@@ -230,15 +237,10 @@ impl RedSwarmService {
 
         if record.execution_success {
             // 3. Multi-signal Purple verification check with retries
-            let verification = PurpleLoopVerifier::verify_with_retries(
-                &technique,
-                target_agent_id,
-                record.timestamp,
-                15,
-                3,
-                300,
-                &get_alerts_fn,
-            ).await;
+            // only the alerts of this round's own events count, never the computer's real ones
+            let round = format!("redswarm/{}/", record.id);
+            let own = || get_alerts_fn().into_iter().filter(|a| a.location.starts_with(&round)).collect::<Vec<_>>();
+            let verification = PurpleLoopVerifier::verify_with_retries(&technique, "", record.timestamp, VERIFY_WINDOW_SECS, VERIFY_TRIES, VERIFY_DELAY_MS, own).await;
             record.verification = verification;
 
             // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval), once per open gap
@@ -394,15 +396,9 @@ impl RedSwarmService {
 
                     let mut defended = None;
                     if record.execution_success {
-                        let verification = PurpleLoopVerifier::verify_with_retries(
-                            technique,
-                            target_id,
-                            record.timestamp,
-                            15,
-                            3,
-                            300,
-                            &alerts_fn,
-                        ).await;
+                        let round = format!("redswarm/{}/", record.id);
+                        let own = || alerts_fn().into_iter().filter(|a| a.location.starts_with(&round)).collect::<Vec<_>>();
+                        let verification = PurpleLoopVerifier::verify_with_retries(technique, "", record.timestamp, VERIFY_WINDOW_SECS, VERIFY_TRIES, VERIFY_DELAY_MS, own).await;
                         record.verification = verification;
 
                         if record.verification.verdict != DetectionVerdict::Defended {
@@ -474,7 +470,7 @@ mod tests {
         svc.set_tenant_halted("acme", true);
         assert!(svc.is_tenant_halted("acme") && !svc.is_tenant_halted("globex"));
         let run = |tenant: &'static str| {
-            svc.run_single_round(Some("T1082"), "001", "a", "10.0.0.1", "linux", &[], None, tenant, |_| {}, |_, _| Err(String::new()), Vec::new)
+            svc.run_single_round(Some("T1110.001"), "001", "a", "10.0.0.1", "linux", &[], None, tenant, |_| {}, |_, _| Err(String::new()), Vec::new)
         };
         assert!(run("acme").await.is_err());
         assert!(run("globex").await.is_ok());

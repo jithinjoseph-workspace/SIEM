@@ -1364,6 +1364,14 @@ async fn send_ar_queue(msg: &str) -> Result<(), String> {
 
 /// A ProVigil agent (HTTPS) gets the message on its next keepalive, other agents through remoted.
 async fn route_ar(msg: &str, origin: &str) -> Result<(), String> {
+    // never an action on a computer for a Red Swarm round's simulated events
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(msg) {
+        let a = &v["parameters"]["alert"];
+        if crate::redswarm_engine::round_of(a["location"].as_str().unwrap_or(""), a["agent"]["id"].as_str().unwrap_or("")).is_some() {
+            tracing::info!("Active response for a Red Swarm simulation not sent");
+            return Ok(());
+        }
+    }
     let target = ar_target(msg);
     if let Some((ref id, payload)) = target {
         if is_http_agent(id) {
@@ -2701,6 +2709,25 @@ fn to_alert(state: &AppState, v: &serde_json::Value) -> Alert {
 async fn on_alerts(state: AppState, mut vs: Vec<serde_json::Value>) {
     // live response results are data, not alerts (live_response.rs)
     vs.retain(|v| !crate::live_response::is_result(v));
+    // a Red Swarm round's findings: shown live and to the round's verifier, nothing more
+    let (rounds, real): (Vec<serde_json::Value>, Vec<serde_json::Value>) = vs.into_iter().partition(|v| {
+        crate::redswarm_engine::round_of(v["location"].as_str().unwrap_or(""), v["agent"]["id"].as_str().unwrap_or("")).is_some()
+    });
+    vs = real;
+    if !rounds.is_empty() {
+        let sims: Vec<Alert> = rounds
+            .iter()
+            .map(|v| {
+                let a = to_alert(&state, v);
+                let tenant = tenant_of(&state, &a.agent.id);
+                tenancy::tag_alert(crate::redswarm_simulated(a), &tenant)
+            })
+            .collect();
+        crate::keep_alerts(&state, sims.clone());
+        for a in sims {
+            let _ = state.broadcast_tx.send(a);
+        }
+    }
     let alerts: Vec<Alert> = vs
         .iter()
         .map(|v| {
@@ -2826,6 +2853,11 @@ pub(crate) async fn on_events(state: AppState, vs: Vec<serde_json::Value>) {
             }
         }
     }
+    // a Red Swarm round's events are not the computer's own
+    let vs: Vec<serde_json::Value> = vs
+        .into_iter()
+        .filter(|v| crate::redswarm_engine::round_of(v["location"].as_str().unwrap_or(""), v["agent"]["id"].as_str().unwrap_or("")).is_none())
+        .collect();
     // live response results go to their own table, not the event archive
     let (live, vs): (Vec<_>, Vec<_>) = vs.into_iter().partition(crate::live_response::is_result);
     if !live.is_empty() {

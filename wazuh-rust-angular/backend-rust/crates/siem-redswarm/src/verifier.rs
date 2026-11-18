@@ -39,7 +39,8 @@ impl PurpleLoopVerifier {
             0,
         );
 
-        while final_evidence.verdict == DetectionVerdict::HardGap && attempts < max_retries {
+        // a generic alert may come before the precise one (a single failure before the brute force)
+        while final_evidence.verdict != DetectionVerdict::Defended && attempts < max_retries {
             attempts += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms)).await;
             final_evidence = Self::evaluate_signals(
@@ -50,7 +51,7 @@ impl PurpleLoopVerifier {
                 &alerts_provider(),
                 attempts as u32,
             );
-            if final_evidence.verdict != DetectionVerdict::HardGap {
+            if final_evidence.verdict == DetectionVerdict::Defended {
                 break;
             }
         }
@@ -111,7 +112,7 @@ impl PurpleLoopVerifier {
                 if matches_mitre {
                     evaluated_signals.push(format!("mitre_id_match:{}", mitre.id));
                     info!(
-                        "DEFENDED (built-in rule engine, sample events): Technique {} triggered Alert {} (Rule #{}: {})",
+                        "DEFENDED: technique {} caught by alert {} (rule #{}: {})",
                         technique.id, alert.id, alert.rule.id, alert.rule.description
                     );
                     return VerificationEvidence {

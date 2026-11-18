@@ -129,7 +129,7 @@ mod tests {
         assert!(d.rule_xml.contains("<match>-EncodedCommand</match>") && d.rule_xml.contains(r"<regex>powershell\.exe</regex>"), "{}", d.rule_xml);
         assert!(!fires(&d.rule_xml, "Process Create: powershell.exe -File backup.ps1"));
 
-        let t = find_technique("T1036.005").unwrap();
+        let t = find_technique("T1003.001").unwrap();
         let d = RuleSynthesizer::synthesize_draft_rule(Uuid::new_v4(), &t, &t.sample_raw_logs[0]);
         assert!(d.logtest_passed);
         assert!(!fires(&d.rule_xml, r"Image: C:\Windows\System32\svchost.exe -k netsvcs"));

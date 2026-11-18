@@ -562,7 +562,11 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/campaigns/${campaignId}/toggle`, {});
   }
 
-  runRedSwarmSingleRound(payload: { technique_id?: string; target_agent_id?: string; mode?: SwarmExecutionMode }): Observable<any> {
+  getRedSwarmCatalog(): Observable<{ id: string; name: string; tactic: string; platform: string; expected_mitre_ids: string[] }[]> {
+    return this.http.get<{ id: string; name: string; tactic: string; platform: string; expected_mitre_ids: string[] }[]>(`${this.apiUrl}/api/v1/redswarm/catalog`);
+  }
+
+  runRedSwarmSingleRound(payload: { technique_id?: string; platform?: string; target_agent_id?: string; mode?: SwarmExecutionMode }): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/run-once`, payload);
   }
 

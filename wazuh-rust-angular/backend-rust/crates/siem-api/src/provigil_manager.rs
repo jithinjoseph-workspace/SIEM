@@ -94,9 +94,11 @@ fn provigil_source() -> Option<PathBuf> {
     ] {
         cands.push(PathBuf::from(rel));
     }
+    // every file the start copies must be there (a set folder without them is skipped)
     cands.into_iter().find(|p| {
         p.join("ruleset").join("rules").is_dir()
             && p.join("etc").join("internal_options.conf").is_file()
+            && p.join("src").join("agentlessd").join("scripts").is_dir()
     })
 }
 

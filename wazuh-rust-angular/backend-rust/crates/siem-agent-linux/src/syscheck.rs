@@ -26,17 +26,24 @@ pub struct FileRecord {
 pub struct SyscheckEngine {
     agent_id: String,
     monitored_paths: Vec<PathBuf>,
-    baseline: HashMap<PathBuf, FileRecord>,
+    pub baseline: HashMap<PathBuf, FileRecord>,
     whodata: Arc<AuditWhodataEngine>,
     watcher: Option<LinuxInotifyWatcher>,
     rx_events: Option<mpsc::Receiver<FimWatchEvent>>,
+    db: Option<crate::fim_db::FimDb>,
+    pub diff: crate::diff::DiffEngine,
 }
 
 impl SyscheckEngine {
-    /// Initialize with monitored paths and internal whodata engine
+    /// Initialize with monitored paths, internal whodata engine, and persistent SQLite FimDb
     pub fn new(agent_id: String, paths: Vec<PathBuf>) -> Self {
         let whodata = Arc::new(AuditWhodataEngine::new(1000));
-        Self::with_whodata(agent_id, paths, whodata)
+        let mut engine = Self::with_whodata(agent_id, paths, whodata);
+        let db_path = crate::fim_db::default_fim_db_path();
+        if let Ok(db) = crate::fim_db::FimDb::open(&db_path) {
+            engine.db = Some(db);
+        }
+        engine
     }
 
     /// Initialize with an explicit Whodata engine (used for testing or shared audit stream)
@@ -51,7 +58,15 @@ impl SyscheckEngine {
             whodata,
             watcher,
             rx_events: Some(rx),
+            db: None,
+            diff: crate::diff::DiffEngine::new(crate::diff::DiffConfig::default()),
         }
+    }
+
+    /// Set an explicit SQLite FIM database
+    pub fn with_db(mut self, db: crate::fim_db::FimDb) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// Access the underlying whodata engine
@@ -104,13 +119,27 @@ impl SyscheckEngine {
 
     /// Build initial recursive baseline of all monitored roots and nested subdirectories
     pub fn build_baseline(&mut self) {
-        let mut new_baseline = HashMap::new();
+        let mut new_baseline = if let Some(ref db) = self.db {
+            db.load_baseline().unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        let mut changed_to_save: Vec<(PathBuf, FileRecord)> = Vec::new();
 
         for root in &self.monitored_paths {
             if root.is_file() {
                 if let Some((hash, size)) = Self::compute_sha256(root) {
                     let (mode, uid, gid) = Self::get_file_metadata(root);
-                    new_baseline.insert(root.clone(), FileRecord { hash, size, mode, uid, gid });
+                    let rec = FileRecord { hash, size, mode, uid, gid };
+                    let changed = match new_baseline.get(root) {
+                        Some(old) => old.hash != rec.hash || old.mode != rec.mode || old.uid != rec.uid || old.gid != rec.gid,
+                        None => true,
+                    };
+                    if changed {
+                        changed_to_save.push((root.clone(), rec.clone()));
+                        new_baseline.insert(root.clone(), rec);
+                    }
                 }
                 if let Some(w) = self.watcher.as_mut() {
                     w.watch_tree(root);
@@ -125,7 +154,15 @@ impl SyscheckEngine {
                             if entry_path.is_file() {
                                 if let Some((hash, size)) = Self::compute_sha256(&entry_path) {
                                     let (mode, uid, gid) = Self::get_file_metadata(&entry_path);
-                                    new_baseline.insert(entry_path, FileRecord { hash, size, mode, uid, gid });
+                                    let rec = FileRecord { hash, size, mode, uid, gid };
+                                    let changed = match new_baseline.get(&entry_path) {
+                                        Some(old) => old.hash != rec.hash || old.mode != rec.mode || old.uid != rec.uid || old.gid != rec.gid,
+                                        None => true,
+                                    };
+                                    if changed {
+                                        changed_to_save.push((entry_path.clone(), rec.clone()));
+                                        new_baseline.insert(entry_path, rec);
+                                    }
                                 }
                             }
                         }
@@ -137,9 +174,15 @@ impl SyscheckEngine {
             }
         }
 
+        if let Some(ref mut db) = self.db {
+            let refs: Vec<(&Path, &FileRecord)> = changed_to_save.iter().map(|(p, r)| (p.as_path(), r)).collect();
+            let _ = db.save_records(&refs);
+        }
+
         info!(
-            "provigil-syscheckd: Deep baseline computed with {} tracked files across all nested subdirectories",
-            new_baseline.len()
+            "provigil-syscheckd: Deep baseline loaded with {} tracked files across all nested subdirectories ({} synced to SQLite fim.db)",
+            new_baseline.len(),
+            changed_to_save.len()
         );
 
         self.baseline = new_baseline;
@@ -158,6 +201,9 @@ impl SyscheckEngine {
         if !exists {
             // Deleted file
             if let Some(old_record) = self.baseline.remove(&path_buf) {
+                if let Some(ref mut db) = self.db {
+                    let _ = db.delete_record(path);
+                }
                 let whodata = self.whodata.correlate(path);
                 let mode = if whodata.is_some() { "whodata" } else { "realtime" };
 
@@ -187,6 +233,7 @@ impl SyscheckEngine {
                 event.metadata.insert("mode".into(), mode.into());
                 event.metadata.insert("old_hash".into(), old_record.hash);
                 event.metadata.insert("os_type".into(), "linux".into());
+                self.diff.remove_snapshot(path);
 
                 Self::enrich_event_whodata(&mut event, whodata);
                 buffer.push(event.clone()).await;
@@ -232,6 +279,9 @@ impl SyscheckEngine {
                     )
                 };
                 info!("{}", msg);
+                if let Some(ref mut db) = self.db {
+                    let _ = db.save_records(&[(path, &new_record)]);
+                }
                 self.baseline.insert(path_buf.clone(), new_record);
 
                 let mut event = RawEvent::new(&self.agent_id, EventSource::Fim, "syscheck/integrity", msg);
@@ -240,6 +290,7 @@ impl SyscheckEngine {
                 event.metadata.insert("mode".into(), if whodata.is_some() { "whodata".into() } else { "realtime".into() });
                 event.metadata.insert("new_hash".into(), new_hash);
                 event.metadata.insert("os_type".into(), "linux".into());
+                self.diff.remove_snapshot(path);
                 Self::enrich_event_whodata(&mut event, whodata);
                 buffer.push(event.clone()).await;
                 return Some(event);
@@ -302,6 +353,9 @@ impl SyscheckEngine {
         let whodata = self.whodata.correlate(path);
         let mode = if whodata.is_some() { "whodata" } else { "realtime" };
 
+        if let Some(ref mut db) = self.db {
+            let _ = db.save_records(&[(path, &new_record)]);
+        }
         let old_rec = self.baseline.insert(path_buf.clone(), new_record);
 
         let mut event = RawEvent::new(&self.agent_id, EventSource::Fim, loc, alert_msg);
@@ -317,6 +371,16 @@ impl SyscheckEngine {
         event.metadata.insert("new_mode".into(), format!("{:o}", new_mode & 0o7777));
         event.metadata.insert("new_uid".into(), new_uid.to_string());
         event.metadata.insert("os_type".into(), "linux".into());
+
+        if action == "modified" {
+            if let Ok(Some(diff_res)) = self.diff.process_file_diff(path) {
+                if let Some(diff_txt) = diff_res.diff_content {
+                    event.metadata.insert("diff".into(), diff_txt);
+                }
+            }
+        } else if action == "added" {
+            let _ = self.diff.process_file_diff(path);
+        }
 
         Self::enrich_event_whodata(&mut event, whodata);
         buffer.push(event.clone()).await;
@@ -540,6 +604,34 @@ mod tests {
             alert.metadata.get("parent_process_id").map(|s| s.as_str()),
             Some("999")
         );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_fim_sqlite_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!("test_fim_sqlite_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let db_path = temp_dir.join("test_fim.db");
+        let file1 = temp_dir.join("app.conf");
+        std::fs::write(&file1, "port=8080\n").unwrap();
+
+        // 1. Initial engine with fresh SQLite database
+        let db1 = crate::fim_db::FimDb::open(&db_path).unwrap();
+        let mut engine1 = SyscheckEngine::new("test-agent".into(), vec![temp_dir.clone()]).with_db(db1);
+        engine1.build_baseline();
+
+        assert!(engine1.baseline.contains_key(&file1));
+        let hash1 = engine1.baseline[&file1].hash.clone();
+
+        // 2. Simulate agent restart: open a second engine pointing at the same SQLite file
+        let db2 = crate::fim_db::FimDb::open(&db_path).unwrap();
+        let mut engine2 = SyscheckEngine::new("test-agent".into(), vec![temp_dir.clone()]).with_db(db2);
+        engine2.build_baseline();
+
+        assert!(engine2.baseline.contains_key(&file1));
+        assert_eq!(engine2.baseline[&file1].hash, hash1, "Baseline must persist across restarts via SQLite");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

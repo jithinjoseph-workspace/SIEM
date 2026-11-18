@@ -49,4 +49,22 @@ if not defined SIEM_LAN_IP set "SIEM_LAN_IP=127.0.0.1"
 rem auth-service provisions tenant databases from the NDR schema file
 rem (<INSTALL_DIR>\config\clickhouse\init.sql).
 if not defined INSTALL_DIR set "INSTALL_DIR=%SERVICE_ENV_DIR%..\..\ndr"
+
+rem ProVigil manager source directory (contains ruleset and etc/internal_options.conf)
+if not defined PROVIGIL_SOURCE_DIR (
+    if defined BACKEND_DIR (
+        set "PROVIGIL_SOURCE_DIR=%BACKEND_DIR%"
+    ) else (
+        set "PROVIGIL_SOURCE_DIR=%SERVICE_ENV_DIR:~0,-1%"
+    )
+)
+
+rem ProVigil manager home directory (runtime data, sockets, daemons)
+if not defined PROVIGIL_MANAGER_HOME (
+    if defined BACKEND_DIR (
+        set "PROVIGIL_MANAGER_HOME=%BACKEND_DIR%\data\manager"
+    ) else (
+        set "PROVIGIL_MANAGER_HOME=%SERVICE_ENV_DIR%data\manager"
+    )
+)
 exit /b 0

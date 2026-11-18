@@ -4,18 +4,23 @@ mod client_agent;
 #[allow(dead_code)]
 mod config_parser;
 mod control;
+pub mod diff;
 mod enroll;
-mod managers;
-mod spool;
 mod execd;
+pub mod failover;
+pub mod fim_db;
+pub mod group_config;
+pub mod grpc_transport;
 pub mod inotify_watcher;
 mod lifecycle;
 mod logcollector;
+pub mod osquery;
 mod rootcheck;
 mod sca;
 mod endpoint_policy;
 mod syscheck;
 mod syscollector;
+pub mod upgrade;
 pub mod whodata;
 
 use buffer::AgentBuffer;
@@ -80,7 +85,6 @@ async fn run_linux_agent() {
     }
 
     let mut config = ClientAgent::load_config();
-    managers::init(&config.manager_url, &config.manager_urls);
     enroll::export_tenant_key(config.tenant_key.as_deref());
 
     if config.agent_id.is_empty() {
@@ -121,28 +125,59 @@ async fn run_linux_agent() {
     info!("Starting ProVigil Linux Endpoint Agent");
     info!("Agent ID:        {}", config.agent_id);
     info!("Agent Hostname:  {}", config.agent_name);
-    info!("Target Manager:  {}", managers::all(&config.manager_url).join(", "));
+    info!("Target Manager:  {}", config.manager_url);
     info!("Distribution:    {}", ClientAgent::detect_linux_distro());
     info!("Platform:        {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     info!("===============================================================");
 
-    let (buffer, _buffer_worker) = AgentBuffer::new(
-        config.manager_url.clone(),
+    // Verify status of any prior in-band binary upgrades
+    let _ = upgrade::UpgradeSupervisor::new().check_prior_result();
+
+    let failover = Arc::new(failover::Failover::new(
+        config.manager_list(),
+        3,
+        Duration::from_secs(2),
+    ));
+
+    let group_cfg = group_config::load_persisted_group_config();
+    let (group_tx, group_rx) = tokio::sync::watch::channel(group_cfg.clone());
+
+    let (buffer, _buffer_worker) = AgentBuffer::new_with_failover(
+        failover.clone(),
         config.buffer_capacity,
         config.events_per_second,
         Arc::clone(&lifecycle),
+        buffer::default_spool_dir(),
+        Some(group_rx.clone()),
     );
     let buffer = Arc::new(buffer);
 
     client.register(&buffer).await;
 
-    let _keepalive_handle = ClientAgent::spawn_keepalive_worker(
+    let _keepalive_handle = ClientAgent::spawn_keepalive_worker_with_failover(
         config.agent_id.clone(),
         config.agent_name.clone(),
-        config.manager_url.clone(),
+        failover.clone(),
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
         Duration::from_secs(10),
+    );
+
+    let _config_handle = ClientAgent::spawn_config_worker(
+        config.agent_id.clone(),
+        config.agent_key.clone(),
+        failover.clone(),
+        group_tx,
+        Arc::clone(&lifecycle),
+        Duration::from_secs(60),
+    );
+
+    let _yara_sync_handle = ClientAgent::spawn_yara_sync_worker(
+        config.agent_id.clone(),
+        config.agent_key.clone(),
+        failover.clone(),
+        Arc::clone(&lifecycle),
+        Duration::from_secs(3600),
     );
 
     let mut fim_paths = Vec::new();
@@ -231,6 +266,14 @@ async fn run_linux_agent() {
         Arc::clone(&buffer),
         Arc::clone(&lifecycle),
         Duration::from_secs(120),
+    );
+
+    info!(" - provigil-osquery (osquery daemon supervisor)");
+    let _osquery_handle = osquery::spawn_osquery_worker(
+        config.agent_id.clone(),
+        osquery::OsqueryConfig::default(),
+        Arc::clone(&buffer),
+        Arc::clone(&lifecycle),
     );
 
     info!("===============================================================");

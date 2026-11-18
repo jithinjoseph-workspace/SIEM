@@ -23,6 +23,7 @@ vendor/
 *.lib
 *.obj
 *.wasm
+*.db
 
 # Logs and runtime caches
 *.log
@@ -74,6 +75,7 @@ SIEM Documentation
 lt-*.json
 # FIM diff copies of local system files, and old agent exe backups
 /data/diff/
+wazuh-rust-angular/backend-rust/crates/**/data/
 wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 
 # ========================================================
@@ -109,3 +111,5 @@ wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 # ProVigil comparison harnesses (hold multi-GB feed copies)
 wazuh-rust-angular/backend-rust/scratch/vulnscan-compare/
 wazuh-rust-angular/backend-rust/scratch/vulnscan-e2e/
+wazuh-rust-angular/backend-rust/src/
+linux_agent_parity_plan.md

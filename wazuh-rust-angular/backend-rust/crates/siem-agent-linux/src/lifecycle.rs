@@ -103,7 +103,7 @@ impl LifecycleCoordinator {
             .timeout(Duration::from_secs(5))
             .build()
             .ok()?;
-        let url = format!("{}/api/v1/agent/state?agent_id={}", crate::managers::url(&self.manager_url), self.agent_id);
+        let url = format!("{}/api/v1/agent/state?agent_id={}", self.manager_url.trim_end_matches('/'), self.agent_id);
         let resp = client.get(&url).send().await.ok()?;
         let body: serde_json::Value = resp.json().await.ok()?;
         match body.get("state").and_then(|v| v.as_str()) {

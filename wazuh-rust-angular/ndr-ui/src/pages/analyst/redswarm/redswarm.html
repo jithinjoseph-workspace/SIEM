@@ -208,9 +208,12 @@
             [class.bg-rose-950]="rec.verification.verdict === 'hard_gap'"
             [class.text-rose-400]="rec.verification.verdict === 'hard_gap'"
             [class.border-rose-800]="rec.verification.verdict === 'hard_gap'"
+            [class.bg-violet-950]="rec.verification.verdict === 'not_collected'"
+            [class.text-violet-300]="rec.verification.verdict === 'not_collected'"
+            [class.border-violet-800]="rec.verification.verdict === 'not_collected'"
             class="px-2.5 py-1 rounded text-xs font-mono font-bold uppercase border"
           >
-            {{ rec.verification.verdict === 'defended' ? '✓ DEFENDED' : (rec.verification.verdict === 'soft_gap' ? '⚠ SOFT GAP' : '✗ HARD GAP') }}
+            {{ rec.verification.verdict === 'defended' ? '✓ DEFENDED' : rec.verification.verdict === 'soft_gap' ? '⚠ SOFT GAP' : rec.verification.verdict === 'not_collected' ? '◌ LOG NOT COLLECTED' : '✗ HARD GAP' }}
           </span>
 
           <span class="font-mono text-xs text-white font-bold">{{ rec.technique_id }} - {{ rec.technique_name }}</span>
@@ -299,6 +302,7 @@
           <span>Tested: {{ t.tested }} / {{ t.total_techniques }}</span>
           <span class="text-emerald-400">Defended: {{ t.defended }}</span>
           <span class="text-rose-400">Gaps: {{ t.hard_gaps + t.soft_gaps }}</span>
+          <span *ngIf="t.not_collected" class="text-violet-300" title="Caught by the rules, but the computer does not send the log">Log not collected: {{ t.not_collected }}</span>
         </div>
       </div>
     </div>

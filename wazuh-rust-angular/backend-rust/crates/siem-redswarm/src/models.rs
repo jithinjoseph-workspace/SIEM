@@ -69,6 +69,9 @@ pub enum DetectionVerdict {
     SoftGap,
     /// Zero detection fired for the attack within the verification window.
     HardGap,
+    /// The rules catch it, but the computer does not send the log the attack shows up in:
+    /// on the real computer it would go unseen.
+    NotCollected,
 }
 
 /// Cleanup execution status for live operations

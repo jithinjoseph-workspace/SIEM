@@ -44,6 +44,7 @@ pub mod parsers_store;
 pub mod persist;
 pub mod provigil_manager;
 pub mod redswarm_engine;
+pub mod redswarm_sources;
 pub mod redswarm_store;
 pub mod syslog;
 pub mod syslog_send;
@@ -477,6 +478,7 @@ async fn main() {
         );
     }
     redswarm_store::spawn_sync(state.clone());
+    redswarm_sources::spawn(state.clone());
     {
         let st = state.clone();
         tokio::spawn(async move { secrets::reseal_all(&st).await });

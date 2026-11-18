@@ -9,7 +9,7 @@ pub mod synthesizer;
 pub mod verifier;
 
 pub use audit::AuditStore;
-pub use catalog::{find_technique, find_technique_for, get_curated_catalog};
+pub use catalog::{find_technique, find_technique_for, get_curated_catalog, log_source};
 pub use executor::SwarmExecutor;
 pub use metrics::{MetricsCalculator, PurpleHeatmapData, TacticCoverage};
 pub use models::*;

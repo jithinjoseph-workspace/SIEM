@@ -1,5 +1,5 @@
 use crate::audit::AuditStore;
-use crate::catalog::{find_technique_for, get_curated_catalog};
+use crate::catalog::{find_technique_for, get_curated_catalog, log_source};
 
 /// A round's alerts come back from the analysis engine within seconds: they are looked for this
 /// long (tries x delay), in a window this wide.
@@ -31,7 +31,12 @@ pub struct RedSwarmService {
     running: AtomicBool,
     /// Tenants whose admin engaged their own kill switch (the global one stops every tenant).
     halted_tenants: RwLock<HashSet<String>>,
+    /// Whether a computer sends a log (agent id, source): None when not known.
+    source_check: RwLock<Option<SourceCheck>>,
 }
+
+/// `(agent id, log source) -> Some(sent lately) / None (not known)`.
+pub type SourceCheck = Arc<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
 impl Default for RedSwarmService {
     fn default() -> Self {
@@ -73,6 +78,7 @@ impl RedSwarmService {
             campaigns: RwLock::new(vec![default_campaign]),
             running: AtomicBool::new(false),
             halted_tenants: RwLock::new(HashSet::new()),
+            source_check: RwLock::new(None),
         }
     }
 
@@ -89,6 +95,31 @@ impl RedSwarmService {
     /// Whether Red Swarm is stopped for the tenant (its own kill switch or the global one).
     pub fn is_tenant_halted(&self, tenant_id: &str) -> bool {
         SafetyGatekeeper::is_kill_switch_engaged() || self.halted_tenants.read().unwrap().contains(tenant_id)
+    }
+
+    /// How to tell whether a computer sends a log (siem-api reads its stored events).
+    pub fn set_source_check(&self, check: SourceCheck) {
+        *self.source_check.write().unwrap() = Some(check);
+    }
+
+    /// A Defended round whose computer does not send the attack's log is NotCollected: the rules
+    /// catch it, the real computer would not report it.
+    fn check_collection(&self, technique: &AttackTechnique, record: &mut ExecutionRecord) {
+        let Some(source) = log_source(technique) else { return };
+        let check = self.source_check.read().unwrap().clone();
+        let sent = check.and_then(|c| c(&record.target_agent_id, &source));
+        if record.verification.verdict == DetectionVerdict::Defended && sent == Some(false) {
+            record.verification.verdict = DetectionVerdict::NotCollected;
+            record.verification.reason = format!(
+                "The rules catch this attack, but {} has sent no '{source}' events in the last 7 days: on the real computer it would go unseen. Collect that log on the computer and this round passes.",
+                record.target_agent_name
+            );
+        }
+        record.verification.evaluated_signals.push(match sent {
+            Some(true) => format!("log source '{source}': collected from this computer"),
+            Some(false) => format!("log source '{source}': NOT collected from this computer"),
+            None => format!("log source '{source}': collection not known"),
+        });
     }
 
     pub fn safety(&self) -> Arc<SafetyGatekeeper> {
@@ -242,9 +273,10 @@ impl RedSwarmService {
             let own = || get_alerts_fn().into_iter().filter(|a| a.location.starts_with(&round)).collect::<Vec<_>>();
             let verification = PurpleLoopVerifier::verify_with_retries(&technique, "", record.timestamp, VERIFY_WINDOW_SECS, VERIFY_TRIES, VERIFY_DELAY_MS, own).await;
             record.verification = verification;
+            self.check_collection(&technique, &mut record);
 
             // 4. On Hard Gap or Soft Gap -> Auto-synthesize draft rule (Pending Approval), once per open gap
-            if record.verification.verdict != DetectionVerdict::Defended && !self.audit.drafting_held(tenant_id, &technique.id) {
+            if is_rule_gap(&record) && !self.audit.drafting_held(tenant_id, &technique.id) {
                 let sample_log = technique
                     .sample_raw_logs
                     .first()
@@ -400,8 +432,9 @@ impl RedSwarmService {
                         let own = || alerts_fn().into_iter().filter(|a| a.location.starts_with(&round)).collect::<Vec<_>>();
                         let verification = PurpleLoopVerifier::verify_with_retries(technique, "", record.timestamp, VERIFY_WINDOW_SECS, VERIFY_TRIES, VERIFY_DELAY_MS, own).await;
                         record.verification = verification;
+                        self.check_collection(technique, &mut record);
 
-                        if record.verification.verdict != DetectionVerdict::Defended {
+                        if is_rule_gap(&record) {
                             if !self.audit.drafting_held(tenant, &technique.id) {
                                 let sample_log = technique
                                     .sample_raw_logs
@@ -425,6 +458,11 @@ impl RedSwarmService {
             }
         });
     }
+}
+
+/// Only a rules gap gets a drafted rule: a NotCollected round needs the log, not a rule.
+fn is_rule_gap(r: &ExecutionRecord) -> bool {
+    matches!(r.verification.verdict, DetectionVerdict::SoftGap | DetectionVerdict::HardGap)
 }
 
 fn target_tenant(a: &FleetAgentTarget) -> &str {
@@ -462,6 +500,52 @@ mod tests {
         let c = &svc.get_campaigns()[0];
         assert!(!c.enabled, "the pause survives the round");
         assert_eq!((c.total_executed, c.total_gaps), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn a_round_on_a_computer_without_the_log_is_not_collected() {
+        // the alert the engine gives a round's events (siem-api sends them under redswarm/<round>/<id>)
+        let alert = |round: String| Alert {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            rule: siem_core::RuleAlertInfo {
+                id: 5763,
+                level: 10,
+                description: "sshd: brute force".into(),
+                groups: vec!["sshd".into()],
+                mitre: Some(siem_core::MitreAttack { id: "T1110".into(), tactic: String::new(), technique: String::new() }),
+            },
+            agent: siem_core::AgentAlertInfo { id: "001".into(), name: "a".into(), ip: String::new() },
+            manager: None,
+            decoder: None,
+            full_log: String::new(),
+            decoded: Default::default(),
+            location: format!("redswarm/{round}/T1110.001"),
+            data: Default::default(),
+        };
+        let run = |sent: Option<bool>| {
+            let svc = RedSwarmService::new();
+            svc.set_source_check(Arc::new(move |agent: &str, src: &str| {
+                assert_eq!((agent, src), ("001", "sshd"));
+                sent
+            }));
+            let round = Arc::new(RwLock::new(String::new()));
+            let r2 = round.clone();
+            async move {
+                svc.run_single_round(Some("T1110.001"), "001", "a", "10.0.0.1", "linux", &[], None, "t",
+                    move |ev| *r2.write().unwrap() = ev[0].metadata["redswarm_round"].clone(),
+                    |_, _| Err(String::new()),
+                    move || vec![alert(round.read().unwrap().clone())])
+                .await
+                .unwrap()
+            }
+        };
+        assert_eq!(run(Some(true)).await.verification.verdict, DetectionVerdict::Defended);
+        assert_eq!(run(None).await.verification.verdict, DetectionVerdict::Defended, "unknown is not a gap");
+        let blind = run(Some(false)).await;
+        assert_eq!(blind.verification.verdict, DetectionVerdict::NotCollected);
+        assert!(blind.verification.reason.contains("'sshd'"), "{}", blind.verification.reason);
+        assert!(blind.draft_rule.is_none(), "the rules are fine: no rule is drafted");
     }
 
     #[tokio::test]

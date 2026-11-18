@@ -179,8 +179,39 @@ pub fn find_technique(id: &str) -> Option<AttackTechnique> {
 
 /// The same technique id is used on both systems for some attacks (password guessing, a new
 /// account): the one for `platform`, else the first.
+/// The log an attack shows up in, read from its own first sample: a Windows event channel
+/// (`Security`, `Microsoft-Windows-Sysmon/Operational`) or a Linux program (`sshd`, `kernel`).
+pub fn log_source(t: &AttackTechnique) -> Option<String> {
+    let s = t.sample_raw_logs.first()?;
+    if let Some((_, rest)) = s.split_once("<Channel>") {
+        return rest.split_once("</Channel>").map(|(c, _)| c.to_string());
+    }
+    let rest = s.strip_prefix("%SYSLOGTIME% %HOST% ")?;
+    let end = rest.find(['[', ':'])?;
+    Some(rest[..end].to_string())
+}
+
 pub fn find_technique_for(id: &str, platform: &str) -> Option<AttackTechnique> {
     let all = get_curated_catalog();
     let fits = |t: &&AttackTechnique| t.id == id && t.platforms.iter().any(|p| p.eq_ignore_ascii_case(platform));
     all.iter().find(fits).or_else(|| all.iter().find(|t| t.id == id)).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_attack_names_the_log_it_shows_up_in() {
+        for t in get_curated_catalog() {
+            let src = log_source(&t).unwrap_or_else(|| panic!("{} ({}) has no log source", t.id, t.platforms[0]));
+            assert!(!src.is_empty() && !src.contains(' '), "{}: {src:?}", t.id);
+        }
+        let src = |id, os| log_source(&find_technique_for(id, os).unwrap()).unwrap();
+        assert_eq!(src("T1110", "windows"), "Security");
+        assert_eq!(src("T1059.001", "windows"), "Microsoft-Windows-Sysmon/Operational");
+        assert_eq!(src("T1110.001", "linux"), "sshd");
+        assert_eq!(src("T1548.003", "linux"), "sudo");
+        assert_eq!(src("T1040", "linux"), "kernel");
+    }
 }

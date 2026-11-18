@@ -547,7 +547,8 @@ export interface RiskEvaluationRequest {
 
 export type SwarmExecutionMode = 'safe_telemetry_only' | 'controlled_live' | 'full_live';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
-export type DetectionVerdict = 'defended' | 'soft_gap' | 'hard_gap';
+/** not_collected: the rules catch it, but the computer does not send the attack's log */
+export type DetectionVerdict = 'defended' | 'soft_gap' | 'hard_gap' | 'not_collected';
 export type CleanupStatus = 'not_applicable' | 'succeeded' | 'failed' | 'pending';
 export type DraftRuleStatus = 'pending_approval' | 'approved_and_deployed' | 'rejected' | 'rolled_back';
 
@@ -646,6 +647,7 @@ export interface TacticCoverage {
   defended: number;
   soft_gaps: number;
   hard_gaps: number;
+  not_collected: number;
   coverage_percent: number;
 }
 
@@ -653,7 +655,7 @@ export interface HeatmapTechniqueNode {
   technique_id: string;
   technique_name: string;
   tactic: string;
-  status: 'defended' | 'soft_gap' | 'hard_gap' | 'untested';
+  status: 'defended' | 'soft_gap' | 'hard_gap' | 'not_collected' | 'untested';
   last_tested_at?: string;
 }
 

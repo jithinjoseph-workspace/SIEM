@@ -15,6 +15,11 @@ a **Soft gap** when only a generic alert fired, a **Hard gap** when nothing fire
 drafted rule that waits for an analyst's approval (Apply / Reject / Roll back); an applied rule is
 loaded by the analysis engine.
 
+A round the rules catch is **Log not collected** when the computer has sent none of the log the
+attack shows up in (its Windows event channel, or its Linux program's lines) in the last 7 days:
+the rules work, but the real computer would not report the attack. Such a round gets no drafted
+rule; the fix is collecting that log on the computer.
+
 ## Design decisions
 
 | Decision | Reason |
@@ -25,6 +30,8 @@ loaded by the analysis engine.
 | A round's alerts are shown live and to the verifier only: never stored, scored, grouped into cases, mailed or answered with an active response; its events are not archived as the computer's | A simulation must not change anything about the real computer. |
 | Live modes (running attack commands on computers) stay off | There is no safe channel to run attack commands on endpoints. |
 | The built-in campaign runs every 15 minutes (was every minute) | 15 attacks: the whole catalog about every 4 hours, without filling the live feed. |
+| A Defended round is checked against the logs the computer really sends (`siem-api/src/redswarm_sources.rs`, stored events of the last 7 days, read every 10 minutes) | Simulated events prove the rules; they cannot prove the computer sends the log. Reading the stored events every 10 minutes costs one query per tenant, not one per round. While not yet read, the round keeps its rules verdict. |
+| The log an attack needs is read from its own first sample (`catalog.rs` `log_source`) | No second list to keep in step with the samples. |
 | The verifier waits up to 10 seconds and keeps looking until Defended | The engine's alerts come back through the alert stream; a generic alert can come before the precise one. |
 
 ## Catalog (siem-redswarm `catalog.rs`)

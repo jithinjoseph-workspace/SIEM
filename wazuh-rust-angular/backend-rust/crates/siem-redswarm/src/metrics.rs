@@ -11,6 +11,8 @@ pub struct TacticCoverage {
     pub defended: usize,
     pub soft_gaps: usize,
     pub hard_gaps: usize,
+    /// caught by the rules, but the computer does not send the log
+    pub not_collected: usize,
     pub coverage_percent: f64,
 }
 
@@ -19,7 +21,7 @@ pub struct HeatmapTechniqueNode {
     pub technique_id: String,
     pub technique_name: String,
     pub tactic: String,
-    pub status: String, // "defended", "soft_gap", "hard_gap", "untested"
+    pub status: String, // "defended", "soft_gap", "hard_gap", "not_collected", "untested"
     pub last_tested_at: Option<String>,
 }
 
@@ -37,7 +39,7 @@ impl MetricsCalculator {
         all_techniques: &[crate::models::AttackTechnique],
         records: &[crate::models::ExecutionRecord],
     ) -> PurpleHeatmapData {
-        let mut tactic_map: HashMap<String, (usize, usize, usize, usize)> = HashMap::new();
+        let mut tactic_map: HashMap<String, (usize, usize, usize, usize, usize)> = HashMap::new();
         let mut tech_latest_status: HashMap<String, (DetectionVerdict, String)> = HashMap::new();
 
         for record in records {
@@ -58,6 +60,7 @@ impl MetricsCalculator {
                     DetectionVerdict::Defended => "defended",
                     DetectionVerdict::SoftGap => "soft_gap",
                     DetectionVerdict::HardGap => "hard_gap",
+                    DetectionVerdict::NotCollected => "not_collected",
                 };
                 (s, Some((v, ts)))
             } else {
@@ -74,7 +77,7 @@ impl MetricsCalculator {
 
             let entry = tactic_map
                 .entry(tech.tactic.clone())
-                .or_insert((0, 0, 0, 0));
+                .or_insert((0, 0, 0, 0, 0));
             entry.0 += 1; // total
 
             if let Some((v, _)) = verdict {
@@ -82,6 +85,7 @@ impl MetricsCalculator {
                     DetectionVerdict::Defended => entry.1 += 1,
                     DetectionVerdict::SoftGap => entry.2 += 1,
                     DetectionVerdict::HardGap => entry.3 += 1,
+                    DetectionVerdict::NotCollected => entry.4 += 1,
                 }
             }
         }
@@ -90,8 +94,8 @@ impl MetricsCalculator {
         let mut total_tested = 0;
         let mut total_defended = 0;
 
-        for (tactic, (tot, def, soft, hard)) in tactic_map {
-            let tested = def + soft + hard;
+        for (tactic, (tot, def, soft, hard, blind)) in tactic_map {
+            let tested = def + soft + hard + blind;
             total_tested += tested;
             total_defended += def;
             let coverage_percent = if tested > 0 {
@@ -107,6 +111,7 @@ impl MetricsCalculator {
                 defended: def,
                 soft_gaps: soft,
                 hard_gaps: hard,
+                not_collected: blind,
                 coverage_percent: (coverage_percent * 10.0).round() / 10.0,
             });
         }

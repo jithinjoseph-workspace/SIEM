@@ -400,13 +400,9 @@ pub fn spawn_active_response_worker(
             .build()
             .unwrap_or_default();
 
-        let poll_endpoint = format!(
-            "{}/api/agents/{}/commands",
-            manager_url.trim_end_matches('/'),
-            agent_id
-        );
-
         loop {
+            // the manager in use now (managers.rs)
+            let poll_endpoint = format!("{}/api/agents/{}/commands", crate::managers::url(&manager_url), agent_id);
             tokio::time::sleep(poll_interval).await;
             if lifecycle.is_terminated() {
                 break;

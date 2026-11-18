@@ -5,6 +5,8 @@ mod client_agent;
 mod config_parser;
 mod control;
 mod enroll;
+mod managers;
+mod spool;
 mod execd;
 pub mod inotify_watcher;
 mod lifecycle;
@@ -78,6 +80,7 @@ async fn run_linux_agent() {
     }
 
     let mut config = ClientAgent::load_config();
+    managers::init(&config.manager_url, &config.manager_urls);
     enroll::export_tenant_key(config.tenant_key.as_deref());
 
     if config.agent_id.is_empty() {
@@ -118,7 +121,7 @@ async fn run_linux_agent() {
     info!("Starting ProVigil Linux Endpoint Agent");
     info!("Agent ID:        {}", config.agent_id);
     info!("Agent Hostname:  {}", config.agent_name);
-    info!("Target Manager:  {}", config.manager_url);
+    info!("Target Manager:  {}", managers::all(&config.manager_url).join(", "));
     info!("Distribution:    {}", ClientAgent::detect_linux_distro());
     info!("Platform:        {} ({})", std::env::consts::OS, std::env::consts::ARCH);
     info!("===============================================================");

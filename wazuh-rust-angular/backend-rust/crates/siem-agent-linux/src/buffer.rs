@@ -28,18 +28,28 @@ impl AgentBuffer {
                 .default_headers(tenant_headers())
                 .build()
                 .unwrap_or_default();
-
-            let endpoint = format!("{}/api/v1/events/ingest", manager_url.trim_end_matches('/'));
-            info!("AgentBuffer: Initialized with capacity {} and target endpoint '{}'", capacity, endpoint);
+            info!("AgentBuffer: Initialized with capacity {} and manager '{}'", capacity, crate::managers::url(&manager_url));
 
             let delay_between_flushes = Duration::from_millis(
                 if events_per_second > 0 { (1000 / events_per_second).max(5) as u64 } else { 10 }
             );
 
+            // what the manager did not take waits on disk, and is sent first (oldest first)
+            let mut spool = crate::spool::Spool::from_env();
+            let mut draining: Option<(std::path::PathBuf, std::collections::VecDeque<RawEvent>)> = None;
+            let mut offline_until: Option<tokio::time::Instant> = None;
+            let mut backoff = Duration::from_secs(1);
             let mut batch: Vec<RawEvent> = Vec::with_capacity(50);
 
             loop {
                 if lifecycle.is_terminated() {
+                    // the events still queued are kept for the next start
+                    while let Ok(event) = rx.try_recv() {
+                        batch.push(event);
+                    }
+                    if !batch.is_empty() {
+                        spool.put(&batch);
+                    }
                     break;
                 }
 
@@ -64,50 +74,56 @@ impl AgentBuffer {
                     }
                 }
 
+                let online = offline_until.map_or(true, |t| tokio::time::Instant::now() >= t);
+                let mut failed = false;
+
+                // the kept events go before new ones, so the manager gets them in order
+                if online {
+                    if draining.is_none() {
+                        draining = spool.take_oldest().map(|(p, e)| (p, e.into()));
+                    }
+                    let mut sent = 0;
+                    while let Some((path, queue)) = draining.as_mut() {
+                        if queue.is_empty() {
+                            spool.done(path);
+                            draining = spool.take_oldest().map(|(p, e)| (p, e.into()));
+                            continue;
+                        }
+                        let n = queue.len().min(50);
+                        let chunk: Vec<RawEvent> = queue.iter().take(n).cloned().collect();
+                        if send(&client, &manager_url, &chunk, &lifecycle).await == Sent::Failed {
+                            failed = true;
+                            break;
+                        }
+                        queue.drain(..n);
+                        sent += n;
+                        // new events are not held up for long: the rest on the next rounds
+                        if sent >= 1000 {
+                            break;
+                        }
+                    }
+                }
+
                 if !batch.is_empty() {
                     let to_send = std::mem::take(&mut batch);
-                    let count = to_send.len();
+                    if !online || failed || draining.is_some() || !spool.is_empty() {
+                        spool.put(&to_send);
+                    } else if send(&client, &manager_url, &to_send, &lifecycle).await == Sent::Failed {
+                        spool.put(&to_send);
+                        failed = true;
+                    }
+                }
 
-                    let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
-                    let key_trim = key.trim();
-                    let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
-                    let mut req = client.post(&endpoint).json(&to_send);
-                    if !key_trim.is_empty() {
-                        req = req.header("x-agent-key", key_trim)
-                            .header("authorization", format!("Bearer {}", key_trim));
+                if failed {
+                    if offline_until.is_none() {
+                        warn!("AgentBuffer: Manager not reachable; events are kept on disk until it answers");
                     }
-                    if !agent_id.trim().is_empty() {
-                        req = req.header("x-agent-id", agent_id.trim());
-                    }
-
-                    match req.send().await {
-                        Ok(res) if res.status().is_success() => {
-                            debug!("AgentBuffer: Dispatched {} events to Manager", count);
-                        }
-                        Ok(res) if res.status() == reqwest::StatusCode::GONE => {
-                            warn!("AgentBuffer: Manager returned 410 GONE (agent deactivated or dormant). Updating state...");
-                            if let Some(state) = lifecycle.fetch_state().await {
-                                lifecycle.set_state(state);
-                            } else {
-                                lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Dormant);
-                            }
-                        }
-                        Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
-                            warn!("AgentBuffer: Manager returned 404 NOT FOUND. Checking agent lifecycle state...");
-                            if let Some(state) = lifecycle.fetch_state().await {
-                                if state == crate::lifecycle::AgentLifecycleState::Decommissioned {
-                                    warn!("AgentBuffer: Agent is confirmed deleted in registry. Executing decommission...");
-                                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
-                                }
-                            }
-                        }
-                        Ok(res) => {
-                            warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());
-                        }
-                        Err(err) => {
-                            debug!("AgentBuffer: Manager connection unreachable ({}). Buffered events queued.", err);
-                        }
-                    }
+                    offline_until = Some(tokio::time::Instant::now() + backoff);
+                    backoff = (backoff * 2).min(Duration::from_secs(30));
+                } else if online && offline_until.is_some() {
+                    info!("AgentBuffer: Manager reachable again; sending the kept events");
+                    offline_until = None;
+                    backoff = Duration::from_secs(1);
                 }
 
                 tokio::time::sleep(delay_between_flushes).await;
@@ -154,6 +170,69 @@ impl AgentBuffer {
             },
             rx,
         )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Sent {
+    /// taken, or refused for good (dropped as before)
+    Done,
+    /// not reached, or a server error: kept and sent again
+    Failed,
+}
+
+/// One batch to the manager in use (the next one after repeated failures).
+async fn send(client: &reqwest::Client, manager_url: &str, events: &[RawEvent], lifecycle: &crate::lifecycle::LifecycleCoordinator) -> Sent {
+    let endpoint = format!("{}/api/v1/events/ingest", crate::managers::url(manager_url));
+    let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
+    let key_trim = key.trim();
+    let agent_id = std::env::var("SIEM_AGENT_ID").unwrap_or_default();
+    let mut req = client.post(&endpoint).json(events);
+    if !key_trim.is_empty() {
+        req = req.header("x-agent-key", key_trim).header("authorization", format!("Bearer {}", key_trim));
+    }
+    if !agent_id.trim().is_empty() {
+        req = req.header("x-agent-id", agent_id.trim());
+    }
+    let r = req.send().await;
+    crate::managers::report(crate::managers::reached(&r));
+    match r {
+        Ok(res) if res.status().is_success() => {
+            debug!("AgentBuffer: Dispatched {} events to Manager", events.len());
+            Sent::Done
+        }
+        Ok(res) if res.status() == reqwest::StatusCode::GONE => {
+            warn!("AgentBuffer: Manager returned 410 GONE (agent deactivated or dormant). Updating state...");
+            if let Some(state) = lifecycle.fetch_state().await {
+                lifecycle.set_state(state);
+            } else {
+                lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Dormant);
+            }
+            Sent::Done
+        }
+        Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
+            warn!("AgentBuffer: Manager returned 404 NOT FOUND. Checking agent lifecycle state...");
+            if let Some(state) = lifecycle.fetch_state().await {
+                if state == crate::lifecycle::AgentLifecycleState::Decommissioned {
+                    warn!("AgentBuffer: Agent is confirmed deleted in registry. Executing decommission...");
+                    lifecycle.set_state(crate::lifecycle::AgentLifecycleState::Decommissioned);
+                }
+            }
+            Sent::Done
+        }
+        // busy or failing: the events wait
+        Ok(res) if res.status().is_server_error() || res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS => {
+            warn!("AgentBuffer: Manager answered HTTP {}; events kept", res.status());
+            Sent::Failed
+        }
+        Ok(res) => {
+            warn!("AgentBuffer: Manager rejected ingest batch with HTTP {}", res.status());
+            Sent::Done
+        }
+        Err(err) => {
+            debug!("AgentBuffer: Manager connection unreachable ({}).", err);
+            Sent::Failed
+        }
     }
 }
 

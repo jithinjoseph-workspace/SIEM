@@ -9,6 +9,9 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub manager_url: String,
+    /// More managers, tried in order when the one in use is not reachable (managers.rs).
+    #[serde(default)]
+    pub manager_urls: Vec<String>,
     /// Empty until the agent is enrolled (client.keys / SIEM_AGENT_ID / enrollment).
     pub agent_id: String,
     pub agent_name: String,
@@ -27,6 +30,7 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             manager_url: "https://127.0.0.1:8443".to_string(),
+            manager_urls: Vec::new(),
             agent_id: String::new(),
             agent_name: "provigil-linux-node".to_string(),
             agent_key: String::new(),
@@ -166,6 +170,7 @@ impl ClientAgent {
         }
 
         cfg.tenant_key = crate::enroll::tenant_key(config_json.as_ref());
+        cfg.manager_urls = crate::managers::extra_from(config_json.as_ref());
 
         cfg
     }
@@ -316,7 +321,7 @@ impl ClientAgent {
             .timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
-        let endpoint = format!("{}/api/v1/agents/{}/keepalive", manager_url.trim_end_matches('/'), agent_id);
+        let endpoint = format!("{}/api/v1/agents/{}/keepalive", crate::managers::url(manager_url), agent_id);
         let key = std::env::var("SIEM_AGENT_KEY").unwrap_or_default();
         let payload = serde_json::json!({
             "agent_id": agent_id,
@@ -335,7 +340,9 @@ impl ClientAgent {
             req = req.header("x-agent-key", key_trim)
                 .header("authorization", format!("Bearer {}", key_trim));
         }
-        match req.send().await {
+        let r = req.send().await;
+        crate::managers::report(crate::managers::reached(&r));
+        match r {
             Ok(res) if res.status().is_success() => {
                 let code = res.status().as_u16();
                 let body: serde_json::Value = res.json().await.unwrap_or_default();

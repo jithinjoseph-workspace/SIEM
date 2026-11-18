@@ -379,7 +379,7 @@ fn data_dir() -> PathBuf {
 
 async fn fetch(manager_url: &str, agent_id: &str, key: &str) -> Result<Vec<Value>, String> {
     let client = crate::enroll::http_builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
-    let url = format!("{}/api/v1/agents/{}/config", manager_url.trim_end_matches('/'), agent_id);
+    let url = format!("{}/api/v1/agents/{}/config", crate::managers::url(manager_url), agent_id);
     let res = client.get(&url).header("x-agent-id", agent_id).header("x-agent-key", key).header("authorization", format!("Bearer {key}")).send().await.map_err(|e| e.to_string())?;
     if !res.status().is_success() {
         return Err(format!("HTTP {}", res.status()));
@@ -394,7 +394,8 @@ pub fn spawn_worker(agent_id: String, agent_key: String, manager_url: String, bu
         let saved = data_dir().join("endpoint_policies.json");
         let state_path = data_dir().join("policy_state.json");
         let key = std::env::var("SIEM_AGENT_KEY").ok().filter(|k| !k.trim().is_empty()).unwrap_or(agent_key);
-        let never = manager_hosts(&manager_url);
+        // no rule may cut the agent off from any of its managers
+        let never: Vec<String> = crate::managers::all(&manager_url).iter().flat_map(|u| manager_hosts(u)).collect();
         // the last rules received, so a start without the manager still enforces them
         let mut rules: Vec<Value> = std::fs::read_to_string(&saved).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let d = Arc::new(std::sync::RwLock::new(desired(&rules, &never)));

@@ -96,7 +96,7 @@ pub async fn enroll(
     tenant_key: Option<&str>,
 ) -> Result<Enrollment, String> {
     let client = http_builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
-    let url = format!("{}/api/v1/agents/enroll", manager_url.trim_end_matches('/'));
+    let url = format!("{}/api/v1/agents/enroll", crate::managers::url(manager_url));
     let mut req = client.post(&url).json(&serde_json::json!({
         "name": sanitize_name(name),
         "groups": groups,
@@ -166,7 +166,7 @@ pub fn write_client_keys(path: &Path, e: &Enrollment) -> std::io::Result<()> {
 #[allow(dead_code)]
 pub async fn agent_state(manager_url: &str, agent_id: &str) -> Option<bool> {
     let client = http_builder().timeout(Duration::from_secs(10)).build().ok()?;
-    let url = format!("{}/api/v1/agent/state?agent_id={}", manager_url.trim_end_matches('/'), agent_id);
+    let url = format!("{}/api/v1/agent/state?agent_id={}", crate::managers::url(manager_url), agent_id);
     let body: serde_json::Value = client.get(&url).send().await.ok()?.json().await.ok()?;
     match body.get("state").and_then(|v| v.as_str()) {
         Some("deactivated") => Some(false),

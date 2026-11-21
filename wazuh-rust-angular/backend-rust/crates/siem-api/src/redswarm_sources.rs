@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::tenancy;
 use crate::AppState;
 
 const REFRESH: Duration = Duration::from_secs(10 * 60);
@@ -32,9 +31,18 @@ fn sources_query(db: &str, since: u64) -> String {
     )
 }
 
+/// Every tenant's events table (`ndr`, `ndr_<tenant>`), from ClickHouse itself: at start the
+/// agents' tenants are not loaded yet, and a read of the default tenant alone found no computer.
+const TENANT_DBS: &str = "SELECT database FROM system.tables WHERE name = 'siem_events' AND (database = 'ndr' OR startsWith(database, 'ndr_'))";
+
 async fn read(state: &AppState) -> Option<HashMap<String, HashSet<String>>> {
-    let mut dbs: HashSet<String> = state.agent_tenants.read().unwrap().values().map(|t| tenancy::tenant_db_name(t)).collect();
-    dbs.insert(tenancy::tenant_db_name(tenancy::DEFAULT_TENANT));
+    let dbs: Vec<String> = match state.db.root().query(TENANT_DBS).fetch_all().await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("Red Swarm: tenant databases not listed: {e}");
+            return None;
+        }
+    };
     let since = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp_millis() as u64;
     let mut seen: HashMap<String, HashSet<String>> = HashMap::new();
     for db in dbs {
@@ -94,5 +102,9 @@ mod tests {
         let since = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp_millis() as u64;
         let rows: Vec<(String, String)> = c.query(&sources_query("ndr_acm", since)).fetch_all().await.unwrap();
         assert!(rows.iter().any(|(_, s)| s == "Security"), "a Windows PC's Security log: {rows:?}");
+        // every tenant's table is found without the agents' tenants (not loaded yet at start)
+        let dbs: Vec<String> = c.query(TENANT_DBS).fetch_all().await.unwrap();
+        assert!(dbs.contains(&"ndr".to_string()) && dbs.contains(&"ndr_acm".to_string()), "{dbs:?}");
+        assert!(dbs.iter().all(|d| d == "ndr" || d.starts_with("ndr_")), "no backup copies: {dbs:?}");
     }
 }

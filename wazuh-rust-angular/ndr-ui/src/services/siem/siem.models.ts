@@ -655,6 +655,8 @@ export interface HeatmapTechniqueNode {
   technique_id: string;
   technique_name: string;
   tactic: string;
+  /** windows / linux: some technique ids exist for both */
+  platform: string;
   status: 'defended' | 'soft_gap' | 'hard_gap' | 'not_collected' | 'untested';
   last_tested_at?: string;
 }

@@ -31,6 +31,10 @@ rule; the fix is collecting that log on the computer.
 | Live modes (running attack commands on computers) stay off | There is no safe channel to run attack commands on endpoints. |
 | The built-in campaign runs every 15 minutes (was every minute) | 15 attacks: the whole catalog about every 4 hours, without filling the live feed. |
 | A Defended round is checked against the logs the computer really sends (`siem-api/src/redswarm_sources.rs`, stored events of the last 7 days, read every 10 minutes) | Simulated events prove the rules; they cannot prove the computer sends the log. Reading the stored events every 10 minutes costs one query per tenant, not one per round. While not yet read, the round keeps its rules verdict. |
+| Campaigns (paused or not, their counts) and the kill switches are saved in ClickHouse (`redswarm_control`), at once on a change and every 10 s for counts | A kill switch that a restart forgot would start the attacks again. |
+| Each attack is tried on every computer of its system in turn (the next computer after each pass over the attacks) | Moving attack and computer by one each round tied an attack to one computer. |
+| The heatmap shows each attack's newest round, per system (Windows and Linux "new account" share an id) | A fixed gap must show as fixed. |
+| Manual attacks need the Red Swarm page's permission, one at a time per tenant, at most one every 10 s | A round waits up to 10 s on the engine; repeated clicks must not flood it. |
 | The log an attack needs is read from its own first sample (`catalog.rs` `log_source`) | No second list to keep in step with the samples. |
 | The verifier waits up to 10 seconds and keeps looking until Defended | The engine's alerts come back through the alert stream; a generic alert can come before the precise one. |
 

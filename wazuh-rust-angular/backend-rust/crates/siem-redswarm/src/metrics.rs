@@ -21,6 +21,8 @@ pub struct HeatmapTechniqueNode {
     pub technique_id: String,
     pub technique_name: String,
     pub tactic: String,
+    /// windows / linux: some technique ids exist for both
+    pub platform: String,
     pub status: String, // "defended", "soft_gap", "hard_gap", "not_collected", "untested"
     pub last_tested_at: Option<String>,
 }
@@ -40,22 +42,22 @@ impl MetricsCalculator {
         records: &[crate::models::ExecutionRecord],
     ) -> PurpleHeatmapData {
         let mut tactic_map: HashMap<String, (usize, usize, usize, usize, usize)> = HashMap::new();
-        let mut tech_latest_status: HashMap<String, (DetectionVerdict, String)> = HashMap::new();
+        let mut tech_latest_status: HashMap<(String, String), (DetectionVerdict, chrono::DateTime<chrono::Utc>)> = HashMap::new();
 
+        // the newest round of each attack on each system decides
         for record in records {
-            tech_latest_status.insert(
-                record.technique_id.clone(),
-                (
-                    record.verification.verdict.clone(),
-                    record.timestamp.to_rfc3339(),
-                ),
-            );
+            let key = (record.technique_id.clone(), record.target_os.to_lowercase());
+            let newer = tech_latest_status.get(&key).is_none_or(|(_, ts)| record.timestamp > *ts);
+            if newer {
+                tech_latest_status.insert(key, (record.verification.verdict.clone(), record.timestamp));
+            }
         }
 
         let mut nodes = Vec::new();
 
         for tech in all_techniques {
-            let (status_str, verdict) = if let Some((v, ts)) = tech_latest_status.get(&tech.id) {
+            let platform = tech.platforms.first().map(|p| p.to_lowercase()).unwrap_or_default();
+            let (status_str, verdict) = if let Some((v, ts)) = tech_latest_status.get(&(tech.id.clone(), platform.clone())) {
                 let s = match v {
                     DetectionVerdict::Defended => "defended",
                     DetectionVerdict::SoftGap => "soft_gap",
@@ -71,8 +73,9 @@ impl MetricsCalculator {
                 technique_id: tech.id.clone(),
                 technique_name: tech.name.clone(),
                 tactic: tech.tactic.clone(),
+                platform,
                 status: status_str.to_string(),
-                last_tested_at: verdict.map(|(_, ts)| ts.clone()),
+                last_tested_at: verdict.map(|(_, ts)| ts.to_rfc3339()),
             });
 
             let entry = tactic_map
@@ -129,5 +132,63 @@ impl MetricsCalculator {
             techniques: nodes,
             overall_defense_rate,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::get_curated_catalog;
+    use crate::models::*;
+
+    fn round(id: &str, os: &str, verdict: DetectionVerdict, mins_ago: i64) -> ExecutionRecord {
+        ExecutionRecord {
+            id: uuid::Uuid::new_v4(),
+            campaign_id: String::new(),
+            tenant_id: String::new(),
+            timestamp: chrono::Utc::now() - chrono::Duration::minutes(mins_ago),
+            technique_id: id.into(),
+            technique_name: String::new(),
+            tactic: String::new(),
+            mode: SwarmExecutionMode::SafeTelemetryOnly,
+            target_agent_id: String::new(),
+            target_agent_name: String::new(),
+            target_agent_ip: String::new(),
+            target_os: os.into(),
+            execution_success: true,
+            execution_output: String::new(),
+            cleanup_status: CleanupStatus::NotApplicable,
+            cleanup_output: None,
+            verification: VerificationEvidence {
+                verdict,
+                matched_alert_id: None,
+                matched_rule_id: None,
+                matched_rule_description: None,
+                matched_alert: None,
+                retry_count: 0,
+                evaluated_signals: vec![],
+                reason: String::new(),
+                latency_ms: 0,
+            },
+            draft_rule: None,
+        }
+    }
+
+    #[test]
+    fn the_newest_round_decides_and_systems_stay_apart() {
+        let status = |records: &[ExecutionRecord], id: &str, os: &str| {
+            let h = MetricsCalculator::compute_heatmap(&get_curated_catalog(), records);
+            h.techniques.iter().find(|n| n.technique_id == id && n.platform == os).unwrap().status.clone()
+        };
+        // newest first, as the history gives them: the gap was fixed, the heatmap says so
+        let fixed = [round("T1110", "windows", DetectionVerdict::Defended, 1), round("T1110", "windows", DetectionVerdict::HardGap, 30)];
+        assert_eq!(status(&fixed, "T1110", "windows"), "defended");
+        // same in the other order
+        let fixed = [fixed[1].clone(), fixed[0].clone()];
+        assert_eq!(status(&fixed, "T1110", "windows"), "defended");
+        // the Windows and Linux "new account" attacks share an id, not a result
+        let both = [round("T1136.001", "windows", DetectionVerdict::Defended, 1), round("T1136.001", "linux", DetectionVerdict::NotCollected, 2)];
+        assert_eq!(status(&both, "T1136.001", "windows"), "defended");
+        assert_eq!(status(&both, "T1136.001", "linux"), "not_collected");
     }
 }

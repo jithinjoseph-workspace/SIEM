@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -19,7 +19,7 @@ import {
   templateUrl: './redswarm.html',
   styleUrl: './redswarm.css',
 })
-export class RedswarmComponent implements OnInit {
+export class RedswarmComponent implements OnInit, OnDestroy {
   private siem = inject(SiemService);
 
   // Icons
@@ -47,6 +47,7 @@ export class RedswarmComponent implements OnInit {
   campaigns = signal<SwarmCampaign[]>([]);
   history = signal<SwarmExecutionRecord[]>([]);
   gaps = signal<SynthesizedRuleDraft[]>([]);
+  appliedRules = signal<SynthesizedRuleDraft[]>([]);
   heatmap = signal<PurpleHeatmapData | null>(null);
 
   // Tab navigation
@@ -66,15 +67,34 @@ export class RedswarmComponent implements OnInit {
   /** A failed kill-switch / campaign change, shown on the page. */
   actionError = signal<string | null>(null);
 
+  /** Rounds run in the background: the page follows them. */
+  private timer?: ReturnType<typeof setInterval>;
+  /** The page could not reach the server. */
+  loadError = signal<string | null>(null);
+
   ngOnInit() {
     this.refreshAll();
     this.siem.getRedSwarmCatalog().subscribe({ next: (c) => this.catalog.set(c || []), error: () => this.catalog.set([]) });
+    this.timer = setInterval(() => this.refreshAll(), 30_000);
+  }
+
+  ngOnDestroy() {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  modeLabel(mode: string | undefined): string {
+    return mode === 'safe_telemetry_only' ? 'Simulation' : mode || '—';
   }
 
   refreshAll() {
     this.loading.set(true);
     this.siem.getRedSwarmStatus().subscribe({
-      next: (s) => this.status.set(s),
+      next: (s) => { this.status.set(s); this.loadError.set(null); },
+      error: (err) => this.loadError.set(err?.error?.message || 'Red Swarm could not be loaded: the server did not answer.')
+    });
+
+    this.siem.getRedSwarmAppliedRules().subscribe({
+      next: (r) => this.appliedRules.set(r || []),
       error: () => {}
     });
 
@@ -108,7 +128,8 @@ export class RedswarmComponent implements OnInit {
     this.actionError.set(null);
     this.siem.toggleRedSwarmKillSwitch(nextState).subscribe({
       next: (res) => {
-        this.status.set(res.swarm_status);
+        this.status.set({ ...res.swarm_status, kill_switch_active: res.kill_switch_active });
+        if (res.saved === false) this.actionError.set('The kill switch is set, but it could not be saved: it would not hold after a server restart.');
         this.refreshAll();
       },
       error: (err) => this.actionError.set(err?.error?.message || 'The kill switch could not be changed.')
@@ -134,7 +155,8 @@ export class RedswarmComponent implements OnInit {
     }).subscribe({
       next: (res) => {
         this.isExecutingManual.set(false);
-        this.manualResult.set(`Verdict: ${res.record.verification.verdict.toUpperCase()} - ${res.record.verification.reason}`);
+        const v = res.record.verification;
+        this.manualResult.set(`Verdict: ${v.verdict.replace(/_/g, ' ').toUpperCase()} on ${res.record.target_agent_name} - ${v.reason}`);
         this.refreshAll();
       },
       error: (err) => {
@@ -166,15 +188,33 @@ export class RedswarmComponent implements OnInit {
     });
   }
 
+  /** The deploy message is an error (shown red). */
+  ruleDeployFailed = signal<boolean>(false);
+
   approveAndDeployRule(draftId: string) {
+    this.actionError.set(null);
     this.siem.approveAndDeployRule(draftId).subscribe({
       next: (res: any) => {
-        this.ruleDeployMessage.set(`✓ Deployed as rule ${res?.rule_id} (etc/rules/redswarm_rules.xml); provigil-analysisd checked the ruleset and reloaded it.`);
+        this.ruleDeployFailed.set(false);
+        this.ruleDeployMessage.set(`✓ Applied as rule ${res?.rule_id} (etc/rules/redswarm_rules.xml); the analysis engine checked the rules and reloaded them. The next round of this attack shows whether it is caught.`);
+        // the modal shows the draft as it is now
+        if (res?.rule && this.selectedRuleDraft()) this.selectedRuleDraft.set(res.rule);
         this.refreshAll();
       },
       error: (err) => {
-        this.ruleDeployMessage.set(`Not deployed: ${err?.error?.message || err.message}`);
+        this.ruleDeployFailed.set(true);
+        const msg = `Not applied: ${err?.error?.message || err.message}`;
+        if (this.selectedRuleDraft()) this.ruleDeployMessage.set(msg); else this.actionError.set(msg);
       }
+    });
+  }
+
+  rollbackRule(ruleId: string) {
+    if (!confirm('Roll back this rule? It is removed from the analysis engine, and Red Swarm may draft a new rule if the attack is missed again.')) return;
+    this.actionError.set(null);
+    this.siem.rollbackRedSwarmRule(ruleId).subscribe({
+      next: () => this.refreshAll(),
+      error: (err) => this.actionError.set(err?.error?.message || 'The rule could not be rolled back.')
     });
   }
 }

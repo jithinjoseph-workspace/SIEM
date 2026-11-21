@@ -14,6 +14,6 @@ pub use executor::SwarmExecutor;
 pub use metrics::{MetricsCalculator, PurpleHeatmapData, TacticCoverage};
 pub use models::*;
 pub use safety::SafetyGatekeeper;
-pub use service::RedSwarmService;
+pub use service::{RedSwarmService, SwarmControlState};
 pub use synthesizer::RuleSynthesizer;
 pub use verifier::PurpleLoopVerifier;

@@ -35,6 +35,15 @@ pub struct RedSwarmService {
     source_check: RwLock<Option<SourceCheck>>,
 }
 
+/// What an admin set and must survive a restart: the campaigns (paused or not, their counts)
+/// and the kill switches. Saved by siem-api (`redswarm_store.rs`).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SwarmControlState {
+    pub campaigns: Vec<SwarmCampaign>,
+    pub kill_switch: bool,
+    pub halted_tenants: Vec<String>,
+}
+
 /// `(agent id, log source) -> Some(sent lately) / None (not known)`.
 pub type SourceCheck = Arc<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
@@ -95,6 +104,22 @@ impl RedSwarmService {
     /// Whether Red Swarm is stopped for the tenant (its own kill switch or the global one).
     pub fn is_tenant_halted(&self, tenant_id: &str) -> bool {
         SafetyGatekeeper::is_kill_switch_engaged() || self.halted_tenants.read().unwrap().contains(tenant_id)
+    }
+
+    /// The campaigns and kill switches, to save.
+    pub fn control_state(&self) -> SwarmControlState {
+        let mut halted: Vec<String> = self.halted_tenants.read().unwrap().iter().cloned().collect();
+        halted.sort();
+        SwarmControlState { campaigns: self.get_campaigns(), kill_switch: SafetyGatekeeper::is_kill_switch_engaged(), halted_tenants: halted }
+    }
+
+    /// Puts back the saved campaigns and kill switches (at start, before the loop runs).
+    pub fn restore_control_state(&self, s: SwarmControlState) {
+        if !s.campaigns.is_empty() {
+            *self.campaigns.write().unwrap() = s.campaigns;
+        }
+        SafetyGatekeeper::set_kill_switch(s.kill_switch);
+        *self.halted_tenants.write().unwrap() = s.halted_tenants.into_iter().collect();
     }
 
     /// How to tell whether a computer sends a log (siem-api reads its stored events).
@@ -381,16 +406,18 @@ impl RedSwarmService {
                         continue;
                     }
 
-                    // Select technique from applicable set for the available platforms
+                    // An agent of the technique's platform (every tenant's agents get tested)
                     let technique = applicable_techniques[round_counter % applicable_techniques.len()];
-                    round_counter += 1;
-
-                    // An agent of the technique's platform, in turn (every tenant's agents get tested)
                     let candidates: Vec<&FleetAgentTarget> = usable_fleet
                         .iter()
                         .filter(|a| technique.platforms.iter().any(|p| p.eq_ignore_ascii_case(&a.os_type)))
                         .collect();
-                    let target_agent = if candidates.is_empty() { &usable_fleet[0] } else { candidates[round_counter % candidates.len()] };
+                    let target_agent = if candidates.is_empty() {
+                        &usable_fleet[0]
+                    } else {
+                        candidates[target_index(round_counter, applicable_techniques.len(), candidates.len())]
+                    };
+                    round_counter += 1;
                     let tenant = target_tenant(target_agent);
 
                     let target_id = &target_agent.id;
@@ -460,6 +487,12 @@ impl RedSwarmService {
     }
 }
 
+/// The computer of round `k`: the next one after each pass over the attacks, so every attack is
+/// tried on every computer (moving both by one each round tied an attack to one computer).
+fn target_index(k: usize, attacks: usize, computers: usize) -> usize {
+    (k / attacks.max(1)) % computers.max(1)
+}
+
 /// Only a rules gap gets a drafted rule: a NotCollected round needs the log, not a rule.
 fn is_rule_gap(r: &ExecutionRecord) -> bool {
     matches!(r.verification.verdict, DetectionVerdict::SoftGap | DetectionVerdict::HardGap)
@@ -500,6 +533,35 @@ mod tests {
         let c = &svc.get_campaigns()[0];
         assert!(!c.enabled, "the pause survives the round");
         assert_eq!((c.total_executed, c.total_gaps), (1, 1));
+    }
+
+    #[test]
+    fn every_attack_reaches_every_computer() {
+        for (attacks, computers) in [(8, 2), (8, 4), (7, 3), (15, 5), (1, 3), (5, 1)] {
+            let mut seen = HashSet::new();
+            for k in 0..attacks * computers {
+                seen.insert((k % attacks, target_index(k, attacks, computers)));
+            }
+            assert_eq!(seen.len(), attacks * computers, "{attacks} attacks on {computers} computers");
+        }
+    }
+
+    #[test]
+    fn control_state_comes_back_after_a_restart() {
+        let before = RedSwarmService::new();
+        let id = before.get_campaigns()[0].id.clone();
+        before.toggle_campaign(&id).unwrap();
+        before.record_campaign_round(&id, Some(true));
+        before.set_tenant_halted("acme", true);
+        let saved = serde_json::to_string(&before.control_state()).unwrap();
+
+        let after = RedSwarmService::new(); // a restart
+        after.restore_control_state(serde_json::from_str(&saved).unwrap());
+        let c = &after.get_campaigns()[0];
+        assert!(!c.enabled, "still paused");
+        assert_eq!(c.total_defended, 1);
+        assert!(after.is_tenant_halted("acme") && !after.is_tenant_halted("globex"));
+        assert_eq!(serde_json::to_string(&after.control_state()).unwrap(), saved);
     }
 
     #[tokio::test]

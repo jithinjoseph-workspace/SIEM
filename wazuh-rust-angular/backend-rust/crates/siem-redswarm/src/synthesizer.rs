@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub struct RuleSynthesizer;
 
 impl RuleSynthesizer {
-    /// Generates a high-quality draft Wazuh XML rule for an evaded attack technique.
+    /// Drafts a ProVigil XML rule for an attack the rules missed.
     /// Runs validation through logtest logic and stores as "Pending Approval".
     /// NEVER writes directly to production ruleset without explicit approval.
     pub fn synthesize_draft_rule(
@@ -36,7 +36,7 @@ impl RuleSynthesizer {
             .copied()
             .or_else(|| technique.expected_telemetry.first().map(|s| s.as_str()))
             .unwrap_or(sample_log);
-        // plain words only; `\.` is a literal dot in the engine's regex and any char in Wazuh's OS_Regex
+        // plain words only; `\.` is a literal dot in the engine's regex and any char in the analysis engine's regex
         let regex_line = present
             .iter()
             .skip(1)
@@ -51,7 +51,7 @@ impl RuleSynthesizer {
 
         let rule_xml = format!(
             r#"<group name="redswarm_purple_team,mitre_{}">
-  <!-- Auto-synthesized by ProVigil Red Swarm Perpetual Purple Engine -->
+  <!-- Drafted by ProVigil Red Swarm -->
   <!-- Target Evasion: {} ({}) -->
   <rule id="{}" level="8">
     <match>{}</match>{}
@@ -78,24 +78,28 @@ impl RuleSynthesizer {
             r.matches_log(sample_log)
         });
 
+        // a first check on the attack's raw sample; the analysis engine checks the rule when it is
+        // applied, and the next round of the attack shows whether it now catches it
         let logtest_output = if logtest_passed {
             format!(
-                "Synthesized Rule #{} matched the sample log.\n    Level: 8\n    MITRE: {}\n    wazuh-analysisd checks the rule again when it is deployed.",
+                "Draft rule #{} matches the attack's sample event (level 8, ATT&CK {}). The analysis engine checks the rule when it is applied; the next round of this attack shows whether it is caught.",
                 rule_id_num, technique.id
             )
         } else {
-            format!("Validation Warning: Rule #{} did not match the sample log; analyst review required.", rule_id_num)
+            format!("Warning: draft rule #{} does not match the attack's sample event; an analyst must edit it before it is applied.", rule_id_num)
         };
 
+        let logs = if technique.platforms.iter().any(|p| p.eq_ignore_ascii_case("windows")) {
+            "the Windows Security log and Sysmon"
+        } else {
+            "the system and authentication logs (syslog, auth.log, kernel)"
+        };
         let hardening_recommendation = format!(
-            "Hardening Recommendation for {}: In addition to deploying Rule #{}, ensure endpoint logging is configured to forward {} telemetry (Sysmon / Auditd / PowerShell Script Block Logging EventID 4104).",
-            technique.id, rule_id_num, technique.tactic
+            "{}: besides rule #{}, make sure the computers send {logs}, where this attack shows up.",
+            technique.id, rule_id_num
         );
 
-        info!(
-            "Draft Wazuh rule #{} synthesized for gap {}. Staged in PendingApproval state.",
-            rule_id_num, technique.id
-        );
+        info!("Red Swarm drafted rule #{} for the gap {}; it waits for an analyst's approval.", rule_id_num, technique.id);
 
         SynthesizedRuleDraft {
             id: draft_rule_id,

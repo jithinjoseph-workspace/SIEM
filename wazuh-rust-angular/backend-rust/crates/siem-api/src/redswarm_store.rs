@@ -44,7 +44,13 @@ async fn ensure_tables(state: &AppState) -> bool {
             id String, json String, updated_at UInt64
         ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY id"
     );
-    for q in [&exec, &drafts] {
+    // the campaigns and kill switches (one row): they survive a restart
+    let control = format!(
+        "CREATE TABLE IF NOT EXISTS `{DEFAULT_DB}`.redswarm_control (
+            id String, json String, updated_at UInt64
+        ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY id"
+    );
+    for q in [&exec, &drafts, &control] {
         if state.db.root().query(q).execute().await.map_err(|e| warn!("redswarm_store: {e}")).is_err() {
             return false;
         }
@@ -86,6 +92,27 @@ pub async fn load(state: &AppState) {
     let drafts: Vec<SynthesizedRuleDraft> = fetch(state, "redswarm_drafts").await.unwrap_or_default();
     info!("Loaded {} Red Swarm execution records and {} rule drafts from ClickHouse", records.len(), drafts.len());
     state.redswarm.audit().restore(records, drafts);
+    match fetch::<siem_redswarm::SwarmControlState>(state, "redswarm_control").await.and_then(|mut v| v.pop()) {
+        Some(c) => {
+            info!("Red Swarm: campaigns and kill switches restored (kill switch {}, {} tenant(s) halted)", c.kill_switch, c.halted_tenants.len());
+            state.redswarm.restore_control_state(c);
+        }
+        None => info!("Red Swarm: no saved campaigns yet, the built-in campaign runs"),
+    }
+}
+
+const CONTROL_ID: &str = "control";
+
+/// Saves the campaigns and kill switches now (the kill switch must hold across a restart).
+pub async fn save_control(state: &AppState) -> bool {
+    if !state.db.is_connected() {
+        return false;
+    }
+    let at = chrono::Utc::now().timestamp_millis() as u64;
+    match blob(CONTROL_ID.into(), &state.redswarm.control_state(), at) {
+        Some(row) => write_rows(state, "redswarm_control", &[row]).await,
+        None => false,
+    }
 }
 
 async fn write_rows(state: &AppState, table: &str, rows: &[BlobRow]) -> bool {
@@ -139,8 +166,15 @@ pub fn spawn_sync(state: AppState) {
         // Records already loaded from ClickHouse are persisted; start after them.
         let mut last_seq = audit.recorded_seq();
         let mut persisted_drafts: HashSet<String> = audit.all_drafts().iter().map(|d| d.id.to_string()).collect();
+        let mut saved_control = serde_json::to_string(&state.redswarm.control_state()).unwrap_or_default();
         loop {
             tokio::time::sleep(Duration::from_secs(10)).await;
+
+            // campaign counts and any change made without a handler (the automatic kill switch)
+            let control = serde_json::to_string(&state.redswarm.control_state()).unwrap_or_default();
+            if control != saved_control && save_control(&state).await {
+                saved_control = control;
+            }
 
             // New execution records, by sequence (survives in-memory trimming).
             let (new_records, seq_end) = audit.records_after_seq(last_seq);

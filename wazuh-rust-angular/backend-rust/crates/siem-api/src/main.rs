@@ -1486,6 +1486,7 @@ async fn main() {
         // ── Red Swarm & Perpetual Purple-Team Engine Routes ──
         .route("/api/v1/redswarm/status", get(get_redswarm_status_handler))
         .route("/api/v1/redswarm/catalog", get(get_redswarm_catalog_handler))
+        .route("/api/v1/redswarm/rules", get(get_redswarm_rules_handler))
         .route(
             "/api/v1/redswarm/campaigns",
             get(get_redswarm_campaigns_handler).post(post_redswarm_campaigns_handler),
@@ -6943,6 +6944,7 @@ async fn post_redswarm_campaigns_handler(
         campaign.tenant_id = ctx.scope();
     }
     state.redswarm.upsert_campaign(campaign.clone());
+    redswarm_store::save_control(&state).await;
     Json(serde_json::json!({ "status": "success", "campaign": campaign })).into_response()
 }
 
@@ -6965,7 +6967,11 @@ async fn post_redswarm_toggle_campaign_handler(
     if let Some(r) = swarm_campaign_owner(&ctx, &campaign) {
         return r;
     }
-    match state.redswarm.toggle_campaign(&id) {
+    let toggled = state.redswarm.toggle_campaign(&id);
+    if toggled.is_ok() {
+        redswarm_store::save_control(&state).await;
+    }
+    match toggled {
         Ok(enabled) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "ok", "campaign_id": id, "enabled": enabled })),
@@ -6976,6 +6982,46 @@ async fn post_redswarm_toggle_campaign_handler(
             Json(serde_json::json!({ "status": "error", "message": e })),
         )
             .into_response(),
+    }
+}
+
+/// A tenant's manual attacks: one at a time, at most one every RUN_ONCE_GAP.
+const RUN_ONCE_GAP: std::time::Duration = std::time::Duration::from_secs(10);
+static RUN_ONCE: std::sync::Mutex<Option<HashMap<String, (bool, std::time::Instant)>>> = std::sync::Mutex::new(None);
+
+struct RunOnceSlot(String);
+
+impl RunOnceSlot {
+    fn take(tenant: &str) -> Option<Self> {
+        let mut g = RUN_ONCE.lock().unwrap();
+        let m = g.get_or_insert_with(HashMap::new);
+        if let Some((busy, at)) = m.get(tenant) {
+            if *busy || at.elapsed() < RUN_ONCE_GAP {
+                return None;
+            }
+        }
+        m.insert(tenant.to_string(), (true, std::time::Instant::now()));
+        Some(Self(tenant.to_string()))
+    }
+}
+
+impl Drop for RunOnceSlot {
+    fn drop(&mut self) {
+        if let Some(m) = RUN_ONCE.lock().unwrap().as_mut() {
+            m.insert(self.0.clone(), (false, std::time::Instant::now()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod run_once_tests {
+    #[test]
+    fn one_manual_attack_at_a_time_per_tenant() {
+        let a = super::RunOnceSlot::take("t-a").expect("free");
+        assert!(super::RunOnceSlot::take("t-a").is_none(), "busy");
+        assert!(super::RunOnceSlot::take("t-b").is_some(), "another tenant is not held up");
+        drop(a);
+        assert!(super::RunOnceSlot::take("t-a").is_none(), "too soon after the last one");
     }
 }
 
@@ -6996,7 +7042,13 @@ async fn post_redswarm_run_once_handler(
     if let Some(r) = redswarm_live(payload.mode) {
         return r;
     }
+    if !ctx.has_permission("siem-mitre") {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": "You need access to the Red Swarm page to run an attack" }))).into_response();
+    }
     let tenant = ctx.scope();
+    let Some(_slot) = RunOnceSlot::take(&tenant) else {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(serde_json::json!({ "status": "error", "message": format!("One manual attack at a time, at most one every {} seconds: try again shortly", RUN_ONCE_GAP.as_secs()) }))).into_response();
+    };
     // one of the tenant's own agents, of the attack's system (active first)
     let target = {
         let agents = scoped_agent_map(&state, &ctx);
@@ -7069,7 +7121,29 @@ async fn get_redswarm_history_handler(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthCtx>,
 ) -> impl IntoResponse {
-    Json(swarm_records(&state, &ctx, 100))
+    // a round keeps the copy of its draft made when it ran: show the draft as it is now
+    let drafts: HashMap<uuid::Uuid, siem_redswarm::SynthesizedRuleDraft> =
+        state.redswarm.audit().drafts().into_iter().map(|d| (d.id, d)).collect();
+    let mut records = swarm_records(&state, &ctx, 100);
+    for r in &mut records {
+        if let Some(d) = r.draft_rule.as_ref().and_then(|d| drafts.get(&d.id)) {
+            r.draft_rule = Some(d.clone());
+        }
+    }
+    Json(records)
+}
+
+/// `GET /api/v1/redswarm/rules`: the tenant's applied Red Swarm rules (to roll back).
+async fn get_redswarm_rules_handler(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthCtx>,
+) -> impl IntoResponse {
+    let mut rules: Vec<_> = swarm_drafts(&state, &ctx)
+        .into_iter()
+        .filter(|d| d.status == siem_redswarm::DraftRuleStatus::ApprovedAndDeployed)
+        .collect();
+    rules.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Json(rules)
 }
 
 async fn get_redswarm_gaps_handler(
@@ -7168,6 +7242,9 @@ async fn post_redswarm_rollback_rule_handler(
         )
             .into_response();
     };
+    if draft.status != siem_redswarm::DraftRuleStatus::ApprovedAndDeployed {
+        return (StatusCode::CONFLICT, Json(serde_json::json!({ "status": "error", "message": "Only an applied rule can be rolled back" }))).into_response();
+    }
     let rule_id = draft
         .rule_xml
         .split("<rule id=\"")
@@ -7250,6 +7327,8 @@ async fn post_redswarm_kill_switch_handler(
             tenant, payload.engage, ctx.username, ctx.role
         );
     }
+    // a kill switch that a restart forgot would start the attacks again
+    let saved = redswarm_store::save_control(&state).await;
     let mut status = state.redswarm.get_status();
     status.kill_switch_active = state.redswarm.is_tenant_halted(&tenant);
     (
@@ -7257,6 +7336,7 @@ async fn post_redswarm_kill_switch_handler(
         Json(serde_json::json!({
             "status": "ok",
             "kill_switch_active": status.kill_switch_active,
+            "saved": saved,
             "swarm_status": status
         })),
     )

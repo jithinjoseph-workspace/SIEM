@@ -586,6 +586,11 @@ export class SiemService {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/gaps/${draftId}/reject`, {});
   }
 
+  /** The tenant's applied Red Swarm rules (to roll back). */
+  getRedSwarmAppliedRules(): Observable<SynthesizedRuleDraft[]> {
+    return this.http.get<SynthesizedRuleDraft[]>(`${this.apiUrl}/api/v1/redswarm/rules`);
+  }
+
   rollbackRedSwarmRule(ruleId: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/v1/redswarm/rules/${ruleId}/rollback`, {});
   }

@@ -1,5 +1,6 @@
 <div class="redswarm-page p-6 w-full max-w-[1780px] mx-auto space-y-6">
   <div *ngIf="actionError()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ actionError() }}</div>
+  <div *ngIf="loadError()" role="alert" class="p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ loadError() }}</div>
 
   <!-- Header with Swarm Status & Emergency Controls -->
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800/80 pb-5">
@@ -51,7 +52,7 @@
   <div *ngIf="status()?.kill_switch_active" class="p-4 rounded-xl border border-red-600/80 bg-red-950/60 flex items-center justify-between text-red-200 text-xs font-semibold shadow-lg shadow-red-950/50">
     <div class="flex items-center gap-2.5">
       <lucide-angular [img]="AlertTriangleIcon" class="w-5 h-5 text-red-400 animate-pulse"></lucide-angular>
-      <span>GLOBAL KILL-SWITCH ENGAGED: All autonomous swarm campaigns, live executions, and simulated probes are halted.</span>
+      <span>KILL SWITCH ENGAGED: Red Swarm runs no attack for this tenant (automatic or manual) until it is released. It stays engaged after a server restart.</span>
     </div>
     <button (click)="toggleKillSwitch()" class="px-3 py-1 bg-red-800 hover:bg-red-700 text-white rounded text-xs">Resume Swarm</button>
   </div>
@@ -86,8 +87,8 @@
           Purple Team
         </span>
       </div>
-      <div class="text-3xl font-extrabold font-mono text-emerald-400 mt-2">{{ status()?.defense_rate_percent || 100 }}%</div>
-      <div class="text-[11px] text-slate-400 mt-1">Attacks caught by SIEM detection rules</div>
+      <div class="text-3xl font-extrabold font-mono mt-2" [class.text-emerald-400]="(status()?.defense_rate_percent ?? 100) >= 80" [class.text-amber-400]="(status()?.defense_rate_percent ?? 100) < 80">{{ status()?.defense_rate_percent ?? 100 }}%</div>
+      <div class="text-[11px] text-slate-400 mt-1">Rounds of the last 24 hours caught by the rules on a computer that sends the attack's log</div>
     </div>
 
     <!-- 24h Attack Probes -->
@@ -97,7 +98,7 @@
         <span class="text-xs text-cyan-400 font-mono">{{ status()?.attacks_last_24h || 0 }} rounds</span>
       </div>
       <div class="text-3xl font-extrabold font-mono text-white mt-2">{{ status()?.attacks_last_24h || 0 }}</div>
-      <div class="text-[11px] text-slate-400 mt-1">Mode: {{ status()?.default_mode || "—" }}</div>
+      <div class="text-[11px] text-slate-400 mt-1">Mode: {{ modeLabel(status()?.default_mode) }}</div>
     </div>
 
     <!-- Open Detection Gaps -->
@@ -192,7 +193,7 @@
   <!-- TAB 1: Live Execution Feed -->
   <div *ngIf="activeTab() === 'feed'" class="space-y-3">
     <div *ngIf="history().length === 0" class="p-8 text-center text-slate-500 font-mono text-sm bg-slate-900/40 rounded-xl border border-slate-800">
-      No swarm execution rounds recorded yet. The autonomous loop ticks every 60s, or you can trigger a manual round above.
+      No rounds yet. The built-in campaign runs one attack every 15 minutes on an online computer, or run one now with Fire Attack Probe above.
     </div>
 
     <div *ngFor="let rec of history()" class="p-4 bg-slate-900/70 border border-slate-800/90 rounded-xl hover:border-slate-700 transition space-y-2.5">
@@ -221,9 +222,9 @@
         </div>
 
         <div class="flex items-center gap-3 text-xs font-mono text-slate-400">
-          <span>Target: <strong class="text-slate-200">{{ rec.target_agent_name }}</strong> ({{ rec.target_agent_ip }})</span>
+          <span>Target: <strong class="text-slate-200">{{ rec.target_agent_name }}</strong><ng-container *ngIf="rec.target_agent_ip"> ({{ rec.target_agent_ip }})</ng-container> · {{ rec.target_os }}</span>
           <span>•</span>
-          <span>Mode: <strong class="text-cyan-400">{{ rec.mode }}</strong></span>
+          <span>Mode: <strong class="text-cyan-400">{{ modeLabel(rec.mode) }}</strong></span>
           <span>•</span>
           <span>{{ rec.timestamp | date:'shortTime' }}</span>
         </div>
@@ -235,7 +236,7 @@
 
       <!-- Action buttons if gap discovered -->
       <div *ngIf="rec.draft_rule" class="flex items-center justify-between pt-1">
-        <span class="text-[11px] text-amber-400 font-mono">Draft ProVigil XML rule staged to close this detection gap.</span>
+        <span class="text-[11px] text-amber-400 font-mono">{{ rec.draft_rule.status === 'pending_approval' ? 'A drafted rule waits for review to close this gap.' : rec.draft_rule.status === 'approved_and_deployed' ? 'The drafted rule was applied.' : rec.draft_rule.status === 'rejected' ? 'The drafted rule was rejected.' : 'The drafted rule was rolled back.' }}</span>
         <button (click)="openRuleModal(rec.draft_rule!)" class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-800 text-amber-300 text-xs font-bold rounded">
           <lucide-angular [img]="EyeIcon" class="w-3.5 h-3.5"></lucide-angular>
           Review Synthesized Rule
@@ -247,7 +248,18 @@
   <!-- TAB 2: Detection Gaps & Synthesized Rules -->
   <div *ngIf="activeTab() === 'gaps'" class="space-y-4">
     <div *ngIf="gaps().length === 0" class="p-8 text-center text-slate-500 font-mono text-sm bg-slate-900/40 rounded-xl border border-slate-800">
-      Zero open detection gaps! All tested adversarial techniques were caught by your active detection ruleset.
+      No drafted rule waits for review. Rounds marked "Log not collected" need the log turned on at the computer, not a rule.
+    </div>
+
+    <div *ngIf="appliedRules().length" class="p-5 bg-slate-900/80 border border-emerald-800/40 rounded-xl space-y-3">
+      <h3 class="text-sm font-bold text-white">Applied Red Swarm rules</h3>
+      <div *ngFor="let r of appliedRules()" class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-t border-slate-800/80 pt-3">
+        <div class="text-xs font-mono text-slate-300">{{ r.technique_name }} ({{ r.technique_id }}) <span class="text-slate-500">· drafted {{ r.created_at | date:'short' }}</span></div>
+        <div class="flex gap-2">
+          <button (click)="openRuleModal(r)" class="px-3 py-1 border border-slate-700 text-slate-300 text-xs rounded">View</button>
+          <button (click)="rollbackRule(r.id)" class="px-3 py-1 border border-red-800 hover:bg-red-950 text-red-300 text-xs font-bold rounded">Roll back</button>
+        </div>
+      </div>
     </div>
 
     <div *ngFor="let g of gaps()" class="p-5 bg-slate-900/80 border border-amber-800/40 rounded-xl space-y-3">
@@ -269,7 +281,7 @@
             class="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg shadow-md transition"
           >
             <lucide-angular [img]="CheckIcon" class="w-3.5 h-3.5"></lucide-angular>
-            Approve &amp; Deploy Rule to Manager
+            Apply rule
           </button>
         </div>
       </div>
@@ -315,7 +327,7 @@
         <div>
           <h3 class="text-base font-bold text-white flex items-center gap-2">
             {{ c.name }}
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">{{ c.mode }}</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">{{ modeLabel(c.mode) }}</span>
           </h3>
           <p class="text-xs text-slate-400 mt-1">{{ c.description }}</p>
         </div>
@@ -325,7 +337,7 @@
           [class.bg-slate-700]="!c.enabled"
           class="px-4 py-1.5 text-white text-xs font-bold rounded-lg transition"
         >
-          {{ c.enabled ? 'ACTIVE (Tick every ' + c.interval_seconds + 's)' : 'PAUSED' }}
+          {{ c.enabled ? 'ACTIVE (one attack every ' + (c.interval_seconds / 60) + ' min)' : 'PAUSED' }}
         </button>
       </div>
 
@@ -333,7 +345,7 @@
         <div>Total Executed: <strong class="text-white">{{ c.total_executed }}</strong></div>
         <div>Defended: <strong class="text-emerald-400">{{ c.total_defended }}</strong></div>
         <div>Gaps Discovered: <strong class="text-amber-400">{{ c.total_gaps }}</strong></div>
-        <div>Allowed Tags: <strong class="text-cyan-400">{{ c.roe.allowed_agent_tags.join(', ') }}</strong></div>
+        <div>Last round: <strong class="text-cyan-400">{{ c.last_run_at ? (c.last_run_at | date:'short') : 'not yet' }}</strong></div>
       </div>
     </div>
   </div>
@@ -346,7 +358,7 @@
         <button (click)="closeRuleModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <div class="p-6 overflow-y-auto space-y-4 text-xs font-mono">
-        <div *ngIf="ruleDeployMessage()" class="p-3 bg-emerald-950/80 border border-emerald-700 text-emerald-300 rounded-lg">
+        <div *ngIf="ruleDeployMessage()" class="p-3 rounded-lg border" [class.bg-emerald-950]="!ruleDeployFailed()" [class.border-emerald-700]="!ruleDeployFailed()" [class.text-emerald-300]="!ruleDeployFailed()" [class.bg-rose-950]="ruleDeployFailed()" [class.border-rose-700]="ruleDeployFailed()" [class.text-rose-300]="ruleDeployFailed()">
           {{ ruleDeployMessage() }}
         </div>
         <p class="text-slate-300">{{ selectedRuleDraft()?.hardening_recommendation }}</p>
@@ -358,9 +370,13 @@
       <div class="px-6 py-4 border-t border-slate-800 bg-slate-950 flex justify-end gap-3">
         <button (click)="closeRuleModal()" class="px-4 py-2 border border-slate-700 text-slate-300 rounded text-xs">Close</button>
         <button *ngIf="selectedRuleDraft()?.status === 'pending_approval'" (click)="rejectRule(selectedRuleDraft()!.id)" class="px-4 py-2 border border-red-800 hover:bg-red-950 text-red-300 rounded text-xs font-bold">Reject</button>
-        <button (click)="approveAndDeployRule(selectedRuleDraft()!.id)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold">
-          Approve &amp; Deploy Rule
+        <button *ngIf="selectedRuleDraft()?.status === 'pending_approval'" (click)="approveAndDeployRule(selectedRuleDraft()!.id)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold">
+          Apply rule
         </button>
+        <button *ngIf="selectedRuleDraft()?.status === 'approved_and_deployed'" (click)="rollbackRule(selectedRuleDraft()!.id); closeRuleModal()" class="px-4 py-2 border border-red-800 hover:bg-red-950 text-red-300 rounded text-xs font-bold">
+          Roll back
+        </button>
+        <span *ngIf="selectedRuleDraft()?.status === 'rejected' || selectedRuleDraft()?.status === 'rolled_back'" class="self-center text-xs text-slate-400">This draft was {{ selectedRuleDraft()?.status === 'rejected' ? 'rejected' : 'rolled back' }}.</span>
       </div>
     </div>
   </div>

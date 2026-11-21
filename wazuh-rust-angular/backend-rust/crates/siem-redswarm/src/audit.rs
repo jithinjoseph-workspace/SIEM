@@ -162,6 +162,8 @@ impl AuditStore {
     /// Repopulate the store from persisted state at startup (before the swarm loop runs).
     /// Drafts are kept separate from records' embedded copies, so they are restored explicitly.
     pub fn restore(&self, mut records: Vec<ExecutionRecord>, drafts: Vec<SynthesizedRuleDraft>) {
+        // the database gives them in id order: the store is oldest first (trimming drops the oldest)
+        records.sort_by_key(|r| r.timestamp);
         let total = records.len() as u64;
         let overflow = records.len().saturating_sub(MEM_CAP);
         if overflow > 0 {
@@ -258,5 +260,19 @@ mod tests {
         assert!(store.records_after_seq((MEM_CAP + 5) as u64).0.is_empty());
         // the last 2 records are still reachable by sequence
         assert_eq!(store.records_after_seq((MEM_CAP + 3) as u64).0.len(), 2);
+    }
+
+    #[test]
+    fn restore_puts_history_in_time_order() {
+        let store = AuditStore::new();
+        let at = |mins: i64| {
+            let mut r = rec();
+            r.timestamp = chrono::Utc::now() - chrono::Duration::minutes(mins);
+            r
+        };
+        // the database gives them in id order, not time order
+        store.restore(vec![at(5), at(1), at(9)], vec![]);
+        let h = store.get_history(3);
+        assert!(h[0].timestamp > h[1].timestamp && h[1].timestamp > h[2].timestamp, "newest first");
     }
 }

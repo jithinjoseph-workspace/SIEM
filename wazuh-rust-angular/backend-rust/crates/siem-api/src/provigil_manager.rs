@@ -2758,9 +2758,11 @@ pub async fn deliver(state: &AppState, mut alerts: Vec<Alert>, soar_json: Vec<se
     let (alerts_real, soar_json): (Vec<Alert>, Vec<serde_json::Value>) = real.into_iter().unzip();
     alerts = alerts_real;
     // scored before it is stored, so the stored alert carries its business risk too
+    let owners = state.agent_tenants.read().unwrap().clone(); // copy: never hold two locks at once
     for a in &mut alerts {
         if !a.data.contains_key("risk_fabric") && !crate::is_simulation(a) {
-            state.risk_fabric.evaluate_alert(a);
+            let tenant = crate::tenancy::alert_tenant(a, &owners);
+            state.risk_fabric.evaluate_alert(&tenant, a);
         }
     }
     // one INSERT per tenant; the file offset moves on only once ClickHouse has every row

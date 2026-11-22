@@ -35,7 +35,7 @@
         <lucide-angular [img]="RefreshIcon" class="icon-sm" [class.animate-spin]="isLoading()"></lucide-angular>
         Refresh Fabric
       </button>
-      <button class="btn btn-primary" (click)="openNewProcessModal()">
+      <button class="btn btn-primary" *ngIf="canEdit" (click)="openNewProcessModal()">
         <lucide-angular [img]="PlusIcon" class="icon-sm"></lucide-angular>
         Map Business Process
       </button>
@@ -444,7 +444,7 @@
                 (ngModelChange)="searchProcessQuery.set($event)"
               />
             </div>
-            <button class="btn btn-sm btn-primary" (click)="openNewProcessModal()">
+            <button class="btn btn-sm btn-primary" *ngIf="canEdit" (click)="openNewProcessModal()">
               <lucide-angular [img]="PlusIcon" class="icon-xs"></lucide-angular>
               Add Business Process
             </button>
@@ -511,10 +511,10 @@
                     </span>
                   </td>
                   <td class="text-right">
-                    <button class="btn-icon" (click)="editProcess(proc)" title="Edit">
+                    <button class="btn-icon" *ngIf="canEdit" (click)="editProcess(proc)" title="Edit">
                       <lucide-angular [img]="EditIcon" class="icon-xs"></lucide-angular>
                     </button>
-                    <button class="btn-icon text-red" (click)="deleteProcess(proc.id)" title="Delete">
+                    <button class="btn-icon text-red" *ngIf="canEdit" (click)="deleteProcess(proc.id)" title="Delete">
                       <lucide-angular [img]="TrashIcon" class="icon-xs"></lucide-angular>
                     </button>
                   </td>
@@ -587,10 +587,10 @@
                     </span>
                   </td>
                   <td class="text-right">
-                    <button class="btn btn-sm" [class.btn-outline]="win.active" [class.btn-primary]="!win.active" (click)="toggleWindowActive(win)">
+                    <button class="btn btn-sm" *ngIf="canEdit" [class.btn-outline]="win.active" [class.btn-primary]="!win.active" (click)="toggleWindowActive(win)">
                       {{ win.active ? 'Deactivate' : 'Activate' }}
                     </button>
-                    <button class="btn-icon text-red ml-2" (click)="deleteWindow(win.id)" title="Delete">
+                    <button class="btn-icon text-red ml-2" *ngIf="canEdit" (click)="deleteWindow(win.id)" title="Delete">
                       <lucide-angular [img]="TrashIcon" class="icon-xs"></lucide-angular>
                     </button>
                   </td>
@@ -742,7 +742,7 @@
           </div>
           <div class="form-group">
             <label>Asset Matching Patterns (comma-separated)</label>
-            <input type="text" class="form-control" [ngModel]="procFormAssetPatterns()" (ngModelChange)="procFormAssetPatterns.set($event)" placeholder="*pay*, 192.168.10.*, srv-prod-*" />
+            <input type="text" class="form-control" [ngModel]="procFormAssetPatterns()" (ngModelChange)="procFormAssetPatterns.set($event)" placeholder="e.g. *payment*, pay-*, srv-prod-*" />
           </div>
           <div class="form-group">
             <label>Identity Matching Patterns (comma-separated)</label>

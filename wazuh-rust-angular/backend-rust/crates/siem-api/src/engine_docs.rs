@@ -1,6 +1,7 @@
-//! The Risk Fabric and Deception engines' settings, one JSON document each, in ClickHouse
-//! (`siem_engine_docs` in the default tenant's database, the engines are shared): read at
-//! start, written when they change. A settings file of an earlier version is stored once and
+//! The Risk Fabric and Deception engines' settings, JSON documents in ClickHouse
+//! (`siem_engine_docs` in the default tenant's database): read at start, written when they
+//! change. Risk Fabric keeps each tenant's own settings (`risk_fabric:<tenant>`) beside the
+//! shared ones a tenant starts from (`risk_fabric`). A settings file of an earlier version is stored once and
 //! removed.
 
 use std::time::Duration;
@@ -34,7 +35,16 @@ async fn read(state: &AppState, id: &str) -> Option<String> {
 /// The stored settings into the engines (a stored document is newer than an old file).
 pub async fn load(state: &AppState) {
     if let Some(d) = read(state, "risk_fabric").await {
-        state.risk_fabric.load(&d);
+        state.risk_fabric.load(siem_risk_fabric::engine::SHARED, &d);
+    }
+    let q = state.db.tenant_client(TENANT).query("SELECT id, doc FROM siem_engine_docs FINAL WHERE startsWith(id, 'risk_fabric:')");
+    match q.fetch_all::<(String, String)>().await {
+        Ok(rows) => {
+            for (id, doc) in rows {
+                state.risk_fabric.load(&id["risk_fabric:".len()..], &doc);
+            }
+        }
+        Err(e) => tracing::warn!("tenants' risk fabric settings not loaded from ClickHouse: {e}"),
     }
     if let Some(d) = read(state, "deception").await {
         state.deception_engine.load(&d);
@@ -50,12 +60,13 @@ async fn write(state: &AppState, id: &str, doc: String) -> Result<(), clickhouse
 }
 
 async fn flush(state: &AppState) {
-    if let Some(doc) = state.risk_fabric.take_changed() {
-        match write(state, "risk_fabric", doc).await {
-            Ok(()) => state.risk_fabric.stored(),
+    for (tenant, doc) in state.risk_fabric.take_changed() {
+        let id = if tenant == siem_risk_fabric::engine::SHARED { "risk_fabric".to_string() } else { format!("risk_fabric:{tenant}") };
+        match write(state, &id, doc).await {
+            Ok(()) => state.risk_fabric.stored(&tenant),
             Err(e) => {
                 tracing::warn!("risk fabric settings not stored (tried again in {}s): {e}", EVERY.as_secs());
-                state.risk_fabric.store_failed();
+                state.risk_fabric.store_failed(&tenant);
             }
         }
     }

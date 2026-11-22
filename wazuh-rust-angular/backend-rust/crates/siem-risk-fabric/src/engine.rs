@@ -1,8 +1,7 @@
-use chrono::{Datelike, Timelike, Utc};
+use chrono::{Datelike, Local, NaiveDate, TimeZone, Timelike, Utc};
 use siem_core::Alert;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::models::{
@@ -11,13 +10,19 @@ use crate::models::{
 };
 use crate::storage;
 
+/// Settings key of the shared settings a tenant starts from (stored as `risk_fabric`).
+pub const SHARED: &str = "";
+
 #[derive(Clone)]
 pub struct RiskFabricEngine {
-    processes: Arc<RwLock<Vec<BusinessProcessDefinition>>>,
-    time_windows: Arc<RwLock<Vec<BusinessTimeWindow>>>,
+    /// The settings a tenant without its own starts from: those stored before settings were
+    /// per tenant, else the defaults
+    shared: Arc<RwLock<Arc<RiskFabricConfig>>>,
+    /// Each tenant's own business processes and time windows, once it changed them
+    tenants: Arc<RwLock<HashMap<String, Arc<RiskFabricConfig>>>>,
     fleet: Arc<RwLock<HashMap<String, FleetAgentMeta>>>,
-    /// Changed since siem-api last stored it (ClickHouse, `engine_docs`)
-    changed: Arc<AtomicBool>,
+    /// Settings changed since siem-api last stored them (ClickHouse, `engine_docs`)
+    changed: Arc<Mutex<HashSet<String>>>,
     /// The settings file of an earlier version, until its content is stored
     legacy_file: Arc<Mutex<Option<PathBuf>>>,
 }
@@ -28,14 +33,35 @@ impl RiskFabricEngine {
         let old = storage::load_config(&path);
         let had_file = old.is_some();
         let cfg = old.unwrap_or_else(storage::default_config);
+        let changed: HashSet<String> = if had_file { [SHARED.to_string()].into() } else { HashSet::new() };
 
         Self {
-            processes: Arc::new(RwLock::new(cfg.processes)),
-            time_windows: Arc::new(RwLock::new(cfg.time_windows)),
+            shared: Arc::new(RwLock::new(Arc::new(cfg))),
+            tenants: Arc::new(RwLock::new(HashMap::new())),
             fleet: Arc::new(RwLock::new(HashMap::new())),
-            changed: Arc::new(AtomicBool::new(had_file)),
+            changed: Arc::new(Mutex::new(changed)),
             legacy_file: Arc::new(Mutex::new(had_file.then_some(path))),
         }
+    }
+
+    /// The tenant's settings: its own, else the shared ones.
+    pub fn config(&self, tenant: &str) -> Arc<RiskFabricConfig> {
+        if let Some(c) = self.tenants.read().unwrap().get(tenant) {
+            return c.clone();
+        }
+        self.shared.read().unwrap().clone()
+    }
+
+    /// Changes the tenant's own settings (a copy of the shared ones the first time).
+    fn change<R>(&self, tenant: &str, f: impl FnOnce(&mut RiskFabricConfig) -> R) -> R {
+        let mut map = self.tenants.write().unwrap();
+        let cur = map.get(tenant).cloned().unwrap_or_else(|| self.shared.read().unwrap().clone());
+        let mut cfg = (*cur).clone();
+        let r = f(&mut cfg);
+        map.insert(tenant.to_string(), Arc::new(cfg));
+        drop(map);
+        self.changed.lock().unwrap().insert(tenant.to_string());
+        r
     }
 
     /// Synchronizes live enrolled agent fleet metadata using tuples
@@ -58,7 +84,7 @@ impl RiskFabricEngine {
         }
     }
 
-    /// Synchronizes live enrolled agent fleet with rich metadata including Wazuh groups
+    /// Synchronizes live enrolled agent fleet with rich metadata including agent groups
     pub fn sync_fleet_meta(&self, fleet: &[FleetAgentMeta]) {
         let mut map = self.fleet.write().unwrap();
         map.clear();
@@ -67,45 +93,49 @@ impl RiskFabricEngine {
         }
     }
 
-    /// The business processes or time windows changed: siem-api stores them.
-    pub fn save(&self) {
-        self.changed.store(true, Ordering::SeqCst);
-    }
-
-    /// The stored document if it changed since the last call, for siem-api to store.
-    pub fn take_changed(&self) -> Option<String> {
-        if !self.changed.swap(false, Ordering::SeqCst) {
-            return None;
-        }
-        serde_json::to_string(&RiskFabricConfig { processes: self.processes.read().unwrap().clone(), time_windows: self.time_windows.read().unwrap().clone() }).ok()
+    /// The changed settings since the last call, `(tenant, document)` (`SHARED` for the shared
+    /// settings), for siem-api to store.
+    pub fn take_changed(&self) -> Vec<(String, String)> {
+        let keys: Vec<String> = self.changed.lock().unwrap().drain().collect();
+        keys.into_iter()
+            .filter_map(|t| {
+                let cfg = if t == SHARED { self.shared.read().unwrap().clone() } else { self.config(&t) };
+                serde_json::to_string(&*cfg).ok().map(|d| (t, d))
+            })
+            .collect()
     }
 
     /// Not stored: it stays changed.
-    pub fn store_failed(&self) {
-        self.save();
+    pub fn store_failed(&self, tenant: &str) {
+        self.changed.lock().unwrap().insert(tenant.to_string());
     }
 
     /// Stored: the settings file of an earlier version is not needed any more.
-    pub fn stored(&self) {
-        if let Some(p) = self.legacy_file.lock().unwrap().take() {
-            let _ = std::fs::remove_file(p);
+    pub fn stored(&self, tenant: &str) {
+        if tenant == SHARED {
+            if let Some(p) = self.legacy_file.lock().unwrap().take() {
+                let _ = std::fs::remove_file(p);
+            }
         }
     }
 
-    /// The stored document, at start.
-    pub fn load(&self, doc: &str) {
+    /// A stored document, at start: the shared settings (`SHARED`) or a tenant's own.
+    pub fn load(&self, tenant: &str, doc: &str) {
         if let Ok(mut c) = serde_json::from_str::<RiskFabricConfig>(doc) {
             let retired = storage::retire_old_defaults(&mut c.processes);
-            *self.processes.write().unwrap() = c.processes;
-            *self.time_windows.write().unwrap() = c.time_windows;
+            if tenant == SHARED {
+                *self.shared.write().unwrap() = Arc::new(c);
+            } else {
+                self.tenants.write().unwrap().insert(tenant.to_string(), Arc::new(c));
+            }
             if retired {
-                self.save();
+                self.changed.lock().unwrap().insert(tenant.to_string());
             }
         }
     }
 
     /// Evaluates an alert and injects the score into `alert.data["risk_fabric"]`
-    pub fn evaluate_alert(&self, alert: &mut Alert) -> RiskFabricScore {
+    pub fn evaluate_alert(&self, tenant: &str, alert: &mut Alert) -> RiskFabricScore {
         let agent_name = alert.agent.name.to_lowercase();
         let agent_id = alert.agent.id.to_lowercase();
         let agent_ip = alert.agent.ip.to_lowercase();
@@ -127,8 +157,9 @@ impl RiskFabricEngine {
             }
         };
 
-        let processes = self.processes.read().unwrap();
-        let time_windows = self.time_windows.read().unwrap();
+        let cfg = self.config(tenant);
+        let processes = &cfg.processes;
+        let time_windows = &cfg.time_windows;
 
         // 1. Resolve matching Business Process
         let mut matched_proc: Option<BusinessProcessDefinition> = None;
@@ -220,12 +251,12 @@ impl RiskFabricEngine {
         // 3. Resolve Real-Time Clock & Temporal Window Multipliers
         let mut time_multiplier = 1.0;
         let mut active_window_names = Vec::new();
-        let now = Utc::now();
+        let now = Local::now();
 
         for w in time_windows.iter() {
             let applies_to_proc = w.target_processes.is_empty() || w.target_processes.contains(&bp_id);
             if applies_to_proc {
-                let (is_active, mult) = evaluate_temporal_window(w, now);
+                let (is_active, mult) = evaluate_temporal_window(w, &now);
                 if is_active && (mult - 1.0).abs() > 0.001 {
                     time_multiplier *= mult;
                     active_window_names.push(format!("{} ({:.2}x)", w.name, mult));
@@ -323,7 +354,7 @@ impl RiskFabricEngine {
     }
 
     /// Evaluates simulation payload without altering active alerts
-    pub fn simulate(&self, req: &RiskEvaluationRequest) -> RiskFabricScore {
+    pub fn simulate(&self, tenant: &str, req: &RiskEvaluationRequest) -> RiskFabricScore {
         let mut dummy_alert = Alert {
             id: uuid::Uuid::new_v4(),
             timestamp: Utc::now(),
@@ -362,15 +393,16 @@ impl RiskFabricEngine {
             dummy_alert.data.insert("dstuser".to_string(), serde_json::Value::String(u.clone()));
         }
 
-        self.evaluate_alert(&mut dummy_alert)
+        self.evaluate_alert(tenant, &mut dummy_alert)
     }
 
     /// Summarizes live risk fabric metrics across a set of active alerts
-    pub fn get_summary(&self, alerts: &[Alert]) -> RiskFabricSummary {
-        let processes = self.processes.read().unwrap();
-        let time_windows = self.time_windows.read().unwrap();
-
-        let active_windows = time_windows.iter().filter(|w| w.active).count();
+    pub fn get_summary(&self, tenant: &str, alerts: &[Alert]) -> RiskFabricSummary {
+        let cfg = self.config(tenant);
+        let processes = &cfg.processes;
+        let now = Local::now();
+        // windows in effect now, not merely switched on
+        let active_windows = cfg.time_windows.iter().filter(|w| evaluate_temporal_window(w, &now).0).count();
         let total_procs = processes.len();
 
         let mut catastrophic = 0;
@@ -392,7 +424,7 @@ impl RiskFabricEngine {
             // Check attached score or dynamically evaluate on the fly
             let score = Self::get_score(a).unwrap_or_else(|| {
                 let mut cloned = a.clone();
-                self.evaluate_alert(&mut cloned)
+                self.evaluate_alert(tenant, &mut cloned)
             });
 
             total_score += score.dynamic_risk_score as u64;
@@ -445,59 +477,110 @@ impl RiskFabricEngine {
         }
     }
 
-    pub fn get_processes(&self) -> Vec<BusinessProcessDefinition> {
-        self.processes.read().unwrap().clone()
+    pub fn get_processes(&self, tenant: &str) -> Vec<BusinessProcessDefinition> {
+        self.config(tenant).processes.clone()
     }
 
-    pub fn add_or_update_process(&self, proc: BusinessProcessDefinition) {
-        let mut list = self.processes.write().unwrap();
-        if let Some(pos) = list.iter().position(|p| p.id == proc.id) {
-            list[pos] = proc;
-        } else {
-            list.push(proc);
+    pub fn add_or_update_process(&self, tenant: &str, proc: BusinessProcessDefinition) -> Result<(), String> {
+        check_process(&proc)?;
+        self.change(tenant, |c| match c.processes.iter().position(|p| p.id == proc.id) {
+            Some(pos) => c.processes[pos] = proc,
+            None => c.processes.push(proc),
+        });
+        Ok(())
+    }
+
+    pub fn delete_process(&self, tenant: &str, id: &str) -> bool {
+        if !self.config(tenant).processes.iter().any(|p| p.id == id) {
+            return false;
         }
-        drop(list);
-        self.save();
+        self.change(tenant, |c| c.processes.retain(|p| p.id != id));
+        true
     }
 
-    pub fn delete_process(&self, id: &str) -> bool {
-        let mut list = self.processes.write().unwrap();
-        let len_before = list.len();
-        list.retain(|p| p.id != id);
-        let removed = list.len() < len_before;
-        drop(list);
-        if removed {
-            self.save();
+    pub fn get_windows(&self, tenant: &str) -> Vec<BusinessTimeWindow> {
+        self.config(tenant).time_windows.clone()
+    }
+
+    pub fn add_or_update_window(&self, tenant: &str, win: BusinessTimeWindow) -> Result<(), String> {
+        check_window(&win)?;
+        self.change(tenant, |c| match c.time_windows.iter().position(|w| w.id == win.id) {
+            Some(pos) => c.time_windows[pos] = win,
+            None => c.time_windows.push(win),
+        });
+        Ok(())
+    }
+
+    pub fn delete_window(&self, tenant: &str, id: &str) -> bool {
+        if !self.config(tenant).time_windows.iter().any(|w| w.id == id) {
+            return false;
         }
-        removed
+        self.change(tenant, |c| c.time_windows.retain(|w| w.id != id));
+        true
     }
+}
 
-    pub fn get_windows(&self) -> Vec<BusinessTimeWindow> {
-        self.time_windows.read().unwrap().clone()
+fn check_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+        return Err("The id must be 1-64 letters, digits, '-', '_' or '.'".into());
     }
+    Ok(())
+}
 
-    pub fn add_or_update_window(&self, win: BusinessTimeWindow) {
-        let mut list = self.time_windows.write().unwrap();
-        if let Some(pos) = list.iter().position(|w| w.id == win.id) {
-            list[pos] = win;
-        } else {
-            list.push(win);
+fn check_patterns(what: &str, list: &[String]) -> Result<(), String> {
+    if list.len() > 200 {
+        return Err(format!("At most 200 {what} patterns"));
+    }
+    if list.iter().any(|p| p.trim().is_empty() || p.len() > 128) {
+        return Err(format!("Each {what} pattern must be 1-128 characters"));
+    }
+    Ok(())
+}
+
+/// A business process an admin saves: a name, sensible weights and usable patterns.
+pub fn check_process(p: &BusinessProcessDefinition) -> Result<(), String> {
+    check_id(&p.id)?;
+    if p.name.trim().is_empty() || p.name.len() > 120 {
+        return Err("The business process needs a name (at most 120 characters)".into());
+    }
+    for (what, w) in [("asset", p.asset_weight), ("identity", p.identity_weight)] {
+        if !w.is_finite() || !(0.1..=5.0).contains(&w) {
+            return Err(format!("The {what} weight must be between 0.1 and 5"));
         }
-        drop(list);
-        self.save();
     }
+    check_patterns("asset", &p.asset_patterns)?;
+    check_patterns("group", &p.group_patterns)?;
+    check_patterns("identity", &p.identity_patterns)?;
+    if p.asset_patterns.is_empty() && p.group_patterns.is_empty() {
+        return Err("Name at least one asset or group pattern, or the process matches no computer".into());
+    }
+    Ok(())
+}
 
-    pub fn delete_window(&self, id: &str) -> bool {
-        let mut list = self.time_windows.write().unwrap();
-        let len_before = list.len();
-        list.retain(|w| w.id != id);
-        let removed = list.len() < len_before;
-        drop(list);
-        if removed {
-            self.save();
-        }
-        removed
+/// A time window an admin saves: a name, a sensible multiplier, and readable dates for a date range.
+pub fn check_window(w: &BusinessTimeWindow) -> Result<(), String> {
+    check_id(&w.id)?;
+    if w.name.trim().is_empty() || w.name.len() > 120 {
+        return Err("The time window needs a name (at most 120 characters)".into());
     }
+    if !w.multiplier.is_finite() || !(0.1..=3.0).contains(&w.multiplier) {
+        return Err("The multiplier must be between 0.1 and 3".into());
+    }
+    match w.window_type.as_str() {
+        "recurring_schedule" | "business_hours" => Ok(()),
+        "date_range" => match (w.start_date.as_deref().and_then(parse_day), w.end_date.as_deref().and_then(parse_day)) {
+            (Some(s), Some(e)) if s <= e => Ok(()),
+            _ => Err("A date range needs a start and an end date (YYYY-MM-DD), the start first".into()),
+        },
+        _ => Err("The window type must be recurring_schedule, business_hours or date_range".into()),
+    }
+}
+
+/// A day from `YYYY-MM-DD` or a full RFC 3339 time.
+fn parse_day(s: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d")
+        .ok()
+        .or_else(|| chrono::DateTime::parse_from_rfc3339(s.trim()).ok().map(|d| d.date_naive()))
 }
 
 /// Dynamically resolves the user identity across Windows EventData and Linux Syslog/Auditd payloads
@@ -561,72 +644,48 @@ pub fn clean_username(user: &str) -> String {
     }
 }
 
-/// Dynamically evaluates whether a business time window is in effect using the system clock and calendar
-pub fn evaluate_temporal_window(w: &BusinessTimeWindow, now: chrono::DateTime<Utc>) -> (bool, f64) {
+/// Whether a business time window is in effect at `now` (the server's local time: office hours
+/// and month-end are local), and its multiplier.
+pub fn evaluate_temporal_window<Tz: TimeZone>(w: &BusinessTimeWindow, now: &chrono::DateTime<Tz>) -> (bool, f64) {
     if !w.active {
         return (false, 1.0);
     }
+    let on = |yes: bool| if yes { (true, w.multiplier) } else { (false, 1.0) };
     match w.window_type.as_str() {
         "business_hours" => {
             let weekday = now.weekday().number_from_monday(); // 1 = Mon, 7 = Sun
             let hour = now.hour();
-            let is_weekend = weekday >= 6;
-            let is_off_hours = is_weekend || hour < 8 || hour >= 18;
+            let is_off_hours = weekday >= 6 || hour < 8 || hour >= 18;
 
             let name_lower = w.name.to_lowercase();
             let id_lower = w.id.to_lowercase();
-            if id_lower.contains("off-hours")
+            let off_hours_window = id_lower.contains("off-hours")
                 || name_lower.contains("off-hour")
                 || name_lower.contains("night")
-                || name_lower.contains("unattended")
-            {
-                if is_off_hours {
-                    (true, w.multiplier)
-                } else {
-                    (false, 1.0)
-                }
-            } else {
-                if !is_off_hours {
-                    (true, w.multiplier)
-                } else {
-                    (false, 1.0)
-                }
-            }
+                || name_lower.contains("unattended");
+            on(if off_hours_window { is_off_hours } else { !is_off_hours })
         }
         "recurring_schedule" => {
             let name_lower = w.name.to_lowercase();
             let id_lower = w.id.to_lowercase();
-            if id_lower.contains("financial")
-                || name_lower.contains("financial")
-                || name_lower.contains("month-end")
-                || name_lower.contains("close")
-            {
+            if id_lower.contains("financial") || name_lower.contains("financial") || name_lower.contains("month-end") {
+                // the last days of the month and the first: outside them the window is not in effect
                 let day = now.day();
-                let is_month_end = day >= 27 || day == 1;
-                if is_month_end {
-                    (true, w.multiplier)
-                } else {
-                    (true, 1.15)
-                }
-            } else if id_lower.contains("maintenance") || name_lower.contains("maintenance") {
-                (w.active, w.multiplier)
+                on(day >= 27 || day == 1)
             } else {
-                (w.active, w.multiplier)
+                // switched on by an admin (a maintenance window): in effect while on
+                on(true)
             }
         }
-        "date_range" => {
-            if let (Some(s), Some(e)) = (&w.start_date, &w.end_date) {
-                if let (Ok(start), Ok(end)) = (
-                    chrono::DateTime::parse_from_rfc3339(s),
-                    chrono::DateTime::parse_from_rfc3339(e),
-                ) {
-                    let active = now >= start && now <= end;
-                    return (active, if active { w.multiplier } else { 1.0 });
-                }
+        "date_range" => match (w.start_date.as_deref().and_then(parse_day), w.end_date.as_deref().and_then(parse_day)) {
+            (Some(s), Some(e)) => {
+                let today = now.date_naive();
+                on(s <= today && today <= e)
             }
-            (w.active, w.multiplier)
-        }
-        _ => (w.active, w.multiplier),
+            // dates that cannot be read: never in effect (it used to apply always)
+            _ => (false, 1.0),
+        },
+        _ => (false, 1.0),
     }
 }
 
@@ -635,7 +694,11 @@ pub fn matches_pattern(pattern: &str, target: &str) -> bool {
     let p = pattern.trim().to_lowercase();
     let t = target.trim().to_lowercase();
 
-    if p == "*" || p.is_empty() {
+    if p.is_empty() {
+        // an empty entry names nothing (it used to match every alert)
+        return false;
+    }
+    if p == "*" {
         return true;
     }
     if p.starts_with('*') && p.ends_with('*') && p.len() > 2 {
@@ -681,7 +744,7 @@ mod tests {
             user: Some("administrator".into()),
             os_type: Some("linux".into()),
         };
-        let score = engine.simulate(&req);
+        let score = engine.simulate("default", &req);
         assert!(score.dynamic_risk_score >= 85);
         assert_eq!(score.dynamic_risk_tier, "Catastrophic");
         assert!(score.executive_impact.contains("PCI-DSS"));
@@ -779,7 +842,7 @@ mod tests {
             data: HashMap::new(),
         };
 
-        let summary = engine.get_summary(&[sim_alert, real_alert]);
+        let summary = engine.get_summary("default", &[sim_alert, real_alert]);
         assert_eq!(summary.catastrophic_alerts_count, 0);
         assert_eq!(summary.critical_alerts_count, 0);
         let total_counted = summary.catastrophic_alerts_count
@@ -794,18 +857,139 @@ mod tests {
 }
 
 #[cfg(test)]
+mod audit_tests {
+    use super::*;
+    use chrono::FixedOffset;
+
+    fn window(id: &str, name: &str, kind: &str, start: Option<&str>, end: Option<&str>) -> BusinessTimeWindow {
+        BusinessTimeWindow {
+            id: id.into(),
+            name: name.into(),
+            description: String::new(),
+            multiplier: 1.45,
+            window_type: kind.into(),
+            start_date: start.map(Into::into),
+            end_date: end.map(Into::into),
+            active: true,
+            target_processes: vec![],
+        }
+    }
+
+    fn at(s: &str) -> chrono::DateTime<FixedOffset> {
+        chrono::DateTime::parse_from_rfc3339(s).unwrap()
+    }
+
+    #[test]
+    fn each_tenant_has_its_own_settings() {
+        let e = RiskFabricEngine::new("no-such-file.json");
+        let mut p = e.get_processes("acme")[0].clone();
+        p.asset_patterns = vec!["zz-audit-*".into()];
+        e.add_or_update_process("acme", p.clone()).unwrap();
+        assert!(e.get_processes("acme").iter().any(|x| x.id == p.id && x.asset_patterns == ["zz-audit-*"]));
+        assert!(!e.get_processes("globex").iter().any(|x| x.asset_patterns == ["zz-audit-*"]), "another tenant's change does not reach this one");
+        assert!(e.delete_process("acme", &p.id));
+        assert_eq!(e.get_processes("globex").len(), storage::default_config().processes.len());
+        assert!(!e.delete_process("globex", "no-such-process"));
+        assert!(e.take_changed().iter().all(|(t, _)| t == "acme"), "a refused delete stores nothing");
+    }
+
+    #[test]
+    fn bad_settings_are_refused() {
+        let e = RiskFabricEngine::new("no-such-file.json");
+        let good = e.get_processes("t")[0].clone();
+        let mut p = good.clone();
+        p.name = "  ".into();
+        assert!(e.add_or_update_process("t", p).is_err(), "no name");
+        let mut p = good.clone();
+        p.asset_weight = 50.0;
+        assert!(e.add_or_update_process("t", p).is_err(), "weight out of range");
+        let mut p = good.clone();
+        p.asset_patterns = vec![];
+        p.group_patterns = vec![];
+        assert!(e.add_or_update_process("t", p).is_err(), "matches nothing");
+        let mut p = good.clone();
+        p.id = "".into();
+        assert!(e.add_or_update_process("t", p).is_err(), "no id");
+        assert!(e.take_changed().is_empty(), "nothing refused is stored");
+        assert!(e.add_or_update_window("t", window("w", "Freeze", "date_range", Some("2026-12-31"), Some("2026-12-01"))).is_err());
+        assert!(e.add_or_update_window("t", window("w", "Freeze", "date_range", Some("soon"), None)).is_err());
+        let mut w = window("w", "Freeze", "recurring_schedule", None, None);
+        w.multiplier = 9.0;
+        assert!(e.add_or_update_window("t", w).is_err());
+        assert!(e.add_or_update_window("t", window("w", "Freeze", "date_range", Some("2026-12-01"), Some("2026-12-31"))).is_ok());
+    }
+
+    #[test]
+    fn month_end_window_applies_only_at_month_end() {
+        let w = window("tw-financial-close", "Month-End Financial Close Window", "recurring_schedule", None, None);
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-11-22T10:00:00+05:30")), (false, 1.0));
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-11-28T10:00:00+05:30")), (true, 1.45));
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-12-01T10:00:00+05:30")), (true, 1.45));
+    }
+
+    #[test]
+    fn office_hours_are_local_time() {
+        let w = window("tw-off-hours", "Unattended Off-Hours Operations", "business_hours", None, None);
+        // Monday 10:00 in India is office time (it is 04:30 UTC, which used to count as night)
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-11-23T10:00:00+05:30")).0, false);
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-11-23T22:00:00+05:30")).0, true);
+        assert_eq!(evaluate_temporal_window(&w, &at("2026-11-22T10:00:00+05:30")).0, true, "Sunday");
+    }
+
+    #[test]
+    fn date_ranges_apply_inside_and_unreadable_ones_never() {
+        let w = window("tw-freeze", "Change freeze", "date_range", Some("2026-12-01"), Some("2026-12-31"));
+        assert!(evaluate_temporal_window(&w, &at("2026-12-15T10:00:00+05:30")).0);
+        assert!(!evaluate_temporal_window(&w, &at("2026-11-30T10:00:00+05:30")).0);
+        let bad = window("tw-freeze", "Change freeze", "date_range", Some("next week"), None);
+        assert_eq!(evaluate_temporal_window(&bad, &at("2026-12-15T10:00:00+05:30")), (false, 1.0));
+    }
+
+    #[test]
+    fn an_empty_pattern_matches_nothing() {
+        assert!(!matches_pattern("", "win-node-e296"));
+        assert!(!matches_pattern("  ", "win-node-e296"));
+        assert!(matches_pattern("*", "win-node-e296"));
+    }
+
+    #[test]
+    fn alerts_score_with_their_tenants_settings() {
+        let e = RiskFabricEngine::new("no-such-file.json");
+        let req = RiskEvaluationRequest {
+            rule_level: 10,
+            rule_id: None,
+            rule_description: None,
+            agent_name: "build-agent-7".into(),
+            agent_ip: "10.0.0.7".into(),
+            user: None,
+            os_type: Some("linux".into()),
+        };
+        let before = e.simulate("acme", &req).business_process;
+        let mut p = e.get_processes("acme").into_iter().find(|p| p.id == "bp-pci-payment").unwrap();
+        p.asset_patterns.push("build-agent-*".into());
+        e.add_or_update_process("acme", p).unwrap();
+        assert!(e.simulate("acme", &req).business_process.contains("PCI-DSS"));
+        assert_eq!(e.simulate("globex", &req).business_process, before);
+    }
+}
+
+#[cfg(test)]
 mod stored_tests {
     use super::*;
 
     #[test]
     fn changes_are_handed_over_once_and_load_back() {
         let e = RiskFabricEngine::new("no-such-file.json");
-        assert!(e.take_changed().is_none());
-        e.save();
-        let doc = e.take_changed().expect("changed");
-        assert!(e.take_changed().is_none());
+        assert!(e.take_changed().is_empty());
+        e.delete_window("acme", "tw-off-hours");
+        let changed = e.take_changed();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].0, "acme");
+        assert!(e.take_changed().is_empty());
         let fresh = RiskFabricEngine::new("no-such-file.json");
-        fresh.load(&doc);
-        assert_eq!(fresh.take_changed(), None, "loading is not a change");
+        fresh.load("acme", &changed[0].1);
+        assert!(fresh.take_changed().is_empty(), "loading is not a change");
+        assert!(!fresh.get_windows("acme").iter().any(|w| w.id == "tw-off-hours"));
+        assert!(fresh.get_windows("other").iter().any(|w| w.id == "tw-off-hours"));
     }
 }

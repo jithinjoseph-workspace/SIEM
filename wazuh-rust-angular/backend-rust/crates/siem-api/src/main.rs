@@ -567,7 +567,7 @@ async fn main() {
                             tracing::info!("Historical Sync: Ingesting {} ClickHouse alerts for tenant '{}' into Intent & Risk Fabric engines", alerts.len(), &tenant);
                             for a in &mut alerts {
                                 if !a.data.contains_key("risk_fabric") {
-                                    risk_fabric_clone.evaluate_alert(a);
+                                    risk_fabric_clone.evaluate_alert(&tenant, a);
                                 }
                             }
                             let deleted = ch_state.deleted_agents.read().unwrap();
@@ -1760,6 +1760,7 @@ fn trim<T>(l: &mut Vec<T>, cap: usize) {
 
 /// Adds alerts to the in-memory window.
 pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
+    let owners = state.agent_tenants.read().unwrap().clone(); // copy: never hold two locks at once
     let evaluated: Vec<Alert> = alerts
         .into_iter()
         .map(|mut a| {
@@ -1767,7 +1768,8 @@ pub fn keep_alerts(state: &AppState, alerts: impl IntoIterator<Item = Alert>) {
             if !a.data.contains_key("risk_fabric")
                 && !is_simulation(&a)
             {
-                state.risk_fabric.evaluate_alert(&mut a);
+                let tenant = tenancy::alert_tenant(&a, &owners);
+                state.risk_fabric.evaluate_alert(&tenant, &mut a);
             }
             a
         })
@@ -1795,13 +1797,24 @@ async fn scope_risk_fabric_summary_middleware(
     mut req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    if matches!(req.uri().path(), "/summary" | "/api/v1/risk-fabric/summary") {
-        if let Some(ctx) = req.extensions().get::<tenancy::AuthCtx>().cloned() {
-            let alerts = scoped_alerts(&state, &ctx);
-            req.extensions_mut()
-                .insert(siem_risk_fabric::api::ScopedAlerts(alerts));
-        }
+    let Some(ctx) = req.extensions().get::<tenancy::AuthCtx>().cloned() else {
+        return tenancy::forbidden();
+    };
+    let path = req.uri().path().trim_end_matches('/').to_string();
+    // the settings are the tenant's business processes and time windows: only its admins change
+    // them (the what-if evaluation changes nothing)
+    if req.method() != axum::http::Method::GET && !path.ends_with("/evaluate") && !(ctx.is_super() || ctx.is_tenant_admin()) {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "status": "error", "message": "Only an admin changes the Risk Fabric settings" })),
+        )
+            .into_response();
     }
+    if path.ends_with("/summary") {
+        let alerts = scoped_alerts(&state, &ctx);
+        req.extensions_mut().insert(siem_risk_fabric::api::ScopedAlerts(alerts));
+    }
+    req.extensions_mut().insert(siem_risk_fabric::api::TenantScope(ctx.scope()));
     next.run(req).await
 }
 
@@ -6500,7 +6513,7 @@ async fn rotate_tenant_agent_key_handler(
 async fn record_alert(state: &AppState, tenant: &str, alert: Alert) -> Alert {
     let mut alert = tenancy::tag_alert(alert, tenant);
     if !alert.data.contains_key("risk_fabric") {
-        state.risk_fabric.evaluate_alert(&mut alert);
+        state.risk_fabric.evaluate_alert(tenant, &mut alert);
     }
     // the same path as every other alert (suppression, playbooks, e-mail, deception), in the
     // background so the request does not wait on ClickHouse retries (alert-lifecycle L-1)
@@ -7010,6 +7023,48 @@ impl Drop for RunOnceSlot {
         if let Some(m) = RUN_ONCE.lock().unwrap().as_mut() {
             m.insert(self.0.clone(), (false, std::time::Instant::now()));
         }
+    }
+}
+
+#[cfg(test)]
+mod risk_fabric_access_tests {
+    use super::*;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    fn who(role: &str, tenant: &str) -> AuthCtx {
+        AuthCtx { username: "u".into(), role: role.into(), tenant_id: tenant.into(), permissions: vec!["siem".into()], features: vec![], requested_tenant: None }
+    }
+
+    async fn call(state: &AppState, ctx: AuthCtx, method: &str, path: &str, body: serde_json::Value) -> u16 {
+        let app = Router::new().nest_service(
+            "/api/v1/risk-fabric",
+            siem_risk_fabric::api::router_with_meta(state.risk_fabric.clone(), Arc::new(Vec::new), None)
+                .layer(axum::middleware::from_fn_with_state(state.clone(), scope_risk_fabric_summary_middleware))
+                .layer(axum::Extension(ctx)),
+        );
+        let req = axum::http::Request::builder().method(method).uri(path).header("content-type", "application/json").body(axum::body::Body::from(body.to_string())).unwrap();
+        app.oneshot(req).await.unwrap().status().as_u16()
+    }
+
+    #[tokio::test]
+    async fn only_admins_change_settings_and_only_their_own_tenants() {
+        let state = crate::test_state::state().await;
+        let mut p = state.risk_fabric.get_processes("acme")[0].clone();
+        p.asset_patterns = vec!["zz-acme-*".into()];
+        let body = serde_json::to_value(&p).unwrap();
+        let analyst = who("analyst", "acme");
+        assert_eq!(call(&state, analyst.clone(), "POST", "/api/v1/risk-fabric/processes", body.clone()).await, 403);
+        assert_eq!(call(&state, analyst.clone(), "DELETE", &format!("/api/v1/risk-fabric/processes/{}", p.id), json!(null)).await, 403);
+        assert_eq!(call(&state, analyst.clone(), "GET", "/api/v1/risk-fabric/processes", json!(null)).await, 200, "reading is open");
+        let what_if = json!({"rule_level": 10, "agent_name": "pay-1", "agent_ip": "10.0.0.1"});
+        assert_eq!(call(&state, analyst, "POST", "/api/v1/risk-fabric/evaluate", what_if).await, 200, "the what-if changes nothing");
+        assert_eq!(call(&state, who("tenant_admin", "acme"), "POST", "/api/v1/risk-fabric/processes", body).await, 200);
+        assert!(state.risk_fabric.get_processes("acme").iter().any(|x| x.asset_patterns == ["zz-acme-*"]));
+        assert!(!state.risk_fabric.get_processes("globex").iter().any(|x| x.asset_patterns == ["zz-acme-*"]), "another tenant keeps its own");
+        let mut nameless = p.clone();
+        nameless.name = String::new();
+        assert_eq!(call(&state, who("tenant_admin", "acme"), "POST", "/api/v1/risk-fabric/processes", serde_json::to_value(&nameless).unwrap()).await, 400);
     }
 }
 

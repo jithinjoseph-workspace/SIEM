@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::Json,
     routing::{delete, get, post},
     Extension, Router,
@@ -16,6 +17,21 @@ use crate::models::{
 /// Optional tenant-scoped alert override injected by host API middleware.
 #[derive(Clone)]
 pub struct ScopedAlerts(pub Vec<Alert>);
+
+/// The caller's tenant, injected by the host API: whose settings a request reads and changes.
+#[derive(Clone)]
+pub struct TenantScope(pub String);
+
+/// The tenant of a request (the default tenant when the host injected none).
+fn tenant_of(scope: &Option<Extension<TenantScope>>) -> String {
+    scope.as_ref().map(|Extension(TenantScope(t))| t.clone()).unwrap_or_else(|| "default".into())
+}
+
+type Answer = Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)>;
+
+fn refused(msg: String) -> (StatusCode, Json<serde_json::Value>) {
+    (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": msg })))
+}
 
 #[derive(Clone)]
 pub struct RiskFabricApiState {
@@ -80,6 +96,7 @@ fn trigger_fleet_sync(state: &RiskFabricApiState) {
 
 async fn get_summary_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     scoped: Option<Extension<ScopedAlerts>>,
 ) -> Json<RiskFabricSummary> {
     trigger_fleet_sync(&state);
@@ -87,32 +104,35 @@ async fn get_summary_handler(
         Some(Extension(ScopedAlerts(list))) => list,
         None => (state.get_alerts)(),
     };
-    Json(state.engine.get_summary(&alerts))
+    Json(state.engine.get_summary(&tenant_of(&scope), &alerts))
 }
 
 async fn get_processes_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
 ) -> Json<Vec<BusinessProcessDefinition>> {
     trigger_fleet_sync(&state);
-    Json(state.engine.get_processes())
+    Json(state.engine.get_processes(&tenant_of(&scope)))
 }
 
 async fn post_process_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     Json(proc): Json<BusinessProcessDefinition>,
-) -> Json<serde_json::Value> {
-    state.engine.add_or_update_process(proc);
-    Json(serde_json::json!({
+) -> Answer {
+    state.engine.add_or_update_process(&tenant_of(&scope), proc).map_err(refused)?;
+    Ok(Json(serde_json::json!({
         "status": "success",
         "message": "Business process updated successfully"
-    }))
+    })))
 }
 
 async fn delete_process_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let ok = state.engine.delete_process(&id);
+    let ok = state.engine.delete_process(&tenant_of(&scope), &id);
     Json(serde_json::json!({
         "status": if ok { "success" } else { "not_found" }
     }))
@@ -120,26 +140,29 @@ async fn delete_process_handler(
 
 async fn get_windows_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
 ) -> Json<Vec<BusinessTimeWindow>> {
-    Json(state.engine.get_windows())
+    Json(state.engine.get_windows(&tenant_of(&scope)))
 }
 
 async fn post_window_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     Json(win): Json<BusinessTimeWindow>,
-) -> Json<serde_json::Value> {
-    state.engine.add_or_update_window(win);
-    Json(serde_json::json!({
+) -> Answer {
+    state.engine.add_or_update_window(&tenant_of(&scope), win).map_err(refused)?;
+    Ok(Json(serde_json::json!({
         "status": "success",
         "message": "Business time window updated successfully"
-    }))
+    })))
 }
 
 async fn delete_window_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let ok = state.engine.delete_window(&id);
+    let ok = state.engine.delete_window(&tenant_of(&scope), &id);
     Json(serde_json::json!({
         "status": if ok { "success" } else { "not_found" }
     }))
@@ -147,9 +170,9 @@ async fn delete_window_handler(
 
 async fn post_evaluate_handler(
     State(state): State<RiskFabricApiState>,
+    scope: Option<Extension<TenantScope>>,
     Json(req): Json<RiskEvaluationRequest>,
 ) -> Json<RiskFabricScore> {
     trigger_fleet_sync(&state);
-    let score = state.engine.simulate(&req);
-    Json(score)
+    Json(state.engine.simulate(&tenant_of(&scope), &req))
 }

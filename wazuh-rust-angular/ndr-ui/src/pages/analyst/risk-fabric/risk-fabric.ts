@@ -30,6 +30,7 @@ import {
   Search,
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
+import { AuthService } from '../../../services/auth/auth';
 import { Subscription } from 'rxjs';
 import {
   BusinessProcessDefinition,
@@ -53,6 +54,9 @@ type RiskFabricTab = 'overview' | 'simulator' | 'processes' | 'windows' | 'live_
 export class RiskFabric implements OnInit, OnDestroy {
   private alertSub?: Subscription;
   private siem = inject(SiemService);
+  private auth = inject(AuthService);
+  /** Only admins change the business processes and time windows (the server refuses others). */
+  readonly canEdit = this.auth.isAdmin() || this.auth.isTenantAdmin();
 
   // Icons
   NetworkIcon = Network;
@@ -413,15 +417,14 @@ export class RiskFabric implements OnInit, OnDestroy {
     this.editingProcessId.set(null);
     this.procFormName.set('');
     this.procFormDesc.set('');
-    this.procFormCriticality.set('Mission-Critical');
-    this.procFormAssetWeight.set(2.0);
-    this.procFormIdentityWeight.set(1.5);
-    this.procFormAssetPatterns.set('*pay*, *swift*, 192.168.10.*');
-    this.procFormGroupPatterns.set('pci-dss, domain-controllers');
-    this.procFormIdentityPatterns.set('admin*, *cashier*, svc_*');
-    this.procFormImpactTemplate.set(
-      'Critical asset or privileged identity compromised; immediate containment mandatory.'
-    );
+    // an empty form: the examples are placeholders, never saved by accident
+    this.procFormCriticality.set('High');
+    this.procFormAssetWeight.set(1.5);
+    this.procFormIdentityWeight.set(1.2);
+    this.procFormAssetPatterns.set('');
+    this.procFormGroupPatterns.set('');
+    this.procFormIdentityPatterns.set('');
+    this.procFormImpactTemplate.set('');
     this.procFormEnabled.set(true);
     this.isProcessModalOpen.set(true);
   }
@@ -456,9 +459,18 @@ export class RiskFabric implements OnInit, OnDestroy {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
+    if (!this.procFormName().trim()) {
+      this.showError('Give the business process a name');
+      return;
+    }
+    if (assetPatterns.length === 0 && groupPatterns.length === 0) {
+      this.showError('Name at least one asset or group pattern, or the process matches no computer');
+      return;
+    }
+
     const proc: BusinessProcessDefinition = {
       id,
-      name: this.procFormName(),
+      name: this.procFormName().trim(),
       description: this.procFormDesc(),
       criticality: this.procFormCriticality(),
       asset_weight: Number(this.procFormAssetWeight()),
@@ -476,7 +488,7 @@ export class RiskFabric implements OnInit, OnDestroy {
         this.showSuccess('Business process saved successfully');
         this.loadAllData();
       },
-      error: (e) => this.showError('Failed to save process: ' + e.message),
+      error: (e) => this.showError('Failed to save process: ' + (e.error?.message ?? e.message)),
     });
   }
 
@@ -487,7 +499,7 @@ export class RiskFabric implements OnInit, OnDestroy {
           this.showSuccess('Business process removed');
           this.loadAllData();
         },
-        error: (e) => this.showError('Failed to delete process'),
+        error: (e) => this.showError(e.error?.message ?? 'Failed to delete process'),
       });
     }
   }
@@ -502,7 +514,7 @@ export class RiskFabric implements OnInit, OnDestroy {
         this.loadAllData();
         this.runSimulation();
       },
-      error: (e) => this.showError('Failed to toggle window'),
+      error: (e) => this.showError(e.error?.message ?? 'Failed to toggle window'),
     });
   }
 
@@ -513,7 +525,7 @@ export class RiskFabric implements OnInit, OnDestroy {
           this.showSuccess('Time window deleted');
           this.loadAllData();
         },
-        error: (e) => this.showError('Failed to delete window'),
+        error: (e) => this.showError(e.error?.message ?? 'Failed to delete window'),
       });
     }
   }

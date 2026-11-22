@@ -109,10 +109,20 @@ impl DeceptionEngine {
     }
 
     pub fn clear_triggers(&self) {
+        self.clear_triggers_where(&|_| true);
+    }
+
+    /// Clears the trigger history of the computers `visible` names (the caller's tenant's).
+    pub fn clear_triggers_where(&self, visible: &dyn Fn(&str) -> bool) {
         let mut events = self.tripwire_events.write().unwrap();
-        events.clear();
+        events.retain(|e| !visible(&e.agent_id));
         drop(events);
         self.save();
+    }
+
+    /// The computer a deception asset is on.
+    pub fn asset_agent(&self, id: &str) -> Option<String> {
+        self.assets.read().unwrap().iter().find(|a| a.id == id).map(|a| a.target_agent_id.clone())
     }
 
     pub fn get_blueprints(&self) -> Vec<DeceptionBlueprint> {
@@ -393,8 +403,15 @@ impl DeceptionEngine {
     }
 
     pub fn get_summary(&self) -> DeceptionSummary {
-        let assets = self.assets.read().unwrap();
-        let events = self.tripwire_events.read().unwrap();
+        let fleet = self.get_fleet_nodes().len();
+        self.get_summary_where(&|_| true, fleet)
+    }
+
+    /// The summary over the computers `visible` names; coverage is the share of the caller's
+    /// `fleet_size` computers that carry a decoy still in place.
+    pub fn get_summary_where(&self, visible: &dyn Fn(&str) -> bool, fleet_size: usize) -> DeceptionSummary {
+        let assets: Vec<DeceptionAsset> = self.assets.read().unwrap().iter().filter(|a| visible(&a.target_agent_id)).cloned().collect();
+        let events: Vec<TripwireEvent> = self.tripwire_events.read().unwrap().iter().filter(|e| visible(&e.agent_id)).cloned().collect();
 
         let total = assets.len();
         let armed = assets.iter().filter(|a| a.status == AssetDeploymentStatus::Armed).count();
@@ -416,7 +433,14 @@ impl DeceptionEngine {
             total_trips,
             high_fidelity_alerts: high_fidelity,
             recent_triggers: recent,
-            fleet_coverage_percentage: if total > 0 { 88 } else { 0 },
+            fleet_coverage_percentage: {
+                let covered: std::collections::HashSet<&str> = assets
+                    .iter()
+                    .filter(|a| a.status != AssetDeploymentStatus::Decommissioned)
+                    .map(|a| a.target_agent_id.as_str())
+                    .collect();
+                if fleet_size == 0 { 0 } else { ((covered.len() * 100) / fleet_size).min(100) as u8 }
+            },
         }
     }
 }

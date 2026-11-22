@@ -921,7 +921,8 @@ async fn main() {
                 Some(alerts_reader.clone()),
                 Some(fleet_reader),
                 Some(active_response_dispatcher),
-            ),
+            )
+            .layer(axum::middleware::from_fn_with_state(state.clone(), scope_intent_middleware)),
         )
         .nest_service(
             "/api/v1/deception",
@@ -929,7 +930,8 @@ async fn main() {
                 state.deception_engine.clone(),
                 Some(alerts_reader),
                 Some(deception_fleet_reader.clone()),
-            ),
+            )
+            .layer(axum::middleware::from_fn_with_state(state.clone(), scope_deception_middleware)),
         )
         .route("/api/server-info", get(get_server_info_handler))
         .route("/api/v1/stats", get(get_stats))
@@ -1789,6 +1791,46 @@ pub fn keep_events(state: &AppState, events: impl IntoIterator<Item = RawEvent>)
     let mut l = state.events.write().unwrap();
     l.extend(events);
     trim(&mut l, MEM_EVENTS);
+}
+
+/// Intent prediction and Deception keep every tenant's computers: a caller sees and acts on its
+/// own tenant's only. Running an Intent action, simulation or revert needs the active-response
+/// permission; changing decoys (they are deployed on computers) needs an admin.
+async fn scope_intent_middleware(State(state): State<AppState>, req: axum::http::Request<axum::body::Body>, next: axum::middleware::Next) -> axum::response::Response {
+    scope_engine(state, req, next, false).await
+}
+
+async fn scope_deception_middleware(State(state): State<AppState>, req: axum::http::Request<axum::body::Body>, next: axum::middleware::Next) -> axum::response::Response {
+    scope_engine(state, req, next, true).await
+}
+
+async fn scope_engine(
+    state: AppState,
+    mut req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+    deception: bool,
+) -> axum::response::Response {
+    let Some(ctx) = req.extensions().get::<tenancy::AuthCtx>().cloned() else {
+        return tenancy::forbidden();
+    };
+    let changes = req.method() != axum::http::Method::GET;
+    let allowed = if !changes {
+        true
+    } else if deception {
+        ctx.is_super() || ctx.is_tenant_admin()
+    } else {
+        ctx.has_permission("siem-active-response")
+    };
+    if !allowed {
+        let msg = if deception { "Only an admin changes the decoys" } else { "Running a response needs the active-response permission" };
+        return (axum::http::StatusCode::FORBIDDEN, Json(serde_json::json!({ "status": "error", "message": msg }))).into_response();
+    }
+    let owners = state.agent_tenants.read().unwrap().clone(); // copy: never hold two locks at once
+    let scope = ctx.scope();
+    let visible = Arc::new(move |agent: &str| tenancy::tenant_of(&owners, agent) == scope);
+    req.extensions_mut().insert(siem_intent_engine::api::Visible(visible.clone()));
+    req.extensions_mut().insert(siem_deception::api::Visible(visible));
+    next.run(req).await
 }
 
 /// Injects caller tenant-scoped alerts for Risk Fabric summary requests.
@@ -7065,6 +7107,80 @@ mod risk_fabric_access_tests {
         let mut nameless = p.clone();
         nameless.name = String::new();
         assert_eq!(call(&state, who("tenant_admin", "acme"), "POST", "/api/v1/risk-fabric/processes", serde_json::to_value(&nameless).unwrap()).await, 400);
+    }
+}
+
+#[cfg(test)]
+mod engine_scope_tests {
+    use super::*;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    fn who(role: &str, tenant: &str, perms: &[&str]) -> AuthCtx {
+        AuthCtx { username: "u".into(), role: role.into(), tenant_id: tenant.into(), permissions: perms.iter().map(|p| p.to_string()).collect(), features: vec![], requested_tenant: None }
+    }
+
+    fn app(state: &AppState, ctx: AuthCtx) -> Router {
+        Router::new()
+            .nest_service(
+                "/api/v1/intent",
+                siem_intent_engine::api::router(state.intent_engine.clone(), None, None, None)
+                    .layer(axum::middleware::from_fn_with_state(state.clone(), scope_intent_middleware))
+                    .layer(axum::Extension(ctx.clone())),
+            )
+            .nest_service(
+                "/api/v1/deception",
+                siem_deception::api::router_with_fleet(state.deception_engine.clone(), None, None)
+                    .layer(axum::middleware::from_fn_with_state(state.clone(), scope_deception_middleware))
+                    .layer(axum::Extension(ctx)),
+            )
+    }
+
+    async fn call(state: &AppState, ctx: AuthCtx, method: &str, path: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
+        let req = axum::http::Request::builder().method(method).uri(path).header("content-type", "application/json").body(axum::body::Body::from(body.to_string())).unwrap();
+        let r = app(state, ctx).oneshot(req).await.unwrap();
+        let code = r.status().as_u16();
+        let b = axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap();
+        (code, serde_json::from_slice(&b).unwrap_or_default())
+    }
+
+    fn decoy(agent: &str) -> serde_json::Value {
+        json!({"name": "d", "asset_type": "canary_file", "target_agent_id": agent, "target_agent_name": agent, "target_path_or_port": "C:/x/passwords.txt"})
+    }
+
+    #[tokio::test]
+    async fn a_tenant_sees_and_acts_on_its_own_computers_only() {
+        let state = crate::test_state::state().await;
+        state.agent_tenants.write().unwrap().extend([("a1".to_string(), "acme".to_string()), ("b1".to_string(), "globex".to_string())]);
+        let acme = who("tenant_admin", "acme", &[]);
+        let globex = who("tenant_admin", "globex", &[]);
+
+        // Deception: decoys only on one's own computers, and only one's own are listed
+        assert_eq!(call(&state, acme.clone(), "POST", "/api/v1/deception/assets", decoy("b1")).await.0, 404);
+        let (code, made) = call(&state, acme.clone(), "POST", "/api/v1/deception/assets", decoy("a1")).await;
+        assert_eq!(code, 200);
+        let id = made["id"].as_str().unwrap().to_string();
+        let (_, theirs) = call(&state, globex.clone(), "GET", "/api/v1/deception/assets", json!(null)).await;
+        assert!(theirs.as_array().unwrap().is_empty(), "globex does not see acme's decoy");
+        assert_eq!(call(&state, globex.clone(), "DELETE", &format!("/api/v1/deception/assets/{id}"), json!(null)).await.0, 404);
+        assert_eq!(call(&state, who("analyst", "acme", &["siem"]), "DELETE", &format!("/api/v1/deception/assets/{id}"), json!(null)).await.0, 403);
+
+        // Intent: simulations, dossiers and actions stay in the tenant
+        let sim = |agent: &str| json!({"agent_id": agent, "agent_name": agent, "agent_ip": "10.0.0.1", "observed_techniques": ["T1486", "T1490"]});
+        assert_eq!(call(&state, acme.clone(), "POST", "/api/v1/intent/evaluate", sim("b1")).await.0, 404);
+        assert_eq!(call(&state, acme.clone(), "POST", "/api/v1/intent/evaluate", sim("a1")).await.0, 200);
+        assert_eq!(call(&state, globex.clone(), "POST", "/api/v1/intent/evaluate", sim("b1")).await.0, 200);
+        let (_, mine) = call(&state, acme.clone(), "GET", "/api/v1/intent/hypotheses", json!(null)).await;
+        let ids: Vec<&str> = mine.as_array().unwrap().iter().map(|d| d["entity_id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["a1"], "acme sees its own computer's dossier only");
+        let (_, summary) = call(&state, acme.clone(), "GET", "/api/v1/intent/summary", json!(null)).await;
+        assert_eq!(summary["total_dossiers_monitored"], 1);
+
+        let b1_action = state.intent_engine.get_dossier("b1").unwrap().recommended_actions.first().map(|a| a.id.clone()).expect("an action");
+        let run = json!({"action_id": b1_action, "dry_run": true});
+        assert_eq!(call(&state, acme.clone(), "POST", "/api/v1/intent/actions/execute", run.clone()).await.0, 404, "never on another tenant's computer");
+        assert_eq!(call(&state, who("analyst", "globex", &["siem-alerts"]), "POST", "/api/v1/intent/actions/execute", run.clone()).await.0, 403, "needs the active-response permission");
+        assert_eq!(call(&state, globex, "POST", "/api/v1/intent/actions/execute", run).await.0, 200);
     }
 }
 

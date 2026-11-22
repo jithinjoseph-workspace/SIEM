@@ -822,7 +822,12 @@ impl IntentEngine {
 
     /// Generates executive summary report with dynamic metrics
     pub fn get_summary(&self) -> IntentSummaryReport {
-        let dossiers = self.dossiers.read().unwrap();
+        self.get_summary_where(&|_| true)
+    }
+
+    /// The summary over the dossiers of the computers `visible` lets the caller see (its tenant's).
+    pub fn get_summary_where(&self, visible: &dyn Fn(&str) -> bool) -> IntentSummaryReport {
+        let dossiers: Vec<EntityIntentDossier> = self.dossiers.read().unwrap().iter().filter(|d| visible(&d.entity_id)).cloned().collect();
         let total = dossiers.len();
 
         let mut critical_cnt = 0;
@@ -887,6 +892,11 @@ impl IntentEngine {
 
     pub fn get_dossiers(&self) -> Vec<EntityIntentDossier> {
         self.dossiers.read().unwrap().clone()
+    }
+
+    /// The computer a recommended action belongs to.
+    pub fn action_agent(&self, action_id: &str) -> Option<String> {
+        self.dossiers.read().unwrap().iter().find(|d| d.recommended_actions.iter().any(|a| a.id == action_id)).map(|d| d.entity_id.clone())
     }
 
     pub fn get_dossier(&self, id: &str) -> Option<EntityIntentDossier> {

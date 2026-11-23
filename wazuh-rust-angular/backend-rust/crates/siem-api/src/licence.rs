@@ -59,6 +59,18 @@ fn decide(lic: Option<Result<Claims, String>>, enrolled: usize, now: u64) -> Res
     }
 }
 
+/// For the health checks: None when no licence is in play.
+pub fn summary() -> Option<(crate::health::Level, String)> {
+    use crate::health::Level;
+    let n = now();
+    Some(match current()? {
+        Err(e) => (Level::Fail, format!("invalid: {e}")),
+        Ok(c) if c.exp <= n => (Level::Fail, format!("expired on {}: new PCs cannot enrol", day(c.exp))),
+        Ok(c) if c.exp - n < 30 * 86_400 => (Level::Warn, format!("expires on {}", day(c.exp))),
+        Ok(c) => (Level::Ok, format!("valid until {}", day(c.exp))),
+    })
+}
+
 /// Called before a NEW PC enrolls (a reinstall of an enrolled PC is not checked).
 pub fn check_enroll(enrolled: usize) -> Result<(), String> {
     decide(current(), enrolled, now())

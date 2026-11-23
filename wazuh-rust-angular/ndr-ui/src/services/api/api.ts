@@ -647,6 +647,16 @@ export class Api {
     return this.http.get(`${this.baseUrl}/admin/telemetry`);
   }
 
+  /** Health checks of this installation's servers (platform admins). */
+  getServerHealth(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/admin/health`);
+  }
+
+  /** Managed sites' latest health reports (platform admins). */
+  getManagedSites(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/admin/sites`);
+  }
+
   /** This installation's licence and the usage it is measured against (platform admins). */
   getInstallationLicence(): Observable<any> {
     return this.http.get(`${this.baseUrl}/license`);

@@ -382,6 +382,49 @@
       </div>
     </div>
 
+    <!-- Panel: health of this installation's servers -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip emerald"><lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Server Health</h3>
+            <span class="card-subtitle">Checked every minute; changes are e-mailed to the alert recipients (Settings, SMTP)</span>
+          </div>
+        </div>
+        <span class="pill-badge" *ngIf="health" [class.emerald]="health.status === 'ok'" [class.amber]="health.status !== 'ok'">{{ health.status | uppercase }}</span>
+      </div>
+      <div class="diagnostic-rows" *ngIf="!health?.checks?.length">
+        <div class="diag-row"><span class="diag-label">Status</span><span class="diag-val">{{ health ? 'First check within a minute of start-up' : 'Loading...' }}</span></div>
+      </div>
+      <div class="diagnostic-rows" *ngIf="health?.checks?.length">
+        <div class="diag-row" *ngFor="let c of health.checks">
+          <span class="diag-label">{{ c.name }}</span>
+          <span class="diag-val" [class.text-emerald-400]="c.level === 'ok'" [class.text-amber-400]="c.level === 'warn'" [class.text-red-400]="c.level === 'fail'">{{ c.detail }}</span>
+        </div>
+        <div class="diag-row" *ngIf="health.report?.configured"><span class="diag-label">Report to ProVigil</span><span class="diag-val">{{ health.report.last ? health.report.last.outcome : 'not sent yet' }}</span></div>
+      </div>
+    </div>
+
+    <!-- Panel: managed sites (their outbound health reports) -->
+    <div class="telemetry-card" *ngIf="sites.length">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip info"><lucide-icon [name]="ServerIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Managed Sites</h3>
+            <span class="card-subtitle">Health reports sent by the masters we run for clients; silent after 15 minutes without one</span>
+          </div>
+        </div>
+      </div>
+      <div class="diagnostic-rows">
+        <div class="diag-row" *ngFor="let s of sites">
+          <span class="diag-label font-mono">{{ s.site }}</span>
+          <span class="diag-val" [class.text-emerald-400]="s.status === 'ok'" [class.text-amber-400]="s.status !== 'ok'">{{ s.status | uppercase }} · {{ (s.at * 1000) | date:'yyyy-MM-dd HH:mm' }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Panel: the installation's licence -->
     <div class="telemetry-card">
       <div class="card-header">

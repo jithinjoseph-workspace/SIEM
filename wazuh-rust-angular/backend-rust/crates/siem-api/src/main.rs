@@ -31,6 +31,7 @@ pub mod agent_store;
 pub mod agent_tls;
 pub mod gateway_api;
 pub mod licence;
+pub mod health;
 #[cfg(test)]
 pub(crate) mod test_state;
 pub mod agent_keys_store;
@@ -514,6 +515,7 @@ async fn main() {
     incidents::spawn(state.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
+    health::spawn(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
@@ -1045,6 +1047,9 @@ async fn main() {
         .route("/api/admin/telemetry", get(platform::telemetry))
         .route("/api/admin/usage", get(platform::usage))
         .route("/api/license", get(licence::get).post(licence::install))
+        .route("/api/admin/health", get(health::get))
+        .route("/api/admin/sites", get(health::sites))
+        .route("/api/v1/sites/health-report", post(health::receive))
         .route(
             "/api/admin/client-errors",
             get(get_client_errors_handler).post(post_client_errors_handler),

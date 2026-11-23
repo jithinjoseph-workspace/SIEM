@@ -47,6 +47,8 @@ export class Telemetry implements OnInit, OnDestroy {
   usage: any = null;
   usageError = '';
   licence: any = null;
+  health: any = null;
+  sites: any[] = [];
   licenceMsg = '';
   licenceMsgBad = false;
   loadingClientErrors = false;
@@ -64,6 +66,7 @@ export class Telemetry implements OnInit, OnDestroy {
     this.loadClientErrors();
     this.loadUsage();
     this.loadLicence();
+    this.loadHealth();
     this.pollInterval = setInterval(() => this.pollLiveMetrics(), 10000);
   }
 
@@ -87,6 +90,17 @@ export class Telemetry implements OnInit, OnDestroy {
     this.api.getUsage().subscribe({
       next: (res: any) => { this.usage = res?.tenants ? res : null; this.usageError = this.usage ? '' : 'No usage data'; this.cdr.detectChanges(); },
       error: (e: any) => { this.usageError = 'Usage is not available'; this.cdr.detectChanges(); reportRxjsError(e); }
+    });
+  }
+
+  loadHealth() {
+    this.api.getServerHealth().subscribe({
+      next: (res: any) => { this.health = res; this.cdr.detectChanges(); },
+      error: reportRxjsError
+    });
+    this.api.getManagedSites().subscribe({
+      next: (res: any) => { this.sites = res?.sites || []; this.cdr.detectChanges(); },
+      error: reportRxjsError
     });
   }
 

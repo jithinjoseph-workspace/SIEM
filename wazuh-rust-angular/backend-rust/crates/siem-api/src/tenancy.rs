@@ -388,6 +388,8 @@ fn is_public(method: &Method, path: &str) -> bool {
         // other deployments: authenticated by their member token in the handler
         || p.starts_with("/api/v1/swarm/hub/")
         || (method == Method::POST && (p == "/api/client-errors" || p == "/api/admin/client-errors"))
+        // managed sites' health reports: authenticated by their report token in the handler
+        || (method == Method::POST && p == "/api/v1/sites/health-report")
         || method == Method::OPTIONS
 }
 

@@ -91,11 +91,11 @@
           </div>
 
           <div class="relative w-full sm:w-72">
-            <lucide-angular [img]="SearchIcon" class="w-3.5 h-3.5 absolute left-3 top-3 text-slate-500"></lucide-angular>
+            <lucide-angular [img]="SearchIcon" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"></lucide-angular>
             <input 
               [(ngModel)]="searchQuery" 
               placeholder="Search by name, pattern, field..." 
-              class="w-full pl-8 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500"
+              class="w-full pl-10 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500"
             />
           </div>
         </div>

@@ -43,7 +43,7 @@
   <!-- Table -->
   <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
     <div class="overflow-x-auto">
-      <table class="w-full text-left text-xs">
+      <table class="w-full text-left text-xs table-cards">
         <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
           <tr>
             <th class="p-3.5">TIMESTAMP</th>
@@ -75,9 +75,9 @@
                 {{ r.action }}
               </span>
             </td>
-            <td class="p-3.5 font-mono text-cyan-300 font-semibold">{{ r.path }}</td>
+            <td class="p-3.5 font-mono text-cyan-300 font-semibold break-all min-w-[260px] max-w-[460px] tc-full"><span class="line-clamp-3" [title]="r.path">{{ r.path }}</span></td>
             <td class="p-3.5 font-mono text-slate-400">{{ r.agent_id }}</td>
-            <td class="p-3.5 font-medium text-white">{{ r.agent_name }}</td>
+            <td class="p-3.5 font-medium text-white whitespace-nowrap">{{ r.agent_name }}</td>
             <td class="p-3.5">
               <ng-container *ngIf="r.user || r.process; else noWho">
                 <div class="text-white">{{ r.user || 'unknown user' }}</div>
@@ -85,7 +85,7 @@
               </ng-container>
               <ng-template #noWho><span class="text-slate-500" [title]="'Enable whodata on this directory to see who changed it'">{{ r.mode || '—' }}</span></ng-template>
             </td>
-            <td class="p-3.5 font-mono text-slate-500 max-w-xs truncate" [title]="r.sha256">{{ r.sha256 || 'N/A' }}</td>
+            <td class="p-3.5 font-mono text-slate-500 max-w-[180px] truncate" [title]="r.sha256" data-label="SHA-256">{{ r.sha256 || 'N/A' }}</td>
           </tr>
           <tr *ngIf="records().length === 0">
             <td colspan="7" class="p-6 text-center text-slate-500">No file or registry changes reported yet.</td>

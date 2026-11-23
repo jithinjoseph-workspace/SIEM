@@ -33,10 +33,10 @@
 
   <form (ngSubmit)="load()" class="flex flex-col md:flex-row gap-3">
     <div class="relative flex-1">
-      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></lucide-angular>
+      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"></lucide-angular>
       <label for="mem-q" class="sr-only">Search the security memory</label>
       <input id="mem-q" name="q" [(ngModel)]="q" placeholder="Search: rule, host, IP, user, technique, reason…"
-        class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm">
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-3 py-2 text-sm">
     </div>
     <button type="submit" class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-sm font-semibold rounded-lg">Search</button>
   </form>

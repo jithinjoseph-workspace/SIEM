@@ -11,13 +11,13 @@
       </p>
     </div>
 
-    <div class="flex items-center gap-3 w-full sm:w-auto">
-      <div class="relative flex-1 sm:w-64">
-        <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
+    <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+      <div class="relative basis-full sm:basis-auto flex-1 sm:w-64">
+        <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"></lucide-angular>
         <input 
           [(ngModel)]="searchQuery" 
           placeholder="Search techniques or ID..." 
-          class="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"
+          class="w-full pl-10 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-red-500"
         />
       </div>
 

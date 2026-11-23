@@ -47,17 +47,17 @@
 
     <div class="bg-slate-900/60 rounded-xl border border-slate-800 overflow-x-auto">
       <div class="px-4 pt-4 text-sm font-semibold text-white">What Sigma caught in your events (last 24 hours)</div>
-      <table class="w-full text-sm mt-2">
+      <table class="w-full text-sm mt-2 table-cards">
         <thead class="text-xs uppercase text-slate-400 border-b border-slate-800">
           <tr><th class="text-left px-4 py-3">Rule</th><th class="text-right px-4 py-3">Level</th><th class="text-right px-4 py-3">Alerts</th><th class="text-left px-4 py-3">Hosts</th><th class="text-left px-4 py-3">Last</th><th class="px-4 py-3"></th></tr>
         </thead>
         <tbody>
           <tr *ngIf="d.matches_24h.length === 0"><td colspan="6" class="px-4 py-8 text-center text-slate-500">No Sigma match in the last 24 hours.</td></tr>
           <tr *ngFor="let m of d.matches_24h" class="border-b border-slate-800/60">
-            <td class="px-4 py-3 text-slate-200">{{ m.title }}<div class="text-[11px] text-slate-500">rule {{ m.rule_id }}</div></td>
-            <td class="px-4 py-3 text-right">{{ m.level }}</td>
-            <td class="px-4 py-3 text-right font-semibold">{{ m.alerts }}</td>
-            <td class="px-4 py-3 text-slate-400">{{ m.hosts.join(', ') }}</td>
+            <td class="px-4 py-3 text-slate-200 tc-full">{{ m.title }}<div class="text-[11px] text-slate-500">rule {{ m.rule_id }}</div></td>
+            <td class="px-4 py-3 text-right" data-label="Level">{{ m.level }}</td>
+            <td class="px-4 py-3 text-right font-semibold" data-label="Alerts">{{ m.alerts }}</td>
+            <td class="px-4 py-3 text-slate-400 whitespace-nowrap">{{ m.hosts.join(', ') }}</td>
             <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ when(m.last_seen) }}</td>
             <td class="px-4 py-3"><a *ngIf="m.hosts[0]" [routerLink]="['/analyst/siem-investigate']" [queryParams]="{ q: m.hosts[0], days: 7, rule: m.rule_id, from: m.first_seen, to: m.last_seen }" title="These alerts, and the host's events around them" class="text-cyan-300 hover:underline">Investigate</a></td>
           </tr>

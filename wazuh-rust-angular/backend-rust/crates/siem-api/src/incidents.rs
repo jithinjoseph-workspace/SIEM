@@ -33,8 +33,9 @@ use crate::AppState;
 
 /// An alert from this level opens an incident.
 pub const OPEN_LEVEL: u8 = 7;
-/// An incident takes alerts while its last one is at most this old.
-pub const WINDOW_SECS: i64 = 3600;
+/// An incident takes alerts while its last one is at most this old: a day, so a rule that fires
+/// on a computer a few times a day is one case (with an hour it opened a new case each time).
+pub const WINDOW_SECS: i64 = 86_400;
 /// Alert ids kept per incident (the count goes on).
 pub const MAX_IDS: usize = 500;
 const FLUSH_SECS: u64 = 15;
@@ -498,7 +499,7 @@ struct OpenRow {
 }
 
 async fn load(state: &AppState, tenant: &str) {
-    let sql = format!("SELECT id, title, tags, hit_ids, toUInt32(toUnixTimestamp(updated_at)) AS updated FROM soar_cases FINAL WHERE (has(tags, ?) OR has(tags, ?)) AND status NOT IN {CLOSED} AND updated_at >= now() - INTERVAL 1 DAY");
+    let sql = format!("SELECT id, title, tags, hit_ids, toUInt32(toUnixTimestamp(updated_at)) AS updated FROM soar_cases FINAL WHERE (has(tags, ?) OR has(tags, ?)) AND status NOT IN {CLOSED} AND updated_at >= now() - INTERVAL 7 DAY");
     let rows: Vec<OpenRow> = state.db.tenant_client(tenant).query(&sql).bind(TAG).bind(RISK_TAG).fetch_all().await.unwrap_or_default();
     let cfg = settings_of(tenant);
     let mut map = open().lock().unwrap();
@@ -823,15 +824,18 @@ mod tests {
             assert_eq!(place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p(proc_), t0 + 60, &Settings::default()), Some(k.clone()));
         }
         assert_eq!(place(&mut m, "acm", &alert_r(3, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600, &Settings::default()), Some(k.clone()), "a low alert joins an open incident");
+        let first = m[&k].id.clone();
+        assert_eq!(place(&mut m, "acm", &alert_r(10, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600 + 2 * 3600, &Settings::default()), Some(k.clone()));
+        assert_eq!(m[&k].id, first, "the same rule two hours later is the same case (it opened a new one)");
         assert_ne!(place(&mut m, "acm", &alert_r(10, "8084", 92078, "Cmd"), p("process:winword.exe"), t0, &Settings::default()).unwrap(), k, "another rule: another incident");
         assert_ne!(place(&mut m, "acm", &alert_r(10, "8087", 92153, "VaultCli"), p("process:winword.exe"), t0, &Settings::default()).unwrap(), k, "another agent: another incident");
         let o = &m[&k];
-        assert_eq!((o.count, o.entities.len(), severity(o.max_level)), (5, 3, "HIGH"));
+        assert_eq!((o.count, o.entities.len(), severity(o.max_level)), (6, 3, "HIGH"));
         assert_eq!(o.title(), "pc-8084 (3 processes or users): VaultCli");
         assert!(!o.tags(&k).iter().any(|t| t.starts_with("field:")), "several processes: no single field");
         // past the window: a new incident
         let id = m[&k].id.clone();
-        place(&mut m, "acm", &alert_r(8, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600 + WINDOW_SECS + 1, &Settings::default());
+        place(&mut m, "acm", &alert_r(8, "8084", 92153, "VaultCli"), p("process:svchost.exe"), t0 + 600 + 2 * 3600 + WINDOW_SECS + 1, &Settings::default());
         assert_ne!(m[&k].id, id);
         assert_eq!(m[&k].title(), "pc-8084 (process svchost.exe): VaultCli");
     }

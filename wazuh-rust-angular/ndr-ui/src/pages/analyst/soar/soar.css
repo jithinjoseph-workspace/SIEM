@@ -1404,3 +1404,12 @@
   .stat-card .stat-value { font-size: 32px; }
   .case-table .case-row td:first-child { order: 0; }
 }
+
+/* laptop: the nine case columns fit without scrolling sideways */
+@media (max-width: 1600px) {
+  .case-table thead th { padding: 12px 8px; letter-spacing: 0.06em; }
+  .case-row td { padding: 12px 8px; }
+  .case-table th[class*="w-"] { width: auto; }
+  .case-title { font-size: 14px; max-width: 240px; }
+  .soar-tabbar > button { padding-left: 18px; padding-right: 18px; }
+}

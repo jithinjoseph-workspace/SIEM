@@ -1,4 +1,4 @@
-<div class="parsers-page p-6 w-full max-w-[1720px] mx-auto space-y-6">
+<div class="parsers-page p-4 sm:p-6 w-full max-w-[1720px] mx-auto space-y-6">
   <div *ngIf="pageError()" role="alert" class="mb-4 p-3 rounded-lg border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ pageError() }}</div>
   <!-- Header with Actions -->
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-5">
@@ -74,9 +74,9 @@
   </div>
 
   <!-- Two-Column Grid: Registry Table (Left) + AI Studio Sandbox (Right) -->
-  <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+  <div class="grid grid-cols-1 2xl:grid-cols-12 gap-6 items-start">
     <!-- Left Column: Learned Parsers Registry Table (8 cols) -->
-    <div class="xl:col-span-8 space-y-6">
+    <div class="2xl:col-span-8 space-y-6">
       <div class="bg-slate-900/80 border border-slate-800/90 rounded-2xl shadow-xl overflow-hidden backdrop-blur-md">
         <!-- Table Header Toolbar -->
         <div class="p-4 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-950/50">
@@ -102,7 +102,7 @@
 
         <!-- Table View -->
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-300 border-collapse">
+          <table class="w-full text-left text-xs text-slate-300 border-collapse table-cards">
             <thead>
               <tr class="bg-slate-950/90 text-[11px] font-mono text-slate-400 uppercase tracking-wider border-b border-slate-800">
                 <th class="py-3 px-4">Name & Fingerprint</th>
@@ -117,7 +117,7 @@
             <tbody class="divide-y divide-slate-800/60">
               <tr *ngFor="let p of filteredParsers()" class="hover:bg-slate-800/40 transition group">
                 <!-- Name & Fingerprint -->
-                <td class="py-3 px-4">
+                <td class="py-3 px-4 tc-full">
                   <div class="font-bold text-white text-xs group-hover:text-cyan-300 transition">{{ p.name }}</div>
                   <div class="font-mono text-[11px] text-cyan-400 mt-0.5">0x{{ p.fingerprint.toString(16) }}</div>
                   <div class="text-[10px] font-mono text-slate-500 truncate max-w-[200px]" [title]="p.fingerprint_signature">{{ p.fingerprint_signature }}</div>
@@ -125,7 +125,7 @@
 
                 <!-- Compiled Regex Pattern (Clean Compact Chip) -->
                 <td class="py-3 px-4">
-                  <div class="flex items-center gap-1.5 max-w-[280px]">
+                  <div class="flex items-center gap-1.5 max-w-[210px]">
                     <span 
                       class="font-mono text-[11px] text-emerald-400 bg-slate-950/90 px-2.5 py-1.5 rounded-lg border border-slate-800/80 truncate block select-all cursor-pointer hover:border-emerald-500/50 transition flex-1" 
                       [title]="p.pattern"
@@ -269,7 +269,7 @@
     </div>
 
     <!-- Right Column: AI Synthesis Sandbox (4 cols) -->
-    <div class="xl:col-span-4 space-y-5">
+    <div class="2xl:col-span-4 space-y-5">
       <div class="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-5 shadow-xl space-y-4 backdrop-blur-md">
         <!-- Sandbox Header -->
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">

@@ -91,7 +91,8 @@ pub async fn chat_long(providers: &[Provider], system: &str, messages: &[Message
 
 /// `brief_first`: ask reasoning models to think briefly from the start (a long answer).
 async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], max_tokens: u32, brief_first: bool) -> Result<Reply, String> {
-    let mut ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty()).collect();
+    // a self-hosted model server (its own base URL) may have no key
+    let mut ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty() || !p.base_url.is_empty()).collect();
     if ps.is_empty() {
         return Err("No AI provider is configured (Settings > AI Configuration)".into());
     }
@@ -170,9 +171,11 @@ async fn call(p: &Provider, system: &str, messages: &[Message], max_tokens: u32,
     let path = if p.endpoint_path.is_empty() { "/v1/chat/completions" } else { p.endpoint_path.as_str() };
     let mut all = vec![json!({ "role": "system", "content": system })];
     all.extend(msgs);
-    let r = http
-        .post(format!("{base}{path}"))
-        .bearer_auth(&p.api_key)
+    let mut req = http.post(format!("{base}{path}"));
+    if !p.api_key.is_empty() {
+        req = req.bearer_auth(&p.api_key);
+    }
+    let r = req
         .json(&{
             let mut b = json!({ "model": model, "temperature": 0.1, "max_tokens": max_tokens, "messages": all });
             if brief {
@@ -290,12 +293,12 @@ mod tests {
     }
 
     /// An OpenAI-compatible endpoint; the first provider fails, the second answers.
-    #[tokio::test]
-    async fn tries_providers_in_priority_order() {
+    /// A model server that answers one request and hands back what it was sent.
+    fn one_reply_server() -> (u16, std::thread::JoinHandle<String>) {
         use std::io::{Read, Write};
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
-        let server = std::thread::spawn(move || {
+        (port, std::thread::spawn(move || {
             let (mut s, _) = l.accept().unwrap();
             let mut buf = vec![0u8; 65536];
             let mut req = Vec::new();
@@ -313,7 +316,20 @@ mod tests {
             let body = r#"{"choices":[{"message":{"content":"  hello analyst  "}}]}"#;
             write!(s, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
             String::from_utf8_lossy(&req).to_string()
-        });
+        }))
+    }
+
+    #[tokio::test]
+    async fn a_local_model_server_needs_no_key() {
+        let (port, server) = one_reply_server();
+        let local = Provider { name: "local-ai".into(), provider_type: "openai".into(), model: "gpt-oss-20b".into(), base_url: format!("http://127.0.0.1:{port}"), ..Default::default() };
+        assert_eq!(generate(&[local], "sys", "hi").await.unwrap().text, "hello analyst");
+        assert!(!server.join().unwrap().to_lowercase().contains("authorization:"));
+    }
+
+    #[tokio::test]
+    async fn tries_providers_in_priority_order() {
+        let (port, server) = one_reply_server();
         let providers = vec![
             Provider { name: "ok".into(), provider_type: "openai".into(), api_key: "k2".into(), model: "m2".into(), base_url: format!("http://127.0.0.1:{port}"), priority: 2, ..Default::default() },
             Provider { name: "down".into(), provider_type: "openai".into(), api_key: "k1".into(), base_url: "http://127.0.0.1:1".into(), priority: 1, ..Default::default() },

@@ -4,37 +4,25 @@ use chrono::Utc;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::info;
 use uuid::Uuid;
 
 pub struct AiParserSynthesizer;
 
 impl AiParserSynthesizer {
     /// Synthesize a reusable parser from sample logs.
-    /// Tries AI LLM first (Groq/OpenAI if API key available), falls back to built-in structural inference.
+    /// Built-in structural inference only; the platform AI is asked first by the registry.
     pub async fn synthesize(
         fingerprint: u64,
         signature: &str,
         samples: &[String],
-        custom_instructions: Option<&str>,
     ) -> Result<DynamicParser, String> {
         if samples.is_empty() {
             return Err("No log samples provided for parser synthesis".to_string());
         }
 
-        // Try AI generation first if GROQ_API_KEY or OPENAI_API_KEY is available
-        let maybe_ai_result = Self::try_llm_synthesis(fingerprint, signature, samples, custom_instructions).await;
-
-        let candidate = match maybe_ai_result {
-            Ok(parser) => {
-                info!("AI LLM successfully synthesized parser '{}'", parser.name);
-                parser
-            }
-            Err(err_msg) => {
-                info!("LLM synthesis unavailable or bypassed ({}). Using high-accuracy heuristic synthesizer.", err_msg);
-                Self::synthesize_heuristic(fingerprint, signature, samples)?
-            }
-        };
+        // AI happens before this, through the registry's hook (the platform's providers and the
+        // tenant's AI switch); a direct cloud call here would send logs out with AI switched off
+        let candidate = Self::synthesize_heuristic(fingerprint, signature, samples)?;
 
         // Strictly validate candidate pattern against all samples in sandboxed validator
         let val_result = ParserValidator::validate(&candidate.pattern, samples)?;
@@ -521,61 +509,6 @@ Return JSON format:\n\
             created_at: Utc::now(),
             last_used: None,
         })
-    }
-
-    /// Call LLM API (Groq llama-3.3-70b / OpenAI) if an API key is in the environment
-    /// (the earlier setup; siem-api first asks the platform's configured AI providers).
-    async fn try_llm_synthesis(
-        fingerprint: u64,
-        signature: &str,
-        samples: &[String],
-        custom_instructions: Option<&str>,
-    ) -> Result<DynamicParser, String> {
-        let (api_key, api_url, model) = if let Ok(key) = std::env::var("GROQ_API_KEY") {
-            (key, "https://api.groq.com/openai/v1/chat/completions".to_string(), "llama-3.3-70b-versatile".to_string())
-        } else if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-            (key, "https://api.openai.com/v1/chat/completions".to_string(), "gpt-4o-mini".to_string())
-        } else {
-            return Err("No GROQ_API_KEY or OPENAI_API_KEY found in environment".to_string());
-        };
-
-        let (system_prompt, user_prompt) = Self::llm_prompts(fingerprint, signature, samples, custom_instructions);
-
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(12))
-            .build()
-            .map_err(|e| e.to_string())?;
-
-        let body = serde_json::json!({
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.1
-        });
-
-        let resp = client
-            .post(&api_url)
-            .bearer_auth(api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("HTTP request to LLM failed: {}", e))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(format!("LLM API returned status {}: {}", status, text));
-        }
-
-        let json_resp: Value = resp.json().await.map_err(|e| format!("Failed to parse LLM response: {}", e))?;
-        let content = json_resp["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or("Empty content in LLM response")?;
-
-        Self::parser_from_json(fingerprint, signature, samples, content)
     }
 }
 

@@ -154,7 +154,7 @@ impl DynamicParserRegistry {
                 }
             }
         }
-        let result = AiParserSynthesizer::synthesize(fingerprint, signature, samples, custom_instructions).await;
+        let result = AiParserSynthesizer::synthesize(fingerprint, signature, samples).await;
 
         match result {
             Ok(parser) => {

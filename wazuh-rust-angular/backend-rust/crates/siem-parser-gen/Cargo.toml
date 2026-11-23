@@ -12,5 +12,4 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1.10"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 tracing = "0.1"
-reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1.40", features = ["full", "sync", "time"] }

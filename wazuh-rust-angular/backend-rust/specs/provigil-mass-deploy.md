@@ -358,3 +358,120 @@ SCCM, Company Portal and Group Policy software install.
 - Not built: the MAC suffix for duplicate computer names (C1); the second PC with the same name would
   take over the first one's agent. Rare outside domains (Windows names are random by default).
 - SSH host keys are accepted without a known-hosts check (client LAN, hosts the admin chose).
+
+## 15. Status check 2026-11-23
+
+- Built and checked here: unit tests of `crates/provigil-deploy` pass; `deploy/deploy-provigil.ps1` and
+  `deploy/install-provigil.ps1` parse without errors; the kit (`siem-api/src/deploy_kit.rs`) carries the
+  deployment token only, never the tenant key.
+- Not yet proven: the Windows push itself. Path A (Active Directory) and path B (workgroup, one shared
+  local admin) need the virtual-machine labs of section 10; the push reboots and logs in automatically,
+  so it is never tried on the development PC. Until the labs pass, mass deployment is not sold as ready.
+
+## 16. Next: fleets of standard users, passive discovery, computer lists
+
+### 16.1 The rule that shapes everything
+
+An endpoint agent is a system service (Windows) or a root daemon (Linux). Installing one needs
+administrator rights on that computer; the operating system enforces it. ProVigil never tries to get
+around it (that would be a privilege-escalation attack). "Everyone is a standard user" almost always
+still means *someone* administers the PCs; the work is to use that channel. Only when nobody has any
+admin channel does a limited user-mode agent apply (D6).
+
+### 16.2 Which way to install (decided per client, in this order)
+
+| # | The client has | How the agent gets installed | Needs from the client | Status |
+|---|---|---|---|---|
+| D1 | Active Directory domain | Group Policy startup script `install-provigil.ps1` (runs as SYSTEM at boot; users need no rights) or the push of path A | a domain admin creates the policy once | built, lab pending |
+| D2 | Intune, SCCM, an RMM tool or GPO software install | MSI package, installed as SYSTEM by their tool | an MDM admin assigns the package | to build (C9) |
+| D3 | One local admin on all PCs, same password | push of path B (`deploy-provigil.ps1`) | the admin's user name and password, typed once | built, lab pending |
+| D4 | A local admin on each PC, a different password each (Windows LAPS) | push with each PC's own password read from AD or Entra ID (`Get-LapsADPassword`) | the deployment account may read LAPS passwords | to build (C10) |
+| D5 | A list of PCs with their own credentials | list file with a credential name per row (16.6) | the list and the credentials, typed once | to build (C11) |
+| D6 | No admin channel at all (unmanaged, BYOD) | user-mode agent, each user installs it from a link | users click once | to build (C12), limited |
+
+### 16.3 What D6 (user mode, no admin) can and cannot do
+
+| Can | Cannot |
+|---|---|
+| Run as the user (Windows: `%LOCALAPPDATA%`, a logon task; Linux: a `systemctl --user` unit) | Read the Windows Security log, Sysmon, or system-wide audit logs |
+| Read the Application and PowerShell logs, the user's own processes and network connections | See other users' processes, protect itself (the user can stop it) |
+| Report installed software (machine and user), changes to the user's files (FIM in the profile) | Isolate the computer, kill other users' processes, block addresses (active response) |
+| Enroll with the deployment token and show in the console as "user mode" | Survive the user removing it |
+
+It is a stop-gap, marked in the console as "user mode: limited". The moment IT runs one elevated
+command (or any of D1 to D5), the full agent replaces it under the same agent ID. The Linux
+user-mode part changes `siem-agent-linux`, which another developer owns: only with the owner's
+approval.
+
+### 16.4 Discovery: active and passive, and telling Windows from Linux
+
+Active (the admin PC asks; partly built in `deploy-provigil.ps1`):
+
+| Probe | Tells | Status |
+|---|---|---|
+| Active Directory computer objects | name, DNS name, operating system, last logon | built |
+| Ping TTL (128 Windows, 64 Linux and macOS) | OS family, a hint | built |
+| Ports 445, 5985 (Windows), 22 (SSH) and the SSH greeting ("Ubuntu", "Debian") | OS and the way in (SMB, WinRM, SSH) | built |
+| Ports 135, 139, 3389; NetBIOS name query (UDP 137); SMB negotiate | Windows name and build | to add |
+| MAC vendor from the admin PC's ARP table | printer, phone, camera, network gear: skipped, not reported as failures | to add |
+
+Passive (nothing is sent to the PCs):
+
+| Source | Tells | Status |
+|---|---|---|
+| Enrolled agents report their ARP / neighbour table and DNS names every hour | every device their computers talk to, across VLANs; unprotected PCs show up without a scan | to build (C13) |
+| The NDR sensor, where the client has one: DHCP requests (host name, vendor class "MSFT 5.0" = Windows, option-55 fingerprint), mDNS / LLMNR / NetBIOS broadcasts, TLS client fingerprints | name, OS family and device type of every device that joins the network | to build (C14) |
+| Imports: DHCP server lease export, router lease table (CSV) | names and MAC addresses where neither of the above reaches | to build (C14) |
+
+Each device gets one record (keyed by MAC, else name, else address) with: OS family and confidence,
+device type, how it was found, whether a ProVigil agent runs on it, and the install way that fits it
+(16.2). When two sources disagree both are shown and the stronger one decides
+(agent > AD > SMB / SSH > DHCP > TTL).
+
+### 16.5 Coverage page and installing from it
+
+A console page "Coverage": every discovered device as **protected**, **unprotected**, **not a PC**
+(skipped) or **unknown**, with OS, last seen and how it was found. Unprotected Windows and Linux PCs
+can be selected and exported as a computer list (16.6) for the kit, so the admin installs exactly the
+gap; after the run the page shows them as protected. The number of unprotected PCs also feeds the
+readiness score.
+
+### 16.6 Installing from a list the client gives
+
+Today `-ComputerList` takes names or addresses. Next, a CSV:
+
+```
+computer,os,way,credential,group
+PC-ACC-001,windows,auto,office-admin,accounts
+10.1.4.27,linux,ssh,linux-ops,servers
+LAB-12,,auto,,lab
+```
+
+- `os` and `way` are optional: empty means "find out" (16.4) and "use the first way that works".
+- `credential` is a name, never a password. The script asks for each named credential once and keeps
+  it in memory for the run only (DPAPI-encrypted when the retry option is chosen). Passwords never go
+  into the CSV, logs or results.
+- `group` becomes the agent's ProVigil group.
+- Every row ends in `results.csv` and in the console as installed, or failed with the reason and fix.
+
+### 16.7 Order and effort (working days, one developer)
+
+| Step | Work | Days |
+|---|---|---|
+| 1 | Windows VM labs for path A and path B, fixing what they find | 4 |
+| 2 | Active discovery additions and the device record (16.4 active); CSV list with credentials (C11) | 4 |
+| 3 | Passive discovery through agents (C13) and the Coverage page (16.5) | 4 |
+| 4 | LAPS (C10) | 1.5 |
+| 5 | MSI package for Intune / SCCM / GPO software install (C9), code-signed | 4 |
+| 6 | NDR-sensor and DHCP-import discovery (C14) | 4 |
+| 7 | User-mode agent for Windows (C12); Linux only with the owner's approval | 6 |
+|   | **Total** | **about 27.5 days** |
+
+### 16.8 Questions for the owner
+
+1. Code-signing certificate (13.1): the MSI and the user-mode agent need one, or Windows SmartScreen
+   and most MDM tools refuse them.
+2. User-mode agent (D6): offer it, knowing its limits (16.3), or require an admin channel from every
+   client?
+3. Passive discovery through agents (C13) reads each computer's ARP table: state it in the client
+   agreement.

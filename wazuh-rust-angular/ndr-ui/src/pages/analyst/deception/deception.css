@@ -108,8 +108,10 @@ lucide-angular svg {
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
+.header-actions .btn { white-space: nowrap; }
 
 /* Global Buttons */
 .btn {
@@ -194,7 +196,8 @@ lucide-angular svg {
 /* KPI Strip */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* five cards in one row on a laptop (one used to sit alone on a second row) */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1.25rem;
   margin-bottom: 2rem;
 }

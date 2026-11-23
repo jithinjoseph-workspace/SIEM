@@ -172,7 +172,8 @@
 /* KPI Strip */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* five cards in one row on a laptop (one used to sit alone on a second row) */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1.25rem;
   margin-bottom: 2rem;
 }
@@ -1945,3 +1946,8 @@
 }
 
 
+
+/* header buttons and host names stay on one line */
+.header-actions { flex-wrap: wrap; }
+.header-actions .btn { white-space: nowrap; }
+.host-name { white-space: nowrap; }

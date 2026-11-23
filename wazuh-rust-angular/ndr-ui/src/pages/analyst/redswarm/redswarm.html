@@ -58,7 +58,7 @@
   </div>
 
   <!-- HUD KPI Metric Overview Cards -->
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Swarm State -->
     <div class="kpi-card p-4 rounded-xl border border-slate-800/90 flex flex-col justify-between">
       <div class="flex items-center justify-between">
@@ -121,7 +121,7 @@
         <lucide-angular [img]="FlameIcon" class="w-4 h-4 text-orange-400"></lucide-angular>
         Manual Round:
       </span>
-      <select [ngModel]="manualTechniqueId()" (ngModelChange)="manualTechniqueId.set($event)" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
+      <select [ngModel]="manualTechniqueId()" (ngModelChange)="manualTechniqueId.set($event)" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500 w-full sm:w-auto max-w-full min-w-0">
         <optgroup label="Windows">
           <ng-container *ngFor="let t of catalog()"><option *ngIf="t.platform === 'windows'" [value]="t.id + '|windows'">{{ t.id }} - {{ t.name }}</option></ng-container>
         </optgroup>
@@ -130,7 +130,7 @@
         </optgroup>
       </select>
 
-      <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500">
+      <select [(ngModel)]="manualMode" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-cyan-500 w-full sm:w-auto max-w-full min-w-0">
         <option value="safe_telemetry_only">Simulation (the attack's events through the real rules; nothing runs on the computer)</option>
         <option value="controlled_live" disabled>ControlledLive (not available: no safe command channel to agents)</option>
       </select>
@@ -150,13 +150,13 @@
   </div>
 
   <!-- Navigation Tabs -->
-  <div class="flex items-center gap-2 border-b border-slate-800">
+  <div class="flex items-center gap-2 border-b border-slate-800 overflow-x-auto">
     <button 
       (click)="activeTab.set('feed')" 
       [class.text-rose-400]="activeTab() === 'feed'"
       [class.border-b-2]="activeTab() === 'feed'"
       [class.border-rose-400]="activeTab() === 'feed'"
-      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white whitespace-nowrap shrink-0"
     >
       Live Execution Feed ({{ history().length }})
     </button>
@@ -175,7 +175,7 @@
       [class.text-cyan-400]="activeTab() === 'heatmap'"
       [class.border-b-2]="activeTab() === 'heatmap'"
       [class.border-cyan-400]="activeTab() === 'heatmap'"
-      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white whitespace-nowrap shrink-0"
     >
       MITRE ATT&amp;CK Coverage Heatmap
     </button>
@@ -184,7 +184,7 @@
       [class.text-indigo-400]="activeTab() === 'campaigns'"
       [class.border-b-2]="activeTab() === 'campaigns'"
       [class.border-indigo-400]="activeTab() === 'campaigns'"
-      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white"
+      class="px-4 py-3 text-xs font-bold uppercase tracking-wider transition text-slate-400 hover:text-white whitespace-nowrap shrink-0"
     >
       Autonomous Campaigns &amp; ROE
     </button>

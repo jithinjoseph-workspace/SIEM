@@ -12,13 +12,13 @@
       </p>
     </div>
     <div class="flex gap-2">
-      <button (click)="runVerify()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
+      <button (click)="runVerify()" class="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
         <lucide-angular [img]="CheckIcon" class="w-4 h-4"></lucide-angular> Verify chain
       </button>
-      <button (click)="exportChain()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
+      <button (click)="exportChain()" class="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
         <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular> Export for auditors
       </button>
-      <button (click)="load()" class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
+      <button (click)="load()" class="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm rounded-lg border border-slate-700">
         <lucide-angular [img]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-angular> Refresh
       </button>
     </div>
@@ -41,7 +41,7 @@
   </div>
 
   <div class="bg-slate-900/60 rounded-xl border border-slate-800 overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full text-sm table-cards">
       <thead class="text-xs uppercase text-slate-400 border-b border-slate-800">
         <tr>
           <th class="text-left px-4 py-3">When</th>

@@ -647,6 +647,11 @@ export class Api {
     return this.http.get(`${this.baseUrl}/admin/telemetry`);
   }
 
+  /** Per-tenant usage over the last 24 h (platform admins). */
+  getUsage(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/admin/usage`);
+  }
+
   getClientErrors(): Observable<any> {
     return this.http.get(`${this.baseUrl}/admin/client-errors`);
   }

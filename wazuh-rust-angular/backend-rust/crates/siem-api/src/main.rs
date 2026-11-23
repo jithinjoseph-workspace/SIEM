@@ -1042,6 +1042,7 @@ async fn main() {
         .route("/api/monitor/kafka", get(platform::kafka))
         .route("/api/kafka/status", get(platform::kafka))
         .route("/api/admin/telemetry", get(platform::telemetry))
+        .route("/api/admin/usage", get(platform::usage))
         .route(
             "/api/admin/client-errors",
             get(get_client_errors_handler).post(post_client_errors_handler),

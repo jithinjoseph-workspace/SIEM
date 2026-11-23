@@ -44,6 +44,8 @@ export class Telemetry implements OnInit, OnDestroy {
   engines: any[] = [];
   sensorKeys: any[] = [];
   clientErrors: any[] = [];
+  usage: any = null;
+  usageError = '';
   loadingClientErrors = false;
   isLoading = true;
   isRefreshing = false;
@@ -57,6 +59,7 @@ export class Telemetry implements OnInit, OnDestroy {
   ngOnInit() {
     this.loadAllTelemetry();
     this.loadClientErrors();
+    this.loadUsage();
     this.pollInterval = setInterval(() => this.pollLiveMetrics(), 10000);
   }
 
@@ -74,6 +77,17 @@ export class Telemetry implements OnInit, OnDestroy {
         reportRxjsError(e);
       }
     });
+  }
+
+  loadUsage() {
+    this.api.getUsage().subscribe({
+      next: (res: any) => { this.usage = res?.tenants ? res : null; this.usageError = this.usage ? '' : 'No usage data'; this.cdr.detectChanges(); },
+      error: (e: any) => { this.usageError = 'Usage is not available'; this.cdr.detectChanges(); reportRxjsError(e); }
+    });
+  }
+
+  gb(bytes: number): string {
+    return `${((bytes || 0) / 1073741824).toFixed(2)} GB`;
   }
 
   ngOnDestroy() {

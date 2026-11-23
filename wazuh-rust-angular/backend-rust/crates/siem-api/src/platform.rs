@@ -107,6 +107,48 @@ pub async fn telemetry(State(state): State<AppState>, Extension(ctx): Extension<
     .into_response()
 }
 
+/// `GET /api/admin/usage` (platform admins): per tenant over the last 24 hours, the PCs that
+/// reported, events, average and busiest-minute EPS, alerts, and the tenant database's disk use;
+/// for billing a hosted or managed service and for sizing (EPS drives every size).
+pub async fn usage(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>) -> axum::response::Response {
+    if !ctx.is_super() {
+        return (StatusCode::FORBIDDEN, Json(json!({ "status": "error", "message": "Platform admins only" }))).into_response();
+    }
+    let since = (chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(86_400_000);
+    let mut rows = Vec::new();
+    let (mut events, mut alerts, mut disk) = (0u64, 0u64, 0u64);
+    for t in crate::predictions::tenant_ids(&state) {
+        let c = state.db.tenant_client(&t);
+        let (agents, ev, peak) = c
+            .query("SELECT uniqExact(agent_id), count(), (SELECT max(n) FROM (SELECT count() AS n FROM siem_events WHERE timestamp >= ? GROUP BY intDiv(timestamp, 60000))) FROM siem_events WHERE timestamp >= ?")
+            .bind(since)
+            .bind(since)
+            .fetch_one::<(u64, u64, u64)>()
+            .await
+            .unwrap_or_default();
+        let al = c.query("SELECT count() FROM siem_alerts WHERE timestamp >= ?").bind(since).fetch_one::<u64>().await.unwrap_or(0);
+        let bytes = state
+            .db
+            .root()
+            .query("SELECT sum(bytes_on_disk) FROM system.parts WHERE active AND database = ?")
+            .bind(tenancy::tenant_db_name(&t))
+            .fetch_one::<u64>()
+            .await
+            .unwrap_or(0);
+        (events, alerts, disk) = (events + ev, alerts + al, disk + bytes);
+        rows.push(usage_row(&t, agents, ev, peak, al, bytes));
+    }
+    Json(json!({ "status": "ok", "window_hours": 24, "tenants": rows, "total": { "events_24h": events, "avg_eps": eps(events, 86_400), "alerts_24h": alerts, "disk_bytes": disk } })).into_response()
+}
+
+fn eps(n: u64, secs: u64) -> f64 {
+    (n as f64 / secs as f64 * 100.0).round() / 100.0
+}
+
+fn usage_row(tenant: &str, agents: u64, events: u64, peak_minute: u64, alerts: u64, disk: u64) -> Value {
+    json!({ "tenant": tenant, "agents_reporting": agents, "events_24h": events, "avg_eps": eps(events, 86_400), "peak_eps_1m": eps(peak_minute, 60), "alerts_24h": alerts, "disk_bytes": disk })
+}
+
 /// `GET /api/monitor/kafka`: the SIEM does not use Kafka.
 pub async fn kafka() -> Json<Value> {
     Json(json!({ "connected": false, "used": false, "brokers_online": 0, "total_brokers": 0, "lag": 0, "topics": [], "message": "This SIEM reads the ProVigil manager's files directly; it has no Kafka" }))
@@ -247,4 +289,15 @@ mod tests {
 #[cfg(test)]
 fn interfaces_sync() -> Vec<String> {
     local_ip_address::list_afinet_netifas().map(|l| l.into_iter().map(|(n, _)| n).collect()).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn usage_rates() {
+        let r = super::usage_row("acm", 2, 144_288, 600, 12_650, 1 << 30);
+        assert_eq!(r["avg_eps"], 1.67);
+        assert_eq!(r["peak_eps_1m"], 10.0);
+        assert_eq!(r["agents_reporting"], 2);
+    }
 }

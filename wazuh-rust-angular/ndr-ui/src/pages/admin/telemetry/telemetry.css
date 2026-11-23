@@ -762,3 +762,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* usage per tenant */
+.usage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.usage-table th { text-align: left; font-weight: 600; color: var(--text-secondary, #94a3b8); padding: 8px 10px; border-bottom: 1px solid rgba(148, 163, 184, 0.2); white-space: nowrap; }
+.usage-table td { padding: 8px 10px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
+.usage-table td:not(:first-child), .usage-table th:not(:first-child) { text-align: right; }

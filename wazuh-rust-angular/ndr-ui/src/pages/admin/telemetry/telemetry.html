@@ -382,6 +382,37 @@
       </div>
     </div>
 
+    <!-- Panel: usage per tenant (billing and sizing) -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip info"><lucide-icon [name]="GaugeIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Usage per Tenant</h3>
+            <span class="card-subtitle">Last 24 hours: PCs that reported, event rate and disk use, for billing and sizing</span>
+          </div>
+        </div>
+        <span class="pill-badge emerald" *ngIf="usage">{{ usage.total.avg_eps }} EPS TOTAL</span>
+      </div>
+      <div class="diagnostic-rows" *ngIf="!usage">
+        <div class="diag-row"><span class="diag-label">Status</span><span class="diag-val">{{ usageError || 'Loading...' }}</span></div>
+      </div>
+      <table class="usage-table table-cards" *ngIf="usage">
+        <thead><tr><th>Tenant</th><th>PCs</th><th>Events</th><th>Avg EPS</th><th>Peak EPS (1 min)</th><th>Alerts</th><th>Disk</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let t of usage.tenants">
+            <td data-label="Tenant" class="font-mono">{{ t.tenant }}</td>
+            <td data-label="PCs">{{ t.agents_reporting | number }}</td>
+            <td data-label="Events">{{ t.events_24h | number }}</td>
+            <td data-label="Avg EPS">{{ t.avg_eps }}</td>
+            <td data-label="Peak EPS (1 min)">{{ t.peak_eps_1m }}</td>
+            <td data-label="Alerts">{{ t.alerts_24h | number }}</td>
+            <td data-label="Disk">{{ gb(t.disk_bytes) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- Panel 5: Frontend Client Error Reports -->
     <div class="telemetry-card">
       <div class="card-header">

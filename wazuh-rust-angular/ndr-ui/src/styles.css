@@ -38,3 +38,28 @@ lucide-angular svg {
   height: 100% !important;
   display: block;
 }
+
+/* SIEM tables on a phone: each row is a card (no sideways scrolling). Put `table-cards` on the
+   table; a cell marked `tc-full` takes a whole line (a description, a reason, the actions). */
+@media (max-width: 640px) {
+  .table-cards thead { display: none; }
+  .table-cards, .table-cards tbody { display: block; width: 100%; min-width: 0 !important; }
+  .table-cards tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 14px;
+  }
+  .table-cards td {
+    display: block;
+    padding: 0 !important;
+    border: 0 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    text-align: left !important;
+    white-space: normal;
+  }
+  .table-cards td.tc-full, .table-cards td[colspan] { flex-basis: 100%; }
+  .table-cards td.tc-full > .flex { justify-content: flex-start !important; }
+}

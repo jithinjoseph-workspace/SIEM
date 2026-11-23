@@ -54,3 +54,27 @@ stopped (`stop-all.bat`), so no event is written to the old copy during the move
 Every night at 02:15 PC 2 backs up each database into `/var/lib/clickhouse/backups/<day>` and keeps
 14 days (`--keep-days` at install). Copy that folder to another machine or a NAS: a backup on the
 same disk does not survive the disk. Restore one day: `backup-datalake.sh --restore <day> [database]`.
+
+## Remote support (managed on-premises)
+
+`support-tunnel.ps1` on PC 1 opens an outbound SSH tunnel to ProVigil's support server, so support
+can reach this master's console without any inbound port at the client. The client switches it on
+and off:
+
+- On, for 8 hours: `.\support-tunnel.ps1 -Enable -SupportHost <support server> -User site-<client> -RemotePort <port> -HostKey '<server host key>' -Hours 8`
+  (as administrator). Send ProVigil the public key it prints. `-AllowRdp` adds remote desktop.
+- Off: `.\support-tunnel.ps1 -Disable`. State: `.\support-tunnel.ps1 -Status`.
+
+On the support server the key is added as
+`restrict,port-forwarding,permitlisten="localhost:<port>",command="/bin/false" <key>`: it can open
+that one tunnel and nothing else. The tunnel's port listens only on the support server itself.
+
+## Monitoring and licences
+
+- Admin > Telemetry shows Server Health (checked every minute; changes are e-mailed to the alert
+  recipients set under Settings, SMTP), the Licence, and Usage per Tenant.
+- Managed service: set `HEALTH_REPORT_URL` (https), `HEALTH_REPORT_TOKEN` and `SITE_NAME` in the
+  master's `.env`; it reports its health to ProVigil every 5 minutes. The receiving ProVigil sets
+  `HEALTH_REPORT_ACCEPT_TOKEN` and lists the sites under Managed Sites.
+- On-premises release builds carry ProVigil's public key and need a licence: Admin > Telemetry >
+  Licence, paste it. New PCs are refused when it expires or is full; enrolled PCs keep working.

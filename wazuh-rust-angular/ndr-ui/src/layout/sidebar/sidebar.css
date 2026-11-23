@@ -271,6 +271,10 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
   color: inherit;
+  /* a long name ends in an ellipsis inside the menu (the full name is the link's tooltip) */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Hover state ──────────────────────────────────────────── */

@@ -30,6 +30,7 @@
            [queryParams]="item.queryParams || null"
            [class.active]="isActive(item)"
            class="nav-link"
+           [attr.title]="item.label"
            [style.animation-delay]="(i * 40) + 'ms'">
           <span class="nav-icon">
             <lucide-icon [name]="item.icon" class="w-4 h-4"></lucide-icon>

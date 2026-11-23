@@ -155,10 +155,10 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'Security Posture',    route: '/analyst/siem-posture',       icon: ShieldCheck, permission: 'siem-alerts' },
       { label: 'Threat Predictions',  route: '/analyst/siem-predictions',   icon: Crosshair, permission: 'siem-mitre' },
       { label: 'Threat Swarm',        route: '/analyst/siem-swarm',         icon: Share2,    permission: 'siem-alerts' },
-      { label: 'Attacker Intent Radar', route: '/analyst/intent-prediction', icon: Target,   permission: 'siem-agents' },
+      { label: 'Intent Radar', route: '/analyst/intent-prediction', icon: Target,   permission: 'siem-agents' },
       { label: 'Risk Fabric',         route: '/analyst/risk-fabric',        icon: Network,   permission: 'siem-agents' },
-      { label: 'Red Swarm & Purple Team', route: '/analyst/redswarm',       icon: Zap,       permission: 'siem-mitre' },
-      { label: 'Deception & Honeynet', route: '/analyst/deception',         icon: Sparkles,  permission: 'siem-agents' },
+      { label: 'Red Swarm', route: '/analyst/redswarm',       icon: Zap,       permission: 'siem-mitre' },
+      { label: 'Deception', route: '/analyst/deception',         icon: Sparkles,  permission: 'siem-agents' },
     ]);
     const oversightItems = siemGroup([
       { label: 'AI Oversight',        route: '/analyst/siem-ai-oversight',  icon: Scale,     permission: 'siem-alerts' },

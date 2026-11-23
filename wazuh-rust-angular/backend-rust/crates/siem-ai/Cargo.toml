@@ -8,6 +8,7 @@ description = "AI provider calls for the SIEM analyst features (the providers co
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { version = "1.40", features = ["time"] }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["full"] }

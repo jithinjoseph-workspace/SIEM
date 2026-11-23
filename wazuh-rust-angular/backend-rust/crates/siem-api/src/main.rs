@@ -4236,23 +4236,31 @@ async fn post_aria_chat_handler(
     Extension(ctx): Extension<AuthCtx>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let msg = payload
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let c = history::counts(&state, &ctx, history::DEFAULT_HOURS).await;
-    let (alerts_count, events_count) = (c.alerts(), c.events);
-
-    let reply = format!(
-        "ARIA AI Security Copilot: Telemetry monitoring is active with {} ingested events and {} alerts. In response to: \"{}\", all active correlation pipelines are operational.",
-        events_count, alerts_count, msg
-    );
-
+    // the question is answered by the AI Copilot (the tenant's own data, its tools, the AI when it
+    // answers, the built-in planner when not); it used to return a fixed sentence
+    let ask: copilot::AskReq = match serde_json::from_value(serde_json::json!({
+        "message": payload.get("message").and_then(|v| v.as_str()).unwrap_or(""),
+        "conversation_id": payload.get("conversation_id").and_then(|v| v.as_str()),
+    })) {
+        Ok(a) => a,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "status": "error", "message": "Ask something" }))).into_response(),
+    };
+    let r = copilot::ask(State(state), Extension(ctx), Json(ask)).await;
+    let code = r.status();
+    let body = axum::body::to_bytes(r.into_body(), 4 * 1024 * 1024).await.unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    if !code.is_success() {
+        return (code, Json(v)).into_response();
+    }
     Json(serde_json::json!({
         "status": "ok",
-        "reply": reply,
+        "reply": v["turn"]["answer"],
+        "mode": v["turn"]["mode"],
+        "note": v["turn"]["note"],
+        "conversation_id": v["conversation_id"],
         "emotion": "idle"
     }))
+    .into_response()
 }
 
 async fn get_client_errors_handler() -> impl IntoResponse {

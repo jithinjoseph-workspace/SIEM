@@ -83,6 +83,8 @@ pub struct ParserTestResult {
 pub struct SynthesizeRequest {
     pub fingerprint: Option<u64>,
     pub samples: Vec<String>,
+    /// the console sends `instructions` (it used to be dropped)
+    #[serde(default, alias = "instructions")]
     pub custom_instructions: Option<String>,
 }
 
@@ -104,4 +106,15 @@ pub struct ParserStatsSummary {
     pub pending_novel_fingerprints: usize,
     pub total_parses_executed: u64,
     pub average_latency_us: f64,
+}
+
+#[cfg(test)]
+mod request_tests {
+    #[test]
+    fn the_consoles_instructions_reach_the_synthesizer() {
+        let r: super::SynthesizeRequest = serde_json::from_str(r#"{"samples":["a b"],"instructions":"name it source_ip"}"#).unwrap();
+        assert_eq!(r.custom_instructions.as_deref(), Some("name it source_ip"));
+        let r: super::SynthesizeRequest = serde_json::from_str(r#"{"samples":["a b"]}"#).unwrap();
+        assert!(r.custom_instructions.is_none());
+    }
 }

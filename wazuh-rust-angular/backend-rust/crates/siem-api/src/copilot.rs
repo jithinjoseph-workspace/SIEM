@@ -1637,8 +1637,8 @@ fn last_context(l: &Last) -> String {
 
 #[derive(Deserialize)]
 pub struct AskReq {
-    message: String,
-    conversation_id: Option<String>,
+    pub message: String,
+    pub conversation_id: Option<String>,
 }
 
 #[derive(clickhouse::Row, Deserialize)]
@@ -1714,7 +1714,7 @@ pub async fn ask(State(state): State<AppState>, Extension(ctx): Extension<AuthCt
             Ok((_, m)) => (rule_mode(&mut run, &agents).await, "rules", m, Some("The AI gave no answer: the built-in planner answered.")),
             Err(e) => {
                 tracing::warn!("copilot: AI not used for tenant {tenant}: {e}");
-                let why = if e.contains("429") || e.contains("Rate limit") {
+                let why = if e.contains("429") || e.to_lowercase().contains("rate limit") {
                     "The AI provider's rate limit was reached (try again in a minute): the copilot used its built-in planner."
                 } else if e.contains("budget") {
                     "This tenant's hourly AI budget is used: the copilot used its built-in planner."

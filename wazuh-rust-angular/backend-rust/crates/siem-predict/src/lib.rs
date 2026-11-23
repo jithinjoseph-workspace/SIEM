@@ -35,6 +35,11 @@ pub const TACTICS: [&str; 14] = [
 /// "Credential Access", "credential-access" -> its index in [`TACTICS`].
 pub fn tactic_index(t: &str) -> Option<usize> {
     let n = t.trim().to_lowercase().replace(['-', '_'], " ");
+    // newer ATT&CK and Sigma names for defense evasion
+    let n = match n.as_str() {
+        "stealth" | "defense impairment" => "defense evasion".to_string(),
+        _ => n,
+    };
     TACTICS.iter().position(|x| *x == n)
 }
 
@@ -218,14 +223,18 @@ pub fn predict(rows: &[AlertRow], previous: &BTreeMap<String, f64>, total_agents
         if c.chain.len() < 2 {
             continue; // one stage alone is not a progression
         }
-        if let Some(s) = c.next_stage() {
+        // a host past the last stage it can reach (impact) has no next stage: it is reported at
+        // that stage, as reached (it used to be left out, so the worst host showed nothing)
+        if let Some(s) = c.next_stage().or_else(|| c.first_seen.keys().max().copied()) {
             by_stage.entry(s).or_default().push(c);
         }
     }
     let mut out = Vec::new();
     for (stage, cs) in by_stage {
-        // the chance that at least one of these agents reaches the stage
-        let p = 1.0 - cs.iter().map(|c| 1.0 - c.probability()).product::<f64>();
+        // the stage was already seen on these hosts (they reached the end of the chain)
+        let reached = cs.iter().all(|c| c.first_seen.contains_key(&stage));
+        // the chance that at least one of these agents reaches the stage (seen: it did)
+        let p = if reached { 0.99 } else { 1.0 - cs.iter().map(|c| 1.0 - c.probability()).product::<f64>() };
         if p < 0.1 {
             continue;
         }
@@ -246,14 +255,25 @@ pub fn predict(rows: &[AlertRow], previous: &BTreeMap<String, f64>, total_agents
             intel_signal_count: 0,
             exposure_score: if total_agents == 0 { 0.0 } else { (100.0 * names.len() as f64 / total_agents as f64).min(100.0) },
             internal_hit_count: hits,
-            explanation: format!(
-                "{} host(s) went through {} stage(s) in order; the furthest, {}, went {}. {} is the next stage not seen yet.",
-                names.len(),
-                lead.chain.len(),
-                if lead.agent_name.is_empty() { &lead.agent_id } else { &lead.agent_name },
-                path,
-                attack_type
-            ),
+            explanation: if reached {
+                format!(
+                    "{} host(s) went through {} stage(s) in order and reached {}, the last stage: {} went {}. Respond now.",
+                    names.len(),
+                    lead.chain.len(),
+                    attack_type,
+                    if lead.agent_name.is_empty() { &lead.agent_id } else { &lead.agent_name },
+                    path
+                )
+            } else {
+                format!(
+                    "{} host(s) went through {} stage(s) in order; the furthest, {}, went {}. {} is the next stage not seen yet.",
+                    names.len(),
+                    lead.chain.len(),
+                    if lead.agent_name.is_empty() { &lead.agent_id } else { &lead.agent_name },
+                    path,
+                    attack_type
+                )
+            },
             recommendations: recommendations(stage, &names),
             aria_briefing: String::new(),
             ai_model: String::new(),
@@ -269,7 +289,7 @@ pub fn predict(rows: &[AlertRow], previous: &BTreeMap<String, f64>, total_agents
 /// The AI briefing prompt for a prediction (the AI only explains it).
 pub fn briefing_prompt(p: &Prediction) -> String {
     format!(
-        "Write a 3-sentence briefing for a SOC analyst. Prediction: {} is the likely next attack stage (probability {:.0}%). Evidence: {} Recommended actions: {}. Be factual; do not invent details.",
+        "Write a 3-sentence briefing for a SOC analyst. Prediction: {} is the likely next attack stage, or the stage already reached if the evidence says so (probability {:.0}%). Evidence: {} Recommended actions: {}. Be factual; do not invent details.",
         p.attack_type,
         p.probability * 100.0,
         p.explanation,
@@ -286,7 +306,18 @@ mod tests {
     }
 
     #[test]
+    fn a_host_that_reached_impact_is_reported() {
+        let rows = [row("1", 10, "Execution", 10), row("1", 20, "Credential Access", 12), row("1", 30, "Command and Control", 12), row("1", 40, "Impact", 15)];
+        let p = predict(&rows, &BTreeMap::new(), 1, "now");
+        assert_eq!(p.len(), 1, "the host is not left out");
+        assert_eq!(p[0].attack_type, "Impact");
+        assert!(p[0].explanation.contains("reached Impact"), "{}", p[0].explanation);
+        assert!(p[0].probability > 0.9);
+    }
+
+    #[test]
     fn tactic_names() {
+        assert_eq!(tactic_index("stealth"), Some(6), "Sigma's newer name for defense evasion");
         assert_eq!(tactic_index("Credential Access"), Some(7));
         assert_eq!(tactic_index("lateral-movement"), Some(9));
         assert_eq!(tactic_index("nonsense"), None);

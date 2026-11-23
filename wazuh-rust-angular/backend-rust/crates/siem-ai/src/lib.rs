@@ -41,6 +41,32 @@ pub struct Reply {
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_TOKENS: u32 = 1024;
+/// A provider's rate limit that clears within this long is waited for (once) instead of failing.
+const RATE_LIMIT_WAIT_MAX: f64 = 20.0;
+
+/// The wait a rate-limited provider asked for, from our error text (`[retry:N]`).
+fn retry_wait(err: &str) -> Option<f64> {
+    let i = err.find("[retry:")? + 7;
+    err[i..].split(']').next()?.parse().ok()
+}
+
+/// Seconds to wait before trying again: the `Retry-After` header, else the provider's
+/// "try again in 34.7s" / "1.5ms" text; at least one second.
+fn wait_from(header: Option<&str>, message: &str) -> f64 {
+    if let Some(h) = header.and_then(|h| h.trim().parse::<f64>().ok()) {
+        return h.max(1.0);
+    }
+    let lower = message.to_lowercase();
+    if let Some(i) = lower.find("try again in ") {
+        let rest = &lower[i + 13..];
+        let num: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        if let Ok(n) = num.parse::<f64>() {
+            let unit = &rest[num.len()..];
+            return if unit.starts_with("ms") { (n / 1000.0).max(1.0) } else { n.max(1.0) };
+        }
+    }
+    5.0
+}
 
 /// System prompt + one user prompt.
 pub async fn generate(providers: &[Provider], system: &str, prompt: &str) -> Result<Reply, String> {
@@ -77,7 +103,13 @@ async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], m
         let openai = p.provider_type != "anthropic";
         let brief = brief_first && openai;
         let mut r = call(p, system, messages, max_tokens, brief).await;
-        if brief && r.is_err() {
+        // rate limited for a short while: wait as the provider asked, then once more
+        if let Some(w) = r.as_ref().err().and_then(|e| retry_wait(e)).filter(|w| *w <= RATE_LIMIT_WAIT_MAX) {
+            tokio::time::sleep(Duration::from_secs_f64(w + 0.5)).await;
+            r = call(p, system, messages, max_tokens, brief).await;
+        }
+        // a rate-limited provider is not asked again at once (that only spends more of its limit)
+        if brief && r.as_ref().is_err_and(|e| retry_wait(e).is_none()) {
             r = call(p, system, messages, max_tokens, false).await;
         } else if !brief && openai && matches!(&r, Ok((t, stop)) if t.trim().is_empty() && stop == "length") {
             if let Ok(again) = call(p, system, messages, max_tokens, true).await {
@@ -91,6 +123,8 @@ async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], m
             Err(e) => last = format!("{}: {e}", p.name),
         }
     }
+    // the retry marker is for this crate only
+    let last = match last.find(" [retry:") { Some(i) => last[..i].to_string(), None => last };
     Err(format!("No AI provider answered ({last})"))
 }
 
@@ -121,7 +155,12 @@ async fn call(p: &Provider, system: &str, messages: &[Message], max_tokens: u32,
             .await
             .map_err(|e| e.to_string())?;
         let status = r.status();
+        let retry_after = r.headers().get("retry-after").and_then(|h| h.to_str().ok()).map(str::to_string);
         let v: Value = r.json().await.map_err(|e| e.to_string())?;
+        if status.as_u16() == 429 {
+            let w = wait_from(retry_after.as_deref(), v["error"]["message"].as_str().unwrap_or(""));
+            return Err(format!("rate limit reached, try again in {w:.0}s [retry:{w:.1}]"));
+        }
         if !status.is_success() {
             return Err(format!("HTTP {status}: {}", v["error"]["message"].as_str().unwrap_or("")));
         }
@@ -145,7 +184,12 @@ async fn call(p: &Provider, system: &str, messages: &[Message], max_tokens: u32,
         .await
         .map_err(|e| e.to_string())?;
     let status = r.status();
+    let retry_after = r.headers().get("retry-after").and_then(|h| h.to_str().ok()).map(str::to_string);
     let v: Value = r.json().await.map_err(|e| e.to_string())?;
+    if status.as_u16() == 429 {
+        let w = wait_from(retry_after.as_deref(), v["error"]["message"].as_str().unwrap_or(""));
+        return Err(format!("rate limit reached, try again in {w:.0}s [retry:{w:.1}]"));
+    }
     if !status.is_success() {
         return Err(format!("HTTP {status}: {}", v["error"]["message"].as_str().unwrap_or("")));
     }
@@ -207,6 +251,17 @@ impl HourlyBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rate_limit_waits_come_from_the_provider() {
+        assert_eq!(wait_from(Some("12"), ""), 12.0);
+        let groq = "Rate limit reached for model `x` in organization `org_1` on tokens per minute (TPM): Limit 8000, Used 7655, Requested 4972. Please try again in 34.7025s. Need more tokens? Upgrade";
+        assert!((wait_from(None, groq) - 34.7025).abs() < 1e-6);
+        assert_eq!(wait_from(None, "Please try again in 450ms."), 1.0);
+        assert_eq!(wait_from(None, "busy"), 5.0);
+        assert_eq!(retry_wait("Groq: rate limit reached, try again in 35s [retry:34.7]"), Some(34.7));
+        assert_eq!(retry_wait("Groq: HTTP 500: boom"), None);
+    }
 
     #[test]
     fn json_in_prose() {

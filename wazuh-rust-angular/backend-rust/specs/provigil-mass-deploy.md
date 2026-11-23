@@ -364,9 +364,12 @@ SCCM, Company Portal and Group Policy software install.
 - Built and checked here: unit tests of `crates/provigil-deploy` pass; `deploy/deploy-provigil.ps1` and
   `deploy/install-provigil.ps1` parse without errors; the kit (`siem-api/src/deploy_kit.rs`) carries the
   deployment token only, never the tenant key.
-- Not yet proven: the Windows push itself. Path A (Active Directory) and path B (workgroup, one shared
-  local admin) need the virtual-machine labs of section 10; the push reboots and logs in automatically,
-  so it is never tried on the development PC. Until the labs pass, mass deployment is not sold as ready.
+- Proven live on 2026-11-12: the path B push (workgroup, shared local admin) from the development PC
+  with `-NoReboot` to a second Windows PC, found by the network scan, installed by a one-time service.
+- Not yet proven: the full two-stage run (reboot, automatic logon as the deployment account, cleanup)
+  and path A (Active Directory, Group Policy). They need the virtual-machine labs of section 10, since
+  the run reboots and logs in automatically and is never tried on the development PC. Until they pass,
+  mass deployment is not sold as ready.
 
 ## 16. Next: fleets of standard users, passive discovery, computer lists
 

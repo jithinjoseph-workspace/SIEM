@@ -91,13 +91,13 @@
           <lucide-angular [img]="ShieldCheckIcon" class="w-4 h-4 text-emerald-400"></lucide-angular>
           Active Containment State
         </h2>
-        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-950 text-rose-400 border border-rose-800">
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-950 text-rose-400 border border-rose-800 whitespace-nowrap shrink-0">
           {{ totalActive() }} BLOCKS ACTIVE
         </span>
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs">
+        <table class="w-full text-left text-xs table-cards">
           <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase">
             <tr>
               <th class="p-3">TARGET IP</th>
@@ -136,6 +136,9 @@
                   Release
                 </button>
               </td>
+            </tr>
+            <tr *ngIf="records().length === 0">
+              <td colspan="5" class="p-8 text-center text-slate-500">No addresses are blocked right now. Blocks you send from the form appear here until they run out.</td>
             </tr>
           </tbody>
         </table>

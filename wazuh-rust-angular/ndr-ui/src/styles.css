@@ -62,4 +62,14 @@ lucide-angular svg {
   }
   .table-cards td.tc-full, .table-cards td[colspan] { flex-basis: 100%; }
   .table-cards td.tc-full > .flex { justify-content: flex-start !important; }
+  /* a number on its own gets its column's name: data-label="High" */
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    margin-right: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+  }
 }

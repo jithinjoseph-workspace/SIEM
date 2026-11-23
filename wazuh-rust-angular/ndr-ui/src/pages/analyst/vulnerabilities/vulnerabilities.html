@@ -11,7 +11,7 @@
       </p>
     </div>
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button 
         (click)="loadVulnerabilities()" 
         class="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-slate-700 transition"
@@ -23,7 +23,7 @@
       <button 
         (click)="triggerScanNow()" 
         [disabled]="isScanning()"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-amber-500/20 transition"
+        class="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-amber-500/20 transition"
       >
         <lucide-angular [img]="PlayIcon" class="w-4 h-4" [class.animate-spin]="isScanning()"></lucide-angular>
         {{ isScanning() ? 'Scanning ' + scanProgress().done + ' of ' + scanProgress().total + '…' : 'Re-scan now' }}
@@ -56,7 +56,7 @@
       <span class="text-xs text-yellow-400 block font-medium">Medium (CVSS 4.0-6.9)</span>
       <span class="text-2xl font-bold text-yellow-400 mt-1 block">{{ kpis().medium }}</span>
     </div>
-    <div class="bg-slate-900/80 p-4 rounded-xl border border-blue-900/40">
+    <div class="bg-slate-900/80 p-4 rounded-xl border border-blue-900/40 col-span-2 sm:col-span-1">
       <span class="text-xs text-blue-400 block font-medium">Low (CVSS 0.1-3.9)</span>
       <span class="text-2xl font-bold text-blue-400 mt-1 block">{{ kpis().low }}</span>
     </div>
@@ -85,21 +85,21 @@
   }
 
   <!-- Filters -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-    <div class="relative">
-      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-3 text-slate-500"></lucide-angular>
+  <div class="flex flex-wrap items-center gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+    <div class="relative flex-1 min-w-[240px]">
+      <lucide-angular [img]="SearchIcon" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"></lucide-angular>
       <input 
         [(ngModel)]="searchQuery" (ngModelChange)="firstPage()"
         [placeholder]="tab() === 'agents' && !selectedAgent() ? 'Search agent name, ID or OS...' : 'Search CVE ID, package or affected host...'"
-        class="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+        class="w-full pl-10 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       />
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 w-full sm:w-auto">
       <span class="text-xs text-slate-400 uppercase font-semibold">Severity:</span>
       <select 
         [(ngModel)]="severityFilter" (ngModelChange)="firstPage()"
-        class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+        class="flex-1 min-w-[150px] px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       >
         <option value="all">All Severities</option>
         <option value="critical">Critical Only</option>
@@ -109,33 +109,33 @@
       </select>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 w-full sm:w-auto">
       <label for="vuln-group" class="text-xs text-slate-400 uppercase font-semibold">Group:</label>
       <select id="vuln-group"
         [ngModel]="groupFilter()" (ngModelChange)="groupFilter.set($event); firstPage()"
-        class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+        class="flex-1 min-w-[150px] px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       >
         <option value="">All groups</option>
         @for (g of groups(); track g.name) { <option [value]="g.name">{{ g.name }} ({{ g.agent_ids.length }})</option> }
       </select>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 w-full sm:w-auto">
       <label for="vuln-segment" class="text-xs text-slate-400 uppercase font-semibold">Segment:</label>
       <select id="vuln-segment"
         [ngModel]="segmentFilter()" (ngModelChange)="segmentFilter.set($event); firstPage()"
-        class="flex-1 min-w-0 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+        class="flex-1 min-w-[150px] px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       >
         <option value="">All segments</option>
         @for (s of segments(); track s.cidr) { <option [value]="s.cidr">{{ segLabel(s.cidr) }} · {{ s.agents }}</option> }
       </select>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 w-full sm:w-auto">
       <label for="vuln-type" class="text-xs text-slate-400 uppercase font-semibold">Type:</label>
       <select id="vuln-type"
         [ngModel]="typeFilter()" (ngModelChange)="typeFilter.set($event); firstPage()"
-        class="flex-1 min-w-0 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
+        class="flex-1 min-w-[150px] px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-amber-500"
       >
         <option value="">All types</option>
         @for (t of types; track t.id) { <option [value]="t.id">{{ t.label }}</option> }
@@ -171,7 +171,7 @@
   <!-- Agents -->
   <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
     <div class="overflow-x-auto">
-      <table class="w-full text-left text-xs">
+      <table class="w-full text-left text-xs table-cards">
         <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
           <tr>
             <th class="p-3.5 w-8"><span class="sr-only">Select for export</span></th>
@@ -191,20 +191,20 @@
               <td class="p-3.5" (click)="$event.stopPropagation()">
                 <input type="checkbox" class="accent-amber-500" [attr.aria-label]="'Select ' + a.name + ' for export'" [checked]="ticked().has(a.id)" (change)="ticked.set(toggled(ticked(), a.id))" (keydown.enter)="$event.stopPropagation()" />
               </td>
-              <td class="p-3.5 font-semibold text-white">{{ a.name }}
-                @for (g of groupsOf().get(a.id) ?? []; track g) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-cyan-300 align-middle">{{ g }}</span> }
-                @if (offline(a.id); as off) { <span class="ml-1.5 px-1.5 py-0.5 rounded border border-slate-600 text-slate-400 text-[10px] font-semibold align-middle" [title]="off">Offline</span> }
-                @if (listFrom(a.id); as lf) { <span class="ml-1.5 px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 text-[10px] align-middle" [title]="'Results are from the software list this PC sent at ' + lf + '; it is checked again when the PC reconnects.'">list from {{ lf }}</span> }
-                @if (scanLabel(a.id); as sl) { <span class="ml-1.5 px-1.5 py-0.5 rounded border text-[10px] font-semibold align-middle" [ngClass]="sl.cls" role="status">{{ sl.text }}</span> }
-                @for (s of agentSegs(a.id); track s) { <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-amber-300 align-middle" [title]="segTitle(a.id)">{{ segLabel(s) }}{{ seg().agents[a.id]?.guessed ? ' ?' : '' }}</span> }
+              <td class="p-3.5 font-semibold text-white tc-full">{{ a.name }}
+                @for (g of groupsOf().get(a.id) ?? []; track g) { <span class="ml-1.5 px-1.5 py-0.5 whitespace-nowrap inline-block rounded bg-slate-800 text-[10px] font-mono text-cyan-300 align-middle">{{ g }}</span> }
+                @if (offline(a.id); as off) { <span class="ml-1.5 px-1.5 py-0.5 whitespace-nowrap inline-block rounded border border-slate-600 text-slate-400 text-[10px] font-semibold align-middle" [title]="off">Offline</span> }
+                @if (listFrom(a.id); as lf) { <span class="ml-1.5 px-1.5 py-0.5 whitespace-nowrap inline-block rounded border border-slate-700 text-slate-400 text-[10px] align-middle" [title]="'Results are from the software list this PC sent at ' + lf + '; it is checked again when the PC reconnects.'">list from {{ lf }}</span> }
+                @if (scanLabel(a.id); as sl) { <span class="ml-1.5 px-1.5 py-0.5 whitespace-nowrap inline-block rounded border text-[10px] font-semibold align-middle" [ngClass]="sl.cls" role="status">{{ sl.text }}</span> }
+                @for (s of agentSegs(a.id); track s) { <span class="ml-1.5 px-1.5 py-0.5 whitespace-nowrap inline-block rounded bg-slate-800 text-[10px] font-mono text-amber-300 align-middle" [title]="segTitle(a.id)">{{ segLabel(s) }}{{ seg().agents[a.id]?.guessed ? ' ?' : '' }}</span> }
               </td>
               <td class="p-3.5 font-mono text-slate-400">{{ a.id }}</td>
-              <td class="p-3.5 text-slate-400">{{ a.os || '-' }}</td>
-              <td class="p-3.5 text-right font-mono font-bold text-rose-400">{{ a.critical }}</td>
-              <td class="p-3.5 text-right font-mono font-bold text-amber-400">{{ a.high }}</td>
-              <td class="p-3.5 text-right font-mono text-yellow-400">{{ a.medium }}</td>
-              <td class="p-3.5 text-right font-mono text-blue-400">{{ a.low }}</td>
-              <td class="p-3.5 text-right font-mono font-semibold text-white">{{ a.total }}</td>
+              <td class="p-3.5 text-slate-400 tc-full">{{ a.os || '-' }}</td>
+              <td class="p-3.5 text-right font-mono font-bold text-rose-400" data-label="Critical">{{ a.critical }}</td>
+              <td class="p-3.5 text-right font-mono font-bold text-amber-400" data-label="High">{{ a.high }}</td>
+              <td class="p-3.5 text-right font-mono text-yellow-400" data-label="Medium">{{ a.medium }}</td>
+              <td class="p-3.5 text-right font-mono text-blue-400" data-label="Low">{{ a.low }}</td>
+              <td class="p-3.5 text-right font-mono font-semibold text-white" data-label="Total">{{ a.total }}</td>
             </tr>
           } @empty {
             <tr><td colspan="9" class="p-6 text-center text-slate-500">No agents match.</td></tr>
@@ -228,7 +228,7 @@
   <!-- Table -->
   <div class="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
     <div class="overflow-x-auto">
-      <table class="w-full text-left text-xs">
+      <table class="w-full text-left text-xs table-cards">
         <thead class="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
           <tr>
             <th class="p-3.5">CVE IDENTIFIER</th>
@@ -328,7 +328,7 @@
       <div class="flex justify-end gap-3">
         <button (click)="exportOpen.set(false)" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700">Cancel</button>
         <button (click)="download()" [disabled]="exporting() || !exportSeverities().size || !exportColumns().size"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 text-white font-semibold rounded-lg disabled:opacity-50">
+          class="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 bg-gradient-to-r from-amber-500 to-rose-600 text-white font-semibold rounded-lg disabled:opacity-50">
           <lucide-angular [img]="DownloadIcon" class="w-4 h-4"></lucide-angular>
           {{ exporting() ? 'Building...' : 'Download' }}
         </button>

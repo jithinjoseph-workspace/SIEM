@@ -30,6 +30,7 @@ pub mod agent_commands;
 pub mod agent_store;
 pub mod agent_tls;
 pub mod gateway_api;
+pub mod licence;
 #[cfg(test)]
 pub(crate) mod test_state;
 pub mod agent_keys_store;
@@ -1043,6 +1044,7 @@ async fn main() {
         .route("/api/kafka/status", get(platform::kafka))
         .route("/api/admin/telemetry", get(platform::telemetry))
         .route("/api/admin/usage", get(platform::usage))
+        .route("/api/license", get(licence::get).post(licence::install))
         .route(
             "/api/admin/client-errors",
             get(get_client_errors_handler).post(post_client_errors_handler),
@@ -6132,6 +6134,15 @@ pub(crate) async fn enroll_agent(
         }
         None => None,
     };
+    // the licence limits NEW PCs only: a reinstall of an enrolled PC is never refused
+    let reinstall = state.enrolled.read().unwrap().values().any(|a| a.tenant == tenant && a.name.eq_ignore_ascii_case(&name));
+    if !reinstall {
+        let enrolled = state.enrolled.read().unwrap().len();
+        if let Err(m) = licence::check_enroll(enrolled) {
+            warn!("enrollment of '{}' in tenant '{}' refused: {}", name, tenant, m);
+            return err(StatusCode::FORBIDDEN, &m);
+        }
+    }
     // the token's group when the PC asks for none
     let asked: Vec<String> = payload
         .groups

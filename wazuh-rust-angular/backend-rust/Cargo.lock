@@ -3100,6 +3100,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "provigil-license"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "jsonwebtoken",
+ "ring",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "provigil-loadtest"
 version = "0.1.0"
 dependencies = [
@@ -4207,6 +4218,7 @@ dependencies = [
  "provigil-crypto",
  "provigil-daemon",
  "provigil-ipc",
+ "provigil-license",
  "provigil-posture",
  "provigil-regex",
  "provigil-sqlite",

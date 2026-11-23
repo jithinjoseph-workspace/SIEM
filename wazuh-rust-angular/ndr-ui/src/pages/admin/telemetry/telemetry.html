@@ -382,6 +382,33 @@
       </div>
     </div>
 
+    <!-- Panel: the installation's licence -->
+    <div class="telemetry-card">
+      <div class="card-header">
+        <div class="header-title-box">
+          <div class="icon-chip blue"><lucide-icon [name]="ShieldCheckIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h3>Licence</h3>
+            <span class="card-subtitle">Limits new PC enrollments only; enrolled PCs keep working and no event is dropped</span>
+          </div>
+        </div>
+        <span class="pill-badge" *ngIf="licence" [class.emerald]="licence.state === 'valid' || licence.state?.startsWith('unlicensed')" [class.amber]="licence.state !== 'valid' && !licence.state?.startsWith('unlicensed')">{{ licence.state | uppercase }}</span>
+      </div>
+      <div class="diagnostic-rows" *ngIf="licence">
+        <div class="diag-row" *ngIf="licence.customer"><span class="diag-label">Customer</span><span class="diag-val">{{ licence.customer }}</span></div>
+        <div class="diag-row" *ngIf="licence.expires"><span class="diag-label">Expires</span><span class="diag-val">{{ licence.expires }} ({{ licence.days_left }} days left)</span></div>
+        <div class="diag-row"><span class="diag-label">PCs enrolled</span><span class="diag-val">{{ licence.pcs_enrolled }}<ng-container *ngIf="licence.max_pcs"> of {{ licence.max_pcs }}</ng-container></span></div>
+        <div class="diag-row"><span class="diag-label">Event rate (24 h average)</span><span class="diag-val">{{ licence.avg_eps_24h }} EPS<ng-container *ngIf="licence.max_eps"> of {{ licence.max_eps }}</ng-container></span></div>
+        <div class="diag-row" *ngIf="licence.problem"><span class="diag-label">Problem</span><span class="diag-val text-amber-400">{{ licence.problem }}</span></div>
+        <div class="diag-row" *ngFor="let w of licence.warnings || []"><span class="diag-label">Warning</span><span class="diag-val text-amber-400">{{ w }}</span></div>
+        <div class="diag-row licence-install" *ngIf="licence.key_present">
+          <textarea #lic rows="3" placeholder="Paste a new licence to install it" aria-label="New licence"></textarea>
+          <button type="button" class="licence-btn" (click)="installLicence(lic.value)">Install licence</button>
+          <span class="diag-val" [class.text-amber-400]="licenceMsgBad">{{ licenceMsg }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Panel: usage per tenant (billing and sizing) -->
     <div class="telemetry-card">
       <div class="card-header">

@@ -46,6 +46,9 @@ export class Telemetry implements OnInit, OnDestroy {
   clientErrors: any[] = [];
   usage: any = null;
   usageError = '';
+  licence: any = null;
+  licenceMsg = '';
+  licenceMsgBad = false;
   loadingClientErrors = false;
   isLoading = true;
   isRefreshing = false;
@@ -60,6 +63,7 @@ export class Telemetry implements OnInit, OnDestroy {
     this.loadAllTelemetry();
     this.loadClientErrors();
     this.loadUsage();
+    this.loadLicence();
     this.pollInterval = setInterval(() => this.pollLiveMetrics(), 10000);
   }
 
@@ -83,6 +87,21 @@ export class Telemetry implements OnInit, OnDestroy {
     this.api.getUsage().subscribe({
       next: (res: any) => { this.usage = res?.tenants ? res : null; this.usageError = this.usage ? '' : 'No usage data'; this.cdr.detectChanges(); },
       error: (e: any) => { this.usageError = 'Usage is not available'; this.cdr.detectChanges(); reportRxjsError(e); }
+    });
+  }
+
+  loadLicence() {
+    this.api.getInstallationLicence().subscribe({
+      next: (res: any) => { this.licence = res; this.cdr.detectChanges(); },
+      error: reportRxjsError
+    });
+  }
+
+  installLicence(token: string) {
+    if (!token?.trim()) return;
+    this.api.installLicence(token.trim()).subscribe({
+      next: (res: any) => { this.licence = res; this.licenceMsg = 'Licence installed'; this.licenceMsgBad = false; this.cdr.detectChanges(); },
+      error: (e: any) => { this.licenceMsg = e?.error?.message || 'The licence was not accepted'; this.licenceMsgBad = true; this.cdr.detectChanges(); }
     });
   }
 

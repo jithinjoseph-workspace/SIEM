@@ -647,6 +647,15 @@ export class Api {
     return this.http.get(`${this.baseUrl}/admin/telemetry`);
   }
 
+  /** This installation's licence and the usage it is measured against (platform admins). */
+  getInstallationLicence(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/license`);
+  }
+
+  installLicence(token: string): Observable<any> {
+    return this.http.post(`${this.baseUrl}/license`, { token });
+  }
+
   /** Per-tenant usage over the last 24 h (platform admins). */
   getUsage(): Observable<any> {
     return this.http.get(`${this.baseUrl}/admin/usage`);

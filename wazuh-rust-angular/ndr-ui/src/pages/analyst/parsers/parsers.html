@@ -57,8 +57,8 @@
           <lucide-angular [img]="ZapIcon" class="w-4 h-4"></lucide-angular>
         </span>
       </div>
-      <div class="text-2xl font-bold font-mono text-purple-400 mt-2">&lt; 4.8 µs</div>
-      <div class="text-[11px] text-slate-500 mt-1">Native Rust regex (0ms AI delay)</div>
+      <div class="text-2xl font-bold font-mono text-purple-400 mt-2">{{ parserStats() ? ((parserStats()!.average_latency_us | number:'1.0-1') + ' µs') : '—' }}</div>
+      <div class="text-[11px] text-slate-500 mt-1">Measured per parsed line (no AI on the hot path)</div>
     </div>
 
     <div class="kpi-card p-4 rounded-xl border border-slate-800 bg-slate-900/70 hover:border-amber-500/40 transition">
@@ -281,7 +281,7 @@
             <span class="text-[11px] text-slate-400">Test samples, generate regex, and verify extraction</span>
           </div>
           <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-purple-950 text-purple-300 border border-purple-800">
-            Groq 120B / Fast Rust
+            AI + built-in synthesizer
           </span>
         </div>
 

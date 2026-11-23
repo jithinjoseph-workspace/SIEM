@@ -76,10 +76,11 @@
     <!-- Overlay Targeting Reticle & Scanlines -->
     <div class="cyber-scanlines"></div>
     <div class="hud-crosshair center-crosshair"></div>
+    <!-- real figures only: computers online and the alerts drawn (fixed coordinates used to sit here) -->
     <div class="hud-compass top-left mono text-xs">
-      <div class="hud-line">AZIMUTH: <span class="text-cyan">042.8°</span></div>
-      <div class="hud-line">ALTITUDE: <span class="text-cyan">6,400 KM</span></div>
-      <div class="hud-line">GRID: <span class="text-emerald">WGS-84 ACTIVE</span></div>
+      <div class="hud-line">COMPUTERS ONLINE: <span class="text-emerald">{{ agentsOnline() }}</span></div>
+      <div class="hud-line">ALERTS DRAWN: <span class="text-cyan">{{ alertsShown() | number }}</span></div>
+      <div class="hud-line">THREAT ARCS: <span class="text-rose">{{ activeThreatCount() }}</span></div>
     </div>
 
     <!-- Floating 3D Selected Beacon Holographic Dossier -->

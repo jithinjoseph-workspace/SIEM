@@ -281,7 +281,7 @@
       <form (ngSubmit)="send()" class="flex items-end gap-2 max-w-4xl">
         <label for="copilot-input" class="sr-only">Ask the copilot</label>
         <textarea id="copilot-input" name="message" rows="1" [(ngModel)]="input" (keydown)="onKey($event)" maxlength="2000"
-          placeholder="e.g. open a case for the latest critical alert and tell me why it happened"
+          placeholder="Ask about an alert, a host, a user or a case..."
           class="flex-1 min-w-0 resize-none max-h-40 bg-slate-900 border border-slate-700 focus:border-cyan-600 focus:outline-none rounded-xl px-3 py-2.5 text-sm text-white"></textarea>
         <button type="submit" [disabled]="!input.trim() || pending()" aria-label="Send"
           class="h-[42px] px-4 rounded-xl bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white inline-flex items-center gap-2 text-sm font-semibold">

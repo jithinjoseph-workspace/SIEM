@@ -1,16 +1,16 @@
 <div class="bg-black min-h-screen text-white pb-12">
-<div class="p-8 w-full mx-auto">
+<div class="p-4 sm:p-8 w-full mx-auto">
   <!-- ══ Page Header ═══════════════════════════════════════════════════════ -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <div>
       <div class="flex items-center gap-2 mb-1">
         <lucide-icon [name]="ZapIcon" class="w-5 h-5 text-primary"></lucide-icon>
         <span class="text-sm font-bold text-primary uppercase tracking-[0.15em]">Security Orchestration</span>
       </div>
-      <h1 class="text-3xl font-bold text-white tracking-tight mt-1">SOAR — Native Automation</h1>
-      <p class="text-sm text-on-surface-variant mt-1.5">Automated threat response engine — native to NDR</p>
+      <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">SOAR — Native Automation</h1>
+      <p class="text-sm text-on-surface-variant mt-1.5">Cases, playbooks and automated response for your alerts</p>
     </div>
-    <div class="flex items-center gap-2 text-sm text-on-surface-variant font-mono bg-[#121212] border border-white/10 px-4 py-2 rounded-lg">
+    <div class="flex items-center gap-2 text-sm text-on-surface-variant font-mono bg-[#121212] border border-white/10 px-4 py-2 rounded-lg whitespace-nowrap">
       <span class="status-dot-live w-2 h-2 rounded-full bg-primary flex-shrink-0"></span>
       ENGINE RUNNING
     </div>
@@ -30,9 +30,9 @@
 
   <!-- ══ Case rules and risk: how alerts become cases ═══════════════════════ -->
   <div *ngIf="caseSettings() as cs" class="mb-6 bg-[#121212] border border-white/10 rounded-lg">
-    <button (click)="showCaseRules.set(!showCaseRules())" class="w-full text-left px-4 py-3 flex items-center gap-2">
-      <span class="text-sm font-semibold">Case rules and risk</span>
-      <span class="text-[11px] text-on-surface-variant">one case per computer and rule; a computer whose alerts add up to real risk also gets a risk incident linking those cases</span>
+    <button (click)="showCaseRules.set(!showCaseRules())" class="w-full text-left px-4 py-3 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
+      <span class="text-sm font-semibold whitespace-nowrap">Case rules and risk</span>
+      <span class="text-[11px] text-on-surface-variant order-last sm:order-none basis-full sm:basis-auto">one case per computer and rule; a computer whose alerts add up to real risk also gets a risk incident linking those cases</span>
       <span class="ml-auto text-xs text-primary">{{ showCaseRules() ? 'Hide' : 'Show' }}</span>
     </button>
     <div *ngIf="showCaseRules()" class="px-4 pb-4 space-y-4 text-sm">
@@ -101,7 +101,7 @@
   </div>
 
   <!-- ══ Tab Bar ════════════════════════════════════════════════════════════ -->
-  <div class="flex items-center gap-1 mb-10 bg-[#121212] p-1.5 rounded-full border border-white/5 w-fit shadow-lg">
+  <div class="soar-tabbar flex items-center gap-1 mb-8 sm:mb-10 bg-[#121212] p-1.5 rounded-full border border-white/5 w-fit max-w-full overflow-x-auto shadow-lg">
 
     <button (click)="switchTab('cases')"
       [class]="'relative flex items-center gap-2 px-6 py-3 text-base font-bold transition-all rounded-full ' +
@@ -211,14 +211,14 @@
         </div>
 
         <!-- Queue order or newest first -->
-        <div *ngIf="cases().length > 0 && !selectedCase()" class="flex items-center gap-2 mb-2 text-xs">
-          <button (click)="queueOrder.set(true)" [class]="'px-2.5 py-1 rounded-md border ' + (queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Queue order</button>
-          <button (click)="queueOrder.set(false)" [class]="'px-2.5 py-1 rounded-md border ' + (!queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Newest first</button>
+        <div *ngIf="cases().length > 0 && !selectedCase()" class="flex flex-wrap items-center gap-2 mb-2 text-xs">
+          <button (click)="queueOrder.set(true)" [class]="'whitespace-nowrap px-2.5 py-1 rounded-md border ' + (queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Queue order</button>
+          <button (click)="queueOrder.set(false)" [class]="'whitespace-nowrap px-2.5 py-1 rounded-md border ' + (!queueOrder() ? 'border-primary text-primary' : 'border-white/10 text-on-surface-variant')">Newest first</button>
           <span class="text-on-surface-variant/70">Queue: open first, then priority, triage verdict and SLA time left.</span>
         </div>
         <!-- Full table (no detail open) -->
         <div *ngIf="cases().length > 0 && !selectedCase()" class="case-table-wrap">
-          <table class="case-table w-full">
+          <table class="case-table w-full table-cards">
             <thead>
               <tr>
                 <th class="w-36">Ticket ID</th>
@@ -236,7 +236,7 @@
               <tr *ngFor="let c of orderedCases()" (click)="openCase(c)" class="case-row">
                 <td><span class="ticket-id">{{ c.case_number || '—' }}</span></td>
                 <td><span [class]="'prio-badge ' + priorityClass(c.priority)">{{ c.priority || 'P2' }}</span></td>
-                <td>
+                <td class="tc-full">
                   <div class="case-title">{{ c.title }}</div>
                   <div *ngIf="c.src_ip || c.dst_ip" class="case-flow">{{ c.src_ip }}{{ c.src_ip && c.dst_ip ? ' → ' : '' }}{{ c.dst_ip }}</div>
                 </td>

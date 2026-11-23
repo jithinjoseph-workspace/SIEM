@@ -1394,3 +1394,13 @@
   font-family: 'JetBrains Mono','Fira Code',monospace;
 }
 .pa-status-chip.err { background: rgba(239,68,68,0.12);   color: #fca5a5; }
+
+/* phones: the tab bar scrolls instead of running off the screen, the four stats sit two by two */
+.soar-tabbar > button { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 640px) {
+  .soar-tabbar > button { padding: 10px 16px; font-size: 14px; }
+  .case-stats-bar { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-card { padding: 18px 16px; }
+  .stat-card .stat-value { font-size: 32px; }
+  .case-table .case-row td:first-child { order: 0; }
+}

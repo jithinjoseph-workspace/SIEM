@@ -80,12 +80,12 @@
       <tbody>
         <tr *ngIf="shown().length === 0"><td colspan="7" class="px-4 py-8 text-center text-slate-500">No suppressions.</td></tr>
         <tr *ngFor="let s of shown()" class="border-b border-slate-800/60 align-top">
-          <td class="px-4 py-3"><span class="font-mono text-cyan-300">{{ s.signature_id }}</span><div class="text-slate-300 max-w-[260px]">{{ s.signature_name }}</div></td>
-          <td class="px-4 py-3 text-slate-300">{{ scope(s) }}</td>
-          <td class="px-4 py-3 text-slate-300 max-w-[360px]">{{ s.ai_reason }}</td>
-          <td class="px-4 py-3 whitespace-nowrap">{{ s.source === 'triage' ? 'Triage' : 'Manual' }}<div class="text-[11px] text-slate-500">{{ s.created_by }}</div></td>
+          <td class="px-4 py-3 min-w-[160px] tc-full"><span class="font-mono text-cyan-300">{{ s.signature_id }}</span><div class="text-slate-300 max-w-[260px]">{{ s.signature_name }}</div></td>
+          <td class="px-4 py-3 text-slate-300 [overflow-wrap:anywhere] max-w-[280px]">{{ scope(s) }}</td>
+          <td class="px-4 py-3 text-slate-300 min-w-[200px] max-w-[320px] tc-full">{{ s.ai_reason }}</td>
+          <td class="px-4 py-3 whitespace-nowrap">{{ s.source === 'triage' ? 'Triage' : 'Manual' }}<div class="text-[11px] text-slate-500 whitespace-normal max-w-[160px]">{{ s.created_by }}</div></td>
           <td class="px-4 py-3 whitespace-nowrap text-slate-400">{{ s.permanent ? 'Never' : when(s.expires_at) }}</td>
-          <td class="px-4 py-3"><span class="text-xs font-semibold" [class.text-emerald-300]="s.active" [class.text-slate-500]="!s.active">{{ s.active ? 'Active' : 'Stopped / expired' }}</span></td>
+          <td class="px-4 py-3 whitespace-nowrap"><span class="text-xs font-semibold" [class.text-emerald-300]="s.active" [class.text-slate-500]="!s.active">{{ s.active ? 'Active' : 'Stopped / expired' }}</span></td>
           <td class="px-4 py-3">
             <div class="flex justify-end gap-2">
               <button *ngIf="s.active" (click)="deactivate(s)" [attr.aria-label]="'Stop suppression of rule ' + s.signature_id"

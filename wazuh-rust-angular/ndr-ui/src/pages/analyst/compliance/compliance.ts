@@ -5,7 +5,7 @@ import {
   LucideAngularModule,
   ShieldCheck, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Info, Layers,
   FileText, Download, Filter, Maximize2, Lock, Key, Database, UserCheck,
-  ChevronRight, Check, ExternalLink, Clock, ShieldAlert, FileSpreadsheet,
+  ChevronRight, ChevronDown, Check, ExternalLink, Clock, ShieldAlert, FileSpreadsheet,
   AlertOctagon, SlidersHorizontal, Search
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
@@ -69,6 +69,7 @@ export class Compliance implements OnInit {
   DatabaseIcon = Database;
   UserCheckIcon = UserCheck;
   ChevronRightIcon = ChevronRight;
+  ChevronDownIcon = ChevronDown;
   CheckMarkIcon = Check;
   ExternalLinkIcon = ExternalLink;
   ClockIcon = Clock;

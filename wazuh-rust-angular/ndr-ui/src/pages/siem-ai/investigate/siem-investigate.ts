@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { LucideAngularModule, Search, ScanSearch } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 
+import { richText } from '../../../utils/rich-text';
 type EntryType = 'alert' | 'case' | 'playbook' | 'decision' | 'swarm';
 
 /**
@@ -20,6 +21,9 @@ type EntryType = 'alert' | 'case' | 'playbook' | 'decision' | 'swarm';
   templateUrl: './siem-investigate.html',
 })
 export class SiemInvestigate implements OnInit {
+  /** An AI answer's markdown as readable, coloured HTML (escaped first). */
+  readonly rich = richText;
+
   private siem = inject(SiemService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);

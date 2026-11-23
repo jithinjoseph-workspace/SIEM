@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { SiemService } from '../../../services/siem/siem.service';
 import { Api } from '../../../services/api/api';
 
+import { richText } from '../../../utils/rich-text';
 type Tab = 'overview' | 'evidence' | 'journey' | 'sequence' | 'raw' | 'ai' | 'related' | 'notes';
 
 /** AI verdict label -> the disposition a human accepts with one click (needs_review has none). */
@@ -24,6 +25,9 @@ const ACCEPT: Record<string, string> = {
   templateUrl: './case-page.html',
 })
 export class CasePage implements OnInit {
+  /** An AI answer's markdown as readable, coloured HTML (escaped first). */
+  readonly rich = richText;
+
   private siem = inject(SiemService);
   private api = inject(Api);
   private route = inject(ActivatedRoute);

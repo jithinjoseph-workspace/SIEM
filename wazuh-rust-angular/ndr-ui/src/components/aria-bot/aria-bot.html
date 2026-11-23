@@ -87,7 +87,8 @@
         <div class="msg-body">
           <div class="bubble" [ngClass]="msg.role === 'user' ? 'user-bub' : 'bot-bub'">
             <!-- Text content -->
-            <div *ngIf="msg.content" style="white-space: pre-wrap;">{{ msg.content }}</div>
+            <div *ngIf="msg.content && msg.role === 'user'" style="white-space: pre-wrap;">{{ msg.content }}</div>
+            <div *ngIf="msg.content && msg.role !== 'user'" class="rich" [innerHTML]="rich(msg.content)"></div>
 
             <!-- Custom alert preview -->
             <div *ngIf="msg.alertCard" class="alert-card" (click)="handleAlertCardClick(msg.alertCard)">

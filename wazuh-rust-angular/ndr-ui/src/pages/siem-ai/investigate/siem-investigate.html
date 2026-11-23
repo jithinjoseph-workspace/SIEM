@@ -58,7 +58,7 @@
       </div>
       <div *ngIf="explanation() as x" class="p-3 rounded-lg border border-cyan-900 bg-cyan-950/20 text-sm">
         <div class="text-xs text-cyan-300 mb-1">AI explanation ({{ x.model }}): check it against the evidence below</div>
-        <div class="whitespace-pre-wrap text-slate-200">{{ x.text }}</div>
+        <div class="rich" [innerHTML]="rich(x.text)"></div>
       </div>
     </div>
 

@@ -11,6 +11,7 @@ import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { DotLottie } from '@lottiefiles/dotlottie-web';
 
+import { richText } from '../../utils/rich-text';
 interface ChatMessage {
   role: 'user' | 'bot';
   content: string;
@@ -65,6 +66,9 @@ const EMOTION_MAP: Record<string, keyof typeof SEGMENTS> = {
   styleUrl: './aria-bot.css'
 })
 export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
+  /** An AI answer's markdown as readable, coloured HTML (escaped first). */
+  readonly rich = richText;
+
 
   @ViewChild('lottieCanvas') lottieCanvasRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('msgContainer') msgContainer!: ElementRef;
@@ -370,8 +374,8 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
       next: (data: any) => {
         this.isTyping = false;
         this.copilotConversation = data?.conversation_id || this.copilotConversation;
-        const answer = String(data?.turn?.answer || 'I had trouble answering that.')
-          .replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+        // kept as markdown: the bubble formats it (rich text), nothing is stripped
+        const answer = String(data?.turn?.answer || 'I had trouble answering that.');
         const made = data?.turn?.artifacts || {};
         const actions: ChatAction[] = [{ label: made.report || made.case ? 'Open the case and report in Copilot' : 'Open in Copilot', icon: '', action: 'copilot', data: this.copilotConversation }];
         this.addBotMessage(answer, 'idle', actions);

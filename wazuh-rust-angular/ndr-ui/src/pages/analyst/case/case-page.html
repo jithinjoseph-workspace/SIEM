@@ -137,7 +137,7 @@
           <div *ngIf="!explanation()" class="text-sm text-slate-400 mt-1">The AI reads the case, its alerts, entities and verdict and explains them: what happened, how serious, why, and what to do next.</div>
           <ng-container *ngIf="explanation() as x">
             <div class="text-xs text-slate-500 mt-1">{{ x.model }}: check it against the evidence</div>
-            <div class="whitespace-pre-wrap text-sm text-slate-200 mt-2">{{ x.text }}</div>
+            <div class="rich mt-2" [innerHTML]="rich(x.text)"></div>
           </ng-container>
         </section>
 
@@ -304,7 +304,7 @@
     <div *ngIf="tab() === 'ai'" class="space-y-3 max-w-4xl">
       <div *ngFor="let x of answers()" class="space-y-1">
         <div class="text-sm text-cyan-300">{{ x.q }}</div>
-        <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60 text-sm whitespace-pre-wrap">{{ x.a }}</div>
+        <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60 rich" [innerHTML]="rich(x.a)"></div>
       </div>
       <form (ngSubmit)="ask()" class="flex gap-2">
         <input [(ngModel)]="question" name="q" placeholder="Ask about this case, e.g. what else did this host do?" aria-label="Question"

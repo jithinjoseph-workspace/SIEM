@@ -74,3 +74,65 @@ lucide-angular svg {
     color: #64748b;
   }
 }
+
+/* AI answers rendered by utils/rich-text.ts (Copilot, ARIA, case and investigation explanations) */
+.rich { color: #cbd5e1; line-height: 1.6; font-size: 0.875rem; overflow-wrap: anywhere; }
+.rich p { margin: 0 0 0.55rem; }
+.rich strong { color: #f8fafc; font-weight: 650; }
+.rich em { color: #e2e8f0; }
+.rich code { font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 0.82em; padding: 1px 6px; border-radius: 5px; background: rgba(51, 65, 85, 0.55); color: #a5f3fc; }
+.rich .rt-h { display: flex; align-items: center; gap: 8px; margin: 0.9rem 0 0.45rem; font-weight: 700; color: #f1f5f9; }
+.rich .rt-h::before { content: ''; width: 4px; height: 1.05em; border-radius: 3px; background: linear-gradient(180deg, #22d3ee, #8b5cf6); flex-shrink: 0; }
+.rich h3.rt-h { font-size: 1.02rem; }
+.rich h4.rt-h, .rich h5.rt-h, .rich h6.rt-h { font-size: 0.92rem; color: #e2e8f0; }
+.rich h3.rt-h:first-child, .rich h4.rt-h:first-child { margin-top: 0.1rem; }
+.rich ul, .rich ol { margin: 0 0 0.6rem; padding-left: 1.25rem; }
+.rich ul { list-style: none; padding-left: 0.2rem; }
+.rich ul li { position: relative; padding-left: 1.05rem; margin: 0.22rem 0; }
+.rich ul li::before { content: ''; position: absolute; left: 0.15rem; top: 0.62em; width: 6px; height: 6px; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 6px rgba(34, 211, 238, 0.55); }
+.rich ol { list-style: decimal; }
+.rich ol li { margin: 0.22rem 0; padding-left: 0.2rem; }
+.rich ol li::marker { color: #a78bfa; font-weight: 700; }
+.rich .rt-hr { border: 0; height: 1px; margin: 0.8rem 0; background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.35), transparent); }
+.rich .rt-table { overflow-x: auto; margin: 0.2rem 0 0.75rem; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 10px; }
+.rich table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.rich th { text-align: left; padding: 7px 10px; background: rgba(30, 41, 59, 0.85); color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; white-space: nowrap; }
+.rich td { padding: 7px 10px; border-top: 1px solid rgba(148, 163, 184, 0.1); color: #e2e8f0; }
+.rich tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.5); }
+.rich .rt-pill { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.6; border: 1px solid; }
+.rich .rt-critical { color: #fecdd3; background: rgba(225, 29, 72, 0.22); border-color: rgba(244, 63, 94, 0.5); }
+.rich .rt-high { color: #fed7aa; background: rgba(234, 88, 12, 0.2); border-color: rgba(249, 115, 22, 0.5); }
+.rich .rt-medium { color: #fef08a; background: rgba(202, 138, 4, 0.18); border-color: rgba(234, 179, 8, 0.45); }
+.rich .rt-low { color: #bae6fd; background: rgba(2, 132, 199, 0.18); border-color: rgba(14, 165, 233, 0.45); }
+.rich .rt-prio { color: #fda4af; background: rgba(159, 18, 57, 0.25); border-color: rgba(244, 63, 94, 0.4); }
+.rich .rt-chip { display: inline-block; padding: 0 6px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 0.78em; line-height: 1.6; border: 1px solid; }
+.rich .rt-case { color: #67e8f9; background: rgba(8, 145, 178, 0.16); border-color: rgba(34, 211, 238, 0.35); }
+.rich .rt-mitre { color: #d8b4fe; background: rgba(126, 34, 206, 0.18); border-color: rgba(168, 85, 247, 0.4); }
+.rich .rt-ip { color: #fcd34d; background: rgba(180, 83, 9, 0.16); border-color: rgba(245, 158, 11, 0.35); }
+.rich .rt-num { color: #5eead4; font-weight: 700; }
+.rich .rt-verdict { padding: 0 6px; border-radius: 6px; font-weight: 650; }
+.rich .rt-bad { color: #fecaca; background: rgba(220, 38, 38, 0.2); }
+.rich .rt-warn { color: #fde68a; background: rgba(217, 119, 6, 0.18); }
+.rich .rt-ok { color: #bbf7d0; background: rgba(22, 163, 74, 0.18); }
+
+/* the ARIA bubble: a little smaller, and readable on its light theme too */
+.bot-bub .rich { font-size: 0.82rem; color: inherit; }
+.theme-light .bot-bub .rich strong, .theme-light .bot-bub .rich .rt-h { color: #1e1b4b; }
+.theme-light .bot-bub .rich em { color: #312e81; }
+.theme-light .bot-bub .rich code { background: #ede9fe; color: #5b21b6; }
+.theme-light .bot-bub .rich th { background: #ede9fe; color: #4c1d95; }
+.theme-light .bot-bub .rich td { color: #1e1b4b; border-top-color: rgba(76, 29, 149, 0.12); }
+.theme-light .bot-bub .rich tbody tr:nth-child(even) td { background: rgba(237, 233, 254, 0.5); }
+.theme-light .bot-bub .rich .rt-table { border-color: rgba(76, 29, 149, 0.18); }
+.theme-light .bot-bub .rich .rt-critical { color: #9f1239; background: #ffe4e6; border-color: #fda4af; }
+.theme-light .bot-bub .rich .rt-high { color: #9a3412; background: #ffedd5; border-color: #fdba74; }
+.theme-light .bot-bub .rich .rt-medium { color: #854d0e; background: #fef9c3; border-color: #fde047; }
+.theme-light .bot-bub .rich .rt-low { color: #075985; background: #e0f2fe; border-color: #7dd3fc; }
+.theme-light .bot-bub .rich .rt-prio { color: #9f1239; background: #ffe4e6; border-color: #fda4af; }
+.theme-light .bot-bub .rich .rt-case { color: #0e7490; background: #cffafe; border-color: #67e8f9; }
+.theme-light .bot-bub .rich .rt-mitre { color: #6b21a8; background: #f3e8ff; border-color: #d8b4fe; }
+.theme-light .bot-bub .rich .rt-ip { color: #92400e; background: #fef3c7; border-color: #fcd34d; }
+.theme-light .bot-bub .rich .rt-num { color: #0f766e; }
+.theme-light .bot-bub .rich .rt-bad { color: #991b1b; background: #fee2e2; }
+.theme-light .bot-bub .rich .rt-warn { color: #92400e; background: #fef3c7; }
+.theme-light .bot-bub .rich .rt-ok { color: #166534; background: #dcfce7; }

@@ -8,6 +8,7 @@ import {
 } from 'lucide-angular';
 import { SiemService } from '../../../services/siem/siem.service';
 
+import { richText } from '../../../utils/rich-text';
 interface Turn {
   at: string;
   user: string;
@@ -140,34 +141,9 @@ export class SiemCopilot implements OnInit {
     setTimeout(() => this.thread?.nativeElement.scrollTo({ top: this.thread.nativeElement.scrollHeight, behavior: 'smooth' }), 50);
   }
 
-  /** The answer's markdown (headings, tables, bold, italics, inline code, lists, line breaks) after escaping. */
+  /** The answer's markdown as readable, coloured HTML (shared with ARIA and the case pages). */
   render(md: string): string {
-    const esc = (md || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const inline = (s: string) => s
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
-    let html = '', list = false, table = 0; // table: rows written so far
-    for (const raw of esc.split('\n')) {
-      const item = /^\s*[-*•]\s+(.*)$/.exec(raw);
-      const row = /^\s*\|(.*)\|\s*$/.exec(raw);
-      if (list && !item) { html += '</ul>'; list = false; }
-      if (table && !row) { html += '</tbody></table></div>'; table = 0; }
-      if (row) {
-        if (/^[\s|:-]+$/.test(row[1])) continue; // the |---| line under the header
-        const cells = row[1].split('|').map(c => inline(c.trim()));
-        html += table ? `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
-          : `<div class="md-table"><table><thead><tr>${cells.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>`;
-        table++;
-        continue;
-      }
-      const head = /^(#{1,4})\s+(.*)$/.exec(raw);
-      if (head) { html += `<h${head[1].length + 2}>${inline(head[2])}</h${head[1].length + 2}>`; continue; }
-      if (item && !list) { html += '<ul>'; list = true; }
-      const text = inline(item ? item[1] : raw);
-      html += item ? `<li>${text}</li>` : (text.trim() ? `<p>${text}</p>` : '');
-    }
-    return html + (list ? '</ul>' : '') + (table ? '</tbody></table></div>' : '');
+    return richText(md);
   }
 
   sevClass(sev: string): string {

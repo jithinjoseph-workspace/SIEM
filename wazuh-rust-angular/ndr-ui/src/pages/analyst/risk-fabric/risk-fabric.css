@@ -390,10 +390,12 @@
   padding: 0.4rem;
   border-radius: 12px;
   margin-bottom: 2rem;
-  overflow-x: auto;
+  /* every tab visible: they wrap onto a second row instead of scrolling out of sight */
+  flex-wrap: wrap;
 }
 
 .tab-btn {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;

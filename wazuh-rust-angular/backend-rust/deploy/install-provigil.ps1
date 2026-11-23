@@ -21,7 +21,9 @@ param(
     [string]$Kit = $PSScriptRoot,
     [string]$ResultFile = (Join-Path $PSScriptRoot 'result.json'),
     [switch]$Uninstall,
-    [switch]$Force
+    [switch]$Force,
+    # the agent's ProVigil group for this PC (a computer list row); else the kit's group
+    [ValidatePattern('^[A-Za-z0-9._-]{0,64}$')][string]$Group = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -213,7 +215,8 @@ try {
     Copy-Item -Force -LiteralPath (Join-Path $Kit 'ca.pem') -Destination "$Dir\ca.pem"
     $cfg = [ordered]@{ manager_url = "$($deploy.manager_url)"; grpc_url = "$($deploy.grpc_url)"; ca_file = "$Dir\ca.pem"; agent_name = $n; tenant_key = "$($deploy.token)"; force_enroll = $true }
     # empty: the deployment token's own group
-    if ("$($deploy.groups)") { $cfg['groups'] = "$($deploy.groups)" }
+    $g = if ($Group) { $Group } else { "$($deploy.groups)" }
+    if ($g) { $cfg['groups'] = $g }
     [IO.File]::WriteAllText("$Dir\provigil-agent.json", ($cfg | ConvertTo-Json))
 
     # Administrators and SYSTEM full; users read and run, but not the settings with the token

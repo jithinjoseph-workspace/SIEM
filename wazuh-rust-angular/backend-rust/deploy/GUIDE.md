@@ -57,16 +57,34 @@ a Linux service need administrator rights on each PC.
 
 | Command | What it does |
 |---|---|
-| `.\deploy-provigil.ps1 -DiscoverOnly -NoReboot` | Lists the PCs it would install on (`logs\discovered.csv`); installs nothing |
+| `.\deploy-provigil.ps1 -DiscoverOnly -NoReboot` | Lists every device it finds (`logs\discovered.csv`): name, address, network card, Windows / Linux / printer / phone / network device, how sure and why; installs nothing |
 | `.\deploy-provigil.ps1 -NoReboot` | Everything now, in this session (you are signed in as the deployment account) |
 | `.\deploy-provigil.ps1 -NoReboot -Retry` | Only the PCs that failed or were unreachable last time |
 | `.\deploy-provigil.ps1 -ComputerList pcs.txt -NoReboot` | Only the PCs in the file (one name or address per line), no scan |
+| `.\deploy-provigil.ps1 -ComputerList pcs.csv -NoReboot` | Only the PCs in a CSV list with their own credentials and groups (see below) |
 | `.\deploy-provigil.ps1 -SearchBase "OU=PCs,DC=corp,DC=local"` | Active Directory: only this OU |
 | `.\deploy-provigil.ps1 -Ranges "10.1.0.0/24,10.2.0.0/23"` | Scan these networks (/16 to /32) |
 | `.\deploy-provigil.ps1 -NoReboot -LinuxUser admin` | Linux PCs with this SSH user (asks for the password); `-LinuxKey file` for a key |
 | `.\deploy-provigil.ps1 -Throttle 10` | Fewer installs at a time (default 30) |
 | `.\deploy-provigil.ps1 -Local` | Installs on this PC only |
 | `.\deploy-provigil.ps1 -Uninstall -ComputerList pcs.txt -NoReboot` | Removes the agent (open a maintenance window in the console first) |
+
+### A computer list with credentials
+
+When PCs have different administrator accounts, or you want to choose each PC's ProVigil group,
+give a CSV:
+
+```
+computer,os,way,credential,group
+PC-ACC-001,windows,auto,office-admin,accounts
+PC-LAB-07,,auto,lab-admin,lab
+```
+
+- `computer`: name or address. `os`: `windows`, `linux` or empty (found out). `way`: `auto`,
+  `winrm`, `service` or empty. `group`: letters, digits, `.`, `_`, `-`.
+- `credential`: a name you choose, not a password. The script asks once for each name (an
+  administrator account on those PCs) and keeps it only while it runs. Never write passwords in the file.
+- Linux rows use `-LinuxUser` (one SSH user for all of them).
 
 ## 4. With a domain: Group Policy startup script (optional)
 

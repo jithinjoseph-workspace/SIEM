@@ -389,7 +389,7 @@ admin channel does a limited user-mode agent apply (D6).
 | D2 | Intune, SCCM, an RMM tool or GPO software install | MSI package, installed as SYSTEM by their tool | an MDM admin assigns the package | to build (C9) |
 | D3 | One local admin on all PCs, same password | push of path B (`deploy-provigil.ps1`) | the admin's user name and password, typed once | built, lab pending |
 | D4 | A local admin on each PC, a different password each (Windows LAPS) | push with each PC's own password read from AD or Entra ID (`Get-LapsADPassword`) | the deployment account may read LAPS passwords | to build (C10) |
-| D5 | A list of PCs with their own credentials | list file with a credential name per row (16.6) | the list and the credentials, typed once | to build (C11) |
+| D5 | A list of PCs with their own credentials | list file with a credential name per row (16.6) | the list and the credentials, typed once | built 2026-11-23 for Windows (C11), lab pending; Linux rows still use -LinuxUser |
 | D6 | No admin channel at all (unmanaged, BYOD) | user-mode agent, each user installs it from a link | users click once | to build (C12), limited |
 
 ### 16.3 What D6 (user mode, no admin) can and cannot do
@@ -415,8 +415,8 @@ Active (the admin PC asks; partly built in `deploy-provigil.ps1`):
 | Active Directory computer objects | name, DNS name, operating system, last logon | built |
 | Ping TTL (128 Windows, 64 Linux and macOS) | OS family, a hint | built |
 | Ports 445, 5985 (Windows), 22 (SSH) and the SSH greeting ("Ubuntu", "Debian") | OS and the way in (SMB, WinRM, SSH) | built |
-| Ports 135, 139, 3389; NetBIOS name query (UDP 137); SMB negotiate | Windows name and build | to add |
-| MAC vendor from the admin PC's ARP table | printer, phone, camera, network gear: skipped, not reported as failures | to add |
+| Ports 135, 3389; NetBIOS name query (UDP 137) | Windows name without credentials | built 2026-11-23 (NetBIOS reply not yet seen live: no second Windows PC on) |
+| MAC maker from the admin PC's ARP table (short built-in list), printer ports 9100 / 631 | printer, phone, camera, network gear: skipped, not reported as failures | built 2026-11-23 |
 
 Passive (nothing is sent to the PCs):
 
@@ -478,3 +478,96 @@ LAB-12,,auto,,lab
    client?
 3. Passive discovery through agents (C13) reads each computer's ARP table: state it in the client
    agreement.
+
+## 17. Workflows (end to end, per client situation)
+
+Each workflow: who acts, what ProVigil does, what the console shows, what happens when a step fails.
+"Kit" = the zip downloaded from the console (Agent Deployment), with the deployment token, the agents,
+the scripts and the guide. Every workflow ends in the same place: the Coverage page (16.5) shows every
+PC as protected, or not protected with a reason and the next action.
+
+### W0. Before any install: find out what is there (all clients)
+
+1. Tenant admin opens Agent Deployment, creates a deployment token (expiry, maximum PCs, group), downloads the kit.
+2. Client admin unzips the kit on one PC and runs `deploy-provigil.ps1 -DiscoverOnly` (no install, no reboot, no credentials needed).
+3. The script reads AD if the PC is in a domain, scans the PC's own networks (or `-Ranges`), and for each address records: name (AD, DNS, NetBIOS), MAC and maker, open ports, OS family with confidence and the reason, device type, the install way that fits it.
+4. It writes `discovery.csv` and sends it to the console (report with the token).
+5. Console Coverage page: every device as Windows PC / Linux PC / not a PC (printer, phone, camera, network gear) / unknown; the admin removes what must not be touched, exports the list.
+- Fails: AD not readable → network scan only, noted; a network not reachable from this PC → `-Ranges` from a PC in that network, results merged by the token.
+
+### W1. Active Directory domain (D1)
+
+1. W0.
+2. Domain admin creates the deployment account in AD (member of a group with local admin on the PCs, via GPO "Restricted groups") and runs `deploy-provigil.ps1` once as themselves.
+3. Stage 1: checks the token and the cloud, stores the deployment account's password as a one-time LSA secret, sets automatic logon once, reboots.
+4. Stage 2 (as the deployment account, by itself): removes the automatic logon and the secret first, discovers (W0), pushes to every Windows PC over SMB (one-time service) or WinRM, to Linux PCs over SSH, 30 at a time, reports each result, logs off.
+5. For PCs that were off: the admin links the kit's Group Policy startup script to the PCs' OU; at their next boot each PC installs itself as SYSTEM and enrolls.
+6. Console: each PC appears under its own name within 5 minutes; Coverage counts protected / remaining.
+- Fails: access denied → the account is not local admin there (fix: the GPO group); unreachable → off or firewall (fix: the startup script catches it at boot); token expired → new token, rerun with `-Retry`.
+
+### W2. Workgroup, one shared local admin (D3)
+
+1. W0.
+2. Admin runs `deploy-provigil.ps1 -NoReboot` as the shared local admin account (or with the reboot flow and that account as the deployment account).
+3. The push uses Windows' own credential pass-through: same user name and password on every PC.
+4. Console as W1.
+- Fails: access denied on a PC → different password there (W4 or W5) or remote UAC filtering (fix: `LocalAccountTokenFilterPolicy` = 1, or the built-in Administrator); unreachable → firewall (fix: allow SMB 445 from the admin PC) or off (rerun `-Retry`).
+
+### W3. Intune, SCCM, an RMM tool, or GPO software install (D2)
+
+1. W0 (optional: the client's tool already knows its PCs).
+2. Tenant admin downloads the MSI from the console (token and gateway address baked into its properties, signed).
+3. Client's MDM admin uploads it as a Win32/LOB app, assigns it to the device group; the tool installs it as SYSTEM, silently.
+4. The agent enrolls with the token under the PC's name; the tool reports install state, ProVigil reports enrollment.
+5. Coverage compares the two: installed but not enrolled → network to the cloud blocked (fix: allow 8443/8089 outbound).
+- Fails: package rejected → not signed (13.1); uninstall by the tool → the agent's tamper protection asks for the console's uninstall code.
+
+### W4. Windows LAPS, a different admin password on each PC (D4)
+
+1. W0 in a domain.
+2. Deployment account gets the right to read LAPS passwords for the PCs' OU (`Set-LapsADReadPasswordPermission`).
+3. Stage 2 reads each PC's password (`Get-LapsADPassword`, or Entra ID through Graph for cloud-joined PCs) just before its push, uses it for that PC only, never stores or logs it.
+4. Console as W1.
+- Fails: no LAPS password for a PC → reported "no LAPS password" (fix: LAPS policy on that OU) and the PC falls back to W1's way.
+
+### W5. The client gives a list (D5)
+
+1. Client fills `computers.csv` (16.6): name or address, optional OS and way, a credential name, a group.
+2. Admin runs `deploy-provigil.ps1 -ComputerList computers.csv`; the script asks once for each credential name in the file (Windows credential prompt; SSH password or key for Linux), keeps them in memory only.
+3. For each row: resolve the name, find out the OS if empty (W0 probes), push with that row's credential, report.
+4. Console as W1, rows grouped by the CSV's group.
+- Fails: a row's name does not resolve → "not found in DNS"; wrong credential → "access denied" for that credential name, so one fix covers all its rows.
+
+### W6. Linux PCs (any situation)
+
+1. Found by W0 (SSH greeting names the distribution) or listed (W5).
+2. Pushed over SSH with a sudo user (password or key), `install.sh` with the token; or the client's config tool (Ansible, Puppet) runs the same one-line install.
+3. The agent enrolls as a systemd service (root).
+- Fails: no sudo → "needs sudo"; SSH closed → "SSH not reachable" with the fix (open 22 from the admin PC, or the one-line install by hand).
+
+### W7. Nobody has admin rights anywhere (D6)
+
+1. Tenant admin enables user mode on the token (off by default; the client agreement says what it can and cannot see, 16.3).
+2. The client sends its users a link from the console; each user runs the per-user installer (no elevation): it installs in `%LOCALAPPDATA%`, starts at logon, enrolls as "user mode".
+3. Console: these PCs are counted as "protected: limited" on Coverage, with the list of what is not watched.
+4. Upgrade: when any admin channel appears (W1 to W5), the full agent installs, takes over the same agent ID and removes the user-mode copy.
+- Fails: the user removes it → the agent stops reporting; Coverage shows "user mode stopped" after 24 h.
+
+### W8. Passive discovery, always on (C13, C14)
+
+1. Every enrolled agent reports its ARP / neighbour table and the names it resolved, hourly (small: MAC, address, last seen).
+2. The manager merges them with AD, scans, the NDR sensor's DHCP / mDNS records and imported DHCP leases into one device record per MAC.
+3. A device seen on the network with no agent and classed as a Windows or Linux PC becomes "unprotected" on Coverage, with its install way (W1 to W7) and an alert once a day: "N unprotected PCs".
+4. The admin selects them and exports a list for W5, or the kit's next `-Retry` run takes them.
+
+### 17.1 Built on 2026-11-23 (step 2 of 16.7, Windows part)
+
+- Discovery: ports 135 and 3389, the NetBIOS name, printer ports 9100 and 631, the MAC address and its
+  maker, and per device a type (pc, virtual pc, printer, phone, network, camera), a confidence and the
+  reason; `-DiscoverOnly` lists them all. Printers, phones, cameras and network gear are never pushed.
+- Computer list: a CSV (`computer,os,way,credential,group`) besides the plain list. `os`, `way` and
+  `group` are checked when read; `group` is passed to `install-provigil.ps1 -Group`. A `credential`
+  name is asked once (`Get-Credential`) and used for that row's push (admin share through
+  `New-PSDrive -Credential`, WinRM through `Invoke-Command -Credential`); no password on any command line.
+- Tested here: classification cases, live probes on the office network, CSV reading and its refusals.
+  Not tested: a push with a list credential and a live NetBIOS reply (the lab of 16.7 step 1).

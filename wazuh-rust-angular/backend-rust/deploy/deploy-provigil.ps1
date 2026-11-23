@@ -20,6 +20,10 @@
 .PARAMETER DiscoverOnly
   Only find and list the PCs (discovered.csv); install nothing. A dry run to show first.
 .PARAMETER ComputerList
+  A text file with one name or address per line, or a CSV with the columns computer, os, way,
+  credential, group (os: windows or linux, empty = find out; way: auto, winrm or service; credential:
+  a name, asked once per name, never a password; group: the agent's ProVigil group). Credentials need
+  an interactive run (-NoReboot).
   A text file of computer names or addresses, one per line: only these, no discovery.
 .PARAMETER SearchBase
   Active Directory: only computers under this OU ("OU=PCs,DC=corp,DC=local").
@@ -212,12 +216,31 @@ function Get-ADComputers {
     }
 }
 
-# Probes many addresses in parallel: ping TTL, ports 445 / 5985 / 22, the SSH greeting.
+# Probes many addresses in parallel: ping TTL, Windows ports (445, 5985, 135, 3389), SSH (22) and
+# its greeting, printer ports (9100, 631), and the NetBIOS name (UDP 137, answered by Windows PCs
+# without any credentials).
 $Probe = {
     param($addr)
-    $r = [ordered]@{ address = $addr; ttl = 0; p445 = $false; p5985 = $false; p22 = $false; ssh = '' }
+    $r = [ordered]@{ address = $addr; ttl = 0; p445 = $false; p5985 = $false; p22 = $false; p135 = $false; p3389 = $false; p9100 = $false; p631 = $false; ssh = ''; netbios = '' }
     try { $p = (New-Object Net.NetworkInformation.Ping).Send($addr, 700); if ($p.Status -eq 'Success') { $r.ttl = $p.Options.Ttl } } catch { }
-    foreach ($port in 445, 5985, 22) {
+    try {
+        # NetBIOS node status request for the name "*"
+        $q = [byte[]](0x50, 0x56, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x20, 0x43, 0x4B) + ([byte[]](,0x41) * 30) + [byte[]](0, 0, 0x21, 0, 1)
+        $u = New-Object Net.Sockets.UdpClient; $u.Client.ReceiveTimeout = 600
+        [void]$u.Send($q, $q.Length, $addr, 137)
+        $ep = New-Object Net.IPEndPoint([Net.IPAddress]::Any, 0)
+        $a = $u.Receive([ref]$ep); $u.Close()
+        if ($a.Length -gt 57 -and $a[56] -gt 0) {
+            for ($i = 0; $i -lt $a[56]; $i++) {
+                $o = 57 + 18 * $i
+                if ($o + 18 -gt $a.Length) { break }
+                $flags = $a[$o + 16]
+                # the first unique (not group) name of type 0x00: the computer name
+                if ($a[$o + 15] -eq 0 -and -not ($flags -band 0x80)) { $r.netbios = ([Text.Encoding]::ASCII.GetString($a, $o, 15)).Trim(); break }
+            }
+        }
+    } catch { }
+    foreach ($port in 445, 5985, 22, 135, 3389, 9100, 631) {
         $c = New-Object Net.Sockets.TcpClient
         try {
             if ($c.ConnectAsync($addr, $port).Wait(700) -and $c.Connected) {
@@ -231,6 +254,42 @@ $Probe = {
         } catch { } finally { $c.Dispose() }
     }
     [pscustomobject]$r
+}
+
+# Device makers by MAC prefix: the common makers of printers, phones, network gear, cameras and
+# virtual machines. shortcut: a short built-in list, not the full IEEE register; extend from
+# discovery reports when a client's devices are missed.
+$Makers = @{
+    printer = @('00:1B:A9', '3C:2A:F4', '00:80:77', '00:00:48', '00:26:73', '00:17:C8', '00:1E:0B', '9C:93:4E', '30:05:5C', '00:21:5A', 'A0:D3:C1', 'EC:8E:B5')
+    phone   = @('F0:18:98', 'A4:83:E7', 'DC:A9:04', '28:6C:07', '64:A2:F9', '8C:F5:A3', 'AC:5F:3E', 'F4:F5:E8')
+    network = @('00:1A:A1', '50:C7:BF', 'F0:9F:C2', '74:83:C2', '4C:5E:0C', '00:14:6C', '1C:7E:E5', '00:1B:11', 'E4:C3:2A', '00:0B:86', '28:EE:52')
+    camera  = @('44:19:B6', 'C0:56:E3', '3C:EF:8C', 'E0:50:8B', '9C:14:63')
+    virtual = @('00:15:5D', '00:50:56', '00:0C:29', '08:00:27', '52:54:00')
+}
+function Get-DeviceType([string]$mac) {
+    if (-not $mac) { return '' }
+    $prefix = ($mac.ToUpper() -replace '-', ':').Substring(0, 8)
+    foreach ($k in $Makers.Keys) { if ($prefix -in $Makers[$k]) { return $k } }
+    ''
+}
+
+# What a probed address is, how sure, and why (the stronger evidence decides).
+function Get-Kind($k, $p) {
+    $ssh = if ($p) { $p.ssh } else { '' }
+    $dev = if ($p) { Get-DeviceType $p.mac } else { '' }
+    if ($p -and ($p.p9100 -or $p.p631) -and -not $p.p445 -and -not $p.p22) { return @{ kind = 'none'; device = 'printer'; confidence = 'high'; reason = 'printer ports (9100 / 631)' } }
+    if ($dev -in 'printer', 'phone', 'network', 'camera') { return @{ kind = 'none'; device = $dev; confidence = 'medium'; reason = "maker of the network card ($dev)" } }
+    if ($k -and $k.osHint -in 'windows', 'linux') { return @{ kind = $k.osHint; device = 'pc'; confidence = 'given'; reason = 'from the computer list' } }
+    if ($p -and ($p.p445 -or $p.p5985 -or $p.p135 -or $p.p3389)) {
+        $open = @(foreach ($x in 445, 5985, 135, 3389) { if ($p."p$x") { $x } }) -join ', '
+        return @{ kind = 'windows'; device = $(if ($dev -eq 'virtual') { 'virtual pc' } else { 'pc' }); confidence = 'high'; reason = "Windows ports open ($open)$(if ($p.netbios) { '; NetBIOS name ' + $p.netbios })" }
+    }
+    if ($p -and $p.p22 -and $ssh -notmatch 'Windows') { return @{ kind = 'linux'; device = $(if ($dev -eq 'virtual') { 'virtual pc' } else { 'pc' }); confidence = $(if ($ssh -match 'Ubuntu|Debian|Red ?Hat|Rocky|CentOS|Fedora|SUSE|Alma') { 'high' } else { 'medium' }); reason = "SSH open$(if ($ssh) { ': ' + $ssh })" } }
+    if ($k -and $k.adOs -like 'Windows*') { return @{ kind = 'windows'; device = 'pc'; confidence = 'medium'; reason = 'Active Directory says Windows (no port answered: off or firewall?)' } }
+    if ($p -and $p.netbios) { return @{ kind = 'windows'; device = 'pc'; confidence = 'medium'; reason = "NetBIOS name $($p.netbios) (Windows; its ports are closed)" } }
+    if ($k) { return @{ kind = 'unknown'; device = ''; confidence = 'low'; reason = 'listed, but nothing answered' } }
+    if ($p -and $p.ttl -gt 64 -and $p.ttl -le 128) { return @{ kind = 'none'; device = ''; confidence = 'low'; reason = 'answers ping only, like Windows (TTL 128): a PC with its firewall closed, or another device' } }
+    @{ kind = 'none'; device = ''; confidence = 'low'; reason = 'answers ping only (printer, phone, network device?)' }
 }
 
 function Invoke-Parallel([scriptblock]$block, $items, [int]$n, [string]$what) {
@@ -250,7 +309,19 @@ function Find-Targets($run) {
     $self = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object IPAddress)
     $named = @()
     if ($ComputerList) {
-        $named = Get-Content -LiteralPath $ComputerList | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object { [pscustomobject]@{ name = $_; dns = $_; os = ''; stale = $false } }
+        $lines = @(Get-Content -LiteralPath $ComputerList | Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('#') })
+        if ($lines.Count -and $lines[0] -match '^\s*"?computer"?\s*,') {
+            # a CSV: computer, os, way, credential, group
+            $named = $lines | ConvertFrom-Csv | Where-Object { "$($_.computer)".Trim() } | ForEach-Object {
+                $os = "$($_.os)".Trim().ToLower(); $way = "$($_.way)".Trim().ToLower(); $grp = "$($_.group)".Trim()
+                if ($os -and $os -notin 'windows', 'linux') { Stop-Run "computer list: os must be windows, linux or empty ($($_.computer): $os)" }
+                if ($way -and $way -notin 'auto', 'winrm', 'service', 'ssh') { Stop-Run "computer list: way must be auto, winrm, service, ssh or empty ($($_.computer): $way)" }
+                if ($grp -and $grp -notmatch '^[A-Za-z0-9._-]{1,64}$') { Stop-Run "computer list: group may only use letters, digits, '.', '_' and '-' ($($_.computer): $grp)" }
+                [pscustomobject]@{ name = "$($_.computer)".Trim(); dns = "$($_.computer)".Trim(); os = ''; osHint = $os; way = $way; credential = "$($_.credential)".Trim(); group = $grp; stale = $false }
+            }
+        } else {
+            $named = $lines | ForEach-Object { $_.Trim() } | ForEach-Object { [pscustomobject]@{ name = $_; dns = $_; os = ''; osHint = ''; way = ''; credential = ''; group = ''; stale = $false } }
+        }
     } elseif ($Retry) {
         $last = Get-Content -Raw (Join-Path $Logs 'results.json') | ConvertFrom-Json
         $named = $last | Where-Object { $_.outcome -in 'failed', 'access denied', 'unreachable' } | ForEach-Object { [pscustomobject]@{ name = $(if ($_.computer) { $_.computer } else { $_.address }); dns = $(if ($_.address) { $_.address } else { $_.computer }); os = $_.os; stale = $false } }
@@ -268,36 +339,39 @@ function Find-Targets($run) {
             try { $ip = ([Net.Dns]::GetHostAddresses($(if ($c.dns) { $c.dns } else { $c.name })) | Where-Object AddressFamily -eq 'InterNetwork' | Select-Object -First 1).IPAddressToString } catch { }
         }
         $key = if ($ip) { $ip } else { "name:$($c.name)" }
-        $byAddr[$key] = [pscustomobject]@{ computer = $c.name; address = $ip; adOs = $c.os; stale = $c.stale }
+        $byAddr[$key] = [pscustomobject]@{ computer = $c.name; address = $ip; adOs = $c.os; stale = $c.stale; osHint = "$($c.osHint)"; way = "$($c.way)"; credential = "$($c.credential)"; group = "$($c.group)" }
     }
     $scan = @($byAddr.Keys | Where-Object { $_ -notlike 'name:*' })
     if ($run.ranges -and -not $ComputerList -and -not $Retry) {
         foreach ($r in $run.ranges) { $scan += @(Expand-Cidr $r) }
-        Say "Scanning $(@($scan | Select-Object -Unique).Count) addresses (ping, ports 445, 5985, 22)..."
+        Say "Scanning $(@($scan | Select-Object -Unique).Count) addresses (ping, NetBIOS, Windows, SSH and printer ports)..."
     }
     $scan = @($scan | Select-Object -Unique | Where-Object { $_ -notin $self })
     $probed = @{}
     foreach ($p in (Invoke-Parallel $Probe $scan 64 'Finding PCs')) { $probed[$p.address] = $p }
+    # the network cards' addresses the probes just put in this PC's ARP table (same network only)
+    $macs = @{}
+    Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.LinkLayerAddress -and $_.LinkLayerAddress -ne '00-00-00-00-00-00' } | ForEach-Object { $macs[$_.IPAddress] = ($_.LinkLayerAddress -replace '-', ':') }
+    foreach ($a in @($probed.Keys)) { $probed[$a] | Add-Member -NotePropertyName mac -NotePropertyValue "$($macs[$a])" -Force }
 
     $targets = foreach ($key in (@($byAddr.Keys) + @($probed.Keys) | Select-Object -Unique)) {
         $k = $byAddr[$key]; $p = $probed[$key]
         if ($k -and ($k.computer -in $env:COMPUTERNAME)) { continue }
         $ssh = if ($p) { $p.ssh } else { '' }
-        $kind =
-            if ($p -and ($p.p445 -or $p.p5985)) { 'windows' }
-            elseif ($p -and $p.p22 -and $ssh -notmatch 'Windows') { 'linux' }
-            elseif ($k -and $k.adOs -like 'Windows*') { 'windows' }
-            elseif ($k) { 'unknown' }
-            else { 'none' }
-        $os = if ($k -and $k.adOs) { $k.adOs } elseif ($kind -eq 'linux') { ($ssh -replace '^SSH-2\.0-', '') } elseif ($p -and $p.ttl -gt 64 -and $p.ttl -le 128) { 'Windows (guess)' } else { '' }
+        $c = Get-Kind $k $p
+        $kind = $c.kind
+        $os = if ($k -and $k.adOs) { $k.adOs } elseif ($kind -eq 'linux') { ($ssh -replace '^SSH-2\.0-', '') } elseif ($kind -eq 'windows') { 'Windows' } elseif ($p -and $p.ttl -gt 64 -and $p.ttl -le 128) { 'Windows (guess)' } else { '' }
         # an address that only answers ping, or not at all, and is not a known computer: not a PC
-        if ($kind -eq 'none' -and -not $p.ttl) { continue }
+        if ($kind -eq 'none' -and -not $p.ttl -and -not $c.device) { continue }
         [pscustomobject]@{
-            computer = $(if ($k) { $k.computer } else { '' })
-            address  = $(if ($k -and $k.address) { $k.address } elseif ($key -notlike 'name:*') { $key } else { '' })
-            kind     = $kind; os = $os
-            p445     = [bool]($p -and $p.p445); p5985 = [bool]($p -and $p.p5985); p22 = [bool]($p -and $p.p22)
-            stale    = [bool]($k -and $k.stale)
+            computer   = $(if ($k -and $k.computer) { $k.computer } elseif ($p -and $p.netbios) { $p.netbios } else { '' })
+            address    = $(if ($k -and $k.address) { $k.address } elseif ($key -notlike 'name:*') { $key } else { '' })
+            kind       = $kind; os = $os
+            device     = $c.device; confidence = $c.confidence; reason = $c.reason
+            mac        = $(if ($p) { "$($p.mac)" } else { '' })
+            p445       = [bool]($p -and $p.p445); p5985 = [bool]($p -and $p.p5985); p22 = [bool]($p -and $p.p22)
+            stale      = [bool]($k -and $k.stale)
+            way        = $(if ($k) { "$($k.way)" } else { '' }); credential = $(if ($k) { "$($k.credential)" } else { '' }); group = $(if ($k) { "$($k.group)" } else { '' })
         }
     }
     @($targets)
@@ -317,7 +391,21 @@ $PushWindows = {
     $local = "C:\Windows\Temp\$tag"
     $cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $local\install-provigil.ps1"
     if ($job.uninstall) { $cmd += ' -Uninstall' }
+    # the list's group (checked to letters, digits, '.', '_', '-' when the list was read)
+    if ($t.group) { $cmd += " -Group $($t.group)" }
+    $drive = $null
     try {
+        if ($job.cred) {
+            # the row's own credential: this connection authenticates the admin share, and sc.exe /
+            # schtasks.exe below reuse it (no password on any command line)
+            try { $drive = New-PSDrive -Name $tag -PSProvider FileSystem -Root "\\$host_\admin$" -Credential $job.cred -ErrorAction Stop }
+            catch {
+                $m = "$($_.Exception.Message)"
+                $row.outcome = if ($m -match 'denied|password|logon') { 'access denied' } else { 'unreachable' }
+                $row.reason = "credential '$($t.credential)' refused or the admin share not reachable: $m"
+                return [pscustomobject]$row
+            }
+        }
         try { New-Item -ItemType Directory -Path "$share\windows" -Force | Out-Null }
         catch {
             $m = "$($_.Exception.Message)"
@@ -328,13 +416,15 @@ $PushWindows = {
         foreach ($f in $job.files) { Copy-Item -LiteralPath (Join-Path $kit $f) -Destination (Join-Path $share $f) -Force }
 
         $ran = $false; $why = @()
-        if ($t.p5985) {
+        if ($t.p5985 -and $t.way -ne 'service') {
             try {
-                Invoke-Command -ComputerName $host_ -ScriptBlock { param($c) cmd.exe /c $c | Out-Null } -ArgumentList $cmd -ErrorAction Stop
+                $ic = @{ ComputerName = $host_; ScriptBlock = { param($c) cmd.exe /c $c | Out-Null }; ArgumentList = $cmd; ErrorAction = 'Stop' }
+                if ($job.cred) { $ic.Credential = $job.cred }
+                Invoke-Command @ic
                 $row.method = 'winrm'; $ran = $true
             } catch { $why += "WinRM: $($_.Exception.Message)" }
         }
-        if (-not $ran -and $t.p445) {
+        if (-not $ran -and $t.p445 -and $t.way -ne 'winrm') {
             # a one-time service that starts the script, then is deleted (needs only file sharing)
             $svc = $tag
             $o = & sc.exe "\\$host_" create $svc binPath= "cmd.exe /c start /b $cmd" type= own start= demand 2>&1 | Out-String
@@ -368,6 +458,7 @@ $PushWindows = {
         if ($row.method -eq 'service') { & sc.exe "\\$host_" delete $tag 2>&1 | Out-Null }
         if ($row.method -eq 'task') { & schtasks.exe /Delete /S $host_ /TN $tag /F 2>&1 | Out-Null }
         Remove-Item -Recurse -Force -LiteralPath $share -ErrorAction SilentlyContinue
+        if ($drive) { Remove-PSDrive -Name $tag -Force -ErrorAction SilentlyContinue }
     }
     [pscustomobject]$row
 }
@@ -421,14 +512,24 @@ function Start-Stage2 {
         Say "Found $($win.Count + $lin.Count) PCs: $($win.Count) Windows (or unknown), $($lin.Count) Linux; $(@($targets | Where-Object kind -eq 'none').Count) other devices (not PCs)." 'Cyan'
         if ($DiscoverOnly) {
             $targets | Export-Csv -NoTypeInformation -Encoding UTF8 (Join-Path $Logs 'discovered.csv')
-            $targets | Format-Table computer, address, kind, os, p445, p5985, p22, stale -AutoSize | Out-String | Write-Host
+            $targets | Format-Table computer, address, kind, device, confidence, os, mac, reason -AutoSize | Out-String -Width 220 | Write-Host
             Say "List written to $(Join-Path $Logs 'discovered.csv'). Nothing was installed." 'Green'
             return
         }
 
         $files = @('install-provigil.ps1', 'deploy.json', 'ca.pem') + @($deploy.files.PSObject.Properties.Name | Where-Object { $_ -like 'windows/*' } | ForEach-Object { $_ -replace '/', '\' })
         if (Test-Path (Join-Path $Kit 'sysmon.xml')) { $files += 'sysmon.xml' }
-        $jobs = @($win | ForEach-Object { @{ target = $_; kit = $Kit; files = $files; uninstall = [bool]$Uninstall } })
+        # the computer list's credentials: asked once per name, kept in memory for this run only
+        $creds = @{}
+        $names = @($win | ForEach-Object { $_.credential } | Where-Object { $_ } | Select-Object -Unique)
+        if ($names.Count -and $fromLogon) { Stop-Run 'The computer list names credentials: run it by hand with -NoReboot (they are asked for, never stored).' }
+        foreach ($cn in $names) {
+            $n = @($win | Where-Object credential -eq $cn).Count
+            $c = Get-Credential -Message "ProVigil deployment: credential '$cn' for $n PC(s) of the list (an administrator on them)"
+            if (-not $c) { Stop-Run "No credential given for '$cn'." }
+            $creds[$cn] = $c
+        }
+        $jobs = @($win | ForEach-Object { @{ target = $_; kit = $Kit; files = $files; uninstall = [bool]$Uninstall; cred = $(if ($_.credential) { $creds[$_.credential] } else { $null }) } })
         if ($jobs) {
             Say "Installing on $($jobs.Count) Windows PCs, $($run.throttle) at a time..."
             $results += Invoke-Parallel $PushWindows $jobs $run.throttle 'Windows PCs'

@@ -59,6 +59,7 @@ lucide-angular svg {
     max-width: 100% !important;
     text-align: left !important;
     white-space: normal;
+    overflow-wrap: anywhere;
   }
   .table-cards td.tc-full, .table-cards td[colspan] { flex-basis: 100%; }
   .table-cards td.tc-full > .flex { justify-content: flex-start !important; }

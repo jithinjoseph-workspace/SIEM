@@ -483,7 +483,7 @@
     <div *ngIf="groupFeedback()" class="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300 break-words">{{ groupFeedback() }}</div>
     <div *ngIf="groups().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No groups (the ProVigil manager is not running).</div>
     <div *ngIf="groups().length > 0" class="rounded-xl border border-slate-800 overflow-x-auto nice-scroll">
-      <table class="w-full text-xs min-w-[420px]">
+      <table class="w-full text-xs min-w-[420px] table-cards">
         <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider">
           <tr><th class="text-left px-4 py-2">Group</th><th class="text-left px-4 py-2">Agents</th><th class="text-right px-4 py-2">Actions</th></tr>
         </thead>
@@ -525,7 +525,7 @@
     <div *ngIf="deactivatedFeedback()" class="px-4 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs text-cyan-300 break-words">{{ deactivatedFeedback() }}</div>
     <div *ngIf="deactivatedAgents().length === 0" class="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-500">No deactivated agents.</div>
     <div *ngIf="deactivatedAgents().length > 0" class="rounded-xl border border-slate-800 overflow-x-auto nice-scroll">
-      <table class="w-full text-xs min-w-[560px]">
+      <table class="w-full text-xs min-w-[560px] table-cards">
         <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider">
           <tr><th class="text-left px-4 py-2">ID</th><th class="text-left px-4 py-2">Name</th><th class="text-left px-4 py-2">OS</th><th class="text-left px-4 py-2">Group</th><th class="text-right px-4 py-2">Actions</th></tr>
         </thead>

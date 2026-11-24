@@ -18,7 +18,7 @@
     "changeOrigin": true
   },
   "/api/ndr": {
-    "target": "http://127.0.0.1:3000",
+    "target": "http://127.0.0.1:13000",
     "secure": false,
     "changeOrigin": true,
     "pathRewrite": {

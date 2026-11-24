@@ -20,6 +20,7 @@ import { AuthService } from '../../../services/auth/auth';
 export class Logs implements OnInit, OnDestroy {
   logs: any[] = [];
   filteredLogs: any[] = [];
+  sensorMap = new Map<string, string>();
   searchText: string = '';
   totalCount: number = 0;
   loading: boolean = true;
@@ -61,6 +62,16 @@ export class Logs implements OnInit, OnDestroy {
   ngOnInit() {
     this.sensorIds = this.auth.getSensorIds();
 
+    this.api.getSensorKeys().subscribe({
+      next: (keys: any[]) => {
+        this.sensorMap.clear();
+        for (const k of keys) {
+          this.sensorMap.set(k.key_prefix, k.name);
+        }
+      },
+      error: () => {}
+    });
+
     this.route.queryParams.subscribe(params => {
       if (params['search']) {
         this.searchText = params['search'];
@@ -86,6 +97,7 @@ export class Logs implements OnInit, OnDestroy {
           src: event.src || '',
           dst: event.dst || '',
           source: event.type || '',
+          sensor_name: this.sensorMap.get(event.sensor_id || event.key_prefix) || event.sensor_id || event.key_prefix || 'Unknown Sensor',
           action: 'ALLOW',
           event_type: this.normalizeEventType(event.event_type),
         };
@@ -108,6 +120,7 @@ export class Logs implements OnInit, OnDestroy {
           src: e.src_ip || '',
           dst: e.dst_ip || '',
           source: e.source || '',
+          sensor_name: this.sensorMap.get(e.sensor_id || e.key_prefix) || e.sensor_id || e.key_prefix || 'Unknown Sensor',
           action: 'ALLOW',
           event_type: this.normalizeEventType(e.event_type),
         }));

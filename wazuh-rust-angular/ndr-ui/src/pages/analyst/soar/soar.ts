@@ -1320,12 +1320,25 @@ export class Soar implements OnInit {
         // PCAP sessions and flow events come from an NDR sensor (Arkime); a SIEM case has none
         if ((hasPair || hasCid) && this.auth.hasFeature('ndr')) {
             this.evidenceLoading.set(true);
-            const pcapParams = hasPair
-                ? { src_ip: c.src_ip, dst_ip: c.dst_ip, limit: 50 }
-                : { cid: c.community_id, limit: 50 };
+        // A case CID is exact and remains valid even if a response packet
+        // reverses the source/destination pair or an older uploader omitted
+        // its flow metadata. Use the IP pair only for manually-created cases
+        // that have no correlation ID.
+        const pcapParams = hasCid
+                ? { cid: c.community_id, limit: 50 }
+                : { src_ip: c.src_ip, dst_ip: c.dst_ip, limit: 50 };
             this.arkime.getSessions(pcapParams).subscribe({
                 next: (pcap: any) => {
-                    this.liveEvidence.update(ev => ({ ...(ev || {}), pcap_sessions: pcap.sessions || [], pcap_total: pcap.total || pcap.sessions?.length || 0 }));
+                    this.liveEvidence.update(ev => ({
+                        ...(ev || {}),
+                        pcap_sessions: pcap.sessions || [],
+                        pcap_total: pcap.total || pcap.sessions?.length || 0,
+                        // No session indexed into Arkime yet, but the sensor may already have
+                        // sent a real capture into this flow's evidence bundle (bundles are
+                        // captured independently of Arkime indexing) — show that instead of
+                        // a flat "nothing here" when the backend found one.
+                        evidence_bundle_fallback: pcap.evidence_bundle_fallback || null,
+                    }));
                     this.evidenceLoading.set(false);
                 },
                 error: () => { this.evidenceLoading.set(false); }
@@ -1909,6 +1922,10 @@ ${r.intel_added ? `<div class="intel-ok"><svg width="14" height="14" viewBox="0 
         this.api.addSoarCaseComment(c.id, this.newComment).subscribe((res: any) => {
             if (res.status === 'success') { this.newComment = ''; this.openCase(c); }
         });
+    }
+
+    openEvidenceBundle(bundleId: string) {
+        this.router.navigate(['/analyst/evidence'], { queryParams: { bundle: bundleId } });
     }
 
     collectPcap() {

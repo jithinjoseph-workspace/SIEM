@@ -73,4 +73,24 @@ export class EvidenceService {
   getVerdict(communityId: string): Observable<any> {
     return this.http.get(`/api/aria/verdict?cid=${encodeURIComponent(communityId)}`);
   }
+
+  /** Past AI investigations (this tenant's own) whose circumstances were closest to this one. */
+  getSimilarIncidents(communityId: string, limit = 5): Observable<any> {
+    return this.http.get(`/api/aria/similar?cid=${encodeURIComponent(communityId)}&limit=${limit}`);
+  }
+
+  /** Answers a question from this tenant's own past investigations and how they ended. */
+  askHistory(question: string): Observable<any> {
+    return this.http.post('/api/aria/ask-history', { question });
+  }
+
+  /**
+   * SOC GPT: answers a question from this tenant's own data — cases, analyses, and past
+   * investigations. `subject` is the session/case the conversation is currently about (from the
+   * previous answer); `history` is the last few turns, so the backend can read a follow-up the way a
+   * person reading the chat would.
+   */
+  askPlatform(question: string, subject: string, history: Array<{ role: string; text: string }>): Observable<any> {
+    return this.http.post('/api/aria/ask-history', { question, subject, history });
+  }
 }

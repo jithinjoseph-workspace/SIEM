@@ -20,7 +20,11 @@ import {
   ShieldOff,
   AlertTriangle,
   ArrowRight,
-  Network
+  Network,
+  Cpu,
+  Globe,
+  ChevronRight,
+  Wifi
 } from 'lucide-angular';
 
 import { DeviceDrawer } from '../../../components/device-drawer/device-drawer';
@@ -52,6 +56,10 @@ export class Assets implements OnInit, AfterViewInit {
   ChevronDownIcon = ChevronDown;
   ArrowRightIcon = ArrowRight;
   NetworkIcon = Network;
+  CpuIcon = Cpu;
+  GlobeIcon = Globe;
+  ChevronRightIcon = ChevronRight;
+  WifiIcon = Wifi;
 
   assets: any[] = [];
   filteredAssets: any[] = [];

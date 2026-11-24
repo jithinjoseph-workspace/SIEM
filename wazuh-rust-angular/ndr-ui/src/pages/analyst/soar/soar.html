@@ -551,7 +551,20 @@
                 </div>
               </div>
               <ng-template #noPcap>
-                <p class="text-xs text-on-surface-variant">No PCAP sessions captured for this flow.</p>
+                <ng-container *ngIf="liveEvidence()?.evidence_bundle_fallback as fb; else reallyNoPcap">
+                  <p class="text-xs text-on-surface-variant">
+                    Not indexed as an Arkime session, but a real packet capture
+                    (<span class="text-white font-semibold">{{ formatBytes(fb.pcap_size_bytes) }}</span>)
+                    is already in this flow's evidence bundle.
+                  </p>
+                  <button (click)="openEvidenceBundle(fb.bundle_id)"
+                    class="text-xs px-3 py-1.5 mt-2 rounded border border-primary/30 text-primary hover:border-primary/60 hover:bg-primary/10 transition-colors font-semibold">
+                    ↓ Open Evidence Bundle
+                  </button>
+                </ng-container>
+                <ng-template #reallyNoPcap>
+                  <p class="text-xs text-on-surface-variant">No PCAP sessions captured for this flow.</p>
+                </ng-template>
                 <p *ngIf="collectPcapDone()" class="text-xs text-emerald-400 mt-1">Collection triggered — sessions will appear shortly.</p>
               </ng-template>
             </div>

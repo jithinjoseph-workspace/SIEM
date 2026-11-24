@@ -513,7 +513,7 @@
 
 .log-grid {
   display: grid;
-  grid-template-columns: 110px 102px 74px minmax(140px, 1fr) minmax(140px, 1fr) 96px;
+  grid-template-columns: 110px 102px 140px 74px minmax(120px, 1fr) minmax(120px, 1fr) 96px;
   align-items: center;
   gap: 16px;
 }
@@ -777,7 +777,7 @@
 /* ── Responsive ────────────────────────────────── */
 @media (max-width: 1040px) {
   .log-grid {
-    grid-template-columns: 98px 94px 64px minmax(120px, 1fr) minmax(120px, 1fr) 84px;
+    grid-template-columns: 98px 94px 100px 64px minmax(100px, 1fr) minmax(100px, 1fr) 84px;
     gap: 10px;
   }
 }

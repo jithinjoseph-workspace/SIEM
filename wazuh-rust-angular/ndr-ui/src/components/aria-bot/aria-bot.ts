@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth/auth';
 import { interval, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { DotLottie } from '@lottiefiles/dotlottie-web';
+import { AriaService } from '../../services/aria/aria.service';
 
 import { richText } from '../../utils/rich-text';
 interface ChatMessage {
@@ -75,6 +76,7 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
 
   // ── Chat state ──
   isOpen = false;
+  private askSub?: Subscription;
   isTyping = false;
   inputText = '';
   messages: ChatMessage[] = [];
@@ -108,6 +110,12 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
   highCount = 0;
   lastSeenCid = '';
   lastSeenPredId = '';
+  // An alert card (banner or in-chat) is only ever "clicked" once — without this, the banner
+  // stays up after being answered and a second click (or re-clicking the same card in the
+  // chat log) posted the identical "Want me to take you to the details page?" message again.
+  private answeredAlertCids = new Set<string>();
+  // The action a short "yes" / "sure" reply should run — whatever the bot's last message offered.
+  private pendingAction?: ChatAction;
 
   // ── Lottie ──
   private dotLottie: DotLottie | null = null;
@@ -144,11 +152,19 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     private router: Router,
     private cdr: ChangeDetectorRef,
     private auth: AuthService,
+    private ariaService: AriaService,
   ) { }
 
   // ── LIFECYCLE ──
 
   ngOnInit() {
+    this.askSub = this.ariaService.askRequests$.subscribe(q => {
+      this.isOpen = true;
+      this.unreadCount = 0;
+      this.showSpeech = false;
+      this.sendMessage(q);
+      this.cdr.detectChanges();
+    });
     const savedTheme = localStorage.getItem('aria_bot_theme');
     if (savedTheme === 'light' || savedTheme === 'dark') {
       this.botTheme = savedTheme;
@@ -197,6 +213,7 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.askSub?.unsubscribe();
     this.pollSub?.unsubscribe();
     this.routerSub?.unsubscribe();
     clearInterval(this.proactiveSub);
@@ -357,10 +374,28 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
 
   // ── CHAT ──
 
+  /** "yes", "yes please", "sure", "ok", "go ahead", ... — a short reply with nothing else in it. */
+  private isAffirmative(text: string): boolean {
+    return /^(yes|yeah|yep|yup|sure|ok(ay)?|please|go ahead|do it)([\s,.!]+(please|go ahead|do it))?[\s.!]*$/i
+      .test(text.trim());
+  }
+
   sendMessage(text?: string) {
     const msg = (text || this.inputText).trim();
     if (!msg || this.isTyping) return;
     this.inputText = '';
+
+    // A plain "yes"/"sure" right after the bot offered something (take you to the alert,
+    // show the evidence, ...) runs that offer directly instead of being sent to the AI chat,
+    // which has no memory of what was just offered and would otherwise reply with a non-sequitur.
+    if (!text && this.pendingAction && this.isAffirmative(msg)) {
+      const action = this.pendingAction;
+      this.pendingAction = undefined;
+      this.messages.push({ role: 'user', content: msg, timestamp: new Date() });
+      this.handleAction(action);
+      return;
+    }
+    this.pendingAction = undefined;
 
     this.messages.push({ role: 'user', content: msg, timestamp: new Date() });
     this.history.push({ role: 'user', content: msg });
@@ -395,6 +430,9 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
     this.setEmotion(emotion);
     this.startTalking(content.length);
     this.messages = [...this.messages, { role: 'bot', content, timestamp: new Date(), alertCard, actions }];
+    // Only the newest offer counts: a "yes" after this message should run ITS first action
+    // (or nothing, if this message made no offer), never something offered earlier.
+    this.pendingAction = actions && actions.length ? actions[0] : undefined;
     this.cdr.detectChanges();
     this.scrollToBottom();
   }
@@ -422,6 +460,7 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
         break;
 
       case 'navigate':
+        this.addBotMessage("On it!", 'wave');
         this.router.navigate([action.data]);
         break;
 
@@ -431,6 +470,11 @@ export class AriaBot implements OnInit, AfterViewInit, OnDestroy {
   }
 
   handleAlertCardClick(alert: AlertCard) {
+    // The banner stays visible and the same card is clickable from inside the chat log too, so
+    // without this an analyst who clicks either of them twice got the same offer posted twice.
+    if (alert.community_id && this.answeredAlertCids.has(alert.community_id)) return;
+    if (alert.community_id) this.answeredAlertCids.add(alert.community_id);
+    this.dismissAlertBanner();
     this.setEmotion('alert');
     this.addBotMessage(
       `${alert.severity} alert${alert.agent ? ' on ' + alert.agent : ''}: ${alert.rule_name || ''}. What should I do?`,

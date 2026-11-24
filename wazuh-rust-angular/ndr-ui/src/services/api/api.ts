@@ -830,8 +830,34 @@ export class Api {
     return this.http.post(`${this.baseUrl}/evidence/trigger`, { community_id: communityId });
   }
 
-  getAiActivity(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/ai-activity`);
+  /** One page of AI analyses and suppressions. Without params: latest 50 analyses + 100 suppressions.
+   *  a_limit=0 / s_limit=0 skip that part; the reply carries analyses_total / suppressions_total. */
+  getAiActivity(p?: { a_limit?: number; a_offset?: number; s_limit?: number; s_offset?: number; severity?: string; q?: string; hours?: number }): Observable<any> {
+    const params: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p ?? {})) {
+      if (v !== undefined && v !== null && v !== '' && v !== 'ALL') params[k] = String(v);
+    }
+    return this.http.get(`${this.baseUrl}/ai-activity`, { params });
+  }
+
+  /** The AI Activity briefing: fact summary, AI-worded when a provider is configured. */
+  getAiBriefing(hours = 24, refresh = false): Observable<any> {
+    const params: Record<string, string> = { hours: String(hours) };
+    if (refresh) params['refresh'] = '1';
+    return this.http.get(`${this.baseUrl}/ai-activity/briefing`, { params });
+  }
+
+  /** What hiding this session, or every alert of its kind, would take away (computed on the server). */
+  getSuppressionPreview(communityId: string): Observable<any> {
+    return this.http.get(`${this.baseUrl}/ai-activity/suppression-preview`, { params: { community_id: communityId } });
+  }
+
+  /** Hides a session or a pattern. The server re-checks the preview and refuses anything that must stay visible. */
+  applyAiSuppression(communityId: string, scope: 'session' | 'pattern', hours: number): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/ai-activity/suppress`, { community_id: communityId, scope, hours }).pipe(map(res => {
+      if (!res || res.error || res.ok !== true) throw new Error(res?.error || 'Suppression was not saved');
+      return res;
+    }));
   }
 
   deactivateAiSuppression(id: string): Observable<any> {
@@ -850,12 +876,15 @@ export class Api {
     return this.http.put(`${this.baseUrl}/soar/integrations/${id}`, data);
   }
 
-  getThreatPredictions(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat/predictions`);
+  /** One page of predictions (newest first); the reply carries "total". */
+  getThreatPredictions(limit = 20, offset = 0): Observable<any> {
+    return this.http.get(`${this.baseUrl}/threat/predictions`, { params: { limit: String(limit), offset: String(offset) } });
   }
 
-  getThreatPredictionsHistory(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat/predictions/history`);
+  /** Past predictions about one indicator (URL or IP); without it, the newest of all. */
+  getThreatPredictionsHistory(indicator?: string): Observable<any> {
+    const params: Record<string, string> = indicator ? { indicator } : {};
+    return this.http.get(`${this.baseUrl}/threat/predictions/history`, { params });
   }
 
   getThreatPatterns(): Observable<any> {
@@ -999,4 +1028,6 @@ export class Api {
   getRetroScan(id: string): Observable<any> {
     return this.http.get(`${this.baseUrl}/retrospective/scans/${encodeURIComponent(id)}`);
   }
+
+
 }

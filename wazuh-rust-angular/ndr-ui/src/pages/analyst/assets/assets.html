@@ -1,48 +1,53 @@
 <div class="assets-page">
-  <div class="page-header">
+  <div class="page-header redesigned">
     <div class="title-group">
-      <h2>Asset Inventory</h2>
+      <div class="platform-subtitle"><span class="slash">/</span> ASSET INTELLIGENCE PLATFORM</div>
+      <h2>Asset <span class="purple-text">Inventory</span></h2>
       <p>Discovered devices, identities, and hostnames.</p>
     </div>
     
     <div class="header-actions">
-      <div class="filter-group">
-        <div class="custom-dropdown-wrapper">
-          <div class="dropdown-backdrop" *ngIf="isDropdownOpen" (click)="isDropdownOpen = false"></div>
-          <div class="styled-dropdown" (click)="isDropdownOpen = !isDropdownOpen" [class.open]="isDropdownOpen">
-            <span>{{ getFilterLabel() }}</span>
-            <lucide-icon [name]="ChevronDownIcon" class="dropdown-arrow" [class.rotate]="isDropdownOpen"></lucide-icon>
-          </div>
-          
-          <div class="dropdown-menu" *ngIf="isDropdownOpen">
-            <div class="dropdown-item" 
-                 *ngFor="let option of deviceTypeOptions" 
-                 (click)="setFilter(option.value)"
-                 [class.active]="filterDeviceType === option.value">
-              {{ option.label }}
-            </div>
+      <!-- All Devices Dropdown -->
+      <div class="custom-dropdown-wrapper">
+        <div class="dropdown-backdrop" *ngIf="isDropdownOpen" (click)="isDropdownOpen = false"></div>
+        <div class="glass-btn type-btn" (click)="isDropdownOpen = !isDropdownOpen" [class.open]="isDropdownOpen">
+          <lucide-icon [name]="MonitorIcon" class="btn-icon blue-icon"></lucide-icon>
+          <span>{{ getFilterLabel() }}</span>
+          <lucide-icon [name]="ChevronDownIcon" class="arrow-icon"></lucide-icon>
+        </div>
+        <div class="dropdown-menu" *ngIf="isDropdownOpen">
+          <div class="dropdown-item" 
+               *ngFor="let option of deviceTypeOptions" 
+               (click)="setFilter(option.value)"
+               [class.active]="filterDeviceType === option.value">
+            {{ option.label }}
           </div>
         </div>
-        
-        <label class="checkbox-label">
-          <input type="checkbox" [(ngModel)]="filterLast24h" (ngModelChange)="filterAssets()">
-          <span>Seen in last 24h</span>
-        </label>
       </div>
+      
+      <!-- Seen in last 24h Checkbox -->
+      <label class="custom-checkbox">
+        <input type="checkbox" [(ngModel)]="filterLast24h" (ngModelChange)="filterAssets()">
+        <span class="checkmark"></span>
+        <span class="label-text">Seen in last 24h</span>
+      </label>
 
-      <div class="search-box">
-        <lucide-icon [name]="SearchIcon" class="w-4 h-4 text-slate-400"></lucide-icon>
+      <!-- Search Box -->
+      <div class="search-box-glass">
+        <lucide-icon [name]="SearchIcon" class="search-icon"></lucide-icon>
         <input type="text"
                [(ngModel)]="searchTerm"
                (ngModelChange)="filterAssets()"
                placeholder="Search IPs, names, vendors...">
       </div>
 
+      <!-- Subnet Dropdown -->
       <div class="custom-dropdown-wrapper" *ngIf="subnets.length > 0">
         <div class="dropdown-backdrop" *ngIf="isSubnetDropdownOpen" (click)="isSubnetDropdownOpen = false"></div>
-        <div class="styled-dropdown" (click)="isSubnetDropdownOpen = !isSubnetDropdownOpen" [class.open]="isSubnetDropdownOpen">
+        <div class="glass-btn subnet-btn" (click)="isSubnetDropdownOpen = !isSubnetDropdownOpen" [class.open]="isSubnetDropdownOpen">
+          <lucide-icon [name]="NetworkIcon" class="btn-icon gray-icon"></lucide-icon>
           <span>{{ getSubnetLabel() }}</span>
-          <lucide-icon [name]="ChevronDownIcon" class="dropdown-arrow" [class.rotate]="isSubnetDropdownOpen"></lucide-icon>
+          <lucide-icon [name]="ChevronDownIcon" class="arrow-icon"></lucide-icon>
         </div>
         <div class="dropdown-menu" *ngIf="isSubnetDropdownOpen">
           <div class="dropdown-item" (click)="setSubnetFilter('all')" [class.active]="filterSubnet === 'all'">All Subnets</div>
@@ -53,114 +58,210 @@
       </div>
     </div>
   </div>
-  <div class="dashboard-layout-row" *ngIf="!loading">
-    
-    <div class="top-dashboard" *ngIf="totalAssets > 0">
-      <div class="donut-container">
-        <div class="donut-header">
-          <div class="donut-title">Asset Type Distribution</div>
-          <div class="donut-subtitle">Total Assets</div>
+
+  <div class="dashboard-layout-row redesigned" *ngIf="!loading">
+    <!-- Main Left Area -->
+    <div class="dash-main-area" *ngIf="totalAssets > 0">
+      
+      <div class="dash-upper-area">
+        <!-- Donut Chart & Legend -->
+        <div class="donut-and-legend">
+          <div class="custom-donut-chart">
+            <svg width="180" height="180" viewBox="0 0 180 180">
+              <defs>
+                <linearGradient id="donutGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#00e5ff" />
+                  <stop offset="100%" stop-color="#8a2be2" />
+                </linearGradient>
+              </defs>
+              <circle cx="90" cy="90" r="76" fill="none" stroke="#111827" stroke-width="20" />
+              <circle cx="90" cy="90" r="76" fill="none" stroke="url(#donutGrad)" stroke-width="20" stroke-dasharray="477" stroke-dashoffset="0" stroke-linecap="round" class="donut-progress" />
+            </svg>
+            <div class="donut-center-text">
+              <span class="donut-val">{{ totalAssets }}</span>
+              <span class="donut-lbl">Total Assets</span>
+            </div>
+          </div>
+          
+          <div class="custom-donut-legend">
+            <div class="legend-row">
+              <span class="dot blue"></span>
+              <span class="lbl">Workstations</span>
+              <span class="val">{{ stats.workstations.count }}</span>
+              <span class="pct">({{ stats.workstations.percent }}%)</span>
+            </div>
+            <div class="legend-row">
+              <span class="dot green"></span>
+              <span class="lbl">Servers</span>
+              <span class="val">{{ stats.servers.count }}</span>
+              <span class="pct">({{ stats.servers.percent }}%)</span>
+            </div>
+            <div class="legend-row">
+              <span class="dot red"></span>
+              <span class="lbl">IoT Devices</span>
+              <span class="val">{{ stats.iot.count }}</span>
+              <span class="pct">({{ stats.iot.percent }}%)</span>
+            </div>
+            <div class="legend-row">
+              <span class="dot purple"></span>
+              <span class="lbl">Networking</span>
+              <span class="val">{{ stats.networking.count }}</span>
+              <span class="pct">({{ stats.networking.percent }}%)</span>
+            </div>
+          </div>
+          <div #sunburstContainer style="display:none"></div>
         </div>
-        <div class="donut-chart-wrapper sunburst-wrapper" #sunburstContainer>
-          <!-- ECharts pie will render here -->
+
+        <!-- Isometric Network Diagram -->
+        <div class="isometric-network">
+          <div class="iso-grid-bg"></div>
+          
+          <!-- SVG Curved Lines -->
+          <svg class="iso-svg-lines" viewBox="0 0 500 250">
+            <!-- Curve to Top Left (Workstations) -->
+            <path d="M 250 145 C 180 145, 140 100, 100 100" fill="none" stroke="#00e5ff" stroke-width="2" class="glow-line blue-line" />
+            <!-- Curve to Bottom Left (Servers) -->
+            <path d="M 250 145 C 180 145, 140 200, 100 200" fill="none" stroke="#00ff88" stroke-width="2" class="glow-line green-line" />
+            <!-- Curve to Top Right (IoT) -->
+            <path d="M 250 145 C 320 145, 360 80, 400 80" fill="none" stroke="#ff3366" stroke-width="2" class="glow-line red-line" />
+            <!-- Curve to Bottom Right (Networking) -->
+            <path d="M 250 145 C 320 145, 360 180, 400 180" fill="none" stroke="#aa00ff" stroke-width="2" class="glow-line purple-line" />
+          </svg>
+          
+          <div class="iso-base">
+            <div class="iso-logo" style="font-size:32px; font-weight:900; color:#fff; text-shadow:0 0 10px #00e5ff;">
+              P
+            </div>
+          </div>
+
+          <!-- Floating Cards -->
+          <div class="iso-card card-blue" style="top: 15%; left: 8%;">
+            <div class="iso-card-icon blue"><lucide-icon [name]="MonitorIcon"></lucide-icon></div>
+            <div class="iso-card-text">
+              <div class="lbl">Workstations</div>
+              <div class="val">{{ stats.workstations.count }}</div>
+            </div>
+          </div>
+          <div class="iso-card card-green" style="top: 55%; left: 8%;">
+            <div class="iso-card-icon green"><lucide-icon [name]="ServerIcon"></lucide-icon></div>
+            <div class="iso-card-text">
+              <div class="lbl">Servers</div>
+              <div class="val">{{ stats.servers.count }}</div>
+            </div>
+          </div>
+          <div class="iso-card card-red" style="top: 5%; right: 8%;">
+            <div class="iso-card-icon red"><lucide-icon [name]="CpuIcon"></lucide-icon></div>
+            <div class="iso-card-text">
+              <div class="lbl">IoT Devices</div>
+              <div class="val">{{ stats.iot.count }}</div>
+            </div>
+          </div>
+          <div class="iso-card card-purple" style="top: 45%; right: 8%;">
+            <div class="iso-card-icon purple"><lucide-icon [name]="NetworkIcon"></lucide-icon></div>
+            <div class="iso-card-text">
+              <div class="lbl">Networking</div>
+              <div class="val">{{ stats.networking.count }}</div>
+            </div>
+          </div>
         </div>
       </div>
-
-      <div class="stats-container">
-        <div class="stats-grid">
-          <div class="stat-card blue-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrapper blue">
-                <lucide-icon [name]="MonitorIcon" class="w-5 h-5"></lucide-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-title">Workstations</div>
-                <div class="stat-count">{{ stats.workstations.count }} assets</div>
-              </div>
-              <div class="stat-percent">{{ stats.workstations.percent }}%</div>
+      
+      <!-- 4 Bottom Stats Cards -->
+      <div class="dash-lower-area">
+        <div class="glow-stat-card border-blue">
+          <div class="stat-main">
+            <div class="icon-box bg-blue"><lucide-icon [name]="MonitorIcon"></lucide-icon></div>
+            <div class="text-box">
+              <div class="lbl">Workstations</div>
+              <div class="val">{{ stats.workstations.count }} <span>assets</span></div>
             </div>
-            <div class="stat-bottom">
-              <div class="sparkline-wrapper">
-                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-                  <path class="sparkline-path blue" d="M0,25 C20,20 40,30 60,15 80,0 100,10 100,10" />
-                </svg>
-              </div>
-            </div>
+            <div class="pct">{{ stats.workstations.percent }}%</div>
           </div>
-
-          <div class="stat-card red-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrapper red">
-                <lucide-icon [name]="ShieldCheckIcon" class="w-5 h-5"></lucide-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-title">IoT Devices</div>
-                <div class="stat-count">{{ stats.iot.count }} assets</div>
-              </div>
-              <div class="stat-percent">{{ stats.iot.percent }}%</div>
-            </div>
-            <div class="stat-bottom">
-              <div class="sparkline-wrapper">
-                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-                  <path class="sparkline-path red" d="M0,28 C25,28 50,25 75,18 90,15 100,12 100,12" />
-                </svg>
-              </div>
-            </div>
+          <div class="stat-bottom-wave">
+            <svg class="sine-wave blue-wave" viewBox="0 0 100 20" preserveAspectRatio="none">
+              <path d="M 0 10 Q 25 20, 50 10 T 100 10" fill="none" stroke-width="2"/>
+            </svg>
           </div>
+        </div>
 
-          <div class="stat-card green-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrapper green">
-                <lucide-icon [name]="ServerIcon" class="w-5 h-5"></lucide-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-title">Servers</div>
-                <div class="stat-count">{{ stats.servers.count }} assets</div>
-              </div>
-              <div class="stat-percent">{{ stats.servers.percent }}%</div>
+        <div class="glow-stat-card border-green">
+          <div class="stat-main">
+            <div class="icon-box bg-green"><lucide-icon [name]="ServerIcon"></lucide-icon></div>
+            <div class="text-box">
+              <div class="lbl">Servers</div>
+              <div class="val">{{ stats.servers.count }} <span>assets</span></div>
             </div>
-            <div class="stat-bottom">
-              <div class="sparkline-wrapper">
-                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-                  <path class="sparkline-path green" d="M0,25 C30,22 45,28 65,15 85,5 100,10 100,10" />
-                </svg>
-              </div>
-            </div>
+            <div class="pct">{{ stats.servers.percent }}%</div>
           </div>
+          <div class="stat-bottom-wave">
+            <svg class="sine-wave green-wave" viewBox="0 0 100 20" preserveAspectRatio="none">
+              <path d="M 0 10 Q 25 0, 50 10 T 100 10" fill="none" stroke-width="2"/>
+            </svg>
+          </div>
+        </div>
 
-          <div class="stat-card purple-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrapper purple">
-                <lucide-icon [name]="RouterIcon" class="w-5 h-5"></lucide-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-title">Networking</div>
-                <div class="stat-count">{{ stats.networking.count }} assets</div>
-              </div>
-              <div class="stat-percent">{{ stats.networking.percent }}%</div>
+        <div class="glow-stat-card border-red">
+          <div class="stat-main">
+            <div class="icon-box bg-red"><lucide-icon [name]="CpuIcon"></lucide-icon></div>
+            <div class="text-box">
+              <div class="lbl">IoT Devices</div>
+              <div class="val">{{ stats.iot.count }} <span>assets</span></div>
             </div>
-            <div class="stat-bottom">
-              <div class="sparkline-wrapper">
-                <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-                  <path class="sparkline-path purple" d="M0,28 C40,28 60,32 75,15 85,5 100,20 100,20" />
-                </svg>
-              </div>
+            <div class="pct">{{ stats.iot.percent }}%</div>
+          </div>
+          <div class="stat-bottom-wave">
+            <svg class="sine-wave red-wave" viewBox="0 0 100 20" preserveAspectRatio="none">
+              <path d="M 0 10 Q 25 20, 50 10 T 100 10" fill="none" stroke-width="2"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="glow-stat-card border-purple">
+          <div class="stat-main">
+            <div class="icon-box bg-purple"><lucide-icon [name]="NetworkIcon"></lucide-icon></div>
+            <div class="text-box">
+              <div class="lbl">Networking</div>
+              <div class="val">{{ stats.networking.count }} <span>assets</span></div>
             </div>
+            <div class="pct">{{ stats.networking.percent }}%</div>
+          </div>
+          <div class="stat-bottom-wave">
+            <svg class="sine-wave purple-wave" viewBox="0 0 100 20" preserveAspectRatio="none">
+              <path d="M 0 10 Q 25 0, 50 10 T 100 10" fill="none" stroke-width="2"/>
+            </svg>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="subnet-stats-sidebar" [style.display]="subnets.length > 0 ? 'block' : 'none'">
-      <div class="subnet-card" *ngFor="let s of subnets" (click)="setSubnetFilter(s.cidr)" [class.active]="filterSubnet === s.cidr">
-        <div class="subnet-cidr">{{ s.cidr }}</div>
-        <div class="subnet-iface">{{ s.interface }}{{ s.sensor_id ? ' · ' + s.sensor_id : '' }}</div>
-        <div class="subnet-bar-wrap">
-          <div class="subnet-bar" [style.width.%]="s.total_ips ? (s.used_ips / s.total_ips * 100) : 0"></div>
+    <!-- Right Sidebar: Discovered Subnets -->
+    <div class="dash-sidebar-area" *ngIf="subnets.length > 0">
+      <div class="subnet-header-block">
+        <div class="left">
+          <lucide-icon [name]="GlobeIcon"></lucide-icon>
+          <h3>Discovered Subnets</h3>
         </div>
-        <div class="subnet-counts">
-          <span class="used">{{ s.used_ips }} used</span>
-          <span class="free">{{ s.free_ips }} free</span>
+      </div>
+      
+      <div class="subnet-list">
+        <div class="subnet-item" *ngFor="let s of subnets; let i = index" [class.active]="filterSubnet === s.cidr" (click)="setSubnetFilter(s.cidr)">
+          <div class="sub-icon">
+            <lucide-icon [name]="i % 4 === 0 ? ServerIcon : i % 4 === 1 ? CpuIcon : i % 4 === 2 ? NetworkIcon : WifiIcon"></lucide-icon>
+          </div>
+          <div class="sub-content">
+            <div class="sub-title">
+              <span class="cidr">{{ s.cidr }}</span>
+              <lucide-icon [name]="ChevronRightIcon" class="arrow"></lucide-icon>
+            </div>
+            <div class="sub-meta">{{ (s.interface || 'ENP0S3') | uppercase }} &bull; {{ s.sensor_id || 'LOCAL-CENTRAL' | uppercase }}</div>
+            <div class="sub-bar-wrapper">
+              <div class="sub-bar" [style.width.%]="s.total_ips ? (s.used_ips / s.total_ips * 100) : 0"></div>
+            </div>
+            <div class="sub-bar-labels">
+              <span class="used">{{ s.used_ips }} used</span>
+              <span class="free">{{ s.free_ips || 65534 }} free</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

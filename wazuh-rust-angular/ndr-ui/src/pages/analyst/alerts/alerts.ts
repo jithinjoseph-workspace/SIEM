@@ -48,6 +48,7 @@ export interface AlertGroup {
   maxScore:      number;
   severity:      string;
   latest:        string;
+  sensor_name?:  string;
   alerts:        any[];
   expanded:      boolean;
 }
@@ -62,6 +63,7 @@ export interface AlertGroup {
 export class Alerts implements OnInit, OnDestroy {
   // Raw store — all alerts loaded/streamed
   allAlerts: any[] = [];
+  sensorMap = new Map<string, string>();
 
   // Dismissed CIDs (local session)
   dismissedCids = new Set<string>();
@@ -147,6 +149,16 @@ export class Alerts implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.sensorIds = this.auth.getSensorIds();
+
+    this.api.getSensorKeys().subscribe({
+      next: (keys: any[]) => {
+        this.sensorMap.clear();
+        for (const k of keys) {
+          this.sensorMap.set(k.key_prefix, k.name);
+        }
+      },
+      error: () => {}
+    });
 
     this.subs.push(
       this.route.queryParamMap.subscribe(params => {
@@ -242,11 +254,13 @@ export class Alerts implements OnInit, OnDestroy {
     const srcIp = hit.src_ip || hit.src || hit['agent-z']?.src || hit['agent-s']?.src || '';
     const dstIp = hit.dst_ip || hit.dst || hit['agent-z']?.dst || hit['agent-s']?.dst || '';
     const ts    = hit.timestamp ?? hit.ts ?? null;
+    const sensorId = hit.sensor_id || hit.key_prefix || '';
     return {
       severity:    (hit.severity || 'LOW').toUpperCase(),
       description: hit.sigma_hits?.join(', ') || hit.tags?.join(', ') || 'Correlation hit',
       time:        this.formatAlertTime(ts),
       score:       hit.score ?? 0,
+      sensor_name: this.sensorMap.get(sensorId) || sensorId || 'Unknown Sensor',
       community_id: hit.community_id || hit.cid || '',
       src_ip:      srcIp,
       dst_ip:      dstIp,
@@ -297,6 +311,7 @@ export class Alerts implements OnInit, OnDestroy {
           dstIps: [],
           count: 0, maxScore: 0,
           severity: a.severity, latest: a.time,
+          sensor_name: a.sensor_name,
           alerts: [], expanded: this.isExpanded(key),
         });
       }
@@ -543,9 +558,10 @@ export class Alerts implements OnInit, OnDestroy {
       community_id: alert.community_id,
       tags:        alert.tags || [],
       assigned_to: analyst,
+      dedupe_by_flow: true,
     }).subscribe({
       next: (res: any) => {
-        this.showToast(`Incident created — ${title}`);
+        this.showToast(res?.deduplicated ? 'Existing incident opened for this flow' : `Incident created — ${title}`);
         this.router.navigate(['/analyst/soar']);
       },
       error: () => this.showToast(`Failed to create incident`),
@@ -584,9 +600,10 @@ export class Alerts implements OnInit, OnDestroy {
       community_id: g.alerts[0]?.community_id || '',
       tags:        allTags,
       assigned_to: analyst,
+      dedupe_by_flow: true,
     }).subscribe({
-      next: () => {
-        this.showToast(`Incident created — ${g.count} alerts bundled`);
+      next: (res: any) => {
+        this.showToast(res?.deduplicated ? 'Existing incident opened for this flow' : `Incident created — ${g.count} alerts bundled`);
         this.router.navigate(['/analyst/soar']);
       },
       error: () => this.showToast(`Failed to create incident`),

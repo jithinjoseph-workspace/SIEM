@@ -17,10 +17,17 @@ export class AriaService {
 
   private destroy$ = new Subject<void>();
 
+  /** Pages call ask(); the ARIA widget opens itself and sends the question. */
+  readonly askRequests$ = new Subject<string>();
+
   constructor(private http: HttpClient) {}
 
   chat(message: string, history: any[]): Observable<any> {
     return this.http.post('/api/aria/chat', { message, history });
+  }
+
+  ask(question: string) {
+    this.askRequests$.next(question);
   }
 
   getStatus(): Observable<any> {

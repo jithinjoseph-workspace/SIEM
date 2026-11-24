@@ -879,8 +879,47 @@
   align-items: center;
   gap: 10px;
   padding: 24px 20px 32px 20px;
-  border-bottom: none;
-  background: linear-gradient(180deg, #ffffff 0%, #eefbf3 60%, #090e17 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: #000000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.brand-block::before {
+  content: '';
+  position: absolute;
+  top: -50px;
+  left: -50%;
+  width: 200%;
+  height: 200px;
+  background: radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.15), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  animation: pulseGlow 4s ease-in-out infinite alternate;
+}
+
+.brand-block::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -100%;
+  width: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.8), transparent);
+  animation: scanline 4s infinite linear;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes pulseGlow {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+@keyframes scanline {
+  0% { left: -100%; }
+  50% { left: 200%; }
+  100% { left: 200%; }
 }
 
 .brand-wordmark {
@@ -888,33 +927,6 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-}
-
-.brand-name {
-  display: block;
-  background: linear-gradient(110deg, #064e3b 0%, #15803d 60%, #22c55e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
-  text-align: center;
-}
-
-.brand-tagline {
-  display: block;
-  color: #166534;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  opacity: 0.85;
-  text-align: center;
 }
 
 .brand-badge {
@@ -929,11 +941,13 @@
   padding: 8px 14px;
   width: fit-content;
   margin-top: 4px;
+  position: relative;
+  z-index: 2;
 }
 
 .brand-badge-text {
   color: #0f172a;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.15em;

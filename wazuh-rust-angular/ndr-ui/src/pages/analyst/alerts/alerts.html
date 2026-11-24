@@ -260,6 +260,7 @@
             <th>Severity</th>
             <th>Type</th>
             <th>Source</th>
+            <th>Sensor</th>
             <th>Score</th>
             <th>Count</th>
             <th>Latest</th>
@@ -300,6 +301,11 @@
                   <span class="victim-ip">{{ g.dstIps[0] }}</span>
                   <span *ngIf="g.dstIps.length > 1" class="victim-more">+{{ g.dstIps.length - 1 }}</span>
                 </ng-container>
+              </td>
+              <td>
+                <span class="sensor-assign-pill" style="color: #ffffff; background: rgba(255, 255, 255, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap;">
+                  {{ g.sensor_name }}
+                </span>
               </td>
               <td>
                 <span [class]="'score-pill ' + getScoreClass(g.maxScore)" [style.--fill]="(g.maxScore || 0) + '%'">
@@ -377,6 +383,11 @@
                     </div>
                     <small *ngIf="!alert.sigma_hits?.length" class="description-cell">{{ alert.description }}</small>
                   </div>
+                </td>
+                <td>
+                  <span class="sensor-assign-pill" style="color: #ffffff; background: rgba(255, 255, 255, 0.15); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap;">
+                    {{ alert.sensor_name }}
+                  </span>
                 </td>
                 <td>
                   <span [class]="'score-pill ' + getScoreClass(alert.score)">

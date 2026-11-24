@@ -17,6 +17,14 @@
   padding-left: 264px !important; /* 240px sidebar width + 24px default padding */
 }
 
+:host-context(body:has(.sa-sidebar)) .topbar {
+  padding-left: 244px !important; /* 220px sidebar width + 24px default padding */
+}
+
+:host-context(body:has(.crm-sidebar)) .topbar {
+  padding-left: 264px !important; /* 240px sidebar width + 24px default padding */
+}
+
 .topbar-left {
   display: flex;
   align-items: center;

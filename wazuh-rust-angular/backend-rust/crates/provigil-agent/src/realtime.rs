@@ -86,10 +86,13 @@ struct InotifyRecord {
 }
 
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // the Linux watcher uses it; Windows builds it for tests only
 const IN_ISDIR_FLAG: u32 = 0x4000_0000;
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // the Linux watcher uses it; Windows builds it for tests only
 const IN_CREATE_FLAG: u32 = 0x0000_0100;
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // the Linux watcher uses it; Windows builds it for tests only
 const IN_MOVED_TO_FLAG: u32 = 0x0000_0080;
 #[cfg(any(target_os = "linux", test))]
 const IN_Q_OVERFLOW_FLAG: u32 = 0x0000_4000;

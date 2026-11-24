@@ -169,6 +169,7 @@ pub(crate) struct AuditPending {
     process_id: u32,
     cwd: Option<String>,
     paths: Vec<(String, String)>, // (name, nametype)
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // read by flush_expired (Linux)
     seen: Instant,
 }
 
@@ -317,6 +318,7 @@ impl LinuxAuditCorrelator {
         out
     }
 
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // the Linux audit loop calls it
     pub fn flush_expired(&mut self, now: Instant, max_age: Duration) -> Vec<(PathBuf, Who)> {
         let stale: Vec<String> = self
             .pending

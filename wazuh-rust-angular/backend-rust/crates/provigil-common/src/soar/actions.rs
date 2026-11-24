@@ -51,7 +51,7 @@ pub async fn execute_action(
     let dst = ctx.dst_ip.as_str();
 
     let mut status = "failed".to_string();
-    let mut detail = String::new();
+    let detail: String;
 
     'action: {
     // the product (e.g. the SIEM with its ProVigil integrations) runs it its own way
@@ -303,7 +303,7 @@ pub async fn execute_action(
                     None => {
                         tracing::warn!("SOAR email: invalid address (from='{}', to='{}')", from_addr, to_addr);
                         detail = format!("Invalid email address (from='{}', to='{}')", from_addr, to_addr);
-                        return;
+                        break 'action;
                     }
                 };
 

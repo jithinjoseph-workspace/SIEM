@@ -8,6 +8,7 @@ pub mod kafka;
 pub mod migrations;
 pub mod normalizer;
 pub mod siem;
+pub mod secrets;
 #[cfg(feature = "soar")]
 pub mod soar;
 pub mod sigma_sync;

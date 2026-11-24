@@ -21,17 +21,7 @@ use crate::tenancy::AuthCtx;
 use crate::AppState;
 
 /// Config keys that are secrets: returned empty, kept when a save leaves them empty.
-pub(crate) const SECRET_KEYS: [&str; 9] = [
-    "api_key",
-    "routing_key",
-    "smtp_pass",
-    "bot_token",
-    "password",
-    "token",
-    "community",
-    "aws_secret_access_key",
-    "secret",
-];
+pub(crate) const SECRET_KEYS: [&str; 9] = provigil_common::secrets::INTEGRATION_SECRET_KEYS;
 /// Runs of one playbook per minute; more matching alerts in that minute are not acted on.
 const MAX_RUNS_PER_MINUTE: u32 = 30;
 const CACHE_TTL: Duration = Duration::from_secs(30);
@@ -385,13 +375,17 @@ impl SoarStore for Store {
 
     async fn soar_next_case_number(&self, tenant_id: &str) -> String {
         let year = chrono::Utc::now().format("%Y").to_string();
+        // the highest number this year + 1, as the NDR engine numbers its cases (one sequence in the
+        // shared table): a count would hand out a number again once a case is deleted or merged
         let n = self
             .db(tenant_id)
-            .query("SELECT count() + 1 FROM soar_cases FINAL WHERE toYear(created_at) = ?")
+            .query("SELECT max(toUInt32OrZero(substring(case_number, 10))) + 1 FROM soar_cases FINAL WHERE toYear(created_at) = ? AND startsWith(case_number, ?)")
             .bind(year.parse::<u32>().unwrap_or(2026))
+            .bind(format!("INC-{year}-"))
             .fetch_one::<u64>()
             .await
-            .unwrap_or(1);
+            .unwrap_or(1)
+            .max(1);
         format!("INC-{year}-{n:04}")
     }
 

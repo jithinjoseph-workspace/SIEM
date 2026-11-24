@@ -28,4 +28,6 @@ urlencoding  = "2"
 lettre       = { version = "0.11", features = ["tokio1", "tokio1-native-tls"] }
 maxminddb    = "0.24"
 serde_yaml   = "0.9"
+ring         = "0.17"
+sha2         = "0.10"
 regex        = "1"

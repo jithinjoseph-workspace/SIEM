@@ -2196,6 +2196,8 @@ pub async fn get_integrations_by_tenant(
         let config: serde_json::Value =
             serde_json::from_str(&r.3)
                 .unwrap_or(serde_json::json!({}));
+        // credentials are stored sealed (one format for every ProVigil service)
+        let config = provigil_common::secrets::open_config(&config, &provigil_common::secrets::INTEGRATION_SECRET_KEYS);
         serde_json::json!({
             "id":      r.0,
             "name":    r.1,
@@ -2219,6 +2221,7 @@ pub async fn save_integration(
     tenant_id: &str,
 ) -> anyhow::Result<()> {
     let db = tenant_db(tenant_id);
+    let config = &sealed_integration_config(config);
     let query = format!(
         "INSERT INTO {}.soar_integrations \
          (id, name, type, config, enabled, tenant_id) \
@@ -2268,6 +2271,7 @@ pub async fn update_integration(
     tenant_id: &str,
 ) -> anyhow::Result<()> {
     let db = tenant_db(tenant_id);
+    let config = &sealed_integration_config(config);
     // Re-INSERT with same id — ReplacingMergeTree will deduplicate on next merge.
     // We preserve the existing enabled flag by SELECTing it from the current row.
     let query = format!(
@@ -8970,5 +8974,14 @@ mod incident_outcome_tests {
         assert!(other.is_empty(), "a different tenant must see nothing: {other:?}");
 
         let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+    }
+}
+
+/// An integration config (JSON text) with its credentials sealed, as siem-api stores them; text that
+/// is not a JSON object is stored as it is.
+fn sealed_integration_config(config: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(config) {
+        Ok(v) if v.is_object() => provigil_common::secrets::seal_config(&v, &provigil_common::secrets::INTEGRATION_SECRET_KEYS).to_string(),
+        _ => config.to_string(),
     }
 }

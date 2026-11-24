@@ -31,6 +31,9 @@ pub mod agent_store;
 pub mod agent_tls;
 pub mod gateway_api;
 pub mod licence;
+pub mod licence_issue;
+pub mod support;
+pub mod updates;
 pub mod health;
 #[cfg(test)]
 pub(crate) mod test_state;
@@ -516,6 +519,7 @@ async fn main() {
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     health::spawn(state.clone());
+    updates::spawn();
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
@@ -1104,8 +1108,19 @@ async fn main() {
         .route("/api/hits/timeline", get(get_hits_timeline_handler))
         .route("/api/top-ips", get(get_top_ips_handler))
         .route("/api/severity", get(get_severity_handler))
-        .route("/api/support/messages", get(get_support_messages_handler))
-        .route("/api/support/tickets", get(get_support_messages_handler))
+        // support requests and issuing licences: the platform's (they used to be the NDR engine's)
+        .route("/api/support/messages", get(support::list).post(support::create))
+        .route("/api/support/tickets", get(support::list))
+        .route("/api/support/messages/:id/review", post(support::review))
+        .route("/api/support/messages/:id/reply", post(support::reply))
+        .route("/api/support/messages/:id/forward", post(support::forward))
+        .route("/api/support/messages/:id", axum::routing::delete(support::delete))
+        .route("/api/admin/version", get(updates::version))
+        .route("/api/admin/apply-update", post(updates::apply))
+        .route("/api/license/generate", post(licence_issue::generate))
+        .route("/api/license/public-key", get(licence_issue::public_key))
+        .route("/api/licenses", get(licence_issue::list))
+        .route("/api/licenses/:id", axum::routing::delete(licence_issue::delete))
         .route(
             "/api/settings",
             get(get_settings_handler).post(post_settings_handler),
@@ -4405,10 +4420,6 @@ async fn get_severity_handler(
 
 async fn get_announcements_handler() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok", "announcements": [] }))
-}
-
-async fn get_support_messages_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok", "tickets": [] }))
 }
 
 async fn get_settings_handler() -> impl IntoResponse {

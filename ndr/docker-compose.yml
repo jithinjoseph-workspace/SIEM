@@ -477,6 +477,9 @@ services:
     volumes:
       # new tenants' databases are made from the shared schema
       - ${INSTALL_DIR}/config/clickhouse/init.sql:/app/config/clickhouse/init.sql:ro
+      # product updates: the install's version, and the flag the host updater watches
+      - ${INSTALL_DIR}/VERSION:/app/VERSION:ro
+      - ${INSTALL_DIR}/scripts:/scripts
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}

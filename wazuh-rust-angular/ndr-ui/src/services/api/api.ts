@@ -614,22 +614,22 @@ export class Api {
     features: string[]; max_sensors: number; expires_days: number;
     admin_user?: string;
   }): Observable<any> {
-    return this.http.post(`${this.ndrUrl}/license/generate`, payload);
+    return this.http.post(`${this.baseUrl}/license/generate`, payload);
   }
 
   getLicensePublicKey(): Observable<any> {
-    return this.http.get(`${this.ndrUrl}/license/public-key`);
+    return this.http.get(`${this.baseUrl}/license/public-key`);
   }
 
   getLicenses(tenantId?: string): Observable<any> {
     const url = tenantId
-      ? `${this.ndrUrl}/licenses?tenant_id=${encodeURIComponent(tenantId)}`
-      : `${this.ndrUrl}/licenses`;
+      ? `${this.baseUrl}/licenses?tenant_id=${encodeURIComponent(tenantId)}`
+      : `${this.baseUrl}/licenses`;
     return this.http.get(url);
   }
 
   deleteLicense(id: string): Observable<any> {
-    return this.http.delete(`${this.ndrUrl}/licenses/${encodeURIComponent(id)}`);
+    return this.http.delete(`${this.baseUrl}/licenses/${encodeURIComponent(id)}`);
   }
 
   getAnnouncements(): Observable<Announcement[]> {
@@ -800,19 +800,19 @@ export class Api {
   }
 
   reviewSupportMessage(id: string): Observable<any> {
-    return this.http.post(`${this.ndrUrl}/support/messages/${id}/review`, {});
+    return this.http.post(`${this.baseUrl}/support/messages/${id}/review`, {});
   }
 
   replySupportMessage(id: string, reply: string): Observable<any> {
-    return this.http.post(`${this.ndrUrl}/support/messages/${id}/reply`, { reply });
+    return this.http.post(`${this.baseUrl}/support/messages/${id}/reply`, { reply });
   }
 
   forwardSupportMessage(id: string): Observable<any> {
-    return this.http.post(`${this.ndrUrl}/support/messages/${id}/forward`, {});
+    return this.http.post(`${this.baseUrl}/support/messages/${id}/forward`, {});
   }
 
   deleteSupportMessage(id: string): Observable<any> {
-    return this.http.delete(`${this.ndrUrl}/support/messages/${id}`);
+    return this.http.delete(`${this.baseUrl}/support/messages/${id}`);
   }
 
   // --- Native SOAR ---
@@ -1005,11 +1005,11 @@ export class Api {
   }
 
   getVersionStatus(): Observable<any> {
-    return this.http.get(`${this.ndrUrl}/admin/version`);
+    return this.http.get(`${this.baseUrl}/admin/version`);
   }
 
   applyUpdate(): Observable<any> {
-    return this.http.post(`${this.ndrUrl}/admin/apply-update`, {});
+    return this.http.post(`${this.baseUrl}/admin/apply-update`, {});
   }
 
   getActiveSessions(): Observable<any> {

@@ -67,7 +67,7 @@ export class Tenants implements OnInit, OnDestroy {
 
   // License generation
   licenseTenant: any  = null;
-  licenseForm         = { expires_days: 365, max_sensors: 10, admin_user: '', admin_pass: '' };
+  licenseForm         = { expires_days: 365, max_sensors: 10, max_pcs: 0, max_eps: 0, admin_user: '', admin_pass: '' };
   generatedToken      = '';
   generatingLicense   = false;
   tokenCopied         = false;
@@ -529,7 +529,7 @@ export class Tenants implements OnInit, OnDestroy {
     this.licenseTenant   = tenant;
     this.generatedToken  = '';
     this.tokenCopied     = false;
-    this.licenseForm     = { expires_days: 365, max_sensors: 10, admin_user: '', admin_pass: '' };
+    this.licenseForm     = { expires_days: 365, max_sensors: 10, max_pcs: 0, max_eps: 0, admin_user: '', admin_pass: '' };
     this.issuedLicenses  = [];
     this.loadingLicenses = true;
     this.cdr.detectChanges();
@@ -559,6 +559,8 @@ export class Tenants implements OnInit, OnDestroy {
       tenant_name:  this.licenseTenant.name,
       features,
       max_sensors:  this.licenseForm.max_sensors,
+      max_pcs:      Number(this.licenseForm.max_pcs) || 0,
+      max_eps:      Number(this.licenseForm.max_eps) || 0,
       expires_days: this.licenseForm.expires_days,
       admin_user:   this.licenseForm.admin_user.trim(),
     }).subscribe({

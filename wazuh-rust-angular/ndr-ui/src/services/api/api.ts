@@ -612,6 +612,7 @@ export class Api {
   generateLicense(payload: {
     tenant_id: string; tenant_name: string;
     features: string[]; max_sensors: number; expires_days: number;
+    max_pcs?: number; max_eps?: number;
     admin_user?: string;
   }): Observable<any> {
     return this.http.post(`${this.baseUrl}/license/generate`, payload);

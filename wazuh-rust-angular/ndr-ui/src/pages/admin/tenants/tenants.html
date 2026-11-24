@@ -549,6 +549,16 @@
       <input [(ngModel)]="licenseForm.max_sensors" type="number" min="1" max="1000" />
     </label>
     <label class="form-field">
+      <span>Max PCs (SIEM agents)</span>
+      <input [(ngModel)]="licenseForm.max_pcs" type="number" min="0" max="100000" />
+      <small>0 = no limit</small>
+    </label>
+    <label class="form-field">
+      <span>Max events per second (SIEM)</span>
+      <input [(ngModel)]="licenseForm.max_eps" type="number" min="0" max="1000000" />
+      <small>0 = no limit</small>
+    </label>
+    <label class="form-field">
       <span>Tenant admin username</span>
       <input [(ngModel)]="licenseForm.admin_user" type="text" placeholder="e.g. acme-admin" autocomplete="off" />
       <small>Provisioned automatically on customer server at first boot</small>
@@ -600,6 +610,8 @@
           Features: <strong style="opacity:1;">{{ (licenseTenant?.features ?? ['ndr','ai']).join(', ') }}</strong>
           &nbsp;·&nbsp; Expires: <strong style="opacity:1;">{{ licenseForm.expires_days }} days</strong>
           &nbsp;·&nbsp; Max sensors: <strong style="opacity:1;">{{ licenseForm.max_sensors }}</strong>
+          &nbsp;·&nbsp; Max PCs: <strong style="opacity:1;">{{ licenseForm.max_pcs || 'no limit' }}</strong>
+          &nbsp;·&nbsp; Max EPS: <strong style="opacity:1;">{{ licenseForm.max_eps || 'no limit' }}</strong>
         </div>
       </div>
 

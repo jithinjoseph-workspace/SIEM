@@ -1,0 +1,51 @@
+<clickhouse>
+    <!-- Node 2: standard ports — bridge mode gives each container its own IP -->
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <interserver_http_port>9009</interserver_http_port>
+    <listen_host>0.0.0.0</listen_host>
+    <https_port remove="1"/>
+    <tcp_port_secure remove="1"/>
+    <interserver_https_port remove="1"/>
+    <mysql_port remove="1"/>
+    <postgresql_port remove="1"/>
+
+    <!-- Same cluster definition as ch1 -->
+    <remote_servers>
+        <ndr_cluster>
+            <shard>
+                <replica>
+                    <host>clickhouse1</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>clickhouse2</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </ndr_cluster>
+    </remote_servers>
+
+    <zookeeper>
+        <node>
+            <host>clickhouse-keeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+
+    <!-- Different macros for this node -->
+    <macros>
+        <shard>1</shard>
+        <replica>ch2</replica>
+    </macros>
+
+    <logger>
+        <level>warning</level>
+    </logger>
+
+    <merge_tree>
+        <!-- Raised from 200: unclean shutdowns leave empty broken parts that exceed the default -->
+        <max_suspicious_broken_parts>10000</max_suspicious_broken_parts>
+        <max_suspicious_broken_parts_bytes>1073741824</max_suspicious_broken_parts_bytes>
+    </merge_tree>
+</clickhouse>

@@ -1,0 +1,369 @@
+<section class="network-shell" [class.nm-preview]="previewMode">
+
+  <!-- Ambient background glow orbs -->
+  <div class="ambient-orbs" aria-hidden="true" *ngIf="!previewMode">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- ── Page Header ─────────────────────────────── -->
+  <header class="network-header" *ngIf="!previewMode">
+    <div class="header-left">
+      <div class="eyebrow">
+        <span class="eyebrow-dot"></span>
+        Live Topology
+      </div>
+      <h2>Network Map</h2>
+      <p>Real-time host communication graph · Last hour of traffic <span class="update-text" style="color: #22c55e">· Updated {{ lastUpdated }}</span></p>
+    </div>
+
+    <div class="network-actions">
+      <div class="metric-pill">
+        <div class="metric-icon metric-icon--green">
+          <lucide-icon [name]="NetworkIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">Nodes</span>
+          <strong class="metric-value">{{ nodeCount }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-pill metric-pill--blue">
+        <div class="metric-icon metric-icon--blue">
+          <lucide-icon [name]="GitBranchIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">Connections</span>
+          <strong class="metric-value">{{ edgeCount }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-pill metric-pill--red">
+        <div class="metric-icon metric-icon--red">
+          <lucide-icon [name]="ThreatIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">Threats</span>
+          <strong class="metric-value">{{ threatCount }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-pill metric-pill--amber">
+        <div class="metric-icon metric-icon--amber">
+          <lucide-icon [name]="NetworkIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">High Traffic</span>
+          <strong class="metric-value">{{ trafficCount }}</strong>
+        </div>
+      </div>
+
+      <button class="refresh-btn" type="button" (click)="loadMap()">
+        <span class="refresh-btn__glow"></span>
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spin]="viewState === 'loading'"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </header>
+
+
+  <!-- ── Network Path Strip ────────────────────────── -->
+  <div class="path-strip" *ngIf="!previewMode && selectedPathNode">
+    <!-- Internet -->
+    <div class="path-node path-node--wan">
+      <div class="path-node__orb">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <div class="path-node__text">
+        <span class="path-node__name">Internet</span>
+        <span class="path-node__sub">WAN</span>
+      </div>
+    </div>
+
+    <div class="path-arrow"><svg width="32" height="12" viewBox="0 0 32 12"><path d="M0 6H28M20 1L28 6L20 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+    <!-- Gateway -->
+    <ng-container *ngIf="gatewayNode && gatewayNode.id !== selectedPathNode.id">
+      <div class="path-node path-node--gw">
+        <div class="path-node__orb path-node__orb--gw">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 14v7m16-7v7m-8-7v7M2 10h20a2 2 0 0 1 2 2v2H0v-2a2 2 0 0 1 2-2zM8 2v2m8-2v2"/></svg>
+        </div>
+        <div class="path-node__text">
+          <span class="path-node__name">{{ gatewayNode.label || gatewayNode.id }}</span>
+          <span class="path-node__sub">Gateway</span>
+        </div>
+      </div>
+      <div class="path-arrow"><svg width="32" height="12" viewBox="0 0 32 12"><path d="M0 6H28M20 1L28 6L20 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <!-- Unmanaged L2 switch -->
+      <div class="path-node path-node--l2sw" title="Unmanaged L2 switch — no IP, transparent to monitoring">
+        <div class="path-node__orb path-node__orb--l2sw">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="7" rx="2"/><rect x="2" y="13" width="20" height="7" rx="2"/><circle cx="6" cy="7.5" r="1" fill="currentColor"/><circle cx="10" cy="7.5" r="1" fill="currentColor"/><circle cx="14" cy="7.5" r="1" fill="currentColor"/><circle cx="18" cy="7.5" r="1" fill="currentColor"/></svg>
+        </div>
+        <div class="path-node__text">
+          <span class="path-node__name">L2 Switch</span>
+          <span class="path-node__sub path-node__sub--ghost">Unmanaged · No IP</span>
+        </div>
+        <span class="l2sw-badge">Transparent</span>
+      </div>
+      <div class="path-arrow"><svg width="32" height="12" viewBox="0 0 32 12"><path d="M0 6H28M20 1L28 6L20 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </ng-container>
+
+    <!-- Selected Device -->
+    <div class="path-node path-node--device">
+      <div class="path-node__orb path-node__orb--device">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+      </div>
+      <div class="path-node__text">
+        <span class="path-node__name">{{ (selectedPathNode.label && selectedPathNode.label !== selectedPathNode.id) ? selectedPathNode.label : selectedPathNode.id }}</span>
+        <span class="path-node__sub">{{ selectedPathNode.type || 'host' }}</span>
+      </div>
+    </div>
+
+    <!-- External destinations -->
+    <ng-container *ngIf="selectedPathExternals.length > 0">
+      <div class="path-arrow"><svg width="32" height="12" viewBox="0 0 32 12"><path d="M0 6H28M20 1L28 6L20 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="path-dest-list">
+        <a *ngFor="let ext of selectedPathExternals"
+           class="path-dest-chip"
+           [href]="'http://' + (ext.label || ext.id)"
+           target="_blank" rel="noopener noreferrer"
+           [title]="ext.label || ext.id">
+          <!-- Favicon for domains, colored globe for raw IPs -->
+          <span class="path-dest-icon">
+            <img *ngIf="!isIPAddress(ext.label || ext.id)"
+                 class="path-dest-favicon"
+                 [src]="'/favicon-proxy?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://' + (ext.label || ext.id) + '&size=32'"
+                 [alt]="ext.label"
+                 (error)="$event.target.style.display='none'" />
+            <svg *ngIf="isIPAddress(ext.label || ext.id)"
+                 class="path-dest-ip-icon"
+                 width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          </span>
+          <span>{{ ext.label || ext.id }}</span>
+        </a>
+      </div>
+    </ng-container>
+  </div>
+
+  <!-- ── Map Workspace ───────────────────────────── -->
+  <div class="map-workspace" [class.has-selection]="selectedNode" [class.has-sidebar]="!selectedNode && !isDsbCollapsed && (viewState === 'loaded' || focusMode)">
+
+    <!-- Map Panel -->
+    <section class="map-panel">
+      <!-- Grid overlay -->
+      <div class="map-grid-overlay" aria-hidden="true"></div>
+
+      <!-- Toolbar row -->
+      <div class="map-toolbar" *ngIf="!previewMode">
+        <div class="toolbar-row">
+
+          <!-- Node type command bar -->
+          <div class="type-bar">
+            <button class="type-card" [class.type-card--active]="activeFilter === 'all'" (click)="setFilter('all')">
+              <span class="type-card__dot type-card__dot--all"></span>
+              <span class="type-card__label">All</span>
+              <span class="type-card__count">{{ nodeCount }}</span>
+            </button>
+            <div class="type-bar__sep"></div>
+            <button class="type-card type-card--internal" [class.type-card--active]="activeFilter === 'internal'" (click)="setFilter('internal')">
+              <span class="type-card__dot type-card__dot--internal"></span>
+              <span class="type-card__label">Internal</span>
+              <span class="type-card__count">{{ internalCount }}</span>
+            </button>
+            <button class="type-card type-card--external" [class.type-card--active]="activeFilter === 'external'" (click)="setFilter('external')">
+              <span class="type-card__dot type-card__dot--external"></span>
+              <span class="type-card__label">External</span>
+              <span class="type-card__count">{{ externalCount }}</span>
+            </button>
+            <button class="type-card type-card--threat" [class.type-card--active]="activeFilter === 'threat'" (click)="setFilter('threat')">
+              <span class="type-card__dot type-card__dot--threat"></span>
+              <span class="type-card__label">Threats</span>
+              <span class="type-card__count type-card__count--threat">{{ threatCount }}</span>
+            </button>
+            <button class="type-card type-card--traffic" [class.type-card--active]="activeFilter === 'traffic'" (click)="setFilter('traffic')">
+              <span class="type-card__dot type-card__dot--traffic"></span>
+              <span class="type-card__label">High Traffic</span>
+              <span class="type-card__count">{{ trafficCount }}</span>
+            </button>
+          </div>
+
+          <!-- Hint badge -->
+          <div class="map-hint">
+            <lucide-icon [name]="NetworkIcon" class="w-3 h-3"></lucide-icon>
+            Drag · Scroll to zoom
+          </div>
+        </div>
+
+        <!-- Search / Back-to-map row -->
+        <div class="toolbar-row toolbar-row--search">
+          <div class="search-and-insights-container" *ngIf="!focusMode" style="position: relative; display: flex; align-items: center; gap: 8px;">
+            <div class="search-wrapper">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input
+                type="search"
+                class="search-input"
+                placeholder="Search IP, hostname…"
+                (input)="onSearchChange($event)" />
+            </div>
+            
+
+
+            <!-- Network Insights Overlay -->
+            <div class="network-insights-panel" *ngIf="!previewMode && (topTalkers.length > 0 || threatNodes.length > 0)" [class.is-collapsed]="!showInsights">
+              <div class="insights-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <lucide-icon [name]="NetworkIcon" class="w-4 h-4"></lucide-icon>
+                  <span *ngIf="showInsights">Network Insights</span>
+                </div>
+                <button class="dsb-toggle-btn" (click)="toggleInsights()" [title]="showInsights ? 'Minimize Insights' : 'Maximize Insights'" style="width: 24px; height: 24px;">
+                  <lucide-icon [name]="showInsights ? ChevronDownIcon : ChevronRightIcon" class="w-4 h-4"></lucide-icon>
+                </button>
+              </div>
+              
+              <div class="insights-body" *ngIf="showInsights">
+              
+              <div class="insight-section" *ngIf="topTalkers.length > 0">
+                <div class="insight-title">Top Talkers</div>
+                <div class="insight-list">
+                  <div class="insight-item" *ngFor="let node of topTalkers">
+                    <div class="insight-item__icon" [class.insight-item__icon--internal]="node.is_internal">
+                      <lucide-icon [name]="getDrawerIcon(node)" class="w-3.5 h-3.5"></lucide-icon>
+                    </div>
+                    <div class="insight-item__info">
+                      <span class="insight-item__label">{{ (node.label && node.label !== node.id) ? node.label : node.id }}</span>
+                      <span class="insight-item__sub">{{ node.type || 'host' }}</span>
+                    </div>
+                    <div class="insight-item__value">{{ node.connections }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="insight-section" *ngIf="threatNodes.length > 0">
+                <div class="insight-title insight-title--danger">Active Threats</div>
+                <div class="insight-list">
+                  <div class="insight-item insight-item--danger" *ngFor="let node of threatNodes | slice:0:3">
+                    <div class="insight-item__icon insight-item__icon--danger">
+                      <lucide-icon [name]="ThreatIcon" class="w-3.5 h-3.5"></lucide-icon>
+                    </div>
+                    <div class="insight-item__info">
+                      <span class="insight-item__label">{{ (node.label && node.label !== node.id) ? node.label : node.id }}</span>
+                      <span class="insight-item__sub">Threat Indicator</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div> <!-- end insights-body -->
+          </div> <!-- end network-insights-panel -->
+        </div> <!-- end search-and-insights-container -->
+
+          <button class="back-btn" *ngIf="focusMode && !selectedPathNode" (click)="clearSelection()">
+            <lucide-icon [name]="ArrowLeftIcon" class="w-4 h-4"></lucide-icon>
+            Back to full map
+          </button>
+        </div>
+      </div>
+
+      <!-- State overlays -->
+      <div *ngIf="!previewMode && viewState === 'loading'" class="state-overlay">
+        <div class="state-card">
+          <div class="state-spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-core">
+              <lucide-icon [name]="CircleDotIcon" class="w-5 h-5"></lucide-icon>
+            </div>
+          </div>
+          <strong>Mapping network topology</strong>
+          <span>Collecting hosts and communication paths…</span>
+        </div>
+      </div>
+
+      <div *ngIf="!previewMode && viewState === 'error'" class="state-overlay state-overlay--error">
+        <div class="state-card state-card--error">
+          <div class="state-icon-wrap state-icon-wrap--error">
+            <lucide-icon [name]="ThreatIcon" class="w-6 h-6"></lucide-icon>
+          </div>
+          <strong>Connection Lost</strong>
+          <span>{{ errorMessage || 'Failed to load network topology.' }}</span>
+          <button class="retry-btn" (click)="loadMap()">
+            <lucide-icon [name]="RefreshIcon" class="w-3.5 h-3.5"></lucide-icon>
+            Retry
+          </button>
+        </div>
+      </div>
+
+      <div *ngIf="!previewMode && viewState === 'empty'" class="state-overlay">
+        <div class="state-card">
+          <div class="state-icon-wrap state-icon-wrap--muted">
+            <lucide-icon [name]="ServerIcon" class="w-6 h-6"></lucide-icon>
+          </div>
+          <strong>No network data yet</strong>
+          <span>Start monitoring to see the topology graph.</span>
+        </div>
+      </div>
+
+      <!-- HUD corner brackets -->
+      <div class="hud-corners" aria-hidden="true">
+        <span class="hud-corner hud-corner--tl"></span>
+        <span class="hud-corner hud-corner--tr"></span>
+        <span class="hud-corner hud-corner--bl"></span>
+        <span class="hud-corner hud-corner--br"></span>
+      </div>
+
+      <!-- Scan line overlay -->
+      <div class="map-scan-overlay" aria-hidden="true"></div>
+
+      <svg #mapSvg class="map-canvas"></svg>
+
+    </section>
+
+    <!-- Device Selector Sidebar -->
+    <div class="device-selector-bar" *ngIf="!previewMode && !selectedNode && (viewState === 'loaded' || focusMode)" [class.is-collapsed]="isDsbCollapsed">
+      <div class="dsb-label" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div style="display: flex; align-items: center; gap: 7px;" *ngIf="!isDsbCollapsed">
+          <span class="dsb-pulse"></span>
+          <span class="dsb-label__text">LOCAL DEVICES</span>
+          <span class="dsb-label__count">{{ internalCount }}</span>
+        </div>
+        <button class="dsb-toggle-btn" (click)="toggleDsb()" [title]="isDsbCollapsed ? 'Expand Local Devices' : 'Collapse Local Devices'" [style.margin]="isDsbCollapsed ? '0 auto' : '0'">
+          <lucide-icon [name]="isDsbCollapsed ? ChevronLeftIcon : ChevronRightIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+      <div class="dsb-chips">
+        <div
+          class="dsb-chip"
+          *ngFor="let n of internalNodes"
+          [class.dsb-chip--active]="selectedPathNode?.id === n.id"
+          [class.dsb-chip--gw]="n.type === 'router' || n.type === 'gateway' || n.type === 'firewall'">
+          <div class="dsb-chip__top">
+            <span class="dsb-chip__dot" [class.dsb-chip__dot--gw]="n.type === 'router' || n.type === 'gateway' || n.type === 'firewall'"></span>
+            <span class="dsb-chip__role">{{ (n.type === 'router' || n.type === 'gateway') ? 'GATEWAY' : 'INTERNAL HOST' }}</span>
+          </div>
+          <span class="dsb-chip__ip">{{ (n.label && n.label !== n.id) ? n.label : n.id }}</span>
+          <div class="dsb-chip__bottom">
+            <span class="dsb-chip__type">{{ n.type || 'host' }}</span>
+            <span class="dsb-chip__count">{{ n.connections }}</span>
+          </div>
+        </div>
+      </div>
+      <button class="dsb-reset" *ngIf="selectedPathNode" (click)="exitDeviceFocus()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Show All
+      </button>
+    </div>
+
+    <!-- Device Drawer -->
+    <app-device-drawer
+      *ngIf="!previewMode && selectedNode"
+      [node]="selectedNode"
+      [focusModeActive]="focusMode"
+      (closeDrawer)="clearSelection()"
+      (focusRequested)="toggleFocus()">
+    </app-device-drawer>
+
+  </div>
+
+</section>

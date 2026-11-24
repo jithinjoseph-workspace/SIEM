@@ -1,0 +1,214 @@
+<section class="settings-shell">
+  <div class="settings-header">
+    <div>
+      <div class="eyebrow">System Preferences</div>
+      <h2>Settings</h2>
+      <p>Configure detection thresholds and alert automation limits.</p>
+    </div>
+
+    <div class="settings-status" [class.saving]="saving">
+      <span>
+        <lucide-icon
+          [name]="saving ? LoadingIcon : SlidersIcon"
+          class="w-4 h-4"
+          [class.spin]="saving">
+        </lucide-icon>
+      </span>
+      <div>
+        <strong>{{ saving ? 'Saving changes' : 'Threshold controls' }}</strong>
+        <small>{{ loading ? 'Loading settings' : 'Ready to edit' }}</small>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="settings-loading">
+    <div class="loading-panel">
+      <lucide-icon [name]="LoadingIcon" class="w-5 h-5 spin"></lucide-icon>
+      <span>Loading settings...</span>
+    </div>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <div class="threshold-strip">
+      <div>
+        <span>Store</span>
+        <strong>{{ thresholds.store_threshold }}</strong>
+      </div>
+      <div>
+        <span>Alert</span>
+        <strong class="warning">{{ thresholds.alert_threshold }}</strong>
+      </div>
+      <div>
+        <span>Critical</span>
+        <strong class="danger">{{ thresholds.critical_threshold }}</strong>
+      </div>
+      <div>
+        <span>SOAR</span>
+        <strong>{{ thresholds.soar_threshold }}</strong>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="SlidersIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Detection Thresholds</h3>
+            <p>Adjust score thresholds for storing, alerting, and automation.</p>
+          </div>
+        </div>
+
+        <div class="threshold-list">
+          <article class="threshold-row store">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="DatabaseIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Store Threshold</strong>
+                <small>Minimum score required before an event is stored.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="50" step="1" [(ngModel)]="thresholds.store_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.store_threshold = thresholds.store_threshold > 0 ? thresholds.store_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="50" [(ngModel)]="thresholds.store_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.store_threshold = thresholds.store_threshold < 50 ? thresholds.store_threshold + 1 : 50">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row alert">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="BellIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Alert Threshold</strong>
+                <small>Minimum score required before an alert is shown.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.alert_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.alert_threshold = thresholds.alert_threshold > 0 ? thresholds.alert_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.alert_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.alert_threshold = thresholds.alert_threshold < 100 ? thresholds.alert_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row critical">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="CriticalIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>Critical Threshold</strong>
+                <small>Score at which alerts are treated as critical severity.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.critical_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.critical_threshold = thresholds.critical_threshold > 0 ? thresholds.critical_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.critical_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.critical_threshold = thresholds.critical_threshold < 100 ? thresholds.critical_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="threshold-row soar">
+            <div class="threshold-copy">
+              <span class="threshold-icon">
+                <lucide-icon [name]="WorkflowIcon" class="w-4 h-4"></lucide-icon>
+              </span>
+              <div>
+                <strong>SOAR Threshold</strong>
+                <small>Minimum score required to trigger SOAR automation.</small>
+              </div>
+            </div>
+            <div class="threshold-control">
+              <input type="range" min="0" max="100" step="1" [(ngModel)]="thresholds.soar_threshold" />
+              <div class="stepper">
+                <button type="button" class="stepper-btn" (click)="thresholds.soar_threshold = thresholds.soar_threshold > 0 ? thresholds.soar_threshold - 1 : 0">−</button>
+                <input type="number" min="0" max="100" [(ngModel)]="thresholds.soar_threshold" />
+                <button type="button" class="stepper-btn" (click)="thresholds.soar_threshold = thresholds.soar_threshold < 100 ? thresholds.soar_threshold + 1 : 100">+</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Sensitive Countries -->
+      <section class="panel threshold-panel">
+        <div class="panel-heading">
+          <div class="panel-icon">
+            <lucide-icon [name]="SlidersIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Sensitive Countries</h3>
+            <p>Comma-separated ISO country codes. Connections to/from these countries raise the risk score.</p>
+          </div>
+        </div>
+        <div class="threshold-grid" style="grid-template-columns: 1fr;">
+          <article class="threshold-card">
+            <div class="threshold-label">
+              <span class="label-text">Country Codes</span>
+              <span class="label-value">{{ sensitiveCountries.split(',').length }} countries</span>
+            </div>
+            <textarea
+              rows="4"
+              [(ngModel)]="sensitiveCountries"
+              placeholder="e.g. CN,RU,IR,KP"
+              class="countries-textarea"></textarea>
+          </article>
+        </div>
+      </section>
+
+      <aside class="panel save-panel">
+        <div class="panel-heading compact">
+          <div class="panel-icon secondary">
+            <lucide-icon [name]="SaveIcon" class="w-5 h-5"></lucide-icon>
+          </div>
+          <div>
+            <h3>Apply Changes</h3>
+            <p>Save the current threshold values to the engine.</p>
+          </div>
+        </div>
+
+        <div class="save-summary">
+          <div>
+            <span>Configured values</span>
+            <strong>4 thresholds</strong>
+          </div>
+          <div>
+            <span>Destination</span>
+            <strong>System settings</strong>
+          </div>
+        </div>
+
+        <div class="save-action-row">
+          <button class="save-action" (click)="saveSettings()" [disabled]="saving">
+            <lucide-icon [name]="saving ? LoadingIcon : SaveIcon" class="w-4 h-4" [class.spin]="saving"></lucide-icon>
+            {{ saving ? 'Saving…' : 'Save Settings' }}
+          </button>
+        </div>
+
+        <div *ngIf="message" class="feedback success">
+          <lucide-icon [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+          <span>{{ message }}</span>
+        </div>
+
+        <div *ngIf="error" class="feedback error">
+          <lucide-icon [name]="ErrorIcon" class="w-4 h-4"></lucide-icon>
+          <span>{{ error }}</span>
+        </div>
+      </aside>
+    </div>
+
+  </ng-container>
+</section>

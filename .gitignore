@@ -86,7 +86,9 @@ wazuh-rust-angular/backend-rust/data/agent-dist/**/*-old
 /wazuh-dashboard-plugins/
 /wazuh-indexer/
 /ponytail-main/
-/ndr/
+# ndr/ is the NDR code, tracked here (one codebase with the SIEM); its old copy ndr-old-*/ is not
+/ndr-old-*/
+/NDR-SIEM/
 /data/
 /.agents/
 /.claude/

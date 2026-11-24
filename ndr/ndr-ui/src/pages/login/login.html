@@ -1,0 +1,273 @@
+<div class="login-root">
+
+  <!-- Animated background grid -->
+  <div class="login-bg-grid"></div>
+
+  <!-- Floating orbs for depth -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <div class="login-wrapper">
+
+    <!-- Premium White Wrapper -->
+    <div class="premium-white-wrapper"
+      style="background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(14,23,38,0.15) 100%); border-radius: 28px; padding: 40px 32px; box-shadow: 0 32px 64px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 480px; margin: 0 auto 30px auto; backdrop-filter: blur(20px);">
+
+      <!-- Brand -->
+      <div class="login-brand"
+        style="margin-bottom: 32px; display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <div class="login-logo-img" style="display: flex; justify-content: center; margin-bottom: 20px; width: 100%;">
+          <img src="/assets/images/ProVigilAI.png" alt="ProVigil Logo"
+            style="height: 130px; object-fit: contain; mix-blend-mode: multiply; filter: contrast(1.1); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);"
+            onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" />
+        </div>
+        <div
+          style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; background-color: #f8fafc; padding: 8px 20px; border-radius: 30px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.04); transition: all 0.3s ease;"
+          onmouseover="this.style.boxShadow='0 6px 16px rgba(0,0,0,0.08)'; this.style.backgroundColor='#ffffff'; this.style.borderColor='#cbd5e1';"
+          onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.04)'; this.style.backgroundColor='#f8fafc'; this.style.borderColor='#e2e8f0';">
+          <span
+            style="font-size: 11px; color: #475569; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;">powered
+            by</span>
+          <img src="/assets/images/promasecure.png" alt="PromaSecure" style="height: 26px; object-fit: contain;" />
+        </div>
+      </div>
+
+
+      <!-- Card -->
+      <div class="login-card" style="background-color: #08101f; border-color: rgba(255,255,255,0.1);">
+        <h2 class="login-card-heading">Sign in to your account</h2>
+
+        <!-- Error banner -->
+        <div *ngIf="error" class="login-error" role="alert">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{{ error }}</span>
+        </div>
+
+        <!-- Login Form (Required for browser autofill) -->
+        <form (ngSubmit)="login()">
+          <!-- Username field -->
+          <div class="login-field">
+            <label class="login-label" for="login-username">Username</label>
+            <div class="login-input-wrap">
+              <svg class="field-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <input id="login-username" [(ngModel)]="username" name="username" placeholder="Enter username"
+                autocomplete="username" class="login-input" />
+            </div>
+          </div>
+
+
+          <!-- Password field -->
+          <div class="login-field">
+            <label class="login-label" for="login-password">Password</label>
+            <div class="login-input-wrap">
+              <svg class="field-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <input id="login-password" [(ngModel)]="password" name="password"
+                [type]="showPassword ? 'text' : 'password'" placeholder="Enter password" autocomplete="current-password"
+                class="login-input login-input--password" />
+              <button type="button" (click)="showPassword = !showPassword" class="toggle-pw"
+                [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'">
+                <!-- Eye open -->
+                <svg *ngIf="!showPassword" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <!-- Eye closed -->
+                <svg *ngIf="showPassword" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" id="login-submit" [disabled]="loading" class="login-btn"
+            [class.login-btn--loading]="loading">
+            <span *ngIf="!loading">Sign In</span>
+            <span *ngIf="loading" class="login-spinner-wrap">
+              <svg class="login-spinner" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <path
+                  d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
+              Signing in...
+            </span>
+          </button>
+
+          <!-- Forgot Password Link -->
+          <div class="login-forgot-link">
+            <a href="javascript:void(0)" (click)="openForgotModal()">Forgot password?</a>
+          </div>
+        </form>
+
+      </div>
+
+    </div> <!-- Close premium-white-wrapper -->
+
+    <!-- ── Forgot Password Modal ──────────────────────────────────────── -->
+    <div *ngIf="showForgotModal" class="forgot-modal-backdrop">
+      <div class="forgot-modal">
+        <button class="forgot-close" (click)="closeForgotModal()" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
+        <!-- Step Indicator -->
+        <div class="forgot-steps" *ngIf="forgotStep < 4">
+          <div class="step" [class.active]="forgotStep >= 1">1</div>
+          <div class="step-line" [class.active]="forgotStep >= 2"></div>
+          <div class="step" [class.active]="forgotStep >= 2">2</div>
+          <div class="step-line" [class.active]="forgotStep >= 3"></div>
+          <div class="step" [class.active]="forgotStep >= 3">3</div>
+        </div>
+
+        <div *ngIf="forgotError" class="login-error" style="margin-top:16px;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{{ forgotError }}</span>
+        </div>
+
+        <!-- Step 1: Verify Secret -->
+        <div *ngIf="forgotStep === 1" class="forgot-step-content">
+          <h3>Reset Password</h3>
+          <p>Please provide your tenant admin username and 6-character secret code to begin.</p>
+          <div class="login-field">
+            <label class="login-label">Username</label>
+            <input class="login-input" [(ngModel)]="forgotData.username" placeholder="Tenant admin username" />
+          </div>
+          <div class="login-field">
+            <label class="login-label">Secret Code</label>
+            <input class="login-input" [(ngModel)]="forgotData.secretCode" placeholder="6-character code" maxlength="6"
+              style="text-transform: uppercase;" />
+          </div>
+          <button class="login-btn" (click)="submitSecretCode()" [disabled]="forgotLoading">
+            <span *ngIf="!forgotLoading">Next</span>
+            <span *ngIf="forgotLoading">Verifying...</span>
+          </button>
+        </div>
+
+        <!-- Step 2: Gmail -->
+        <div *ngIf="forgotStep === 2" class="forgot-step-content">
+          <h3>Email Verification</h3>
+          <p>A recovery email is linked to this account: <strong>{{ forgotData.gmailHint }}</strong></p>
+          <p>Please enter the full email address to receive an OTP.</p>
+          <div class="login-field">
+            <label class="login-label">Email Address</label>
+            <input class="login-input" type="email" [(ngModel)]="forgotData.gmail" placeholder="you@domain.com" />
+          </div>
+          <button class="login-btn" (click)="submitGmail()" [disabled]="forgotLoading">
+            <span *ngIf="!forgotLoading">Send OTP</span>
+            <span *ngIf="forgotLoading">Sending...</span>
+          </button>
+        </div>
+
+        <!-- Step 3: Enter OTP & New Password -->
+        <form *ngIf="forgotStep === 3" class="forgot-step-content" (ngSubmit)="submitOtp()" autocomplete="off">
+          <h3>Check your Email</h3>
+          <p>An OTP has been sent to your email. It expires in 10 minutes.</p>
+          <div class="login-field">
+            <label class="login-label">6-Digit OTP</label>
+            <input class="login-input" name="otp" [(ngModel)]="forgotData.otp" placeholder="123456" maxlength="6" autocomplete="one-time-code" />
+          </div>
+          <div class="login-field">
+            <label class="login-label">New Password</label>
+            <input class="login-input" name="newPassword" type="password" [(ngModel)]="forgotData.newPassword"
+              placeholder="New password" autocomplete="new-password" />
+          </div>
+          <div class="login-field">
+            <label class="login-label">Confirm Password</label>
+            <input class="login-input" name="confirmPassword" type="password" [(ngModel)]="forgotData.confirmPassword"
+              placeholder="Confirm password" autocomplete="new-password" />
+          </div>
+          <button type="submit" class="login-btn" [disabled]="forgotLoading">
+            <span *ngIf="!forgotLoading">Reset Password</span>
+            <span *ngIf="forgotLoading">Resetting...</span>
+          </button>
+        </form>
+
+        <!-- Step 4: Success -->
+        <div *ngIf="forgotStep === 4" class="forgot-step-content success-step">
+          <svg class="success-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#10b981"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <h3>Password Reset Successful</h3>
+          <p>You can now sign in with your new password.</p>
+          <button class="login-btn" (click)="closeForgotModal()">Return to Sign In</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Forced Password Reset Modal ──────────────────────────────────── -->
+    <div *ngIf="showForceReset" class="forgot-modal-backdrop">
+      <div class="forgot-modal">
+        <button class="forgot-close" (click)="closeForceReset()" aria-label="Close" title="Skip for now — you'll be asked again next login">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
+        <div *ngIf="forceResetError" class="login-error" style="margin-top:16px;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{{ forceResetError }}</span>
+        </div>
+
+        <div class="forgot-step-content">
+          <h3>Set a New Password</h3>
+          <p>This account is still using the default installer password. Choose a new one to continue — at least 8 characters, with an uppercase letter, a number, and a special character.</p>
+          <div class="login-field">
+            <label class="login-label">New Password</label>
+            <input class="login-input" type="password" [(ngModel)]="forceResetNewPassword"
+              placeholder="New password" name="forceResetNewPassword" />
+          </div>
+          <div class="login-field">
+            <label class="login-label">Confirm Password</label>
+            <input class="login-input" type="password" [(ngModel)]="forceResetConfirmPassword"
+              placeholder="Confirm password" name="forceResetConfirmPassword" (keydown.enter)="submitForceReset()" />
+          </div>
+          <button class="login-btn" (click)="submitForceReset()" [disabled]="forceResetLoading">
+            <span *ngIf="!forceResetLoading">Set Password &amp; Continue</span>
+            <span *ngIf="forceResetLoading">Updating...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="login-footer">
+      NDR Stack v1.0 &mdash; Powered by Agent-Z &amp; Agent-S
+    </p>
+  </div>
+</div>

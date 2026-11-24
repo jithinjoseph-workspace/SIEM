@@ -1,0 +1,107 @@
+<div class="hp-page">
+
+  <!-- ── PAGE HEADER ────────────────────────────────────────────────────── -->
+  <div class="hp-header">
+    <div class="hp-header-left">
+      <div class="hp-eyebrow">
+        <lucide-icon [name]="ShieldAlertIcon" class="w-3 h-3"></lucide-icon>
+        DECEPTION &amp; DETECTION
+      </div>
+      <h1 class="hp-title">Honeypots</h1>
+      <p class="hp-subtitle">Any traffic touching these IPs/CIDRs triggers an immediate CRITICAL alert — zero false positives.</p>
+    </div>
+    <div class="hp-header-right">
+      @if (canManage()) {
+        <button class="btn-add" (click)="toggleForm()">
+          <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+          Add Honeypot
+        </button>
+      }
+      <button class="btn-refresh" (click)="load()" [disabled]="loading" [class.spinning]="loading">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- ── ALERTS ─────────────────────────────────────────────────────────── -->
+  @if (success) { <div class="hp-alert hp-alert-ok">{{ success }}</div> }
+  @if (error)   { <div class="hp-alert hp-alert-err">{{ error }}</div> }
+
+  <!-- ── ADD FORM ───────────────────────────────────────────────────────── -->
+  @if (showForm) {
+    <div class="hp-panel">
+      <div class="hp-panel-title">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        New Honeypot
+      </div>
+      <div class="hp-form-row">
+        <div class="hp-field">
+          <label>Name</label>
+          <input [(ngModel)]="formName" placeholder="e.g. Fake DB Server" class="hp-input" />
+        </div>
+        <div class="hp-field">
+          <label>CIDR</label>
+          <input [(ngModel)]="formCidr" placeholder="e.g. 192.168.100.50/32" class="hp-input" />
+        </div>
+        <div class="hp-field hp-field-wide">
+          <label>Description <span class="hp-optional">(optional)</span></label>
+          <input [(ngModel)]="formDesc" placeholder="Purpose or notes" class="hp-input" />
+        </div>
+      </div>
+      <div class="hp-form-actions">
+        <button class="btn-save" (click)="submit()" [disabled]="submitting">
+          {{ submitting ? 'Saving...' : 'Save Honeypot' }}
+        </button>
+        <button class="btn-cancel" (click)="toggleForm()">Cancel</button>
+      </div>
+    </div>
+  }
+
+  <!-- ── TABLE ──────────────────────────────────────────────────────────── -->
+  @if (loading && honeypots.length === 0) {
+    <div class="hp-loading">Loading honeypots...</div>
+  } @else {
+    <div class="hp-table-wrap">
+      <table class="hp-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>CIDR</th>
+            <th>Description</th>
+            <th>Tenant</th>
+            <th>Created</th>
+            @if (canManage()) { <th></th> }
+          </tr>
+        </thead>
+        <tbody>
+          @for (hp of honeypots; track hp.id) {
+            <tr>
+              <td class="hp-name">{{ hp.name }}</td>
+              <td><code class="hp-cidr">{{ hp.cidr }}</code></td>
+              <td class="hp-desc">{{ hp.description || '—' }}</td>
+              <td class="hp-tenant">{{ hp.tenant_id }}</td>
+              <td class="hp-date">{{ hp.created_at | date:'dd MMM yyyy, HH:mm' }}</td>
+              @if (canManage()) {
+                <td class="hp-actions">
+                  <button class="btn-delete" (click)="remove(hp)" title="Remove honeypot">
+                    <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+                    Remove
+                  </button>
+                </td>
+              }
+            </tr>
+          }
+          @if (honeypots.length === 0) {
+            <tr>
+              <td [attr.colspan]="canManage() ? 6 : 5" class="hp-empty">
+                No honeypots configured. Add one to start detecting unauthorized access.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+</div>

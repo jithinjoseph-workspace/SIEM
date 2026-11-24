@@ -1,0 +1,431 @@
+<section class="admin-panel aip-panel">
+
+  <!-- Ambient Glows -->
+  <div class="aip-ambient-glow glow--purple" aria-hidden="true"></div>
+  <div class="aip-ambient-glow glow--cyan" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="providerMessage" class="admin-message success">{{ providerMessage }}</div>
+  <div *ngIf="providerError"   class="admin-message error">{{ providerError }}</div>
+  <div *ngIf="testProviderResult" class="admin-message"
+    [class.success]="testProviderResult.startsWith('✓')"
+    [class.error]="testProviderResult.startsWith('✗')">
+    {{ testProviderResult }}
+  </div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="aip-hero-strip">
+    <div class="aip-hero-left">
+      <div class="aip-system-badge">
+        <span class="aip-pulse-dot"></span>
+        <span>NEURAL COGNITION / LLM MESH</span>
+        <span class="aip-badge-sep">/</span>
+        <span class="aip-badge-status">{{ activeProvidersCount > 0 ? activeProvidersCount + '/' + providers.length + ' ENGINES ONLINE' : 'NO ACTIVE ENGINES' }}</span>
+      </div>
+      <h1 class="aip-headline">AI Providers &amp; <em>Inference</em> Mesh</h1>
+      <p class="aip-tagline">Multi-model failover orchestration, ARIA security copilot, and automated threat verdict acceleration.</p>
+    </div>
+
+    <div class="aip-hero-controls">
+      <!-- Add Provider -->
+      <button type="button" class="aip-action-btn btn--primary" (click)="showAddProviderForm = !showAddProviderForm">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        <span>Add Provider</span>
+      </button>
+
+      <!-- Refresh -->
+      <button type="button" class="aip-action-btn" (click)="loadProviders()" title="Refresh AI providers">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingProviders"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="aip-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-purple-400"></lucide-icon>
+        <div class="aip-clock-text">
+          <span class="aip-clock-time">{{ clock.currentTime() }}</span>
+          <span class="aip-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. Neural Orchestration Command Deck (4 Unique Cards) ──── -->
+  <section class="ai-orchestration-deck" aria-label="AI Provider Neural Deck">
+
+    <!-- Card 1: Active LLM Mesh & Primary Router -->
+    <div class="ai-deck-card ai-deck--mesh">
+      <div class="ai-card-glow purple"></div>
+      <div class="ai-card-top">
+        <div class="ai-card-tag">
+          <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5 text-purple-400"></lucide-icon>
+          <span>ACTIVE LLM MESH</span>
+        </div>
+        <span class="ai-status-pill purple">{{ activeProvidersCount }}/{{ providers.length }} ONLINE</span>
+      </div>
+
+      <div class="ai-mesh-body">
+        <div class="mesh-metric-lead">
+          <span class="mesh-val text-purple-400 font-mono">{{ activeRatio }}%</span>
+          <span class="mesh-desc">INFERENCE READINESS</span>
+        </div>
+
+        <div class="mesh-pipeline-bar" title="Active Model Priority Distribution">
+          <div *ngFor="let p of providers" class="mesh-segment"
+            [class.active]="p.enabled"
+            [title]="p.name + ' (' + p.provider_type + '): ' + (p.enabled ? 'Active Priority #' + p.priority : 'Disabled')">
+          </div>
+        </div>
+
+        <div class="mesh-meta-row">
+          <span class="text-slate-400">Primary:</span>
+          <span class="font-mono text-purple-300 font-bold">{{ primaryProvider?.name || 'None' }}</span>
+          <span *ngIf="primaryProvider" class="font-mono text-xs text-slate-500">(#{{ primaryProvider.priority }})</span>
+        </div>
+      </div>
+
+      <div class="ai-card-footer">
+        <span class="ai-chip">CASCADE FAILOVER</span>
+        <span class="ai-chip">PRIORITY ORDER</span>
+        <span class="ai-chip purple">ARMED</span>
+      </div>
+    </div>
+
+    <!-- Card 2: ARIA Copilot & Threat Triage Split -->
+    <div class="ai-deck-card ai-deck--copilot">
+      <div class="ai-card-glow cyan"></div>
+      <div class="ai-card-top">
+        <div class="ai-card-tag">
+          <lucide-icon [name]="BotIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+          <span>ARIA COPILOT HARNESS</span>
+        </div>
+        <span class="ai-status-pill cyan">{{ chatProvidersCount }} CHAT · {{ threatProvidersCount }} VERDICT</span>
+      </div>
+
+      <div class="ai-copilot-body">
+        <div class="copilot-split-grid">
+          <div class="copilot-box">
+            <span class="copilot-num text-cyan-400 font-mono">{{ chatProvidersCount }}</span>
+            <span class="copilot-lbl">ARIA CHAT</span>
+          </div>
+          <div class="copilot-box">
+            <span class="copilot-num text-emerald-400 font-mono">{{ threatProvidersCount }}</span>
+            <span class="copilot-lbl">THREAT VERDICT</span>
+          </div>
+        </div>
+
+        <div class="copilot-dispatch-meta">
+          <span class="d-tag">DISPATCH PIPELINE:</span>
+          <span class="d-val font-mono text-slate-200">Contextual Prompt Triage</span>
+        </div>
+      </div>
+
+      <div class="ai-card-footer">
+        <span class="ai-chip">PROMPT ENRICHMENT</span>
+        <span class="ai-chip">ZERO-LOG RETENTION</span>
+        <span class="ai-chip cyan">READY</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Inference Protocol & Vendor Diversity -->
+    <div class="ai-deck-card ai-deck--protocol">
+      <div class="ai-card-glow emerald"></div>
+      <div class="ai-card-top">
+        <div class="ai-card-tag">
+          <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+          <span>INFERENCE PROTOCOL</span>
+        </div>
+        <span class="ai-status-pill emerald">STREAMING READY</span>
+      </div>
+
+      <div class="ai-protocol-body">
+        <div class="protocol-lead-row">
+          <div class="protocol-status-badge">
+            <span class="p-num text-emerald-400 font-mono">{{ providers.length }}</span>
+            <span class="p-lbl">CONFIGURED ENGINES</span>
+          </div>
+          <div class="protocol-pill-group">
+            <span class="p-tag-pill">SSE / STREAM</span>
+            <span class="p-tag-pill">JSON FORMAT</span>
+          </div>
+        </div>
+
+        <div class="protocol-tech-row">
+          <div class="p-item">
+            <span class="p-key">COMPATIBILITY:</span>
+            <span class="p-val font-mono text-emerald-300">OpenAI / Anthropic REST</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-card-footer">
+        <span class="ai-chip">TIMEOUT 30s</span>
+        <span class="ai-chip">NONCE SIGNED</span>
+        <span class="ai-chip success">OPTIMAL</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Secret Key Vault & Encryption Standard -->
+    <div class="ai-deck-card ai-deck--vault">
+      <div class="ai-card-glow amber"></div>
+      <div class="ai-card-top">
+        <div class="ai-card-tag">
+          <lucide-icon [name]="KeyRoundIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+          <span>SECRET KEY VAULT</span>
+        </div>
+        <span class="ai-status-pill amber">{{ keySetCount }}/{{ providers.length }} KEYS SECURED</span>
+      </div>
+
+      <div class="ai-vault-body">
+        <div class="vault-lead-row">
+          <div class="vault-token-display">
+            <div class="vault-icon-box">
+              <lucide-icon [name]="ShieldCheckIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+            </div>
+            <div class="vault-token-meta">
+              <span class="vault-token-count font-mono text-amber-400">{{ keySetCount }}</span>
+              <span class="vault-token-sub">SECRETS BOUND</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="vault-cipher-line">
+          <span class="c-lbl">STORAGE ENCRYPTION:</span>
+          <span class="c-val font-mono text-slate-300">AES-256-GCM (Env Protected)</span>
+        </div>
+      </div>
+
+      <div class="ai-card-footer">
+        <span class="ai-chip">MASKED INPUT</span>
+        <span class="ai-chip">ZERO PERSIST</span>
+        <span class="ai-chip amber">PROTECTED</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. Registered AI Providers Cyber Matrix ─────────────────── -->
+  <section class="aip-card glass-card">
+    <div class="aip-card-head">
+      <div>
+        <div class="aip-card-tag">NEURAL REGISTRY</div>
+        <h2 class="aip-card-title">Configured AI Inference Providers</h2>
+        <p class="aip-card-desc">Cascading fallback list. Lower priority numbers execute first.</p>
+      </div>
+
+      <div class="aip-head-actions">
+        <button class="aip-quick-add-btn" (click)="showAddProviderForm = true; resetNewProvider()">
+          <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Add Model Engine</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div *ngIf="loadingProviders" class="aip-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Connecting to neural provider registry...</span>
+    </div>
+
+    <!-- Empty State -->
+    <div *ngIf="!loadingProviders && providers.length === 0" class="aip-empty-state">
+      <lucide-icon [name]="CpuIcon" class="w-9 h-9 text-slate-500"></lucide-icon>
+      <strong>No AI Providers Configured</strong>
+      <span>Provision an OpenAI, Anthropic, or Groq-compatible LLM endpoint to arm ARIA Copilot and automated threat analysis.</span>
+      <button class="aip-empty-btn" (click)="showAddProviderForm = true">Configure First Provider</button>
+    </div>
+
+    <!-- Matrix Table -->
+    <div *ngIf="!loadingProviders && providers.length > 0" class="aip-table-wrap">
+      <table class="aip-cyber-table">
+        <thead>
+          <tr>
+            <th class="col-name">Engine Name</th>
+            <th class="col-type">Provider Type</th>
+            <th class="col-model">Model &amp; Endpoint</th>
+            <th class="col-usecase">Use Case</th>
+            <th class="col-priority">Priority</th>
+            <th class="col-status">Operational Status</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of providers">
+            <!-- Name & Icon -->
+            <td class="col-name">
+              <div class="provider-cell">
+                <div class="provider-icon-badge" [class.enabled]="p.enabled">
+                  <lucide-icon [name]="BotIcon" class="w-4 h-4" [class.text-purple-400]="p.enabled" [class.text-slate-500]="!p.enabled"></lucide-icon>
+                </div>
+                <div>
+                  <strong class="p-name">{{ p.name }}</strong>
+                  <span class="p-sub font-mono">{{ p.msg_format || 'openai' }} format</span>
+                </div>
+              </div>
+            </td>
+
+            <!-- Type -->
+            <td class="col-type">
+              <span class="type-pill" [class.custom]="p.provider_type === 'custom'" [class.openai]="p.provider_type === 'openai'" [class.anthropic]="p.provider_type === 'anthropic'">
+                {{ p.provider_type }}
+              </span>
+            </td>
+
+            <!-- Model & Base URL -->
+            <td class="col-model">
+              <div class="model-meta">
+                <span class="model-name font-mono">{{ p.model || 'Default Architecture' }}</span>
+                <span class="model-url font-mono">{{ p.base_url || 'https://api.openai.com' }}</span>
+              </div>
+            </td>
+
+            <!-- Use Case -->
+            <td class="col-usecase">
+              <span class="usecase-badge" [class.all]="p.use_case === 'all'" [class.chat]="p.use_case === 'chat'" [class.threat]="p.use_case === 'threat'">
+                {{ useCaseLabel(p.use_case) }}
+              </span>
+            </td>
+
+            <!-- Priority -->
+            <td class="col-priority">
+              <div class="priority-pill">
+                <span class="font-mono font-bold text-slate-200">#{{ p.priority }}</span>
+              </div>
+            </td>
+
+            <!-- Status -->
+            <td class="col-status">
+              <div class="status-stack">
+                <span class="aip-status-pill" [class.status--active]="p.enabled" [class.status--inactive]="!p.enabled">
+                  <i class="p-dot"></i> {{ p.enabled ? 'Active Engine' : 'Disabled' }}
+                </span>
+                <span *ngIf="p.key_set" class="key-bound-pill">
+                  <lucide-icon [name]="KeyRoundIcon" class="w-3 h-3 text-amber-400"></lucide-icon>
+                  <span>Key Armed</span>
+                </span>
+              </div>
+            </td>
+
+            <!-- Actions -->
+            <td class="col-actions">
+              <div class="aip-row-actions">
+                <button type="button" class="aip-test-btn" (click)="testProvider(p)" [disabled]="testingProvider === p.name" title="Test endpoint connection">
+                  <lucide-icon [name]="testingProvider === p.name ? LoadingIcon : TestIcon" class="w-3.5 h-3.5" [class.spinning]="testingProvider === p.name"></lucide-icon>
+                  <span>Test</span>
+                </button>
+                <button type="button" class="aip-icon-btn" (click)="editProvider(p)" title="Edit configuration">
+                  <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
+                </button>
+                <button type="button" class="aip-danger-btn" (click)="deleteProvider(p.name)" title="Delete provider">
+                  <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── 4. Add / Edit Provider Cyber Modal ──────────────────────── -->
+  <div *ngIf="showAddProviderForm" class="modal-backdrop">
+    <div class="modal-panel glass-card">
+      <div class="modal-head">
+        <div>
+          <div class="modal-tag">{{ isEditingProvider ? 'UPDATE CONFIGURATION' : 'NEW LLM ENGINE' }}</div>
+          <h3>{{ isEditingProvider ? 'Edit Inference Engine' : 'Add AI Inference Provider' }}</h3>
+          <p>{{ isEditingProvider ? 'Update parameters, model bindings, or authentication keys.' : 'Configure a new OpenAI, Anthropic, or OpenAI-compatible backend.' }}</p>
+        </div>
+        <button type="button" class="icon-button" (click)="showAddProviderForm = false; resetNewProvider()">
+          <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="modal-body-grid">
+        <!-- Name -->
+        <div class="aip-form-field">
+          <label>PROVIDER NAME</label>
+          <input type="text" [(ngModel)]="newProvider.name" placeholder="e.g. Groq-Llama-70B" [disabled]="isEditingProvider" class="aip-input" />
+        </div>
+
+        <!-- Type -->
+        <div class="aip-form-field">
+          <label>PROVIDER ARCHITECTURE</label>
+          <select [(ngModel)]="newProvider.provider_type" class="aip-input">
+            <option *ngFor="let t of providerTypeOptions" [value]="t.value">{{ t.label }}</option>
+          </select>
+        </div>
+
+        <!-- API Key -->
+        <div class="aip-form-field full-width">
+          <label>API KEY {{ !isEditingProvider ? '(REQUIRED)' : '(LEAVE BLANK TO RETAIN CURRENT)' }}</label>
+          <div class="key-input-wrap">
+            <input [type]="showProviderKey ? 'text' : 'password'" [(ngModel)]="newProvider.api_key" placeholder="Paste cryptographic API key..." class="aip-input font-mono" />
+            <button class="key-reveal-btn" (click)="showProviderKey = !showProviderKey" type="button">
+              <lucide-icon [name]="showProviderKey ? EyeOffIcon : EyeIcon" class="w-4 h-4"></lucide-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Model -->
+        <div class="aip-form-field">
+          <label>MODEL IDENTIFIER</label>
+          <input type="text" [(ngModel)]="newProvider.model" [placeholder]="defaultModelPlaceholder" class="aip-input font-mono" />
+        </div>
+
+        <!-- Priority -->
+        <div class="aip-form-field">
+          <label>FAILOVER PRIORITY (LOWER = HIGHER RANK)</label>
+          <input type="number" [(ngModel)]="newProvider.priority" min="1" max="100" class="aip-input font-mono" />
+        </div>
+
+        <!-- Base URL -->
+        <div class="aip-form-field full-width">
+          <label>BASE URL</label>
+          <input type="text" [(ngModel)]="newProvider.base_url"
+            [placeholder]="newProvider.provider_type === 'custom' ? 'https://api.groq.com/openai' : defaultBaseUrl" class="aip-input font-mono" />
+          <small *ngIf="newProvider.provider_type === 'custom'" class="aip-field-hint">
+            Groq example: <code>https://api.groq.com/openai</code> | Ollama: <code>http://localhost:11434</code>
+          </small>
+        </div>
+
+        <!-- Use Case -->
+        <div class="aip-form-field">
+          <label>INTENDED USE CASE</label>
+          <select [(ngModel)]="newProvider.use_case" class="aip-input">
+            <option *ngFor="let u of useCaseOptions" [value]="u.value">{{ u.label }}</option>
+          </select>
+        </div>
+
+        <!-- Active Switch -->
+        <div class="aip-form-field">
+          <label>OPERATIONAL STATE</label>
+          <div class="toggle-switch-row">
+            <label class="aip-switch">
+              <input type="checkbox" [(ngModel)]="newProvider.enabled" />
+              <span class="aip-slider"></span>
+            </label>
+            <span class="toggle-lbl">{{ newProvider.enabled ? 'Enabled in Dispatch Mesh' : 'Disabled / Standby' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="modal-foot">
+        <button type="button" class="aip-modal-test-btn" (click)="testNewProvider()" [disabled]="testingProvider === '__new__'">
+          <lucide-icon [name]="testingProvider === '__new__' ? LoadingIcon : TestIcon" class="w-4 h-4" [class.spinning]="testingProvider === '__new__'"></lucide-icon>
+          <span>{{ testingProvider === '__new__' ? 'Probing Link...' : 'Test Connection' }}</span>
+        </button>
+
+        <div class="foot-actions-right">
+          <button type="button" class="aip-modal-cancel-btn" (click)="showAddProviderForm = false; resetNewProvider()">Cancel</button>
+          <button type="button" class="aip-modal-save-btn" (click)="saveProvider()" [disabled]="savingProvider || !newProvider.name.trim()">
+            <lucide-icon [name]="SaveIcon" class="w-4 h-4"></lucide-icon>
+            <span>{{ savingProvider ? 'Saving Engine...' : (isEditingProvider ? 'Save Changes' : 'Register Provider') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>

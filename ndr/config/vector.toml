@@ -1,0 +1,214 @@
+data_dir = "/etc/vector/data"
+
+[sources.suricata]
+type = "file"
+include = ["/logs/suricata/eve.json"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek]
+type = "file"
+include = [
+    "/logs/zeek/conn.log"
+]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[transforms.suricata_json]
+type = "remap"
+inputs = ["suricata"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null {
+  . = parsed
+  .source = "suricata"
+  .tenant_id = get_env_var("TENANT_ID") ?? "default"
+} else {
+  abort
+}
+'''
+
+[transforms.zeek_json]
+type = "remap"
+inputs = ["zeek"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null {
+  . = parsed
+  .source = "zeek"
+  .tenant_id = get_env_var("TENANT_ID") ?? "default"
+} else {
+  abort
+}
+'''
+
+[sources.zeek_http]
+type = "file"
+include = ["/logs/zeek/http.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_dns]
+type = "file"
+include = ["/logs/zeek/dns.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_ssl]
+type = "file"
+include = ["/logs/zeek/ssl.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_files]
+type = "file"
+include = ["/logs/zeek/files.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_dhcp]
+type = "file"
+include = ["/logs/zeek/dhcp.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_weird]
+type = "file"
+include = ["/logs/zeek/weird.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_quic]
+type = "file"
+include = ["/logs/zeek/quic.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_arp]
+type = "file"
+include = ["/logs/zeek/arp.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_software]
+type = "file"
+include = ["/logs/zeek/software.log"]
+read_from = "end"
+glob_minimum_cooldown_ms = 100
+
+[sources.zeek_ipam]
+type = "file"
+include = ["/logs/zeek/ipam.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 500
+
+[transforms.zeek_http_json]
+type = "remap"
+inputs = ["zeek_http"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "http" } else { abort }
+'''
+
+[transforms.zeek_dns_json]
+type = "remap"
+inputs = ["zeek_dns"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "dns" } else { abort }
+'''
+
+[transforms.zeek_ssl_json]
+type = "remap"
+inputs = ["zeek_ssl"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "ssl" } else { abort }
+'''
+
+[transforms.zeek_files_json]
+type = "remap"
+inputs = ["zeek_files"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "files" } else { abort }
+'''
+
+[transforms.zeek_dhcp_json]
+type = "remap"
+inputs = ["zeek_dhcp"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "dhcp" } else { abort }
+'''
+
+[transforms.zeek_weird_json]
+type = "remap"
+inputs = ["zeek_weird"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "weird" } else { abort }
+'''
+
+[transforms.zeek_quic_json]
+type = "remap"
+inputs = ["zeek_quic"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "quic" } else { abort }
+'''
+
+[transforms.zeek_arp_json]
+type = "remap"
+inputs = ["zeek_arp"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "arp" } else { abort }
+'''
+
+[transforms.zeek_software_json]
+type = "remap"
+inputs = ["zeek_software"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "software" } else { abort }
+'''
+
+[transforms.zeek_ipam_json]
+type = "remap"
+inputs = ["zeek_ipam"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null { . = parsed; .source = "zeek"; .log_type = "ipam" } else { abort }
+'''
+
+[transforms.stamp_local]
+type = "remap"
+inputs = ["suricata_json", "zeek_json", "zeek_http_json", "zeek_dns_json", "zeek_ssl_json", "zeek_files_json", "zeek_dhcp_json", "zeek_weird_json", "zeek_quic_json", "zeek_arp_json", "zeek_software_json", "zeek_ipam_json"]
+source = '''
+  .sensor_host = get_env_var("LOCAL_SENSOR_ID") ?? "local-central"
+  if !exists(.tenant_id) || .tenant_id == "" {
+    .tenant_id = get_env_var("TENANT_ID") ?? "default"
+  }
+'''
+
+[sinks.kafka]
+type = "kafka"
+inputs = ["stamp_local"]
+bootstrap_servers = "kafka1:9092,kafka2:9092,kafka3:9092"
+topic = "ndr-events"
+encoding.codec = "json"
+# Route by community_id so Zeek + Suricata events for the same flow
+# always land on the same partition and the same engine correlator.
+# Without this, random partitioning splits a flow across engines and
+# zeek+suricata full correlation never fires.
+key_field = "community_id"
+batch.timeout_secs = 0.1
+batch.max_events = 100
+
+# Disk buffer: spools events when Kafka is temporarily unavailable
+# so no logs are lost during brief Kafka restarts or network blips
+[sinks.kafka.buffer]
+type = "disk"
+max_size = 536870912
+when_full = "block"

@@ -1,0 +1,404 @@
+<section class="admin-panel eng-panel">
+
+  <!-- Ambient Glows -->
+  <div class="eng-ambient-glow glow--cyan" aria-hidden="true"></div>
+  <div class="eng-ambient-glow glow--violet" aria-hidden="true"></div>
+
+  <!-- Messages -->
+  <div *ngIf="msg" [class]="'admin-message ' + (msgType === 'success' ? 'success' : 'error')">{{ msg }}</div>
+  <div *ngIf="syncMessage"
+    [class]="'eng-alert ' + (syncError ? 'eng-alert--error' : 'eng-alert--success')">
+    <lucide-icon [name]="syncError ? AlertTriangleIcon : CheckCircleIcon" class="w-4 h-4"></lucide-icon>
+    <span>{{ syncMessage }}</span>
+  </div>
+
+  <!-- ── 1. Cyber Hero Strip ─────────────────────────────────────── -->
+  <header class="eng-hero-strip">
+    <div class="eng-hero-left">
+      <div class="eng-system-badge">
+        <span class="eng-pulse-dot"></span>
+        <span>PROCESSING FABRIC / INGESTION BUS</span>
+        <span class="eng-badge-sep">/</span>
+        <span class="eng-badge-status">{{ clusterAvailability >= 100 ? 'CLUSTER FULLY OPERATIONAL' : 'CLUSTER ' + clusterAvailability + '% READY' }}</span>
+      </div>
+      <h1 class="eng-headline">NDR Processing <em>Cluster</em> &amp; Bus</h1>
+      <p class="eng-tagline">Real-time container execution, horizontal scaling, and low-latency Kafka ingestion streams.</p>
+    </div>
+
+    <div class="eng-hero-controls">
+      <!-- Quick Action: Sync Rules -->
+      <button type="button" class="eng-action-btn btn--violet" [disabled]="syncingRules" (click)="syncCommunityRules()" title="Download latest SigmaHQ network + Linux rules">
+        <lucide-icon [name]="DownloadIcon" class="w-4 h-4" [class.spinning]="syncingRules"></lucide-icon>
+        <span>{{ syncingRules ? 'Syncing Rules…' : 'Sync SIGMA Rules' }}</span>
+      </button>
+
+      <!-- Quick Action: Scale Up Engine -->
+      <button type="button" class="eng-action-btn btn--primary" [disabled]="scaling" (click)="scaleUp()" title="Deploy additional engine node container">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+        <span>{{ scaling ? 'Provisioning...' : 'Add Engine Node' }}</span>
+      </button>
+
+      <!-- Quick Action: Refresh -->
+      <button type="button" class="eng-action-btn" (click)="loadEngines(); loadKafkaStatus()" title="Refresh telemetry">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.spinning]="loadingEngines || kafkaLoading"></lucide-icon>
+        <span>Refresh</span>
+      </button>
+
+      <!-- Digital Clock Capsule -->
+      <div class="eng-clock-capsule">
+        <lucide-icon [name]="ClockIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <div class="eng-clock-text">
+          <span class="eng-clock-time">{{ clock.currentTime() }}</span>
+          <span class="eng-clock-date">{{ clock.currentDate() }}</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. High-Density Telemetry Ribbon ────────────────────────── -->
+  <section class="eng-cockpit-ribbon" aria-label="Engine Operations Ribbon">
+
+    <!-- Module 1: Compute Fabric -->
+    <div class="eng-module mod--emerald">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--emerald"></span>
+          <span class="mod-cat">COMPUTE FABRIC</span>
+        </div>
+        <span class="mod-status-pill pill--emerald">{{ activeEngines }}/{{ engines.length }} ENGINES UP</span>
+      </div>
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-emerald-400">{{ clusterAvailability }}%</div>
+          <div class="mod-hero-label">CLUSTER AVAILABILITY</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="eng-spark-emerald" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,22 Q12,8 24,18 T48,12 T72,20 T100,10 L100,28 L0,28 Z" fill="url(#eng-spark-emerald)"/>
+            <path d="M0,22 Q12,8 24,18 T48,12 T72,20 T100,10" fill="none" stroke="#10b981" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-emerald-400">LATENCY &lt; 1ms</span>
+        </div>
+      </div>
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item"><span>CPU</span><b class="text-slate-100 font-mono">{{ cpuUsage }}%</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>RAM</span><b class="text-slate-100 font-mono">{{ memoryUsedGb | number:'1.1-1' }} GB</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>FAILOVER</span><b class="text-emerald-400 font-mono">READY</b></div>
+      </div>
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--emerald" [style.width]="clusterAvailability + '%'"></div>
+      </div>
+    </div>
+
+    <!-- Module 2: Ingestion Stream Bus -->
+    <div class="eng-module mod--cyan">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--cyan"></span>
+          <span class="mod-cat">KAFKA STREAM BUS</span>
+        </div>
+        <span class="mod-status-pill pill--cyan">TOPIC ndr-events</span>
+      </div>
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-cyan-400">{{ totalPartitions }} <span class="mod-hero-denom">PARTITIONS</span></div>
+          <div class="mod-hero-label">STREAM DISTRIBUTION</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="eng-spark-cyan" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,18 Q14,24 28,14 T56,8 T80,16 T100,12 L100,28 L0,28 Z" fill="url(#eng-spark-cyan)"/>
+            <path d="M0,18 Q14,24 28,14 T56,8 T80,16 T100,12" fill="none" stroke="#38bdf8" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-cyan-400">{{ eventsPerSec | number }} EPS</span>
+        </div>
+      </div>
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item"><span>REPLICATION</span><b class="text-slate-100 font-mono">{{ kafkaData?.replication_factor || 1 }}x ISR</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>RATE</span><b class="text-cyan-400 font-mono">{{ eventsPerSec | number }} eps</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>1H TOTAL</span><b class="text-slate-100 font-mono">{{ events1h | number }}</b></div>
+      </div>
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--cyan" style="width: 100%"></div>
+      </div>
+    </div>
+
+    <!-- Module 3: Replication Health -->
+    <div class="eng-module mod--amber">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--amber"></span>
+          <span class="mod-cat">REPLICATION HEALTH</span>
+        </div>
+        <span class="mod-status-pill pill--amber">{{ inSyncPartitions }}/{{ totalPartitions }} IN SYNC</span>
+      </div>
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num" [class.text-amber-400]="totalLag === 0" [class.text-rose-400]="totalLag > 0">
+            {{ totalLag }} <span class="mod-hero-denom">LAG</span>
+          </div>
+          <div class="mod-hero-label">CONSUMER DELAY</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="eng-spark-amber" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,14 Q16,6 32,16 T64,22 T82,10 T100,16 L100,28 L0,28 Z" fill="url(#eng-spark-amber)"/>
+            <path d="M0,14 Q16,6 32,16 T64,22 T82,10 T100,16" fill="none" stroke="#fbbf24" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-amber-400">{{ totalLag === 0 ? 'ALL CAUGHT UP ✓' : totalLag + ' BEHIND' }}</span>
+        </div>
+      </div>
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item"><span>PACKET LOSS</span><b class="text-emerald-400 font-mono">0.00%</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>BROKERS</span><b class="text-amber-400 font-mono">{{ kafkaData?.brokers?.length || (kafkaData ? 1 : 0) }} Online</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>CIPHER</span><b class="text-slate-100 font-mono">TLS 1.3</b></div>
+      </div>
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--amber" [style.width]="totalPartitions > 0 ? (inSyncPartitions / totalPartitions * 100) + '%' : '100%'"></div>
+      </div>
+    </div>
+
+    <!-- Module 4: Rules Engine Synchronization -->
+    <div class="eng-module mod--violet">
+      <div class="mod-top-bar">
+        <div class="mod-tag">
+          <span class="live-beacon beacon--violet"></span>
+          <span class="mod-cat">DETECTION MATRIX</span>
+        </div>
+        <span class="mod-status-pill pill--violet">SIGMAHQ ARMED</span>
+      </div>
+      <div class="mod-hero-row">
+        <div class="mod-hero-stat">
+          <div class="mod-hero-num text-purple-400">100% <span class="mod-hero-denom">POSTURE</span></div>
+          <div class="mod-hero-label">INSPECTION INTEGRITY</div>
+        </div>
+        <div class="mod-sparkline-wrap">
+          <svg class="mod-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="eng-spark-violet" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#a855f7" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,20 Q15,10 30,18 T60,12 T85,16 T100,8 L100,28 L0,28 Z" fill="url(#eng-spark-violet)"/>
+            <path d="M0,20 Q15,10 30,18 T60,12 T85,16 T100,8" fill="none" stroke="#a855f7" stroke-width="2"/>
+          </svg>
+          <span class="mod-sparkline-tag text-purple-400">REALTIME ARMED</span>
+        </div>
+      </div>
+      <div class="mod-footer-meta">
+        <div class="mod-meta-item"><span>SYNC</span><b class="text-emerald-400 font-mono">AUTOMATED</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>REFRESH</span><b class="text-slate-100 font-mono">{{ (lastEngineRefresh | date:'shortTime') || 'Live' }}</b></div>
+        <div class="mod-meta-divider"></div>
+        <div class="mod-meta-item"><span>MODE</span><b class="text-purple-400 font-mono">ZERO TRUST</b></div>
+      </div>
+      <div class="mod-progress-track">
+        <div class="mod-progress-bar bar--violet" style="width: 100%"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── 3. Engine Fleet Nodes Grid ──────────────────────────────── -->
+  <section class="eng-card glass-card">
+    <div class="eng-card-head">
+      <div>
+        <div class="eng-card-tag">PROCESSING INSTANCE FLEET</div>
+        <h2 class="eng-card-title">Live Engine Instances</h2>
+        <p class="eng-card-desc">Individual container worker states, network listeners, and horizontal load distribution.</p>
+      </div>
+      <div class="eng-card-badge">
+        <span class="dot--emerald"></span>
+        <span>{{ activeEngines }}/{{ engines.length }} Nodes Armed</span>
+      </div>
+    </div>
+
+    <div *ngIf="loadingEngines" class="eng-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Discovering Docker engine nodes...</span>
+    </div>
+
+    <div *ngIf="!loadingEngines && engines.length === 0" class="eng-empty-state">
+      <lucide-icon [name]="ServerIcon" class="w-8 h-8 text-slate-500"></lucide-icon>
+      <strong>No engines running</strong>
+      <span>Click "Add Engine Node" above to spin up a container instance.</span>
+    </div>
+
+    <div *ngIf="!loadingEngines && engines.length > 0" class="eng-node-grid">
+      <div *ngFor="let engine of engines; let i = index" class="eng-node-card">
+        <div class="eng-node-header">
+          <div class="eng-node-brand">
+            <div class="eng-icon-box">
+              <lucide-icon [name]="ServerIcon" class="w-5 h-5 text-cyan-400"></lucide-icon>
+            </div>
+            <div>
+              <strong class="eng-node-name">{{ engine.name }}</strong>
+              <span class="eng-node-sub">Node #{{ i + 1 }} &bull; Docker Container</span>
+            </div>
+          </div>
+          <span class="eng-status-pill status--online">
+            <i class="p-dot"></i> {{ engine.status }}
+          </span>
+        </div>
+
+        <div class="eng-node-metrics">
+          <div class="eng-metric-tile">
+            <span class="lbl">NETWORK HOST</span>
+            <span class="val font-mono">127.0.0.1:8000</span>
+          </div>
+          <div class="eng-metric-tile">
+            <span class="lbl">THROUGHPUT</span>
+            <span class="val font-mono text-cyan-400">{{ eventsPerSec > 0 ? (eventsPerSec / activeEngines | number:'1.0-0') + ' eps' : 'Armed' }}</span>
+          </div>
+          <div class="eng-metric-tile">
+            <span class="lbl">CPU ESTIMATE</span>
+            <span class="val font-mono text-emerald-400">{{ cpuUsage }}%</span>
+          </div>
+          <div class="eng-metric-tile">
+            <span class="lbl">CLUSTER ROLE</span>
+            <span class="val font-mono text-purple-400">Worker Node</span>
+          </div>
+        </div>
+
+        <div class="eng-node-actions">
+          <button class="eng-stop-btn" type="button" [disabled]="engines.length <= 1"
+            [title]="engines.length <= 1 ? 'Cluster requires at least one active engine' : 'Gracefully terminate container'"
+            (click)="requestStopEngine(engine.name)">
+            <lucide-icon [name]="XIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Stop Node</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. Kafka Streaming Cluster Monitor ──────────────────────── -->
+  <section class="eng-card glass-card">
+    <div class="eng-card-head">
+      <div>
+        <div class="eng-card-tag">HIGH-VELOCITY INGESTION BUS</div>
+        <h2 class="eng-card-title">Kafka Stream Cluster &amp; Partition Matrix</h2>
+        <p class="eng-card-desc">Low-latency topic replication, in-sync replica sets (ISR), and broker distribution.</p>
+      </div>
+      <div class="eng-topic-pill">
+        <lucide-icon [name]="DatabaseIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+        <span>topic: <code>ndr-events</code></span>
+      </div>
+    </div>
+
+    <div *ngIf="kafkaLoading" class="eng-loading-state">
+      <span class="spinning-loader"></span>
+      <span>Polling Kafka broker metadata...</span>
+    </div>
+
+    <ng-container *ngIf="!kafkaLoading && kafkaData">
+      <!-- Broker Nodes Strip -->
+      <div class="eng-broker-row" *ngIf="kafkaData.brokers && kafkaData.brokers.length > 0">
+        <div *ngFor="let b of kafkaData.brokers" class="eng-broker-card" [class.broker--healthy]="b.status === 'healthy'">
+          <span class="broker-status-dot"></span>
+          <div class="broker-info">
+            <strong>Broker {{ b.id }}</strong>
+            <span class="broker-host">{{ b.host }}</span>
+          </div>
+          <span class="broker-badge">{{ b.status }}</span>
+        </div>
+      </div>
+
+      <!-- Partitions Table -->
+      <div class="eng-table-container" *ngIf="kafkaData.partitions && kafkaData.partitions.length > 0">
+        <table class="ov-cyber-table compact">
+          <thead>
+            <tr>
+              <th>Partition</th>
+              <th>Leader Broker</th>
+              <th>Replicas</th>
+              <th>In-Sync Replicas (ISR)</th>
+              <th>In-Sync State</th>
+              <th>Assigned Engine Node</th>
+              <th>Consumer Lag</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let p of kafkaData.partitions">
+              <td><span class="partition-badge">P{{ p.partition }}</span></td>
+              <td><span class="mono-text">Broker {{ p.leader_broker }}</span></td>
+              <td><span class="mono-text">{{ p.replicas }}</span></td>
+              <td><span class="mono-text">{{ p.isr }}</span></td>
+              <td>
+                <span class="sync-badge" [class.sync--ok]="p.in_sync" [class.sync--warn]="!p.in_sync">
+                  {{ p.in_sync ? 'In Sync' : 'Under-replicated' }}
+                </span>
+              </td>
+              <td><strong class="text-cyan-400 font-mono">{{ getEngineForPartition(p.partition) }}</strong></td>
+              <td>
+                <span class="lag-badge" [class.lag--ok]="getLagForPartition(p.partition) === 0" [class.lag--warn]="getLagForPartition(p.partition) > 0">
+                  {{ getLagForPartition(p.partition) }} {{ getLagForPartition(p.partition) === 0 ? '✓' : 'msg' }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="eng-total-lag-banner">
+        <span>Global Ingestion Status:</span>
+        <strong [class.text-emerald-400]="kafkaData.total_lag === 0" [class.text-amber-400]="kafkaData.total_lag > 0">
+          {{ kafkaData.total_lag }} consumer lag
+        </strong>
+        <span *ngIf="kafkaData.total_lag === 0" class="text-emerald-400 text-xs font-semibold">&bull; All worker nodes completely caught up</span>
+      </div>
+    </ng-container>
+
+    <div *ngIf="!kafkaLoading && !kafkaData" class="eng-empty-state">
+      <lucide-icon [name]="DatabaseIcon" class="w-8 h-8 text-slate-500"></lucide-icon>
+      <strong>Could not reach Kafka</strong>
+      <span>Verify kafka1, kafka2, kafka3 Docker containers are running.</span>
+    </div>
+  </section>
+
+  <!-- Stop Engine Confirmation Modal -->
+  <div *ngIf="pendingStopEngine" class="modal-backdrop">
+    <div class="modal-panel compact glass-card">
+      <div class="modal-head">
+        <div>
+          <h3>Stop Engine Node</h3>
+          <p>This will decommission {{ pendingStopEngine }} from the active cluster.</p>
+        </div>
+        <button type="button" class="icon-button" (click)="cancelStopEngine()">
+          <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+      <div class="warning-box">
+        Keep at least one engine running so real-time network packet processing remains active.
+      </div>
+      <div class="modal-actions">
+        <button class="danger-action solid" type="button" (click)="confirmStopEngine()">Stop Engine</button>
+        <button class="secondary-action" type="button" (click)="cancelStopEngine()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+</section>

@@ -1,0 +1,306 @@
+<div class="admin-panel rules-panel">
+
+  <!-- Header -->
+  <div class="panel-head">
+    <div>
+      <h3 class="rules-title">Rules Management</h3>
+      <p>SIGMA detection rules applied to Agent-Z and Agent-S events.</p>
+    </div>
+    <div class="panel-actions">
+      <button class="secondary-action" (click)="loadRules()">
+        <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon> Refresh
+      </button>
+      <button class="secondary-action" [disabled]="syncing" (click)="syncCommunityRules()">
+        <lucide-icon [name]="DownloadIcon" [class]="syncing ? 'w-4 h-4 spinning' : 'w-4 h-4'"></lucide-icon>
+        {{ syncing ? 'Syncing…' : 'Sync Community Rules' }}
+      </button>
+      <button class="primary-action" (click)="openAddForm()">
+        <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon> New Rule
+      </button>
+    </div>
+  </div>
+
+  <!-- Message -->
+  <div *ngIf="message" class="admin-message" [class.success]="messageType==='success'" [class.error]="messageType==='error'">
+    {{ message }}
+  </div>
+
+  <!-- Search bar -->
+  <div class="rules-search-wrap">
+    <div class="rules-search-field">
+      <lucide-icon [name]="SearchIcon" class="w-4 h-4 rules-search-icon"></lucide-icon>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        (input)="onSearch()"
+        placeholder="Search rules by name, tag, severity…"
+        class="rules-search-input"
+      />
+      <button *ngIf="searchQuery" class="rules-search-clear" (click)="searchQuery=''; onSearch()">
+        <lucide-icon [name]="XIcon" class="w-3.5 h-3.5"></lucide-icon>
+      </button>
+    </div>
+    <span *ngIf="!loading" class="rules-count-badge">
+      <ng-container *ngIf="isSearching">Searching…</ng-container>
+      <ng-container *ngIf="!isSearching && searchQuery">
+        {{ rulesTotal }} result{{ rulesTotal !== 1 ? 's' : '' }}
+      </ng-container>
+      <ng-container *ngIf="!isSearching && !searchQuery">
+        {{ shownCount }} / {{ totalRuleCount }} rules
+      </ng-container>
+    </span>
+  </div>
+
+  <!-- Stats -->
+  <div class="rules-stats">
+    <div class="rules-stat-card rules-stat--blue">
+      <div class="rules-stat-watermark">
+        <lucide-icon [name]="GavelIcon" class="w-10 h-10"></lucide-icon>
+      </div>
+      <span class="rules-stat-label">Total Rules</span>
+      <strong class="rules-stat-num">{{ totalRuleCount }}</strong>
+      <span class="rules-stat-sub">loaded in engine</span>
+    </div>
+    <div class="rules-stat-card rules-stat--green">
+      <div class="rules-stat-watermark">
+        <lucide-icon [name]="PowerIcon" class="w-10 h-10"></lucide-icon>
+      </div>
+      <span class="rules-stat-label">Active</span>
+      <strong class="rules-stat-num rules-num-green">{{ activeRulesCount }}</strong>
+      <span class="rules-stat-sub">{{ totalRuleCount > 0 ? ((activeRulesCount / totalRuleCount * 100) | number:'1.0-0') + '% enabled' : 'no rules' }}</span>
+    </div>
+    <div class="rules-stat-card rules-stat--amber">
+      <div class="rules-stat-watermark">
+        <lucide-icon [name]="InfoIcon" class="w-10 h-10"></lucide-icon>
+      </div>
+      <span class="rules-stat-label">Total Hits</span>
+      <strong class="rules-stat-num rules-num-amber">{{ totalHits }}</strong>
+      <span class="rules-stat-sub">across all rules</span>
+    </div>
+  </div>
+
+  <!-- Add / Edit Form -->
+  <div *ngIf="showForm" class="rules-form glass-card">
+    <div class="rules-form-head">
+      <div>
+        <strong>{{ isEditing ? 'Edit Rule' : 'New SIGMA Rule' }}</strong>
+        <span>Create a SIGMA-style matching rule applied to all ingested events</span>
+      </div>
+      <button class="icon-button" (click)="showForm=false; resetForm()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+
+    <div class="rules-form-row">
+      <div class="form-field" style="flex:2">
+        <label><span>Rule Title *</span></label>
+        <input [(ngModel)]="ruleForm.title" placeholder="e.g. Agent-S Alert Detection" />
+      </div>
+      <div class="form-field" style="flex:1">
+        <label><span>Severity</span></label>
+        <select [(ngModel)]="ruleForm.severity">
+          <option *ngFor="let s of severityOptions" [value]="s.value">{{ s.label }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="rules-condition-head">
+      <span class="rules-section-label">Detection Condition *</span>
+      <button class="secondary-action compact-action" type="button" (click)="showFieldInfo=!showFieldInfo">
+        Field Reference
+      </button>
+    </div>
+
+    <div *ngIf="showFieldInfo" class="rules-field-grid">
+      <button *ngFor="let f of fieldOptions" type="button" class="rules-field-chip"
+        (click)="ruleForm.field=f.value; showFieldInfo=false">
+        <strong>{{ f.label }}</strong>
+        <span class="mono">{{ f.value }}</span>
+      </button>
+    </div>
+
+    <div class="rules-form-row">
+      <div class="form-field" style="flex:1">
+        <label><span>Field</span></label>
+        <select [(ngModel)]="ruleForm.field">
+          <option *ngFor="let f of fieldOptions" [value]="f.value">{{ f.label }}</option>
+        </select>
+        <small *ngIf="selectedField" class="mono" style="color:#4F8CFF;font-size:10px;">{{ selectedField.value }}</small>
+      </div>
+      <div class="form-field" style="flex:1">
+        <label><span>Matcher</span></label>
+        <select [(ngModel)]="ruleForm.matcher">
+          <option *ngFor="let m of matcherOptions" [value]="m.value">{{ m.label }} — {{ m.description }}</option>
+        </select>
+      </div>
+      <div class="form-field" style="flex:1">
+        <label><span>Value *</span></label>
+        <input [(ngModel)]="ruleForm.value" [placeholder]="selectedField?.examples?.[0] || 'Enter value'" />
+        <div *ngIf="selectedField" class="rules-examples">
+          <button *ngFor="let ex of selectedField.examples" type="button"
+            (click)="ruleForm.value=ex" class="rules-example-btn">{{ ex }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="ruleForm.field==='conn_state'" class="rules-connstate">
+      <button class="secondary-action compact-action" type="button"
+        (click)="showConnHelp=!showConnHelp">
+        {{ showConnHelp ? 'Hide' : 'Show' }} connection state guide
+      </button>
+      <div *ngIf="showConnHelp" class="rules-connstate-grid">
+        <button *ngFor="let cs of connStateHelp" type="button"
+          class="rules-connstate-chip" (click)="ruleForm.value=cs.state">
+          <strong class="mono">{{ cs.state }}</strong>
+          <span>{{ cs.meaning }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="form-field">
+      <label><span>Description</span></label>
+      <input [(ngModel)]="ruleForm.description" placeholder="What does this rule detect?" />
+    </div>
+
+    <div class="rules-templates">
+      <span class="rules-section-label">Quick Templates</span>
+      <div class="rules-template-row">
+        <button *ngFor="let t of templates" type="button"
+          class="rules-template-btn" (click)="applyTemplate(t)">{{ t.label }}</button>
+      </div>
+    </div>
+
+    <div class="rules-preview">
+      <span class="rules-section-label" style="color:#4F8CFF;">SIGMA YAML Preview</span>
+      <div class="mono rules-yaml">
+        <div>title: <span style="color:#e8f0ff;">{{ ruleForm.title || '…' }}</span></div>
+        <div>level: <span [class]="getSeverityClass(ruleForm.severity)">{{ ruleForm.severity }}</span></div>
+        <div>detection:</div>
+        <div style="padding-left:16px;">keywords:</div>
+        <div style="padding-left:32px;">
+          <span style="color:#fbbf24;">{{ ruleForm.field }}|{{ ruleForm.matcher }}</span>:
+          <span style="color:#4ade80;"> '{{ ruleForm.value || '…' }}'</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rules-form-actions">
+      <button class="primary-action" [disabled]="saving" (click)="saveRule()">
+        <lucide-icon *ngIf="saving" [name]="RefreshIcon" class="w-4 h-4 spinning"></lucide-icon>
+        {{ saving ? 'Saving…' : (isEditing ? 'Update Rule' : 'Save Rule') }}
+      </button>
+      <button class="secondary-action" (click)="showForm=false; resetForm()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="loading-state">Loading rules…</div>
+
+  <!-- Table -->
+  <div *ngIf="!loading && !isSearching && filteredRules.length > 0" class="rules-table-wrap">
+    <!-- Table header -->
+    <div class="rules-thead">
+      <span>Rule</span>
+      <span>Type</span>
+      <span>Severity</span>
+      <span>Cond.</span>
+      <span>Hits</span>
+      <span>Status</span>
+      <span></span>
+    </div>
+
+    <!-- Rows -->
+    <div *ngFor="let rule of displayedRules; let i = index"
+      class="rules-trow"
+      [style.animation-delay]="(i * 30) + 'ms'">
+
+      <!-- Rule name -->
+      <div class="rules-name-cell">
+        <div class="rules-icon-wrap">
+          <lucide-icon [name]="GavelIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </div>
+        <div class="rules-name-info">
+          <strong>{{ rule.name }}</strong>
+          <span *ngIf="rule.description">{{ rule.description }}</span>
+          <div *ngIf="rule.tags?.length" class="rules-tags">
+            <span *ngFor="let tag of rule.tags.slice(0,3)" [class]="'rules-tag ' + getTagClass(tag)">{{ tag }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Type -->
+      <span class="rules-type-badge">{{ rule.type }}</span>
+
+      <!-- Severity -->
+      <div class="rules-sev-wrap">
+        <span [class]="'sev-dot sev-dot--' + rule.severity.toLowerCase()"></span>
+        <span [class]="'sev-badge sev-badge--' + rule.severity.toLowerCase()">{{ rule.severity }}</span>
+      </div>
+
+      <!-- Conditions -->
+      <span class="rules-cond">{{ rule.conditions }}</span>
+
+      <!-- Hits -->
+      <span class="rules-hits" [class.hits-hot]="rule.hits > 0">{{ rule.hits }}</span>
+
+      <!-- Status -->
+      <div class="rules-status-wrap">
+        <span *ngIf="rule.status==='ACTIVE'" class="rules-active-dot"></span>
+        <span class="status-pill" [class.active]="rule.status==='ACTIVE'">{{ rule.status }}</span>
+      </div>
+
+      <!-- Actions -->
+      <div class="row-actions rules-actions">
+        <button class="icon-button" title="Edit" (click)="openEditForm(rule)">
+          <lucide-icon [name]="EditIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+        <button class="icon-button rules-toggle-btn"
+          [class.rules-toggle-on]="rule.status==='ACTIVE'"
+          [title]="rule.status==='ACTIVE' ? 'Disable' : 'Enable'"
+          (click)="toggleRule(rule)">
+          <lucide-icon [name]="PowerIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+        <button class="danger-icon" title="Delete" (click)="deleteRule(rule)">
+          <lucide-icon [name]="TrashIcon" class="w-3.5 h-3.5"></lucide-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load more -->
+  <div *ngIf="!loading && !isSearching && hasMore" class="rules-load-more">
+    <button class="rules-load-more-btn" (click)="loadMore()" [disabled]="loadingMore">
+      {{ loadingMore ? 'Loading…' : 'Load more' }}
+      <span *ngIf="!loadingMore" class="rules-load-more-count">+{{ remainingCount }} remaining</span>
+    </button>
+  </div>
+
+  <!-- Searching spinner -->
+  <div *ngIf="isSearching" class="loading-state">
+    <lucide-icon [name]="SearchIcon" class="w-5 h-5 spinning" style="display:inline-block;margin-right:8px;"></lucide-icon>
+    Searching rules…
+  </div>
+
+  <!-- Empty search -->
+  <div *ngIf="!loading && !isSearching && filteredRules.length === 0 && searchQuery" class="empty-state">
+    <lucide-icon [name]="SearchIcon" class="w-8 h-8"></lucide-icon>
+    <strong>No rules match "{{ searchQuery }}"</strong>
+    <span>Try a different name, tag, or severity level.</span>
+  </div>
+
+  <!-- Load failed - shown instead of the empty state so a failed request is not mistaken for "no rules" -->
+  <div *ngIf="!loading && !isSearching && loadError" class="empty-state">
+    <lucide-icon [name]="InfoIcon" class="w-10 h-10"></lucide-icon>
+    <strong>Couldn't load rules</strong>
+    <span>The request failed (often a temporary rate limit or connection problem).</span>
+    <button type="button" class="rules-load-more-btn" (click)="retryLoad()">Try again</button>
+  </div>
+
+  <!-- Empty (no rules at all) -->
+  <div *ngIf="!loading && !loadError && totalRuleCount === 0 && !searchQuery" class="empty-state">
+    <lucide-icon [name]="GavelIcon" class="w-10 h-10"></lucide-icon>
+    <strong>No SIGMA rules loaded</strong>
+    <span>Click "New Rule" to create one, or sync community rules.</span>
+  </div>
+
+</div>

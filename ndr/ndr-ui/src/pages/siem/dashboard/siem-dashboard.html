@@ -1,0 +1,169 @@
+<section class="siem-dash-shell">
+
+  <div class="siem-dash-header">
+    <div>
+      <div class="eyebrow">Security Information & Event Management</div>
+      <h2>Ingest Dashboard</h2>
+      <p>Live log ingestion telemetry, source health, and pipeline status.</p>
+    </div>
+  </div>
+
+  <!-- Loading skeleton -->
+  <div *ngIf="loading()" class="skeleton-grid">
+    <div class="skeleton-card" *ngFor="let _ of [1,2,3,4,5,6]"></div>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error() && !loading()" class="error-banner">
+    <lucide-icon [name]="ErrorIcon" class="w-4 h-4"></lucide-icon>
+    {{ error() }}
+  </div>
+
+  <!-- Stat cards -->
+  <div *ngIf="!loading() && !error()" class="metrics-grid">
+
+    <div class="metric-card accent">
+      <div class="metric-icon"><lucide-icon [name]="ZapIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ eps() }}</div>
+        <div class="metric-label">Events / sec</div>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-icon"><lucide-icon [name]="DatabaseIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ formatNum(logsToday()) }}</div>
+        <div class="metric-label">Logs Today</div>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-icon"><lucide-icon [name]="TrendIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ formatNum(logsLastHour()) }}</div>
+        <div class="metric-label">Last Hour</div>
+      </div>
+    </div>
+
+    <div class="metric-card" [class.metric-warn]="parseErrors() > 0">
+      <div class="metric-icon"><lucide-icon [name]="AlertIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ parseErrors() }}</div>
+        <div class="metric-label">Parse Errors</div>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-icon"><lucide-icon [name]="RadioIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ activeSources() }} / {{ totalSources() }}</div>
+        <div class="metric-label">Sources Active</div>
+      </div>
+    </div>
+
+    <div class="metric-card" [class.metric-warn]="kafkaLag() > 10000">
+      <div class="metric-icon"><lucide-icon [name]="ActivityIcon" class="w-5 h-5"></lucide-icon></div>
+      <div class="metric-body">
+        <div class="metric-value">{{ formatNum(kafkaLag()) }}</div>
+        <div class="metric-label">Kafka Lag</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Active alerts section -->
+  <div *ngIf="!loading() && !error()" class="alerts-section">
+
+    <!-- Alert count pills -->
+    <div class="alert-counts">
+      <div class="alert-count-card crit" [class.alert-count-zero]="alertCritical() === 0">
+        <span class="ac-num">{{ alertCritical() }}</span>
+        <span class="ac-label">Critical</span>
+      </div>
+      <div class="alert-count-card high" [class.alert-count-zero]="alertHigh() === 0">
+        <span class="ac-num">{{ alertHigh() }}</span>
+        <span class="ac-label">High</span>
+      </div>
+      <div class="alert-count-card med" [class.alert-count-zero]="alertMedium() === 0">
+        <span class="ac-num">{{ alertMedium() }}</span>
+        <span class="ac-label">Medium</span>
+      </div>
+      <div class="alert-total">
+        <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+        <span>{{ alertTotal() }} active alert{{ alertTotal() !== 1 ? 's' : '' }} (last 24h)</span>
+        <a routerLink="/analyst/alerts" class="view-all-link">View all →</a>
+      </div>
+    </div>
+
+    <!-- Recent alerts list -->
+    <div class="recent-alerts-wrap" *ngIf="recentAlerts().length > 0">
+      <div class="table-header">
+        <span class="table-title">
+          <lucide-icon [name]="ClockIcon" class="w-4 h-4"></lucide-icon>
+          Recent Alerts
+        </span>
+      </div>
+      <table class="sources-table">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Rule</th>
+            <th>Title</th>
+            <th>Source</th>
+            <th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let a of recentAlerts()">
+            <td><span class="sev-pill" [class]="sevClass(a.severity)">{{ a.severity }}</span></td>
+            <td class="mono muted">{{ a.rule_name }}</td>
+            <td class="alert-title">{{ a.title }}</td>
+            <td><span class="type-chip">{{ a.source }}</span></td>
+            <td class="mono muted">{{ relativeTime(a.created_at) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="no-alerts" *ngIf="recentAlerts().length === 0 && alertTotal() === 0">
+      <lucide-icon [name]="CheckIcon" class="w-5 h-5"></lucide-icon>
+      No active alerts in the last 24 hours
+    </div>
+
+  </div>
+
+  <!-- Source health table -->
+  <div *ngIf="!loading() && !error()" class="sources-table-wrap">
+    <div class="table-header">
+      <span class="table-title">Source Health</span>
+      <a routerLink="/siem/sources" class="table-link">Manage sources →</a>
+    </div>
+
+    <div *ngIf="sources().length === 0" class="empty-state">
+      No sources configured yet. <a routerLink="/siem/sources">Add a source</a>
+    </div>
+
+    <table *ngIf="sources().length > 0" class="sources-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>EPS</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let src of sources()">
+          <td class="src-name">{{ src.name }}</td>
+          <td><span class="type-chip">{{ sourceTypeLabel(src.source_type) }}</span></td>
+          <td><span class="status-dot" [class]="statusClass(src.status)"></span> {{ src.status }}</td>
+          <td class="mono">{{ src.eps }}</td>
+          <td class="mono muted">{{ (src.last_seen_at && !src.last_seen_at.startsWith('1970')) ? (src.last_seen_at | date:'HH:mm:ss') : 'Never' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</section>

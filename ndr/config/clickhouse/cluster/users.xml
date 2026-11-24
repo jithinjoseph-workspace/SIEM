@@ -1,0 +1,15 @@
+<clickhouse>
+    <users>
+        <ndr>
+            <password from_env="CLICKHOUSE_PASSWORD"/>
+            <networks>
+                <ip>127.0.0.1</ip>
+                <ip>::1</ip>
+                <ip>172.16.0.0/12</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_management>1</access_management>
+        </ndr>
+    </users>
+</clickhouse>

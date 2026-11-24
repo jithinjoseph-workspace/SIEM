@@ -1,0 +1,184 @@
+<div class="profile-page">
+
+  <div *ngIf="loading()" style="display:flex;align-items:center;gap:10px;padding:24px 0;color:var(--tx2);">
+    <lucide-icon [name]="LoaderIcon" class="w-5 h-5 spin"></lucide-icon>
+    Loading profile…
+  </div>
+
+  <ng-container *ngIf="!loading()">
+
+  <div *ngIf="message()" [class]="'tenant-message ' + messageType()">
+    <lucide-icon *ngIf="messageType() === 'success'" [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+    <lucide-icon *ngIf="messageType() === 'error'"   [name]="AlertCircleIcon" class="w-4 h-4"></lucide-icon>
+    {{ message() }}
+  </div>
+
+  <div class="profile-layout">
+
+    <!-- LEFT: profile card -->
+    <div class="profile-card">
+
+      <div class="profile-card-header">
+        <div class="profile-avatar-ring">
+          <lucide-icon [name]="UserIcon" class="w-7 h-7"></lucide-icon>
+        </div>
+        <div class="profile-header-text">
+          <h3>My Profile</h3>
+          <p>Manage your account security and recovery options.</p>
+        </div>
+      </div>
+
+      <div class="profile-fields">
+
+        <!-- Username -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">
+            <div class="section-icon slate">
+              <lucide-icon [name]="UserIcon" class="w-4 h-4"></lucide-icon>
+            </div>
+            <div class="section-label-text">
+              <strong>Username</strong>
+              <small>Your login identity — cannot be changed</small>
+            </div>
+          </div>
+          <div class="modal-fields" style="margin-top:12px;">
+            <div class="modal-field">
+              <span class="field-label">Username</span>
+              <div class="input-wrap">
+                <lucide-icon [name]="UserIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <input type="text" [value]="currentUser()?.username || ''" disabled />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recovery Email -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">
+            <div class="section-icon blue">
+              <lucide-icon [name]="MailIcon" class="w-4 h-4"></lucide-icon>
+            </div>
+            <div class="section-label-text">
+              <strong>Recovery Email</strong>
+              <small>Gmail address used to reset your password</small>
+            </div>
+            <button *ngIf="!isEditingEmail" (click)="startEmailEdit()" class="profile-field-edit-btn" style="margin-left:auto;">
+              <lucide-icon [name]="Edit2Icon" class="w-3 h-3"></lucide-icon>
+              Edit
+            </button>
+          </div>
+
+          <div *ngIf="!isEditingEmail" class="modal-fields" style="margin-top:12px;">
+            <div class="modal-field">
+              <span class="field-label">Recovery Email (Gmail)</span>
+              <div class="input-wrap">
+                <lucide-icon [name]="MailIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <input type="text" [value]="currentUser()?.gmail || 'Not configured'" disabled />
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="isEditingEmail" class="modal-fields" style="margin-top:12px;">
+            <div class="modal-field">
+              <span class="field-label">New Recovery Email</span>
+              <div class="input-wrap">
+                <lucide-icon [name]="MailIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <input type="email" [(ngModel)]="editingEmailValue"
+                       placeholder="e.g. yourname@gmail.com"
+                       (keydown.enter)="saveRecoveryEmail()" />
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+              <button class="modal-cancel-btn" (click)="cancelEmailEdit()" [disabled]="emailUpdateLoading">Cancel</button>
+              <button class="modal-save-btn" (click)="saveRecoveryEmail()" [disabled]="emailUpdateLoading">
+                <span *ngIf="!emailUpdateLoading">
+                  <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+                  Save Email
+                </span>
+                <span *ngIf="emailUpdateLoading">Saving…</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Secret Code -->
+        <div class="sidebar-section" style="border-bottom:none;">
+          <div class="sidebar-section-label">
+            <div class="section-icon violet">
+              <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+            </div>
+            <div class="section-label-text">
+              <strong>Password Reset Code</strong>
+              <small>Required to reset your password if you forget it</small>
+            </div>
+            <button (click)="generateSecretCode()" [disabled]="generatingCode"
+                    class="profile-field-edit-btn" style="margin-left:auto;">
+              <lucide-icon [name]="ShieldIcon" class="w-3 h-3"></lucide-icon>
+              {{ generatingCode ? 'Generating…' : (currentUser()?.secret_code ? 'Regenerate' : 'Generate') }}
+            </button>
+          </div>
+          <div class="modal-fields" style="margin-top:12px;">
+            <div class="modal-field">
+              <span class="field-label">Secret Code</span>
+              <div class="input-wrap" style="padding-right:8px;">
+                <lucide-icon [name]="ShieldIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <span style="flex:1;font-family:monospace;font-size:16px;letter-spacing:4px;color:var(--tx1);user-select:none;">
+                  <ng-container *ngIf="showSecretCode">
+                    {{ newlyGeneratedCode || currentUser()?.secret_code || 'Not configured' }}
+                  </ng-container>
+                  <ng-container *ngIf="!showSecretCode">
+                    {{ (newlyGeneratedCode || currentUser()?.secret_code) ? '••••••' : 'Not configured' }}
+                  </ng-container>
+                </span>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                  <button (click)="showSecretCode = !showSecretCode" class="profile-icon-btn"
+                          [title]="showSecretCode ? 'Hide' : 'Reveal'"
+                          [disabled]="!newlyGeneratedCode && !currentUser()?.secret_code">
+                    <lucide-icon [name]="showSecretCode ? EyeOffIcon : EyeIcon" class="w-4 h-4"></lucide-icon>
+                  </button>
+                  <button (click)="copySecretCode()" class="profile-icon-btn blue-btn" title="Copy to clipboard"
+                          [disabled]="!newlyGeneratedCode && !currentUser()?.secret_code">
+                    <lucide-icon [name]="CopyIcon" class="w-4 h-4"></lucide-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: quick access panel -->
+    <div class="profile-sidebar">
+
+      <div class="profile-sidebar-card">
+        <div class="profile-sidebar-card-header">
+          <lucide-icon [name]="SettingsIcon" class="w-4 h-4"></lucide-icon>
+          <span>Settings</span>
+        </div>
+        <p class="profile-sidebar-card-desc">Configure alert thresholds, sensitive country lists, and storage behaviour for your organisation.</p>
+        <button class="profile-sidebar-action-btn" (click)="goToSettings()">
+          Open Settings
+          <lucide-icon [name]="ChevronRightIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="profile-sidebar-card">
+        <div class="profile-sidebar-card-header blue">
+          <lucide-icon [name]="SupportIcon" class="w-4 h-4"></lucide-icon>
+          <span>Support</span>
+        </div>
+        <p class="profile-sidebar-card-desc">Review and manage support requests from your tenant users, reply or forward to the platform team.</p>
+        <button class="profile-sidebar-action-btn blue" (click)="goToSupport()">
+          Open Support
+          <lucide-icon [name]="ChevronRightIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  </ng-container>
+</div>

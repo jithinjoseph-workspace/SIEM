@@ -1,0 +1,121 @@
+<section class="live-shell">
+
+  <!-- ── Header ──────────────────────────────────── -->
+  <header class="live-header">
+    <div class="live-title-block">
+      <div class="live-icon">
+        <lucide-icon [name]="RadioIcon" class="w-6 h-6"></lucide-icon>
+        <span class="icon-pulse"></span>
+      </div>
+      <div>
+        <div class="eyebrow">Real-Time Monitoring</div>
+        <h2 class="live-title">Live Event Stream</h2>
+        <p class="live-sub">Agent-Z and Agent-S telemetry over active WebSocket.</p>
+      </div>
+    </div>
+
+    <div class="live-actions">
+      <div class="counter-tile">
+        <span class="counter-label">Events</span>
+        <strong class="counter-val">{{ eventCount }}</strong>
+      </div>
+      <div class="counter-tile hit">
+        <span class="counter-label">Hits</span>
+        <strong class="counter-val">{{ hitCount }}</strong>
+      </div>
+      <button (click)="clearMessages()" class="clear-btn" type="button">Clear</button>
+    </div>
+  </header>
+
+  <!-- ── Status bar ───────────────────────────────── -->
+  <div class="status-bar">
+    <div class="status-item">
+      <span class="status-dot"></span>
+      <span>Stream active</span>
+    </div>
+    <div class="status-item"><span class="status-dim">Buffer</span> 100 msg limit</div>
+    <div class="status-item"><span class="status-dim">Displayed</span> {{ messages.length }}</div>
+  </div>
+
+  <!-- ── Stream panel ─────────────────────────────── -->
+  <section class="stream-panel">
+    <!-- HUD corners -->
+    <span class="hud hud-tl" aria-hidden="true"></span>
+    <span class="hud hud-tr" aria-hidden="true"></span>
+    <span class="hud hud-bl" aria-hidden="true"></span>
+    <span class="hud hud-br" aria-hidden="true"></span>
+    <!-- Scan line -->
+    <div class="panel-scan" aria-hidden="true"></div>
+
+    <!-- Panel topbar -->
+    <div class="panel-topbar">
+      <div class="panel-title">
+        <lucide-icon [name]="WifiIcon" class="panel-title-icon"></lucide-icon>
+        <span>INCOMING EVENTS</span>
+      </div>
+      <div class="live-pill"><i></i> LIVE</div>
+    </div>
+
+    <!-- Column header -->
+    <div class="stream-heading" *ngIf="messages.length > 0">
+      <span>Time</span>
+      <span>Source</span>
+      <span>Direction</span>
+      <span>Proto</span>
+      <span>Event</span>
+      <span>Detail</span>
+    </div>
+
+    <!-- Empty state -->
+    <div *ngIf="messages.length === 0" class="empty-state">
+      <div class="empty-orb">
+        <lucide-icon [name]="ActivityIcon" class="w-8 h-8"></lucide-icon>
+      </div>
+      <span>Awaiting events</span>
+      <p>WebSocket connected — events appear here in real time.</p>
+    </div>
+
+    <!-- Stream rows -->
+    <div #streamContainer *ngIf="messages.length > 0" class="stream-list">
+      <div *ngFor="let msg of messages" [class]="'stream-row kind-' + msg.kind">
+
+        <span class="stream-time">{{ msg.timestamp }}</span>
+
+        <span [class]="'source-badge src-' + msg.kind">{{ msg.label }}</span>
+
+        <span class="stream-flow">
+          <span class="ip-addr">{{ msg.src || '–' }}</span>
+          <span class="arrow">→</span>
+          <span class="ip-addr">{{ msg.dst || '–' }}</span>
+        </span>
+
+        <span class="proto-badge" *ngIf="msg.proto">{{ msg.proto }}</span>
+        <span class="proto-empty" *ngIf="!msg.proto">–</span>
+
+        <span [class]="getEventBadgeClass(msg)">{{ msg.event_type || '–' }}</span>
+
+        <span class="stream-extra" *ngIf="msg.score != null">
+          <span class="score-chip">{{ msg.score }}</span>
+          <span class="extra-text">{{ msg.extra }}</span>
+        </span>
+        <span class="stream-extra extra-text" *ngIf="msg.score == null">{{ msg.extra }}</span>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="panel-footer">
+      <div class="footer-left">
+        <lucide-icon [name]="ActivityIcon" class="w-3 h-3 footer-icon"></lucide-icon>
+        <span>{{ messages.length }} messages in buffer</span>
+      </div>
+      <div class="autoscroll-row">
+        <span>Auto-scroll</span>
+        <button (click)="autoScroll = !autoScroll" [class.on]="autoScroll" class="toggle-btn" type="button">
+          {{ autoScroll ? 'ON' : 'OFF' }}
+        </button>
+      </div>
+    </footer>
+  </section>
+
+</section>

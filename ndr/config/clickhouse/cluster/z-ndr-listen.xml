@@ -1,0 +1,7 @@
+<clickhouse>
+    <!-- Force IPv4-only listening — overrides docker_related_config.xml which
+         adds <listen_host>::</listen_host> (IPv6 wildcard). That IPv6 socket
+         claims port 8123 for both IPv4+IPv6, preventing 0.0.0.0:8123 from
+         binding, which breaks Docker bridge container connectivity via MASQUERADE. -->
+    <listen_host replace="1">0.0.0.0</listen_host>
+</clickhouse>

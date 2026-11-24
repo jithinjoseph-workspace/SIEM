@@ -1,0 +1,42 @@
+# Rust
+rust/target/
+rust/ndr-engine/target/
+rust/ndr-engine/test_fmt
+rust/ndr-engine/test_*
+rust/ndr-engine/ndr.db
+rust/ndr-engine/ndr.db-shm
+rust/ndr-engine/ndr.db-wal
+rust/ndr.db-shm
+
+# Angular
+ndr-ui/node_modules/
+ndr-ui/.angular/
+
+# Swap files
+scripts/*.swp
+scripts/*.save
+*.swp
+
+# Zone identifiers (Windows)
+*:Zone.Identifier
+*Zone.Identifier
+
+# Logs
+
+.env
+*.env
+
+# TLS cert/key — generated locally by install/start scripts, must never be committed
+config/nginx/ssl/*.key
+config/nginx/ssl/*.crt
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Reference documents — do not commit
+*.pdf
+*.doc
+*.docx
+NDR-Developer-Reference*

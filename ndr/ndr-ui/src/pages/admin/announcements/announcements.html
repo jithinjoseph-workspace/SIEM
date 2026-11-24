@@ -1,0 +1,182 @@
+<section class="admin-panel">
+  <div *ngIf="msg" [class]="'admin-message ' + (msgType === 'success' ? 'success' : 'error')">{{ msg }}</div>
+
+  <div class="panel-head">
+    <div>
+      <h3>Announcements</h3>
+      <p>Create notices for tenant admins, maintenance, and platform updates.</p>
+    </div>
+    <button class="primary-action" type="button" (click)="showAddAnnouncement=true">
+      <lucide-icon [name]="PlusIcon" class="w-4 h-4"></lucide-icon>
+      Add Announcement
+    </button>
+  </div>
+
+  <div class="toolbar announcement-toolbar">
+    <label class="search-field">
+      <lucide-icon [name]="SearchIcon" class="w-4 h-4"></lucide-icon>
+      <input [(ngModel)]="announcementSearch" type="search" placeholder="Search announcements" />
+    </label>
+    <select [(ngModel)]="announcementAudience" class="tenant-filter">
+      <option value="all_audiences">All audiences</option>
+      <option value="tenant_admins">Tenant admins</option>
+      <option value="all">All users</option>
+      <option *ngFor="let tenant of tenants" [value]="tenant.id">{{ tenant.name }}</option>
+    </select>
+    <button class="secondary-action" type="button" (click)="loadAnnouncements()">
+      <lucide-icon [name]="RefreshIcon" class="w-4 h-4"></lucide-icon>
+      Refresh
+    </button>
+  </div>
+
+  <div class="announcement-summary">
+    <div>
+      <strong>{{ activeAnnouncements }} active announcements</strong>
+      <span>{{ filteredAnnouncements.length }} announcements shown</span>
+    </div>
+    <span class="status-pill active">Backend synced</span>
+  </div>
+
+  <div *ngIf="loadingAnnouncements" class="loading-state">Loading announcements...</div>
+
+  <div *ngIf="!loadingAnnouncements && filteredAnnouncements.length === 0" class="empty-state">
+    <strong>No announcements found</strong>
+    <span>Create an announcement or adjust your search.</span>
+  </div>
+
+  <div *ngIf="!loadingAnnouncements && filteredAnnouncements.length > 0" class="announcement-list">
+    <article *ngFor="let announcement of filteredAnnouncements" class="announcement-row">
+      <div class="announcement-main">
+        <span [class]="'announcement-type ' + announcementTypeClass(announcement.type)">
+          {{ announcementTypeLabel(announcement.type) }}
+        </span>
+        <div>
+          <strong>{{ announcement.title }}</strong>
+          <p>{{ announcement.message }}</p>
+        </div>
+      </div>
+      <div class="announcement-meta">
+        <span>{{ announcementAudienceLabel(announcement) }}</span>
+        <span>Created {{ announcement.created_at | date:'short' }}</span>
+        <span *ngIf="announcement.starts_at">Starts {{ announcement.starts_at | date:'short' }}</span>
+        <span *ngIf="announcement.ends_at">Ends {{ announcement.ends_at | date:'short' }}</span>
+        <span [class]="'status-pill ' + (announcement.active ? 'active' : 'inactive')">
+          {{ announcement.active ? 'Active' : 'Inactive' }}
+        </span>
+        <button class="secondary-action compact-action" type="button" (click)="toggleAnnouncement(announcement)">
+          {{ announcement.active ? 'Deactivate' : 'Reactivate' }}
+        </button>
+        <button class="danger-icon" type="button" title="Delete announcement" (click)="requestDeleteAnnouncement(announcement)">
+          <lucide-icon [name]="TrashIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- Add Announcement Modal -->
+<div *ngIf="showAddAnnouncement" class="modal-backdrop">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div><h3>Add Announcement</h3><p>Create an announcement notification for selected users.</p></div>
+      <button type="button" class="icon-button" (click)="closeAddAnnouncement()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <label class="form-field">
+      <span>Title</span>
+      <input [(ngModel)]="newAnnouncement.title" placeholder="Scheduled maintenance" />
+    </label>
+    <label class="form-field">
+      <span>Message</span>
+      <textarea [(ngModel)]="newAnnouncement.message" rows="4" placeholder="Write the announcement message"></textarea>
+    </label>
+    <label class="form-field">
+      <span>Type</span>
+      <select [(ngModel)]="newAnnouncement.type">
+        <option value="info">Information</option>
+        <option value="maintenance">Maintenance</option>
+        <option value="update">Platform Update</option>
+        <option value="critical">Critical</option>
+      </select>
+    </label>
+    <label class="form-field">
+      <span>Audience</span>
+      <select [(ngModel)]="newAnnouncement.audience" (ngModelChange)="onAnnouncementAudienceChange()">
+        <option value="tenant_admins">Tenant Admins</option>
+        <option value="all">All Users</option>
+        <option value="tenant">Specific Tenant</option>
+      </select>
+    </label>
+    <label *ngIf="newAnnouncement.audience === 'tenant'" class="form-field">
+      <span>Tenant</span>
+      <select [(ngModel)]="newAnnouncement.tenant_id">
+        <option value="">Select tenant</option>
+        <option *ngFor="let tenant of tenants" [value]="tenant.id">{{ tenant.name }}</option>
+      </select>
+    </label>
+
+    <div class="announcement-date-grid">
+      <div class="form-field">
+        <span>Start Date &amp; Time <small style="color:#94a3b8;font-weight:400;text-transform:none;">(leave blank to start immediately)</small></span>
+        <div class="datetime-picker-row">
+          <input [(ngModel)]="announcementStartDate" type="date" class="datetime-part date-part"
+            [min]="todayDate" (ngModelChange)="onStartDateTimeChange()" />
+          <select [(ngModel)]="announcementStartTime" class="datetime-part time-part" (ngModelChange)="onStartDateTimeChange()">
+            <option value="">— time —</option>
+            <option *ngFor="let t of filteredStartTimeSlots" [value]="t.value">{{ t.label }}</option>
+          </select>
+          <button *ngIf="announcementStartDate || announcementStartTime" type="button" class="datetime-clear"
+            title="Clear start time" (click)="clearStartDateTime()">✕</button>
+        </div>
+      </div>
+      <div class="form-field">
+        <span>End Date &amp; Time</span>
+        <div class="datetime-picker-row">
+          <input [(ngModel)]="announcementEndDate" type="date" class="datetime-part date-part"
+            [min]="announcementStartDate || todayDate" (ngModelChange)="onEndDateTimeChange()" />
+          <select [(ngModel)]="announcementEndTime" class="datetime-part time-part" (ngModelChange)="onEndDateTimeChange()">
+            <option value="">— time —</option>
+            <option *ngFor="let t of filteredEndTimeSlots" [value]="t.value">{{ t.label }}</option>
+          </select>
+          <button *ngIf="announcementEndDate || announcementEndTime" type="button" class="datetime-clear"
+            title="Clear end time" (click)="clearEndDateTime()">✕</button>
+        </div>
+        <small *ngIf="endBeforeStartError" style="color:#fca5a5;">⚠ End time must be after the start time.</small>
+      </div>
+    </div>
+
+    <label class="toggle-field">
+      <input [(ngModel)]="newAnnouncement.active" type="checkbox" />
+      <span>Announcement is active</span>
+    </label>
+    <div class="modal-actions">
+      <button class="primary-action" type="button" [disabled]="savingAnnouncement || !canCreateAnnouncement" (click)="addAnnouncement()">
+        {{ savingAnnouncement ? 'Creating...' : 'Create Announcement' }}
+      </button>
+      <button class="secondary-action" type="button" (click)="closeAddAnnouncement()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Announcement Modal -->
+<div *ngIf="pendingDeleteAnnouncement" class="modal-backdrop">
+  <div class="modal-panel compact">
+    <div class="modal-head">
+      <div>
+        <h3>Delete Announcement</h3>
+        <p>This permanently removes "{{ pendingDeleteAnnouncement.title }}".</p>
+      </div>
+      <button type="button" class="icon-button" (click)="cancelDeleteAnnouncement()">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+    <div class="warning-box">
+      Deactivating is safer — only delete if this announcement should be permanently removed.
+    </div>
+    <div class="modal-actions">
+      <button class="danger-action solid" type="button" (click)="confirmDeleteAnnouncement()">Delete Announcement</button>
+      <button class="secondary-action" type="button" (click)="cancelDeleteAnnouncement()">Cancel</button>
+    </div>
+  </div>
+</div>

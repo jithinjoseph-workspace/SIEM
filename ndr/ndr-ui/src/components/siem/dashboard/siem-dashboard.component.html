@@ -1,0 +1,107 @@
+<div class="siem-dashboard-container">
+  <!-- Top Stat Cards -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-title">EVENTS INGESTED</span>
+        <lucide-icon [name]="DatabaseIcon" class="w-4 h-4 text-sky-400"></lucide-icon>
+      </div>
+      <div class="stat-val font-mono">{{ stats().total_events | number }}</div>
+      <div class="stat-sub">
+        <span class="text-emerald-400 font-medium">ClickHouse DB</span>
+        <span class="text-slate-400">· Real-time sync</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-title">WAZUH FLEET</span>
+        <lucide-icon [name]="ServerIcon" class="w-4 h-4 text-indigo-400"></lucide-icon>
+      </div>
+      <div class="stat-val font-mono">{{ stats().active_agents }} <span class="text-xs text-slate-400 font-sans font-normal">/ {{ stats().total_agents }} online</span></div>
+      <div class="stat-sub">
+        <span class="text-sky-400 font-medium">Endpoint Coverage</span>
+        <span class="text-slate-400">· Linux &amp; Windows</span>
+      </div>
+    </div>
+
+    <div class="stat-card critical">
+      <div class="stat-header">
+        <span class="stat-title">CRITICAL ALERTS</span>
+        <lucide-icon [name]="ShieldAlertIcon" class="w-4 h-4 text-red-400"></lucide-icon>
+      </div>
+      <div class="stat-val font-mono text-red-400">{{ stats().critical_alerts }}</div>
+      <div class="stat-sub">
+        <span class="text-red-400 font-medium">Level 12+</span>
+        <span class="text-slate-400">· Immediate Action Req</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-title">INGESTION STREAM</span>
+        <lucide-icon [name]="RadioIcon" class="w-4 h-4 text-emerald-400 animate-pulse"></lucide-icon>
+      </div>
+      <div class="stat-val font-mono text-emerald-400">LIVE</div>
+      <div class="stat-sub">
+        <span class="text-emerald-400 font-medium">UDP 514 / TCP 601</span>
+        <span class="text-slate-400">· Active Syslog</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dual Column Layout: MITRE ATT&CK Breakdown + Recent Host Incidents -->
+  <div class="dashboard-columns">
+    <!-- MITRE ATT&CK Tactics -->
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h3>MITRE ATT&amp;CK Host Tactics</h3>
+          <p>Detection frequency across mapped host events</p>
+        </div>
+        <lucide-icon [name]="ShieldCheckIcon" class="w-5 h-5 text-amber-400"></lucide-icon>
+      </div>
+
+      <div class="mitre-list">
+        <div class="mitre-item" *ngFor="let t of mitreTactics">
+          <div class="mitre-info">
+            <span class="mitre-name">{{ t.name }}</span>
+            <span class="mitre-count font-mono">{{ t.count }} hits ({{ t.pct }}%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" [style.width.%]="t.pct" [style.background-color]="t.color"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Host Incidents -->
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h3>Recent Wazuh Host Detections</h3>
+          <p>Correlated events requiring investigation</p>
+        </div>
+        <button class="refresh-mini" (click)="loadStats()">
+          <lucide-icon [name]="RefreshIcon" class="w-4 h-4" [class.animate-spin]="loading()"></lucide-icon>
+        </button>
+      </div>
+
+      <div class="incident-list">
+        <div class="incident-row" *ngFor="let inc of recentHostIncidents">
+          <div class="incident-main">
+            <div class="incident-host font-mono">
+              <span class="host-name">{{ inc.host }}</span>
+              <span class="host-ip text-slate-400 text-xs">({{ inc.ip }})</span>
+            </div>
+            <div class="incident-text">{{ inc.alert }}</div>
+          </div>
+          <div class="incident-meta">
+            <span class="sev-tag crit">{{ inc.severity }}</span>
+            <span class="time-tag text-xs text-slate-400">{{ inc.time }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

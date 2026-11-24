@@ -1,0 +1,255 @@
+<div class="soc-sessions-root">
+
+  <!-- ── TOAST NOTIFICATION MESSAGE ── -->
+  <div *ngIf="message()" [class]="'soc-toast ' + messageType()">
+    <lucide-icon *ngIf="messageType() === 'success'" [name]="CheckIcon" class="w-4 h-4"></lucide-icon>
+    <lucide-icon *ngIf="messageType() === 'error'"   [name]="AlertCircleIcon" class="w-4 h-4"></lucide-icon>
+    <span>{{ message() }}</span>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!-- 1. TOP SOC COMMAND BAR                                                -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <header class="soc-header-bar">
+    <div class="soc-header-left">
+      <!-- 9-Dot Cyan Brand Glyph -->
+      <div class="soc-brand-dots">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- Header Right Search & Profile -->
+    <div class="soc-header-right">
+      <div class="soc-search-box">
+        <input type="text"
+               placeholder="Search by username, IP, or device..."
+               [ngModel]="searchQuery()"
+               (ngModelChange)="searchQuery.set($event)"
+               class="soc-search-input" />
+        <lucide-icon [name]="SearchIcon" class="w-3.5 h-3.5 soc-search-icon"></lucide-icon>
+      </div>
+
+      <div class="soc-user-avatar-wrap" (click)="toggleSessionsDrawer()" title="Click to open Active Sessions Manager">
+        <div class="soc-avatar-img soc-avatar-fallback">
+          <lucide-icon [name]="UserIcon" class="w-4 h-4"></lucide-icon>
+        </div>
+        <span class="soc-online-dot"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!-- 2. MAIN DASHBOARD STAGE & SIDEBAR                                     -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <div class="soc-stage-grid">
+
+    <!-- ── LEFT/CENTER COLUMN: 3D CYBER GLOBE & PROMPT BAR ── -->
+    <div class="soc-stage-main">
+
+      <!-- Title Area -->
+      <div class="soc-title-area">
+        <div class="soc-title-icon-badge">
+          <lucide-icon [name]="ActivityIcon" class="w-5 h-5 text-cyan-400"></lucide-icon>
+        </div>
+        <div>
+          <h1 class="soc-page-title">Active Sessions</h1>
+          <p class="soc-page-subtitle">Live login sessions for your organization, plotted by real IP geolocation</p>
+        </div>
+        <div class="ml-auto">
+          <button type="button" class="soc-toggle-sessions-btn" (click)="toggleSessionsDrawer()">
+            <lucide-icon [name]="ServerIcon" class="w-4 h-4"></lucide-icon>
+            <span>Active Sessions ({{ activeSessions().length }})</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3D GLOBE VIEWPORT -->
+      <div #globeContainerRef class="soc-globe-viewport">
+
+        <!-- Top-Left HUD: Live Telemetry Status -->
+        <div class="soc-globe-hud-top-left">
+          <div class="soc-hud-badge">
+            <span class="soc-hud-live-dot"></span>
+            <span class="soc-hud-title">REAL-TIME GLOBAL GEOLOCATION</span>
+          </div>
+          <div class="soc-hud-sub">
+            <span>{{ sessionPins().length }} active sessions geocoded on Earth</span>
+            <span *ngIf="activeSessions().length > sessionPins().length" class="soc-hud-unresolved">
+              ({{ activeSessions().length - sessionPins().length }} unmapped internal)
+            </span>
+          </div>
+        </div>
+
+        <!-- Top-Right HUD: Quick Continent Focus -->
+        <div class="soc-globe-hud-continents">
+          <button *ngFor="let c of continents"
+                  type="button"
+                  class="soc-continent-pill"
+                  [class.active]="selectedContinent === c.id"
+                  (click)="focusContinent(c.id)">
+            {{ c.name }}
+          </button>
+        </div>
+
+        <!-- 3D Earth Canvas -->
+        <canvas #globeCanvasRef class="soc-globe-canvas"></canvas>
+
+        <!-- Bottom-Left HUD: Legend -->
+        <div class="soc-globe-hud-bottom-left">
+          <div class="soc-hud-legend-item">
+            <span class="soc-legend-dot-cyan"></span>
+            <span>Session Node</span>
+          </div>
+          <div class="soc-hud-legend-item">
+            <span class="soc-legend-line-cyan"></span>
+            <span>Telemetry Arc</span>
+          </div>
+        </div>
+
+        <!-- Bottom-Right HUD: Controls Toolbar -->
+        <div class="soc-globe-hud-controls">
+          <button type="button" class="soc-hud-btn" (click)="zoomIn()" title="Zoom In (+)">
+            <lucide-icon [name]="ZoomInIcon" class="w-3.5 h-3.5"></lucide-icon>
+          </button>
+          <button type="button" class="soc-hud-btn" (click)="zoomOut()" title="Zoom Out (-)">
+            <lucide-icon [name]="ZoomOutIcon" class="w-3.5 h-3.5"></lucide-icon>
+          </button>
+          <button type="button" class="soc-hud-btn" (click)="resetView()" title="Reset Rotation / View">
+            <lucide-icon [name]="RotateCcwIcon" class="w-3.5 h-3.5"></lucide-icon>
+          </button>
+          <button type="button"
+                  class="soc-hud-btn"
+                  [class.active]="isAutoRotating"
+                  (click)="toggleAutoRotation()"
+                  [title]="isAutoRotating ? 'Pause Rotation' : 'Resume Rotation'">
+            <lucide-icon [name]="GlobeIcon" class="w-3.5 h-3.5" [class.text-cyan-400]="isAutoRotating"></lucide-icon>
+          </button>
+        </div>
+
+        <!-- Floating Tooltip on Pin Hover — lists every session at this exact
+             IP/location, not just one, since shared IPs (e.g. the same
+             gateway) plot to the same coordinates and would otherwise hide
+             all but one session behind a single dot. -->
+        <div *ngIf="hoveredPin()"
+             class="soc-globe-tooltip"
+             [class.multi]="hoveredGroup().length > 1"
+             [style.left.px]="tooltipPos.x"
+             [style.top.px]="tooltipPos.y">
+          <div class="soc-tooltip-row soc-tt-shared">
+            <lucide-icon [name]="MapPinIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
+            <span class="soc-tt-val">{{ countryFlag(hoveredPin()?.country || '') }} {{ hoveredPin()?.city }}, {{ hoveredPin()?.country }}</span>
+          </div>
+          <div class="soc-tooltip-row soc-tt-shared">
+            <lucide-icon [name]="TerminalIcon" class="w-3.5 h-3.5 text-emerald-400"></lucide-icon>
+            <code class="soc-tt-code">{{ hoveredPin()?.ip }}</code>
+            <span *ngIf="hoveredGroup().length > 1" class="soc-tt-shared-badge">{{ hoveredGroup().length }} sessions</span>
+          </div>
+
+          <div class="soc-tt-divider" *ngIf="hoveredGroup().length > 1"></div>
+
+          <div *ngFor="let s of hoveredGroup(); trackBy: trackByIndex" class="soc-tt-session-block">
+            <div class="soc-tooltip-header">
+              <div class="soc-tooltip-title-wrap">
+                <strong class="soc-tt-username">{{ s.username }}</strong>
+                <span class="soc-tooltip-role">{{ s.role }}</span>
+              </div>
+            </div>
+            <div class="soc-tooltip-row">
+              <lucide-icon [name]="LaptopIcon" class="w-3.5 h-3.5 text-sky-400"></lucide-icon>
+              <span class="soc-tt-val">{{ s.device }}</span>
+            </div>
+            <div class="soc-tooltip-row">
+              <lucide-icon [name]="ActivityIcon" class="w-3.5 h-3.5 text-amber-400"></lucide-icon>
+              <span class="soc-tt-time">Logged in: {{ s.loginTime }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <!-- 3. ACTIVE SESSIONS MANAGER (SLIDE-OVER / INLINE PANEL)                -->
+  <!-- ═════════════════════════════════════════════════════════════════════ -->
+  <section class="soc-sessions-management-section" [class.collapsed]="!showSessionsDrawer()">
+    <div class="soc-sessions-management-header">
+      <div class="soc-sm-title-group">
+        <lucide-icon [name]="ServerIcon" class="w-4 h-4 text-cyan-400"></lucide-icon>
+        <h3>Live Connected Sessions ({{ activeSessions().length }})</h3>
+        <span class="soc-sm-subtitle">Manage authenticated access tokens &amp; remote termination</span>
+      </div>
+      <div class="soc-sm-actions">
+        <button type="button" class="soc-btn-refresh" (click)="loadActiveSessions()">
+          <lucide-icon [name]="RefreshCwIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <span>Refresh</span>
+        </button>
+        <button type="button" class="soc-btn-collapse" (click)="toggleSessionsDrawer()">
+          {{ showSessionsDrawer() ? 'Hide List' : 'Expand Sessions' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Session User Cards -->
+    <div *ngIf="showSessionsDrawer()" class="soc-user-sessions-grid">
+      <div *ngFor="let username of sessionUsernames(); trackBy: trackByUsername" class="soc-user-session-card">
+        <div class="soc-user-card-header">
+          <div class="soc-user-id-box">
+            <div class="soc-user-avatar-initial">{{ username[0]?.toUpperCase() }}</div>
+            <div>
+              <strong class="soc-username">{{ username }}</strong>
+              <span class="soc-user-role-badge">{{ sessionsGrouped()[username][0]?.role }}</span>
+            </div>
+          </div>
+          <button type="button"
+                  class="soc-btn-signout-all"
+                  (click)="promptForceLogout(username)"
+                  [disabled]="forceLogoutConfirmUser() !== ''">
+            <lucide-icon [name]="XCircleIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>Sign Out All</span>
+          </button>
+        </div>
+
+        <!-- Devices for this user -->
+        <div class="soc-user-devices-list">
+          <div *ngFor="let g of groupedDevices(username); trackBy: trackByIndex" class="soc-device-item">
+            <div class="soc-device-info">
+              <lucide-icon [name]="LaptopIcon" class="w-3.5 h-3.5 text-zinc-400"></lucide-icon>
+              <span class="soc-device-name">{{ g.device }}</span>
+              <code class="soc-device-ip">{{ g.ip }}</code>
+              <span class="soc-device-time">{{ formatLoginTime(g.latestTime) }}</span>
+            </div>
+            <button type="button"
+                    class="soc-btn-signout-dev"
+                    (click)="promptForceLogoutDevice(username, g.ip, g.device)"
+                    [disabled]="forceLogoutDeviceKey() !== ''">
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        <!-- Confirm Signout Dialogs -->
+        <div *ngIf="forceLogoutConfirmUser() === username" class="soc-confirm-box">
+          <span>Terminate all {{ sessionsGrouped()[username].length }} session(s) for <strong>{{ username }}</strong>?</span>
+          <div class="soc-confirm-btns">
+            <button type="button" class="soc-btn-ghost-sm" (click)="cancelForceLogout()">Cancel</button>
+            <button type="button" class="soc-btn-danger-sm" (click)="confirmForceLogout(username)">Confirm Sign Out</button>
+          </div>
+        </div>
+
+        <div *ngIf="forceLogoutDeviceKey().startsWith(username + '|')" class="soc-confirm-box">
+          <span>Terminate selected device session?</span>
+          <div class="soc-confirm-btns">
+            <button type="button" class="soc-btn-ghost-sm" (click)="cancelForceLogoutDevice()">Cancel</button>
+            <button type="button" class="soc-btn-danger-sm" (click)="confirmForceLogoutDevice(username, forceLogoutDeviceKey().split('|')[1], forceLogoutDeviceKey().split('|')[2])">Sign Out Device</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>

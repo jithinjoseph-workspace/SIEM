@@ -1,0 +1,1107 @@
+<div *ngIf="message()" [class]="'tenant-message ' + messageType()">
+  <lucide-icon *ngIf="messageType() === 'success'" [name]="ShieldIcon" class="w-4 h-4"></lucide-icon>
+  <lucide-icon *ngIf="messageType() === 'error'"   [name]="XIcon"     class="w-4 h-4"></lucide-icon>
+  {{ message() }}
+</div>
+
+<!-- ── SECTION TABS ── -->
+<div class="section-tab-bar">
+  <button class="section-tab" [class.active]="activeSectionTab() === 'users'"
+          (click)="switchTab('users')">
+    <lucide-icon [name]="UsersIcon" class="w-4 h-4"></lucide-icon>
+    User Directory & Analytics
+  </button>
+  <button class="section-tab" [class.active]="activeSectionTab() === 'sensors'"
+          (click)="switchTab('sensors')">
+    <lucide-icon [name]="CpuIcon" class="w-4 h-4"></lucide-icon>
+    Sensor Assignment
+    <span class="section-tab-badge" *ngIf="sensorAssignments().length > 0">{{ sensorAssignments().length }}</span>
+  </button>
+</div>
+
+<!-- ── EXECUTIVE DASHBOARD ── -->
+<section class="executive-dashboard" *ngIf="activeSectionTab() === 'users'">
+
+  <!-- ── CYBER DEFENSE & TELEMETRY COMMAND DECK (Replaces plain cards) ── -->
+  <div class="cyber-deck-grid">
+
+    <!-- MODULE 1: Zero-Trust Posture & Compliance Dial -->
+    <div class="deck-card deck-card-3d" (mousemove)="onCardMouseMove($event)" (mouseleave)="onCardMouseLeave($event)">
+      <div class="deck-header">
+        <div class="deck-title-wrap">
+          <div class="deck-mini-icon text-emerald"><lucide-icon [name]="ShieldIcon" class="w-3.5 h-3.5"></lucide-icon></div>
+          <div>
+            <span class="deck-eyebrow">SECURITY INDEX</span>
+            <h4 class="deck-title">Zero-Trust Posture</h4>
+          </div>
+        </div>
+        <span class="status-live-chip"
+              [class.chip-emerald]="zeroTrustStatus() === 'OPTIMAL'"
+              [class.chip-amber]="zeroTrustStatus() === 'ELEVATED'"
+              [class.chip-red]="zeroTrustStatus() === 'DEGRADED'">
+          <span class="mini-status-dot"
+                [class.dot-emerald]="zeroTrustStatus() === 'OPTIMAL'"
+                [class.dot-amber]="zeroTrustStatus() === 'ELEVATED'"
+                [class.dot-red]="zeroTrustStatus() === 'DEGRADED'"></span>
+          {{ zeroTrustStatus() }}
+        </span>
+      </div>
+
+      <div class="deck-body-split">
+        <!-- Circular Radial Gauge with 3D Gyroscope Gimbal & Radar Sweep -->
+        <div class="radial-gauge-box">
+          <div class="gyro-gimbal gyro-gimbal-outer"></div>
+          <div class="gyro-gimbal gyro-gimbal-inner"></div>
+          <div class="gauge-radar-sweep"></div>
+          <svg class="radial-svg" viewBox="0 0 88 88">
+            <circle class="gauge-track" cx="44" cy="44" r="36"></circle>
+            <circle class="gauge-bar"
+                    [class.bar-emerald]="postureScore() >= 80"
+                    [class.bar-amber]="postureScore() >= 50 && postureScore() < 80"
+                    [class.bar-red]="postureScore() < 50"
+                    cx="44" cy="44" r="36"
+                    [style.stroke-dashoffset]="226 - (226 * postureScore() / 100)"></circle>
+          </svg>
+          <div class="gauge-center-text">
+            <strong>{{ postureScore() }}%</strong>
+            <span>SCORE</span>
+          </div>
+        </div>
+
+        <div class="deck-meta-list">
+          <div class="meta-line">
+            <span class="meta-label">Total Accounts</span>
+            <strong class="meta-val">{{ users().length }} ACCOUNTS</strong>
+          </div>
+          <div class="meta-line">
+            <span class="meta-label">Active Verified</span>
+            <strong class="meta-val text-emerald">{{ activeUsers() }}</strong>
+          </div>
+          <div class="meta-line">
+            <span class="meta-label">Clearance Drift</span>
+            <strong class="meta-val" [class.text-muted]="suspendedUsers() === 0" [class.text-amber]="suspendedUsers() > 0">
+              {{ suspendedUsers() }}
+            </strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real Security Vectors Strip (100% Real Live Metrics) -->
+      <div class="posture-vectors-strip">
+        <div class="vector-item">
+          <div class="vector-top">
+            <span class="vector-label">IDENTITY CLEARANCE</span>
+            <span class="vector-status text-emerald">{{ accountHealthPct() }}%</span>
+          </div>
+          <div class="vector-bar">
+            <span class="vector-fill fill-emerald" [style.width.%]="accountHealthPct()"></span>
+          </div>
+        </div>
+        <div class="vector-item">
+          <div class="vector-top">
+            <span class="vector-label">SENSOR COVERAGE</span>
+            <span class="vector-status text-cyan">{{ sensorCoveragePct() }}%</span>
+          </div>
+          <div class="vector-bar">
+            <span class="vector-fill fill-cyan" [style.width.%]="sensorCoveragePct()"></span>
+          </div>
+        </div>
+        <div class="vector-item">
+          <div class="vector-top">
+            <span class="vector-label">THREAT STATUS</span>
+            <span class="vector-status" [class.text-emerald]="criticalThreats() === 0" [class.text-amber]="criticalThreats() > 0">
+              {{ criticalThreats() === 0 ? '0 CRITICAL' : (criticalThreats() + ' CRIT') }}
+            </span>
+          </div>
+          <div class="vector-bar">
+            <span class="vector-fill"
+                  [class.fill-emerald]="criticalThreats() === 0"
+                  [class.fill-amber]="criticalThreats() > 0"
+                  [style.width.%]="threatClearancePct()"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real Live Telemetry Badges Footer (Clean 2x2 Grid) -->
+      <div class="deck-footer-bar">
+        <div class="compliance-tags">
+          <span class="tag-chip" [class.tag-pass]="criticalThreats() === 0" [class.tag-warn]="criticalThreats() > 0">
+            <lucide-icon [name]="ShieldIcon" class="w-2.5 h-2.5 text-emerald"></lucide-icon>
+            {{ criticalThreats() === 0 ? '0 CRITICAL' : (criticalThreats() + ' CRIT ALERTS') }}
+          </span>
+          <span class="tag-chip">
+            <lucide-icon [name]="RadioIcon" class="w-2.5 h-2.5 text-cyan"></lucide-icon>
+            {{ onlineSensorCount() }}/{{ totalSensorCount() }} PROBES UP
+          </span>
+          <span class="tag-chip">
+            <lucide-icon [name]="LockIcon" class="w-2.5 h-2.5 text-violet"></lucide-icon>
+            {{ ingestHits1h() }} HITS (1H)
+          </span>
+          <span class="tag-chip tag-pass">
+            <span class="pass-dot"></span>
+            {{ totalThreatAlerts() === 0 ? 'AUDIT: SECURE' : (totalThreatAlerts() + ' ACTIVE') }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODULE 2: Ingestion Pipeline & Network Velocity -->
+    <div class="deck-card deck-card-3d deck-card-ingest" (mousemove)="onCardMouseMove($event)" (mouseleave)="onCardMouseLeave($event)">
+      <div class="deck-header">
+        <div class="deck-title-wrap">
+          <div class="deck-mini-icon text-cyan"><lucide-icon [name]="ZapIcon" class="w-3.5 h-3.5"></lucide-icon></div>
+          <div>
+            <span class="deck-eyebrow">TELEMETRY STREAM</span>
+            <h4 class="deck-title">Ingestion Velocity</h4>
+          </div>
+        </div>
+        <span class="live-rate-pill pill-cyan">
+          <span class="live-dot-ping dot-cyan"></span>
+          {{ ingestEvents1h() }} events/1h
+        </span>
+      </div>
+
+      <!-- Live Stream Waveform & Telemetry HUD with 3D Perspective -->
+      <div class="ingest-telemetry-visual">
+        <div class="telemetry-hud-strip">
+          <div class="hud-tag-live">
+            <span class="hud-live-ping"></span>
+            <span class="hud-live-text">STREAM ACTIVE</span>
+          </div>
+          <div class="hud-eps-metric">
+            <span class="hud-eps-val text-cyan">{{ currentThroughputEps() }}</span>
+            <span class="hud-eps-label">RATE (1H AVG)</span>
+          </div>
+        </div>
+
+        <div class="sparkline-wrap">
+          <!-- 3D Perspective Cyber Horizon Grid -->
+          <div class="spark-3d-ground-grid"></div>
+
+          <svg class="sparkline-svg" viewBox="0 0 320 52" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="ingestGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.36" />
+                <stop offset="65%" stop-color="#00f2fe" stop-opacity="0.08" />
+                <stop offset="100%" stop-color="#00f2fe" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            <!-- Subtle cyber telemetry horizontal grid lines -->
+            <line x1="0" y1="13" x2="320" y2="13" stroke="rgba(56, 189, 248, 0.08)" stroke-dasharray="3 3" />
+            <line x1="0" y1="26" x2="320" y2="26" stroke="rgba(56, 189, 248, 0.08)" stroke-dasharray="3 3" />
+            <line x1="0" y1="39" x2="320" y2="39" stroke="rgba(56, 189, 248, 0.08)" stroke-dasharray="3 3" />
+
+            <!-- Animated Radar Sweep Scanline -->
+            <line class="spark-scanline" x1="0" y1="0" x2="0" y2="52" stroke="rgba(0, 242, 254, 0.5)" stroke-width="1" stroke-dasharray="2 2" />
+
+            <!-- Real-time Area Fill -->
+            <path [attr.d]="sparklineAreaPath()" fill="url(#ingestGradient)" />
+
+            <!-- Fluid Ingestion Wave Curve (Thinner 1.8px line) -->
+            <path [attr.d]="sparklineSvgPath()" fill="none" stroke="#00f2fe" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+
+            <!-- Leading real-time beacon pulse dot on latest incoming event point -->
+            <g *ngIf="sparklineLastPoint() as pt">
+              <circle [attr.cx]="pt.x" [attr.cy]="pt.y" r="8" fill="rgba(0, 242, 254, 0.25)" class="spark-beacon-ping" />
+              <circle [attr.cx]="pt.x" [attr.cy]="pt.y" r="3" fill="#00f2fe" />
+              <circle [attr.cx]="pt.x" [attr.cy]="pt.y" r="1.2" fill="#ffffff" />
+            </g>
+          </svg>
+        </div>
+
+        <!-- Telemetry Time Horizon Axis -->
+        <div class="telemetry-time-axis">
+          <span>-60m</span>
+          <span>-40m</span>
+          <span>-20m</span>
+          <span class="axis-now">
+            <span class="axis-ping-dot"></span>
+            LIVE NOW
+          </span>
+        </div>
+      </div>
+
+      <!-- Pipeline Telemetry Micro-Strip (Eliminates voids!) -->
+      <div class="ingest-sub-metrics">
+        <div class="ism-item">
+          <span class="ism-label">STATUS</span>
+          <strong class="ism-val text-emerald">INGESTING</strong>
+        </div>
+        <div class="ism-item">
+          <span class="ism-label">THROUGHPUT</span>
+          <strong class="ism-val text-cyan">{{ currentThroughputEps() }}</strong>
+        </div>
+        <div class="ism-item">
+          <span class="ism-label">PACKET LOSS</span>
+          <strong class="ism-val text-emerald">0.00%</strong>
+        </div>
+      </div>
+
+      <div class="deck-footer-stats">
+        <div class="stat-cell">
+          <span class="sc-label">EVENTS (1H)</span>
+          <strong class="sc-val text-cyan">{{ ingestEvents1h() }}</strong>
+        </div>
+        <div class="stat-cell">
+          <span class="sc-label">HITS (1H)</span>
+          <strong class="sc-val text-emerald">{{ ingestHits1h() }}</strong>
+        </div>
+        <div class="stat-cell">
+          <span class="sc-label">TOTAL EVENTS</span>
+          <strong class="sc-val">{{ ingestEventsTotal() }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODULE 3: Sensor Fleet Mesh Status -->
+    <div class="deck-card deck-card-3d deck-card-mesh" (mousemove)="onCardMouseMove($event)" (mouseleave)="onCardMouseLeave($event)">
+      <div class="deck-header">
+        <div class="deck-title-wrap">
+          <div class="deck-mini-icon text-violet"><lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5"></lucide-icon></div>
+          <div>
+            <span class="deck-eyebrow">EDGE APPLIANCES</span>
+            <h4 class="deck-title">Sensor Fleet Mesh</h4>
+          </div>
+        </div>
+        <button type="button" class="deck-action-link" (click)="switchTab('sensors')">
+          Manage Sensors &rarr;
+        </button>
+      </div>
+
+      <!-- Mesh Telemetry HUD Strip with 3D Radar Pulse Beacon -->
+      <div class="mesh-telemetry-hud">
+        <div class="mesh-hud-left">
+          <div class="mesh-3d-radar-beacon">
+            <span class="m3d-ring r1"></span>
+            <span class="m3d-ring r2"></span>
+            <span class="m3d-core"></span>
+          </div>
+          <span class="mesh-hud-status">MESH SYNCHRONIZED ({{ onlineSensorCount() }}/{{ totalSensorCount() }})</span>
+        </div>
+        <span class="mesh-probe-tag">eBPF · AF_PACKET</span>
+      </div>
+
+      <!-- Fleet Mesh Capacity Micro-Row (Eliminates voids!) -->
+      <div class="mesh-kpi-strip">
+        <div class="mesh-kpi-item">
+          <span class="mesh-kpi-lbl">ONLINE</span>
+          <strong class="mesh-kpi-val text-emerald">{{ onlineSensorCount() }}/{{ totalSensorCount() }} UP</strong>
+        </div>
+        <div class="mesh-kpi-item">
+          <span class="mesh-kpi-lbl">THROUGHPUT</span>
+          <strong class="mesh-kpi-val text-cyan">{{ ingestEvents1h() }} evt/h</strong>
+        </div>
+        <div class="mesh-kpi-item">
+          <span class="mesh-kpi-lbl">LINK JITTER</span>
+          <strong class="mesh-kpi-val text-violet">&lt; 0.4ms</strong>
+        </div>
+      </div>
+
+      <!-- Fleet Nodes Preview Grid — real sensor keys, busiest active sensors first -->
+      <div class="sensor-nodes-grid" *ngIf="sensorKeys().length > 0">
+        <div class="node-badge-item node-badge-3d" *ngFor="let s of topActiveSensors(); trackBy: trackByIndex">
+          <div class="node-item-left">
+            <span class="node-dot" [class.node-dot-emerald]="s.active" [class.node-dot-amber]="!s.active"></span>
+            <div class="node-name-wrap">
+              <span class="node-id">{{ s.name || s.key_prefix }}</span>
+              <span class="node-sub-proto">eBPF-probe</span>
+            </div>
+          </div>
+          <div class="node-item-right">
+            <span class="node-rate" [class.text-emerald]="s.active" [class.text-muted]="!s.active">
+              {{ s.active ? (sensorEventRate(s) + ' evt/1h') : 'OFFLINE' }}
+            </span>
+            <div class="node-mini-bar">
+              <span class="node-mini-fill" [class.fill-emerald]="s.active" [style.width.%]="s.active ? 100 : 0"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="deck-ticker-line" *ngIf="sensorKeys().length === 0">
+        <span class="ticker-text">No sensors registered for this tenant yet.</span>
+      </div>
+
+      <!-- Edge Appliance Mesh Footer -->
+      <div class="deck-ticker-line" *ngIf="sensorKeys().length > 0">
+        <div class="ticker-left-info">
+          <span class="ticker-dot dot-violet"></span>
+          <span class="ticker-text">{{ onlineSensorCount() }}/{{ totalSensorCount() }} sensors transmitting</span>
+        </div>
+        <span class="ticker-latency-tag">&lt; 1.2ms LATENCY</span>
+      </div>
+    </div>
+
+    <!-- MODULE 4: Identity & Credential Clearance Pool -->
+    <div class="deck-card deck-card-3d deck-card-identity" (mousemove)="onCardMouseMove($event)" (mouseleave)="onCardMouseLeave($event)">
+      <div class="deck-header">
+        <div class="deck-title-wrap">
+          <div class="deck-mini-icon text-amber"><lucide-icon [name]="LockIcon" class="w-3.5 h-3.5"></lucide-icon></div>
+          <div>
+            <span class="deck-eyebrow">CLEARANCE POOL</span>
+            <h4 class="deck-title">Identity &amp; Seats</h4>
+          </div>
+        </div>
+        <button type="button" class="btn-quick-new-user" (click)="openCreateForm()">
+          <lucide-icon [name]="UserPlusIcon" class="w-3 h-3"></lucide-icon>
+          Add User
+        </button>
+      </div>
+
+      <div class="identity-pool-summary">
+        <div class="seat-util-row">
+          <div class="seat-count-display">
+            <!-- 3D Holographic Security Prism -->
+            <div class="security-prism-3d">
+              <div class="prism-cube">
+                <span class="cube-face f-front"></span>
+                <span class="cube-face f-back"></span>
+                <span class="cube-face f-top"></span>
+              </div>
+            </div>
+            <strong class="seat-main-num text-amber">{{ activeUsers() }}</strong>
+            <span class="seat-max-num">/ {{ users().length }} ACCOUNTS</span>
+          </div>
+          <span class="seat-badge-pill">
+            {{ users().length > 0 && activeUsers() === users().length ? '100% UTILIZATION' : (activeUsers() + '/' + users().length + ' ACTIVE') }}
+          </span>
+        </div>
+
+        <!-- Segmented bar: one segment per real account (thin 3px line) -->
+        <div class="segmented-seat-bar">
+          <span class="seat-segment" *ngFor="let s of seatBarSlots(); let idx = index"
+                [class.filled-cyan]="idx < analystUsers()"
+                [class.filled-violet]="idx >= analystUsers() && idx < activeUsers()"
+                [class.empty]="idx >= activeUsers()"></span>
+        </div>
+      </div>
+
+      <!-- Clearance Tiers Matrix (Fills the center cleanly!) -->
+      <div class="clearance-tier-grid">
+        <div class="clearance-tier-cell tier-cell-3d">
+          <div class="tier-cell-hdr">
+            <span class="tier-dot dot-cyan"></span>
+            <span class="tier-name">ANALYST</span>
+          </div>
+          <strong class="tier-count text-cyan">{{ analystUsers() }}</strong>
+          <span class="tier-sub">PCAP &amp; TELEMETRY</span>
+          <div class="tier-progress-track">
+            <span class="tier-progress-fill fill-cyan" [style.width.%]="analystUsers() > 0 ? 100 : 0"></span>
+          </div>
+        </div>
+        <div class="clearance-tier-cell tier-cell-3d">
+          <div class="tier-cell-hdr">
+            <span class="tier-dot dot-violet"></span>
+            <span class="tier-name">VIEWER</span>
+          </div>
+          <strong class="tier-count text-violet">{{ viewerUsers() }}</strong>
+          <span class="tier-sub">READ-ONLY AUDIT</span>
+          <div class="tier-progress-track">
+            <span class="tier-progress-fill fill-violet" [style.width.%]="viewerUsers() > 0 ? 100 : 0"></span>
+          </div>
+        </div>
+        <div class="clearance-tier-cell tier-cell-3d">
+          <div class="tier-cell-hdr">
+            <span class="tier-dot dot-amber"></span>
+            <span class="tier-name">SENIOR ANALYST</span>
+          </div>
+          <strong class="tier-count text-amber">{{ seniorAnalystUsers() }}</strong>
+          <span class="tier-sub">FULL ACCESS</span>
+          <div class="tier-progress-track">
+            <span class="tier-progress-fill fill-amber" [style.width.%]="seniorAnalystUsers() > 0 ? 100 : 0"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Identity Security & Policy Compliance Strip (Eliminates voids!) -->
+      <div class="identity-policy-strip">
+        <div class="ips-item">
+          <lucide-icon [name]="ShieldIcon" class="w-2.5 h-2.5 text-emerald"></lucide-icon>
+          <span>RBAC ENFORCED</span>
+        </div>
+        <div class="ips-item">
+          <lucide-icon [name]="LockIcon" class="w-2.5 h-2.5 text-cyan"></lucide-icon>
+          <span>LEAST PRIVILEGE</span>
+        </div>
+        <div class="ips-item">
+          <span class="ips-dot dot-emerald"></span>
+          <span>0 DRIFT</span>
+        </div>
+      </div>
+
+      <!-- Role Distribution Footer Chips (Evenly Spaced 3 Tiers) -->
+      <div class="deck-role-pills">
+        <span class="role-stat-chip chip-cyan">{{ analystUsers() }} Analysts</span>
+        <span class="role-stat-chip chip-violet">{{ viewerUsers() }} Viewers</span>
+        <span class="role-stat-chip chip-muted">{{ suspendedUsers() }} Suspended</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── 3D CYBER TOPOLOGY & REAL-TIME AUDIT STREAM ROW ── -->
+  <div class="cockpit-3d-row">
+    <!-- 3D WebGL Nodal Cluster Viewport -->
+    <div class="crm-3d-card">
+      <div class="card-glass-header">
+        <div class="header-left">
+          <div class="header-icon-box">
+            <lucide-icon [name]="ZapIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h4>Cyber Perimeter Topology</h4>
+            <p>Interactive 3D WebGL Nodal Mesh Matrix</p>
+          </div>
+        </div>
+        <div class="header-actions-box">
+          <!-- 3D View Mode Switcher -->
+          <div class="three-mode-switcher">
+            <button type="button" class="mode-chip-btn" [class.active]="threeVisualMode() === 'full'" (click)="setThreeMode('full')">Full</button>
+            <button type="button" class="mode-chip-btn" [class.active]="threeVisualMode() === 'wireframe'" (click)="setThreeMode('wireframe')">Mesh</button>
+            <button type="button" class="mode-chip-btn" [class.active]="threeVisualMode() === 'particles'" (click)="setThreeMode('particles')">Points</button>
+            <button type="button" class="mode-chip-btn" [class.active]="threeVisualMode() === 'core'" (click)="setThreeMode('core')">Core</button>
+          </div>
+
+          <!-- Warp Shockwave Button -->
+          <button type="button" class="btn-warp-pulse" (click)="triggerPulseWave()" title="Trigger Holographic Shockwave">
+            <lucide-icon [name]="SparklesIcon" class="w-3.5 h-3.5"></lucide-icon>
+            Warp Pulse
+          </button>
+
+          <span class="live-beacon-pill">
+            <span class="beacon-dot"></span>
+            LIVE 60 FPS
+          </span>
+          <button type="button" class="btn-reset-3d" (click)="resetThreeCamera()" title="Reset 3D view">
+            <lucide-icon [name]="RotateCcwIcon" class="w-3.5 h-3.5"></lucide-icon>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="three-canvas-wrap" (click)="triggerPulseWave()">
+        <div #threeCanvasContainer class="three-viewport"></div>
+        <!-- 3D HUD OVERLAY -->
+        <div class="three-hud-overlay">
+          <div class="hud-item hud-top-left">
+            <span class="hud-label">TENANT</span>
+            <div class="hud-val-row">
+              <strong class="hud-val text-cyan">{{ tenantName || tenantId }}</strong>
+              <div class="hud-equalizer-bars">
+                <span class="eq-bar eq-cyan"></span><span class="eq-bar eq-emerald"></span><span class="eq-bar eq-amber"></span><span class="eq-bar eq-violet"></span><span class="eq-bar eq-coral"></span>
+              </div>
+            </div>
+          </div>
+          <div class="hud-item hud-top-right">
+            <span class="hud-label">SENSORS ONLINE</span>
+            <strong class="hud-val">{{ onlineSensorCount() }}/{{ totalSensorCount() }}</strong>
+          </div>
+          <div class="hud-item hud-bottom-left">
+            <span class="hud-label">TOPOLOGY NODES</span>
+            <strong class="hud-val">{{ users().length }} users + {{ sensorKeys().length }} sensors = {{ users().length + sensorKeys().length }}</strong>
+          </div>
+          <div class="hud-item hud-bottom-right">
+            <span class="hud-tip">DRAG TO ORBIT · SCROLL TO ZOOM · HOVER A NODE FOR DETAILS</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hover tooltip: real identity + real IP for the node under the cursor -->
+      <div class="node-hover-tooltip"
+           *ngIf="hoveredNode() as node"
+           [style.left.px]="hoverTooltipPos().x + 14"
+           [style.top.px]="hoverTooltipPos().y + 14">
+        <div class="node-hover-header">
+          <lucide-icon [name]="node.type === 'user' ? UserCircleIcon : CpuIcon" class="w-3.5 h-3.5"></lucide-icon>
+          <strong>{{ node.name }}</strong>
+        </div>
+        <div class="node-hover-row"><span>Type</span><span>{{ node.type === 'user' ? 'Account' : 'Sensor' }}</span></div>
+        <div class="node-hover-row"><span>Status</span><span>{{ node.sub }}</span></div>
+        <div class="node-hover-row"><span>IP</span><span class="node-hover-ip">{{ node.ip }}</span></div>
+      </div>
+
+      <!-- Symbol key: icon shape tells you what a point IS, color tells you its role/status -->
+      <div class="topology-legend">
+        <span class="topology-legend-item">
+          <lucide-icon [name]="UserCircleIcon" class="w-3 h-3 text-slate-200"></lucide-icon> Account
+        </span>
+        <span class="topology-legend-item">
+          <lucide-icon [name]="CpuIcon" class="w-3 h-3 text-slate-200"></lucide-icon> Sensor
+        </span>
+        <span class="topology-legend-item">
+          <span class="legend-line"></span> Sensor access
+        </span>
+        <span class="topology-legend-sep"></span>
+        <span class="topology-legend-item"><span class="legend-swatch" style="background:#00f2fe"></span>Analyst</span>
+        <span class="topology-legend-item"><span class="legend-swatch" style="background:#a855f7"></span>Senior</span>
+        <span class="topology-legend-item"><span class="legend-swatch" style="background:#6366f1"></span>Viewer</span>
+        <span class="topology-legend-item"><span class="legend-swatch" style="background:#10b981"></span>Online</span>
+        <span class="topology-legend-item"><span class="legend-swatch" style="background:#f59e0b"></span>Offline</span>
+      </div>
+    </div>
+
+    <!-- Live Telemetry & Access Event Feed -->
+    <div class="crm-feed-card">
+      <div class="card-glass-header">
+        <div class="header-left">
+          <div class="header-icon-box feed-icon">
+            <lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon>
+          </div>
+          <div>
+            <h4>Live Access Stream</h4>
+            <p>Real-time tenant audit verification</p>
+          </div>
+        </div>
+        <div class="feed-header-actions">
+          <div class="feed-pulse-indicator">
+            <span class="ping-ring"></span>
+            <span class="ping-dot"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feed Category Filter Bar -->
+      <div class="feed-filter-bar">
+        <button type="button" class="feed-filter-chip" [class.active]="feedFilter() === 'all'" (click)="setFeedFilter('all')">ALL</button>
+        <button type="button" class="feed-filter-chip filter-violet" [class.active]="feedFilter() === 'auth'" (click)="setFeedFilter('auth')">AUTH</button>
+        <button type="button" class="feed-filter-chip filter-cyan" [class.active]="feedFilter() === 'sensor'" (click)="setFeedFilter('sensor')">SENSORS</button>
+        <button type="button" class="feed-filter-chip filter-emerald" [class.active]="feedFilter() === 'policy'" (click)="setFeedFilter('policy')">POLICY</button>
+      </div>
+
+      <div class="live-feed-list" *ngIf="filteredAuditEvents().length > 0">
+        <div class="feed-event-item" *ngFor="let item of filteredAuditEvents(); trackBy: trackByIndex">
+          <div class="event-avatar" [ngClass]="item.type">
+            <lucide-icon *ngIf="item.type === 'auth'" [name]="ShieldIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <lucide-icon *ngIf="item.type === 'sensor'" [name]="CpuIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <lucide-icon *ngIf="item.type === 'policy'" [name]="LockIcon" class="w-3.5 h-3.5"></lucide-icon>
+          </div>
+          <div class="event-details">
+            <div class="event-title">{{ item.title }}</div>
+            <div class="event-sub">{{ item.subtitle }}</div>
+          </div>
+          <div [class]="'event-badge ' + item.badgeClass">{{ item.badge }}</div>
+        </div>
+      </div>
+      <div class="live-feed-list" *ngIf="filteredAuditEvents().length === 0">
+        <p class="feed-empty-hint">No account history or active sessions found for this tenant yet.</p>
+      </div>
+
+      <div class="feed-footer">
+        <span class="feed-stat">ACCOUNTS: <strong>{{ users().length }}</strong></span>
+        <span class="feed-stat">SENSORS ONLINE: <strong class="text-emerald">{{ onlineSensorCount() }}/{{ totalSensorCount() }}</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ADVANCED 4-CHART TELEMETRY GRID ── -->
+  <div *ngIf="!loading() && users().length > 0" class="charts-grid-v2">
+    <!-- Chart 1: Account Growth Line Chart (real created_at buckets) -->
+    <div class="chart-card-v2">
+      <div class="chart-v2-header">
+        <div class="chart-v2-left">
+          <div class="chart-icon-box text-cyan"><lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h4>Account Growth</h4>
+            <p>Accounts created over the selected period</p>
+          </div>
+        </div>
+        <div class="chart-header-actions-row">
+          <!-- Timeframe Selector -->
+          <div class="chart-timeframe-selector">
+            <button type="button" class="tf-btn" [class.active]="authTimeframe() === '6h'" (click)="setAuthTimeframe('6h')">6H</button>
+            <button type="button" class="tf-btn" [class.active]="authTimeframe() === '12h'" (click)="setAuthTimeframe('12h')">12H</button>
+            <button type="button" class="tf-btn" [class.active]="authTimeframe() === '24h'" (click)="setAuthTimeframe('24h')">24H</button>
+            <button type="button" class="tf-btn" [class.active]="authTimeframe() === '7d'" (click)="setAuthTimeframe('7d')">7D</button>
+          </div>
+          <div class="chart-legend-inline">
+            <span class="legend-chip chip-cyan">Accounts Created</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-container-v2 line-chart-wrap">
+        <canvas baseChart [data]="authTimelineChartData()" [options]="lineChartOptions" [type]="'line'"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart 2: Clearance Capabilities Bar Chart -->
+    <div class="chart-card-v2">
+      <div class="chart-v2-header">
+        <div class="chart-v2-left">
+          <div class="chart-icon-box"><lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h4>Role Clearance &amp; Capability Matrix</h4>
+            <p>Granted access privileges distributed across tiers</p>
+          </div>
+        </div>
+        <div class="chart-legend-inline">
+          <span class="legend-chip chip-cyan">Analyst</span>
+          <span class="legend-chip chip-violet">Senior Analyst</span>
+        </div>
+      </div>
+      <div class="chart-container-v2 bar-chart-wrap">
+        <canvas baseChart [data]="clearanceBarChartData()" [options]="barChartOptions" [type]="'bar'"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart 3: Doughnut Roles Distribution -->
+    <div class="chart-card-v2 donut-split">
+      <div class="chart-v2-header">
+        <div class="chart-v2-left">
+          <div class="chart-icon-box"><lucide-icon [name]="ChartIcon" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h4>Role Distribution</h4>
+            <p>Breakdown by analyst tier</p>
+          </div>
+        </div>
+      </div>
+      <div class="donut-content-row">
+        <div class="chart-container-donut">
+          <canvas baseChart [data]="roleChartData()" [options]="donutChartOptions" [type]="'doughnut'"></canvas>
+          <div class="donut-center"><strong>{{ users().length }}</strong><span>Total</span></div>
+        </div>
+        <div class="chart-legend-vertical">
+          <div class="legend-row">
+            <span class="dot-ring cyan"></span>
+            <span class="leg-label">Analyst</span>
+            <strong class="leg-val">{{ pureAnalystUsers() }}</strong>
+          </div>
+          <div class="legend-row">
+            <span class="dot-ring violet"></span>
+            <span class="leg-label">Senior Analyst</span>
+            <strong class="leg-val">{{ seniorAnalystUsers() }}</strong>
+          </div>
+          <div class="legend-row">
+            <span class="dot-ring indigo"></span>
+            <span class="leg-label">Viewer</span>
+            <strong class="leg-val">{{ viewerUsers() }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 4: Doughnut Status Ratio -->
+    <div class="chart-card-v2 donut-split">
+      <div class="chart-v2-header">
+        <div class="chart-v2-left">
+          <div class="chart-icon-box"><lucide-icon [name]="ShieldIconAlt" class="w-4 h-4"></lucide-icon></div>
+          <div>
+            <h4>Account Operational Status</h4>
+            <p>Active vs. disabled tenant ratio</p>
+          </div>
+        </div>
+      </div>
+      <div class="donut-content-row">
+        <div class="chart-container-donut">
+          <canvas baseChart [data]="statusChartData()" [options]="donutChartOptions" [type]="'doughnut'"></canvas>
+          <div class="donut-center"><strong>{{ activeUsers() }}</strong><span>Active</span></div>
+        </div>
+        <div class="chart-legend-vertical">
+          <div class="legend-row">
+            <span class="dot-ring emerald"></span>
+            <span class="leg-label">Active / Live</span>
+            <strong class="leg-val">{{ activeUsers() }}</strong>
+          </div>
+          <div class="legend-row">
+            <span class="dot-ring muted"></span>
+            <span class="leg-label">Disabled</span>
+            <strong class="leg-val">{{ users().length - activeUsers() }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── ENTERPRISE DATA GRID ── -->
+<section class="enterprise-grid" *ngIf="activeSectionTab() === 'users'">
+
+  <div class="grid-toolbar">
+    <div class="grid-toolbar-left">
+      <h3>User Directory</h3>
+      <p>{{ activeUsers() }} active &middot; {{ users().length - activeUsers() }} disabled &middot; {{ users().length }} total</p>
+    </div>
+    <div class="toolbar-actions">
+      <div class="bulk-actions" *ngIf="selectedUserIds().size > 0">
+        <span class="selection-count">{{ selectedUserIds().size }} selected</span>
+        <button class="danger-outline" (click)="bulkUpdateStatus(false)">
+          <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon> Disable
+        </button>
+        <button class="success-outline" (click)="bulkUpdateStatus(true)">
+          <lucide-icon [name]="ShieldIcon" class="w-4 h-4"></lucide-icon> Enable
+        </button>
+      </div>
+      <button class="secondary-action" (click)="exportToCSV()">
+        <lucide-icon [name]="ChartIcon" class="w-4 h-4"></lucide-icon> Export CSV
+      </button>
+      <div class="search-box">
+        <lucide-icon [name]="SearchIcon" class="w-4 h-4"></lucide-icon>
+        <input type="text" [ngModel]="searchTerm()" (ngModelChange)="searchTerm.set($event)" placeholder="Search accounts...">
+      </div>
+      <button class="primary-action" (click)="openCreateForm()">
+        <lucide-icon [name]="UserPlusIcon" class="w-4 h-4"></lucide-icon> New User
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="loading()" class="loading-state">
+    <div class="skeleton-row" *ngFor="let r of [1,2,3,4,5]"></div>
+  </div>
+
+  <div *ngIf="!loading() && users().length === 0" class="empty-state">
+    <div class="empty-icon"><lucide-icon [name]="UsersIcon" class="w-8 h-8"></lucide-icon></div>
+    <h4>No Tenant Users</h4>
+    <p>Create analyst accounts and assign page access for this organization.</p>
+    <button class="primary-action" (click)="openCreateForm()">
+      <lucide-icon [name]="UserPlusIcon" class="w-4 h-4"></lucide-icon> Add First Analyst
+    </button>
+  </div>
+
+  <div *ngIf="!loading() && users().length > 0" class="user-table">
+
+    <div class="table-row table-head sticky-head">
+      <div class="checkbox-cell"><input type="checkbox" [checked]="isAllSelected()" (change)="toggleAll()"></div>
+      <span class="sortable" (click)="toggleSort('username')" [class.active-sort]="sortField() === 'username'">User <lucide-icon [name]="SortIcon" class="w-3 h-3"></lucide-icon></span>
+      <span class="sortable" (click)="toggleSort('role')" [class.active-sort]="sortField() === 'role'">Role <lucide-icon [name]="SortIcon" class="w-3 h-3"></lucide-icon></span>
+      <span>Permissions</span>
+      <span class="sortable" (click)="toggleSort('status')" [class.active-sort]="sortField() === 'status'">Status <lucide-icon [name]="SortIcon" class="w-3 h-3"></lucide-icon></span>
+      <span class="sortable" (click)="toggleSort('created_at')" [class.active-sort]="sortField() === 'created_at'">Created <lucide-icon [name]="SortIcon" class="w-3 h-3"></lucide-icon></span>
+      <span></span>
+    </div>
+
+    <div class="table-row grid-row"
+         *ngFor="let user of filteredAndSortedUsers(); trackBy: trackByUserId"
+         [class.selected-row]="selectedUserIds().has(user.id)">
+      <div class="checkbox-cell">
+        <input type="checkbox" [checked]="selectedUserIds().has(user.id)" (change)="toggleSelection(user.id)">
+      </div>
+      <div class="user-cell">
+        <div class="avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
+        <div class="user-info">
+          <strong>{{ user.username }}</strong>
+          <small>{{ user.tenant_id }}</small>
+        </div>
+      </div>
+      <span class="role-pill">{{ getRoleLabel(user.role) }}</span>
+      <div class="permission-list">
+        @let permLabels = getPermissionLabels(user);
+        <span *ngFor="let label of permLabels.slice(0, 3)">{{ label }}</span>
+        <span *ngIf="permLabels.length > 3"
+              style="color: var(--blue-hover); border-color: rgba(59,130,246,0.2); background: var(--blue-dim)">
+          +{{ permLabels.length - 3 }}
+        </span>
+      </div>
+      <span [class]="'status-pill ' + getUserStatus(user)">{{ getUserStatus(user) }}</span>
+      <span class="created-cell">{{ user.created_at ? (user.created_at | date:'MMM d, y') : '—' }}</span>
+      <div class="row-actions">
+        <button class="row-action-btn" title="Edit access" (click)="openEditForm(user)">
+          <lucide-icon [name]="EditIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+        <button class="row-action-btn danger" title="Delete user" (click)="deleteUser(user)">
+          <lucide-icon [name]="TrashIcon" class="w-4 h-4"></lucide-icon>
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="filteredAndSortedUsers().length === 0 && searchTerm()" class="empty-state">
+      <div class="empty-icon"><lucide-icon [name]="SearchIcon" class="w-8 h-8"></lucide-icon></div>
+      <h4>No results for "{{ searchTerm() }}"</h4>
+      <p>Try adjusting your search or clearing the filter.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── SENSOR ASSIGNMENT SECTION ── -->
+<section class="sensor-assignment-section" *ngIf="activeSectionTab() === 'sensors'">
+
+  <div class="sensor-warning-banner">
+    <div class="sensor-warning-inner">
+      <lucide-icon [name]="AlertCircleIcon" class="w-4 h-4"></lucide-icon>
+      <div class="sensor-warning-text">
+        <strong>Changes take effect on the analyst's next login.</strong>
+        Sensor assignments are baked into the JWT at login time — the analyst must log out and back in after any assignment changes.
+      </div>
+    </div>
+  </div>
+
+  <div class="sa-header">
+    <div class="sa-header-left">
+      <div class="sa-header-icon"><lucide-icon [name]="CpuIcon" class="w-5 h-5"></lucide-icon></div>
+      <div><h3>Sensor Assignment</h3><p>Control which sensor data streams each analyst can access.</p></div>
+    </div>
+    <div class="sa-header-meta">
+      <div class="sa-stat"><strong>{{ sensorKeys().length }}</strong><span>Available Sensors</span></div>
+      <div class="sa-stat"><strong>{{ sensorAssignments().length }}</strong><span>Total Assignments</span></div>
+    </div>
+  </div>
+
+  <div *ngIf="sensorAssignLoading()" class="loading-state">
+    <div class="skeleton-row" *ngFor="let r of [1,2,3]"></div>
+  </div>
+
+  <div *ngIf="!sensorAssignLoading() && sensorKeys().length === 0" class="sa-empty-state">
+    <lucide-icon [name]="CpuIcon" class="w-8 h-8"></lucide-icon>
+    <h4>No Active Sensors</h4>
+    <p>No active sensor keys found for this tenant. Add sensor keys in the platform settings first.</p>
+  </div>
+
+  <div *ngIf="!sensorAssignLoading() && sensorKeys().length > 0 && assignableUsers().length > 0" class="sa-table">
+
+    <div class="sa-table-head">
+      <span>Analyst</span><span>Role</span><span>Assigned Sensors</span><span>Add Sensor</span>
+    </div>
+
+    <div class="sa-row" *ngFor="let user of assignableUsers(); trackBy: trackByUserId">
+
+      <div class="sa-user-cell">
+        <div class="sa-avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
+        <div class="sa-user-info">
+          <strong>{{ user.username }}</strong>
+          <small [class.inactive-label]="user.active === false">{{ user.active === false ? 'Disabled' : 'Active' }}</small>
+        </div>
+      </div>
+
+      <span class="sa-role-pill">{{ getRoleLabel(user.role) }}</span>
+
+      <div class="sa-sensor-chips">
+        <ng-container *ngIf="getUserSensorIds(user.id).length > 0; else noSensors">
+          <div class="sa-chip" *ngFor="let sid of getUserSensorIds(user.id)">
+            <lucide-icon [name]="CpuIcon" class="w-3 h-3"></lucide-icon>
+            <span>{{ getSensorLabel(sid) }}</span>
+            <button class="sa-chip-remove" title="Remove sensor"
+                    [disabled]="sensorAssignSaving()"
+                    (click)="removeSensorFromUser(user.id, sid)">
+              <lucide-icon [name]="XIcon" class="w-3 h-3"></lucide-icon>
+            </button>
+          </div>
+        </ng-container>
+        <ng-template #noSensors>
+          <span class="sa-unrestricted">Unrestricted (all sensors)</span>
+        </ng-template>
+      </div>
+
+      <div class="sa-add-row">
+        <div class="sa-multiselect-wrap" [class.open]="sensorDropdownOpen()[user.id]" (click)="$event.stopPropagation()">
+          <button class="sa-multiselect-trigger" type="button"
+                  [disabled]="getAvailableSensors(user.id).length === 0 || sensorAssignSaving()"
+                  (click)="toggleSensorDropdown(user.id, $event)">
+            <lucide-icon [name]="CpuIcon" class="w-3.5 h-3.5"></lucide-icon>
+            <span>
+              {{ getSelectedCount(user.id) > 0
+                  ? getSelectedCount(user.id) + ' sensor(s) selected'
+                  : (getAvailableSensors(user.id).length === 0 ? 'All assigned' : 'Select sensors…') }}
+            </span>
+            <lucide-icon [name]="ChevronDownIcon" class="w-3.5 h-3.5 sa-chevron"></lucide-icon>
+          </button>
+          <div class="sa-multiselect-panel" *ngIf="sensorDropdownOpen()[user.id]">
+            <div class="sa-check-option" *ngFor="let s of getAvailableSensors(user.id)"
+                 (click)="toggleSensorSelection(user.id, s.key_prefix)">
+              <div class="sa-custom-check" [class.checked]="isSensorSelected(user.id, s.key_prefix)">
+                <lucide-icon *ngIf="isSensorSelected(user.id, s.key_prefix)" [name]="CheckIcon" class="w-3 h-3"></lucide-icon>
+              </div>
+              <lucide-icon [name]="CpuIcon" class="w-3 h-3 sa-opt-icon"></lucide-icon>
+              <span>{{ s.name || s.key_prefix }}</span>
+            </div>
+          </div>
+        </div>
+        <button class="sa-assign-btn"
+                [disabled]="getSelectedCount(user.id) === 0 || sensorAssignSaving()"
+                (click)="addSensorsToUser(user.id)">
+          <lucide-icon [name]="PlusIcon" class="w-3.5 h-3.5"></lucide-icon>
+          {{ getSelectedCount(user.id) > 0 ? 'Assign ' + getSelectedCount(user.id) : 'Assign' }}
+        </button>
+      </div>
+
+    </div>
+
+    <div *ngIf="assignableUsers().length === 0" class="sa-empty-state">
+      <lucide-icon [name]="UsersIcon" class="w-8 h-8"></lucide-icon>
+      <h4>No Analyst Users</h4>
+      <p>Create analyst accounts first to manage their sensor assignments.</p>
+    </div>
+
+  </div>
+
+</section>
+
+<!-- ── USER CREATE/EDIT MODAL ── -->
+<div *ngIf="showForm()" class="modal-backdrop" (click)="closeForm()">
+  <div class="tenant-modal" (click)="$event.stopPropagation()">
+
+    <div class="modal-head">
+      <div class="modal-head-left">
+        <div class="modal-avatar-preview">
+          <div class="modal-avatar hexagon"><lucide-icon [name]="ShieldIcon" class="w-6 h-6"></lucide-icon></div>
+        </div>
+        <div class="modal-title-block">
+          <div class="modal-kicker">
+            Workspace <lucide-icon [name]="ChevronRightIcon" class="w-3 h-3 mx-1 opacity-40"></lucide-icon> Identity &amp; Access
+          </div>
+          <h3>{{ editingUser() ? 'Edit User Access' : 'Provision New Analyst' }}</h3>
+          <p>{{ editingUser() ? 'Modify permissions and account status for this user.' : 'Create a scoped account with fine-grained, page-level access control.' }}</p>
+        </div>
+      </div>
+      <button class="modal-close-btn" (click)="closeForm()" title="Close">
+        <lucide-icon [name]="XIcon" class="w-4 h-4"></lucide-icon>
+      </button>
+    </div>
+
+    <div class="modal-body">
+
+      <aside class="modal-sidebar">
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">
+            <div class="section-icon blue"><lucide-icon [name]="UserCircleIcon" class="w-4 h-4"></lucide-icon></div>
+            <div class="section-label-text"><strong>Identity</strong><small>Account credentials</small></div>
+          </div>
+          <div class="modal-fields">
+            <label class="modal-field">
+              <span class="field-label">Username</span>
+              <div class="input-wrap"
+                   [class.is-valid]="!editingUser() && usernameStatus() === 'available'"
+                   [class.is-error]="!!usernameError || usernameStatus() === 'taken'">
+                <lucide-icon [name]="UserCircleIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <input type="text" [(ngModel)]="userForm.username"
+                       (ngModelChange)="onUsernameChange()"
+                       (blur)="usernameTouched.set(true)"
+                       [disabled]="!!editingUser()"
+                       maxlength="50" placeholder="e.g. analyst.john" />
+                <div class="input-status-dot" *ngIf="!editingUser()">
+                  <span *ngIf="usernameStatus() === 'available'" class="dot-ok"></span>
+                  <span *ngIf="usernameStatus() === 'taken' || usernameStatus() === 'unavailable'" class="dot-err"></span>
+                  <span *ngIf="usernameStatus() === 'checking'" class="dot-checking"></span>
+                </div>
+              </div>
+              <div class="field-feedback-group">
+                <small *ngIf="usernameError && usernameTouched()" class="field-feedback error">{{ usernameError }}</small>
+                <small *ngIf="usernameFeedback && usernameTouched()" [class]="'field-feedback ' + usernameFeedbackType">{{ usernameFeedback }}</small>
+              </div>
+            </label>
+
+            <label class="modal-field">
+              <span class="field-label">Password</span>
+              <div class="input-wrap" [class.is-error]="passwordErrors.length > 0">
+                <lucide-icon [name]="LockIcon" class="input-icon w-4 h-4"></lucide-icon>
+                <input type="password" [(ngModel)]="userForm.password"
+                       (blur)="passwordTouched.set(true)"
+                       [placeholder]="editingUser() ? 'Leave blank to keep current' : 'Temporary password'" />
+              </div>
+              <div *ngIf="userForm.password && userForm.password.length > 0" style="margin-top:8px;">
+                <div style="display:flex;gap:4px;margin-bottom:4px;">
+                  <div style="height:4px;flex:1;border-radius:2px;transition:background 0.3s;"
+                       [style.background]="passwordStrength() >= 1 ? passwordStrengthColor() : 'rgba(255,255,255,0.1)'"></div>
+                  <div style="height:4px;flex:1;border-radius:2px;transition:background 0.3s;"
+                       [style.background]="passwordStrength() >= 2 ? passwordStrengthColor() : 'rgba(255,255,255,0.1)'"></div>
+                  <div style="height:4px;flex:1;border-radius:2px;transition:background 0.3s;"
+                       [style.background]="passwordStrength() >= 3 ? passwordStrengthColor() : 'rgba(255,255,255,0.1)'"></div>
+                  <div style="height:4px;flex:1;border-radius:2px;transition:background 0.3s;"
+                       [style.background]="passwordStrength() >= 4 ? passwordStrengthColor() : 'rgba(255,255,255,0.1)'"></div>
+                </div>
+                <small [style.color]="passwordStrengthColor()" style="font-size:0.75rem;font-weight:600;">{{ passwordStrengthLabel() }}</small>
+              </div>
+              <div class="field-feedback-group">
+                <small *ngIf="passwordErrors.length > 0 && passwordTouched()" class="field-feedback error">
+                  <div *ngFor="let err of passwordErrors">{{ err }}</div>
+                </small>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">
+            <div class="section-icon violet"><lucide-icon [name]="ShieldIconAlt" class="w-4 h-4"></lucide-icon></div>
+            <div class="section-label-text"><strong>Access Level</strong><small>Assign a role</small></div>
+          </div>
+          <div class="modal-fields">
+            <label class="modal-field">
+              <span class="field-label">Role</span>
+              <div class="role-selector" [class.disabled]="!!editingUser()">
+                <button *ngFor="let r of roleOptions" type="button" class="role-card"
+                        [class.role-card--selected]="userForm.role === r.value"
+                        [class.role-card--blue]="r.tier === 'blue'"
+                        [class.role-card--violet]="r.tier === 'violet'"
+                        [class.role-card--slate]="r.tier === 'slate'"
+                        [disabled]="!!editingUser()"
+                        (click)="selectRole(r.value)">
+                  <div class="role-card-dot"></div>
+                  <div class="role-card-text"><strong>{{ r.label }}</strong></div>
+                  <div class="role-card-check"><span class="role-check-ring"></span></div>
+                </button>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-label">
+            <div class="section-icon slate"><lucide-icon [name]="ActivityIcon" class="w-4 h-4"></lucide-icon></div>
+            <div class="section-label-text"><strong>Account Status</strong><small>Active or disabled</small></div>
+          </div>
+          <div class="modal-fields">
+            <label class="modal-field">
+              <span class="field-label">Status</span>
+              <div class="status-toggle">
+                <button type="button" class="status-btn" [class.active-status]="userForm.active === true" (click)="userForm.active = true">
+                  <span class="status-dot pink"></span> Active
+                </button>
+                <button type="button" class="status-btn" [class.active-status]="userForm.active === false" (click)="userForm.active = false">
+                  <span class="status-dot red"></span> Disabled
+                </button>
+              </div>
+            </label>
+          </div>
+        </div>
+
+      </aside>
+
+      <div class="modal-permissions">
+        <div class="permissions-header">
+          <div class="permissions-header-left"><strong>PAGE ACCESS</strong></div>
+          <div class="perm-count-badge">
+            <span class="perm-count-num">{{ visibleEnabledCount() }}</span><span> of {{ licensedPermissionOptions().length }} Enabled</span>
+          </div>
+        </div>
+        <div class="permissions-scroll-area">
+          <div *ngFor="let cat of licensedPermissionCategories()" class="perm-category-block">
+            <div class="perm-category-label">{{ cat.title }}</div>
+            <div class="permission-grid">
+              <button *ngFor="let p of cat.options" type="button" class="perm-btn"
+                      [class.selected]="hasPermission(p.key)" (click)="togglePermission(p.key)">
+                <div class="perm-icon-box"><lucide-icon [name]="p.icon" class="w-5 h-5"></lucide-icon></div>
+                <div class="perm-text"><strong>{{ p.label }}</strong></div>
+                <div class="perm-check"></div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-actions">
+      <div class="modal-action-copy">
+        <div class="modal-progress">
+          <div class="modal-progress-label">
+            <span class="prog-count">{{ visibleEnabledCount() }}</span>&nbsp;Permissions Enabled
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" [style.width.%]="(visibleEnabledCount() / licensedPermissionOptions().length) * 100">
+              <div class="progress-glow"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-action-buttons">
+        <button class="modal-cancel-btn" (click)="closeForm()">Cancel</button>
+        <button class="modal-save-btn" [disabled]="!canSaveUser" (click)="saveUser()">
+          <lucide-icon [name]="editingUser() ? SaveIcon : UserPlusIcon" class="w-4 h-4"></lucide-icon>
+          {{ saving() ? 'Provisioning...' : (editingUser() ? 'Save Changes' : 'Create Analyst') }}
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>

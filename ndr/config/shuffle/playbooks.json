@@ -1,0 +1,17 @@
+[
+  {
+    "name": "High severity alert → Slack notification",
+    "trigger": "Score > 75",
+    "actions": ["Send Slack message", "Create Jira ticket"]
+  },
+  {
+    "name": "Malicious IP → Block + notify",
+    "trigger": "threat_intel = true",
+    "actions": ["Block IP via API", "Send email alert"]
+  },
+  {
+    "name": "Critical alert → PagerDuty",
+    "trigger": "Score > 90",
+    "actions": ["Create PagerDuty incident", "Send SMS"]
+  }
+]

@@ -86,8 +86,9 @@
         reverse_proxy http://{$SIEM_UPSTREAM:siem-api:8088}
     }
 
-    # NDR WebSockets (/ws/ndr/*)
-    handle /ws/ndr/* {
+    # NDR live telemetry (/ws/ndr -> the NDR engine's /ws)
+    handle /ws/ndr* {
+        uri replace /ws/ndr /ws 1
         reverse_proxy http://{$NDR_UPSTREAM:ndr-engine-1:3000}
     }
 

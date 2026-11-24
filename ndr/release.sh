@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Build and push ndr-engine and/or ndr-ui images to GHCR, then bump VERSION.
+# Build and push the images (ndr-engine, provigil-auth, the one console ndr-ui, siem-api) to GHCR,
+# then bump VERSION.
 # Usage:
-#   ./release.sh 1.1.0          — build all three, tag as 1.1.0
+#   ./release.sh 1.1.0          — build all four, tag as 1.1.0
 #   ./release.sh 1.1.0 engine   — ndr-engine only
 #   ./release.sh 1.1.0 auth     — provigil-auth only
-#   ./release.sh 1.1.0 ui       — ndr-ui only
+#   ./release.sh 1.1.0 ui       — ndr-ui (the one console, wazuh-rust-angular/ndr-ui) only
+#   ./release.sh 1.1.0 siem     — siem-api only
 set -euo pipefail
 
 REGISTRY="ghcr.io/jithinjoseph-workspace"
@@ -16,7 +18,7 @@ ok()   { printf '\033[0;32m[  ok  ]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[ warn ]\033[0m %s\n' "$*"; }
 die()  { printf '\033[0;31m[ fail ]\033[0m %s\n' "$*" >&2; exit 1; }
 
-[ -z "$NEW_VERSION" ] && die "Usage: ./release.sh <version> [engine|ui|all]"
+[ -z "$NEW_VERSION" ] && die "Usage: ./release.sh <version> [engine|auth|ui|siem|all]"
 
 cd "$(dirname "$0")"
 
@@ -75,12 +77,24 @@ build_auth() {
     ok "provigil-auth pushed → :${NEW_VERSION} and :latest"
 }
 
+build_siem_api() {
+    log "Building siem-api:${NEW_VERSION}..."
+    docker build \
+        -t "${REGISTRY}/siem-api:${NEW_VERSION}" \
+        -t "${REGISTRY}/siem-api:latest" \
+        -f ../wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile \
+        .. || { warn "siem-api build failed"; return 1; }
+    push_with_retry "${REGISTRY}/siem-api:${NEW_VERSION}" || { warn "siem-api push failed for :${NEW_VERSION}"; return 1; }
+    push_with_retry "${REGISTRY}/siem-api:latest"          || { warn "siem-api push failed for :latest"; return 1; }
+    ok "siem-api pushed → :${NEW_VERSION} and :latest"
+}
+
 build_ui() {
     log "Building ndr-ui:${NEW_VERSION}..."
     docker build \
         -t "${REGISTRY}/ndr-ui:${NEW_VERSION}" \
         -t "${REGISTRY}/ndr-ui:latest" \
-        ./ndr-ui || { warn "ndr-ui build failed"; return 1; }
+        ../wazuh-rust-angular/ndr-ui || { warn "ndr-ui build failed"; return 1; }
     push_with_retry "${REGISTRY}/ndr-ui:${NEW_VERSION}" || { warn "ndr-ui push failed for :${NEW_VERSION}"; return 1; }
     push_with_retry "${REGISTRY}/ndr-ui:latest"          || { warn "ndr-ui push failed for :latest"; return 1; }
     ok "ndr-ui pushed → :${NEW_VERSION} and :latest"
@@ -102,10 +116,12 @@ case "$TARGET" in
     engine) run_target "ndr-engine" build_engine ;;
     auth)   run_target "provigil-auth" build_auth ;;
     ui)     run_target "ndr-ui" build_ui ;;
+    siem)   run_target "siem-api" build_siem_api ;;
     all)
         run_target "ndr-engine" build_engine
         run_target "provigil-auth" build_auth
         run_target "ndr-ui" build_ui
+        run_target "siem-api" build_siem_api
         ;;
     *) die "Unknown target '$TARGET'. Use: engine | auth | ui | all" ;;
 esac
@@ -121,6 +137,7 @@ if [ "${#FAILED[@]}" -gt 0 ]; then
             ndr-engine)    warn "  ./release.sh ${NEW_VERSION} engine" ;;
             provigil-auth) warn "  ./release.sh ${NEW_VERSION} auth" ;;
             ndr-ui)        warn "  ./release.sh ${NEW_VERSION} ui" ;;
+            siem-api)      warn "  ./release.sh ${NEW_VERSION} siem" ;;
         esac
     done
     die "Release v${NEW_VERSION} incomplete (${#SUCCEEDED[@]} succeeded, ${#FAILED[@]} failed)."

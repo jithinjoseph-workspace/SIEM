@@ -77,11 +77,15 @@ export class Websocket {
     try {
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       let token = '';
+      let ndr = false;
       try {
-        token = localStorage.getItem('ndr_token') || JSON.parse(localStorage.getItem('ndr_user') || '{}')?.token || '';
+        const user = JSON.parse(localStorage.getItem('ndr_user') || '{}');
+        token = localStorage.getItem('ndr_token') || user?.token || '';
+        ndr = Array.isArray(user?.features) && user.features.includes('ndr');
       } catch {}
       const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-      const wsUrl = `${wsProtocol}//${location.host}/ws${tokenQuery}`;
+      // NDR clients: the NDR engine's live telemetry (/ws/ndr -> its /ws); SIEM-only: siem-api's /ws
+      const wsUrl = `${wsProtocol}//${location.host}${ndr ? '/ws/ndr' : '/ws'}${tokenQuery}`;
 
       this.socket = new WebSocket(wsUrl);
 

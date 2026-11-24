@@ -464,8 +464,41 @@ services:
       retries: 3
 
   # Angular UI — builds the SPA and serves it via nginx on port 80
+  # siem-api: the platform server behind the one console (cases and playbooks, settings, admin,
+  # the SIEM pages' API). Without SIEM agents its own log pipeline stays off (PROVIGIL_MANAGER=0).
+  siem-api:
+    build: { context: .., dockerfile: wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile }
+    container_name: siem-api
+    restart: unless-stopped
+    mem_limit: 768m
+    networks:
+      - ndr-internal
+      - default
+    volumes:
+      # new tenants' databases are made from the shared schema
+      - ${INSTALL_DIR}/config/clickhouse/init.sql:/app/config/clickhouse/init.sql:ro
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
+      - CLICKHOUSE_URL=http://clickhouse1:8123
+      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DB=ndr
+      - VALKEY_URL=redis://ndr-valkey:6379
+      - INSTALL_DIR=/app
+      - PROVIGIL_MANAGER=0
+      - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+      - LICENSE_TOKEN=${LICENSE_TOKEN}
+      - RUST_LOG=info
+    depends_on:
+      clickhouse1:
+        condition: service_healthy
+      ndr-valkey:
+        condition: service_started
+
+  # The one console (SIEM and NDR pages; the client's licence decides which show)
   ndr-ui:
-    build: ./ndr-ui
+    build: ../wazuh-rust-angular/ndr-ui
     container_name: ndr-ui
     networks:
       - ndr-internal
@@ -502,6 +535,8 @@ services:
       ndr-ui:
         condition: service_healthy
       provigil-auth:
+        condition: service_healthy
+      siem-api:
         condition: service_healthy
     networks:
       - ndr-internal

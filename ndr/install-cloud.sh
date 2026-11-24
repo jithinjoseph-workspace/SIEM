@@ -478,6 +478,11 @@ if [ -z "$GROQ_API_KEY" ]; then
     GROQ_API_KEY="${GROQ_API_KEY:-}"
 fi
 
+# siem-api encrypts stored credentials (integrations, AI keys) with AGENT_KEYS_SECRET: read it
+# before .env is rewritten, so a reinstall keeps it (a new one would make them unreadable)
+AGENT_KEYS_SECRET=$(grep "^AGENT_KEYS_SECRET=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:-$(openssl rand -hex 32)}
+
 cat > "$INSTALL_DIR/.env" << ENVEOF
 HOST_IP=$PUBLIC_IP
 HOME_DIR=$HOME_DIR
@@ -526,6 +531,7 @@ LICENSE_PUBLIC_KEY=$LICENSE_PUBLIC_KEY
 LICENSE_TOKEN=
 TENANT_ADMIN_USER=
 TENANT_ADMIN_PASS=
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 ENVEOF
 log "✅ Cloud .env generated"
 info "  CLOUD_MODE=true — Agent-Z/Agent-S/Arkime/OpenSearch are disabled"
@@ -576,6 +582,8 @@ sudo docker pull "${REGISTRY}/ndr-ui:latest" 2>/tmp/ndr_cloud_err \
   || err "Could not pull ${REGISTRY}/ndr-ui:latest ($(cat /tmp/ndr_cloud_err 2>/dev/null)) — check the registry token and network access, then re-run."
 sudo docker pull "${REGISTRY}/provigil-auth:latest" 2>/tmp/ndr_cloud_err \
   || err "Could not pull ${REGISTRY}/provigil-auth:latest ($(cat /tmp/ndr_cloud_err 2>/dev/null)) — check the registry token and network access, then re-run."
+sudo docker pull "${REGISTRY}/siem-api:latest" 2>/tmp/ndr_cloud_err \
+  || err "Could not pull ${REGISTRY}/siem-api:latest ($(cat /tmp/ndr_cloud_err 2>/dev/null)) — check the registry token and network access, then re-run."
 rm -f /tmp/ndr_cloud_err
 
 # ── Write compose override (pre-built images, no build:) ─────────────
@@ -592,6 +600,9 @@ services:
     build: !reset null
   provigil-auth:
     image: ${REGISTRY}/provigil-auth:latest
+    build: !reset null
+  siem-api:
+    image: ${REGISTRY}/siem-api:latest
     build: !reset null
 OVERRIDE
 

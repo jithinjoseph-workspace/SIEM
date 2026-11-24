@@ -285,6 +285,11 @@ HOST_IP_EARLY=${HOST_IP_EARLY:-$(hostname -I | awk '{print $1}')}
 JWT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-$(date +%s)")
 NDR_AGENT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-agent-$(date +%s)")
 
+# siem-api encrypts stored credentials (integrations, AI keys) with AGENT_KEYS_SECRET: read it
+# before .env is rewritten, so a reinstall keeps it (a new one would make them unreadable)
+AGENT_KEYS_SECRET=$(grep "^AGENT_KEYS_SECRET=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:-$(openssl rand -hex 32)}
+
 cat > "$INSTALL_DIR/.env" << _EARLY_ENV
 HOST_IP=${HOST_IP_EARLY}
 HOME_DIR=${HOME_DIR}
@@ -316,6 +321,7 @@ LICENSE_PUBLIC_KEY=
 LICENSE_TOKEN=
 TENANT_ADMIN_USER=
 TENANT_ADMIN_PASS=
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 _EARLY_ENV
 log ".env written early (will be updated with final values in network step)"
 
@@ -834,6 +840,7 @@ LICENSE_PUBLIC_KEY=$LICENSE_PUBLIC_KEY
 LICENSE_TOKEN=$LICENSE_TOKEN
 TENANT_ADMIN_USER=$TENANT_ADMIN_USER
 TENANT_ADMIN_PASS=$TENANT_ADMIN_PASS
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 ENVEOF
 log ".env generated"
 
@@ -984,7 +991,7 @@ sudo docker compose --profile onpremise down 2>/dev/null || true
 sudo docker rm -f vector 2>/dev/null || true
 
 log "Pulling pre-built images..."
-for IMG in ndr-engine provigil-auth ndr-ui; do
+for IMG in ndr-engine provigil-auth ndr-ui siem-api; do
   sudo docker pull "${REGISTRY}/${IMG}:latest" 2>/tmp/ndr_cust_err \
     || err "Could not pull ${REGISTRY}/${IMG}:latest ($(cat /tmp/ndr_cust_err 2>/dev/null)) — check the registry token and network access, then re-run."
 done
@@ -1004,6 +1011,9 @@ services:
     build: !reset null
   ndr-ui:
     image: ${REGISTRY}/ndr-ui:latest
+    build: !reset null
+  siem-api:
+    image: ${REGISTRY}/siem-api:latest
     build: !reset null
 OVERRIDE
 

@@ -310,6 +310,11 @@ HOST_IP_EARLY=${HOST_IP_EARLY:-$(hostname -I | awk '{print $1}')}
 JWT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-$(date +%s)")
 NDR_AGENT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-agent-$(date +%s)")
 
+# siem-api encrypts stored credentials (integrations, AI keys) with AGENT_KEYS_SECRET: read it
+# before .env is rewritten, so a reinstall keeps it (a new one would make them unreadable)
+AGENT_KEYS_SECRET=$(grep "^AGENT_KEYS_SECRET=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:-$(openssl rand -hex 32)}
+
 cat > "$INSTALL_DIR/.env" << _EARLY_ENV
 HOST_IP=${HOST_IP_EARLY}
 HOME_DIR=${HOME_DIR}
@@ -340,6 +345,7 @@ TRUSTED_SOURCE_CIDRS=
 LICENSE_PRIVATE_KEY=
 LICENSE_PUBLIC_KEY=
 LICENSE_TOKEN=
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 _EARLY_ENV
 log ".env written early (will be updated with final values in network step)"
 
@@ -1067,6 +1073,7 @@ IP_TOKEN_KEY=$(openssl rand -hex 32 2>/dev/null || echo "change-me-in-production
 LICENSE_PRIVATE_KEY=$LICENSE_PRIVATE_KEY
 LICENSE_PUBLIC_KEY=$LICENSE_PUBLIC_KEY
 LICENSE_TOKEN=$LICENSE_TOKEN
+AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 ENVEOF
 log ".env generated"
 
@@ -1144,39 +1151,10 @@ log "Vector configured"
 # ══════════════════════════════════════════════
 step "Dashboard UI  (Angular)"
 
-log "Installing Angular UI dependencies..."
-cd "$INSTALL_DIR/ndr-ui"
-
-if [ -d "node_modules/@angular/build" ]; then
-    log "Angular dependencies already installed — skipping npm install"
-else
-    log "First-time install..."
-    sudo chmod -R 777 "$INSTALL_DIR/ndr-ui" 2>/dev/null || true
-    npm config set bin-links false
-    log "Running npm install..."
-    rm -rf node_modules 2>/dev/null || true
-    npm install 2>&1
-    npm config set bin-links true
-    if [ -d "node_modules/@angular/build" ]; then
-        log "Angular dependencies installed"
-    else
-        warn "npm install had issues — check output above"
-    fi
-fi
-
-# Build now — BEFORE docker compose starts nginx.
-# nginx bind-mounts dist/ndr-ui/browser from the host (docker-compose.yml line ~342).
-# If dist doesn't exist when nginx starts, it serves an empty directory and the
-# browser gets "site can't be reached". Building here ensures the files are ready
-# before any container touches them.
-log "Building Angular UI (production)..."
-if npm run build -- --configuration production 2>&1 | tail -8; then
-    log "Angular UI built → dist/ndr-ui/browser/"
-else
-    warn "Angular build had errors — UI may not load correctly after install"
-fi
-
-cd "$INSTALL_DIR"
+# The console is the one ProVigil console (wazuh-rust-angular/ndr-ui): docker compose builds it
+# into the ndr-ui image (customer installs pull that image) and nginx proxies to that container,
+# so nothing is built on the host. (This step used to build ndr-ui/dist here, which nothing served.)
+log "Dashboard UI: the ndr-ui container image (the one console)"
 
 # ══════════════════════════════════════════════
 step "Container Runtime  (Docker)"
@@ -1360,7 +1338,7 @@ while true; do
         cd "\$INSTALL_DIR_"
         docker pull ghcr.io/jithinjoseph-workspace/ndr-engine:latest 2>&1 | logger -t ndr-updater || true
         docker pull ghcr.io/jithinjoseph-workspace/ndr-ui:latest     2>&1 | logger -t ndr-updater || true
-        docker compose up -d --no-deps ndr-engine-1 ndr-engine-2 ndr-engine-3 ndr-ui 2>&1 | logger -t ndr-updater || true
+        docker compose up -d --no-deps ndr-engine-1 ndr-engine-2 ndr-engine-3 ndr-ui siem-api 2>&1 | logger -t ndr-updater || true
         logger -t ndr-updater "Update complete"
     fi
     sleep 30

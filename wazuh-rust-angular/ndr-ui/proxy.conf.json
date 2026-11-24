@@ -40,6 +40,14 @@
     "secure": false,
     "changeOrigin": true
   },
+  "/ws/ndr": {
+    "target": "ws://127.0.0.1:13000",
+    "secure": false,
+    "ws": true,
+    "pathRewrite": {
+      "^/ws/ndr": "/ws"
+    }
+  },
   "/ws": {
     "target": "ws://127.0.0.1:8088",
     "secure": false,

@@ -6,3 +6,13 @@
 !wazuh-rust-angular/backend-rust/crates/provigil-common
 !wazuh-rust-angular/backend-rust/crates/auth-service
 **/target
+# siem-api (wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile): the workspace and the
+# files compiled into it; never data/ (agent packages, secrets) except the Sigma rules
+!wazuh-rust-angular/backend-rust/Cargo.toml
+!wazuh-rust-angular/backend-rust/Cargo.lock
+!wazuh-rust-angular/backend-rust/crates
+!wazuh-rust-angular/backend-rust/deploy
+!wazuh-rust-angular/backend-rust/ruleset/sca
+!wazuh-rust-angular/backend-rust/specs/sca-manifest
+!wazuh-rust-angular/backend-rust/data/sigma
+**/target

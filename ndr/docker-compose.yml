@@ -172,6 +172,9 @@ services:
       - LISTEN_ADDR=0.0.0.0:3001
       - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
       - LICENSE_TOKEN=${LICENSE_TOKEN}
+      # the customer's first admin, created once for the licensed client
+      - TENANT_ADMIN_USER=${TENANT_ADMIN_USER}
+      - TENANT_ADMIN_PASS=${TENANT_ADMIN_PASS}
     depends_on:
       clickhouse1:
         condition: service_healthy

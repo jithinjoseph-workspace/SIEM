@@ -117,6 +117,14 @@ async fn main() -> anyhow::Result<()> {
         verified_license,
     };
 
+    // The customer's first admin (the installer's TENANT_ADMIN_USER / TENANT_ADMIN_PASS) for the
+    // licensed client, once. Here because every install has the sign-in service; the NDR engine
+    // (which also does it) is not installed for a SIEM-only licence.
+    if let Some(lic) = state.verified_license.clone() {
+        let db = state.db.clone();
+        tokio::spawn(async move { provision_licence_admin(&db, &lic).await });
+    }
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -180,4 +188,55 @@ fn require_env(key: &str) -> String {
         tracing::error!("Required env var {} not set — aborting", key);
         std::process::exit(1);
     })
+}
+
+/// Creates the licensed client (when missing), gives it the licence's modules, and creates its
+/// tenant admin from TENANT_ADMIN_USER / TENANT_ADMIN_PASS when no user has that name yet.
+async fn provision_licence_admin(db: &db::AuthDb, lic: &license::LicenseClaims) {
+    let user = std::env::var("TENANT_ADMIN_USER").unwrap_or_default().trim().to_string();
+    let pass = std::env::var("TENANT_ADMIN_PASS").unwrap_or_default().trim().to_string();
+    if user.is_empty() || pass.is_empty() {
+        return;
+    }
+    // the database may still be starting: ask again for up to 2.5 minutes
+    let mut known = None;
+    for _ in 0..30 {
+        match db.get_user_any_tenant(&user).await {
+            Ok(u) => {
+                known = Some(u.is_some());
+                break;
+            }
+            Err(_) => tokio::time::sleep(std::time::Duration::from_secs(5)).await,
+        }
+    }
+    match known {
+        Some(true) => return,
+        None => {
+            tracing::warn!("tenant admin '{user}' not created: the database did not answer");
+            return;
+        }
+        Some(false) => {}
+    }
+    let tenant = if lic.tenant_id.trim().is_empty() { "default".to_string() } else { lic.tenant_id.trim().to_string() };
+    if !db.tenant_id_exists(&tenant).await {
+        if let Err(e) = db.create_tenant(&tenant, &lic.tenant_name).await {
+            tracing::warn!("licence client '{tenant}' not created: {e}");
+            return;
+        }
+    }
+    if !lic.features.is_empty() {
+        let _ = db.set_tenant_features(&tenant, &lic.features).await;
+    }
+    let hash = match bcrypt::hash(&pass, bcrypt::DEFAULT_COST) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!("tenant admin '{user}' not created: {e}");
+            return;
+        }
+    };
+    let perms = routes::login::default_permissions("tenant_admin").join(",");
+    match db.create_user(&user, &hash, "tenant_admin", &tenant, &perms, "", "").await {
+        Ok(()) => tracing::info!("tenant admin '{user}' created for the licensed client '{tenant}'"),
+        Err(e) => tracing::warn!("tenant admin '{user}' not created: {e}"),
+    }
 }

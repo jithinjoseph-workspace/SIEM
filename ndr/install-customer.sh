@@ -290,6 +290,10 @@ NDR_AGENT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-agen
 AGENT_KEYS_SECRET=$(grep "^AGENT_KEYS_SECRET=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:-$(openssl rand -hex 32)}
 
+# Only on a fresh install: a reinstall keeps the existing .env, whose sign-in secret, licence
+# keys and database password the later steps read back (new ones would sign everyone out,
+# invalidate issued licences and lock the services out of the existing database).
+if [ ! -s "$INSTALL_DIR/.env" ]; then
 cat > "$INSTALL_DIR/.env" << _EARLY_ENV
 HOST_IP=${HOST_IP_EARLY}
 HOME_DIR=${HOME_DIR}
@@ -324,6 +328,9 @@ TENANT_ADMIN_PASS=
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 _EARLY_ENV
 log ".env written early (will be updated with final values in network step)"
+else
+    log "Reinstall: keeping the existing .env (secrets, licence keys and passwords are reused)"
+fi
 
 # ── Spinner ───────────────────────────────────
 spinner() {

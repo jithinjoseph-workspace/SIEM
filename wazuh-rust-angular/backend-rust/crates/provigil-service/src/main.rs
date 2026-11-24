@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 /// A supervised program: its name on the command line, its Windows service, its file and arguments.
 struct Program {
     name: &'static str,
+    #[cfg_attr(not(windows), allow(dead_code))] // the Windows service's name
     service: &'static str,
     exe: &'static str,
     args: &'static [&'static str],

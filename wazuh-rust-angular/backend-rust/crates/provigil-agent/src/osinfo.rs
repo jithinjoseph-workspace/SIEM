@@ -4,6 +4,7 @@
 use serde_json::{json, Value};
 
 /// `name    REG_xx    data` lines of `reg query` output, as (name, data).
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 fn reg_values(output: &str) -> Vec<(String, String)> {
     output
         .lines()
@@ -58,6 +59,7 @@ pub fn os_from(values: &[(String, String)], arch: &str, hostname: &str) -> Value
 }
 
 /// The KB numbers in a text (`KB` then digits, not inside a word: `-EKB-` is none), upper case.
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 fn kbs(text: &str) -> Vec<String> {
     let b = text.as_bytes();
     (0..b.len().saturating_sub(2))
@@ -70,12 +72,14 @@ fn kbs(text: &str) -> Vec<String> {
 }
 
 /// The `Q|<HotFixID>` lines of the PowerShell output (Win32_QuickFixEngineering).
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 fn qfe_kbs(output: &str) -> Vec<String> {
     output.lines().filter_map(|l| l.trim().strip_prefix("Q|")).flat_map(kbs).collect()
 }
 
 /// The `H|<operation>|<result>|<title>` lines of the Windows Update history, newest first: the
 /// newest successful entry of a KB decides (operation 1 installed it, 2 removed it).
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 fn history_kbs(output: &str) -> Vec<String> {
     let (mut seen, mut out) = (std::collections::HashSet::new(), Vec::new());
     for l in output.lines() {
@@ -97,6 +101,7 @@ fn history_kbs(output: &str) -> Vec<String> {
 
 /// KB numbers from `reg query <key> /s /v <value>` output: taken from the key's last name
 /// (`from_key`) or from the value's data, for the keys `keep(key, data)` accepts.
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 fn reg_kbs(output: &str, from_key: bool, keep: impl Fn(&str, &str) -> bool) -> Vec<String> {
     let mut key = "";
     let mut out = Vec::new();

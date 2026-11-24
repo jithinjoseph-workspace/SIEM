@@ -177,9 +177,11 @@ impl SafetyGatekeeper {
 
     /// Release live execution permit
     pub fn release_live_permit(&self) {
-        let _ = self.active_live_executions.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| {
-            Some(val.saturating_sub(1))
-        });
+        let a = &self.active_live_executions;
+        let mut cur = a.load(Ordering::SeqCst);
+        while let Err(now) = a.compare_exchange_weak(cur, cur.saturating_sub(1), Ordering::SeqCst, Ordering::SeqCst) {
+            cur = now;
+        }
     }
 
     fn check_and_increment_risk_budget(&self, max_per_hour: u32) -> Result<(), String> {

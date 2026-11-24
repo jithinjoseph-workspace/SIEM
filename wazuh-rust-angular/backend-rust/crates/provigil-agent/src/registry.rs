@@ -43,6 +43,7 @@ const MAX_DATA_CHARS: usize = 1024;
 
 pub struct RegistryMonitor {
     /// (full key path, 32-bit view)
+    #[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
     keys: Vec<(String, bool)>,
     /// Lower-case full key paths.
     ignore: Vec<String>,

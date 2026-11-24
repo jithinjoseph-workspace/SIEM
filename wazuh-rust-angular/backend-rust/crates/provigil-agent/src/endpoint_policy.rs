@@ -18,7 +18,9 @@
 //! Reports go to the manager as `provigil_policy: {json}` lines.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -229,6 +231,7 @@ impl State {
     pub fn load(p: &Path) -> State {
         std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
+    #[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
     fn save(&self, p: &Path) -> Result<(), String> {
         if let Some(d) = p.parent() {
             let _ = std::fs::create_dir_all(d);

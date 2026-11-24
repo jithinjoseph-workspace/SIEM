@@ -260,12 +260,15 @@ fn resolve(program: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use serde_json::json;
 
+    #[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
     fn yes() -> bool {
         true
     }
 
+    #[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
     fn cmd(command: &str) -> ScheduledCommand {
         ScheduledCommand { name: "t".into(), command: command.into(), ..Default::default() }
     }

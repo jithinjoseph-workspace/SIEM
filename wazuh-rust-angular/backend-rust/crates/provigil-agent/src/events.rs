@@ -9,10 +9,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+#[cfg(windows)]
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+#[cfg(windows)]
+use serde_json::json;
+use serde_json::Value;
 
 const BOOKMARKS_FILE: &str = "data/event-bookmarks.json";
 

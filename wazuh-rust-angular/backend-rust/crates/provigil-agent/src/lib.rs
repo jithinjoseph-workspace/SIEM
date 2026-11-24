@@ -58,6 +58,7 @@ use crate::transport::AgentTransport;
 
 /// Tests that change `HKCU\Software\ProVigilTest` take turns.
 #[cfg(test)]
+#[cfg_attr(not(windows), allow(dead_code))] // Windows code uses it
 pub(crate) static HKCU_TEST_KEY: Mutex<()> = Mutex::new(());
 
 /// Seconds between group configuration fetches.
@@ -679,7 +680,9 @@ async fn run_enrolled(edr: &Arc<EdrExecutor>, enroll_again: bool) -> anyhow::Res
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
     use super::*;
+    #[cfg(windows)]
     use std::time::Instant;
 
     /// Starts the collection loops as `run_enrolled` does (long scans underway, a command

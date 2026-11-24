@@ -72,6 +72,7 @@ fn kill(input: &serde_json::Value) -> Result<String, String> {
 }
 
 /// The analyst's `image` names the running program: its full path or just its file name.
+#[cfg(any(windows, test))]
 fn image_matches(want: &str, image: &str) -> bool {
     let want = want.trim();
     let name = image.rsplit(['\\', '/']).next().unwrap_or(image);

@@ -6,7 +6,9 @@
 //! 100% clean-room Rust implementation (zero GPL derivation).
 
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(windows)]
 use std::time::Duration;
+#[cfg(windows)]
 use tracing::{error, info};
 
 #[cfg(windows)]

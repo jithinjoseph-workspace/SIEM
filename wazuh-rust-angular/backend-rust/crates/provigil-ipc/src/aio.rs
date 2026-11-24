@@ -12,6 +12,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
+#[cfg(not(unix))]
 use crate::local::port_file;
 
 #[cfg(not(unix))]

@@ -22,7 +22,7 @@ PROVIGIL_PUBLIC_KEY=""
 PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/NDR-Demo/releases}"
 
 ROLE=""; LICENCE=""; MASTER_IP=""; DL_URL=""; DL_USER="provigil"; DL_PASS_FILE=""; DIR="/opt/provigil"; WANT_VERSION=""
-NO_VERIFY=0
+NO_VERIFY=0; WITH_VALKEY=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --role) ROLE="${2:-}"; shift 2 ;;
@@ -34,6 +34,7 @@ while [ $# -gt 0 ]; do
         --dir) DIR="${2:-}"; shift 2 ;;
         --version) WANT_VERSION="${2:-}"; shift 2 ;;
         --no-verify) NO_VERIFY=1; shift ;;   # development copies only (no key built in)
+        --with-valkey) WITH_VALKEY=1; shift ;;   # data lake of a Windows master
         -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (see --help)"; exit 2 ;;
     esac
@@ -124,7 +125,11 @@ ask_master_ip() { [ -n "$MASTER_IP" ] || read -rp "  The master PC's IP address:
 case "$ROLE" in
     datalake)
         ask_master_ip
-        exec bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ;;
+        if [ -z "$WITH_VALKEY" ]; then
+            read -rp "  Is the master a Windows PC (the MSI)? It then keeps its sessions here [y/N]: " w || w=n
+            case "$w" in y|Y|yes) WITH_VALKEY=1 ;; esac
+        fi
+        exec bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ${WITH_VALKEY:+--with-valkey} ;;
     ainode)
         ask_master_ip
         exec bash "$DIR/ainode/install-ainode.sh" --master-ip "$MASTER_IP" ;;

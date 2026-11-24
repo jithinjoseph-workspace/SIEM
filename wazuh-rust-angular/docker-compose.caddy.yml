@@ -16,7 +16,7 @@ services:
       - AUTH_UPSTREAM=host.docker.internal:3011
       - NDR_UPSTREAM=host.docker.internal:8088
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro   # Caddyfile and the routes.caddy it imports
       - ./dist/frontend-angular:/usr/share/caddy/html:ro
       - caddy_data:/data
       - caddy_config:/config

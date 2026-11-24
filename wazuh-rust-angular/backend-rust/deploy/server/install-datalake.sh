@@ -1,7 +1,10 @@
 #!/bin/sh
 # ProVigil data lake (PC 2): installs ClickHouse on Ubuntu 22.04/24.04, open only to the master.
 #
-#   sudo ./install-datalake.sh --master-ip 192.168.1.10 [--password-file FILE] [--keep-days 14] [--no-firewall]
+#   sudo ./install-datalake.sh --master-ip 192.168.1.10 [--password-file FILE] [--keep-days 14] [--no-firewall] [--with-valkey]
+#
+# --with-valkey: also the master's session store (a Windows master: Valkey has no Windows build),
+# a Redis-compatible server with a password, port 6379 open to the master only.
 #
 # Needs next to it (the server kit has them): init.sql, ndr-cluster.xml, ndr-compat-profile.xml,
 # backup-datalake.sh. Prints the three settings the master needs (CLICKHOUSE_URL/USER/PASSWORD).
@@ -9,13 +12,14 @@
 # a SHA-256 hash in ClickHouse's settings. Run again safely: every step checks what is there.
 set -eu
 
-MASTER_IP=""; PASSWORD_FILE=""; KEEP_DAYS=14; FIREWALL=1
+MASTER_IP=""; PASSWORD_FILE=""; KEEP_DAYS=14; FIREWALL=1; VALKEY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --master-ip) MASTER_IP="${2:-}"; shift 2 ;;
         --password-file) PASSWORD_FILE="${2:-}"; shift 2 ;;
         --keep-days) KEEP_DAYS="${2:-}"; shift 2 ;;
         --no-firewall) FIREWALL=0; shift ;;
+        --with-valkey) VALKEY=1; shift ;;
         *) echo "unknown option $1"; exit 2 ;;
     esac
 done
@@ -111,11 +115,27 @@ clickhouse-client --multiquery < "$FILES/init.sql"
 if [ -f "$FILES/ndr-init.sql" ]; then clickhouse-client --multiquery < "$FILES/ndr-init.sql" >/dev/null; fi
 say "schema ready: $(clickhouse-client -q "SELECT count() FROM system.tables WHERE database = 'ndr'") tables in ndr"
 
+# 3b. the session store of a Windows master (--with-valkey): password kept across reinstalls
+VK_PASS=""
+if [ "$VALKEY" = 1 ]; then
+    command -v redis-server >/dev/null 2>&1 || apt-get install -y -q redis-server >/dev/null
+    VK_PASS=$(sed -n 's/^requirepass //p' /etc/redis/provigil.conf 2>/dev/null | head -1)
+    [ -n "$VK_PASS" ] || VK_PASS=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    printf 'bind 0.0.0.0\nprotected-mode yes\nrequirepass %s\n' "$VK_PASS" > /etc/redis/provigil.conf
+    chown redis:redis /etc/redis/provigil.conf; chmod 640 /etc/redis/provigil.conf
+    grep -q '^include /etc/redis/provigil.conf' /etc/redis/redis.conf || echo 'include /etc/redis/provigil.conf' >> /etc/redis/redis.conf
+    systemctl enable redis-server >/dev/null 2>&1 || true
+    systemctl restart redis-server
+    i=0; until redis-cli -a "$VK_PASS" --no-auth-warning ping 2>/dev/null | grep -q PONG; do i=$((i+1)); [ $i -lt 30 ] || die "the session store did not start (journalctl -u redis-server)"; sleep 1; done
+    say "session store ready (port 6379, password set)"
+fi
+
 # 4. firewall: SSH stays open, 8123 only from the master
 if [ "$FIREWALL" = 1 ]; then
     command -v ufw >/dev/null 2>&1 || apt-get install -y -q ufw
     ufw allow OpenSSH >/dev/null
     ufw allow from "$MASTER_IP" to any port 8123 proto tcp >/dev/null
+    [ "$VALKEY" = 1 ] && ufw allow from "$MASTER_IP" to any port 6379 proto tcp >/dev/null
     ufw --force enable >/dev/null
     say "firewall: SSH open, ClickHouse 8123 only from $MASTER_IP"
 fi
@@ -131,6 +151,7 @@ IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 say "done. Settings for the master's .env:"
 echo "CLICKHOUSE_URL=http://${IP:-<this machine>}:8123"
 echo "CLICKHOUSE_USER=provigil"
+[ "$VALKEY" = 1 ] && echo "VALKEY_URL=redis://:$VK_PASS@${IP:-<this machine>}:6379"
 if [ -n "$PASSWORD" ] && [ -z "$PASSWORD_FILE" ]; then
     echo "CLICKHOUSE_PASSWORD=$PASSWORD"
     say "the password is shown only now: put it in the master's .env, then clear this screen"

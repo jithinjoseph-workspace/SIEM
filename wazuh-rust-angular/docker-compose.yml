@@ -16,7 +16,7 @@ services:
     environment:
       - SITE_DOMAIN=localhost # Replace with your production domain (e.g. siem.company.com)
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro   # Caddyfile and the routes.caddy it imports
       - ./frontend-angular/dist/frontend-angular/browser:/usr/share/caddy/html:ro
       - caddy_data:/data
       - caddy_config:/config

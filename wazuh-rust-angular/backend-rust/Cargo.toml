@@ -16,6 +16,7 @@ members = [
     "crates/provigil-deploy",
     "crates/provigil-agent-server",
     "crates/provigil-gateway",
+    "crates/provigil-service",
     "crates/auth-service",
     "crates/siem-cdb",
     "crates/siem-ai",

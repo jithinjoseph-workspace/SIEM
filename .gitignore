@@ -115,3 +115,9 @@ wazuh-rust-angular/backend-rust/scratch/vulnscan-compare/
 wazuh-rust-angular/backend-rust/scratch/vulnscan-e2e/
 wazuh-rust-angular/backend-rust/src/
 linux_agent_parity_plan.md
+
+# Windows MSI build (packaging/windows/build-msi.ps1): tools cache, stage, output
+wazuh-rust-angular/backend-rust/packaging/windows/.wix/
+wazuh-rust-angular/backend-rust/packaging/windows/.cache/
+wazuh-rust-angular/backend-rust/packaging/windows/stage/
+wazuh-rust-angular/backend-rust/packaging/windows/out/

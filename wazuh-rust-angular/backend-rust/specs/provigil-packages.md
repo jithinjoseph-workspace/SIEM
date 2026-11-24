@@ -93,9 +93,41 @@ reaches a real ClickHouse data lake and installs only the licensed modules.
    Docker ClickHouse), Windows services, licence from file or pasted, both ways.
 4. Console: "Download installer" on the Licence window (online text, offline zip).
 
+Built 2026-11-24: step 3 (Windows MSI), `packaging/windows/`:
+
+- `build-msi.ps1 -PublicKey public.pem [-Key private.pem] [-Version X.Y.Z]`: release build in
+  `target\msi` (ProVigil's public key built in; the dev `target\release` is not touched), the
+  console (`ng build`), Caddy 2.8.4 checked against its published SHA-512, the stage folder, then
+  `ProVigil-Setup-<v>.msi` with WiX 5.0.2 (a local dotnet tool: `dotnet tool restore`; WiX 6 has a
+  paid maintenance-fee licence) and its `.sig`. `release-kit.sh --msi` publishes it with the release
+  and puts it in customer zips.
+- The MSI: programs in `Program Files\ProVigil` (bin, console, ruleset), data and settings in
+  `ProgramData\ProVigil`; four Windows services through `provigil-service.exe` (crate
+  `provigil-service`: ProVigilAuth, ProVigilSiemApi, ProVigilGateway, ProVigilConsole; a program
+  that ends is started again, 5 s doubling to 60 s); firewall rules (443, 80, 8089, 8443, 514/udp,
+  601, 6514, 9201); a settings dialog (data lake address, user, password, session store, licence
+  file). Its `configure` step writes `provigil.env` (secrets made once and kept by upgrades; the
+  file readable by SYSTEM and administrators only) and checks the licence against the built-in key:
+  a bad licence stops the install. Silent install: `msiexec /i ProVigil-Setup-<v>.msi /qn
+  DATALAKE_URL=... DATALAKE_PASSWORD=... VALKEY_URL=...`.
+- The console: Caddy with `packaging/windows/Caddyfile` and the shared `caddy/routes.caddy`
+  (also used by the Docker Caddy), certificates from Caddy's own CA issued on demand for whatever
+  name or address users type; `HTTPS_PORT` / `HTTP_PORT` in `provigil.env` when IIS holds 443/80
+  (then open that port in the firewall too).
+- Windows has no ClickHouse or Valkey: the Windows master always uses a Linux data lake, installed
+  with `--with-valkey` (provigil-install.sh asks), which adds a password-protected session store
+  open to the master only.
+- Tested: the MSI builds and unpacks with the right layout; its `provigil-service configure`
+  accepts a good licence and refuses a forged one with the built-in key; its console service serves
+  the built console and reaches sign-in and siem-api; the session store setup on Ubuntu 24.04
+  refuses connections without the password. Not yet tested: a real install on a clean Windows PC
+  (services, firewall, upgrade) — this PC runs the dev services on the same ports.
+
 ## 7. Decisions (owner delegated)
 
 - No per-customer build: a licence file next to the same installer, like every major vendor.
 - Console pages are not removed from a package: the licence hides them and every server refuses
   unlicensed APIs, which is the real protection.
 - The licence is installed on the master only; the data lake and AI node need none.
+- Windows services through an own small service host (provigil-service), not a third-party
+  wrapper; the console's web server is Caddy (one pinned, checksum-checked program).

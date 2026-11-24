@@ -1,0 +1,13 @@
+[package]
+name = "provigil-service"
+version = "0.1.0"
+edition = "2021"
+description = "Runs ProVigil's server programs as Windows services and writes their settings at install (the MSI)"
+
+[dependencies]
+provigil-license = { path = "../provigil-license" }
+base64 = "0.22"
+ring = "0.17"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"

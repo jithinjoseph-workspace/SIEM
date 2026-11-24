@@ -8,7 +8,8 @@
 # Every file is signed with ProVigil's licence key (the provigil-license format), and the
 # installer refuses anything unsigned or changed.
 #
-#   ./release-kit.sh <version> --key private.pem [--offline] [--upload]
+#   ./release-kit.sh <version> --key private.pem [--offline] [--msi ProVigil-Setup-<v>.msi] [--upload]
+#     --msi: the Windows master's installer (packaging/windows/build-msi.ps1), signed and published too
 #   ./release-kit.sh customer <version> <licence.jwt|token> [ndr]   offline zip for one customer
 #
 # --upload publishes the files as release v<version> of PROVIGIL_RELEASE_REPO (default
@@ -46,6 +47,8 @@ if [ "${1:-}" = customer ]; then
     cp "$D/provigil-install.sh" "$D"/provigil-kit-"$V".tar.gz* "$OUT/"
     PARTS="core clickhouse"; case ",$MODS," in *,ndr,*|,-,) PARTS="$PARTS ndr" ;; esac
     for p in $PARTS; do cp "$D/images/$p.tar.gz" "$D/images/$p.tar.gz.sig" "$OUT/images/" 2>/dev/null || die "no offline images in $D (build with --offline)"; done
+    # the Windows master's installer, when the release has one (it uses the licence next to it)
+    cp "$D/ProVigil-Setup-$V.msi" "$D/ProVigil-Setup-$V.msi.sig" "$OUT/" 2>/dev/null || true
     printf '%s\n' "$LIC" > "$OUT/licence.jwt"
     cat > "$OUT/README.txt" <<EOF
 ProVigil $V for $WHO (modules: ${MODS/-/all})
@@ -53,6 +56,9 @@ ProVigil $V for $WHO (modules: ${MODS/-/all})
 On each Ubuntu 22.04/24.04 PC, in this folder:   sudo bash provigil-install.sh
 It asks what the PC is. Order for three PCs: data lake, then AI node (optional), then master.
 Everything is checked against ProVigil's signature; nothing is downloaded.
+
+Windows master (SIEM): run ProVigil-Setup-$V.msi from this folder (when included). Install the
+data lake PC first, answering that the master is a Windows PC, and enter what it printed.
 EOF
     (cd dist && rm -f "ProVigil-$WHO-$V.zip" && $PY -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', '.', sys.argv[1])" "ProVigil-$WHO-$V")
     log "dist/ProVigil-$WHO-$V.zip (parts: $PARTS)"; exit 0
@@ -60,9 +66,9 @@ fi
 
 V="${1:-}"; shift || true
 [ -n "$V" ] || die "usage: ./release-kit.sh <version> --key private.pem [--offline] [--upload]"
-KEY=""; OFFLINE=0; UPLOAD=0
+KEY=""; OFFLINE=0; UPLOAD=0; MSI=""
 while [ $# -gt 0 ]; do
-    case "$1" in --key) KEY="$2"; shift 2 ;; --offline) OFFLINE=1; shift ;; --upload) UPLOAD=1; shift ;; *) die "unknown option $1" ;; esac
+    case "$1" in --key) KEY="$2"; shift 2 ;; --offline) OFFLINE=1; shift ;; --upload) UPLOAD=1; shift ;; --msi) MSI="$2"; shift 2 ;; *) die "unknown option $1" ;; esac
 done
 [ -f "$KEY" ] || die "--key: ProVigil's private licence key (PEM) is needed to sign the release"
 command -v openssl >/dev/null || die "openssl is needed"
@@ -93,6 +99,13 @@ PUB=$(openssl pkey -in "$KEY" -pubout | base64 -w0)
 sed "s|^PROVIGIL_PUBLIC_KEY=\"\"$|PROVIGIL_PUBLIC_KEY=\"$PUB\"|" provigil-install.sh | sed 's/\r$//' > "$D/provigil-install.sh"
 grep -q "^PROVIGIL_PUBLIC_KEY=\"$PUB\"$" "$D/provigil-install.sh" || die "the key was not built into provigil-install.sh"
 sign "$D/provigil-install.sh"
+
+if [ -n "$MSI" ]; then
+    [ -f "$MSI" ] || die "--msi: $MSI not found"
+    cp "$MSI" "$D/ProVigil-Setup-$V.msi"
+    sign "$D/ProVigil-Setup-$V.msi"
+    log "Windows installer: ProVigil-Setup-$V.msi"
+fi
 
 if [ "$OFFLINE" = 1 ]; then
     mkdir -p "$D/images"

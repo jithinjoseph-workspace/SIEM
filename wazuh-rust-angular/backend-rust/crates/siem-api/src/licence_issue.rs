@@ -169,6 +169,9 @@ fn installer_zip(token: &str, claims: &provigil_license::Claims, public_b64: &st
          It asks what the PC is: all-in-one, master, data lake, AI node or NDR sensor.\r\n\
          For three PCs: the data lake first (it prints the address and password the master asks for),\r\n\
          then the AI node (optional), then the master. Only the licensed modules are installed.\r\n\r\n\
+         Windows master (SIEM): download ProVigil-Setup-<version>.msi from the ProVigil release into this\r\n\
+         folder and run it (it uses licence.jwt next to it). Install the data lake first, answering that the\r\n\
+         master is a Windows PC.\r\n\
          No internet on the PCs? Ask ProVigil for the offline zip (the same installer with every part).\r\n\
          Keep licence.jwt private: it is this installation's licence.\r\n"
     );

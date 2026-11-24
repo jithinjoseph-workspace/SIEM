@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ProVigil Server for Windows: the master of the three-PC setup (specs/provigil-packages.md).
+  Built by build-msi.ps1 (WiX 5). Programs in Program Files\ProVigil, data and settings in
+  ProgramData\ProVigil. Four Windows services run through provigil-service.exe (sign-in, siem-api,
+  agent gateway, console). The data lake (ClickHouse, and the session store with
+  install-datalake.sh with-valkey option) is a Linux PC.
+
+  Silent install:
+    msiexec /i ProVigil-Setup.msi /qn DATALAKE_URL=192.168.1.20 DATALAKE_PASSWORD=... VALKEY_URL=redis://:...@192.168.1.20:6379
+  The licence: licence.jwt next to the MSI, or LICENCE_FILE=path. An upgrade keeps every setting.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="ProVigil Server" Manufacturer="ProVigil" Version="$(Version)"
+           UpgradeCode="{6B1D0B4E-7C2A-4F35-9E61-3D0A8C5F2B71}" Scope="perMachine" Compressed="yes">
+    <SummaryInformation Description="ProVigil Server (SIEM, SOAR, threat intelligence, AI): the master PC" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ProVigil Server is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="ProVigil.ico" SourceFile="$(Stage)\provigil.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProVigil.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <!-- the settings (the dialog fills them; a silent install passes them) -->
+    <Property Id="DATALAKE_URL" Secure="yes" />
+    <Property Id="DATALAKE_USER" Value="provigil" Secure="yes" />
+    <Property Id="DATALAKE_PASSWORD" Secure="yes" Hidden="yes" />
+    <Property Id="VALKEY_URL" Secure="yes" Hidden="yes" />
+    <Property Id="LICENCE_FILE" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ProVigil">
+        <Directory Id="BINFOLDER" Name="bin" />
+        <Directory Id="CONSOLEFOLDER" Name="console" />
+        <Directory Id="RULESETFOLDER" Name="ruleset" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATAROOT" Name="ProVigil">
+        <Directory Id="DATAFOLDER" Name="data" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- provigil-service.exe and the services it runs -->
+    <ComponentGroup Id="Services" Directory="BINFOLDER">
+      <Component Id="ServiceHost" Bitness="always64">
+        <File Id="ProvigilServiceExe" Source="$(Stage)\bin\provigil-service.exe" KeyPath="yes" />
+        <ServiceInstall Id="SvcAuth" Name="ProVigilAuth" DisplayName="ProVigil Sign-in" Description="ProVigil sign-in and users (auth-service)"
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="run auth-service">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceInstall Id="SvcSiemApi" Name="ProVigilSiemApi" DisplayName="ProVigil SIEM" Description="ProVigil platform server: SIEM, SOAR, the agents' manager (siem-api)"
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="run siem-api">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceInstall Id="SvcGateway" Name="ProVigilGateway" DisplayName="ProVigil Agent Gateway" Description="Where the ProVigil agents connect (provigil-gateway)"
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="run gateway">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceInstall Id="SvcConsole" Name="ProVigilConsole" DisplayName="ProVigil Console" Description="The ProVigil web console (HTTPS)"
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="run console">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="CtlAuth" Name="ProVigilAuth" Start="install" Stop="both" Remove="uninstall" Wait="no" />
+        <ServiceControl Id="CtlSiemApi" Name="ProVigilSiemApi" Start="install" Stop="both" Remove="uninstall" Wait="no" />
+        <ServiceControl Id="CtlGateway" Name="ProVigilGateway" Start="install" Stop="both" Remove="uninstall" Wait="no" />
+        <ServiceControl Id="CtlConsole" Name="ProVigilConsole" Start="install" Stop="both" Remove="uninstall" Wait="no" />
+        <!-- what users, agents and log sources reach on this PC -->
+        <fw:FirewallException Id="FwHttps" Name="ProVigil console (HTTPS)" Port="443" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwHttp" Name="ProVigil console (HTTP, redirects to HTTPS)" Port="80" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwAgents" Name="ProVigil agents" Port="8089" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwAgentsTls" Name="ProVigil agents (TLS)" Port="8443" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwSyslogUdp" Name="ProVigil syslog (UDP)" Port="514" Protocol="udp" Scope="any" />
+        <fw:FirewallException Id="FwSyslogTcp" Name="ProVigil syslog (TCP)" Port="601" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwSyslogTls" Name="ProVigil syslog (TLS)" Port="6514" Protocol="tcp" Scope="any" />
+        <fw:FirewallException Id="FwBeats" Name="ProVigil Beats intake" Port="9201" Protocol="tcp" Scope="any" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- the programs, the console, the default ruleset, the shipped data -->
+    <ComponentGroup Id="Programs" Directory="BINFOLDER">
+      <Files Include="$(Stage)\bin\**">
+        <Exclude Files="$(Stage)\bin\provigil-service.exe" />
+      </Files>
+    </ComponentGroup>
+    <ComponentGroup Id="Console" Directory="CONSOLEFOLDER">
+      <Files Include="$(Stage)\console\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="Ruleset" Directory="RULESETFOLDER">
+      <Files Include="$(Stage)\ruleset\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="Top" Directory="INSTALLFOLDER">
+      <Files Include="$(Stage)\top\**" />
+    </ComponentGroup>
+    <!-- data files the install brings; a file changed on this PC is not replaced by an upgrade -->
+    <ComponentGroup Id="Data" Directory="DATAFOLDER">
+      <Files Include="$(Stage)\data\**" />
+    </ComponentGroup>
+
+    <Feature Id="Server" Title="ProVigil Server" Level="1">
+      <ComponentGroupRef Id="Services" />
+      <ComponentGroupRef Id="Programs" />
+      <ComponentGroupRef Id="Console" />
+      <ComponentGroupRef Id="Ruleset" />
+      <ComponentGroupRef Id="Top" />
+      <ComponentGroupRef Id="Data" />
+    </Feature>
+
+    <!-- the settings and the licence, before the services start; a bad licence stops the install -->
+    <CustomAction Id="Configure" FileRef="ProvigilServiceExe" Execute="deferred" Impersonate="no" Return="check" HideTarget="yes"
+                  ExeCommand="configure --datalake &quot;[DATALAKE_URL]&quot; --datalake-user &quot;[DATALAKE_USER]&quot; --datalake-password &quot;[DATALAKE_PASSWORD]&quot; --valkey &quot;[VALKEY_URL]&quot; --licence &quot;[LICENCE_FILE]&quot; --msi &quot;[OriginalDatabase]&quot;" />
+    <InstallExecuteSequence>
+      <Custom Action="Configure" After="InstallFiles" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+
+    <UI Id="ProVigilUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="WelcomeDlg" />
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="VerifyReadyDlg" />
+
+      <Dialog Id="SettingsDlg" Width="370" Height="270" Title="ProVigil Server Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Data lake and licence" />
+        <Control Id="Description" Type="Text" X="25" Y="22" Width="280" Height="18" Transparent="yes" NoPrefix="yes" Text="install-datalake.sh printed these on the data lake PC. An upgrade keeps the current values when left empty." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <Control Id="LakeLabel" Type="Text" X="20" Y="54" Width="330" Height="10" Text="Data lake address (e.g. 192.168.1.20 or http://192.168.1.20:8123):" />
+        <Control Id="Lake" Type="Edit" X="20" Y="66" Width="330" Height="15" Property="DATALAKE_URL" />
+        <Control Id="UserLabel" Type="Text" X="20" Y="86" Width="160" Height="10" Text="Data lake user:" />
+        <Control Id="User" Type="Edit" X="20" Y="98" Width="155" Height="15" Property="DATALAKE_USER" />
+        <Control Id="PassLabel" Type="Text" X="195" Y="86" Width="160" Height="10" Text="Data lake password:" />
+        <Control Id="Pass" Type="Edit" X="195" Y="98" Width="155" Height="15" Property="DATALAKE_PASSWORD" Password="yes" />
+        <Control Id="ValkeyLabel" Type="Text" X="20" Y="118" Width="330" Height="10" Text="Session store (VALKEY_URL from install-datalake.sh with --with-valkey):" />
+        <Control Id="Valkey" Type="Edit" X="20" Y="130" Width="330" Height="15" Property="VALKEY_URL" Password="yes" />
+        <Control Id="LicLabel" Type="Text" X="20" Y="150" Width="330" Height="10" Text="Licence file (empty: licence.jwt next to this installer):" />
+        <Control Id="Lic" Type="Edit" X="20" Y="162" Width="330" Height="15" Property="LICENCE_FILE" />
+        <Control Id="Note" Type="Text" X="20" Y="186" Width="330" Height="30" Text="Install the data lake PC first. The services start when setup finishes; the console is then at https://(this PC's name or address)." />
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="WelcomeDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="SettingsDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="SettingsDlg" Order="1" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="Installed AND PATCH" />
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Package>
+</Wix>

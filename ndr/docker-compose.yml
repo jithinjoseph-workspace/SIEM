@@ -184,50 +184,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── SIEM engine — optional, only for NDR+SIEM customers ─────────────────
-  siem-engine-1:
-    build:
-      context: ..
-      dockerfile: ndr/rust/siem-engine/Dockerfile
-    container_name: siem-engine-1
-    profiles: ["siem"]
-    restart: unless-stopped
-    mem_limit: 512m
-    ports:
-      - "3002:3002"     # HTTP API — direct access (bypasses nginx, useful for siem-only deploy)
-      - "601:601"       # Syslog TCP (RFC 6587) — NXLog / Winlogbeat
-      - "6514:6514"     # Syslog TCP TLS
-      - "514:514/udp"   # Syslog UDP (legacy devices)
-    networks:
-      - default
-      - ndr-internal
-    environment:
-      - JWT_SECRET=${JWT_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_DB=ndr
-      - CLICKHOUSE_USER=ndr
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
-      - CLICKHOUSE_DB=ndr
-      - VALKEY_URL=redis://ndr-valkey:6379
-      - REDIS_URL=redis://ndr-valkey:6379
-      - KAFKA_BROKERS=kafka1:9092,kafka2:9092,kafka3:9092
-      - IP_TOKEN_KEY=${IP_TOKEN_KEY}
-      - LISTEN_ADDR=0.0.0.0:3002
-      - RUST_LOG=siem_engine=info
-    depends_on:
-      clickhouse1:
-        condition: service_healthy
-      ndr-valkey:
-        condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
   ndr-engine-1:
     build: { context: .., dockerfile: ndr/rust/Dockerfile }
     container_name: ndr-engine-1
@@ -473,6 +429,9 @@ services:
     mem_limit: 768m
     ports:
       - "9201:9201"   # Beats (Winlogbeat / Filebeat) log intake, Elasticsearch API; key-authenticated
+      - "601:601"     # Syslog TCP (RFC 6587)
+      - "6514:6514"   # Syslog over TLS (each device has its own certificate)
+      - "514:514/udp" # Syslog UDP (older devices)
     networks:
       - ndr-internal
       - default

@@ -1,6 +1,17 @@
 # UEBA: user and entity behaviour analytics — plan
 
-Written 2026-11-17. A plan to agree before building. Nothing here is built yet.
+Written 2026-11-17. A plan to agree before building.
+
+**Built so far (2026-11-24, `crates/siem-api/src/ueba.rs`):** the spike model of section 4.4, as
+NDR's old siem-engine had it, so retiring that engine loses nothing. Every hour, for each client
+with the `siem` module, the hour that just ended is compared with the entity's own last 7 days
+(hours with activity): more than 3 standard deviations above the mean, with at least 24 learned
+hours, raises an alert: logons per user (4624, rule 930001, level 8, T1078), failed logons per
+user (4625, 930002, level 10, T1110), different destinations per computer (Sysmon 3, 930003,
+level 8, T1046). Machine and built-in accounts are not users. The alerts go through suppressions,
+triage, SOAR and cases like any alert. Decisions (owner delegated): rules 930000–939999 are
+UEBA's; the old engine's "bytes sent" count is left out, because it comes from NDR flows, not
+from PCs' events. The rest of this plan is not built yet.
 
 ## 1. What it is, and why ProVigil needs it
 

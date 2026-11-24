@@ -1,5 +1,6 @@
-//! XDR incidents: a host alert (level 7 or more) and a network threat an NDR sensor saw
-//! (`ndr_threats` of the alert's tenant) that involve the same host IP within [`WINDOW_MS`].
+//! XDR incidents: a host alert (level 7 or more) and a network detection an NDR sensor made
+//! (`ndr_hits` of the alert's tenant, written by the NDR engine) that involve the same host IP
+//! within [`WINDOW_MS`].
 //! The incident carries the real threat (id, signature, the other side as attacker). Each alert
 //! becomes at most one incident. Without network threats (no sensor) nothing is created.
 
@@ -86,6 +87,13 @@ fn remember(id: &str) {
     }
 }
 
+/// The NDR engine's detections (`ndr_hits`): a hit has no id of its own, so community id and time
+/// name it; its name is its first Sigma rule or tag; severity CRITICAL 4, HIGH 3, MEDIUM 2, else 1.
+const HITS_SQL: &str = "SELECT concat(community_id, '@', toString(toUnixTimestamp(timestamp))) AS id, toUInt64(toUnixTimestamp(timestamp)) * 1000 AS ts, \
+     if(notEmpty(sigma_hits), sigma_hits[1], if(notEmpty(tags), tags[1], 'NDR detection')) AS signature, src_ip, dst_ip, \
+     toUInt8(multiIf(severity = 'CRITICAL', 4, severity = 'HIGH', 3, severity = 'MEDIUM', 2, 1)) AS severity \
+     FROM ndr_hits WHERE timestamp >= toDateTime(intDiv(toUInt64(?), 1000)) AND (has(?, src_ip) OR has(?, dst_ip)) ORDER BY timestamp LIMIT 5000";
+
 async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !state.db.is_connected() {
         return Ok(());
@@ -112,7 +120,7 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
         let from = list.iter().map(|((_, ts, _), _)| *ts).min().unwrap_or(now).saturating_sub(WINDOW_MS);
         let client = state.db.tenant_client(&tenant);
         let threats: Vec<NdrThreatRow> = match client
-            .query("SELECT toString(id) AS id, toUInt64(toUnixTimestamp64Milli(timestamp)) AS ts, signature, src_ip, dst_ip, severity FROM ndr_threats WHERE timestamp >= fromUnixTimestamp64Milli(toInt64(?)) AND (has(?, src_ip) OR has(?, dst_ip)) ORDER BY timestamp LIMIT 5000")
+            .query(HITS_SQL)
             .bind(from)
             .bind(&ips)
             .bind(&ips)
@@ -139,7 +147,7 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
                 incident_id: Uuid::new_v4().to_string(),
                 timestamp: now,
                 title: format!("Cross-Corroborated Incident on {}: {}", alert.agent.name, alert.rule.description),
-                severity: if alert.rule.level >= 10 || t.severity >= 3 { "critical".into() } else { "high".into() },
+                severity: if alert.rule.level >= 10 || t.severity >= 4 { "critical".into() } else { "high".into() },
                 host_ip: ip.clone(),
                 agent_id: alert.agent.id.clone(),
                 agent_name: alert.agent.name.clone(),

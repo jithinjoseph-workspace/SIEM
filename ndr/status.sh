@@ -62,16 +62,9 @@ fi
 
 # ── SIEM-only checks ──────────────────────────
 if [ "$PRODUCT_MODE" != "ndr" ]; then
-    echo "  SIEM Engine:"
-    SIEM=$(curl -s --max-time 3 "http://localhost:3002/api/health" 2>/dev/null || echo "not responding")
+    echo "  SIEM (siem-api):"
+    SIEM=$(sudo docker exec siem-api wget -qO- http://localhost:8088/api/health 2>/dev/null || echo "not responding")
     echo "    health: $SIEM"
-    echo ""
-
-    echo "  SIEM consumer group (siem-logs):"
-    sudo docker exec kafka1 /opt/kafka/bin/kafka-consumer-groups.sh \
-        --bootstrap-server localhost:9092 \
-        --group siem-engine-consumers \
-        --describe 2>/dev/null | sed 's/^/    /' || echo "    not available"
     echo ""
 fi
 

@@ -36,6 +36,7 @@ pub mod log_intake;
 pub mod support;
 pub mod ueba;
 pub mod updates;
+pub mod xdr;
 pub mod health;
 #[cfg(test)]
 pub(crate) mod test_state;
@@ -974,6 +975,7 @@ async fn main() {
         .route("/api/v1/agents/:id/live/:what", get(get_agent_live_handler))
         .route("/api/v1/agent/commands", post(queue_agent_command))
         .route("/api/v1/xdr/incidents", get(get_xdr_incidents))
+        .route("/api/xdr/alerts", get(xdr::list))
         .route("/api/tenant/features", get(get_tenant_features_handler))
         .route(
             "/api/v1/tenant/agent-key",

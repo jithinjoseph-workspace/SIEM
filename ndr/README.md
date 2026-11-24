@@ -43,9 +43,10 @@ Sensor (Zeek/Suricata + host agent)
 - **`auth-service`** — a separate Rust service handling login, JWT issuance,
   user/tenant management, and RSA-signed license verification. Split out from
   `ndr-engine` so auth keeps working independently of the detection pipeline.
-- **`siem-engine`** — the optional SIEM correlation engine (log ingestion,
-  correlation rules), used when a deployment has the SIEM product enabled
-  alongside or instead of NDR.
+- **`siem-api`** (built from `wazuh-rust-angular/backend-rust`) — the SIEM and the
+  platform server: log intake (syslog, Beats, Windows Event Collector, REST with
+  ingest keys), detection, UEBA, XDR incidents, SOAR, licences. It replaced the
+  old `siem-engine`.
 - **`provigil-common`** — a shared Rust crate (JWT validation, SOAR action
   types, etc.) used by the other three services so auth/permission logic
   isn't duplicated across them.
@@ -101,18 +102,18 @@ per-tenant-database rule, not the norm.
 - **`install-cloud.sh`** — cloud installer, same idea, generates its own
   per-install secrets.
 - **`docker-compose.yml`** — the full stack definition (Kafka, ClickHouse
-  cluster, Redis, nginx, ndr-engine ×3, siem-engine, auth-service, ndr-ui).
+  cluster, Redis, nginx, ndr-engine ×3, siem-api, auth-service, ndr-ui).
 - **Local frontend development**: `cd ndr-ui && ng serve` — proxies `/api` to
   the backend; auto-rebuilds on save, so a separate full `ng build` usually
   isn't needed while it's running.
-- **Local backend development**: `cargo check -p ndr-engine` (or
-  `auth-service` / `siem-engine`) for a fast compile check; the real stack
+- **Local backend development**: `cargo check -p ndr-engine` (siem-api and
+  auth-service: in `wazuh-rust-angular/backend-rust`) for a fast compile check; the real stack
   runs in Docker via `docker-compose.yml`.
 
 ## Repo layout
 
 ```
-rust/               Rust workspace: ndr-engine, auth-service, siem-engine, provigil-common
+rust/               Rust workspace: ndr-engine
 ndr-ui/             Angular frontend
 config/clickhouse/  Schema (init.sql) and cluster config
 docs/               Feature-specific documentation (platform features, admin config, etc.)

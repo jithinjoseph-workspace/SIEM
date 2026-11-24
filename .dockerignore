@@ -2,7 +2,6 @@
 # SIEM) see only what they copy. Everything else, above all the build output, stays out.
 *
 !ndr/rust/ndr-engine
-!ndr/rust/siem-engine
 !wazuh-rust-angular/backend-rust/crates/provigil-common
 !wazuh-rust-angular/backend-rust/crates/auth-service
 **/target

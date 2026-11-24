@@ -58,7 +58,7 @@ if [ "$PRODUCT_MODE" = "siem" ]; then
         clickhouse-keeper clickhouse1 clickhouse2 clickhouse-init \
         ndr-valkey \
         kafka1 kafka2 kafka3 kafka-init \
-        provigil-auth siem-engine-1 ndr-ui nginx
+        provigil-auth siem-api ndr-ui nginx
 
 elif [ "$PRODUCT_MODE" = "both" ]; then
     sudo docker compose --profile siem --profile onpremise up -d

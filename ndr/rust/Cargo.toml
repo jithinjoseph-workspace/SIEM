@@ -1,6 +1,5 @@
 [workspace]
 members = [
     "ndr-engine",
-    "siem-engine",
 ]
 resolver = "2"

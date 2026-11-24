@@ -34,6 +34,7 @@ pub mod licence;
 pub mod licence_issue;
 pub mod log_intake;
 pub mod support;
+pub mod ueba;
 pub mod updates;
 pub mod health;
 #[cfg(test)]
@@ -521,6 +522,7 @@ async fn main() {
     posture::spawn(state.clone());
     health::spawn(state.clone());
     updates::spawn();
+    ueba::spawn(state.clone());
     log_intake::serve_beats(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());

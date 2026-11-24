@@ -163,6 +163,10 @@ export class Dashboard implements OnInit, OnDestroy {
       );
     }
 
+    // Everything below feeds the NDR tab, from the NDR engine; a SIEM-only client has no NDR tab
+    // (its SIEM tab is <app-siem-dashboard>, which loads its own data).
+    if (!this.hasNdr) return;
+
     // Kick off the single background fetch loop in the service.
     // /api/stats is now called ONCE every 30s — result shared with stat cards.
     this.chartService.start();
@@ -293,7 +297,7 @@ export class Dashboard implements OnInit, OnDestroy {
    * ChartDataService to avoid duplicate requests.
    */
   private loadSupportingStats() {
-    this.api.getSeverity().subscribe({
+    this.api.getNdrSeverity().subscribe({
       next: data => {
         this.seenIncidents.clear(); // Reset live deduplication baseline
         this.critical.set(data.critical || 0);
@@ -304,7 +308,7 @@ export class Dashboard implements OnInit, OnDestroy {
       error: reportRxjsError
     });
 
-    this.api.getTopIps().subscribe({
+    this.api.getNdrTopIps().subscribe({
       next: data => {
         this.topSrcIps.set(data.top_src_ips || []);
         this.topDstIps.set(data.top_dst_ips || []);

@@ -57,7 +57,7 @@ export class Health implements OnInit, OnDestroy {
 
   loadHealth() {
     // Single API call — /api/health returns everything
-    this.api.getDashboardStats().subscribe({
+    this.api.getNdrHealth().subscribe({
       next: (data: any) => {
         this.totalEvents   = data.events_total || 0;
         this.totalHits     = data.hits_total   || 0;

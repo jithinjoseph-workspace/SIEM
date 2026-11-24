@@ -160,8 +160,9 @@ export class ChartDataService implements OnDestroy {
   private fetchAndPush(): void {
     this.statsSub?.unsubscribe();
     this.statsSub = forkJoin({
-      stats: this.api.getStats(),
-      severity: this.api.getSeverity()
+      // the NDR dashboard tab's chart: the NDR engine's figures
+      stats: this.api.getNdrStats(),
+      severity: this.api.getNdrSeverity()
     }).subscribe({
       next: ({ stats: raw, severity: sevRaw }) => {
         this._hasError$.next(false);

@@ -659,10 +659,10 @@ export class AiActivity implements OnInit, OnDestroy {
         this.activeTab !== 'command-center' ? EMPTY :
         forkJoin({
           preds:    this.api.getThreatPredictions(1, 0).pipe(catchError(() => of(null))),
-          stats:    this.api.getStats().pipe(catchError(() => of(null))),
-          severity: this.api.getSeverity().pipe(catchError(() => of(null))),
+          stats:    this.api.getNdrStats().pipe(catchError(() => of(null))),
+          severity: this.api.getNdrSeverity().pipe(catchError(() => of(null))),
           cases:    this.api.getSoarCases().pipe(catchError(() => of(null))),
-          timeline: this.api.getStatsTimeline().pipe(catchError(() => of([] as number[]))),
+          timeline: this.api.getNdrStatsTimeline().pipe(catchError(() => of([] as number[]))),
           ips:      this.api.getSensorRecentIps().pipe(catchError(() => of({} as Record<string, string>))),
           counts:   this.api.getSensorEventCounts().pipe(catchError(() => of({} as Record<string, number>))),
         })

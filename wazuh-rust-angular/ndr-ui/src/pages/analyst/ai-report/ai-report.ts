@@ -266,13 +266,13 @@ export class AiReport {
     this.mitreMap.set({});
 
     forkJoin({
-      stats:       this.api.getStats().pipe(catchError(() => of(null))),
-      severity:    this.api.getSeverity().pipe(catchError(() => of(null))),
+      stats:       this.api.getNdrStats().pipe(catchError(() => of(null))),
+      severity:    this.api.getNdrSeverity().pipe(catchError(() => of(null))),
       aiActivity:  this.api.getAiActivity().pipe(catchError(() => of({ analyses: [], suppressions: [] }))),
       predictions: this.api.getThreatPredictions().pipe(catchError(() => of({ predictions: [] }))),
-      topIps:      this.api.getTopIps().pipe(catchError(() => of(null))),
+      topIps:      this.api.getNdrTopIps().pipe(catchError(() => of(null))),
       protocols:   this.api.getProtocols().pipe(catchError(() => of({ protocols: [] }))),
-      health:      this.api.getDashboardStats().pipe(catchError(() => of(null))),
+      health:      this.api.getNdrHealth().pipe(catchError(() => of(null))),
     }).pipe(
       finalize(() => this.generating.set(false))
     ).subscribe({

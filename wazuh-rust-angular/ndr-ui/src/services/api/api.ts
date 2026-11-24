@@ -143,6 +143,35 @@ export class Api {
     return this.http.get(`${this.baseUrl}/stats`);
   }
 
+  // The NDR engine's own figures (network hits and flows), for the NDR pages; the calls above
+  // are siem-api's platform figures.
+  getNdrStats(): Observable<any> {
+    return this.http.get(`${this.ndrUrl}/stats`);
+  }
+
+  getNdrTopIps(): Observable<any> {
+    return this.http.get(`${this.ndrUrl}/top-ips`);
+  }
+
+  getNdrSeverity(): Observable<any> {
+    return this.http.get(`${this.ndrUrl}/severity`);
+  }
+
+  getNdrHealth(): Observable<any> {
+    return this.http.get(`${this.ndrUrl}/health`);
+  }
+
+  getNdrStatsTimeline(): Observable<number[]> {
+    return this.http
+      .get<{ status?: string; points?: number[]; message?: string }>(`${this.ndrUrl}/stats/timeline`)
+      .pipe(map(response => response.points || []));
+  }
+
+  /** The rules of the NDR engine (`ndr`) or of siem-api: each engine reloads its own rules on a change. */
+  private rulesUrl(ndr?: boolean): string {
+    return ndr ? this.ndrUrl : this.baseUrl;
+  }
+
   getUnifiedStats(): Observable<any> {
     return this.http.get(`${this.baseUrl}/stats/unified`);
   }
@@ -216,16 +245,16 @@ export class Api {
     return this.http.get<any[]>(`${this.baseUrl}/rules`);
   }
 
-  searchRules(q: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/rules?q=${encodeURIComponent(q)}`);
+  searchRules(q: string, ndr?: boolean): Observable<any[]> {
+    return this.http.get<any[]>(`${this.rulesUrl(ndr)}/rules?q=${encodeURIComponent(q)}`);
   }
 
   // Paginated rule listing — used by the analyst Rules page so it doesn't
   // pull the entire (1000+ row) rule set on every load. X-Total-Count /
   // X-Active-Count let the caller show accurate summary stats even though
   // only one page of rows actually came back.
-  getRulesPage(limit: number, offset: number, q?: string, order?: 'desc'): Observable<{ rules: any[]; total: number; activeTotal: number }> {
-    let url = `${this.baseUrl}/rules?limit=${limit}&offset=${offset}`;
+  getRulesPage(limit: number, offset: number, q?: string, order?: 'desc', ndr?: boolean): Observable<{ rules: any[]; total: number; activeTotal: number }> {
+    let url = `${this.rulesUrl(ndr)}/rules?limit=${limit}&offset=${offset}`;
     if (q) url += `&q=${encodeURIComponent(q)}`;
     if (order) url += `&order=${order}`;
     return this.http.get<any[]>(url, { observe: 'response' }).pipe(
@@ -239,12 +268,12 @@ export class Api {
 
 
 
-  createRule(rule: any): Observable<any> {
-    return this.http.post(`${this.baseUrl}/rules`, rule);
+  createRule(rule: any, ndr?: boolean): Observable<any> {
+    return this.http.post(`${this.rulesUrl(ndr)}/rules`, rule);
   }
 
-  deleteRule(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/rules/${id}`);
+  deleteRule(id: string, ndr?: boolean): Observable<any> {
+    return this.http.delete(`${this.rulesUrl(ndr)}/rules/${id}`);
   }
 
 
@@ -272,24 +301,24 @@ export class Api {
   getThreatMap(): Observable<any> {
     return this.http.get(`${this.ndrUrl}/threat-map`);
   }
-  reloadRules(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/rules/reload`, {});
+  reloadRules(ndr?: boolean): Observable<any> {
+    return this.http.post(`${this.rulesUrl(ndr)}/rules/reload`, {});
   }
-  syncCommunityRules(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/rules/sync-community`, {});
-  }
-
-  getRuleHitCounts(): Observable<{ [ruleName: string]: number }> {
-    return this.http.get<{ [ruleName: string]: number }>(`${this.baseUrl}/rules/hit-counts`);
+  syncCommunityRules(ndr?: boolean): Observable<any> {
+    return this.http.post(`${this.rulesUrl(ndr)}/rules/sync-community`, {});
   }
 
-  getRuleById(id: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/rules/${id}`);
+  getRuleHitCounts(ndr?: boolean): Observable<{ [ruleName: string]: number }> {
+    return this.http.get<{ [ruleName: string]: number }>(`${this.rulesUrl(ndr)}/rules/hit-counts`);
   }
 
-  toggleRule(id: string, enabled: boolean): Observable<any> {
+  getRuleById(id: string, ndr?: boolean): Observable<any> {
+    return this.http.get(`${this.rulesUrl(ndr)}/rules/${id}`);
+  }
+
+  toggleRule(id: string, enabled: boolean, ndr?: boolean): Observable<any> {
     return this.http.post(
-      `${this.baseUrl}/rules/${id}/toggle`,
+      `${this.rulesUrl(ndr)}/rules/${id}/toggle`,
       { enabled }
     );
   }

@@ -32,6 +32,8 @@ export const SIEM_FIELD_OPTIONS = [
 
 @Directive()
 export abstract class RulesBase {
+  /** These are the NDR engine's rules (the NDR Rules page); else siem-api's. */
+  protected ndrRules = false;
   /** The form's first field (the SIEM pages start on CommandLine). */
   defaultField = 'event_type';
   loading       = true;
@@ -128,7 +130,7 @@ export abstract class RulesBase {
 
   syncCommunityRules(): void {
     this.syncing = true;
-    this.api.syncCommunityRules().subscribe({
+    this.api.syncCommunityRules(this.ndrRules).subscribe({
       next: (res: any) => {
         this.syncing = false;
         if (res.status === 'already_running') {
@@ -157,7 +159,7 @@ export abstract class RulesBase {
     this.editingId = rule.id;
     this.showForm = true;
 
-    this.api.getRuleById(rule.id).subscribe({
+    this.api.getRuleById(rule.id, this.ndrRules).subscribe({
       next: (data: any) => {
         this.ruleForm = {
           title: data.title || rule.name,
@@ -193,7 +195,7 @@ export abstract class RulesBase {
     this.saving = true;
 
     if (this.isEditing) {
-      this.api.deleteRule(this.editingId).subscribe({
+      this.api.deleteRule(this.editingId, this.ndrRules).subscribe({
         next: () => this.createNewRule(),
         error: () => this.createNewRule(),
       });
@@ -203,11 +205,11 @@ export abstract class RulesBase {
   }
 
   createNewRule(): void {
-    this.api.createRule(this.ruleForm).subscribe({
+    this.api.createRule(this.ruleForm, this.ndrRules).subscribe({
       next: (data: any) => {
         this.saving = false;
         if (data.status === 'created') {
-          this.api.reloadRules().subscribe({
+          this.api.reloadRules(this.ndrRules).subscribe({
             next: (reload: any) => {
               const action = this.isEditing ? 'updated' : 'created';
               this.showMessage(`Rule "${this.ruleForm.title}" ${action}. ${reload.count} rules active.`, 'success');
@@ -237,8 +239,8 @@ export abstract class RulesBase {
 
   deleteRule(rule: any): void {
     if (!confirm(`Delete rule "${rule.name}"?`)) return;
-    this.api.deleteRule(rule.id).subscribe({
-      next: () => this.api.reloadRules().subscribe({
+    this.api.deleteRule(rule.id, this.ndrRules).subscribe({
+      next: () => this.api.reloadRules(this.ndrRules).subscribe({
         next: () => {
           this.rules = this.rules.filter(r => r.id !== rule.id);
           this.showMessage(`Rule "${rule.name}" deleted`, 'success');
@@ -255,7 +257,7 @@ export abstract class RulesBase {
 
   toggleRule(rule: any): void {
     const enable = rule.status !== 'ACTIVE';
-    this.api.toggleRule(rule.id, enable).subscribe({
+    this.api.toggleRule(rule.id, enable, this.ndrRules).subscribe({
       next: (data: any) => {
         rule.status = enable ? 'ACTIVE' : 'INACTIVE';
         this.showMessage(`Rule "${rule.name}" ${enable ? 'enabled' : 'disabled'} — ${data.active_rules} active`, 'success');

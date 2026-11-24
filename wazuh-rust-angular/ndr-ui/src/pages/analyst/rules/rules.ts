@@ -1,3 +1,4 @@
+import { ActivatedRoute } from '@angular/router';
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -111,9 +112,11 @@ export class Rules extends RulesBase implements OnInit {
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  constructor(api: Api, private auth: AuthService, cdr: ChangeDetectorRef) {
+  constructor(api: Api, private auth: AuthService, cdr: ChangeDetectorRef, private route: ActivatedRoute) {
     super(api, cdr);
-    if (!this.auth.hasFeature('ndr')) {
+    // one component, two pages: the NDR Rules page edits the NDR engine's rules, the SIEM one siem-api's
+    this.ndrRules = this.auth.hasFeature('ndr') && this.route.snapshot.routeConfig?.path !== 'siem-rules';
+    if (!this.ndrRules) {
       this.fieldOptions = SIEM_FIELD_OPTIONS;
       this.defaultField = 'CommandLine';
       this.ruleForm.field = 'CommandLine';
@@ -122,7 +125,7 @@ export class Rules extends RulesBase implements OnInit {
 
   get isAdmin() { return this.auth.isAdmin(); }
   /** NDR tenants also see the sensors' (Agent-Z / Agent-S) rules; SIEM tenants their hosts' fields. */
-  get ndr() { return this.auth.hasFeature('ndr'); }
+  get ndr() { return this.ndrRules; }
 
   get activeRulesCount() {
     // rulesActiveTotal comes from the backend (X-Active-Count) so this stays
@@ -144,7 +147,7 @@ export class Rules extends RulesBase implements OnInit {
 
     // Hit counts are a cheap aggregate over ALL rules (not paginated) —
     // fetch once, cache it, and apply to whichever page(s) get loaded.
-    this.api.getRuleHitCounts().subscribe({
+    this.api.getRuleHitCounts(this.ndrRules).subscribe({
       next: (hitCounts: { [ruleName: string]: number }) => {
         this.hitCountsCache = hitCounts;
         this.totalHits = Object.values(hitCounts).reduce((a, b) => a + b, 0)
@@ -155,7 +158,7 @@ export class Rules extends RulesBase implements OnInit {
       error: () => { }
     });
 
-    if (!this.ndr) return;
+    if (!this.ndrRules) return;
     // Load Agent-S fired rules from ndr_hits.sigma_hits — a small set (single
     // digits typically), so no pagination needed here.
     this.api.getFiredRules().subscribe({
@@ -199,7 +202,7 @@ export class Rules extends RulesBase implements OnInit {
 
   private fetchRulesPage(append: boolean) {
     if (append) this.loadingMore = true; else { this.loading = true; this.loadError = false; }
-    this.api.getRulesPage(this.pageSize, this.rulesOffset).subscribe({
+    this.api.getRulesPage(this.pageSize, this.rulesOffset, undefined, undefined, this.ndrRules).subscribe({
       next: (res) => {
         const mapped = res.rules.map((r: any) => this.mapAgentZRule(r));
         this.rules = append ? [...this.rules, ...mapped] : mapped;
@@ -246,7 +249,7 @@ export class Rules extends RulesBase implements OnInit {
     if (localMatch) return; // already covered by displayRules' client-side filter
 
     this.searching = true;
-    this.api.searchRules(term).subscribe({
+    this.api.searchRules(term, this.ndrRules).subscribe({
       next: (res: any[]) => {
         this.searching = false;
         this.dbSearchChecked = true;

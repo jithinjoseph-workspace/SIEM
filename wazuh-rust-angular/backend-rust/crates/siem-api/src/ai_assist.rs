@@ -66,7 +66,12 @@ pub async fn providers(state: &AppState, use_case: &str) -> Vec<Provider> {
 /// The tenant's AI switch (tenants without a record: on).
 pub fn tenant_ai_enabled(state: &AppState, tenant: &str) -> bool {
     let t = crate::tenancy::normalize_tenant(tenant);
-    state.tenants.read().unwrap().iter().find(|r| crate::tenancy::normalize_tenant(&r.id) == t).map_or(true, |r| r.ai_enabled)
+    // switched on for the client AND the AI module in its licence (every AI use passes here:
+    // pages, Copilot, case analysis, briefings, background jobs)
+    state.tenants.read().unwrap().iter().find(|r| crate::tenancy::normalize_tenant(&r.id) == t).map_or(true, |r| {
+        let features = crate::licence::features_for(&t).unwrap_or_else(|| r.features.clone());
+        r.ai_enabled && provigil_common::modules::client_has(&features, provigil_common::modules::AI)
+    })
 }
 
 fn ai_off() -> (StatusCode, String) {

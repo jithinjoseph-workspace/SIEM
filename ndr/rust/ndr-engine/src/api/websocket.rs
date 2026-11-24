@@ -70,6 +70,14 @@ async fn authenticate_then_handle(
         }
     };
 
+    // ── Licence: the NDR live stream is for clients with the NDR module ───
+    if !provigil_common::modules::allows(&claims.role, &claims.features, provigil_common::modules::NDR) {
+        let _ = socket.send(Message::Text(
+            r#"{"type":"error","message":"NDR is not part of this organisation's licence"}"#.to_string()
+        )).await;
+        return;
+    }
+
     // ── Layer 1: Gate check — reject blocked users at connection time ─────
     if claims.role != "super_admin" {
         match state.ch_storage.is_tenant_active(&claims.tenant_id).await {

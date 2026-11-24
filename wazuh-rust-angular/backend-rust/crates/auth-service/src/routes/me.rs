@@ -77,15 +77,7 @@ pub async fn handle(
 
     // License token takes precedence over DB — if a verified license exists for this tenant,
     // its feature list is authoritative (customer cannot self-upgrade via DB).
-    let features = if let Some(lic) = &state.verified_license {
-        if lic.tenant_id == user.tenant_id || lic.tenant_id.is_empty() {
-            lic.features.clone()
-        } else {
-            state.db.get_tenant_features(&user.tenant_id).await.unwrap_or_else(|_| vec!["ndr".into()])
-        }
-    } else {
-        state.db.get_tenant_features(&user.tenant_id).await.unwrap_or_else(|_| vec!["ndr".into()])
-    };
+    let features = state.tenant_features(&user.tenant_id).await;
     let ai_enabled = if user.role == "super_admin" {
         true
     } else {

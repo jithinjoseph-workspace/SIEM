@@ -29,6 +29,19 @@ pub struct AppState {
     pub verified_license: Option<Arc<license::LicenseClaims>>,
 }
 
+impl AppState {
+    /// A client's modules: the installed licence's when it is for this client (the customer
+    /// cannot add modules through the client settings then), else the client settings'.
+    pub async fn tenant_features(&self, tenant_id: &str) -> Vec<String> {
+        if let Some(lic) = &self.verified_license {
+            if lic.tenant_id == tenant_id || lic.tenant_id.is_empty() {
+                return lic.features.clone();
+            }
+        }
+        self.db.get_tenant_features(tenant_id).await.unwrap_or_else(|_| vec!["ndr".into()])
+    }
+}
+
 /// Turns an unhandled handler panic into a logged, structured 500 instead of
 /// tower_http's default (a raw stderr dump with no tracing correlation).
 fn handle_panic(err: Box<dyn std::any::Any + Send + 'static>) -> axum::response::Response {

@@ -18,6 +18,11 @@ import { AriaBot } from '../components/aria-bot/aria-bot';
 export class App implements OnInit {
   showShell = false;
 
+  /** ARIA is AI: only with AI switched on and the AI module in the licence. */
+  get aiOn(): boolean {
+    return this.auth.isTenantAiEnabled();
+  }
+
   constructor(
     private wsService: Websocket,
     private router: Router,

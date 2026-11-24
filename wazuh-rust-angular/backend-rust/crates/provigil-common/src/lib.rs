@@ -6,6 +6,7 @@ pub mod enrichment;
 #[cfg(feature = "kafka")]
 pub mod kafka;
 pub mod migrations;
+pub mod modules;
 pub mod normalizer;
 pub mod siem;
 pub mod secrets;

@@ -71,6 +71,15 @@ pub fn summary() -> Option<(crate::health::Level, String)> {
     })
 }
 
+/// The installed licence's modules when it is for this client (it wins over the client settings,
+/// as in the sign-in service); None without a valid licence for it.
+pub fn features_for(tenant: &str) -> Option<Vec<String>> {
+    match current()? {
+        Ok(c) if c.tenant_id.is_empty() || crate::tenancy::normalize_tenant(&c.tenant_id) == crate::tenancy::normalize_tenant(tenant) => Some(c.features),
+        _ => None,
+    }
+}
+
 /// Called before a NEW PC enrolls (a reinstall of an enrolled PC is not checked).
 pub fn check_enroll(enrolled: usize) -> Result<(), String> {
     decide(current(), enrolled, now())

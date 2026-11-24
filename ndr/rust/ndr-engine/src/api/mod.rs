@@ -568,6 +568,16 @@ pub async fn auth_middleware(
                         .unwrap();
                 }
 
+                // ── Licence: this engine is the NDR module ────────────────────
+                // (a client without `ndr` uses the SIEM and the platform, not this engine)
+                if !provigil_common::modules::allows(&claims.role, &claims.features, provigil_common::modules::NDR) {
+                    return axum::response::Response::builder()
+                        .status(403)
+                        .header("Content-Type", "application/json")
+                        .body(axum::body::Body::from(provigil_common::modules::refusal(provigil_common::modules::NDR)))
+                        .unwrap();
+                }
+
                 // ── Per-user active gate (Redis-cached 30s) ───────────────────
                 let blockable_roles = ["analyst", "senior_analyst", "viewer", "default_user"];
                 if blockable_roles.contains(&claims.role.as_str()) {

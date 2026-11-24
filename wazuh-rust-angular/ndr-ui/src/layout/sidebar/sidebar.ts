@@ -85,7 +85,7 @@ export class Sidebar implements OnInit, OnDestroy {
     const threatItems: NavItem[] = [];
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alerts',       route: '/analyst/alerts',     icon: Bell,    permission: 'alerts' });
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alert Triage', route: '/analyst/triage',     icon: ListChecks, permission: 'alerts' });
-    if (hasNdr && has('intel'))  threatItems.push({ label: 'Threat Intel', route: '/analyst/intel',       icon: Search,  permission: 'intel'  });
+    if (hasNdr && has('intel') && this.auth.hasFeature('threat_intel'))  threatItems.push({ label: 'Threat Intel', route: '/analyst/intel',       icon: Search,  permission: 'intel'  });
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Attack Map',   route: '/analyst/threat-map',  icon: MapIcon, permission: 'alerts' });
 
     const networkItems: NavItem[] = [];
@@ -114,7 +114,13 @@ export class Sidebar implements OnInit, OnDestroy {
     // SIEM: the menu follows the SOC's work: watch, investigate and respond, the hosts'
     // posture, detection engineering, threat intel, and oversight of the AI.
     const hasSiem = this.auth.hasFeature('siem');
-    const siemGroup = (items: NavItem[]) => hasSiem ? items.filter(i => has(i.permission!)) : [];
+    // licence modules beyond SIEM/NDR: AI pages and threat-intel pages
+    const aiOn = this.auth.isTenantAiEnabled();
+    const intelOn = this.auth.hasFeature('threat_intel');
+    const AI_PAGES = ['/analyst/siem-copilot'];
+    const INTEL_PAGES = ['/analyst/siem-threat-intel', '/analyst/siem-swarm'];
+    const byModule = (i: NavItem) => (aiOn || !AI_PAGES.includes(i.route)) && (intelOn || !INTEL_PAGES.includes(i.route));
+    const siemGroup = (items: NavItem[]) => hasSiem ? items.filter(i => has(i.permission!) && byModule(i)) : [];
     const monitorItems = siemGroup([
       { label: 'Overview',            route: '/analyst/siem-classic/console/overview',  icon: LayoutDashboard, permission: 'siem-dashboard' },
       { label: 'Alerts',              route: '/analyst/siem-classic/console/alerts',    icon: Bell,        permission: 'siem-alerts' },
@@ -156,7 +162,7 @@ export class Sidebar implements OnInit, OnDestroy {
     ]);
     const oversightItems = siemGroup([
       { label: 'AI Oversight',        route: '/analyst/siem-ai-oversight',  icon: Scale,     permission: 'siem-alerts' },
-    ]);
+    ]).filter(() => aiOn);
 
     // XDR Correlated Incidents — available when both NDR & SIEM are enabled
     if (hasNdr && hasSiem && has('alerts')) {

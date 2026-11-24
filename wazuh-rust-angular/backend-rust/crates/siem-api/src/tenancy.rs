@@ -527,6 +527,13 @@ pub async fn auth_middleware(
                 .into_response();
         }
     }
+    // Licence: the module an API belongs to (super admins, and clients whose list was never
+    // set, may use every module; the platform's own APIs belong to none)
+    if let Some(module) = required_module(&path) {
+        if !provigil_common::modules::allows(&ctx.role, &ctx.features, module) {
+            return (StatusCode::FORBIDDEN, [(axum::http::header::CONTENT_TYPE, "application/json")], provigil_common::modules::refusal(module)).into_response();
+        }
+    }
     // Per-agent routes: another tenant's agent does not exist for the caller.
     if let Some(agent_id) = agent_id_in_path(&path) {
         let owner = tenant_of(&state.agent_tenants.read().unwrap(), agent_id);
@@ -540,6 +547,37 @@ pub async fn auth_middleware(
     }
     req.extensions_mut().insert(ctx);
     next.run(req).await
+}
+
+/// The licence module an API belongs to; None = the platform (settings, admin, health, support,
+/// sessions, the platform figures and sensor lists) and SIEM-shaped copies of NDR addresses the
+/// one console no longer calls (NDR pages call the NDR engine under /api/ndr).
+fn required_module(path: &str) -> Option<&'static str> {
+    use provigil_common::modules::{AI, SIEM, SOAR, THREAT_INTEL};
+    let p = path.trim_end_matches('/');
+    let under = |prefix: &str| p == prefix || p.starts_with(&format!("{prefix}/"));
+    const SIEM_PREFIXES: [&str; 31] = [
+        "/api/v1/agents", "/api/v1/agent", "/api/agents", "/agents", "/api/v1/active-response", "/api/v1/alerts",
+        "/api/v1/compliance", "/api/v1/deploy", "/api/v1/edr", "/api/v1/endpoint-policies", "/api/v1/events",
+        "/api/v1/fim", "/api/v1/groups", "/api/v1/logtest", "/api/v1/manager", "/api/v1/mitre", "/api/v1/parsers",
+        "/api/v1/posture", "/api/v1/rules", "/api/v1/segments", "/api/v1/siem", "/api/v1/simulate", "/api/v1/syscheck",
+        "/api/v1/syslog", "/api/v1/vulnerabilities", "/api/v1/redswarm", "/api/v1/risk-fabric", "/api/v1/intent",
+        "/api/v1/deception", "/api/siem", "/api/sources",
+    ];
+    const SIEM_MORE: [&str; 6] = ["/api/v1/reports", "/api/v1/stats", "/api/v1/tenant", "/api/v1/xdr", "/api/rules", "/syscheck"];
+    if ["/api/soar", "/api/blocks", "/api/isolate", "/api/unisolate", "/api/isolations"].iter().any(|x| under(x)) {
+        return Some(SOAR);
+    }
+    if ["/api/threat-intel", "/api/v1/threat-intel", "/api/v1/swarm"].iter().any(|x| under(x)) {
+        return Some(THREAT_INTEL);
+    }
+    if ["/api/v1/ai", "/api/aria"].iter().any(|x| under(x)) {
+        return Some(AI);
+    }
+    if SIEM_PREFIXES.iter().chain(SIEM_MORE.iter()).any(|x| under(x)) {
+        return Some(SIEM);
+    }
+    None
 }
 
 /// The page permission an API belongs to (the same keys the user editor
@@ -728,6 +766,25 @@ pub fn spawn_tenant_sync(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apis_belong_to_their_licence_module() {
+        assert_eq!(required_module("/api/v1/agents/001/fim"), Some("siem"));
+        assert_eq!(required_module("/api/v1/siem/alerts"), Some("siem"));
+        assert_eq!(required_module("/api/siem/dashboard"), Some("siem"));
+        assert_eq!(required_module("/api/soar/cases/x/comments"), Some("soar"));
+        assert_eq!(required_module("/api/isolate"), Some("soar"));
+        assert_eq!(required_module("/api/threat-intel/watchlist"), Some("threat_intel"));
+        assert_eq!(required_module("/api/v1/swarm/status"), Some("threat_intel"));
+        assert_eq!(required_module("/api/v1/ai/chat"), Some("ai"));
+        // the platform belongs to no module: every client may use it
+        for p in ["/api/settings/ai/providers", "/api/admin/usage", "/api/health", "/api/license", "/api/stats", "/api/stats/unified", "/api/sensor-keys", "/api/support/messages", "/api/tenant/features", "/ws", "/api/v1/sites/health-report"] {
+            assert_eq!(required_module(p), None, "{p}");
+        }
+        // a prefix is a path segment, not a string start
+        assert_eq!(required_module("/api/soarx"), None);
+        assert_eq!(required_module("/api/v1/agentsx"), None);
+    }
 
     #[test]
     fn live_agent_queries_need_a_user_token_and_the_agents_own_config_does_not() {

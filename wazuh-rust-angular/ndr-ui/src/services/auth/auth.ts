@@ -176,7 +176,8 @@ export class AuthService implements OnDestroy {
     const user = this.getUser();
     if (!user) return false;
     if (user.role === 'super_admin' || user.role === 'superadmin' || user.role === 'admin') return true;
-    return user.ai_enabled !== false;
+    // switched on for the client AND the AI module in its licence (the servers check the same)
+    return user.ai_enabled !== false && this.hasFeature('ai');
   }
 
   // Returns features licensed for this tenant (stored in user session after login).

@@ -305,11 +305,9 @@ pub async fn issue_full_token(
         stored_perms.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
     };
 
-    // Features from tenant table
-    let features = match state.db.get_tenant_features(tenant_id).await {
-        Ok(f) => f,
-        Err(_) => vec!["ndr".into()],
-    };
+    // The client's modules (the installed licence first): the token carries them, and every
+    // server refuses what they do not include
+    let features = state.tenant_features(tenant_id).await;
 
     // Sensor IDs — admins get empty (see all), analysts get assigned sensors
     let sensor_ids = if role == "super_admin" || role == "tenant_admin" {

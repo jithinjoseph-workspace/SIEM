@@ -32,6 +32,7 @@ pub mod agent_tls;
 pub mod gateway_api;
 pub mod licence;
 pub mod licence_issue;
+pub mod log_intake;
 pub mod support;
 pub mod updates;
 pub mod health;
@@ -520,6 +521,7 @@ async fn main() {
     posture::spawn(state.clone());
     health::spawn(state.clone());
     updates::spawn();
+    log_intake::serve_beats(state.clone());
     // security memory: import the cases and triage decisions made before it existed
     org_memory::spawn(state.clone());
     // federated threat swarm (off until the platform admin and a tenant admin opt in)
@@ -1115,6 +1117,11 @@ async fn main() {
         .route("/api/support/messages/:id/reply", post(support::reply))
         .route("/api/support/messages/:id/forward", post(support::forward))
         .route("/api/support/messages/:id", axum::routing::delete(support::delete))
+        // log intake with ingest keys (Beats has its own port: log_intake::serve_beats)
+        .route("/api/siem/ingest-keys", get(log_intake::list_keys).post(log_intake::create_key))
+        .route("/api/siem/ingest-keys/:source_id", axum::routing::delete(log_intake::revoke_key))
+        .route("/api/siem/wec", post(log_intake::wec).layer(axum::extract::DefaultBodyLimit::max(log_intake::MAX_BODY)))
+        .route("/api/siem/ingest", post(log_intake::rest).layer(axum::extract::DefaultBodyLimit::max(log_intake::MAX_BODY)))
         .route("/api/admin/version", get(updates::version))
         .route("/api/admin/apply-update", post(updates::apply))
         .route("/api/license/generate", post(licence_issue::generate))

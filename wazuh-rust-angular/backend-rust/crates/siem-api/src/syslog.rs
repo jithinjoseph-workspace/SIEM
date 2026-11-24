@@ -11,6 +11,8 @@ use crate::{tenancy, AppState};
 pub enum Origin {
     Ip,
     Device(Device),
+    /// A log source with an ingest key (Beats, WEC, REST: log_intake.rs): its id, name, client.
+    Source { id: String, name: String, tenant: String },
 }
 
 /// Spawns background tasks for UDP and TCP syslog ingestion
@@ -153,10 +155,11 @@ fn next_frame(p: &[u8]) -> Option<(Vec<u8>, usize)> {
     Some((p[..nl].to_vec(), nl + 1))
 }
 
-async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: &AppState) {
+pub(crate) async fn process_syslog_line(line: &str, peer_ip: &str, origin: &Origin, state: &AppState) {
     // the tenant: the device's certificate, else the source-IP map, else the default tenant
     let (agent_id, agent_name, tenant) = match origin {
         Origin::Device(d) => (format!("syslog-{}", d.id), d.name.clone(), d.tenant_id.clone()),
+        Origin::Source { id, name, tenant } => (id.clone(), name.clone(), tenant.clone()),
         Origin::Ip => {
             let t = crate::syslog_tenancy::get().and_then(|st| st.tenant_for_ip(peer_ip)).unwrap_or_else(|| tenancy::DEFAULT_TENANT.to_string());
             (format!("syslog-{}", peer_ip), format!("net-device-{}", peer_ip), t)

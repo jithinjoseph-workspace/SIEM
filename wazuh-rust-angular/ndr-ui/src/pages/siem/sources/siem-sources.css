@@ -316,3 +316,13 @@ p  { color: rgba(230,237,243,0.5); font-size: 13px; margin: 0; }
   line-height: 1.5;
 }
 .wef-arch-note strong { color: #34d399; }
+
+/* log sources with ingest keys */
+.ingest-list { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ingest-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid rgba(59,130,246,0.15); border-radius: 8px; }
+.ingest-name { font-weight: 600; color: #e6edf3; }
+.ingest-row .btn-delete { margin-left: auto; }
+.ingest-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.ingest-input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(59,130,246,0.3); background: transparent; color: inherit; }
+.ingest-created { display: flex; flex-direction: column; gap: 8px; }
+.snippet { white-space: pre-wrap; word-break: break-all; font-size: 12px; padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(59,130,246,0.15); margin: 0; }

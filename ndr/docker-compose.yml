@@ -471,6 +471,8 @@ services:
     container_name: siem-api
     restart: unless-stopped
     mem_limit: 768m
+    ports:
+      - "9201:9201"   # Beats (Winlogbeat / Filebeat) log intake, Elasticsearch API; key-authenticated
     networks:
       - ndr-internal
       - default

@@ -66,6 +66,17 @@
     </div>
   </div>
 
+  <!-- Log sources with ingest keys (tenant admins) -->
+  <div *ngIf="canIngest() && ingest().length > 0" class="ingest-list">
+    <div class="setup-section-label">Log sources (Beats, Windows Event Collector, REST)</div>
+    <div *ngFor="let s of ingest()" class="ingest-row">
+      <div class="source-status-dot" [class]="s.active ? 'status-ok' : 'status-err'"></div>
+      <div class="ingest-name">{{ s.name }}</div>
+      <div class="muted">{{ s.active ? 'active' : 'revoked' }} · created {{ s.created_at }}</div>
+      <button *ngIf="s.active" class="btn-delete" (click)="revoke(s)">Revoke</button>
+    </div>
+  </div>
+
   <!-- How to add a source -->
   <div *ngIf="showModal()" class="modal-backdrop" (click)="closeModal()">
     <div class="modal" (click)="$event.stopPropagation()">
@@ -81,6 +92,27 @@
         <div class="setup-section-label">Firewalls, switches, appliances</div>
         <p class="muted">Register the device under <a routerLink="/tenant-admin/syslog-devices" (click)="closeModal()">Syslog Devices</a> (tenant admin):
           it gets the port to send to and, for TLS, a client certificate, so its logs land in your tenant.</p>
+        <div class="setup-section-label">Beats, Windows Event Collector, REST</div>
+        <ng-container *ngIf="canIngest(); else adminOnly">
+          <p class="muted">Winlogbeat, Filebeat, a Windows Event Collector or any program can send logs with an ingest key. Windows events get the same
+            detection rules as the agents' events.</p>
+          <div *ngIf="!created()" class="ingest-form">
+            <input class="ingest-input" [(ngModel)]="newName" placeholder="Source name, e.g. Winlogbeat on DC1" aria-label="Source name" maxlength="100" />
+            <button class="btn-add" (click)="createKey()" [disabled]="!newName.trim()">Create key</button>
+          </div>
+          <div *ngIf="ingestError()" class="error-banner">{{ ingestError() }}</div>
+          <div *ngIf="created() as c" class="ingest-created">
+            <p><strong>Key for {{ c.name }}</strong>, shown only now: store it in the source's configuration.</p>
+            <pre class="snippet">{{ c.key }}</pre>
+            <button class="btn-refresh" (click)="copy(c.key)">Copy key</button>
+            <p class="muted">Winlogbeat / Filebeat (<code>winlogbeat.yml</code>):</p>
+            <pre class="snippet">{{ winlogbeatConfig(c.key) }}</pre>
+            <p class="muted">REST (one log line; <code>source_type</code> syslog, cef, wec or generic):</p>
+            <pre class="snippet">{{ restExample(c.key) }}</pre>
+            <p class="muted">Windows Event Collector: POST the event XML to <code>https://{{ host }}/api/siem/wec</code> with the same Authorization header.</p>
+          </div>
+        </ng-container>
+        <ng-template #adminOnly><p class="muted">Ask your tenant admin to create an ingest key on this page.</p></ng-template>
       </div>
       <div class="modal-footer">
         <button class="btn-add" (click)="closeModal()">Close</button>

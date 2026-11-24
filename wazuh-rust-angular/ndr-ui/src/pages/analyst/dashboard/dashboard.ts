@@ -5,8 +5,8 @@ import { AuthService } from '../../../services/auth/auth';
 import { ConfigService } from '../../../services/config/config.service';
 import { Websocket } from '../../../services/websocket/websocket';
 import { ChartDataService } from '../../../services/chart-data/chart-data';
-import { Subscription, interval, of } from 'rxjs';
-import { startWith, switchMap, catchError } from 'rxjs/operators';
+import { Subscription, interval } from 'rxjs';
+import { startWith, switchMap } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   LucideAngularModule,
@@ -14,14 +14,14 @@ import {
 } from 'lucide-angular';
 import { Router } from '@angular/router';
 import * as d3 from 'd3';
-import { SiemDashboard } from '../../siem/dashboard/siem-dashboard';
+import { SiemConsole } from '../../siem-classic/siem-console';
 import { ThreatMap } from '../threat-map/threat-map';
 
 import { reportRxjsError } from '../../../services/error-reporter/error-reporter';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, LucideAngularModule, SiemDashboard, ThreatMap],
+  imports: [CommonModule, LucideAngularModule, SiemConsole, ThreatMap],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })
@@ -91,15 +91,6 @@ export class Dashboard implements OnInit, OnDestroy {
   hasSiem = false;
   activeTab = signal<'ndr' | 'siem'>('ndr');
 
-  // ── Unified KPI strip (only when hasNdr && hasSiem) ───────────────────────
-  uNdrEvents   = signal(0);
-  uSiemLogs    = signal(0);
-  uSiemEps     = signal(0);
-  uCorrHits    = signal(0);
-  uCritical    = signal(0);
-  uHigh        = signal(0);
-  uMedium      = signal(0);
-
   constructor(
     private api: Api,
     private ws: Websocket,
@@ -140,32 +131,9 @@ export class Dashboard implements OnInit, OnDestroy {
     this.hasSiem = this.auth.hasFeature('siem') && this.auth.hasPermission('siem-dashboard');
     this.sensorIds = this.auth.getSensorIds();
 
-    // Unified KPI strip — poll every 30s when both features active
-    if (this.hasNdr && this.hasSiem) {
-      this.subs.push(
-        interval(30_000).pipe(
-          startWith(0),
-          // catchError inside switchMap's inner observable (not just an error:
-          // callback on subscribe) - without it, a single failed poll (401,
-          // network blip) terminates this whole subscription and the KPI strip
-          // silently stops refreshing for the rest of the page session.
-          switchMap(() => this.api.getUnifiedStats().pipe(catchError(() => of(null))))
-        ).subscribe({ next: (r: any) => {
-            if (!r) return;
-            this.uNdrEvents.set(r.ndr_events_today  ?? 0);
-            this.uSiemLogs.set(r.siem_logs_today    ?? 0);
-            this.uSiemEps.set(r.siem_eps            ?? 0);
-            this.uCorrHits.set(r.correlation_hits_1h ?? 0);
-            this.uCritical.set(r.critical_alerts    ?? 0);
-            this.uHigh.set(r.high_alerts            ?? 0);
-            this.uMedium.set(r.medium_alerts        ?? 0);
-          }})
-      );
-    }
-
     // Everything below feeds the NDR tab, from the NDR engine; a SIEM-only client has no NDR tab
-    // (its SIEM tab is <app-siem-dashboard>, which loads its own data).
-    if (!this.hasNdr) return;
+    // (its SIEM tab is the SIEM overview, <app-siem-console>, which loads its own data).
+    if (!this.hasNdr) { this.activeTab.set('siem'); return; }
 
     // Kick off the single background fetch loop in the service.
     // /api/stats is now called ONCE every 30s — result shared with stat cards.

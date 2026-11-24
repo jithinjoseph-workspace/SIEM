@@ -79,8 +79,10 @@ export class Sidebar implements OnInit, OnDestroy {
     const hasNdr = this.auth.hasFeature('ndr');
 
     const overviewItems: NavItem[] = [];
-    // Dashboard is universal — shows NDR section, SIEM section, or both depending on product mode
-    if (hasNdr && (has('dashboard') || (this.auth.hasFeature('siem') && has('siem-dashboard')))) overviewItems.push({ label: 'Dashboard', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
+    // Overview: a tab per licensed module (NDR's overview, SIEM's overview); SIEM-only clients
+    // keep the SIEM menu's own Overview
+    const overviewHasSiem = this.auth.hasFeature('siem') && has('siem-dashboard');
+    if (hasNdr && (has('dashboard') || overviewHasSiem)) overviewItems.push({ label: 'Overview', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
 
     const threatItems: NavItem[] = [];
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alerts',       route: '/analyst/alerts',     icon: Bell,    permission: 'alerts' });
@@ -122,7 +124,8 @@ export class Sidebar implements OnInit, OnDestroy {
     const byModule = (i: NavItem) => (aiOn || !AI_PAGES.includes(i.route)) && (intelOn || !INTEL_PAGES.includes(i.route));
     const siemGroup = (items: NavItem[]) => hasSiem ? items.filter(i => has(i.permission!) && byModule(i)) : [];
     const monitorItems = siemGroup([
-      { label: 'Overview',            route: '/analyst/siem-classic/console/overview',  icon: LayoutDashboard, permission: 'siem-dashboard' },
+      // with NDR too, the SIEM overview is the Overview page's SIEM tab
+      ...(overviewItems.length ? [] : [{ label: 'Overview', route: '/analyst/siem-classic/console/overview', icon: LayoutDashboard, permission: 'siem-dashboard' }]),
       { label: 'Alerts',              route: '/analyst/siem-classic/console/alerts',    icon: Bell,        permission: 'siem-alerts' },
       { label: 'Alert Triage',        route: '/analyst/siem-triage',                    icon: ListFilter,  permission: 'siem-alerts' },
       { label: 'Telemetry',           route: '/analyst/siem-classic/console/telemetry', icon: ScrollText,  permission: 'siem-logs' },

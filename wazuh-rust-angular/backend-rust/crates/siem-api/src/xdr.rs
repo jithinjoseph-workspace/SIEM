@@ -1,7 +1,10 @@
 //! `GET /api/xdr/alerts`: the XDR queue (it replaces the old siem-engine's unified queue, same
 //! answer shape): XDR incidents (a host alert and an NDR detection on the same host, made by
-//! corroboration.rs), host alerts of level 7 or more, and NDR detections, newest first. SIEM
-//! items need the `siem` module and NDR items `ndr`. Filters: source, severity, status; pages.
+//! corroboration.rs), and the high and critical host alerts and NDR detections, newest first.
+//! Repeats are one item: a host alert per rule, host and day, an NDR detection per name, pair of
+//! addresses and day, titled with the count ("591× ...") and opening the latest. Medium and low
+//! stay on each module's alert pages. SIEM items need the `siem` module and NDR items `ndr`.
+//! Filters: source, severity, status; pages.
 
 use axum::extract::{Extension, Query, State};
 use axum::http::StatusCode;
@@ -13,8 +16,8 @@ use serde_json::{json, Value};
 use crate::tenancy::AuthCtx;
 use crate::AppState;
 
-/// Host alerts from this level are in the queue (as for XDR incidents).
-const LEVEL: u8 = 7;
+/// Host alerts from this level (high) are in the queue.
+const MIN_LEVEL: u8 = 10;
 /// The deepest the pages go.
 const MAX_DEPTH: u32 = 5000;
 
@@ -41,41 +44,24 @@ struct Item {
     status: String,
 }
 
-/// The SQL severity of a host alert from its level (as the alert views grade it).
-const LEVEL_SEVERITY: &str = "multiIf(rule_level >= 12, 'CRITICAL', rule_level >= 10, 'HIGH', 'MEDIUM')";
-
-/// Each source's items as one SELECT with the queue's columns, and a WHERE for its filters.
-fn source_sql(source: &str) -> (&'static str, &'static str) {
+/// Each source's items as one SELECT with the queue's columns.
+fn source_sql(source: &str) -> String {
     match source {
-        "corroborated" => (
-            "SELECT incident_id AS alert_id, timestamp AS ts, upper(severity) AS severity, '' AS rule_id, ndr_signature AS rule_name, title, \
-             concat('Host alert: ', siem_rule_description, '. Network: ', ndr_signature, if(attacker_ip != '', concat(' (other side ', attacker_ip, ')'), '')) AS description, \
-             arrayFilter(x -> x != '', [agent_name, host_ip]) AS hosts, CAST([], 'Array(String)') AS mitre, \
-             if(status = 'open', 'New', concat(upper(substring(status, 1, 1)), substring(status, 2))) AS status FROM xdr_incidents",
-            "1",
-        ),
-        "siem" => (
-            // the level is a bound value: see `fetch`
-            "SELECT id AS alert_id, timestamp AS ts, LEVEL_SEVERITY AS severity, toString(rule_id) AS rule_id, rule_description AS rule_name, \
-             rule_description AS title, full_log AS description, arrayFilter(x -> x != '', [agent_name, agent_ip]) AS hosts, \
-             arrayFilter(x -> x != '', [mitre_id]) AS mitre, 'New' AS status FROM siem_alerts",
-            "rule_level >= LEVEL",
-        ),
-        _ => (
-            "SELECT concat(community_id, '@', toString(toUnixTimestamp(timestamp))) AS alert_id, toUInt64(toUnixTimestamp(timestamp)) * 1000 AS ts, \
-             upper(toString(severity)) AS severity, '' AS rule_id, if(notEmpty(sigma_hits), sigma_hits[1], if(notEmpty(tags), tags[1], 'NDR detection')) AS rule_name, \
-             concat(if(notEmpty(sigma_hits), sigma_hits[1], if(notEmpty(tags), tags[1], 'NDR detection')), ': ', src_ip, ' -> ', dst_ip) AS title, \
-             arrayStringConcat(reasons, '; ') AS description, arrayFilter(x -> x != '', [src_ip, dst_ip]) AS hosts, CAST([], 'Array(String)') AS mitre, 'New' AS status FROM ndr_hits",
-            "1",
-        ),
+        "corroborated" => "SELECT incident_id AS alert_id, timestamp AS ts, upper(severity) AS severity, '' AS rule_id, ndr_signature AS rule_name, title,              concat('Host alert: ', siem_rule_description, '. Network: ', ndr_signature, if(attacker_ip != '', concat(' (other side ', attacker_ip, ')'), '')) AS description,              arrayFilter(x -> x != '', [agent_name, host_ip]) AS hosts, CAST([], 'Array(String)') AS mitre,              if(status = 'open', 'New', concat(upper(substring(status, 1, 1)), substring(status, 2))) AS status FROM xdr_incidents"
+            .to_string(),
+        // grouped inside, the queue's columns outside (no alias hides a column it is made from)
+        "siem" => SIEM_SQL.replace("MIN_LEVEL", &MIN_LEVEL.to_string()),
+        _ => NDR_SQL.to_string(),
     }
 }
 
+const SIEM_SQL: &str = "SELECT a_id AS alert_id, a_ts AS ts, multiIf(a_lvl >= 12, 'CRITICAL', a_lvl >= 10, 'HIGH', 'MEDIUM') AS severity, toString(a_rule) AS rule_id, a_desc AS rule_name, if(a_n > 1, concat(toString(a_n), '× ', a_desc), a_desc) AS title, a_log AS description, arrayFilter(x -> x != '', [a_agent, a_ip]) AS hosts, arrayFilter(x -> x != '', [a_mitre]) AS mitre, 'New' AS status FROM (SELECT argMax(id, timestamp) AS a_id, max(timestamp) AS a_ts, max(rule_level) AS a_lvl, rule_id AS a_rule, any(rule_description) AS a_desc, count() AS a_n, argMax(full_log, timestamp) AS a_log, agent_name AS a_agent, any(agent_ip) AS a_ip, any(mitre_id) AS a_mitre FROM siem_alerts WHERE rule_level >= MIN_LEVEL GROUP BY rule_id, agent_name, toDate(toDateTime(intDiv(timestamp, 1000))))";
+
+const NDR_SQL: &str = "SELECT concat(a_cid, '@', toString(toUnixTimestamp(a_ts))) AS alert_id, toUInt64(toUnixTimestamp(a_ts)) * 1000 AS ts, a_sev AS severity, '' AS rule_id, a_name AS rule_name, concat(if(a_n > 1, concat(toString(a_n), '× '), ''), a_name, ': ', a_src, ' -> ', a_dst) AS title, a_why AS description, arrayFilter(x -> x != '', [a_src, a_dst]) AS hosts, CAST([], 'Array(String)') AS mitre, 'New' AS status FROM (SELECT if(notEmpty(sigma_hits), sigma_hits[1], if(notEmpty(tags), tags[1], 'NDR detection')) AS a_name, src_ip AS a_src, dst_ip AS a_dst, argMax(community_id, timestamp) AS a_cid, max(timestamp) AS a_ts, if(countIf(upper(toString(severity)) = 'CRITICAL') > 0, 'CRITICAL', 'HIGH') AS a_sev, count() AS a_n, arrayStringConcat(argMax(reasons, timestamp), '; ') AS a_why FROM ndr_hits WHERE upper(toString(severity)) IN ('HIGH', 'CRITICAL') GROUP BY a_name, a_src, a_dst, toDate(timestamp))";
+
 /// One source's page (newest `depth`) and its total, with the filters.
 async fn fetch(state: &AppState, tenant: &str, source: &str, severity: Option<&str>, status: Option<&str>, depth: u32) -> Result<(Vec<Item>, u64), String> {
-    let (select, cond) = source_sql(source);
-    let select = select.replace("LEVEL_SEVERITY", LEVEL_SEVERITY);
-    let cond = cond.replace("LEVEL", &LEVEL.to_string());
+    let select = source_sql(source);
     // the source's rows with the queue's columns; the filters work on those columns
     let mut filter = String::from("1");
     if severity.is_some() {
@@ -84,7 +70,7 @@ async fn fetch(state: &AppState, tenant: &str, source: &str, severity: Option<&s
     if status.is_some() {
         filter.push_str(" AND status = ?");
     }
-    let inner = format!("SELECT * FROM ({select} WHERE {cond}) WHERE {filter}");
+    let inner = format!("SELECT * FROM ({select}) WHERE {filter}");
     let client = state.db.tenant_client(tenant);
     let bind = |mut q: clickhouse::query::Query| {
         if let Some(s) = severity {
@@ -172,9 +158,18 @@ mod tests {
     }
 
     #[test]
+    fn repeats_are_one_item_and_only_high_and_critical() {
+        let siem = source_sql("siem");
+        assert!(siem.contains("rule_level >= 10") && !siem.contains("MIN_LEVEL"));
+        assert!(siem.contains("GROUP BY rule_id, agent_name, toDate("));
+        let ndr = source_sql("ndr");
+        assert!(ndr.contains("IN ('HIGH', 'CRITICAL')") && ndr.contains("GROUP BY a_name, a_src, a_dst, toDate(timestamp)"));
+    }
+
+    #[test]
     fn every_source_has_the_queue_columns() {
         for s in ["corroborated", "siem", "ndr"] {
-            let (select, _) = source_sql(s);
+            let select = source_sql(s);
             for col in ["AS alert_id", "AS ts", "AS severity", "AS rule_id", "AS rule_name", "title", "AS description", "AS hosts", "AS mitre", "AS status"] {
                 assert!(select.contains(col), "{s}: {col}");
             }

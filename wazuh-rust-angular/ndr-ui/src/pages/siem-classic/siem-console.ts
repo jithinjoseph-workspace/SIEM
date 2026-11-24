@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, input } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -35,6 +35,9 @@ export class SiemConsole implements OnInit, OnDestroy {
   reportBusy = signal(false);
   /** Opened as a single ndr-ui page (route data `tab`): no banner, no tab bar. */
   embedded = signal<boolean>(false);
+  /** The same, placed inside another page: `<app-siem-console tab="dashboard">` (the Overview's SIEM tab). */
+  tab = input<ActiveTab | undefined>(undefined);
+  private pageTab = (): ActiveTab | undefined => this.tab() ?? this.route.snapshot.data?.['tab'];
   private subs = new Subscription();
 
   // State signals
@@ -142,7 +145,7 @@ export class SiemConsole implements OnInit, OnDestroy {
   });
 
   ngOnInit() {
-    const tab = this.route.snapshot.data?.['tab'] as ActiveTab | undefined;
+    const tab = this.pageTab();
     if (tab) {
       this.embedded.set(true);
       this.switchTab(tab);
@@ -255,7 +258,7 @@ export class SiemConsole implements OnInit, OnDestroy {
 
   switchTab(tab: ActiveTab) {
     // As a single page, links to another tab open that tab's ndr-ui page.
-    if (this.embedded() && this.route.snapshot.data?.['tab'] !== tab) {
+    if (this.embedded() && this.pageTab() !== tab) {
       this.router.navigate(['/analyst/siem-classic/console', CONSOLE_TAB_PATHS[tab] ?? tab]);
       return;
     }

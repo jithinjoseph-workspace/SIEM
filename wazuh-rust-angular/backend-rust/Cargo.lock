@@ -2894,6 +2894,7 @@ dependencies = [
  "flate2",
  "parking_lot",
  "provigil-daemon",
+ "provigil-ipc",
  "provigil-json",
  "provigil-sqlite",
  "serde_json",

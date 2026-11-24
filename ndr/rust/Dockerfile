@@ -1,15 +1,17 @@
 
 # ── Build stage ────────────────────────────────────────────────────
+# Build context: the repository root (one codebase with the SIEM; the shared crates live in
+# wazuh-rust-angular/backend-rust/crates). The repository layout is recreated under /build.
 FROM rust:1-bookworm AS builder
 
 WORKDIR /app
 
 ARG CACHEBUST=1
 
-COPY provigil-common ./provigil-common
-COPY ndr-engine      ./ndr-engine
+COPY wazuh-rust-angular/backend-rust/crates/provigil-common /build/wazuh-rust-angular/backend-rust/crates/provigil-common
+COPY ndr/rust/ndr-engine /build/ndr/rust/ndr-engine
 
-WORKDIR /app/ndr-engine
+WORKDIR /build/ndr/rust/ndr-engine
 
 RUN apt-get update && apt-get install -y \
     cmake libssl-dev pkg-config \
@@ -32,6 +34,6 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 WORKDIR /app/ndr-engine
 
-COPY --from=builder /app/ndr-engine/target/release/ndr-engine .
+COPY --from=builder /build/ndr/rust/ndr-engine/target/release/ndr-engine .
 
 CMD ["/app/ndr-engine/ndr-engine"]

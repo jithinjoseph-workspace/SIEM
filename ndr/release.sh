@@ -57,7 +57,7 @@ build_engine() {
         -t "${REGISTRY}/ndr-engine:${NEW_VERSION}" \
         -t "${REGISTRY}/ndr-engine:latest" \
         -f rust/Dockerfile \
-        ./rust || { warn "ndr-engine build failed"; return 1; }
+        .. || { warn "ndr-engine build failed"; return 1; }
     push_with_retry "${REGISTRY}/ndr-engine:${NEW_VERSION}" || { warn "ndr-engine push failed for :${NEW_VERSION}"; return 1; }
     push_with_retry "${REGISTRY}/ndr-engine:latest"          || { warn "ndr-engine push failed for :latest"; return 1; }
     ok "ndr-engine pushed → :${NEW_VERSION} and :latest"
@@ -68,8 +68,8 @@ build_auth() {
     docker build \
         -t "${REGISTRY}/provigil-auth:${NEW_VERSION}" \
         -t "${REGISTRY}/provigil-auth:latest" \
-        -f rust/auth-service/Dockerfile \
-        ./rust || { warn "provigil-auth build failed"; return 1; }
+        -f rust/docker/auth-service.Dockerfile \
+        .. || { warn "provigil-auth build failed"; return 1; }
     push_with_retry "${REGISTRY}/provigil-auth:${NEW_VERSION}" || { warn "provigil-auth push failed for :${NEW_VERSION}"; return 1; }
     push_with_retry "${REGISTRY}/provigil-auth:latest"          || { warn "provigil-auth push failed for :latest"; return 1; }
     ok "provigil-auth pushed → :${NEW_VERSION} and :latest"
@@ -131,14 +131,14 @@ fi
 log "Bumping version → $NEW_VERSION"
 sed -i "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" \
     rust/ndr-engine/Cargo.toml \
-    rust/auth-service/Cargo.toml \
-    rust/provigil-common/Cargo.toml
+    ../wazuh-rust-angular/backend-rust/crates/auth-service/Cargo.toml \
+    ../wazuh-rust-angular/backend-rust/crates/provigil-common/Cargo.toml
 printf '%s\n' "$NEW_VERSION" > VERSION
 ok "VERSION file and Cargo.toml files updated"
 
 # ── Commit version bump ────────────────────────────────────────────────────────
 log "Committing version bump..."
-git add VERSION rust/ndr-engine/Cargo.toml rust/auth-service/Cargo.toml rust/provigil-common/Cargo.toml
+git add VERSION rust/ndr-engine/Cargo.toml ../wazuh-rust-angular/backend-rust/crates/auth-service/Cargo.toml ../wazuh-rust-angular/backend-rust/crates/provigil-common/Cargo.toml
 git commit -m "$(cat <<EOF
 chore: release v${NEW_VERSION}
 

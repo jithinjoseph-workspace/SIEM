@@ -29,6 +29,15 @@ pub async fn run_common_migrations(ch: &Client) {
         run_warn(ch, name, ddl).await;
     }
 
+    migrate_tenant_rule_state(ch).await;
+    match crate::sigma_sync::normalize_community_rule_scope(ch).await {
+        Ok(count) if count > 0 => {
+            tracing::warn!("common_migrations: repaired {count} community rules to global scope");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!("common_migrations: community rule scope repair failed: {e}"),
+    }
+
     tracing::info!("common_migrations: done");
 }
 
@@ -70,6 +79,21 @@ CREATE TABLE IF NOT EXISTS ndr.tenants ON CLUSTER ndr_cluster (
     '/clickhouse/tables/{shard}/ndr/tenants', '{replica}', updated_at
 )
 ORDER BY id
+SETTINGS index_granularity = 8192"#),
+
+    // Tenant ID must be part of the sorting key. The original rules_state
+    // table keyed only by rule ID, so one tenant's override could replace
+    // another's in ReplacingMergeTree.
+    ("ndr.rules_state_tenant", r#"
+CREATE TABLE IF NOT EXISTS ndr.rules_state_tenant ON CLUSTER ndr_cluster (
+    id        String,
+    enabled   UInt8    DEFAULT 1,
+    updated   DateTime DEFAULT now(),
+    tenant_id String   DEFAULT 'default'
+) ENGINE = ReplicatedReplacingMergeTree(
+    '/clickhouse/tables/{shard}/ndr/rules_state_tenant', '{replica}', updated
+)
+ORDER BY (tenant_id, id)
 SETTINGS index_granularity = 8192"#),
 
     // ── Settings ────────────────────────────────────────────────────────────
@@ -356,6 +380,36 @@ ORDER BY (attack_type, collected_at)
 TTL collected_at + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192"#),
 ];
+
+async fn migrate_tenant_rule_state(ch: &Client) {
+    let migrated_rows = match ch
+        .query("SELECT count() FROM ndr.rules_state_tenant")
+        .fetch_one::<u64>()
+        .await
+    {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::error!("common_migrations: cannot inspect tenant rule overrides: {e}");
+            return;
+        }
+    };
+
+    if migrated_rows > 0 {
+        return;
+    }
+
+    match ch
+        .query(
+            "INSERT INTO ndr.rules_state_tenant (id, enabled, updated, tenant_id) \
+             SELECT id, enabled, updated, tenant_id FROM ndr.rules_state FINAL",
+        )
+        .execute()
+        .await
+    {
+        Ok(_) => tracing::info!("common_migrations: migrated legacy tenant rule overrides"),
+        Err(e) => tracing::error!("common_migrations: tenant rule override migration failed: {e}"),
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ALTER TABLE statements — add columns to existing tables (safe if col exists)

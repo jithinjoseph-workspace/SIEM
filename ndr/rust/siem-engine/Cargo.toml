@@ -5,7 +5,7 @@ edition = "2021"
 description = "Provigil AI XDR — SIEM engine (log ingest, OCSF normalization, correlation, AI investigation)"
 
 [dependencies]
-provigil-common = { path = "../provigil-common", features = ["kafka"] }
+provigil-common = { path = "../../../wazuh-rust-angular/backend-rust/crates/provigil-common", features = ["kafka"] }  # one copy, shared with the SIEM
 
 axum            = { version = "0.7", features = ["macros"] }
 tokio           = { version = "1",   features = ["full"] }

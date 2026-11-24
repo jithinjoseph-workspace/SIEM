@@ -205,6 +205,7 @@ impl ThreatIntel {
 
     pub fn is_malicious_ip(&self, ip: &str) -> bool {
         let Ok(addr) = IpAddr::from_str(ip) else { return false };
+        if never_an_indicator(addr) { return false; }
         if self.malicious_ips.contains(&addr) { return true; }
         if let Ok(cidrs) = self.malicious_cidrs.read() {
             if cidrs.iter().any(|net| net.contains(addr)) { return true; }
@@ -502,6 +503,27 @@ impl ThreatIntel {
     }
 }
 
+/// Public resolvers. Feeds list them by mistake, and every lookup from a client to one would be a
+/// threat hit, so they are never an indicator on their own.
+const PUBLIC_RESOLVERS: &[IpAddr] = &[
+    IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8)),
+    IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 4, 4)),
+    IpAddr::V4(std::net::Ipv4Addr::new(1, 1, 1, 1)),
+    IpAddr::V4(std::net::Ipv4Addr::new(1, 0, 0, 1)),
+    IpAddr::V4(std::net::Ipv4Addr::new(9, 9, 9, 9)),
+];
+
+/// Addresses that are never an internet threat, whatever a feed says: multicast, broadcast,
+/// private, loopback, link-local, and the public resolvers above.
+pub fn never_an_indicator(addr: IpAddr) -> bool {
+    if PUBLIC_RESOLVERS.contains(&addr) { return true; }
+    match addr {
+        IpAddr::V4(a) => a.is_multicast() || a.is_broadcast() || a.is_private()
+            || a.is_loopback() || a.is_link_local() || a.is_unspecified(),
+        IpAddr::V6(a) => a.is_multicast() || a.is_loopback() || a.is_unspecified(),
+    }
+}
+
 fn extract_host(url: &str) -> Option<String> {
     let url = url.trim_start_matches("http://").trim_start_matches("https://");
     let host = url.split('/').next()?.split(':').next()?.to_lowercase().trim().to_string();
@@ -525,5 +547,24 @@ mod tests {
 
         assert!(ti.is_malicious_ip("1.2.3.4"));
         assert!(ti.is_malicious_ip("5.6.7.8"));
+    }
+
+    #[test]
+    fn resolvers_and_non_internet_addresses_are_never_indicators() {
+        for ip in ["8.8.8.8", "8.8.4.4", "1.1.1.1", "224.0.0.251", "239.255.255.250", "192.168.1.76", "10.0.0.5", "255.255.255.255"] {
+            assert!(never_an_indicator(IpAddr::from_str(ip).unwrap()), "{ip} must never be an indicator");
+        }
+        for ip in ["162.243.103.246", "208.95.112.1", "13.107.5.93"] {
+            assert!(!never_an_indicator(IpAddr::from_str(ip).unwrap()), "{ip} is an ordinary public address");
+        }
+    }
+
+    #[test]
+    fn a_feed_entry_for_a_resolver_does_not_flag_it() {
+        let ti = ThreatIntel::new();
+        ti.malicious_ips.insert(IpAddr::from_str("8.8.8.8").unwrap());
+        ti.malicious_ips.insert(IpAddr::from_str("162.243.103.246").unwrap());
+        assert!(!ti.is_malicious_ip("8.8.8.8"));
+        assert!(ti.is_malicious_ip("162.243.103.246"));
     }
 }

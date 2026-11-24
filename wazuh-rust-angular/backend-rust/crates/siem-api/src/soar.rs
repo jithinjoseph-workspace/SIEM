@@ -326,16 +326,28 @@ impl SoarStore for Store {
         self.integrations(tenant_id).await.unwrap_or_default()
     }
 
+    /// The open case an alert may join (the shared grouping, as the NDR engine): the flow in
+    /// either direction; the same kind of alert within 7 days, or any alert on the flow within
+    /// 10 minutes for critical ones.
     async fn soar_find_open_case(
         &self,
         src: &str,
         dst: &str,
+        group: &provigil_common::soar::FlowGroup,
         tenant_id: &str,
     ) -> Option<(String, String, String, String)> {
+        let (kind, window) = match group {
+            provigil_common::soar::FlowGroup::SameKind(tag) => (tag.as_str(), "7 DAY"),
+            provigil_common::soar::FlowGroup::SameFlow => ("", "10 MINUTE"),
+        };
         self.db(tenant_id)
-            .query("SELECT id, case_number, severity, priority FROM soar_cases FINAL WHERE src_ip = ? AND dst_ip = ? AND status NOT IN ('Closed', 'Resolved', 'False Positive') AND created_at >= now() - INTERVAL 7 DAY ORDER BY created_at DESC LIMIT 1")
+            .query(&format!("SELECT id, case_number, severity, priority FROM soar_cases FINAL WHERE ((src_ip = ? AND dst_ip = ?) OR (src_ip = ? AND dst_ip = ?)) AND (? = '' OR has(tags, ?)) AND status NOT IN ('Closed', 'Resolved', 'False Positive') AND created_at >= now() - INTERVAL {window} ORDER BY created_at DESC LIMIT 1"))
             .bind(src)
             .bind(dst)
+            .bind(dst)
+            .bind(src)
+            .bind(kind)
+            .bind(kind)
             .fetch_one::<(String, String, String, String)>()
             .await
             .ok()
@@ -430,6 +442,19 @@ impl SoarStore for Store {
         _limit: usize,
     ) -> Vec<Value> {
         Vec::new()
+    }
+
+    /// The SIEM keeps no evidence bundles (no packet captures, no files): the case holds the details.
+    async fn soar_save_evidence_bundle(
+        &self,
+        _tenant_id: &str,
+        _community_id: &str,
+        _content: &[u8],
+        _src_ip: &str,
+        _dst_ip: &str,
+        _severity: &str,
+    ) -> anyhow::Result<String> {
+        Ok(String::new())
     }
 
     /// No NDR flow events in the SIEM (`collect_evidence` records the case without them).

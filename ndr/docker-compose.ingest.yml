@@ -13,7 +13,7 @@
 # Keep the existing ndr-engine-N: they still read Kafka, run the jobs and serve the UI (role "all").
 
 x-ndr-ingest: &ndr-ingest
-  build: ./rust
+  build: { context: .., dockerfile: ndr/rust/Dockerfile }
   restart: unless-stopped
   mem_limit: 1024m
   env_file:

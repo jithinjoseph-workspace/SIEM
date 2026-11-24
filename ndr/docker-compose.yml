@@ -144,8 +144,8 @@ services:
   # ── Auth service — identity microservice (login, JWT, MFA, refresh, logout) ─
   provigil-auth:
     build:
-      context: ./rust
-      dockerfile: auth-service/Dockerfile
+      context: ..
+      dockerfile: ndr/rust/docker/auth-service.Dockerfile
     container_name: provigil-auth
     restart: unless-stopped
     mem_limit: 256m
@@ -153,11 +153,11 @@ services:
       - ndr-internal
       - default
     volumes:
-      # create_tenant() (rust/auth-service/src/db.rs) reads this to build each
-      # new tenant's dedicated ndr_<tenant_id> database schema. The Dockerfile
-      # only ships the compiled binary and init.sql lives outside the build
-      # context (repo root, not ./rust), so it has to come in as a runtime
-      # mount, same as clickhouse-init below does for the global schema.
+      # create_tenant() (wazuh-rust-angular/backend-rust/crates/auth-service/src/db.rs,
+      # the one sign-in service shared with the SIEM) reads this to build each new
+      # tenant's dedicated ndr_<tenant_id> database schema. The image only ships the
+      # compiled binary, so init.sql comes in as a runtime mount, same as
+      # clickhouse-init below does for the global schema.
       - ${INSTALL_DIR}/config/clickhouse/init.sql:/app/config/clickhouse/init.sql:ro
     environment:
       - JWT_SECRET=${JWT_SECRET}
@@ -187,8 +187,8 @@ services:
   # ── SIEM engine — optional, only for NDR+SIEM customers ─────────────────
   siem-engine-1:
     build:
-      context: ./rust
-      dockerfile: siem-engine/Dockerfile
+      context: ..
+      dockerfile: ndr/rust/siem-engine/Dockerfile
     container_name: siem-engine-1
     profiles: ["siem"]
     restart: unless-stopped
@@ -229,7 +229,7 @@ services:
       start_period: 15s
 
   ndr-engine-1:
-    build: ./rust
+    build: { context: .., dockerfile: ndr/rust/Dockerfile }
     container_name: ndr-engine-1
     hostname: ndr-engine-1
     restart: unless-stopped
@@ -302,7 +302,7 @@ services:
         condition: service_completed_successfully
 
   ndr-engine-2:
-    build: ./rust
+    build: { context: .., dockerfile: ndr/rust/Dockerfile }
     container_name: ndr-engine-2
     hostname: ndr-engine-2
     restart: unless-stopped
@@ -375,7 +375,7 @@ services:
         condition: service_completed_successfully
 
   ndr-engine-3:
-    build: ./rust
+    build: { context: .., dockerfile: ndr/rust/Dockerfile }
     container_name: ndr-engine-3
     hostname: ndr-engine-3
     restart: unless-stopped

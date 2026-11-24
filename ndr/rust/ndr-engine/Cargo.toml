@@ -10,7 +10,7 @@ default = ["soar"]
 soar    = ["provigil-common/soar"]
 
 [dependencies]
-provigil-common = { path = "../provigil-common", features = ["kafka"] }
+provigil-common = { path = "../../../wazuh-rust-angular/backend-rust/crates/provigil-common", features = ["kafka"] }  # one copy, shared with the SIEM
 axum            = { version = "0.7", features = ["ws", "multipart"] }
 tokio           = { version = "1",   features = ["full"] }
 serde           = { version = "1",   features = ["derive"] }

@@ -9,6 +9,13 @@ use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
 use reqwest::Client;
 
+/// Whether `block_ip` actually blocked anything. Recording an "active" block and reporting
+/// success when neither RST injection nor a firewall rule took effect would tell an analyst a
+/// host is contained when nothing stops it reaching the network.
+fn block_actually_happened(rst_injected: bool, firewall_type: &str, firewall_rule_id: &str) -> bool {
+    rst_injected || (firewall_type != "none" && !firewall_rule_id.is_empty())
+}
+
 fn is_routable(ip: &str) -> bool {
     match ip.parse::<IpAddr>() {
         Ok(addr) => !addr.is_loopback() && match addr {
@@ -21,6 +28,18 @@ fn is_routable(ip: &str) -> bool {
 }
 
 #[allow(unused_assignments)]
+/// The open case an alert may join, under the grouping rules (see `group_for`).
+async fn find_joinable_case(
+    store: &dyn SoarStore,
+    src: &str,
+    dst: &str,
+    ctx: &SoarContext,
+    tenant_id: &str,
+) -> Option<(String, String, String, String)> {
+    let group = crate::soar::group_for(&ctx.severity, ctx.is_malicious, &ctx.tags)?;
+    store.soar_find_open_case(src, dst, &group, tenant_id).await
+}
+
 pub async fn execute_action(
     store: &dyn SoarStore,
     pb: &SoarNativePlaybook,
@@ -316,7 +335,7 @@ pub async fn execute_action(
             };
 
             if let Some((existing_id, existing_num, existing_sev, _existing_pri)) =
-                store.soar_find_open_case(src, dst, &pb.tenant_id).await
+                find_joinable_case(store, src, dst, ctx, &pb.tenant_id).await
             {
                 let comment = format!(
                     "[AUTO] {} alert corroborated: {} → {} | Score: {}/100 | Tags: {} | CID: {}",
@@ -402,6 +421,21 @@ pub async fn execute_action(
                 "ndr_events": ch_events,
             });
 
+            // Persisted as a real evidence bundle — visible on the Evidence & Forensics page like any
+            // other bundle, not only as text inside a case comment or description. Best-effort: a
+            // failure here does not stop the case from being created or joined below.
+            let bundle_note = match store.soar_save_evidence_bundle(
+                &pb.tenant_id, cid, evidence.to_string().as_bytes(), src, dst, ctx.severity.as_str(),
+            ).await {
+                // an empty id: this store keeps no bundles (the SIEM); the case holds the details
+                Ok(bundle_id) if bundle_id.is_empty() => String::new(),
+                Ok(bundle_id) => format!(" | bundle {}", &bundle_id[..8.min(bundle_id.len())]),
+                Err(e) => {
+                    tracing::warn!("collect_evidence: bundle save failed for {}: {}", cid, e);
+                    String::new()
+                }
+            };
+
             let sev_rank = |s: &str| match s { "CRITICAL" => 4, "HIGH" => 3, "MEDIUM" => 2, "LOW" => 1, _ => 0 };
             let priority = match ctx.severity.as_str() {
                 "CRITICAL" => "P1", "HIGH" => "P2", "MEDIUM" => "P3", _ => "P4",
@@ -409,11 +443,11 @@ pub async fn execute_action(
             let event_count = ch_events.as_array().map(|a| a.len()).unwrap_or(0);
 
             if let Some((existing_id, existing_num, existing_sev, _existing_pri)) =
-                store.soar_find_open_case(src, dst, &pb.tenant_id).await
+                find_joinable_case(store, src, dst, ctx, &pb.tenant_id).await
             {
                 let comment = format!(
-                    "[AUTO] Evidence collected: {} PCAP sessions, {} NDR events | {} alert | CID: {}",
-                    pcap_count, event_count, ctx.severity, cid
+                    "[AUTO] Evidence collected: {} PCAP sessions, {} NDR events | {} alert | CID: {}{}",
+                    pcap_count, event_count, ctx.severity, cid, bundle_note
                 );
                 store.soar_add_comment(&existing_id, "SOAR Engine", &comment, &pb.tenant_id).await;
                 if sev_rank(ctx.severity.as_str()) > sev_rank(&existing_sev) {
@@ -421,8 +455,8 @@ pub async fn execute_action(
                 }
                 status = "success".to_string();
                 detail = format!(
-                    "Evidence ({} PCAP, {} events) appended to case {}",
-                    pcap_count, event_count, existing_num
+                    "Evidence ({} PCAP, {} events) appended to case {}{}",
+                    pcap_count, event_count, existing_num, bundle_note
                 );
             } else {
                 let case_id = Uuid::new_v4().to_string();
@@ -438,8 +472,8 @@ pub async fn execute_action(
                     Ok(_) => {
                         status = "success".to_string();
                         detail = format!(
-                            "Evidence collected: {} PCAP sessions, {} NDR events → Case {}",
-                            pcap_count, event_count, case_number
+                            "Evidence collected: {} PCAP sessions, {} NDR events → Case {}{}",
+                            pcap_count, event_count, case_number, bundle_note
                         );
                     }
                     Err(e) => {
@@ -501,38 +535,47 @@ pub async fn execute_action(
                     }
                 };
 
-                let block_id = Uuid::new_v4().to_string();
-                let expires_stored = if expires_at.contains('T') {
-                    expires_at.replace('T', " ").trim_end_matches('Z').to_string()
+                // A block is only real if RST injection or a firewall rule actually took effect.
+                // Recording an "active" block and reporting success when neither happened would
+                // tell an analyst this host is blocked when nothing stops it reaching the network.
+                let blocked = block_actually_happened(rst_ok, &fw_type, &fw_rule_id);
+                if !blocked {
+                    detail = "block_ip did not block anything — the RST-injection agent was \
+                        unreachable and no firewall integration is configured".to_string();
                 } else {
-                    Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
-                };
-                let block = ActiveBlock {
-                    id: block_id.clone(),
-                    src_ip: src_ip.to_string(), src_port,
-                    dst_ip: dst_ip.to_string(), dst_port,
-                    community_id: ctx.community_id.clone(),
-                    triggered_by: pb.name.clone(),
-                    sensor_id: String::new(),
-                    firewall_type: fw_type.clone(),
-                    firewall_rule_id: fw_rule_id.clone(),
-                    rst_injected: if rst_ok { 1 } else { 0 },
-                    duration_hours: duration_hours as u16,
-                    expires_at: expires_stored,
-                    status: "active".to_string(),
-                    reason: format!("Playbook: {}", pb.name),
-                    tenant_id: pb.tenant_id.clone(),
-                    created_at: Utc::now().to_rfc3339(),
-                };
-                let _ = store.soar_insert_block(&block).await;
+                    let block_id = Uuid::new_v4().to_string();
+                    let expires_stored = if expires_at.contains('T') {
+                        expires_at.replace('T', " ").trim_end_matches('Z').to_string()
+                    } else {
+                        Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+                    };
+                    let block = ActiveBlock {
+                        id: block_id.clone(),
+                        src_ip: src_ip.to_string(), src_port,
+                        dst_ip: dst_ip.to_string(), dst_port,
+                        community_id: ctx.community_id.clone(),
+                        triggered_by: pb.name.clone(),
+                        sensor_id: String::new(),
+                        firewall_type: fw_type.clone(),
+                        firewall_rule_id: fw_rule_id.clone(),
+                        rst_injected: if rst_ok { 1 } else { 0 },
+                        duration_hours: duration_hours as u16,
+                        expires_at: expires_stored,
+                        status: "active".to_string(),
+                        reason: format!("Playbook: {}", pb.name),
+                        tenant_id: pb.tenant_id.clone(),
+                        created_at: Utc::now().to_rfc3339(),
+                    };
+                    let _ = store.soar_insert_block(&block).await;
 
-                status = "success".to_string();
-                detail = format!(
-                    "Block #{} | RST: {} | Firewall: {} | rule: {} | expires: {}",
-                    &block_id[..8], rst_ok, fw_type,
-                    if fw_rule_id.is_empty() { "none" } else { &fw_rule_id },
-                    expires_at
-                );
+                    status = "success".to_string();
+                    detail = format!(
+                        "Block #{} | RST: {} | Firewall: {} | rule: {} | expires: {}",
+                        &block_id[..8], rst_ok, fw_type,
+                        if fw_rule_id.is_empty() { "none" } else { &fw_rule_id },
+                        expires_at
+                    );
+                }
             }
         }
 
@@ -594,4 +637,22 @@ async fn send_syslog(ic: &Value, ctx: &SoarContext) -> Result<String, String> {
     let sock = tokio::net::UdpSocket::bind(if host.contains(':') { "[::]:0" } else { "0.0.0.0:0" }).await.map_err(|e| e.to_string())?;
     sock.send_to(line.as_bytes(), (host, port)).await.map_err(|e| format!("send to {host}:{port}: {e}"))?;
     Ok(format!("Syslog sent to {host}:{port}"))
+}
+
+#[cfg(test)]
+mod block_ip_tests {
+    use super::block_actually_happened;
+
+    #[test]
+    fn nothing_blocking_is_never_reported_as_a_block() {
+        assert!(!block_actually_happened(false, "none", ""), "the agent was unreachable and no firewall is configured — nothing happened");
+        assert!(!block_actually_happened(false, "pfsense", ""), "a firewall type with no rule id did not actually apply a rule");
+    }
+
+    #[test]
+    fn either_a_real_rst_or_a_real_firewall_rule_counts() {
+        assert!(block_actually_happened(true, "none", ""), "RST injection alone is a real block");
+        assert!(block_actually_happened(false, "pfsense", "rule-123"), "a firewall rule alone is a real block");
+        assert!(block_actually_happened(true, "pfsense", "rule-123"), "both together are still a block");
+    }
 }

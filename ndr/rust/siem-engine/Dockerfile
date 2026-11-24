@@ -1,11 +1,10 @@
-# Build context: ./rust  (one level above this file)
+# Build context: the repository root (one codebase with the SIEM; the shared crates live in
+# wazuh-rust-angular/backend-rust/crates). The repository layout is recreated under /build.
 FROM rust:1-bookworm AS builder
-WORKDIR /app
+COPY wazuh-rust-angular/backend-rust/crates/provigil-common /build/wazuh-rust-angular/backend-rust/crates/provigil-common
+COPY ndr/rust/siem-engine /build/ndr/rust/siem-engine
 
-COPY provigil-common ./provigil-common
-COPY siem-engine     ./siem-engine
-
-WORKDIR /app/siem-engine
+WORKDIR /build/ndr/rust/siem-engine
 
 RUN apt-get update && apt-get install -y \
     pkg-config libssl-dev build-essential cmake \
@@ -16,6 +15,6 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates wget libssl3 libsasl2-2 libcurl4 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/siem-engine/target/release/siem-engine /usr/local/bin/siem-engine
+COPY --from=builder /build/ndr/rust/siem-engine/target/release/siem-engine /usr/local/bin/siem-engine
 EXPOSE 3002
 CMD ["siem-engine"]

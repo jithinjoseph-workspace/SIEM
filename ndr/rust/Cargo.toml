@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "ndr-engine",
-    "auth-service",
     "siem-engine",
-    "provigil-common",
 ]
 resolver = "2"

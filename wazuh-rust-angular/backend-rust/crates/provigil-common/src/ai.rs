@@ -62,13 +62,62 @@ pub async fn generate_simple(ch: &Client, use_case: &str, system: &str, prompt: 
         warn!("ai_providers: no providers configured for use_case={use_case} — add one in Settings > AI Configuration");
         return String::new();
     }
-    for p in &providers {
+    generate_with_providers(&providers, system, prompt).await
+}
+
+/// Same as `generate_simple` for a provider list you already have (priority order, first non-empty answer wins).
+pub async fn generate_with_providers(providers: &[AiProvider], system: &str, prompt: &str) -> String {
+    for p in providers {
         if p.api_key.is_empty() { continue; }
         let result = call_simple(p, system, prompt).await;
         if !result.is_empty() { return result; }
         warn!("ai_providers: '{}' returned empty, trying next", p.name);
     }
     String::new()
+}
+
+// ── Embeddings (for RAG / similarity search) ───────────────────────────────────
+// Only an "openai" provider_type row can serve this: Anthropic has no embeddings endpoint,
+// and the provider table has no entries of any other type that do either. `p.model` holds a
+// CHAT model (e.g. "gpt-4o-mini") for that same row, so it is never reused here — the
+// embedding model is fixed to a known-good one, not read from provider config.
+const EMBEDDING_MODEL: &str = "text-embedding-3-small";
+pub const EMBEDDING_DIMS: usize = 1536;
+
+/// First configured OpenAI-compatible provider's embedding of `text`, or `None` when no such
+/// provider is configured or the call fails. Tries providers in priority order like `generate_simple`.
+pub async fn embed_text(ch: &Client, text: &str) -> Option<Vec<f32>> {
+    let providers = get_ai_providers(ch, "embeddings").await;
+    embed_with_providers(&providers, text).await
+}
+
+/// Same as `embed_text` for a provider list already in hand.
+pub async fn embed_with_providers(providers: &[AiProvider], text: &str) -> Option<Vec<f32>> {
+    for p in providers {
+        if p.api_key.is_empty() || p.provider_type != "openai" { continue; }
+        match call_embeddings(p, text).await {
+            Some(v) => return Some(v),
+            None => warn!("ai_providers: embeddings call to '{}' failed, trying next", p.name),
+        }
+    }
+    None
+}
+
+async fn call_embeddings(p: &AiProvider, text: &str) -> Option<Vec<f32>> {
+    let base = if p.base_url.is_empty() { "https://api.openai.com".to_string() }
+               else { p.base_url.trim_end_matches('/').to_string() };
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().ok()?;
+    let resp = http.post(format!("{base}/v1/embeddings"))
+        .bearer_auth(&p.api_key)
+        .json(&serde_json::json!({ "model": EMBEDDING_MODEL, "input": text }))
+        .send().await.ok()?;
+    if !resp.status().is_success() {
+        warn!("ai_providers: embeddings HTTP {} from '{}'", resp.status(), p.name);
+        return None;
+    }
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let arr = data["data"][0]["embedding"].as_array()?;
+    Some(arr.iter().filter_map(|v| v.as_f64()).map(|v| v as f32).collect())
 }
 
 // ── DB load ───────────────────────────────────────────────────────────────────
@@ -175,4 +224,35 @@ async fn call_anthropic(p: &AiProvider, system: &str, prompt: &str) -> String {
     };
 
     data["content"][0]["text"].as_str().unwrap_or("").trim().to_string()
+}
+
+#[cfg(test)]
+mod embedding_tests {
+    use super::*;
+
+    // Against the real, already-configured provider table (this project's local ClickHouse
+    // has a working "OpenAI" row — see ndr.ai_providers):
+    //   CLICKHOUSE_URL=... CLICKHOUSE_USER=... CLICKHOUSE_PASSWORD=... \
+    //   cargo test -p provigil-common embed_text_against_the_real -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn embed_text_against_the_real_configured_provider() {
+        let url  = std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://127.0.0.1:8123".into());
+        let user = std::env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".into());
+        let pass = std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default();
+        let ch = Client::default().with_url(url).with_user(user).with_password(pass);
+
+        let v = embed_text(&ch, "192.168.1.76 made a suspicious DNS lookup to a known-bad domain")
+            .await.expect("a real embeddings-capable provider is configured for this project");
+        assert_eq!(v.len(), EMBEDDING_DIMS, "text-embedding-3-small is a {EMBEDDING_DIMS}-dim model");
+        assert!(v.iter().any(|&x| x != 0.0), "not a zero vector");
+
+        // same text, called twice, must be identical (deterministic embedding, not random)
+        let v2 = embed_text(&ch, "192.168.1.76 made a suspicious DNS lookup to a known-bad domain").await.unwrap();
+        assert_eq!(v, v2);
+
+        // a different sentence must produce a different vector
+        let v3 = embed_text(&ch, "completely unrelated text about cooking pasta").await.unwrap();
+        assert_ne!(v, v3);
+    }
 }

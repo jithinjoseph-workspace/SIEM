@@ -15,6 +15,9 @@
   <nav class="nav-list">
     <ng-container *ngFor="let group of navGroups; trackBy: trackGroup">
 
+      <!-- Module heading (NDR, SIEM) above the module's first group -->
+      <div class="nav-product" *ngIf="group.product">{{ group.product }}</div>
+
       <!-- Collapsible section header -->
       <button class="nav-section"
               [class.is-collapsed]="group.collapsed"

@@ -1,94 +1,3 @@
-/* ── Unified KPI strip ──────────────────────────────────────────────────── */
-.unified-kpi-strip {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 14px 24px;
-  margin-bottom: 16px;
-  overflow-x: auto;
-}
-.ukpi-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 24px;
-  min-width: 110px;
-}
-.ukpi-card:first-child { padding-left: 0; }
-.ukpi-divider {
-  width: 1px;
-  height: 36px;
-  background: rgba(255,255,255,0.08);
-  flex-shrink: 0;
-}
-.ukpi-label {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #64748b;
-}
-.ukpi-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #e2e8f0;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-.ukpi-sub {
-  font-size: 18px;
-  color: #475569;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.ukpi-warn .ukpi-value { color: #f97316; }
-.ukpi-sev {
-  font-size: 14px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-}
-.ukpi-crit { background: rgba(239,68,68,0.15); color: #ef4444; }
-.ukpi-high { background: rgba(249,115,22,0.15); color: #f97316; }
-
-/* ── Module tab switcher (NDR / SIEM unified) ──────────────────────────── */
-.module-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 24px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 4px;
-  width: fit-content;
-}
-.module-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 20px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #64748b;
-  font-size: 18px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  letter-spacing: 0.02em;
-}
-.module-tab:hover { color: #94a3b8; background: rgba(255,255,255,0.04); }
-.module-tab.active {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-  border-color: rgba(34, 197, 94, 0.25);
-}
-.tab-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
 .dashboard-shell {
   min-height: 100%;
@@ -2512,4 +2421,18 @@
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+/* NDR / SIEM part headings on the one Overview page */
+.module-heading {
+  margin: 28px 0 14px;
+  padding: 8px 14px;
+  border-left: 3px solid rgba(34, 197, 94, 0.8);
+  background: rgba(34, 197, 94, 0.08);
+  border-radius: 6px;
+  color: #d6f5d6;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }

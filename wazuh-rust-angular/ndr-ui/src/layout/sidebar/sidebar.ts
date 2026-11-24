@@ -25,6 +25,8 @@ interface NavGroup {
   section: string;
   collapsed: boolean;
   items: NavItem[];
+  /** The module heading shown above the module's first group (NDR, SIEM) when both are licensed. */
+  product?: string;
 }
 
 @Component({
@@ -79,10 +81,11 @@ export class Sidebar implements OnInit, OnDestroy {
     const hasNdr = this.auth.hasFeature('ndr');
 
     const overviewItems: NavItem[] = [];
-    // Overview: a tab per licensed module (NDR's overview, SIEM's overview); SIEM-only clients
-    // keep the SIEM menu's own Overview
+    // Overview: one page, NDR's overview then the SIEM overview (each when licensed); a SIEM-only
+    // client's Overview is the SIEM overview page
     const overviewHasSiem = this.auth.hasFeature('siem') && has('siem-dashboard');
     if (hasNdr && (has('dashboard') || overviewHasSiem)) overviewItems.push({ label: 'Overview', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
+    else if (overviewHasSiem) overviewItems.push({ label: 'Overview', route: '/analyst/siem-classic/console/overview', icon: LayoutDashboard, permission: 'siem-dashboard' });
 
     const threatItems: NavItem[] = [];
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alerts',       route: '/analyst/alerts',     icon: Bell,    permission: 'alerts' });
@@ -124,8 +127,6 @@ export class Sidebar implements OnInit, OnDestroy {
     const byModule = (i: NavItem) => (aiOn || !AI_PAGES.includes(i.route)) && (intelOn || !INTEL_PAGES.includes(i.route));
     const siemGroup = (items: NavItem[]) => hasSiem ? items.filter(i => has(i.permission!) && byModule(i)) : [];
     const monitorItems = siemGroup([
-      // with NDR too, the SIEM overview is the Overview page's SIEM tab
-      ...(overviewItems.length ? [] : [{ label: 'Overview', route: '/analyst/siem-classic/console/overview', icon: LayoutDashboard, permission: 'siem-dashboard' }]),
       { label: 'Alerts',              route: '/analyst/siem-classic/console/alerts',    icon: Bell,        permission: 'siem-alerts' },
       { label: 'Alert Triage',        route: '/analyst/siem-triage',                    icon: ListFilter,  permission: 'siem-alerts' },
       { label: 'Telemetry',           route: '/analyst/siem-classic/console/telemetry', icon: ScrollText,  permission: 'siem-logs' },
@@ -167,25 +168,36 @@ export class Sidebar implements OnInit, OnDestroy {
       { label: 'AI Oversight',        route: '/analyst/siem-ai-oversight',  icon: Scale,     permission: 'siem-alerts' },
     ]).filter(() => aiOn);
 
-    // XDR Correlated Incidents — available when both NDR & SIEM are enabled
+    // XDR incidents (a host alert and an NDR detection on the same host): with both modules only
     if (hasNdr && hasSiem && has('alerts')) {
-      threatItems.unshift({ label: 'XDR Incidents', route: '/xdr/alerts', icon: Shield });
+      overviewItems.push({ label: 'XDR Incidents', route: '/xdr/alerts', icon: Shield });
     }
 
+    // Overview first, then every NDR page, then every SIEM page; a module heading above each
+    // module's groups when the client has both
+    const group = (section: string, items: NavItem[]): NavGroup[] => items.length ? [{ section, collapsed: false, items }] : [];
+    const product = (name: string, groups: NavGroup[]): NavGroup[] => {
+      if (hasNdr && hasSiem && groups.length) groups[0].product = name;
+      return groups;
+    };
     this.navGroups = [
-      ...(overviewItems.length  ? [{ section: 'OVERVIEW',  collapsed: false, items: overviewItems  }] : []),
-      ...(threatItems.length    ? [{ section: 'THREATS',   collapsed: false, items: threatItems    }] : []),
-      ...(monitorItems.length   ? [{ section: 'MONITOR', collapsed: false, items: monitorItems }] : []),
-      ...(respondItems.length   ? [{ section: 'INVESTIGATE & RESPOND', collapsed: false, items: respondItems }] : []),
-      ...(postureItems.length   ? [{ section: 'HOSTS & POSTURE', collapsed: false, items: postureItems }] : []),
-      ...(detectionItems.length ? [{ section: 'DETECTION', collapsed: false, items: detectionItems }] : []),
-      ...(intelSiemItems.length ? [{ section: 'THREAT INTEL', collapsed: false, items: intelSiemItems }] : []),
-      ...(oversightItems.length ? [{ section: 'AI OVERSIGHT', collapsed: false, items: oversightItems }] : []),
-      ...(networkItems.length   ? [{ section: 'NETWORK',   collapsed: false, items: networkItems   }] : []),
-      ...(enforceItems.length   ? [{ section: 'ENFORCE',   collapsed: false, items: enforceItems   }] : []),
-      ...(systemItems.length    ? [{ section: 'SYSTEM',    collapsed: false, items: systemItems    }] : []),
-      ...(responseItems.length  ? [{ section: 'RESPONSE',  collapsed: false, items: responseItems  }] : []),
-      ...(intelItems.length     ? [{ section: 'INTEL',     collapsed: false, items: intelItems     }] : []),
+      ...group('OVERVIEW', overviewItems),
+      ...product('NDR', [
+        ...group('THREATS', threatItems),
+        ...group('NETWORK', networkItems),
+        ...group('ENFORCE', enforceItems),
+        ...group('RESPONSE', responseItems),
+        ...group('INTEL', intelItems),
+        ...group('SYSTEM', systemItems),
+      ]),
+      ...product('SIEM', [
+        ...group('MONITOR', monitorItems),
+        ...group('INVESTIGATE & RESPOND', respondItems),
+        ...group('HOSTS & POSTURE', postureItems),
+        ...group('DETECTION', detectionItems),
+        ...group('THREAT INTEL', intelSiemItems),
+        ...group('AI OVERSIGHT', oversightItems),
+      ]),
     ];
 
     // Restore any previously collapsed groups so navigation doesn't reset them

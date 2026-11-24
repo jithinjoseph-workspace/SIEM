@@ -608,6 +608,18 @@ export class Tenants implements OnInit, OnDestroy {
     });
   }
 
+  /** The licence file the Windows MSI reads (licence.jwt next to it); the Linux zip has it inside. */
+  downloadLicence(token?: string) {
+    const useToken = token ?? this.generatedToken;
+    if (!useToken) return;
+    const url = URL.createObjectURL(new Blob([useToken.trim() + '\n'], { type: 'application/jwt' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'licence.jwt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   copyInstallPackage(token?: string, license?: any) {
     const useToken = token ?? this.generatedToken;
     const useExpires = license?.expires_at

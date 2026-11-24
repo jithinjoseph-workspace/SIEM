@@ -89,7 +89,6 @@ export class Dashboard implements OnInit, OnDestroy {
 
   hasNdr  = false;
   hasSiem = false;
-  activeTab = signal<'ndr' | 'siem'>('ndr');
 
   constructor(
     private api: Api,
@@ -133,7 +132,7 @@ export class Dashboard implements OnInit, OnDestroy {
 
     // Everything below feeds the NDR tab, from the NDR engine; a SIEM-only client has no NDR tab
     // (its SIEM tab is the SIEM overview, <app-siem-console>, which loads its own data).
-    if (!this.hasNdr) { this.activeTab.set('siem'); return; }
+    if (!this.hasNdr) return;
 
     // Kick off the single background fetch loop in the service.
     // /api/stats is now called ONCE every 30s — result shared with stat cards.

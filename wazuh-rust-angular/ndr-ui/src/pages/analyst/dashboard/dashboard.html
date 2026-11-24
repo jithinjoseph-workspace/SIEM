@@ -1,14 +1,13 @@
-<!-- Overview: one tab per licensed module (NDR, SIEM); each tab is that module's own overview -->
+<!-- Overview: one page, NDR's overview then the SIEM overview page itself (each when licensed) -->
 <section class="dashboard-shell" *ngIf="hasNdr || hasSiem">
   <div class="dashboard-header">
     <div>
       <div class="eyebrow">Security Operations Center</div>
       <h2>Overview</h2>
-      <p *ngIf="activeTab() === 'ndr'">Network telemetry, detections and source activity.</p>
-      <p *ngIf="activeTab() === 'siem'">Endpoint and log telemetry, alerts and agents.</p>
+      <p>{{ hasNdr && hasSiem ? 'Network (NDR) and endpoints and logs (SIEM).' : hasNdr ? 'Network telemetry, detections and source activity.' : 'Endpoint and log telemetry, alerts and agents.' }}</p>
     </div>
 
-    <div class="dashboard-actions" *ngIf="activeTab() === 'ndr'">
+    <div class="dashboard-actions" *ngIf="hasNdr">
       <div class="export-menu">
         <button class="export-trigger">
           <svg class="export-trigger-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -61,19 +60,8 @@
       </button>
     </div>
   </div>
-  <!-- Module tabs — only when both NDR and SIEM are licensed -->
-  <div class="module-tabs" *ngIf="hasNdr && hasSiem">
-    <button class="module-tab" [class.active]="activeTab() === 'ndr'" (click)="activeTab.set('ndr')">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
-      NDR
-    </button>
-    <button class="module-tab" [class.active]="activeTab() === 'siem'" (click)="activeTab.set('siem')">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
-      SIEM
-    </button>
-  </div>
-
-  <div class="status-strip" *ngIf="activeTab() === 'ndr'">
+  <div class="module-heading" *ngIf="hasNdr && hasSiem">NDR · Network</div>
+  <div class="status-strip" *ngIf="hasNdr">
     <div>
       <span class="status-dot"></span>
       WebSocket telemetry active
@@ -83,7 +71,7 @@
   </div>
 
   <!-- NDR content — hidden when SIEM tab active -->
-  <ng-container *ngIf="hasNdr && activeTab() === 'ndr'">
+  <ng-container *ngIf="hasNdr">
 
   <!-- Threat Prediction Banner -->
   <div *ngIf="activePredictions().length > 0" class="threat-prediction-banner" (click)="openPredictionModal(activePredictions()[0])">
@@ -564,7 +552,10 @@
 
   </ng-container><!-- /NDR content -->
 
-  <!-- SIEM tab: the SIEM overview page itself -->
-  <app-siem-console *ngIf="hasSiem && activeTab() === 'siem'" tab="dashboard"></app-siem-console>
+  <!-- SIEM: the SIEM overview page itself -->
+  <ng-container *ngIf="hasSiem">
+    <div class="module-heading" *ngIf="hasNdr">SIEM · Endpoints &amp; logs</div>
+    <app-siem-console tab="dashboard"></app-siem-console>
+  </ng-container>
 
 </section>

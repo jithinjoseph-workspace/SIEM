@@ -280,10 +280,10 @@
           <!-- License Token Generator -->
           <button *ngIf="currentUser?.role === 'super_admin'"
             class="tnt-chip-btn"
-            type="button" title="Generate license token for on-premise install"
+            type="button" title="Licence and installer downloads for an on-premise install"
             (click)="openLicense(tenant)">
             <lucide-icon [name]="ShieldIcon" class="w-3.5 h-3.5 text-cyan-400"></lucide-icon>
-            <span>License</span>
+            <span>Licence &amp; installer</span>
           </button>
 
           <!-- Edit Tenant -->
@@ -577,16 +577,19 @@
 
       <!-- Install package block -->
       <div style="margin-top:1rem;padding:1rem;background:var(--surface-2,#0f172a);border:1px solid var(--border,#1e293b);border-radius:8px;">
-        <p style="font-size:0.75rem;font-weight:600;opacity:0.7;margin:0 0 0.75rem;letter-spacing:0.05em;text-transform:uppercase;">Send to Client</p>
+        <p style="font-size:0.75rem;font-weight:600;opacity:0.7;margin:0 0 0.75rem;letter-spacing:0.05em;text-transform:uppercase;">Downloads for the client</p>
 
-        <div style="font-size:0.78rem;margin-bottom:0.5rem;">
-          <span style="opacity:0.5;">Step 1 —</span> <strong>Download installer</strong> below and send the zip to the client. On each Ubuntu PC they unzip it and run:
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          <button class="primary-action" type="button" (click)="downloadInstaller()">Installer for Linux (.zip)</button>
+          <button class="secondary-action" type="button" (click)="downloadLicence()">Licence file (licence.jwt)</button>
         </div>
-        <pre style="font-family:monospace;font-size:0.72rem;background:var(--surface-3,#1e293b);padding:0.6rem 0.8rem;border-radius:6px;margin:0 0 0.75rem;white-space:pre-wrap;word-break:break-all;">sudo bash install.sh</pre>
-        <div style="font-size:0.72rem;opacity:0.6;margin-bottom:0.75rem;">It asks what the PC is (all-in-one, master, data lake, AI node, NDR sensor) and installs only the licensed modules. For three PCs: data lake first, then AI node, then master.</div>
+        <div style="font-size:0.78rem;margin-bottom:0.4rem;"><strong>Linux (Ubuntu):</strong> send the zip; on each PC the client unzips it and runs</div>
+        <pre style="font-family:monospace;font-size:0.72rem;background:var(--surface-3,#1e293b);padding:0.6rem 0.8rem;border-radius:6px;margin:0 0 0.5rem;white-space:pre-wrap;word-break:break-all;">sudo bash install.sh</pre>
+        <div style="font-size:0.72rem;opacity:0.6;margin-bottom:0.75rem;">The licence is inside the zip. It asks what the PC is (all-in-one, master, data lake, AI node, NDR sensor) and installs only the licensed modules. For three PCs: data lake first, then AI node, then master.</div>
+        <div style="font-size:0.78rem;margin-bottom:0.4rem;"><strong>Windows master:</strong> send the licence file with the release's ProVigil-Setup MSI; the client puts licence.jwt next to the MSI and runs it (the settings screen asks for the data lake).</div>
 
-        <div style="font-size:0.78rem;margin-bottom:0.5rem;">
-          <span style="opacity:0.5;">Step 2 —</span> When prompted, paste these values:
+        <div style="font-size:0.78rem;margin:0.75rem 0 0.5rem;opacity:0.7;">
+          For reference (the installer reads these from the licence; nothing to paste):
         </div>
         <div style="display:grid;gap:0.4rem;margin-bottom:0.75rem;">
           <div style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.78rem;">
@@ -617,7 +620,6 @@
       </div>
 
       <div class="modal-actions" style="margin-top:0.75rem;">
-        <button class="primary-action" type="button" (click)="downloadInstaller()">Download installer (.zip)</button>
         <button class="secondary-action" type="button" (click)="copyInstallPackage()">
           <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
           {{ installCopied ? 'Copied!' : 'Copy Install Package' }}
@@ -665,6 +667,11 @@
                 style="font-size:0.7rem;" title="Download this licence's installer zip"
                 (click)="downloadInstaller(lic.token, lic)">
           Installer
+        </button>
+        <button class="secondary-action compact-action" type="button"
+                style="font-size:0.7rem;" title="Download this licence file (licence.jwt, for the Windows MSI)"
+                (click)="downloadLicence(lic.token)">
+          Licence
         </button>
         <button class="secondary-action compact-action" type="button"
                 style="font-size:0.7rem;color:#ef4444;"

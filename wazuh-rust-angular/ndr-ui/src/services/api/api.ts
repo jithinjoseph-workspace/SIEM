@@ -95,6 +95,8 @@ export class Api {
   // - Production: nginx proxies /api → ndr_engines upstream
   // Never use an absolute URL here — it breaks remote browser access.
   private readonly baseUrl = '/api';
+  /** The NDR engine (the proxy maps /api/ndr/x to its /api/x); runs only when NDR is licensed. */
+  private readonly ndrUrl = '/api/ndr';
 
   constructor(private http: HttpClient) { }
 
@@ -105,7 +107,7 @@ export class Api {
   /** The newest alerts (500); with an IP, those from or to it (filtered by the server). */
   getAlerts(srcIp?: string): Observable<any[]> {
     const params = srcIp ? { params: { src_ip: srcIp } } : {};
-    return this.http.get<any[]>(`${this.baseUrl}/hits`, params);
+    return this.http.get<any[]>(`${this.ndrUrl}/hits`, params);
   }
 
   /** Alerts per time slice and severity: 24h (hourly), 7d or 30d (daily), oldest first. */
@@ -114,7 +116,7 @@ export class Api {
   }
 
   getInterfaces(): Observable<string[]> {
-    return this.http.get<string[]>(`${this.baseUrl}/interfaces`);
+    return this.http.get<string[]>(`${this.ndrUrl}/interfaces`);
   }
 
   getAgentStatus(): Observable<any> {
@@ -122,19 +124,19 @@ export class Api {
   }
 
   getInterface(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/interface`);
+    return this.http.get(`${this.ndrUrl}/interface`);
   }
 
   setInterface(iface: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/interface`, { interface: iface });
+    return this.http.post(`${this.ndrUrl}/interface`, { interface: iface });
   }
 
   startServices(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/start`, {});
+    return this.http.post(`${this.ndrUrl}/start`, {});
   }
 
   stopServices(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/stop`, {});
+    return this.http.post(`${this.ndrUrl}/stop`, {});
   }
 
   getStats(): Observable<any> {
@@ -146,7 +148,7 @@ export class Api {
   }
 
   getRecentEvents(hours?: number): Observable<any[]> {
-    let url = `${this.baseUrl}/events`;
+    let url = `${this.ndrUrl}/events`;
     if (hours) {
       url += `?hours=${hours}`;
     }
@@ -187,11 +189,11 @@ export class Api {
   }
 
   getEntityScores(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/entity-scores`);
+    return this.http.get<any[]>(`${this.ndrUrl}/entity-scores`);
   }
 
   getNetworkMap(mode?: string, limit?: number): Observable<any> {
-    let url = `${this.baseUrl}/network-map`;
+    let url = `${this.ndrUrl}/network-map`;
     const params: string[] = [];
     if (mode) params.push(`mode=${encodeURIComponent(mode)}`);
     if (limit !== undefined) params.push(`limit=${limit}`);
@@ -200,11 +202,11 @@ export class Api {
   }
 
   getNetworkMapNode(ip: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/network-map/node/${encodeURIComponent(ip)}`);
+    return this.http.get(`${this.ndrUrl}/network-map/node/${encodeURIComponent(ip)}`);
   }
 
   searchNetworkMap(query: string): Observable<string[]> {
-    return this.http.get<string[]>(`${this.baseUrl}/network-map/search?q=${encodeURIComponent(query)}`);
+    return this.http.get<string[]>(`${this.ndrUrl}/network-map/search?q=${encodeURIComponent(query)}`);
   }
 
   getScaleStatus(): Observable<any> {
@@ -248,7 +250,7 @@ export class Api {
 
 
   getThreatIntel(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat-intel`);
+    return this.http.get(`${this.ndrUrl}/threat-intel`);
   }
 
   getThreatIntelMap(): Observable<any> {
@@ -256,19 +258,19 @@ export class Api {
   }
 
   lookupIoc(ip: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat-intel/${ip}`);
+    return this.http.get(`${this.ndrUrl}/threat-intel/${ip}`);
   }
 
   getWatchlistIocs(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat-intel/watchlist`);
+    return this.http.get(`${this.ndrUrl}/threat-intel/watchlist`);
   }
 
   deleteWatchlistIoc(value: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/threat-intel/watchlist/${encodeURIComponent(value)}`);
+    return this.http.delete(`${this.ndrUrl}/threat-intel/watchlist/${encodeURIComponent(value)}`);
   }
 
   getThreatMap(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat-map`);
+    return this.http.get(`${this.ndrUrl}/threat-map`);
   }
   reloadRules(): Observable<any> {
     return this.http.post(`${this.baseUrl}/rules/reload`, {});
@@ -387,23 +389,23 @@ export class Api {
   }
 
   getTrustedCloudSettings(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/settings/trusted-cloud`);
+    return this.http.get(`${this.ndrUrl}/settings/trusted-cloud`);
   }
 
   updateTrustedCloudSettings(data: {keywords?: string[], domains?: string[]}): Observable<any> {
-    return this.http.put(`${this.baseUrl}/settings/trusted-cloud`, data);
+    return this.http.put(`${this.ndrUrl}/settings/trusted-cloud`, data);
   }
 
   approveTrustedCloudSuggestion(org: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/settings/trusted-cloud/suggestions/approve`, { org });
+    return this.http.post(`${this.ndrUrl}/settings/trusted-cloud/suggestions/approve`, { org });
   }
 
   rejectTrustedCloudSuggestion(org: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/settings/trusted-cloud/suggestions/reject`, { org });
+    return this.http.post(`${this.ndrUrl}/settings/trusted-cloud/suggestions/reject`, { org });
   }
 
   suppressAlert(srcIp: string, dstIp: string, communityId: string, tag: string, durationHours = 24): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/ai-suppressions`, {
+    return this.http.post<any>(`${this.ndrUrl}/ai-suppressions`, {
       src_ip: srcIp, dst_ip: dstIp, community_id: communityId, tag, duration_hours: durationHours
     }).pipe(map(res => {
       // The engine reports a failed save as HTTP 200 with {"error": ...}; without this the
@@ -414,13 +416,13 @@ export class Api {
   }
 
   // Alert triage (new): rule + AI review that produces recommendations only.
-  getTriage(): Observable<any>            { return this.http.get(`${this.baseUrl}/triage`); }
-  runTriage(): Observable<any>            { return this.http.post(`${this.baseUrl}/triage/run`, {}); }
-  applyTriage(id: string, hours = 24): Observable<any> { return this.http.post(`${this.baseUrl}/triage/${id}/apply`, { hours }); }
-  dismissTriage(id: string): Observable<any> { return this.http.post(`${this.baseUrl}/triage/${id}/dismiss`, {}); }
+  getTriage(): Observable<any>            { return this.http.get(`${this.ndrUrl}/triage`); }
+  runTriage(): Observable<any>            { return this.http.post(`${this.ndrUrl}/triage/run`, {}); }
+  applyTriage(id: string, hours = 24): Observable<any> { return this.http.post(`${this.ndrUrl}/triage/${id}/apply`, { hours }); }
+  dismissTriage(id: string): Observable<any> { return this.http.post(`${this.ndrUrl}/triage/${id}/dismiss`, {}); }
 
   getActiveSuppressions(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/ai-suppressions`);
+    return this.http.get<any[]>(`${this.ndrUrl}/ai-suppressions`);
   }
 
   listTrustedDomains(): Observable<any> {
@@ -444,27 +446,27 @@ export class Api {
   }
 
   getAssets(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/assets`);
+    return this.http.get<any[]>(`${this.ndrUrl}/assets`);
   }
 
   getIpamSubnets(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/ipam/subnets`);
+    return this.http.get<any[]>(`${this.ndrUrl}/ipam/subnets`);
   }
 
   updateAsset(ip: string, payload: any): Observable<any> {
-    return this.http.put(`${this.baseUrl}/assets/${ip}`, payload);
+    return this.http.put(`${this.ndrUrl}/assets/${ip}`, payload);
   }
 
   setAssetTrusted(ip: string, trusted: boolean): Observable<any> {
-    return this.http.patch(`${this.baseUrl}/assets/${ip}/trusted`, { trusted });
+    return this.http.patch(`${this.ndrUrl}/assets/${ip}/trusted`, { trusted });
   }
 
   togglePlaybook(data: any): Observable<any> {
-    return this.http.post(`${this.baseUrl}/soar/playbook/toggle`, data);
+    return this.http.post(`${this.ndrUrl}/soar/playbook/toggle`, data);
   }
   createPlaybook(data: any): Observable<any> {
     return this.http.post(
-      `${this.baseUrl}/soar/playbook/create`, data);
+      `${this.ndrUrl}/soar/playbook/create`, data);
   }
 
   getIntegrations(): Observable<any> {
@@ -583,22 +585,22 @@ export class Api {
     features: string[]; max_sensors: number; expires_days: number;
     admin_user?: string;
   }): Observable<any> {
-    return this.http.post(`${this.baseUrl}/license/generate`, payload);
+    return this.http.post(`${this.ndrUrl}/license/generate`, payload);
   }
 
   getLicensePublicKey(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/license/public-key`);
+    return this.http.get(`${this.ndrUrl}/license/public-key`);
   }
 
   getLicenses(tenantId?: string): Observable<any> {
     const url = tenantId
-      ? `${this.baseUrl}/licenses?tenant_id=${encodeURIComponent(tenantId)}`
-      : `${this.baseUrl}/licenses`;
+      ? `${this.ndrUrl}/licenses?tenant_id=${encodeURIComponent(tenantId)}`
+      : `${this.ndrUrl}/licenses`;
     return this.http.get(url);
   }
 
   deleteLicense(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/licenses/${encodeURIComponent(id)}`);
+    return this.http.delete(`${this.ndrUrl}/licenses/${encodeURIComponent(id)}`);
   }
 
   getAnnouncements(): Observable<Announcement[]> {
@@ -731,22 +733,22 @@ export class Api {
   }
 
   createSensorKey(tenantId: string, name: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/sensor-keys`, {
+    return this.http.post(`${this.ndrUrl}/sensor-keys`, {
       tenant_id: tenantId,
       name,
     });
   }
 
   revokeSensorKey(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/sensor-keys/${id}`);
+    return this.http.delete(`${this.ndrUrl}/sensor-keys/${id}`);
   }
 
   reactivateSensorKey(id: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/sensor-keys/${id}/reactivate`, {});
+    return this.http.post(`${this.ndrUrl}/sensor-keys/${id}/reactivate`, {});
   }
 
   controlSensor(command: SensorControlCommand, tenantId: string, sensorId: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/sensor/control`, {
+    return this.http.post(`${this.ndrUrl}/sensor/control`, {
       command,
       tenant_id: tenantId,
       sensor_id: sensorId,
@@ -769,19 +771,19 @@ export class Api {
   }
 
   reviewSupportMessage(id: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/support/messages/${id}/review`, {});
+    return this.http.post(`${this.ndrUrl}/support/messages/${id}/review`, {});
   }
 
   replySupportMessage(id: string, reply: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/support/messages/${id}/reply`, { reply });
+    return this.http.post(`${this.ndrUrl}/support/messages/${id}/reply`, { reply });
   }
 
   forwardSupportMessage(id: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/support/messages/${id}/forward`, {});
+    return this.http.post(`${this.ndrUrl}/support/messages/${id}/forward`, {});
   }
 
   deleteSupportMessage(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/support/messages/${id}`);
+    return this.http.delete(`${this.ndrUrl}/support/messages/${id}`);
   }
 
   // --- Native SOAR ---
@@ -823,11 +825,11 @@ export class Api {
   }
 
   getEventsByCid(cid: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/events/by-cid?cid=${encodeURIComponent(cid)}`);
+    return this.http.get(`${this.ndrUrl}/events/by-cid?cid=${encodeURIComponent(cid)}`);
   }
 
   triggerEvidenceCapture(communityId: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/evidence/trigger`, { community_id: communityId });
+    return this.http.post(`${this.ndrUrl}/evidence/trigger`, { community_id: communityId });
   }
 
   /** One page of AI analyses and suppressions. Without params: latest 50 analyses + 100 suppressions.
@@ -837,39 +839,39 @@ export class Api {
     for (const [k, v] of Object.entries(p ?? {})) {
       if (v !== undefined && v !== null && v !== '' && v !== 'ALL') params[k] = String(v);
     }
-    return this.http.get(`${this.baseUrl}/ai-activity`, { params });
+    return this.http.get(`${this.ndrUrl}/ai-activity`, { params });
   }
 
   /** The AI Activity briefing: fact summary, AI-worded when a provider is configured. */
   getAiBriefing(hours = 24, refresh = false): Observable<any> {
     const params: Record<string, string> = { hours: String(hours) };
     if (refresh) params['refresh'] = '1';
-    return this.http.get(`${this.baseUrl}/ai-activity/briefing`, { params });
+    return this.http.get(`${this.ndrUrl}/ai-activity/briefing`, { params });
   }
 
   /** What hiding this session, or every alert of its kind, would take away (computed on the server). */
   getSuppressionPreview(communityId: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/ai-activity/suppression-preview`, { params: { community_id: communityId } });
+    return this.http.get(`${this.ndrUrl}/ai-activity/suppression-preview`, { params: { community_id: communityId } });
   }
 
   /** Hides a session or a pattern. The server re-checks the preview and refuses anything that must stay visible. */
   applyAiSuppression(communityId: string, scope: 'session' | 'pattern', hours: number): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/ai-activity/suppress`, { community_id: communityId, scope, hours }).pipe(map(res => {
+    return this.http.post<any>(`${this.ndrUrl}/ai-activity/suppress`, { community_id: communityId, scope, hours }).pipe(map(res => {
       if (!res || res.error || res.ok !== true) throw new Error(res?.error || 'Suppression was not saved');
       return res;
     }));
   }
 
   deactivateAiSuppression(id: string): Observable<any> {
-    return this.http.patch(`${this.baseUrl}/ai-suppressions/${id}/deactivate`, {});
+    return this.http.patch(`${this.ndrUrl}/ai-suppressions/${id}/deactivate`, {});
   }
 
   deleteAiSuppression(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/ai-suppressions/${id}`);
+    return this.http.delete(`${this.ndrUrl}/ai-suppressions/${id}`);
   }
 
   getProtocols(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/protocols`);
+    return this.http.get(`${this.ndrUrl}/protocols`);
   }
 
   updateIntegration(id: string, data: any): Observable<any> {
@@ -878,51 +880,51 @@ export class Api {
 
   /** One page of predictions (newest first); the reply carries "total". */
   getThreatPredictions(limit = 20, offset = 0): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat/predictions`, { params: { limit: String(limit), offset: String(offset) } });
+    return this.http.get(`${this.ndrUrl}/threat/predictions`, { params: { limit: String(limit), offset: String(offset) } });
   }
 
   /** Past predictions about one indicator (URL or IP); without it, the newest of all. */
   getThreatPredictionsHistory(indicator?: string): Observable<any> {
     const params: Record<string, string> = indicator ? { indicator } : {};
-    return this.http.get(`${this.baseUrl}/threat/predictions/history`, { params });
+    return this.http.get(`${this.ndrUrl}/threat/predictions/history`, { params });
   }
 
   getThreatPatterns(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat/patterns`);
+    return this.http.get(`${this.ndrUrl}/threat/patterns`);
   }
 
   getThreatExposure(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/threat/exposure`);
+    return this.http.get(`${this.ndrUrl}/threat/exposure`);
   }
 
   getSubnetRoles(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/assets/subnet-roles`);
+    return this.http.get(`${this.ndrUrl}/assets/subnet-roles`);
   }
 
   setSubnetRoles(roles: any): Observable<any> {
-    return this.http.put(`${this.baseUrl}/assets/subnet-roles`, roles);
+    return this.http.put(`${this.ndrUrl}/assets/subnet-roles`, roles);
   }
 
   addManualIoc(type: string, value: string, attacker_group?: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/threat-intel/add`, { type, value, attacker_group: attacker_group || '' });
+    return this.http.post(`${this.ndrUrl}/threat-intel/add`, { type, value, attacker_group: attacker_group || '' });
   }
 
   getJiraTickets(config: { url: string; email: string; token: string; project_key: string }): Observable<any> {
-    return this.http.post(`${this.baseUrl}/soar/jira/tickets`, config);
+    return this.http.post(`${this.ndrUrl}/soar/jira/tickets`, config);
   }
 
   // ── Sensor Assignments ────────────────────────────────────────────────────
 
   getSensorAssignments(): Observable<{ assignments: SensorAssignment[] }> {
-    return this.http.get<{ assignments: SensorAssignment[] }>(`${this.baseUrl}/sensors/assignments`);
+    return this.http.get<{ assignments: SensorAssignment[] }>(`${this.ndrUrl}/sensors/assignments`);
   }
 
   assignSensor(user_id: string, sensor_id: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/sensors/assign`, { user_id, sensor_id });
+    return this.http.post(`${this.ndrUrl}/sensors/assign`, { user_id, sensor_id });
   }
 
   unassignSensor(user_id: string, sensor_id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/sensors/assign`, { body: { user_id, sensor_id } });
+    return this.http.delete(`${this.ndrUrl}/sensors/assign`, { body: { user_id, sensor_id } });
   }
 
   // ── Active Blocks ─────────────────────────────────────────────────────────
@@ -966,19 +968,19 @@ export class Api {
   }
 
   getIncidents(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/incidents`);
+    return this.http.get(`${this.ndrUrl}/incidents`);
   }
 
   updateIncidentStatus(id: string, status: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/incidents/${id}/status/${status}`, {});
+    return this.http.post(`${this.ndrUrl}/incidents/${id}/status/${status}`, {});
   }
 
   getVersionStatus(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/admin/version`);
+    return this.http.get(`${this.ndrUrl}/admin/version`);
   }
 
   applyUpdate(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/admin/apply-update`, {});
+    return this.http.post(`${this.ndrUrl}/admin/apply-update`, {});
   }
 
   getActiveSessions(): Observable<any> {
@@ -1000,33 +1002,33 @@ export class Api {
   // ── Honeypots ──────────────────────────────────────────────────────────────
 
   getHoneypots(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/honeypots`);
+    return this.http.get(`${this.ndrUrl}/honeypots`);
   }
 
   addHoneypot(name: string, cidr: string, description: string): Observable<any> {
-    return this.http.post(`${this.baseUrl}/honeypots`, { name, cidr, description });
+    return this.http.post(`${this.ndrUrl}/honeypots`, { name, cidr, description });
   }
 
   deleteHoneypot(id: string): Observable<any> {
-    return this.http.delete(`${this.baseUrl}/honeypots/${encodeURIComponent(id)}`);
+    return this.http.delete(`${this.ndrUrl}/honeypots/${encodeURIComponent(id)}`);
   }
 
   // ── Retrospective Detection ─────────────────────────────────────────────
 
   getFiredRules(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/retrospective/fired-rules`);
+    return this.http.get(`${this.ndrUrl}/retrospective/fired-rules`);
   }
 
   startRetroScan(rule_id: string, rule_name: string, rule_content: string, hours_back: number): Observable<any> {
-    return this.http.post(`${this.baseUrl}/retrospective/scan`, { rule_id, rule_name, rule_content, hours_back });
+    return this.http.post(`${this.ndrUrl}/retrospective/scan`, { rule_id, rule_name, rule_content, hours_back });
   }
 
   listRetroScans(): Observable<any> {
-    return this.http.get(`${this.baseUrl}/retrospective/scans`);
+    return this.http.get(`${this.ndrUrl}/retrospective/scans`);
   }
 
   getRetroScan(id: string): Observable<any> {
-    return this.http.get(`${this.baseUrl}/retrospective/scans/${encodeURIComponent(id)}`);
+    return this.http.get(`${this.ndrUrl}/retrospective/scans/${encodeURIComponent(id)}`);
   }
 
 

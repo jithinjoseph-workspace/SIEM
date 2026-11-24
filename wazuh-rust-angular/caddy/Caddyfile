@@ -64,10 +64,11 @@
         }
     }
 
-    # 5. NDR Microservice APIs (/api/ndr/*)
+    # 5b. NDR engine APIs (/api/ndr/x -> its /api/x; the more specific path wins over /api/*).
+    # Present only when NDR is licensed and its engine runs.
     handle_path /api/ndr/* {
         rewrite * /api{path}
-        reverse_proxy http://{$NDR_UPSTREAM:ndr-api:8090} {
+        reverse_proxy http://{$NDR_UPSTREAM:ndr-engine-1:3000} {
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
@@ -87,7 +88,7 @@
 
     # NDR WebSockets (/ws/ndr/*)
     handle /ws/ndr/* {
-        reverse_proxy http://{$NDR_UPSTREAM:ndr-api:8090}
+        reverse_proxy http://{$NDR_UPSTREAM:ndr-engine-1:3000}
     }
 
     # 7. Agent Binary Downloads (Windows .exe, Linux deb/rpm/sh)

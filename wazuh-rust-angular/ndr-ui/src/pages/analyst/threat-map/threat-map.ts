@@ -185,14 +185,14 @@ export class ThreatMap implements OnInit, OnDestroy {
   }
 
   private loadThreatMap() {
-    this.http.get<any>('/api/threat-map').subscribe({
+    this.http.get<any>('/api/ndr/threat-map').subscribe({
       next: (data: any) => this.applyCountryData(data?.countries ?? [], 'traffic'),
       error: () => this.applyCountryData([], 'traffic'),
     });
   }
 
   private loadThreatIntelMap() {
-    this.http.get<any>('/api/threat-intel-map').subscribe({
+    this.http.get<any>('/api/ndr/threat-intel-map').subscribe({
       next: (data: any) => this.applyCountryData((data?.countries ?? []).map((c: any) => ({
         country: c.country,
         code: c.code,

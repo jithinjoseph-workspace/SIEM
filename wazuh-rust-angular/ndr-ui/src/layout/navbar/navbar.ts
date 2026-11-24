@@ -96,9 +96,8 @@ export class Navbar implements OnInit, OnDestroy {
   }
 
   get canViewTutorial() {
-    // The guided tour walks through the NDR pages, which analysts don't see
-    // while the product is developed as a SIEM (see SHOW_NDR_PAGES in the sidebar).
-    return false;
+    // The guided tour walks through the NDR pages: only for clients with NDR
+    return this.auth.hasFeature('ndr');
   }
 
   constructor(

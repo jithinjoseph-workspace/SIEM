@@ -229,7 +229,13 @@ export class AuthService implements OnDestroy {
     if (this.isAdmin()) return '/admin';
     if (user.role === 'tenant_admin') return '/tenant-admin';
 
-    // Analysts work in the SIEM pages only (NDR pages are hidden).
+    return this.analystHomeRoute();
+  }
+
+  /** Where an analyst starts: the combined dashboard (NDR and SIEM tabs) when the client has NDR,
+   *  else the first SIEM page they may open. */
+  analystHomeRoute(): string {
+    if (this.hasFeature('ndr') && this.hasPermission('dashboard')) return '/analyst/dashboard';
     return this.siemHomeRoute();
   }
 

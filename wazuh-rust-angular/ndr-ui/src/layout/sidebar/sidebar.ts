@@ -27,13 +27,6 @@ interface NavGroup {
   items: NavItem[];
 }
 
-/**
- * Analysts see the SIEM pages only while the product is developed as a SIEM.
- * Set to true to bring back the NDR pages (dashboard, alerts, triage, attack
- * map, network, NDR rules, SOAR, evidence, AI activity, ...).
- */
-const SHOW_NDR_PAGES = false;
-
 @Component({
   selector: 'app-sidebar',
   standalone: true,
@@ -82,11 +75,12 @@ export class Sidebar implements OnInit, OnDestroy {
  
     const has = (p: string) => this.auth.hasPermission(p);
 
-    const hasNdr = SHOW_NDR_PAGES && this.auth.hasFeature('ndr');
+    // NDR pages follow the client's licence (the `ndr` feature), like the SIEM ones follow `siem`
+    const hasNdr = this.auth.hasFeature('ndr');
 
     const overviewItems: NavItem[] = [];
     // Dashboard is universal — shows NDR section, SIEM section, or both depending on product mode
-    if (SHOW_NDR_PAGES && (has('dashboard') || (this.auth.hasFeature('siem') && has('siem-dashboard')))) overviewItems.push({ label: 'Dashboard', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
+    if (hasNdr && (has('dashboard') || (this.auth.hasFeature('siem') && has('siem-dashboard')))) overviewItems.push({ label: 'Dashboard', route: '/analyst/dashboard', icon: LayoutDashboard, permission: 'dashboard' });
 
     const threatItems: NavItem[] = [];
     if (hasNdr && has('alerts')) threatItems.push({ label: 'Alerts',       route: '/analyst/alerts',     icon: Bell,    permission: 'alerts' });

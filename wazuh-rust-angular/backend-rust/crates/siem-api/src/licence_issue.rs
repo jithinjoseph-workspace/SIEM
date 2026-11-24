@@ -159,7 +159,8 @@ fn installer_zip(token: &str, claims: &provigil_license::Claims, public_b64: &st
     use std::io::Write;
     use zip::write::SimpleFileOptions;
     let customer = if claims.tenant_name.is_empty() { &claims.tenant_id } else { &claims.tenant_name };
-    let launcher = include_str!("licence_installer.sh").replace("@CUSTOMER@", customer).replace("@KEY@", public_b64).replace("@URL@", url);
+    // Unix line ends whatever the build machine checked out (bash fails on a carriage return)
+    let launcher = include_str!("licence_installer.sh").replace("\r\n", "\n").replace("@CUSTOMER@", customer).replace("@KEY@", public_b64).replace("@URL@", url);
     let modules = if claims.features.is_empty() { "all".to_string() } else { claims.features.join(", ") };
     let until = chrono::DateTime::from_timestamp(claims.exp as i64, 0).map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default();
     let readme = format!(
@@ -250,6 +251,7 @@ mod tests {
         assert_eq!(read("licence.jwt").trim(), token);
         let sh = read("install.sh");
         assert!(sh.contains(&format!("KEY=\"{b64}\"")) && sh.contains("https://example.test/releases") && sh.contains("for Acme Ltd"));
+        assert!(!sh.contains('\r'), "bash needs Unix line ends");
         assert!(!["@KEY@", "@URL@", "@CUSTOMER@"].iter().any(|p| sh.contains(p)), "every placeholder filled");
         assert!(read("README.txt").contains("Modules: siem, soar. Valid until 2030-03-17."));
     }

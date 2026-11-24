@@ -580,9 +580,10 @@
         <p style="font-size:0.75rem;font-weight:600;opacity:0.7;margin:0 0 0.75rem;letter-spacing:0.05em;text-transform:uppercase;">Send to Client</p>
 
         <div style="font-size:0.78rem;margin-bottom:0.5rem;">
-          <span style="opacity:0.5;">Step 1 —</span> Run on client's Ubuntu server:
+          <span style="opacity:0.5;">Step 1 —</span> <strong>Download installer</strong> below and send the zip to the client. On each Ubuntu PC they unzip it and run:
         </div>
-        <pre style="font-family:monospace;font-size:0.72rem;background:var(--surface-3,#1e293b);padding:0.6rem 0.8rem;border-radius:6px;margin:0 0 0.75rem;white-space:pre-wrap;word-break:break-all;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/jithinjoseph-workspace/NDR-Demo/arkime/install-customer.sh)</pre>
+        <pre style="font-family:monospace;font-size:0.72rem;background:var(--surface-3,#1e293b);padding:0.6rem 0.8rem;border-radius:6px;margin:0 0 0.75rem;white-space:pre-wrap;word-break:break-all;">sudo bash install.sh</pre>
+        <div style="font-size:0.72rem;opacity:0.6;margin-bottom:0.75rem;">It asks what the PC is (all-in-one, master, data lake, AI node, NDR sensor) and installs only the licensed modules. For three PCs: data lake first, then AI node, then master.</div>
 
         <div style="font-size:0.78rem;margin-bottom:0.5rem;">
           <span style="opacity:0.5;">Step 2 —</span> When prompted, paste these values:
@@ -616,7 +617,8 @@
       </div>
 
       <div class="modal-actions" style="margin-top:0.75rem;">
-        <button class="primary-action" type="button" (click)="copyInstallPackage()">
+        <button class="primary-action" type="button" (click)="downloadInstaller()">Download installer (.zip)</button>
+        <button class="secondary-action" type="button" (click)="copyInstallPackage()">
           <lucide-icon [name]="CopyIcon" class="w-3.5 h-3.5"></lucide-icon>
           {{ installCopied ? 'Copied!' : 'Copy Install Package' }}
         </button>
@@ -658,6 +660,11 @@
                 (click)="copyInstallPackage(lic.token, lic)">
           <lucide-icon [name]="CopyIcon" class="w-3 h-3"></lucide-icon>
           Copy
+        </button>
+        <button class="secondary-action compact-action" type="button"
+                style="font-size:0.7rem;" title="Download this licence's installer zip"
+                (click)="downloadInstaller(lic.token, lic)">
+          Installer
         </button>
         <button class="secondary-action compact-action" type="button"
                 style="font-size:0.7rem;color:#ef4444;"

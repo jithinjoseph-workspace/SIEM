@@ -12,6 +12,9 @@ if [ -f "$INSTALL_DIR/.env" ]; then
     source "$INSTALL_DIR/.env"
 fi
 PRODUCT_MODE="${PRODUCT_MODE:-ndr}"
+# a customer install (provigil-install.sh) records its images and services: start exactly those
+COMPOSE="sudo docker compose"
+[ -f "$INSTALL_DIR/docker-compose.customer.yml" ] && COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.customer.yml"
 
 echo ""
 echo "  Starting PromaSecure Stack — product: ${PRODUCT_MODE}"
@@ -53,7 +56,10 @@ log "Starting Docker stack..."
 cd "$INSTALL_DIR"
 sudo docker rm -f vector 2>/dev/null || true
 
-if [ "$PRODUCT_MODE" = "siem" ]; then
+if [ -n "${PV_SERVICES:-}" ]; then
+    $COMPOSE --profile onpremise up -d --no-build ${PV_SERVICES//,/ }
+
+elif [ "$PRODUCT_MODE" = "siem" ]; then
     sudo docker compose --profile siem up -d \
         clickhouse-keeper clickhouse1 clickhouse2 clickhouse-init \
         ndr-valkey \
@@ -70,7 +76,8 @@ fi
 
 log "Docker stack started"
 
-# ── Kafka topic check ─────────────────────────
+# ── Kafka topic check (NDR) ───────────────────
+if [ "$PRODUCT_MODE" != "siem" ]; then
 log "Waiting for Kafka..."
 for i in {1..30}; do
     if sudo docker exec kafka1 /opt/kafka/bin/kafka-broker-api-versions.sh \
@@ -82,6 +89,7 @@ for i in {1..30}; do
     sleep 3
 done
 echo ""
+fi
 
 if [ "$PRODUCT_MODE" != "siem" ]; then
     sudo docker exec kafka1 \

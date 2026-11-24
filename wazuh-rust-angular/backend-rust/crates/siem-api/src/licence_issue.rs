@@ -147,6 +147,76 @@ pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     }
 }
 
+/// Where customers download ProVigil's installer (a GitHub releases API address; one setting so the
+/// download place can move).
+fn download_url() -> String {
+    std::env::var("PROVIGIL_DOWNLOAD_URL").ok().filter(|u| !u.trim().is_empty()).unwrap_or_else(|| "https://api.github.com/repos/jithinjoseph-workspace/NDR-Demo/releases".into())
+}
+
+/// One customer's installer zip: their licence, `install.sh` (fetches ProVigil's installer, checks
+/// its signature with the key built in, runs it with the licence) and a README.
+fn installer_zip(token: &str, claims: &provigil_license::Claims, public_b64: &str, url: &str) -> Result<Vec<u8>, String> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    let customer = if claims.tenant_name.is_empty() { &claims.tenant_id } else { &claims.tenant_name };
+    let launcher = include_str!("licence_installer.sh").replace("@CUSTOMER@", customer).replace("@KEY@", public_b64).replace("@URL@", url);
+    let modules = if claims.features.is_empty() { "all".to_string() } else { claims.features.join(", ") };
+    let until = chrono::DateTime::from_timestamp(claims.exp as i64, 0).map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default();
+    let readme = format!(
+        "ProVigil for {customer}\r\nModules: {modules}. Valid until {until}.\r\n\r\n\
+         Ubuntu 22.04/24.04, on each PC, in this folder:\r\n    sudo bash install.sh\r\n\
+         It asks what the PC is: all-in-one, master, data lake, AI node or NDR sensor.\r\n\
+         For three PCs: the data lake first (it prints the address and password the master asks for),\r\n\
+         then the AI node (optional), then the master. Only the licensed modules are installed.\r\n\r\n\
+         No internet on the PCs? Ask ProVigil for the offline zip (the same installer with every part).\r\n\
+         Keep licence.jwt private: it is this installation's licence.\r\n"
+    );
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let file = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for (name, body, mode) in [("licence.jwt", format!("{token}\n"), 0o600), ("install.sh", launcher, 0o755), ("README.txt", readme, 0o644)] {
+        w.start_file(name, file.unix_permissions(mode)).map_err(|e| e.to_string())?;
+        w.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    Ok(w.finish().map_err(|e| e.to_string())?.into_inner())
+}
+
+#[derive(Deserialize)]
+pub struct InstallerReq {
+    token: String,
+}
+
+/// `POST /api/license/installer` {token}: the customer's installer zip (a licence this server signed).
+pub async fn installer(Extension(ctx): Extension<AuthCtx>, Json(r): Json<InstallerReq>) -> Response {
+    if !ctx.is_super() {
+        return forbidden();
+    }
+    let bad = |m: String| (StatusCode::BAD_REQUEST, Json(json!({ "error": m }))).into_response();
+    let Some(public) = std::env::var("LICENSE_PUBLIC_KEY").ok().map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) else {
+        return bad("LICENSE_PUBLIC_KEY not configured on this server".into());
+    };
+    let token = r.token.trim();
+    let claims = match provigil_license::verify(token, &public) {
+        Ok(c) => c,
+        Err(e) => return bad(e),
+    };
+    // the launcher decodes base64 of PEM (the form installers store), whatever form the setting has
+    let public_b64 = match provigil_license::pem(&public) {
+        Ok(p) => base64::engine::general_purpose::STANDARD.encode(p),
+        Err(e) => return bad(e),
+    };
+    match installer_zip(token, &claims, &public_b64, &download_url()) {
+        Ok(bytes) => {
+            let name: String = claims.tenant_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/zip".to_string()), (axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"ProVigil-{name}.zip\""))],
+                bytes,
+            )
+                .into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
 /// `DELETE /api/licenses/:id`: removes the record (a licence already handed out stays valid until
 /// it expires: the token is the licence).
 pub async fn delete(State(state): State<AppState>, Extension(ctx): Extension<AuthCtx>, Path(id): Path<String>) -> Response {
@@ -162,6 +232,27 @@ pub async fn delete(State(state): State<AppState>, Extension(ctx): Extension<Aut
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn customer_installer_zip() {
+        let private = include_str!("../../provigil-license/testdata/TEST-ONLY-private.pem");
+        let public = include_str!("../../provigil-license/testdata/TEST-ONLY-public.pem");
+        let claims = provigil_license::Claims { tenant_id: "acme".into(), tenant_name: "Acme Ltd".into(), features: vec!["siem".into(), "soar".into()], exp: 1_900_000_000, ..Default::default() };
+        let token = provigil_license::issue(&claims, private).unwrap();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(public.trim());
+        let z = installer_zip(&token, &claims, &b64, "https://example.test/releases").unwrap();
+        let mut a = zip::ZipArchive::new(std::io::Cursor::new(z)).unwrap();
+        let mut read = |n: &str| {
+            let mut s = String::new();
+            std::io::Read::read_to_string(&mut a.by_name(n).unwrap(), &mut s).unwrap();
+            s
+        };
+        assert_eq!(read("licence.jwt").trim(), token);
+        let sh = read("install.sh");
+        assert!(sh.contains(&format!("KEY=\"{b64}\"")) && sh.contains("https://example.test/releases") && sh.contains("for Acme Ltd"));
+        assert!(!["@KEY@", "@URL@", "@CUSTOMER@"].iter().any(|p| sh.contains(p)), "every placeholder filled");
+        assert!(read("README.txt").contains("Modules: siem, soar. Valid until 2030-03-17."));
+    }
 
     #[test]
     fn key_forms() {

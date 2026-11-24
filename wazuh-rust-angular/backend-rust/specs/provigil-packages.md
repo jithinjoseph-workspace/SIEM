@@ -42,10 +42,16 @@ Windows a part is a signed zip of programs and data.
 
 ## 4. Where parts are downloaded from
 
-Now: **GitHub Releases of the public NDR-Demo repository** (owner, 2026-11-24). It must be easy to
-change later: the address is one setting, `PROVIGIL_DOWNLOAD_URL`, built into the installer and
-overridable at install time; the parts list (`parts.json`: name, version, file, SHA-256,
-signature) is read from there. The private source repository is never a download place.
+Now: **GitHub, NDR-Demo** (owner, 2026-11-24; to change later, each is one setting):
+
+| What | From | Setting |
+| --- | --- | --- |
+| `provigil-install.sh`, `provigil-kit-<v>.tar.gz`, their `.sig`, offline `images-*.tar.gz` | GitHub Releases of NDR-Demo | `PROVIGIL_DOWNLOAD_URL` (releases API address); `PROVIGIL_DOWNLOAD_TOKEN` while it is private |
+| ProVigil's images online (`provigil-auth`, `siem-api`, `ndr-ui`, `ndr-engine`) | GitHub's registry (GHCR), pushed by `release.sh` | `PROVIGIL_REGISTRY`; the registry token |
+| Other images online (ClickHouse, Kafka, nginx, ...) | Docker Hub | none |
+
+NDR-Demo is private today, so customers get a read-only download token from ProVigil. The private
+source repository is never a download place.
 
 ## 5. The flow
 
@@ -70,6 +76,15 @@ the first AI provider (`local-ai`).
 the missing parts. **Updates:** the same parts, newer version, checked by signature.
 
 ## 6. Steps
+
+Built 2026-11-24: steps 1, 2 and 4 (Linux). `ndr/provigil-install.sh` (roles, licence and kit
+signatures, data lake check), `ndr/install-customer.sh` (only the licensed images and services;
+external data lake; offline images), `ndr/release-kit.sh` (kit, signatures, offline parts,
+customer zip, upload), nginx starts without absent modules (`resolve`), the data lake also loads the
+NDR schema, and the console's Licence window has **Download installer** (`POST /api/license/installer`:
+licence.jwt + install.sh + README). Tested in Ubuntu containers: good kit and licence pass; a
+changed kit, a forged licence, a changed installer and a key-less copy are refused; the master
+reaches a real ClickHouse data lake and installs only the licensed modules.
 
 1. Linux installer from the licence: reads the modules, pulls only their images; roles; online
    and offline (zip).

@@ -161,8 +161,8 @@ services:
       - ${INSTALL_DIR}/config/clickhouse/init.sql:/app/config/clickhouse/init.sql:ro
     environment:
       - JWT_SECRET=${JWT_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - CLICKHOUSE_DB=ndr
       - VALKEY_URL=redis://ndr-valkey:6379
@@ -200,8 +200,8 @@ services:
       - KAFKA_BROKERS=kafka1:9092,kafka2:9092,kafka3:9092
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=1
       - ENGINE_NAME=ndr-engine-1
@@ -273,8 +273,8 @@ services:
       - KAFKA_BROKERS=kafka1:9092,kafka2:9092,kafka3:9092
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=2
       - ENGINE_NAME=ndr-engine-2
@@ -346,8 +346,8 @@ services:
       - KAFKA_BROKERS=kafka1:9092,kafka2:9092,kafka3:9092
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=3
       - ENGINE_NAME=ndr-engine-3
@@ -444,8 +444,8 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
-      - CLICKHOUSE_URL=http://clickhouse1:8123
-      - CLICKHOUSE_USER=ndr
+      - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - CLICKHOUSE_DB=ndr
       - VALKEY_URL=redis://ndr-valkey:6379

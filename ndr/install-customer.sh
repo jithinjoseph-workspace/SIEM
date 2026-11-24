@@ -214,6 +214,10 @@ sudo apt-get update 2>&1 | grep -E "^Get|^Hit|^Err" | head -15 || true
 log "Network ready"
 
 # ── Deployment Mode ───────────────────────────
+# provigil-install.sh has already asked the role (all-in-one, or master with a separate data lake)
+if [ -n "${PV_ROLE:-}" ]; then
+    DEPLOY_MODE="local"
+else
 printf "\n"
 printf "  ${CYAN}┌──────────────────────────────────────────────┐${NC}\n"
 printf "  ${CYAN}│${NC}  ${BOLD}Select Deployment Mode${NC}                        ${CYAN}│${NC}\n"
@@ -246,15 +250,18 @@ case "$MODE_CHOICE" in
         log "Local mode — all services on this machine"
         ;;
 esac
+fi
 
 printf "\n"
 
-# ── Registry login (customer mode) ───────────
-REGISTRY="ghcr.io/jithinjoseph-workspace"
-read -rp "  Registry token (provided by Proma Secure): " REGISTRY_TOKEN
-echo "$REGISTRY_TOKEN" | sudo docker login ghcr.io -u ndr-customer --password-stdin \
-    || err "Registry login failed — check your token and try again"
-log "Registry login successful"
+# ── Image source: an offline kit's images, else the registry ───────────
+# Only the licensed modules' images are pulled; the login happens once Docker is installed.
+REGISTRY="${PROVIGIL_REGISTRY:-ghcr.io/jithinjoseph-workspace}"
+if [ -n "${PV_OFFLINE_DIR:-}" ]; then
+    log "Offline install: images from $PV_OFFLINE_DIR/images"
+elif [ -z "${REGISTRY_TOKEN:-}" ]; then
+    read -rp "  Registry token (provided by Proma Secure): " REGISTRY_TOKEN
+fi
 printf "\n"
 
 # ── Check OS ──────────────────────────────────
@@ -272,6 +279,31 @@ OS_VERSION=$(echo $VERSION_ID | cut -d'.' -f1,2)
 log "Installing to:  $INSTALL_DIR"
 log "Running as:     $USERNAME"
 log "Deploy mode:    $DEPLOY_MODE"
+
+# ── Licence: it decides the modules this install sets up ─────────
+# provigil-install.sh passes a checked licence (PV_*); a reinstall keeps the one in .env unless
+# a new one is given; run on its own, the token is asked for here.
+env_get() { grep "^$1=" "$INSTALL_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
+LICENSE_PUBLIC_KEY=${PV_LICENSE_PUBLIC_KEY:-$(env_get LICENSE_PUBLIC_KEY)}
+LICENSE_TOKEN=${PV_LICENSE_TOKEN:-$(env_get LICENSE_TOKEN)}
+if [ -z "$LICENSE_TOKEN" ]; then
+    read -p "  License token (from your ProVigil licence; Enter = every module): " -r LICENSE_TOKEN
+fi
+# the licence's modules, comma-separated ("" = every module: no licence, or one without a list)
+licence_modules() {
+    local p; p=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+    case $(( ${#p} % 4 )) in 2) p="${p}==" ;; 3) p="${p}=" ;; esac
+    printf '%s' "$p" | base64 -d 2>/dev/null | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin).get("features") or []))' 2>/dev/null
+}
+PV_MODULES=${PV_MODULES:-$(licence_modules "$LICENSE_TOKEN")}
+has_module() { [ -z "$PV_MODULES" ] && return 0; case ",$PV_MODULES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+HAS_NDR=0; HAS_SIEM=0
+has_module ndr && HAS_NDR=1
+has_module siem && HAS_SIEM=1
+# a licence with only add-ons (soar, threat_intel, ai) still needs a base: the SIEM
+[ "$HAS_NDR" = 0 ] && [ "$HAS_SIEM" = 0 ] && HAS_SIEM=1
+if [ "$HAS_NDR" = 1 ] && [ "$HAS_SIEM" = 1 ]; then PRODUCT_MODE=both; elif [ "$HAS_NDR" = 1 ]; then PRODUCT_MODE=ndr; else PRODUCT_MODE=siem; fi
+log "Licensed modules: ${PV_MODULES:-all}  (installs: $PRODUCT_MODE)"
 
 # Write a minimal .env immediately so docker compose never sees blank variables.
 # The network step overwrites this with full values once HOST_IP/JWT_SECRET are known.
@@ -321,8 +353,8 @@ INGEST_RATE_LIMIT=0
 SIEM_SYSLOG_HOST=
 SIEM_SYSLOG_PORT=514
 TRUSTED_SOURCE_CIDRS=
-LICENSE_PUBLIC_KEY=
-LICENSE_TOKEN=
+LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+LICENSE_TOKEN=${LICENSE_TOKEN}
 TENANT_ADMIN_USER=
 TENANT_ADMIN_PASS=
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
@@ -404,7 +436,8 @@ step "Agent-S"
 
 log "Skipped — Agent-S runs on dedicated remote sensor machines"
 
-# ── Packet Recorder (Arkime) ──────────────────
+# ── Packet Recorder (Arkime): NDR only ────────
+if [ "$HAS_NDR" = 1 ]; then
 log "Installing Packet Recorder..."
 
 ARKIME_VERSION="5.1.0"
@@ -493,6 +526,9 @@ else
     ARKIME_VER=$(/opt/arkime/bin/capture --version 2>/dev/null | head -1 || echo "unknown")
     log "Packet Recorder already installed: ${ARKIME_VER}"
 fi
+else
+    log "Packet Recorder skipped — the licence has no NDR module"
+fi
 
 # ══════════════════════════════════════════════
 step "Agent-Z"
@@ -502,7 +538,13 @@ log "Skipped — Agent-Z runs on dedicated remote sensor machines"
 # ══════════════════════════════════════════════
 step "Analytics Database  (ClickHouse)"
 
-if [ "$DEPLOY_MODE" = "local" ]; then
+if [ -n "${PV_DATALAKE_URL:-}" ]; then
+    # master role: the data lake PC holds every event (install-datalake.sh printed these)
+    CLOUD_CLICKHOUSE="$PV_DATALAKE_URL"; CLOUD_CH_USER="${PV_DATALAKE_USER:-provigil}"; CLOUD_CH_PASS="$PV_DATALAKE_PASSWORD"
+    CLOUD_KAFKA="kafka1:9092,kafka2:9092,kafka3:9092"
+    CLICKHOUSE_URL="$PV_DATALAKE_URL"; CLICKHOUSE_URL_SECONDARY="$PV_DATALAKE_URL"
+    log "Data lake: $PV_DATALAKE_URL (user $CLOUD_CH_USER); no local ClickHouse"
+elif [ "$DEPLOY_MODE" = "local" ]; then
     log "ClickHouse — Docker container cluster (2 nodes, bridge network)"
     log "  Credentials:  user ndr, random password stored in $INSTALL_DIR/.env"
     log "  Endpoint:     http://localhost:8123  (node 1, localhost-only)"
@@ -749,9 +791,7 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 
 # ── License public key + token (from PromaSecure super admin portal) ─────────
-if [ -f "$INSTALL_DIR/.env" ] && grep -q "LICENSE_PUBLIC_KEY" "$INSTALL_DIR/.env"; then
-    LICENSE_PUBLIC_KEY=$(grep "^LICENSE_PUBLIC_KEY=" "$INSTALL_DIR/.env" | cut -d= -f2-)
-fi
+# (read with the token at the start; asked for here only when still missing)
 if [ -z "$LICENSE_PUBLIC_KEY" ]; then
     printf "\n"
     printf "  License public key (paste base64 or PEM block, then press Enter twice):\n  "
@@ -768,16 +808,14 @@ if [ -z "$LICENSE_PUBLIC_KEY" ]; then
     fi
 fi
 
-if [ -f "$INSTALL_DIR/.env" ] && grep -q "LICENSE_TOKEN" "$INSTALL_DIR/.env"; then
-    LICENSE_TOKEN=$(grep "^LICENSE_TOKEN=" "$INSTALL_DIR/.env" | cut -d= -f2-)
-fi
 if [ -z "$LICENSE_TOKEN" ]; then
     printf "\n"
     read -p "  License token (paste from your NDR admin portal, press Enter to skip): " -r LICENSE_TOKEN
 fi
 
 # ── Tenant admin credentials (provisioned on first engine boot) ──────────
-if [ -f "$INSTALL_DIR/.env" ] && grep -q "^TENANT_ADMIN_USER=." "$INSTALL_DIR/.env"; then
+TENANT_ADMIN_USER=${PV_ADMIN_USER:-}; TENANT_ADMIN_PASS=${PV_ADMIN_PASS:-}
+if [ -z "$TENANT_ADMIN_USER" ] && [ -f "$INSTALL_DIR/.env" ] && grep -q "^TENANT_ADMIN_USER=." "$INSTALL_DIR/.env"; then
     TENANT_ADMIN_USER=$(grep "^TENANT_ADMIN_USER=" "$INSTALL_DIR/.env" | cut -d= -f2-)
 fi
 if [ -z "$TENANT_ADMIN_USER" ]; then
@@ -785,7 +823,7 @@ if [ -z "$TENANT_ADMIN_USER" ]; then
     read -p "  Tenant admin username (e.g. acme-admin): " -r TENANT_ADMIN_USER
 fi
 
-if [ -f "$INSTALL_DIR/.env" ] && grep -q "^TENANT_ADMIN_PASS=." "$INSTALL_DIR/.env"; then
+if [ -z "$TENANT_ADMIN_PASS" ] && [ -f "$INSTALL_DIR/.env" ] && grep -q "^TENANT_ADMIN_PASS=." "$INSTALL_DIR/.env"; then
     TENANT_ADMIN_PASS=$(grep "^TENANT_ADMIN_PASS=" "$INSTALL_DIR/.env" | cut -d= -f2-)
 fi
 if [ -z "$TENANT_ADMIN_PASS" ]; then
@@ -830,6 +868,12 @@ CLICKHOUSE_URL_SECONDARY=$CLICKHOUSE_URL_SECONDARY
 CLICKHOUSE_USER=$CLOUD_CH_USER
 CLICKHOUSE_PASSWORD=$CLOUD_CH_PASS
 KAFKA_BROKERS=$CLOUD_KAFKA
+DATALAKE_URL=${PV_DATALAKE_URL:-}
+DATALAKE_USER=${PV_DATALAKE_URL:+$CLOUD_CH_USER}
+PRODUCT_MODE=$PRODUCT_MODE
+PV_ROLE=${PV_ROLE:-allinone}
+PV_MODULES=$PV_MODULES
+PROVIGIL_REGISTRY=$REGISTRY
 JWT_SECRET=$JWT_SECRET
 NDR_AGENT_SECRET=$NDR_AGENT_SECRET
 CORS_ORIGIN=https://${HOST_IP}:3000
@@ -997,47 +1041,71 @@ log "Using config/nginx/nginx.conf"
 sudo docker compose --profile onpremise down 2>/dev/null || true
 sudo docker rm -f vector 2>/dev/null || true
 
-log "Pulling pre-built images..."
-for IMG in ndr-engine provigil-auth ndr-ui siem-api; do
-  sudo docker pull "${REGISTRY}/${IMG}:latest" 2>/tmp/ndr_cust_err \
-    || err "Could not pull ${REGISTRY}/${IMG}:latest ($(cat /tmp/ndr_cust_err 2>/dev/null)) — check the registry token and network access, then re-run."
-done
+# ProVigil's images this licence needs (the rest come from Docker Hub, or the offline kit)
+PV_IMAGES="provigil-auth siem-api ndr-ui"
+[ "$HAS_NDR" = 1 ] && PV_IMAGES="$PV_IMAGES ndr-engine"
+if [ -n "${PV_OFFLINE_DIR:-}" ]; then
+    log "Loading images from the offline kit..."
+    for f in "$PV_OFFLINE_DIR"/images/*.tar.gz; do
+        [ -f "$f" ] || continue
+        sudo docker load -i "$f" >/dev/null 2>/tmp/ndr_cust_err || err "Could not load $f ($(cat /tmp/ndr_cust_err 2>/dev/null))"
+        log "  loaded $(basename "$f")"
+    done
+else
+    echo "$REGISTRY_TOKEN" | sudo docker login "${REGISTRY%%/*}" -u ndr-customer --password-stdin >/dev/null 2>&1 \
+        || err "Registry login failed — check your token and try again"
+    log "Pulling the licensed images: $PV_IMAGES"
+    for IMG in $PV_IMAGES; do
+      sudo docker pull "${REGISTRY}/${IMG}:latest" 2>/tmp/ndr_cust_err \
+        || err "Could not pull ${REGISTRY}/${IMG}:latest ($(cat /tmp/ndr_cust_err 2>/dev/null)) — check the registry token and network access, then re-run."
+    done
+fi
 rm -f /tmp/ndr_cust_err
+sed -i '/^PV_IMAGES=/d; /^PV_SERVICES=/d' "$INSTALL_DIR/.env"
+echo "PV_IMAGES=${PV_IMAGES// /,}" >> "$INSTALL_DIR/.env"
 
-# Write a compose override that replaces build: with the pre-built image
-cat > "$INSTALL_DIR/docker-compose.customer.yml" << OVERRIDE
-services:
-  ndr-engine-1:
-    image: ${REGISTRY}/ndr-engine:latest
-  ndr-engine-2:
-    image: ${REGISTRY}/ndr-engine:latest
-  ndr-engine-3:
-    image: ${REGISTRY}/ndr-engine:latest
-  provigil-auth:
-    image: ${REGISTRY}/provigil-auth:latest
-    build: !reset null
-  ndr-ui:
-    image: ${REGISTRY}/ndr-ui:latest
-    build: !reset null
-  siem-api:
-    image: ${REGISTRY}/siem-api:latest
-    build: !reset null
-OVERRIDE
+# The compose override: the pre-built images instead of build:, and for the master role (the data
+# lake is another PC) no service waits for local ClickHouse containers. One entry per service.
+datalake_deps() {
+    [ -n "${PV_DATALAKE_URL:-}" ] || return 0
+    case "$1" in
+        provigil-auth) printf '    depends_on: !override\n      ndr-valkey:\n        condition: service_healthy\n' ;;
+        siem-api)      printf '    depends_on: !override\n      ndr-valkey:\n        condition: service_started\n' ;;
+        ndr-engine-*)  printf '    depends_on: !override\n      kafka-init:\n        condition: service_completed_successfully\n      ndr-valkey:\n        condition: service_healthy\n' ;;
+    esac
+}
+{
+    echo "services:"
+    for S in ndr-engine-1 ndr-engine-2 ndr-engine-3 provigil-auth ndr-ui siem-api; do
+        case "$S" in ndr-engine-*) IMG=ndr-engine ;; *) IMG=$S ;; esac
+        printf '  %s:\n    image: %s/%s:latest\n' "$S" "$REGISTRY" "$IMG"
+        case "$S" in ndr-engine-*) ;; *) printf '    build: !reset null\n' ;; esac
+        datalake_deps "$S"
+    done
+} > "$INSTALL_DIR/docker-compose.customer.yml"
+
+# the services of the licensed modules (one list, also used by start.sh and the updater)
+PV_SERVICES="ndr-valkey provigil-auth siem-api ndr-ui nginx"
+[ -z "${PV_DATALAKE_URL:-}" ] && PV_SERVICES="clickhouse-keeper clickhouse1 clickhouse2 clickhouse-init $PV_SERVICES"
+[ "$HAS_NDR" = 1 ] && PV_SERVICES="$PV_SERVICES kafka1 kafka2 kafka3 kafka-init ndr-engine-1 ndr-engine-2 ndr-engine-3 qdrant opensearch vector"
+[ "$DEPLOY_MODE" = "hybrid" ] && PV_SERVICES="vector ndr-engine-1 nginx ndr-ui"
+echo "PV_SERVICES=${PV_SERVICES// /,}" >> "$INSTALL_DIR/.env"
 
 if [ "$DEPLOY_MODE" = "hybrid" ]; then
     log "Hybrid mode — using cloud: $CLOUD_KAFKA"
     sudo docker compose -f docker-compose.yml -f docker-compose.customer.yml \
-        --profile onpremise up -d vector ndr-engine-1 nginx ndr-ui 2>/tmp/ndr_cust_err \
+        --profile onpremise up -d --no-build $PV_SERVICES 2>/tmp/ndr_cust_err \
         || err "docker compose up failed ($(cat /tmp/ndr_cust_err 2>/dev/null)) — check: sudo docker compose logs"
 else
+    log "Starting: $PV_SERVICES"
     sudo docker compose -f docker-compose.yml -f docker-compose.customer.yml \
-        --profile onpremise up -d 2>/tmp/ndr_cust_err \
+        --profile onpremise up -d --no-build $PV_SERVICES 2>/tmp/ndr_cust_err \
         || err "docker compose up failed ($(cat /tmp/ndr_cust_err 2>/dev/null)) — check: sudo docker compose logs"
 fi
 rm -f /tmp/ndr_cust_err
 log "Docker stack started"
 
-if [ "$DEPLOY_MODE" = "local" ]; then
+if [ "$DEPLOY_MODE" = "local" ] && [ -z "${PV_DATALAKE_URL:-}" ]; then
     log "Waiting for ClickHouse node 1..."
     for i in {1..40}; do
         if curl -s http://localhost:8123/ping > /dev/null 2>&1; then
@@ -1060,6 +1128,7 @@ if [ "$DEPLOY_MODE" = "local" ]; then
     fi
 fi
 
+if [ "$HAS_NDR" = 1 ]; then
 log "Configuring Kafka retention..."
 sleep 15
 if sudo docker exec kafka1 \
@@ -1089,10 +1158,12 @@ else
     "Run manually once Kafka is confirmed healthy: sudo docker exec kafka1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic ndr-events --partitions 3 --replication-factor 3"
 fi
 rm -f /tmp/ndr_cust_err
+fi
 
 # ══════════════════════════════════════════════
 step "Search Index  (OpenSearch)"
 
+if [ "$HAS_NDR" = 1 ]; then
 log "Waiting for OpenSearch..."
 cd "$INSTALL_DIR"
 for i in {1..30}; do
@@ -1114,6 +1185,9 @@ if [ -f /opt/arkime/bin/capture ]; then
     sudo /opt/arkime/bin/arkime_add_user.sh admin "Admin" admin --admin 2>/dev/null \
         && log "Packet Recorder admin ready (user: admin / pass: admin)" \
         || warn "Packet Recorder admin creation failed — run manually after install"
+fi
+else
+    log "Skipped — NDR is not licensed"
 fi
 
 # ══════════════════════════════════════════════
@@ -1151,8 +1225,8 @@ cat > "$INSTALL_DIR/scripts/update-watcher.sh" << 'WATCHEREOF'
 # Host-side update watcher. Runs as a systemd service.
 # The ndr-engine container writes /scripts/.update-requested (same path as
 # ${INSTALL_DIR}/scripts/.update-requested on the host) to trigger an update.
-REGISTRY="ghcr.io/jithinjoseph-workspace"
 INSTALL_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
+envv() { grep "^$1=" "$INSTALL_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-; }
 FLAG="$INSTALL_DIR/scripts/.update-requested"
 
 while true; do
@@ -1161,11 +1235,15 @@ while true; do
         rm -f "$FLAG"
         logger -t ndr-updater "Update triggered → pulling ${TARGET_VERSION:-latest}"
         cd "$INSTALL_DIR" || exit 1
-        docker pull "${REGISTRY}/ndr-engine:latest"   2>&1 | logger -t ndr-updater
-        docker pull "${REGISTRY}/provigil-auth:latest" 2>&1 | logger -t ndr-updater
-        docker pull "${REGISTRY}/ndr-ui:latest"        2>&1 | logger -t ndr-updater
+        # the images and services this install's licence has (written by the installer)
+        REGISTRY=$(envv PROVIGIL_REGISTRY); REGISTRY=${REGISTRY:-ghcr.io/jithinjoseph-workspace}
+        IMAGES=$(envv PV_IMAGES); IMAGES=${IMAGES:-ndr-engine,provigil-auth,ndr-ui,siem-api}
+        SERVICES=$(envv PV_SERVICES)
+        for IMG in ${IMAGES//,/ }; do
+            docker pull "${REGISTRY}/${IMG}:latest" 2>&1 | logger -t ndr-updater
+        done
         docker compose -f docker-compose.yml -f docker-compose.customer.yml \
-            --profile onpremise up -d --no-build    2>&1 | logger -t ndr-updater
+            --profile onpremise up -d --no-build ${SERVICES//,/ } 2>&1 | logger -t ndr-updater
         logger -t ndr-updater "Update complete"
     fi
     sleep 30
@@ -1225,12 +1303,15 @@ rm -f /tmp/ndr_cust_err
 step "Verification"
 
 log "Verifying installation..."
-info "Mode:       $DEPLOY_MODE"
+info "Mode:       $DEPLOY_MODE  (role ${PV_ROLE:-allinone})"
+info "Modules:    ${PV_MODULES:-all}"
 info "Interface:  $IFACE  ($HOST_IP)"
 info "Sensors:    remote (install-sensor.sh on probe machines)"
 info "Docker:     $(sudo docker --version)"
 info "ndr-ui:     $(sudo docker inspect --format='{{.State.Status}}' ndr-ui 2>/dev/null || echo 'not started')"
-if [ "$DEPLOY_MODE" = "local" ]; then
+if [ -n "${PV_DATALAKE_URL:-}" ]; then
+    info "Data lake:  $PV_DATALAKE_URL"
+elif [ "$DEPLOY_MODE" = "local" ]; then
     info "ClickHouse: $(curl -s http://localhost:8123/ping 2>/dev/null || echo 'starting...')"
 else
     info "ClickHouse: $CLOUD_CLICKHOUSE  (cloud)"
@@ -1250,13 +1331,14 @@ printf "  ${CYAN}║${NC}                                              ${CYAN}�
 printf "  ${CYAN}╠══════════════════════════════════════════════╣${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "Mode:       ${DEPLOY_MODE}")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "Interface:  ${IFACE}  (${HOST_IP})")${CYAN}║${NC}\n"
+printf "  ${CYAN}║${NC}  $(_pad "Modules:    ${PV_MODULES:-all}")${CYAN}║${NC}\n"
 printf "  ${CYAN}╠══════════════════════════════════════════════╣${NC}\n"
 printf "  ${CYAN}║${NC}  ${BOLD}$(_pad "Service         Access Point")${NC}  ${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  ${DIM}$(_pad "─────────────── ────────────────────────")${NC}  ${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "Dashboard       https://${HOST_IP}:3000")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "API Gateway     https://${HOST_IP}:3000")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "NDR Agent       http://localhost:3001")${CYAN}║${NC}\n"
-printf "  ${CYAN}║${NC}  $(_pad "Packet Recorder http://localhost:8005")${CYAN}║${NC}\n"
+[ "$HAS_NDR" = 1 ] && printf "  ${CYAN}║${NC}  $(_pad "Packet Recorder http://localhost:8005")${CYAN}║${NC}\n"
 printf "  ${CYAN}╠══════════════════════════════════════════════╣${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "start:    ./start.sh")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "stop:     ./stop.sh")${CYAN}║${NC}\n"

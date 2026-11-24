@@ -1130,6 +1130,7 @@ async fn main() {
         .route("/api/admin/apply-update", post(updates::apply))
         .route("/api/license/generate", post(licence_issue::generate))
         .route("/api/license/public-key", get(licence_issue::public_key))
+        .route("/api/license/installer", post(licence_issue::installer))
         .route("/api/licenses", get(licence_issue::list))
         .route("/api/licenses/:id", axum::routing::delete(licence_issue::delete))
         .route(

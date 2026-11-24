@@ -5555,8 +5555,8 @@ done
             // ── Step 3: Inject new server into both Nginx upstreams & reload ────
             let install_dir = std::env::var("INSTALL_DIR").unwrap_or_else(|_| ".".to_string());
             let nginx_conf = format!("{}/config/nginx/nginx.conf", install_dir);
-            let api_line = format!("        server {}:3000 max_fails=3 fail_timeout=30s;", new_name);
-            let ws_line  = format!("        server {}:3000;", new_name);
+            let api_line = format!("        server {}:3000 max_fails=3 fail_timeout=30s resolve;", new_name);
+            let ws_line  = format!("        server {}:3000 resolve;", new_name);
             tracing::info!("Adding {} to Nginx upstreams: {}", new_name, nginx_conf);
 
             let nginx_up_script = format!(r#"set -e
@@ -5612,16 +5612,15 @@ docker exec ndr-nginx nginx -s reload && echo "Nginx reloaded"
             // ── Step 1: Remove from both Nginx upstreams BEFORE stopping ─────────
             let install_dir = std::env::var("INSTALL_DIR").unwrap_or_else(|_| ".".to_string());
             let nginx_conf = format!("{}/config/nginx/nginx.conf", install_dir);
-            let api_remove = format!("        server {}:3000 max_fails=3 fail_timeout=30s;", engine_name);
-            let ws_remove  = format!("        server {}:3000;", engine_name);
+            // every upstream line of this engine, whatever its options (max_fails, resolve, ...)
+            let api_remove = format!("server {}:3000", engine_name);
+            let ws_remove  = api_remove.clone();
             tracing::info!("Removing {} from Nginx upstreams BEFORE stopping container", engine_name);
 
             let nginx_down_script = format!(r#"set -e
 CONF="{0}"
 API_ESC=$(printf '%s\n' "{1}" | sed 's/[\/&[\.*^$]/\\&/g')
-WS_ESC=$(printf '%s\n' "{2}" | sed 's/[\/&[\.*^$]/\\&/g')
-sed -i "/$API_ESC/d" "$CONF"
-sed -i "/$WS_ESC/d" "$CONF"
+sed -i "/^ *$API_ESC[ ;]/d" "$CONF"
 echo "Removed {1} and {2}"
 docker exec ndr-nginx nginx -s reload && echo "Nginx reloaded"
 "#, nginx_conf, api_remove, ws_remove);

@@ -106,6 +106,9 @@ else
 fi
 i=0; until clickhouse-client -q "SELECT 1" >/dev/null 2>&1; do i=$((i+1)); [ $i -lt 60 ] || die "ClickHouse did not start (journalctl -u clickhouse-server)"; sleep 1; done
 clickhouse-client --multiquery < "$FILES/init.sql"
+# the NDR module's schema, when the installer kit has it (after the SIEM one: the shared users and
+# tenants tables then get the NDR columns; every statement is IF NOT EXISTS)
+if [ -f "$FILES/ndr-init.sql" ]; then clickhouse-client --multiquery < "$FILES/ndr-init.sql" >/dev/null; fi
 say "schema ready: $(clickhouse-client -q "SELECT count() FROM system.tables WHERE database = 'ndr'") tables in ndr"
 
 # 4. firewall: SSH stays open, 8123 only from the master

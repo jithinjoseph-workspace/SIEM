@@ -590,6 +590,24 @@ export class Tenants implements OnInit, OnDestroy {
     });
   }
 
+  /** Saves the customer's installer zip: their licence and `install.sh` (one command on each PC). */
+  downloadInstaller(token?: string, license?: any) {
+    const useToken = token ?? this.generatedToken;
+    if (!useToken) return;
+    const who = String(license?.tenant_id ?? this.licenseTenant?.id ?? 'customer').replace(/[^A-Za-z0-9_-]/g, '');
+    this.api.downloadInstaller(useToken).subscribe({
+      next: (blob: Blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ProVigil-${who}.zip`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      error: () => { this.showMsg('The installer could not be made (is LICENSE_PUBLIC_KEY set on this server?)', 'error'); this.cdr.detectChanges(); },
+    });
+  }
+
   copyInstallPackage(token?: string, license?: any) {
     const useToken = token ?? this.generatedToken;
     const useExpires = license?.expires_at

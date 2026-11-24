@@ -618,6 +618,11 @@ export class Api {
     return this.http.post(`${this.baseUrl}/license/generate`, payload);
   }
 
+  /** The customer's installer zip (licence.jwt, install.sh, README) for a licence this server signed. */
+  downloadInstaller(token: string): Observable<Blob> {
+    return this.http.post(`${this.baseUrl}/license/installer`, { token }, { responseType: 'blob' });
+  }
+
   getLicensePublicKey(): Observable<any> {
     return this.http.get(`${this.baseUrl}/license/public-key`);
   }

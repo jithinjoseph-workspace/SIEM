@@ -1,16 +1,18 @@
-//! The local server (spec § 1.1): clients connect to a loopback TCP port whose number is
-//! written to `<socket path>.port`; each message is a 4-byte little-endian length and the
-//! request. One thread per client. Requests starting with `{` are JSON commands.
+//! The local server (spec § 1.1): clients connect to `queue/db/wdb`, a Unix socket on Linux
+//! (root and the provigil group), a loopback TCP port named in `queue/db/wdb.port` on Windows
+//! (provigil_ipc::local); each message is a 4-byte little-endian length and the request. One
+//! thread per client. Requests starting with `{` are JSON commands.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::Shutdown;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
+use provigil_ipc::local::{self, Listener, Stream};
 
 use crate::text::until_nul;
 use crate::Engine;
@@ -23,12 +25,12 @@ pub const SOCKET: &str = "queue/db/wdb";
 /// The connected clients, by number (answers in pieces go straight to them).
 #[derive(Default)]
 pub struct Peers {
-    map: Mutex<HashMap<i32, TcpStream>>,
+    map: Mutex<HashMap<i32, Stream>>,
     next: AtomicI32,
 }
 
 impl Peers {
-    fn add(&self, s: &TcpStream) -> Option<i32> {
+    fn add(&self, s: &Stream) -> Option<i32> {
         let c = s.try_clone().ok()?;
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         self.map.lock().insert(id, c);
@@ -66,7 +68,7 @@ impl Peers {
     }
 }
 
-fn send_framed(s: &mut TcpStream, msg: &[u8]) -> i32 {
+fn send_framed(s: &mut Stream, msg: &[u8]) -> i32 {
     let mut buf = Vec::with_capacity(msg.len() + 4);
     buf.extend_from_slice(&(msg.len() as u32).to_le_bytes());
     buf.extend_from_slice(msg);
@@ -84,7 +86,7 @@ enum Received {
     Failed(std::io::Error),
 }
 
-fn receive(s: &mut TcpStream) -> Received {
+fn receive(s: &mut Stream) -> Received {
     let mut hdr = [0u8; 4];
     match s.read_exact(&mut hdr) {
         Ok(()) => {}
@@ -103,25 +105,22 @@ fn receive(s: &mut TcpStream) -> Received {
     }
 }
 
-fn port_file(home: &Path) -> PathBuf {
-    home.join(format!("{SOCKET}.port"))
-}
-
-/// Binds the loopback port and writes its number next to the socket path.
-/// shortcut: any local user can reach this port and read global.db and the agent keys through
-/// it; keep the manager on a host of its own, or move to a named pipe with an ACL before sharing it.
-pub fn bind(home: &Path) -> std::io::Result<TcpListener> {
-    let file = port_file(home);
-    if let Some(dir) = file.parent() {
-        std::fs::create_dir_all(dir)?;
+/// Listens at the socket path (Unix: owner and group only, as the other manager sockets).
+/// shortcut: on Windows any local user can reach the port and read global.db and the agent keys
+/// through it; keep the manager on a host of its own, or move to a named pipe with an ACL.
+pub fn bind(home: &Path) -> std::io::Result<Listener> {
+    let path = home.join(SOCKET);
+    let l = local::bind(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o660))?;
     }
-    let l = TcpListener::bind("127.0.0.1:0")?;
-    std::fs::write(&file, l.local_addr()?.port().to_string())?;
     Ok(l)
 }
 
 /// Accepts clients until `running` is cleared; removes the port file at the end.
-pub fn serve(engine: Arc<Engine>, peers: Arc<Peers>, listener: TcpListener, home: PathBuf, running: Arc<AtomicBool>) {
+pub fn serve(engine: Arc<Engine>, peers: Arc<Peers>, listener: Listener, home: PathBuf, running: Arc<AtomicBool>) {
     let _ = listener.set_nonblocking(true);
     while running.load(Ordering::SeqCst) {
         let s = match listener.accept() {
@@ -141,10 +140,10 @@ pub fn serve(engine: Arc<Engine>, peers: Arc<Peers>, listener: TcpListener, home
         let (e, p, r) = (engine.clone(), peers.clone(), running.clone());
         let _ = std::thread::Builder::new().name("client".into()).spawn(move || client(e, p, s, peer, r));
     }
-    let _ = std::fs::remove_file(port_file(&home));
+    local::unbind(&home.join(SOCKET));
 }
 
-fn client(engine: Arc<Engine>, peers: Arc<Peers>, mut s: TcpStream, peer: i32, running: Arc<AtomicBool>) {
+fn client(engine: Arc<Engine>, peers: Arc<Peers>, mut s: Stream, peer: i32, running: Arc<AtomicBool>) {
     while running.load(Ordering::SeqCst) {
         let msg = match receive(&mut s) {
             Received::Message(m) => m,

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::net::TcpStream;
+use provigil_ipc::local::{self, Stream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -45,18 +45,16 @@ impl Log {
     }
 }
 
-/// Router topics: a connection per topic to `queue/router/<topic>` (port file on Windows),
+/// Router topics: a connection per topic to `queue/router/<topic>` (Unix socket; port file on Windows),
 /// opened on first use and again after a failure; messages are dropped when nobody listens.
 struct Router {
     home: PathBuf,
-    conns: Mutex<HashMap<&'static str, TcpStream>>,
+    conns: Mutex<HashMap<&'static str, Stream>>,
 }
 
 impl Router {
-    fn connect(&self, topic: &str) -> Option<TcpStream> {
-        let path = self.home.join("queue/router").join(topic);
-        let port: u16 = std::fs::read_to_string(path.with_extension("port")).ok()?.trim().parse().ok()?;
-        TcpStream::connect(("127.0.0.1", port)).ok()
+    fn connect(&self, topic: &str) -> Option<Stream> {
+        local::connect(&self.home.join("queue/router").join(topic)).ok()
     }
 
     fn publish(&self, topic: &'static str, body: &[u8]) {

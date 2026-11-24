@@ -424,13 +424,16 @@ services:
 
   # Angular UI — builds the SPA and serves it via nginx on port 80
   # siem-api: the platform server behind the one console (cases and playbooks, settings, admin,
-  # the SIEM pages' API). Without SIEM agents its own log pipeline stays off (PROVIGIL_MANAGER=0).
+  # the SIEM pages' API). With a SIEM licence the installer sets PROVIGIL_MANAGER=1: the agents'
+  # gateway and the manager's programs (rules engine, agent database) run in this container too.
   siem-api:
     build: { context: .., dockerfile: wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile }
     container_name: siem-api
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: 2g
     ports:
+      - "8089:8089"   # ProVigil agents: gRPC (TLS)
+      - "8443:8443"   # ProVigil agents: enrollment, updates, HTTPS fallback
       - "9201:9201"   # Beats (Winlogbeat / Filebeat) log intake, Elasticsearch API; key-authenticated
       - "601:601"     # Syslog TCP (RFC 6587)
       - "6514:6514"   # Syslog over TLS (each device has its own certificate)
@@ -444,16 +447,23 @@ services:
       # product updates: the install's version, and the flag the host updater watches
       - ${INSTALL_DIR}/VERSION:/app/VERSION:ro
       - ${INSTALL_DIR}/scripts:/scripts
+      # the agents' CA (agents trust it: kept across upgrades) and the manager's home (agent database)
+      - siem-tls:/app/data/tls
+      - siem-manager:/app/data/manager
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
+      - GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN}
+      # the names in the agents' certificate: this PC's address (and its DNS name, when set)
+      - SIEM_LAN_IP=${HOST_IP}
+      - SITE_DOMAIN=${SITE_DOMAIN:-}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - CLICKHOUSE_DB=ndr
       - VALKEY_URL=redis://ndr-valkey:6379
       - INSTALL_DIR=/app
-      - PROVIGIL_MANAGER=0
+      - PROVIGIL_MANAGER=${PROVIGIL_MANAGER:-0}
       - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
       - LICENSE_TOKEN=${LICENSE_TOKEN}
       - RUST_LOG=info
@@ -655,6 +665,8 @@ volumes:
   clickhouse2-logs:
   keeper-data:
   keeper-logs:
+  siem-tls:
+  siem-manager:
 
 networks:
   ndr-internal:

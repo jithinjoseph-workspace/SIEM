@@ -321,6 +321,9 @@ NDR_AGENT_SECRET_EARLY=$(openssl rand -hex 32 2>/dev/null || echo "changeme-agen
 # before .env is rewritten, so a reinstall keeps it (a new one would make them unreadable)
 AGENT_KEYS_SECRET=$(grep "^AGENT_KEYS_SECRET=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET:-$(openssl rand -hex 32)}
+# the agents' gateway passes enrollments to siem-api with this token (kept the same way)
+GATEWAY_INTERNAL_TOKEN=$(grep "^GATEWAY_INTERNAL_TOKEN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
+GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:-$(openssl rand -hex 32)}
 
 # Only on a fresh install: a reinstall keeps the existing .env, whose sign-in secret, licence
 # keys and database password the later steps read back (new ones would sign everyone out,
@@ -358,6 +361,7 @@ LICENSE_TOKEN=${LICENSE_TOKEN}
 TENANT_ADMIN_USER=
 TENANT_ADMIN_PASS=
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
+GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN}
 _EARLY_ENV
 log ".env written early (will be updated with final values in network step)"
 else
@@ -873,6 +877,8 @@ DATALAKE_USER=${PV_DATALAKE_URL:+$CLOUD_CH_USER}
 PRODUCT_MODE=$PRODUCT_MODE
 PV_ROLE=${PV_ROLE:-allinone}
 PV_MODULES=$PV_MODULES
+# SIEM: the agents' gateway (8089, 8443) and the rules engine run in siem-api
+PROVIGIL_MANAGER=$HAS_SIEM
 PROVIGIL_REGISTRY=$REGISTRY
 JWT_SECRET=$JWT_SECRET
 NDR_AGENT_SECRET=$NDR_AGENT_SECRET
@@ -892,6 +898,7 @@ LICENSE_TOKEN=$LICENSE_TOKEN
 TENANT_ADMIN_USER=$TENANT_ADMIN_USER
 TENANT_ADMIN_PASS=$TENANT_ADMIN_PASS
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
+GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN}
 ENVEOF
 log ".env generated"
 
@@ -1339,6 +1346,7 @@ printf "  ${CYAN}║${NC}  $(_pad "Dashboard       https://${HOST_IP}:3000")${CY
 printf "  ${CYAN}║${NC}  $(_pad "API Gateway     https://${HOST_IP}:3000")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "NDR Agent       http://localhost:3001")${CYAN}║${NC}\n"
 [ "$HAS_NDR" = 1 ] && printf "  ${CYAN}║${NC}  $(_pad "Packet Recorder http://localhost:8005")${CYAN}║${NC}\n"
+[ "$HAS_SIEM" = 1 ] && printf "  ${CYAN}║${NC}  $(_pad "SIEM agents     ${HOST_IP}:8089 / 8443")${CYAN}║${NC}\n"
 printf "  ${CYAN}╠══════════════════════════════════════════════╣${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "start:    ./start.sh")${CYAN}║${NC}\n"
 printf "  ${CYAN}║${NC}  $(_pad "stop:     ./stop.sh")${CYAN}║${NC}\n"

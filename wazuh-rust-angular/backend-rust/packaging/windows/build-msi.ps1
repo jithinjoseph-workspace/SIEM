@@ -45,7 +45,7 @@ $Stage = "$Here\stage"
 $Out = "$Here\out"
 
 # 1. programs
-$Server = 'auth-service', 'siem-api', 'provigil-gateway', 'provigil-db', 'provigil-analysisd', 'provigil-modulesd', 'provigil-service'
+$Server = 'auth-service', 'siem-api', 'provigil-gateway', 'provigil-db', 'provigil-analysisd', 'provigil-modulesd', 'provigil-mitredb', 'provigil-service'
 $Agent = 'provigil-agent', 'netsh', 'restart-agent', 'route-null', 'kill-process', 'quarantine-file', 'isolate-host', 'yara-scan', 'live-response', 'tamper-protect'
 if (-not $SkipBuild) {
     Say "building the programs (target\msi)..."
@@ -95,7 +95,8 @@ Copy-Item "$Backend\..\caddy\routes.caddy" "$Stage\top\"
 Set-Content "$Stage\top\VERSION" $Version -Encoding ascii
 Copy-Item "$Ui\public\favicon.ico" "$Stage\provigil.ico"
 # the default ruleset (what siem-api copies into the manager home: PROVIGIL_SOURCE_DIR)
-foreach ($d in 'ruleset\decoders', 'ruleset\rules', 'ruleset\lists') {
+# (mitre: the ATT&CK data provigil-mitredb builds the alerts' MITRE database from)
+foreach ($d in 'ruleset\decoders', 'ruleset\rules', 'ruleset\lists', 'ruleset\mitre') {
     New-Item -ItemType Directory -Force "$Stage\ruleset\$d" | Out-Null
     Copy-Item "$Backend\$d\*" "$Stage\ruleset\$d\" -Recurse
 }

@@ -5,6 +5,7 @@ edition = "2021"
 description = "ProVigil agent database (provigil-db): per-agent, global and task SQLite databases behind a text protocol"
 
 [dependencies]
+provigil-ipc = { path = "../provigil-ipc" }
 provigil-json = { path = "../provigil-json" }
 provigil-sqlite = { path = "../provigil-sqlite" }
 sha2 = "0.10"

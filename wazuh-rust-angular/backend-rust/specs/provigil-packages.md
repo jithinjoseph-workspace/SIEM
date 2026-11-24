@@ -123,6 +123,30 @@ Built 2026-11-24: step 3 (Windows MSI), `packaging/windows/`:
   refuses connections without the password. Not yet tested: a real install on a clean Windows PC
   (services, firewall, upgrade) — this PC runs the dev services on the same ports.
 
+Fixed 2026-11-24: the Linux (Docker) master had no agents' gateway and no manager programs, so
+ProVigil agents could not connect (the MSI had them). The siem-api image
+(`docker/siem-api.Dockerfile`) now carries the same set as the MSI: siem-api, provigil-gateway,
+the manager programs (provigil-db, analysisd, modulesd, execd, agentlessd, firewall-drop), the
+default ruleset (`PROVIGIL_SOURCE_DIR=/app/ruleset-src`), and the agent package (Linux agents from
+git, the Windows agent's programs cross-built in the image). `docker/siem-api-start.sh` runs the
+gateway beside siem-api in the same container (they talk over 127.0.0.1, as on Windows), started
+once siem-api has made the agents' CA; when either ends the container restarts. The installer
+sets `PROVIGIL_MANAGER=1` when the licence has SIEM (NDR-only keeps siem-api's platform role
+only). Ports 8089 (gRPC) and 8443 (enrollment, updates); the CA and the manager's home are
+volumes (`siem-tls`, `siem-manager`), so agents keep trusting the master across upgrades. The old
+ports 1514/1515 are not used.
+
+Also fixed with it: the rules engine needs the `provigil` service user (the image makes it; the
+manager's home is group provigil with set-group-ID folders, umask 002, so what the root programs
+make there is the group's); `GATEWAY_INTERNAL_TOKEN` (made once by the installer and kept, as the
+MSI does; without it enrollment through the gateway is off); `provigil-mitredb` and
+`ruleset/mitre` (alerts' MITRE data; the MSI lacked them too); and provigil-db listened only on a
+loopback TCP port (the Windows way) on Linux too, where the other programs look for the Unix
+socket `queue/db/wdb`: it now uses provigil_ipc::local (Unix socket 0660 on Linux, port file on
+Windows), also for its router link. Tested in the Ubuntu 24.04 install: 5 simulated agents
+(provigil-loadtest, `grpcs://` with the CA from /api/server-info and the tenant key) enrolled,
+880 events sent and 880 stored, alerts made by the rules engine, the agents active in the console.
+
 ## 7. Decisions (owner delegated)
 
 - No per-customer build: a licence file next to the same installer, like every major vendor.

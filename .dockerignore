@@ -14,4 +14,20 @@
 !wazuh-rust-angular/backend-rust/ruleset/sca
 !wazuh-rust-angular/backend-rust/specs/sca-manifest
 !wazuh-rust-angular/backend-rust/data/sigma
+# the manager's default ruleset, the agentless scripts, and the agent package's files (its
+# Windows programs are cross-built in the image; old copies and local builds stay out)
+!wazuh-rust-angular/backend-rust/docker/siem-api-start.sh
+!wazuh-rust-angular/backend-rust/ruleset/decoders
+!wazuh-rust-angular/backend-rust/ruleset/rules
+!wazuh-rust-angular/backend-rust/ruleset/lists
+!wazuh-rust-angular/backend-rust/ruleset/mitre
+!wazuh-rust-angular/backend-rust/etc/internal_options.conf
+!wazuh-rust-angular/backend-rust/etc/local_decoder.xml
+!wazuh-rust-angular/backend-rust/etc/local_rules.xml
+!wazuh-rust-angular/backend-rust/data/manager/agentless
+!wazuh-rust-angular/backend-rust/data/agent-dist/linux/provigil-agent-linux
+!wazuh-rust-angular/backend-rust/data/agent-dist/linux/siem-agent-linux
+!wazuh-rust-angular/backend-rust/data/agent-dist/windows
+wazuh-rust-angular/backend-rust/data/agent-dist/windows/*.exe
+wazuh-rust-angular/backend-rust/data/agent-dist/windows/*.exe.*
 **/target

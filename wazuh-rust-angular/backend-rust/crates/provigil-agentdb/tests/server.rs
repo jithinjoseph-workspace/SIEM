@@ -1,8 +1,8 @@
-//! The local server end to end: port file, framing, newline answers, answers in pieces,
+//! The local server end to end: the local socket (Unix socket; port file on Windows), framing, newline answers, answers in pieces,
 //! JSON commands and refused oversize messages.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use provigil_ipc::local::{self, Stream};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -24,13 +24,13 @@ impl Env for TestEnv {
     }
 }
 
-fn send(s: &mut TcpStream, msg: &[u8]) {
+fn send(s: &mut Stream, msg: &[u8]) {
     let mut f = (msg.len() as u32).to_le_bytes().to_vec();
     f.extend_from_slice(msg);
     s.write_all(&f).unwrap();
 }
 
-fn recv(s: &mut TcpStream) -> Option<String> {
+fn recv(s: &mut Stream) -> Option<String> {
     let mut h = [0u8; 4];
     s.read_exact(&mut h).ok()?;
     let mut b = vec![0u8; u32::from_le_bytes(h) as usize];
@@ -39,7 +39,7 @@ fn recv(s: &mut TcpStream) -> Option<String> {
 }
 
 #[test]
-fn serves_over_the_port_file() {
+fn serves_over_the_local_socket() {
     let home = tempfile::tempdir().unwrap();
     for d in ["queue/db", "queue/tasks", "backup/db"] {
         std::fs::create_dir_all(home.path().join(d)).unwrap();
@@ -52,8 +52,7 @@ fn serves_over_the_port_file() {
         let (e, p, h, r) = (engine.clone(), peers.clone(), home.path().to_path_buf(), running.clone());
         std::thread::spawn(move || server::serve(e, p, listener, h, r));
     }
-    let port: u16 = std::fs::read_to_string(home.path().join("queue/db/wdb.port")).unwrap().trim().parse().unwrap();
-    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let mut s = local::connect(&home.path().join("queue/db/wdb")).unwrap();
 
     send(&mut s, br#"global insert-agent {"id":1,"name":"pc1","date_add":1}"#);
     assert_eq!(recv(&mut s).unwrap(), "ok");

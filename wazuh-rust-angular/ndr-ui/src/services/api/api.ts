@@ -241,8 +241,8 @@ export class Api {
   getScaleStatus(): Observable<any> {
     return this.http.get(`${this.baseUrl}/scale-status`);
   }
-  getRules(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/rules`);
+  getRules(ndr?: boolean): Observable<any[]> {
+    return this.http.get<any[]>(`${this.rulesUrl(ndr)}/rules`);
   }
 
   searchRules(q: string, ndr?: boolean): Observable<any[]> {
@@ -324,7 +324,7 @@ export class Api {
   }
 
   exportReport(format: string, hours: number = 24): void {
-    const url = `${this.baseUrl}/export?format=${format}&hours=${hours}`;
+    const url = `${this.ndrUrl}/export?format=${format}&hours=${hours}`;
 
     this.http.get(url, { responseType: 'blob', observe: 'response' })
       .subscribe(response => {
@@ -347,7 +347,7 @@ export class Api {
   }
 
   exportNetworkLogs(format: string, hours: number = 24): void {
-    const url = `${this.baseUrl}/export-logs?format=${format}&hours=${hours}`;
+    const url = `${this.ndrUrl}/export-logs?format=${format}&hours=${hours}`;
 
     this.http.get(url, { responseType: 'blob', observe: 'response' })
       .subscribe(response => {

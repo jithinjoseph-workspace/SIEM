@@ -8,11 +8,11 @@ export class ArkimeService {
   constructor(private http: HttpClient) {}
 
   getStatus(): Observable<any> {
-    return this.http.get('/api/arkime/status');
+    return this.http.get('/api/ndr/arkime/status');
   }
 
   getSessions(params?: { cid?: string; ip?: string; src_ip?: string; dst_ip?: string; limit?: number }): Observable<any> {
-    let query = `/api/arkime/sessions?limit=${params?.limit ?? 50}`;
+    let query = `/api/ndr/arkime/sessions?limit=${params?.limit ?? 50}`;
     if (params?.cid)    query += `&cid=${encodeURIComponent(params.cid)}`;
     if (params?.ip)     query += `&ip=${encodeURIComponent(params.ip)}`;
     if (params?.src_ip) query += `&src_ip=${encodeURIComponent(params.src_ip)}`;
@@ -21,7 +21,7 @@ export class ArkimeService {
   }
 
   getSessionLink(communityId: string): Observable<any> {
-    return this.http.get(`/api/arkime/link/${encodeURIComponent(communityId)}`);
+    return this.http.get(`/api/ndr/arkime/link/${encodeURIComponent(communityId)}`);
   }
 
   private buildPcapParams(node: string, session?: any): string {
@@ -37,12 +37,12 @@ export class ArkimeService {
 
   downloadPcap(sessionId: string, node = '', session?: any): void {
     const qs = this.buildPcapParams(node, session);
-    window.open(`/api/pcap/${encodeURIComponent(sessionId)}${qs}`, '_blank');
+    window.open(`/api/ndr/pcap/${encodeURIComponent(sessionId)}${qs}`, '_blank');
   }
 
   fetchPcapRaw(sessionId: string, node = '', session?: any): Observable<ArrayBuffer> {
     const qs = this.buildPcapParams(node, session);
-    return this.http.get(`/api/pcap/${encodeURIComponent(sessionId)}${qs}`, {
+    return this.http.get(`/api/ndr/pcap/${encodeURIComponent(sessionId)}${qs}`, {
       responseType: 'arraybuffer',
       observe: 'response',
     }).pipe(

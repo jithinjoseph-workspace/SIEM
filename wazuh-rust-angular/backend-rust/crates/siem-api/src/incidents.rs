@@ -226,7 +226,7 @@ pub fn severity_of(level: u8, risk: u8) -> &'static str {
     if rank(b) > rank(a) { b } else { a }
 }
 
-fn priority(severity: &str) -> &'static str {
+pub(crate) fn priority(severity: &str) -> &'static str {
     match severity {
         "CRITICAL" => "P1",
         "HIGH" => "P2",
@@ -726,7 +726,7 @@ pub async fn metrics(
     let days = q.days.unwrap_or(30).clamp(1, 90);
     let db = state.db.tenant_client(&ctx.scope());
     let totals: Option<Totals> = db
-        .query(&format!("SELECT toUInt64(count()) AS cases, toUInt64(countIf(status NOT IN {CLOSED})) AS open, toUInt64(countIf(has(tags, 'auto-incident'))) AS auto_incidents, toUInt64(countIf(has(tags, 'risk-incident'))) AS risk_incidents, toFloat64(ifNotFinite(ifNull(avgIf(dateDiff('second', created_at, closed_at), closed_at IS NOT NULL), 0), 0)) AS mttr FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY"))
+        .query(&format!("SELECT toUInt64(count()) AS cases, toUInt64(countIf(status NOT IN {CLOSED})) AS open, toUInt64(countIf(has(tags, 'auto-incident') OR has(tags, 'ndr-incident'))) AS auto_incidents, toUInt64(countIf(has(tags, 'risk-incident'))) AS risk_incidents, toFloat64(ifNotFinite(ifNull(avgIf(dateDiff('second', created_at, closed_at), closed_at IS NOT NULL), 0), 0)) AS mttr FROM soar_cases FINAL WHERE created_at >= now() - INTERVAL ? DAY"))
         .bind(days)
         .fetch_optional()
         .await

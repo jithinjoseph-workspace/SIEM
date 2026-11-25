@@ -43,6 +43,7 @@ pub(crate) mod test_state;
 pub mod agent_keys_store;
 pub mod corroboration;
 pub mod incidents;
+pub mod ndr_incidents;
 pub mod db;
 pub mod groups;
 pub mod live_response;
@@ -242,6 +243,7 @@ async fn main() {
     provigil_common::soar::set_block_private_targets(!allow_private);
 
     let (broadcast_tx, _) = broadcast::channel::<Alert>(1000);
+    wait_for_clickhouse().await;
     let db = ClickHouseDb::init().await;
 
     let wdb = Arc::new(crate::agent_store::AgentStore::new());
@@ -519,6 +521,8 @@ async fn main() {
     // SIEM analyst AI: alert triage every 30 min, threat predictions every 15 min
     triage::spawn(state.clone());
     incidents::spawn(state.clone());
+    // NDR detections open cases too (one per detection, internal host and day)
+    ndr_incidents::spawn(state.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     health::spawn(state.clone());
@@ -1583,6 +1587,34 @@ async fn main() {
     let plain = app.layer(axum::middleware::from_fn(tenancy::refuse_plain_agents));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, plain.into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();
+}
+
+/// After a reboot every program starts at once: wait for the database before loading what lives
+/// there (tenants' agent keys, deploy tokens, endpoint policy, syslog tenancy), or the server would
+/// start empty until its next restart. `CLICKHOUSE_WAIT_SECS` (300) caps the wait.
+async fn wait_for_clickhouse() {
+    let url = std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".into());
+    let ping = format!("{}/ping", url.trim_end_matches('/'));
+    let limit = std::env::var("CLICKHOUSE_WAIT_SECS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(300);
+    let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build() else { return };
+    let start = std::time::Instant::now();
+    let mut said = false;
+    loop {
+        if client.get(&ping).send().await.is_ok_and(|r| r.status().is_success()) {
+            if said {
+                info!("ClickHouse is up after {} s", start.elapsed().as_secs());
+            }
+            return;
+        }
+        if start.elapsed().as_secs() >= limit {
+            return warn!("ClickHouse not reachable at {ping} after {limit} s: starting without it");
+        }
+        if !said {
+            info!("Waiting for ClickHouse at {ping} (up to {limit} s)...");
+            said = true;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
 }
 
 fn seed_sample_data(state: &AppState) {
@@ -6580,8 +6612,10 @@ async fn get_tenant_agent_key_handler(
     if !ctx.can_manage(&tenant) && !ctx.has_permission("siem-agent-deploy") {
         return tenancy::forbidden();
     }
-    let key = state.agent_keys.get_or_create(&state.db, &tenant).await;
-    Json(serde_json::json!({ "status": "ok", "tenant_id": tenant, "agent_key": key, "header": "X-Tenant-Key" })).into_response()
+    match state.agent_keys.get_or_create(&state.db, &tenant).await {
+        Ok(key) => Json(serde_json::json!({ "status": "ok", "tenant_id": tenant, "agent_key": key, "header": "X-Tenant-Key" })).into_response(),
+        Err(e) => (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "status": "error", "message": e }))).into_response(),
+    }
 }
 
 /// `POST /api/v1/tenant/agent-key/rotate`

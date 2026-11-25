@@ -79,8 +79,8 @@ export class Retrospective implements OnInit {
       error: () => finish(),
     });
 
-    // Source 2: full Sigma rule library (Agent-Z), even rules with 0 hits
-    this.api.getRules().subscribe({
+    // Source 2: full Sigma rule library (Agent-Z), even rules with 0 hits: the NDR engine's rules
+    this.api.getRules(true).subscribe({
       next: (data: any[]) => {
         this.sigmaRules = (data ?? []).map((r: any) => ({
           name: r.title || r.name || r.id,

@@ -910,6 +910,8 @@ export class Soar implements OnInit {
     ];
 
     loadCaseSettings() {
+        // case rules are per SIEM rule: only with the SIEM module
+        if (!this.auth.hasFeature('siem')) return this.caseSettings.set(null);
         this.http.get<any>('/api/v1/siem/incidents/settings').subscribe({ next: r => this.caseSettings.set(r), error: () => this.caseSettings.set(null) });
     }
 

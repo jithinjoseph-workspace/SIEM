@@ -8,7 +8,7 @@ export class EvidenceService {
 
   // Download ZIP bundle — fetches with cookie auth then triggers browser download
   downloadBundle(communityId: string): void {
-    this.http.get(`/api/evidence/${encodeURIComponent(communityId)}`, {
+    this.http.get(`/api/ndr/evidence/${encodeURIComponent(communityId)}`, {
       responseType: 'blob'
     }).subscribe({
       next: (blob) => {
@@ -26,62 +26,62 @@ export class EvidenceService {
   }
 
   listBundles(limit = 50): Observable<any> {
-    return this.http.get(`/api/evidence/bundles?limit=${limit}`);
+    return this.http.get(`/api/ndr/evidence/bundles?limit=${limit}`);
   }
 
   getBundle(bundleId: string): Observable<any> {
-    return this.http.get(`/api/evidence/bundle/${bundleId}`);
+    return this.http.get(`/api/ndr/evidence/bundle/${bundleId}`);
   }
 
   verifyBundle(bundleId: string): Observable<any> {
-    return this.http.get(`/api/evidence/bundle/${bundleId}/verify`);
+    return this.http.get(`/api/ndr/evidence/bundle/${bundleId}/verify`);
   }
 
   setLegalHold(bundleId: string, hold: boolean, reason: string): Observable<any> {
-    return this.http.post(`/api/evidence/bundle/${bundleId}/hold`, { hold, reason });
+    return this.http.post(`/api/ndr/evidence/bundle/${bundleId}/hold`, { hold, reason });
   }
 
   annotate(bundleId: string, communityId: string, note: string, tag: string): Observable<any> {
-    return this.http.post(`/api/evidence/bundle/${bundleId}/annotate`,
+    return this.http.post(`/api/ndr/evidence/bundle/${bundleId}/annotate`,
       { community_id: communityId, note, tag });
   }
 
   getAnnotations(bundleId: string): Observable<any> {
-    return this.http.get(`/api/evidence/bundle/${bundleId}/annotations`);
+    return this.http.get(`/api/ndr/evidence/bundle/${bundleId}/annotations`);
   }
 
   getTimeline(communityId: string): Observable<any> {
-    return this.http.get(`/api/evidence/${encodeURIComponent(communityId)}/timeline`);
+    return this.http.get(`/api/ndr/evidence/${encodeURIComponent(communityId)}/timeline`);
   }
 
   getLog(communityId: string): Observable<any> {
-    return this.http.get(`/api/evidence/${encodeURIComponent(communityId)}/log`);
+    return this.http.get(`/api/ndr/evidence/${encodeURIComponent(communityId)}/log`);
   }
 
   checkIoc(value: string): Observable<any> {
-    return this.http.get(`/api/evidence/iocs/check?value=${encodeURIComponent(value)}`);
+    return this.http.get(`/api/ndr/evidence/iocs/check?value=${encodeURIComponent(value)}`);
   }
 
   getBundleContents(bundleId: string): Observable<any> {
-    return this.http.get(`/api/evidence/bundle/${bundleId}/contents`);
+    return this.http.get(`/api/ndr/evidence/bundle/${bundleId}/contents`);
   }
 
   runInvestigation(communityId: string): Observable<any> {
-    return this.http.post('/api/aria/investigate', { community_id: communityId });
+    return this.http.post('/api/ndr/aria/investigate', { community_id: communityId });
   }
 
   getVerdict(communityId: string): Observable<any> {
-    return this.http.get(`/api/aria/verdict?cid=${encodeURIComponent(communityId)}`);
+    return this.http.get(`/api/ndr/aria/verdict?cid=${encodeURIComponent(communityId)}`);
   }
 
   /** Past AI investigations (this tenant's own) whose circumstances were closest to this one. */
   getSimilarIncidents(communityId: string, limit = 5): Observable<any> {
-    return this.http.get(`/api/aria/similar?cid=${encodeURIComponent(communityId)}&limit=${limit}`);
+    return this.http.get(`/api/ndr/aria/similar?cid=${encodeURIComponent(communityId)}&limit=${limit}`);
   }
 
   /** Answers a question from this tenant's own past investigations and how they ended. */
   askHistory(question: string): Observable<any> {
-    return this.http.post('/api/aria/ask-history', { question });
+    return this.http.post('/api/ndr/aria/ask-history', { question });
   }
 
   /**
@@ -91,6 +91,6 @@ export class EvidenceService {
    * person reading the chat would.
    */
   askPlatform(question: string, subject: string, history: Array<{ role: string; text: string }>): Observable<any> {
-    return this.http.post('/api/aria/ask-history', { question, subject, history });
+    return this.http.post('/api/ndr/aria/ask-history', { question, subject, history });
   }
 }

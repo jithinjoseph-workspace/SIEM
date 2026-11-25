@@ -200,20 +200,32 @@ impl AgentKeys {
         )
     }
 
-    /// The tenant's key, created (and stored) on first use.
-    pub async fn get_or_create(&self, db: &crate::db::ClickHouseDb, tenant: &str) -> String {
+    /// The tenant's key, created (and stored) on first use. A key is only made when the stored
+    /// ones could be read: a key made while the database is unreachable would replace the one the
+    /// tenant's install commands and the gateway use.
+    pub async fn get_or_create(&self, db: &crate::db::ClickHouseDb, tenant: &str) -> Result<String, String> {
         let t = normalize_tenant(tenant);
+        if let Some(k) = self.keys.read().unwrap().get(&t) {
+            return Ok(k.clone());
+        }
+        // not in memory: read the stored keys again (they may not have loaded at start)
+        let Some(rows) = db.fetch_tenant_agent_keys().await else {
+            return Err("the database is not reachable; try again in a minute".into());
+        };
         let created = {
             let mut m = self.keys.write().unwrap();
+            for r in rows {
+                m.entry(normalize_tenant(&r.tenant_id)).or_insert(r.agent_key);
+            }
             if let Some(k) = m.get(&t) {
-                return k.clone();
+                return Ok(k.clone());
             }
             let k = Self::new_key();
             m.insert(t.clone(), k.clone());
             k
         };
         db.save_tenant_agent_key(&t, &created).await;
-        created
+        Ok(created)
     }
 
     /// Issues a new key for the tenant (the old one stops working).
@@ -567,7 +579,8 @@ fn required_module(path: &str) -> Option<&'static str> {
         "/api/v1/deception", "/api/siem", "/api/sources",
     ];
     const SIEM_MORE: [&str; 6] = ["/api/v1/reports", "/api/v1/stats", "/api/v1/tenant", "/api/v1/xdr", "/api/rules", "/syscheck"];
-    if ["/api/soar", "/api/blocks", "/api/isolate", "/api/unisolate", "/api/isolations"].iter().any(|x| under(x)) {
+    // the case figures come from the SOAR cases (NDR's and SIEM's), not from SIEM data
+    if ["/api/soar", "/api/blocks", "/api/isolate", "/api/unisolate", "/api/isolations", "/api/v1/siem/incidents/metrics"].iter().any(|x| under(x)) {
         return Some(SOAR);
     }
     if ["/api/threat-intel", "/api/v1/threat-intel", "/api/v1/swarm"].iter().any(|x| under(x)) {
@@ -776,6 +789,8 @@ mod tests {
         assert_eq!(required_module("/api/siem/dashboard"), Some("siem"));
         assert_eq!(required_module("/api/soar/cases/x/comments"), Some("soar"));
         assert_eq!(required_module("/api/isolate"), Some("soar"));
+        assert_eq!(required_module("/api/v1/siem/incidents/metrics"), Some("soar"), "NDR-only tenants see their case figures");
+        assert_eq!(required_module("/api/v1/siem/incidents/settings"), Some("siem"), "case rules are SIEM rules");
         assert_eq!(required_module("/api/threat-intel/watchlist"), Some("threat_intel"));
         assert_eq!(required_module("/api/v1/swarm/status"), Some("threat_intel"));
         assert_eq!(required_module("/api/v1/ai/chat"), Some("ai"));

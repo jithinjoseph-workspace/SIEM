@@ -119,6 +119,62 @@ static LAST_LABELS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 static LAST_GROUP_STATUS: Mutex<Option<HashMap<String, bool>>> = Mutex::new(None);
 /// The software / OS / hotfix fingerprint each agent was last scanned for vulnerabilities with.
 static LAST_SOFTWARE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// Vulnerability scans asked for and not sent yet: agent -> when it goes out. More requests for
+/// the same agent before then join it (the scan reads the newest software list when it runs): a
+/// full inventory and its first change, seconds apart, were two scans. At most
+/// [`RESCANS_PER_SECOND`] go out each second, so a rollout or a patch day on every computer does
+/// not flood the scanner (its stream to siem-api filled up).
+static PENDING_RESCANS: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+const RESCAN_DELAY: Duration = Duration::from_secs(20);
+const RESCANS_PER_SECOND: usize = 50;
+/// When the scanner could not be reached: tried again after this.
+const RESCAN_RETRY: Duration = Duration::from_secs(10);
+
+/// Asks for a vulnerability scan of the agent within [`RESCAN_DELAY`]; false when one was already
+/// waiting (this request joins it).
+pub fn schedule_rescan(agent_id: &str) -> bool {
+    static SENDER: Once = Once::new();
+    SENDER.call_once(|| {
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(send_rescans());
+        }
+    });
+    add_rescan(PENDING_RESCANS.lock().unwrap().get_or_insert_with(HashMap::new), agent_id, Instant::now() + RESCAN_DELAY)
+}
+
+fn add_rescan(pending: &mut HashMap<String, Instant>, agent_id: &str, at: Instant) -> bool {
+    if pending.contains_key(agent_id) {
+        return false;
+    }
+    pending.insert(agent_id.to_string(), at);
+    true
+}
+
+/// The scans due by `now`, the earliest first, at most `max`; they leave `pending`.
+fn due_rescans(pending: &mut HashMap<String, Instant>, now: Instant, max: usize) -> Vec<String> {
+    let mut due: Vec<(Instant, String)> = pending.iter().filter(|(_, at)| **at <= now).map(|(id, at)| (*at, id.clone())).collect();
+    due.sort();
+    due.truncate(max);
+    for (_, id) in &due {
+        pending.remove(id);
+    }
+    due.into_iter().map(|(_, id)| id).collect()
+}
+
+/// Sends the due scans, [`RESCANS_PER_SECOND`] at most each second, until the process ends.
+async fn send_rescans() {
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let due = due_rescans(PENDING_RESCANS.lock().unwrap().get_or_insert_with(HashMap::new), Instant::now(), RESCANS_PER_SECOND);
+        for id in due {
+            if let Err(e) = request_rescan(&id, false) {
+                warn!("agent {id}: vulnerability scan not requested yet ({e}): tried again in {} s", RESCAN_RETRY.as_secs());
+                add_rescan(PENDING_RESCANS.lock().unwrap().get_or_insert_with(HashMap::new), &id, Instant::now() + RESCAN_RETRY);
+            }
+        }
+    }
+}
 /// Checksums of one read: a reply of provigil-db is at most 64 KB.
 const CHECKSUM_PAGE: usize = 900;
 /// Removed items of one statement.
@@ -999,10 +1055,8 @@ async fn inventory(id: &str, v: &Value) {
     let fp = checksum(&[&pkgs.to_string(), &os.to_string(), &v["hotfixes"].to_string(), &inv["packages"].to_string()]);
     let changed = LAST_SOFTWARE.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.to_string(), fp.clone()).as_deref() != Some(fp.as_str());
     if changed {
-        match request_rescan(id, false) {
-            Ok(()) => info!("agent {id}: inventory stored ({pkgs} packages, {hotfixes} updates); vulnerability scan requested"),
-            Err(e) => warn!("agent {id}: inventory stored; vulnerability scan not requested: {e}"),
-        }
+        let note = if schedule_rescan(id) { "vulnerability scan scheduled" } else { "joins the scan already scheduled" };
+        info!("agent {id}: inventory stored ({pkgs} packages, {hotfixes} updates); {note}");
     }
 }
 
@@ -1083,10 +1137,8 @@ async fn store_delta(wdb: &dyn DbQuery, id: &str, v: &Value) {
         LAST_SOFTWARE.lock().unwrap().get_or_insert_with(HashMap::new).remove(id);
         ask_full(id, "inventory", json!({ "command_id": uuid::Uuid::new_v4().to_string(), "type": "inventory_full" }));
     } else if software {
-        match request_rescan(id, false) {
-            Ok(()) => info!("agent {id}: software changed; vulnerability scan requested"),
-            Err(e) => warn!("agent {id}: software changed; vulnerability scan not requested: {e}"),
-        }
+        let note = if schedule_rescan(id) { "vulnerability scan scheduled" } else { "joins the scan already scheduled" };
+        info!("agent {id}: software changed; {note}");
     }
 }
 
@@ -1166,6 +1218,26 @@ async fn check_sca(wdb: &dyn DbQuery, now: Instant) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scans_of_one_agent_join_and_bursts_spread() {
+        let mut p = HashMap::new();
+        let t0 = Instant::now();
+        assert!(add_rescan(&mut p, "007", t0));
+        assert!(!add_rescan(&mut p, "007", t0 + Duration::from_secs(5)), "the change seconds later joins the waiting scan");
+        assert!(due_rescans(&mut p, t0 - Duration::from_secs(1), 50).is_empty(), "not before its time");
+        assert_eq!(due_rescans(&mut p, t0, 50), ["007"]);
+        assert!(p.is_empty());
+        assert!(add_rescan(&mut p, "007", t0), "after it went out, a new change is a new scan");
+        for i in 0..120 {
+            add_rescan(&mut p, &format!("{i:04}"), t0 + Duration::from_millis(i + 1));
+        }
+        let first = due_rescans(&mut p, t0 + Duration::from_secs(1), 50);
+        assert_eq!(first.len(), 50, "at most 50 a second");
+        assert_eq!(first[0], "007", "the earliest first");
+        assert_eq!(due_rescans(&mut p, t0 + Duration::from_secs(1), 50).len(), 50);
+        assert_eq!(due_rescans(&mut p, t0 + Duration::from_secs(1), 50).len(), 21);
+    }
 
     /// Commands queued, by agent; these tests pass their own database.
     #[derive(Default)]

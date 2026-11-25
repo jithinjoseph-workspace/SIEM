@@ -152,7 +152,7 @@ pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthC
 /// Where customers download ProVigil's installer (a GitHub releases API address; one setting so the
 /// download place can move).
 fn download_url() -> String {
-    std::env::var("PROVIGIL_DOWNLOAD_URL").ok().filter(|u| !u.trim().is_empty()).unwrap_or_else(|| "https://api.github.com/repos/jithinjoseph-workspace/NDR-Demo/releases".into())
+    std::env::var("PROVIGIL_DOWNLOAD_URL").ok().filter(|u| !u.trim().is_empty()).unwrap_or_else(|| "https://api.github.com/repos/jithinjoseph-workspace/provigil-releases/releases".into())
 }
 
 /// One customer's installer zip: their licence, `install.sh` (fetches ProVigil's installer, checks
@@ -174,6 +174,11 @@ fn installer_zip(token: &str, claims: &provigil_license::Claims, public_b64: &st
          Windows master (SIEM): download ProVigil-Setup-<version>.msi from the ProVigil release into this\r\n\
          folder and run it (it uses licence.jwt next to it). Install the data lake first, answering that the\r\n\
          master is a Windows PC.\r\n\
+         Windows PC as the server (SIEM and NDR in containers): in PowerShell as admin run\r\n\
+         wsl --install -d Ubuntu, reboot, put networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig,\r\n\
+         run wsl --shutdown, allow TCP 443, 8089, 8443 and 9092 in the Windows firewall, then run\r\n\
+         sudo bash install.sh inside Ubuntu. Add a startup task running wsl -d Ubuntu so it starts after a reboot.\r\n\
+         NDR sensors (another PC on the mirror port or TAP): install.sh, role NDR sensor, the server's IP.\r\n\
          No internet on the PCs? Ask ProVigil for the offline zip (the same installer with every part).\r\n\
          Keep licence.jwt private: it is this installation's licence.\r\n"
     );

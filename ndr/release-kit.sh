@@ -13,12 +13,12 @@
 #   ./release-kit.sh customer <version> <licence.jwt|token> [ndr]   offline zip for one customer
 #
 # --upload publishes the files as release v<version> of PROVIGIL_RELEASE_REPO (default
-# jithinjoseph-workspace/NDR-Demo; GITHUB_TOKEN). The images themselves are pushed by release.sh.
+# jithinjoseph-workspace/provigil-releases, public, release files only; GITHUB_TOKEN). The images themselves are pushed by release.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 NDR=$(pwd); ROOT=$(cd .. && pwd)
 REGISTRY="${PROVIGIL_REGISTRY:-ghcr.io/jithinjoseph-workspace}"
-REPO="${PROVIGIL_RELEASE_REPO:-jithinjoseph-workspace/NDR-Demo}"
+REPO="${PROVIGIL_RELEASE_REPO:-jithinjoseph-workspace/provigil-releases}"
 
 # python3, or python where python3 is only the Windows Store placeholder
 PY=python3; $PY -c 1 2>/dev/null || PY=python

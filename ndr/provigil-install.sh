@@ -20,7 +20,7 @@ set -euo pipefail
 
 # Set by release-kit.sh when the release is built (base64 of ProVigil's public key).
 PROVIGIL_PUBLIC_KEY=""
-PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/NDR-Demo/releases}"
+PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/provigil-releases/releases}"
 
 ROLE=""; LICENCE=""; MASTER_IP=""; DL_URL=""; DL_USER="provigil"; DL_PASS_FILE=""; DIR="/opt/provigil"; WANT_VERSION=""
 NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""

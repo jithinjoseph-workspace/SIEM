@@ -44,6 +44,7 @@ pub mod agent_keys_store;
 pub mod corroboration;
 pub mod incidents;
 pub mod removals;
+pub mod registry_writer;
 pub mod ndr_incidents;
 pub mod db;
 pub mod groups;
@@ -526,6 +527,8 @@ async fn main() {
     ndr_incidents::spawn(state.clone());
     // removed agents are stored in batches (one writer, retried while ClickHouse is busy)
     removals::spawn(state.clone());
+    // new agents' registry rows in batches (mass enrollment)
+    registry_writer::spawn(state.db.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     health::spawn(state.clone());
@@ -6269,10 +6272,9 @@ pub(crate) async fn enroll_agent(
         (id, reused, entry)
     };
     let mut new_agent = (!reused).then(|| NewAgent { state: state.clone(), id: agent_id.clone(), entry: entry.clone(), done: false });
-    // Stored in ClickHouse before the agent gets its identity.
-    state
-        .db
-        .upsert_agent_registry(&crate::db::AgentRegistryRow {
+    // Stored in ClickHouse before the agent gets its identity (with the other agents enrolling
+    // now: one insert per batch, registry_writer.rs).
+    registry_writer::store(&state.db, crate::db::AgentRegistryRow {
             agent_id: agent_id.clone(),
             name: entry.name.clone(),
             tenant_id: entry.tenant.clone(),
@@ -6358,10 +6360,8 @@ pub(crate) async fn enroll_agent(
             .clone()
             .unwrap_or_else(|| "windows".to_string()),
     };
-    state
-        .db
-        .insert_or_update_agent(&tenant, &agent_to_save)
-        .await;
+    // the fleet row in the background, batched with the others (never waits for ClickHouse)
+    state.db.save_agent_row(&tenant, &agent_to_save);
 
     info!(
         "Agent '{}' enrolled as {} in tenant '{}'{}",

@@ -128,7 +128,8 @@ impl DbDecoders {
 }
 
 /// Messages at the workers at one time; the rest waits in its input queue.
-pub const IN_FLIGHT: usize = 256;
+/// Messages per database worker handed out and not back yet.
+pub const IN_FLIGHT: usize = 64;
 
 struct Job {
     kind: Kind,
@@ -179,6 +180,10 @@ impl Workers {
             })
             .collect();
         Workers { jobs, done, in_flight: 0 }
+    }
+
+    pub fn workers(&self) -> usize {
+        self.jobs.len()
     }
 
     pub fn send(&mut self, kind: Kind, settings: DbSettings, ev: Event) {

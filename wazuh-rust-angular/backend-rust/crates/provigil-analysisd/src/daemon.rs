@@ -32,7 +32,13 @@ use crate::stats::{Component, Queues, QueueUse, Stats};
 pub const NAME: &str = "provigil-analysisd";
 const MAX_MESSAGE: usize = 65536;
 /// Threads for the decoders that wait on provigil-db.
-const DB_WORKERS: usize = 4;
+/// Threads for the decoders that wait on provigil-db (configuration checks, inventory, file
+/// integrity): half the cores, 4 to 16 (provigil-db serves each connection on its own thread and
+/// keeps one database per agent, so they run side by side); `PROVIGIL_DB_DECODERS` sets it.
+fn db_workers() -> usize {
+    let set = std::env::var("PROVIGIL_DB_DECODERS").ok().and_then(|v| v.trim().parse::<usize>().ok()).filter(|n| *n > 0);
+    set.unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get() / 2)).clamp(4, 16)
+}
 /// Where the queues' usages start in [`Service::load`] (after siem-api's count, the fullest
 /// usage and 256 gateway counts).
 const LOAD_KINDS: usize = 2 + 256;
@@ -1229,7 +1235,7 @@ impl Service {
     }
 
     fn worker_room(&self) -> bool {
-        self.workers.as_ref().is_some_and(|w| w.in_flight < builtin::IN_FLIGHT)
+        self.workers.as_ref().is_some_and(|w| w.in_flight < builtin::IN_FLIGHT * w.workers())
     }
 
     /// `n` analysis workers ([`crate::analysis`]): Windows and log messages are decoded, and
@@ -1717,10 +1723,10 @@ pub fn run(mut service: Service, log: Arc<ServiceLog>) -> std::io::Result<()> {
 
     // the input queue
     let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(131_072);
-    let hosts = (0..DB_WORKERS).map(|_| service.live_host(ctx(Arc::new(DbSocket::new(home.join(DB_SOCKET)))))).collect();
+    let hosts = (0..db_workers()).map(|_| service.live_host(ctx(Arc::new(DbSocket::new(home.join(DB_SOCKET)))))).collect();
     service.start_workers(hosts);
     service.start_analysis(crate::analysis::worker_count(), log.clone());
-    log.log("INFO", format!("{} analysis worker(s) for {} CPU core(s) (rule matching on one ordered thread)", service.analysis_workers(), std::thread::available_parallelism().map_or(1, |n| n.get())));
+    log.log("INFO", format!("{} analysis worker(s) and {} database decoder thread(s) for {} CPU core(s) (rule matching on one ordered thread)", service.analysis_workers(), db_workers(), std::thread::available_parallelism().map_or(1, |n| n.get())));
     let qpath = home.join(provigil_ipc::queue::EVENT_QUEUE);
     let l3 = log.clone();
     rt.spawn(async move {

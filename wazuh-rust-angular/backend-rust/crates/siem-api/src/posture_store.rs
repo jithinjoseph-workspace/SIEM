@@ -156,6 +156,15 @@ pub async fn sync_agent(state: &AppState, agent_id: &str) -> bool {
 }
 
 /// A removed agent's SCA rows (its tenant's database).
+/// Removed agents' SCA copies forgotten here (their rows: one delete in removals.rs).
+pub fn forget_cached(agent_ids: &[String]) {
+    let mut last = LAST.lock().unwrap();
+    let m = last.get_or_insert_with(HashMap::new);
+    for id in agent_ids {
+        m.remove(id);
+    }
+}
+
 pub async fn forget(state: &AppState, tenant: &str, agent_id: &str) {
     LAST.lock().unwrap().get_or_insert_with(HashMap::new).remove(agent_id);
     if let Err(e) = replace(state, tenant, agent_id, &[]).await {

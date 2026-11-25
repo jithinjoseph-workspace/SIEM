@@ -71,13 +71,11 @@ async fn write(state: &AppState, rows: Vec<AgentRegistryRow>) {
             ("fleet rows", "ALTER TABLE siem_agents DELETE WHERE has(?, id)", ids.clone()),
             ("vulnerability state", "DELETE FROM siem_vulnerability_state WHERE has(?, agent_id)", ids.clone()),
             ("tamper state", "DELETE FROM siem_tamper WHERE has(?, id)", ids.iter().map(|i| format!("agent:{i}")).collect()),
+            ("configuration check rows", "DELETE FROM siem_sca_checks WHERE has(?, agent_id)", ids.clone()),
         ] {
             retry(what, || state.db.execute_with_list(&tenant, sql, &keys)).await;
         }
-        // SCA rows, one agent after another (never all at once)
-        for id in &ids {
-            crate::posture_store::forget(state, &tenant, id).await;
-        }
+        crate::posture_store::forget_cached(&ids);
     }
     let ids: Vec<String> = rows.iter().map(|r| r.agent_id.clone()).collect();
     tokio::spawn(crate::provigil_manager::purge_removed(ids));

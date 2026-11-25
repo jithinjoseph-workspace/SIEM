@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ProVigil all-in-one for Windows (containers): SIEM and NDR, as the licence allows, in Docker Engine
+  inside ProVigil's own WSL2 Ubuntu (specs/provigil-packages.md). The MSI puts the setup in
+  Program Files\ProVigil AllInOne and starts setup.ps1, which does the work in a window (WSL2, Ubuntu,
+  network, firewall, provigil-install.sh role all-in-one, the start task) and opens the console.
+  The licence: licence.jwt next to the MSI (the super admin installer zip), else it asks for the file.
+  Built by build-allinone-msi.ps1 (WiX 5). Removing the MSI keeps the Linux and its data
+  (wsl - -unregister ProVigil removes them).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="ProVigil All-in-one" Manufacturer="ProVigil" Version="$(Version)"
+           UpgradeCode="{3E8A6F21-9B47-4C1D-A5E2-7F60D4B9C813}" Scope="perMachine" Compressed="yes">
+    <SummaryInformation Description="ProVigil All-in-one: SIEM and NDR in containers (WSL2)" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ProVigil All-in-one is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="ProVigil.ico" SourceFile="$(Stage)\provigil.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProVigil.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="LICENCE_FILE" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ProVigil AllInOne" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Setup" Directory="INSTALLFOLDER">
+      <Component><File Source="$(Stage)\setup.ps1" KeyPath="yes" /></Component>
+      <Component><File Source="$(Stage)\keep-running.ps1" KeyPath="yes" /></Component>
+      <Component><File Source="$(Stage)\provigil-install.sh" KeyPath="yes" /></Component>
+      <Component><File Source="$(Stage)\provigil.ico" KeyPath="yes" /></Component>
+    </ComponentGroup>
+
+    <Feature Id="AllInOne" Title="ProVigil All-in-one" Level="1">
+      <ComponentGroupRef Id="Setup" />
+    </Feature>
+
+    <!-- after the files are in: the setup window (it asks for administrator rights itself) -->
+    <SetProperty Id="RunSetup" Sequence="execute" After="CostFinalize" Condition="NOT REMOVE~=&quot;ALL&quot;"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]setup.ps1&quot; -Licence &quot;[LICENCE_FILE]&quot; -Msi &quot;[OriginalDatabase]&quot;" />
+    <CustomAction Id="StartSetup" Directory="INSTALLFOLDER" ExeCommand="[RunSetup]" Execute="immediate" Return="asyncNoWait" Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="StartSetup" After="InstallFinalize" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

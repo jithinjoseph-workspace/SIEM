@@ -10,6 +10,8 @@
 #
 #   ./release-kit.sh <version> --key private.pem [--offline] [--msi ProVigil-Setup-<v>.msi] [--upload]
 #     --msi: the Windows master's installer (packaging/windows/build-msi.ps1), signed and published too
+#     --allinone-msi: SIEM and NDR in containers on Windows (packaging/windows/allinone/build-allinone-msi.ps1,
+#       built after a first run of this script: it carries this release's provigil-install.sh)
 #   ./release-kit.sh customer <version> <licence.jwt|token> [ndr]   offline zip for one customer
 #
 # --upload publishes the files as release v<version> of PROVIGIL_RELEASE_REPO (default
@@ -66,9 +68,9 @@ fi
 
 V="${1:-}"; shift || true
 [ -n "$V" ] || die "usage: ./release-kit.sh <version> --key private.pem [--offline] [--upload]"
-KEY=""; OFFLINE=0; UPLOAD=0; MSI=""
+KEY=""; OFFLINE=0; UPLOAD=0; MSI=""; AIO_MSI=""
 while [ $# -gt 0 ]; do
-    case "$1" in --key) KEY="$2"; shift 2 ;; --offline) OFFLINE=1; shift ;; --upload) UPLOAD=1; shift ;; --msi) MSI="$2"; shift 2 ;; *) die "unknown option $1" ;; esac
+    case "$1" in --key) KEY="$2"; shift 2 ;; --offline) OFFLINE=1; shift ;; --upload) UPLOAD=1; shift ;; --msi) MSI="$2"; shift 2 ;; --allinone-msi) AIO_MSI="$2"; shift 2 ;; *) die "unknown option $1" ;; esac
 done
 [ -f "$KEY" ] || die "--key: ProVigil's private licence key (PEM) is needed to sign the release"
 command -v openssl >/dev/null || die "openssl is needed"
@@ -105,6 +107,12 @@ if [ -n "$MSI" ]; then
     cp "$MSI" "$D/ProVigil-Setup-$V.msi"
     sign "$D/ProVigil-Setup-$V.msi"
     log "Windows installer: ProVigil-Setup-$V.msi"
+fi
+if [ -n "$AIO_MSI" ]; then
+    [ -f "$AIO_MSI" ] || die "--allinone-msi: $AIO_MSI not found"
+    cp "$AIO_MSI" "$D/ProVigil-AllInOne-Setup-$V.msi"
+    sign "$D/ProVigil-AllInOne-Setup-$V.msi"
+    log "Windows all-in-one (containers): ProVigil-AllInOne-Setup-$V.msi"
 fi
 
 if [ "$OFFLINE" = 1 ]; then

@@ -121,3 +121,5 @@ wazuh-rust-angular/backend-rust/packaging/windows/.wix/
 wazuh-rust-angular/backend-rust/packaging/windows/.cache/
 wazuh-rust-angular/backend-rust/packaging/windows/stage/
 wazuh-rust-angular/backend-rust/packaging/windows/out/
+wazuh-rust-angular/.env.bak*
+wazuh-rust-angular/backend-rust/packaging/windows/allinone/stage/

@@ -174,7 +174,10 @@ fn installer_zip(token: &str, claims: &provigil_license::Claims, public_b64: &st
          Windows master (SIEM): download ProVigil-Setup-<version>.msi from the ProVigil release into this\r\n\
          folder and run it (it uses licence.jwt next to it). Install the data lake first, answering that the\r\n\
          master is a Windows PC.\r\n\
-         Windows PC as the server (SIEM and NDR in containers): in PowerShell as admin run\r\n\
+         Windows PC as the server (SIEM and NDR in containers): download ProVigil-AllInOne-Setup-<version>.msi\r\n\
+         from the ProVigil release into this folder and run it. It turns on WSL2 (one restart, then it goes on\r\n\
+         after you sign in), installs its own Ubuntu, Docker and the licensed parts, and opens the console.\r\n\
+         By hand instead: in PowerShell as admin run\r\n\
          wsl --install -d Ubuntu, reboot, put networkingMode=mirrored under [wsl2] in %UserProfile%\\.wslconfig,\r\n\
          run wsl --shutdown, allow TCP 443, 8089, 8443 and 9092 in the Windows firewall, then run\r\n\
          sudo bash install.sh inside Ubuntu. Add a startup task running wsl -d Ubuntu so it starts after a reboot.\r\n\

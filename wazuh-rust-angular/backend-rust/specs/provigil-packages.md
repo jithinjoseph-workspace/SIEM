@@ -161,3 +161,13 @@ the master address, tenant and key, so it stopped with its usage text. The insta
 takes `--master https://ADDRESS --tenant-id ID --sensor-key KEY`): the LAN IP of the master on site, its
 domain when hosted. The console's "Copy install package" text described the old install command; it now
 describes the installer zip and `sudo bash install.sh`.
+
+Built 2026-11-25: `ProVigil-AllInOne-Setup-<v>.msi` (`packaging/windows/allinone/`), SIEM and NDR in containers on
+Windows. The MSI installs `setup.ps1`, `keep-running.ps1` and the release's signed `provigil-install.sh`, then
+starts `setup.ps1` (it asks for administrator rights itself): Windows features for WSL2 (one restart, it goes on
+at the next sign-in), its own Ubuntu 24.04 distro "ProVigil" from Ubuntu's WSL image checked against its
+SHA256SUMS, systemd, mirrored network on Windows 11 22H2+ (older: port forwarding refreshed at each start),
+the firewall (443, 8089, 8443, 9092), `provigil-install.sh --role allinone` with `licence.jwt` from next to
+the MSI, a "ProVigil" task (at start and sign-in) holding the distro open, then the console. Docker Engine,
+not Docker Desktop (licence fees for larger clients, a desktop app). `release-kit.sh --allinone-msi` publishes
+it. Not yet tested: a real install (the 32 GB PC); S4U start without sign-in.

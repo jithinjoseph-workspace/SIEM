@@ -30,6 +30,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
+/// Room kept free in a spool for the lines already on their way when it counts as full.
+const FULL_MARGIN: u64 = 16 << 20;
 /// Bytes the on-disk spool may hold.
 pub const SPOOL_MAX: u64 = 1 << 30;
 /// Size of one spool file.
@@ -107,6 +109,19 @@ impl Stream {
     pub fn pending(&self) -> bool {
         let s = self.spool.st.lock().unwrap();
         s.acked + 1 < s.next
+    }
+
+    /// The spool is (nearly) full: the daemon stops taking input, so agents hold their events
+    /// (the gateway sees the engine behind and answers 429) instead of lines being dropped.
+    pub fn full(&self) -> bool {
+        let s = self.spool.st.lock().unwrap();
+        s.bytes + FULL_MARGIN >= self.spool.max
+    }
+
+    /// Spools one line; false when the spool is full (nothing is counted or warned: the caller
+    /// waits and tries again, or keeps the line to send later).
+    pub fn try_send(&mut self, kind: u8, json: &[u8]) -> bool {
+        self.spool.append(kind, json)
     }
 
     /// Spools one alert or event line. Some(warning) every 1,000 lines dropped.
@@ -576,6 +591,20 @@ mod tests {
         let (got, again) = lines(&mut c, 30);
         assert_eq!(got, numbers(20..50));
         assert_eq!(again, last, "the same sequences: siem-api can tell a replay");
+    }
+
+    #[test]
+    fn a_spool_reports_full_before_it_drops_and_try_send_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = b"{\"n\":12345}"; // 24 bytes a frame
+        let mut s = Stream::start(free_addr(), "t0k".into(), dir.path(), FULL_MARGIN + 48).unwrap();
+        assert!(!s.full());
+        assert!(s.try_send(EVENT, line) && s.try_send(EVENT, line));
+        assert!(s.full(), "the margin reached: the daemon stops taking input");
+        // what is already on its way still fits the margin; try_send tells when nothing does
+        let fits = (0..1_000_000).take_while(|_| s.try_send(EVENT, line)).count();
+        assert!(fits > 0 && !s.try_send(EVENT, line));
+        assert_eq!(s.dropped, 0, "try_send drops nothing: the caller keeps the line");
     }
 
     #[test]

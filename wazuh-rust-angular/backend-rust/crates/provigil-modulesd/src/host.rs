@@ -72,7 +72,12 @@ struct ApiStream(Mutex<provigil_ipc::platform_stream::Stream>);
 
 impl StreamSpool for ApiStream {
     fn send(&self, kind: u8, body: &str) -> Result<Option<String>, String> {
-        Ok(self.0.lock().unwrap_or_else(|e| e.into_inner()).send(kind, body.as_bytes()))
+        // full: the scanner waits for room (provigil_vulnscan::sink), so nothing is dropped
+        if self.0.lock().unwrap_or_else(|e| e.into_inner()).try_send(kind, body.as_bytes()) {
+            Ok(None)
+        } else {
+            Err("spool full".into())
+        }
     }
 }
 

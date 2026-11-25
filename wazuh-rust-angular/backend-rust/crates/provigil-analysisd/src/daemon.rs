@@ -1320,8 +1320,11 @@ impl Service {
         !self.inq.is_empty() || self.workers.as_ref().is_some_and(|w| w.in_flight > 0) || self.analysis.as_ref().is_some_and(|a| a.in_flight > 0)
     }
 
+    /// No more input now: a queue is full, or the stream to siem-api is (its spool kept for
+    /// ClickHouse being slow or down): the input waits, the gateway sees the engine behind and
+    /// agents hold their events, instead of lines being dropped.
     pub fn input_full(&self) -> bool {
-        self.inq.any_full()
+        self.inq.any_full() || self.stream.as_ref().is_some_and(|s| s.lock().unwrap().full())
     }
 
     pub fn queue_usage(&self) -> f32 {

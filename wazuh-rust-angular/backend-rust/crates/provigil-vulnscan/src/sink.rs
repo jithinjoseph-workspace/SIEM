@@ -12,6 +12,8 @@ use std::sync::Arc;
 
 /// Frame kind of vulnerability documents on the platform stream.
 pub const STREAM_KIND: u8 = b'V';
+/// How long a scan waits for room in a full spool before it leaves a line for the next scan.
+const SPOOL_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// The platform stream towards siem-api. `Ok(Some(text))` is a warning (e.g. spool full).
 // shortcut: the stream framing and spool (`queue/stream-spool/vulnerability`) belong to the
@@ -103,18 +105,39 @@ impl DocSink {
                 }
             };
             for id in ids.into_iter().filter(|i| !r.seen.contains(i)) {
-                Self::send(spool.as_ref(), &compact(&json!({"id": id, "operation": "DELETED"})), &log);
-                let _ = sent.delete(DEFAULT_COLUMN, id.as_bytes());
+                if Self::send(spool.as_ref(), &compact(&json!({"id": id, "operation": "DELETED"})), &log) {
+                    let _ = sent.delete(DEFAULT_COLUMN, id.as_bytes());
+                }
             }
         }
     }
 
-    /// Sends one line; a send never fails the publish: a dropped line is a warning and the
-    /// caller still remembers it.
-    fn send(spool: &dyn StreamSpool, body: &str, log: &Log) {
-        match spool.send(STREAM_KIND, body) {
-            Ok(None) => {}
-            Ok(Some(w)) | Err(w) => ic!(log, Warning, "{w}"),
+    /// Sends one line; true when it went out. While the spool is full (siem-api or ClickHouse
+    /// slow) the scan waits for room, up to [`SPOOL_WAIT`]; a line that still could not go is not
+    /// remembered as sent, so the next scan sends it (before, it was dropped and remembered: that
+    /// vulnerability stayed missing in the console until it changed).
+    fn send(spool: &dyn StreamSpool, body: &str, log: &Log) -> bool {
+        Self::send_waiting(spool, body, log, SPOOL_WAIT, std::time::Duration::from_secs(1))
+    }
+
+    fn send_waiting(spool: &dyn StreamSpool, body: &str, log: &Log, wait: std::time::Duration, every: std::time::Duration) -> bool {
+        let start = std::time::Instant::now();
+        let mut warned = false;
+        loop {
+            match spool.send(STREAM_KIND, body) {
+                Ok(None) => return true,
+                Ok(Some(w)) | Err(w) => {
+                    if start.elapsed() >= wait {
+                        ic!(log, Warning, "{w}: line kept for the next scan");
+                        return false;
+                    }
+                    if !warned {
+                        ic!(log, Warning, "{w}: the scan waits for room");
+                        warned = true;
+                    }
+                    std::thread::sleep(every);
+                }
+            }
         }
     }
 
@@ -161,9 +184,10 @@ impl DocSink {
                             r.deferred.push((op.to_string(), id.clone()));
                             return Ok(());
                         }
-                        Self::send(spool.as_ref(), msg, &log);
-                        for k in known {
-                            sent.delete(DEFAULT_COLUMN, k.as_bytes())?;
+                        if Self::send(spool.as_ref(), msg, &log) {
+                            for k in known {
+                                sent.delete(DEFAULT_COLUMN, k.as_bytes())?;
+                            }
                         }
                         return Ok(());
                     }
@@ -178,8 +202,9 @@ impl DocSink {
                         // An id without `_<part>` has no older versions to replace.
                         if let Some((base, _)) = id.rsplit_once('_') {
                             for old in sent.keys_text(DEFAULT_COLUMN, &format!("{base}_"))?.into_iter().filter(|k| *k != id) {
-                                Self::send(spool.as_ref(), &compact(&json!({"id": old, "operation": "DELETED"})), &log);
-                                sent.delete(DEFAULT_COLUMN, old.as_bytes())?;
+                                if Self::send(spool.as_ref(), &compact(&json!({"id": old, "operation": "DELETED"})), &log) {
+                                    sent.delete(DEFAULT_COLUMN, old.as_bytes())?;
+                                }
                                 replaced = true;
                             }
                         }
@@ -187,8 +212,10 @@ impl DocSink {
                             return Ok(());
                         }
                     }
-                    Self::send(spool.as_ref(), msg, &log);
-                    sent.put_text(DEFAULT_COLUMN, &id, &hash)?;
+                    // remembered only once it went out: what could not go is sent by the next scan
+                    if Self::send(spool.as_ref(), msg, &log) {
+                        sent.put_text(DEFAULT_COLUMN, &id, &hash)?;
+                    }
                     Ok(())
                 })();
                 if let Err(e) = r {
@@ -289,15 +316,29 @@ mod tests {
         }
     }
 
+    /// A spool full for a while, then with room.
+    struct FullThen(std::sync::atomic::AtomicU32);
+    impl StreamSpool for FullThen {
+        fn send(&self, _: u8, _: &str) -> Result<Option<String>, String> {
+            if self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) > 0 {
+                Err("spool full".into())
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
     #[test]
-    fn send_failure_is_a_warning_and_remembered() {
-        // D19
-        let home = tempfile::tempdir().unwrap();
+    fn a_full_spool_waits_and_a_line_that_could_not_go_is_not_remembered() {
+        // the scan waits for room: the line goes once there is
         let l = Arc::new(MemoryLogger::default());
-        let mut s = DocSink::open(home.path(), "idx", Some(Arc::new(Down)), Log::new(l.clone())).unwrap();
-        s.publish(&doc("001_x_CVE-1_5", 1.0));
-        assert!(l.has(Level::Warning, "spool full"));
-        assert_eq!(s.local_keys(), vec!["001_x_CVE-1_5"]);
+        let log = Log::new(l.clone());
+        let ms = std::time::Duration::from_millis(1);
+        assert!(DocSink::send_waiting(&FullThen(3.into()), "x", &log, std::time::Duration::from_secs(5), ms));
+        assert!(l.has_text("the scan waits for room"));
+        // still full after the wait: not sent
+        assert!(!DocSink::send_waiting(&Down, "x", &log, ms * 5, ms));
+        assert!(l.has_text("line kept for the next scan"));
     }
 
     #[test]

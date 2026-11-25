@@ -43,6 +43,7 @@ pub(crate) mod test_state;
 pub mod agent_keys_store;
 pub mod corroboration;
 pub mod incidents;
+pub mod removals;
 pub mod ndr_incidents;
 pub mod db;
 pub mod groups;
@@ -523,6 +524,8 @@ async fn main() {
     incidents::spawn(state.clone());
     // NDR detections open cases too (one per detection, internal host and day)
     ndr_incidents::spawn(state.clone());
+    // removed agents are stored in batches (one writer, retried while ClickHouse is busy)
+    removals::spawn(state.clone());
     predictions::spawn(state.clone());
     posture::spawn(state.clone());
     health::spawn(state.clone());
@@ -2204,17 +2207,6 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
         // row stays, marked deleted, so the id is never issued again.
         let e = state.enrolled.write().unwrap().remove(id);
         let _ = state.auth_keystore.write().unwrap().delete_key(id);
-        provigil_manager::save_keys(state);
-        let wid = id.to_string();
-        // its global.db row and database file, checked until the file is gone
-        tokio::spawn(provigil_manager::purge_removed(vec![wid]));
-        let st = state.clone();
-        let t_clone = tenant.clone();
-        let id_clone = id.to_string();
-        tokio::spawn(async move {
-            st.db.delete_agent(&t_clone, &id_clone).await;
-            posture_store::forget(&st, &t_clone, &id_clone).await;
-        });
 
         // Instantly purge intent engine and risk fabric state for this deleted agent
         state.intent_engine.remove_dossier_by_agent_id(id);
@@ -2237,7 +2229,18 @@ fn remove_scoped_agent(state: &AppState, ctx: &AuthCtx, id: &str) -> bool {
                 }
             }
         };
-        persist_registry(state, id, &tenant, e_ref, true);
+        // stored in batches by removals.rs (registry, fleet, vulnerability, tamper and SCA rows,
+        // global.db, the key store); without its writer (tests) here, one agent at a time
+        if !removals::queue(registry_row(id, &tenant, e_ref, true)) {
+            provigil_manager::save_keys(state);
+            tokio::spawn(provigil_manager::purge_removed(vec![id.to_string()]));
+            let (st, t_clone, id_clone) = (state.clone(), tenant.clone(), id.to_string());
+            tokio::spawn(async move {
+                st.db.delete_agent(&t_clone, &id_clone).await;
+                posture_store::forget(&st, &t_clone, &id_clone).await;
+            });
+            persist_registry(state, id, &tenant, e_ref, true);
+        }
     }
     removed
 }
@@ -6028,8 +6031,15 @@ fn persist_registry(
     e: Option<&EnrolledAgent>,
     deleted: bool,
 ) {
+    let row = registry_row(agent_id, tenant, e, deleted);
+    let db = state.db.clone();
+    tokio::spawn(async move { db.upsert_agent_registry(&row).await });
+}
+
+/// An agent's registry row.
+fn registry_row(agent_id: &str, tenant: &str, e: Option<&EnrolledAgent>, deleted: bool) -> crate::db::AgentRegistryRow {
     let now = Utc::now().timestamp_millis() as u64;
-    let row = crate::db::AgentRegistryRow {
+    crate::db::AgentRegistryRow {
         agent_id: agent_id.to_string(),
         name: e
             .map(|e| e.name.clone())
@@ -6043,9 +6053,7 @@ fn persist_registry(
             .unwrap_or(now),
         updated_at: now,
         disabled: e.map(|e| e.disabled as u8).unwrap_or(0),
-    };
-    let db = state.db.clone();
-    tokio::spawn(async move { db.upsert_agent_registry(&row).await });
+    }
 }
 
 /// ProVigil agent name rules (`OS_IsValidName`): letters, digits, '.', '_', '-'; 2..=128 chars.

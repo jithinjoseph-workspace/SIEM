@@ -1928,6 +1928,26 @@ impl ClickHouseDb {
         }
     }
 
+    /// Registry rows in one insert (removals.rs); Err when ClickHouse did not take them.
+    pub async fn upsert_agent_registry_rows(&self, rows: &[AgentRegistryRow]) -> Result<(), String> {
+        if !self.is_connected() || rows.is_empty() {
+            return Ok(());
+        }
+        let mut insert = self.client.insert("agent_registry").map_err(|e| e.to_string())?;
+        for r in rows {
+            insert.write(r).await.map_err(|e| e.to_string())?;
+        }
+        insert.end().await.map_err(|e| e.to_string())
+    }
+
+    /// One statement of the tenant's database with a list bound (`has(?, column)`).
+    pub async fn execute_with_list(&self, tenant_id: &str, sql: &str, list: &[String]) -> Result<(), String> {
+        if !self.is_connected() || list.is_empty() {
+            return Ok(());
+        }
+        self.tenant_client(tenant_id).query(sql).bind(list).execute().await.map_err(|e| e.to_string())
+    }
+
     /// Writes (or replaces) an agent's registry row.
     pub async fn upsert_agent_registry(&self, row: &AgentRegistryRow) {
         if !self.is_connected() {

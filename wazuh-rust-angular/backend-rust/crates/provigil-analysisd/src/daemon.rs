@@ -553,6 +553,43 @@ pub struct Service {
     windows: builtin::windows::Windows,
     db: DbDecoders,
     workers: Option<Workers>,
+    /// time per stage (`PROVIGIL_ANALYSISD_PROFILE=1`), logged every 10 s
+    prof: Option<Profile>,
+}
+
+/// Where the analysis thread spends its time: summed per stage, logged as an average per event.
+#[derive(Default)]
+struct Profile {
+    events: u64,
+    clean: Duration,
+    decode: Duration,
+    rules: Duration,
+    write: Duration,
+    since: Option<std::time::Instant>,
+}
+
+impl Profile {
+    fn line(&mut self, now: bool) -> Option<String> {
+        let start = *self.since.get_or_insert_with(std::time::Instant::now);
+        if (!now && start.elapsed() < Duration::from_secs(10)) || self.events == 0 {
+            return None;
+        }
+        let per = |d: Duration| d.as_secs_f64() * 1e6 / self.events as f64;
+        let busy = self.clean + self.decode + self.rules + self.write;
+        let line = format!(
+            "profile: {} events in {:.1} s ({:.0}/s), per event: clean {:.1} us, decode {:.1} us, rules {:.1} us, write {:.1} us; busy {:.0} %",
+            self.events,
+            start.elapsed().as_secs_f64(),
+            self.events as f64 / start.elapsed().as_secs_f64(),
+            per(self.clean),
+            per(self.decode),
+            per(self.rules),
+            per(self.write),
+            100.0 * busy.as_secs_f64() / start.elapsed().as_secs_f64()
+        );
+        *self = Profile { since: Some(std::time::Instant::now()), ..Default::default() };
+        Some(line)
+    }
 }
 
 fn engine_settings(c: &Config, short: &[u8], full: &[u8]) -> EngineSettings {
@@ -740,6 +777,7 @@ impl Service {
             windows: Default::default(),
             db: Default::default(),
             workers: None,
+            prof: std::env::var("PROVIGIL_ANALYSISD_PROFILE").is_ok_and(|v| v == "1").then(|| Profile { since: Some(std::time::Instant::now()), ..Default::default() }),
         };
         s.open_fts();
         Ok(s)
@@ -889,7 +927,16 @@ impl Service {
     }
 
     /// Once a second: flush, hourly totals, the day's change and rotation.
+    /// The stage times since the last line (`PROVIGIL_ANALYSISD_PROFILE=1`), now (benchmarks).
+    pub fn profile_now(&mut self) -> Option<String> {
+        self.prof.as_mut().and_then(|p| p.line(true))
+    }
+
     pub fn tick(&mut self, log: &ServiceLog) {
+        if let Some(line) = self.prof.as_mut().and_then(|p| p.line(false)) {
+            let in_flight = self.workers.as_ref().map_or(0, |w| w.in_flight);
+            log.log("INFO", format!("{line}; queues: {}; database decoders in flight {in_flight}", self.inq.summary()));
+        }
         let n = self.now();
         self.outputs.flush();
         if let Some(f) = &mut self.fts_file {
@@ -1207,10 +1254,15 @@ impl Service {
     }
 
     fn decode(&mut self, host: &mut dyn Host, kind: Kind, msg: &[u8]) {
+        let t0 = std::time::Instant::now();
         let now = self.engine.clock.now();
         let mut ev = self.engine.new_event();
         let manager = self.engine.settings.manager_host.clone();
-        if ev.clean(msg, &manager, now).is_err() {
+        let cleaned = ev.clean(msg, &manager, now);
+        if let Some(p) = &mut self.prof {
+            p.clean += t0.elapsed();
+        }
+        if cleaned.is_err() {
             host.log("ERROR", FORMAT_ERROR.as_bytes());
             host.log("ERROR", &[&b"(1222): Invalid msg: "[..], msg].concat());
             return;
@@ -1246,6 +1298,7 @@ impl Service {
             }
             return;
         }
+        let t1 = std::time::Instant::now();
         match kind {
             Kind::Winevt => {
                 self.stats.decoded(Component::Eventchannel, ev.agent_id.as_deref(), now.sec);
@@ -1274,6 +1327,9 @@ impl Service {
                 self.engine.decode(&mut ev);
             }
         }
+        if let Some(p) = &mut self.prof {
+            p.decode += t1.elapsed();
+        }
         self.match_rules(host, ev);
     }
 
@@ -1291,11 +1347,18 @@ impl Service {
             stats.processed(ev.agent_id.as_deref(), n.sec);
             l
         };
+        let t0 = std::time::Instant::now();
         let out = self.engine.process(ev, &opts, &mut self.hours, self.stats_rule, n.hour, n.wday, &mut labels);
         if out.firewall_event {
             self.hourly_firewall += 1;
         }
+        let t1 = std::time::Instant::now();
         self.write(host, out);
+        if let Some(p) = &mut self.prof {
+            p.rules += t1 - t0;
+            p.write += t1.elapsed();
+            p.events += 1;
+        }
     }
 
     /// getconfig sections.

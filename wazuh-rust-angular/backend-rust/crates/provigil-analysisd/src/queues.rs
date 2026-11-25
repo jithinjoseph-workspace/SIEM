@@ -152,6 +152,17 @@ impl InQueues {
         (0..KINDS).any(|i| self.count[i] + 1 >= self.size[i])
     }
 
+    /// The queues holding messages: `name count/size`, fullest first (for the stage timings).
+    pub fn summary(&self) -> String {
+        const NAMES: [&str; KINDS] = ["syscheck", "rootcheck", "sca", "syscollector", "hostinfo", "winevt", "dbsync", "upgrade", "event"];
+        let mut used: Vec<(f32, String)> = (0..KINDS)
+            .filter(|&i| self.count[i] > 0)
+            .map(|i| (self.count[i] as f32 / self.size[i].max(1) as f32, format!("{} {}/{}", NAMES[i], self.count[i], self.size[i])))
+            .collect();
+        used.sort_by(|a, b| b.0.total_cmp(&a.0));
+        if used.is_empty() { "empty".into() } else { used.into_iter().map(|(_, s)| s).collect::<Vec<_>>().join(", ") }
+    }
+
     /// How full the fullest queue is, 0 to 1.
     pub fn max_usage(&self) -> f32 {
         (0..KINDS).map(|i| self.count[i] as f32 / (self.size[i] as f32 - 1.0).max(1.0)).fold(0.0, f32::max)

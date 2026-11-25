@@ -259,9 +259,8 @@ printf "\n"
 REGISTRY="${PROVIGIL_REGISTRY:-ghcr.io/jithinjoseph-workspace}"
 if [ -n "${PV_OFFLINE_DIR:-}" ]; then
     log "Offline install: images from $PV_OFFLINE_DIR/images"
-elif [ -z "${REGISTRY_TOKEN:-}" ]; then
-    read -rp "  Registry token (provided by Proma Secure): " REGISTRY_TOKEN
 fi
+# ProVigil's images are public (they run only with a valid licence): a token only for a private registry
 printf "\n"
 
 # ── Check OS ──────────────────────────────────
@@ -1059,8 +1058,10 @@ if [ -n "${PV_OFFLINE_DIR:-}" ]; then
         log "  loaded $(basename "$f")"
     done
 else
-    echo "$REGISTRY_TOKEN" | sudo docker login "${REGISTRY%%/*}" -u ndr-customer --password-stdin >/dev/null 2>&1 \
-        || err "Registry login failed — check your token and try again"
+    if [ -n "${REGISTRY_TOKEN:-}" ]; then
+        echo "$REGISTRY_TOKEN" | sudo docker login "${REGISTRY%%/*}" -u ndr-customer --password-stdin >/dev/null 2>&1 \
+            || err "Registry login failed — check your token and try again"
+    fi
     log "Pulling the licensed images: $PV_IMAGES"
     for IMG in $PV_IMAGES; do
       sudo docker pull "${REGISTRY}/${IMG}:latest" 2>/tmp/ndr_cust_err \

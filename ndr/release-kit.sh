@@ -133,8 +133,12 @@ if [ "$UPLOAD" = 1 ]; then
             -d "{\"tag_name\":\"v$V\",\"name\":\"ProVigil $V\",\"body\":\"Installer: provigil-install.sh. Offline parts in images/.\"}" \
             | $PY -c 'import json,sys; print(json.load(sys.stdin)["id"])') || die "could not create release v$V on $REPO"
     fi
+    # a re-packed release: files of the same name are replaced (GitHub refuses a second one)
+    OLD=$(curl -fsS "${H[@]}" "https://api.github.com/repos/$REPO/releases/$ID/assets?per_page=100" | $PY -c 'import json,sys; [print(a["id"], a["name"]) for a in json.load(sys.stdin)]' | tr -d '\r')
     (cd "$D" && find . -type f | sort) | while read -r f; do
         name=$(basename "$f"); [ "${f#./images/}" != "$f" ] && name="images-$name"
+        old=$(printf '%s\n' "$OLD" | awk -v n="$name" '$2 == n {print $1}')
+        [ -z "$old" ] || curl -fsS "${H[@]}" -X DELETE "https://api.github.com/repos/$REPO/releases/assets/$old" || die "could not replace $name"
         log "upload $name"
         curl -fsS "${H[@]}" -H "Content-Type: application/octet-stream" --data-binary @"$D/${f#./}" \
             "https://uploads.github.com/repos/$REPO/releases/$ID/assets?name=$name" >/dev/null || die "upload of $name failed"

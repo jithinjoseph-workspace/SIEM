@@ -67,6 +67,8 @@
       <div class="xa-card-right">
         <span class="xa-status-badge">{{ a.status }}</span>
         <span class="xa-time">{{ a.created_at | date:'MMM d, HH:mm' }}</span>
+        <!-- an XDR incident is worked and closed in its case -->
+        <a *ngIf="a.case_id" class="xa-case-link" [routerLink]="['/analyst/cases', a.case_id]">Open case</a>
       </div>
     </div>
 

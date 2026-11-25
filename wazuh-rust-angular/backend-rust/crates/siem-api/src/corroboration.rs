@@ -1,8 +1,8 @@
 //! XDR incidents: a host alert (level 7 or more) and a network detection an NDR sensor made
 //! (`ndr_hits` of the alert's tenant, written by the NDR engine) that involve the same host IP
 //! within [`WINDOW_MS`].
-//! The incident carries the real threat (id, signature, the other side as attacker). Each alert
-//! becomes at most one incident. Without network threats (no sensor) nothing is created.
+//! The incident carries the real threat (id, signature, the other side as attacker). One incident
+//! per network detection and host: the host's further alerts confirm the same incident. Without network threats (no sensor) nothing is created.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
@@ -18,6 +18,8 @@ use crate::AppState;
 const LEVEL: u8 = 7;
 /// How far apart the alert and the network threat may be.
 const WINDOW_MS: u64 = 10 * 60 * 1000;
+/// The tag of an XDR incident's case (and `xdr:<incident id>`).
+pub const XDR_TAG: &str = "xdr-incident";
 /// Alerts this recent are looked at each cycle.
 const RECENT_MS: u64 = 30 * 60 * 1000;
 /// Alert ids already turned into an incident (or found to have one), the most recent ones.
@@ -108,7 +110,8 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
         for a in alerts.iter().rev().take(2000) {
             let ts = a.timestamp.timestamp_millis().max(0) as u64;
             let ip = a.agent.ip.trim();
-            if a.rule.level < LEVEL || ip.is_empty() || ip == "any" || ip == "127.0.0.1" || now.saturating_sub(ts) > RECENT_MS || done.0.contains(&a.id.to_string()) {
+            // a simulation (Red Swarm) is not a real attack: no XDR incident
+            if a.rule.level < LEVEL || crate::is_simulation(a) || ip.is_empty() || ip == "any" || ip == "127.0.0.1" || now.saturating_sub(ts) > RECENT_MS || done.0.contains(&a.id.to_string()) {
                 continue;
             }
             let tenant = crate::tenancy::alert_tenant(a, &agent_tenants);
@@ -135,11 +138,23 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
             continue;
         }
         let host: Vec<HostAlert> = list.iter().map(|(h, _)| h.clone()).collect();
+        // one incident per network detection and host: the host's other alerts confirm the same one
+        let mut made: HashSet<(String, String)> = HashSet::new();
         for (i, t) in correlate(&host, &threats) {
             let ((id, _, ip), alert) = &list[i];
-            // stored before (an earlier run of this service): never twice
-            let have: u64 = client.query("SELECT count() FROM xdr_incidents WHERE siem_alert_id = ?").bind(id).fetch_one().await.unwrap_or(0);
             remember(id);
+            if !made.insert((t.id.clone(), ip.clone())) {
+                continue;
+            }
+            // stored before (this alert, or this detection on this host, by an earlier cycle or run)
+            let have: u64 = client
+                .query("SELECT count() FROM xdr_incidents WHERE siem_alert_id = ? OR (ndr_threat_id = ? AND host_ip = ?)")
+                .bind(id)
+                .bind(&t.id)
+                .bind(ip)
+                .fetch_one()
+                .await
+                .unwrap_or(0);
             if have > 0 {
                 continue;
             }
@@ -159,6 +174,24 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
                 status: "open".into(),
             };
             state.db.insert_incident(&tenant, &inc).await;
+            // worked and closed like every case: the XDR queue shows the case's status
+            let ids = vec![inc.siem_alert_id.clone(), inc.ndr_threat_id.clone()];
+            let case = crate::ndr_incidents::NewCase {
+                title: format!("XDR: {} ({}): {} + {}", inc.agent_name, inc.host_ip, inc.ndr_signature, inc.siem_rule_description),
+                description: format!(
+                    "Host and network agree: the host alert \"{}\" on {} and the network detection \"{}\" (other side {}) within {} minutes.",
+                    inc.siem_rule_description, inc.agent_name, inc.ndr_signature, if inc.attacker_ip.is_empty() { "-" } else { &inc.attacker_ip }, WINDOW_MS / 60_000
+                ),
+                severity: if inc.severity == "critical" { "CRITICAL" } else { "HIGH" },
+                src_ip: &inc.attacker_ip,
+                dst_ip: &inc.host_ip,
+                community_id: inc.ndr_threat_id.split('@').next().unwrap_or_default(),
+                hit_ids: &ids,
+                tags: vec![XDR_TAG.to_string(), format!("xdr:{}", inc.incident_id)],
+            };
+            if let Err(e) = crate::ndr_incidents::open_case(state, &tenant, case).await {
+                warn!("XDR incident {} of {tenant}: case not opened: {e}", inc.incident_id);
+            }
         }
     }
     Ok(())

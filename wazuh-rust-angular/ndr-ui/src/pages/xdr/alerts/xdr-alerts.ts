@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 export interface UnifiedAlert {
@@ -17,12 +18,14 @@ export interface UnifiedAlert {
   status: string;
   created_at: string;
   ai_summary?: string;
+  /** the case an XDR incident is worked and closed in */
+  case_id?: string;
 }
 
 @Component({
   selector: 'app-xdr-alerts',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './xdr-alerts.html',
   styleUrls: ['./xdr-alerts.css'],
 })
@@ -44,7 +47,8 @@ export class XdrAlerts implements OnInit, OnDestroy {
   readonly sources = ['all', 'ndr', 'siem', 'corroborated'];
   /** The queue holds high and critical items only (medium and low stay on each module's alert pages). */
   readonly severities = ['all', 'CRITICAL', 'HIGH'];
-  readonly statuses = ['all', 'New', 'Investigating', 'Escalated', 'Resolved'];
+  // the case statuses (an XDR incident is worked in its case)
+  readonly statuses = ['all', 'New', 'Assigned', 'In Progress', 'Pending', 'Under Review', 'Resolved', 'Closed', 'False Positive'];
 
   constructor(private http: HttpClient) {}
 

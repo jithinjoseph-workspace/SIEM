@@ -169,30 +169,48 @@ async fn cycle(state: &AppState, tenant: &str) {
         if hits.is_empty() {
             continue;
         }
-        let id = uuid::Uuid::new_v4().to_string();
-        let number = crate::soar::next_case_number(state, tenant).await;
-        let now = chrono::Utc::now().timestamp();
-        let newest: u32 = client.query("SELECT toUInt32(toUnixTimestamp(max(created_at))) FROM soar_cases").fetch_one().await.unwrap_or(0);
-        let created = crate::incidents::unique_second(now, i64::from(newest));
         let sev = if g.critical { "CRITICAL" } else { "HIGH" };
         let ids: Vec<String> = hits.iter().map(|h| h.0.clone()).take(MAX_IDS).collect();
-        let tags = vec![TAG.to_string(), tag];
-        let made = client
-            .query("INSERT INTO soar_cases (id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, hit_ids, tags, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'New', '', ?, ?, ?, ?, ?, ?, toDateTime(?), toDateTime(?))")
-            .bind(&id).bind(&number).bind(format!("{}: {}", g.host, g.name)).bind(describe(&g, &hits)).bind(sev).bind(crate::incidents::priority(sev))
-            .bind(&g.src_ip).bind(&g.dst_ip).bind(&g.community_id).bind(&ids).bind(&tags).bind(tenant).bind(created).bind(created)
-            .execute()
-            .await;
-        match made {
-            Ok(()) => {
-                tracing::info!("NDR incident {number} opened for {tenant}: {} on {}", g.name, g.host);
-                // like every new case: its history starts, and it is triaged (recommend only)
-                crate::case_detail::created(state, tenant, &id, "ProVigil").await;
-                crate::case_ai::spawn_for_new_case(state.clone(), tenant.to_string(), id);
-            }
+        let case = NewCase { title: format!("{}: {}", g.host, g.name), description: describe(&g, &hits), severity: sev, src_ip: &g.src_ip, dst_ip: &g.dst_ip, community_id: &g.community_id, hit_ids: &ids, tags: vec![TAG.to_string(), tag] };
+        match open_case(state, tenant, case).await {
+            Ok((_, number)) => tracing::info!("NDR incident {number} opened for {tenant}: {} on {}", g.name, g.host),
             Err(e) => tracing::warn!("NDR incident of {tenant} not opened: {e}"),
         }
     }
+}
+
+/// A case a worker opens (NDR incidents, XDR incidents).
+pub(crate) struct NewCase<'a> {
+    pub title: String,
+    pub description: String,
+    pub severity: &'static str,
+    pub src_ip: &'a str,
+    pub dst_ip: &'a str,
+    pub community_id: &'a str,
+    pub hit_ids: &'a [String],
+    pub tags: Vec<String>,
+}
+
+/// Opens a case as the SIEM incidents do (number, a creation second of its own, its history and
+/// its triage): (id, number).
+pub(crate) async fn open_case(state: &AppState, tenant: &str, c: NewCase<'_>) -> Result<(String, String), String> {
+    let client = state.db.tenant_client(tenant);
+    let id = uuid::Uuid::new_v4().to_string();
+    let number = crate::soar::next_case_number(state, tenant).await;
+    let now = chrono::Utc::now().timestamp();
+    let newest: u32 = client.query("SELECT toUInt32(toUnixTimestamp(max(created_at))) FROM soar_cases").fetch_one().await.unwrap_or(0);
+    let created = crate::incidents::unique_second(now, i64::from(newest));
+    client
+        .query("INSERT INTO soar_cases (id, case_number, title, description, severity, priority, status, assigned_to, src_ip, dst_ip, community_id, hit_ids, tags, tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'New', '', ?, ?, ?, ?, ?, ?, toDateTime(?), toDateTime(?))")
+        .bind(&id).bind(&number).bind(c.title).bind(c.description).bind(c.severity).bind(crate::incidents::priority(c.severity))
+        .bind(c.src_ip).bind(c.dst_ip).bind(c.community_id).bind(c.hit_ids).bind(&c.tags).bind(tenant).bind(created).bind(created)
+        .execute()
+        .await
+        .map_err(|e| e.to_string())?;
+    // like every new case: its history starts, and it is triaged (recommend only)
+    crate::case_detail::created(state, tenant, &id, "ProVigil").await;
+    crate::case_ai::spawn_for_new_case(state.clone(), tenant.to_string(), id.clone());
+    Ok((id, number))
 }
 
 #[cfg(test)]

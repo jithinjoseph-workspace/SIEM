@@ -430,7 +430,9 @@ services:
     build: { context: .., dockerfile: wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile }
     container_name: siem-api
     restart: unless-stopped
-    mem_limit: 2g
+    # the whole SIEM pipeline runs here (siem-api, agent gateway, rules engine, agent database):
+    # 2 GB was the bottleneck at about 700 agents in the load test. SIEM_API_MEM in .env sizes it.
+    mem_limit: ${SIEM_API_MEM:-8g}
     ports:
       - "8089:8089"   # ProVigil agents: gRPC (TLS)
       - "8443:8443"   # ProVigil agents: enrollment, updates, HTTPS fallback

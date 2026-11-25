@@ -569,9 +569,10 @@ export class Tenants implements OnInit, OnDestroy {
       tenant_id:    this.licenseTenant.id,
       tenant_name:  this.licenseTenant.name,
       features,
-      max_sensors:  this.licenseForm.max_sensors,
-      max_pcs:      Number(this.licenseForm.max_pcs) || 0,
-      max_eps:      Number(this.licenseForm.max_eps) || 0,
+      // a module's limits only when the licence has the module
+      max_sensors:  this.licHas('ndr') ? this.licenseForm.max_sensors : 0,
+      max_pcs:      this.licHas('siem') ? Number(this.licenseForm.max_pcs) || 0 : 0,
+      max_eps:      this.licHas('siem') ? Number(this.licenseForm.max_eps) || 0 : 0,
       expires_days: this.licenseForm.expires_days,
       admin_user:   this.licenseForm.admin_user.trim(),
     }).subscribe({
@@ -619,6 +620,11 @@ export class Tenants implements OnInit, OnDestroy {
       },
       error: () => { this.showMsg('The installer could not be made (is LICENSE_PUBLIC_KEY set on this server?)', 'error'); this.cdr.detectChanges(); },
     });
+  }
+
+  /** Whether the licence being made has a module (its limits show only then). */
+  licHas(module: string): boolean {
+    return (this.licenseTenant?.features ?? []).includes(module);
   }
 
   /** The licence file the Windows MSI reads (licence.jwt next to it); the Linux zip has it inside. */

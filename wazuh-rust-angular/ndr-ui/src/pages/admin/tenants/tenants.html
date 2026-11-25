@@ -545,16 +545,17 @@
       <span>Valid for (days)</span>
       <input [(ngModel)]="licenseForm.expires_days" type="number" min="1" max="3650" />
     </label>
-    <label class="form-field">
-      <span>Max sensors</span>
+    <!-- each limit only for its module -->
+    <label class="form-field" *ngIf="licHas('ndr')">
+      <span>Max sensors (NDR)</span>
       <input [(ngModel)]="licenseForm.max_sensors" type="number" min="1" max="1000" />
     </label>
-    <label class="form-field">
+    <label class="form-field" *ngIf="licHas('siem')">
       <span>Max PCs (SIEM agents)</span>
       <input [(ngModel)]="licenseForm.max_pcs" type="number" min="0" max="100000" />
       <small>0 = no limit</small>
     </label>
-    <label class="form-field">
+    <label class="form-field" *ngIf="licHas('siem')">
       <span>Max events per second (SIEM)</span>
       <input [(ngModel)]="licenseForm.max_eps" type="number" min="0" max="1000000" />
       <small>0 = no limit</small>
@@ -614,9 +615,9 @@
         <div style="font-size:0.75rem;opacity:0.5;margin-bottom:0.75rem;">
           Features: <strong style="opacity:1;">{{ (licenseTenant?.features ?? ['ndr','ai']).join(', ') }}</strong>
           &nbsp;·&nbsp; Expires: <strong style="opacity:1;">{{ licenseForm.expires_days }} days</strong>
-          &nbsp;·&nbsp; Max sensors: <strong style="opacity:1;">{{ licenseForm.max_sensors }}</strong>
-          &nbsp;·&nbsp; Max PCs: <strong style="opacity:1;">{{ licenseForm.max_pcs || 'no limit' }}</strong>
-          &nbsp;·&nbsp; Max EPS: <strong style="opacity:1;">{{ licenseForm.max_eps || 'no limit' }}</strong>
+          <ng-container *ngIf="licHas('ndr')">&nbsp;·&nbsp; Max sensors: <strong style="opacity:1;">{{ licenseForm.max_sensors }}</strong></ng-container>
+          <ng-container *ngIf="licHas('siem')">&nbsp;·&nbsp; Max PCs: <strong style="opacity:1;">{{ licenseForm.max_pcs || 'no limit' }}</strong>
+          &nbsp;·&nbsp; Max EPS: <strong style="opacity:1;">{{ licenseForm.max_eps || 'no limit' }}</strong></ng-container>
         </div>
       </div>
 

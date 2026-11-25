@@ -33,6 +33,9 @@ pub const NAME: &str = "provigil-analysisd";
 const MAX_MESSAGE: usize = 65536;
 /// Threads for the decoders that wait on provigil-db.
 const DB_WORKERS: usize = 4;
+/// Where the queues' usages start in [`Service::load`] (after siem-api's count, the fullest
+/// usage and 256 gateway counts).
+const LOAD_KINDS: usize = 2 + 256;
 
 // ---------------------------------------------------------------- logging
 
@@ -541,7 +544,8 @@ pub struct Service {
     node: String,
     pub stats: Stats,
     /// For siem-api's back pressure: [0] datagrams from siem-api, [1] the fullest queue's
-    /// usage (f32 bits), [2 + n] datagrams from gateway n.
+    /// usage (f32 bits), [2 + n] datagrams from gateway n, [LOAD_KINDS + k] queue k's usage
+    /// (f32 bits).
     pub load: Arc<Vec<AtomicU64>>,
     pub limits: Limits,
     inq: InQueues,
@@ -766,7 +770,7 @@ impl Service {
             hourly_firewall: 0,
             node,
             stats: Stats::new(now),
-            load: Arc::new((0..2 + 256).map(|_| AtomicU64::new(0)).collect()),
+            load: Arc::new((0..LOAD_KINDS + queues::KINDS).map(|_| AtomicU64::new(0)).collect()),
             limits,
             inq: InQueues::new(sizes),
             eps_drop_reported: false,
@@ -1249,8 +1253,14 @@ impl Service {
     /// siem-api's `getload` answer.
     pub fn load_json(load: &[AtomicU64]) -> Vec<u8> {
         let o = Ordering::Relaxed;
-        let senders: Vec<String> = load[2..].iter().enumerate().filter_map(|(n, c)| Some(c.load(o)).filter(|c| *c > 0).map(|c| format!(r#""{n}":{c}"#))).collect();
-        format!(r#"{{"error":0,"message":"ok","data":{{"queue_usage":{},"received":{},"senders":{{{}}}}}}}"#, f32::from_bits(load[1].load(o) as u32), load[0].load(o), senders.join(",")).into_bytes()
+        let senders: Vec<String> = load[2..LOAD_KINDS].iter().enumerate().filter_map(|(n, c)| Some(c.load(o)).filter(|c| *c > 0).map(|c| format!(r#""{n}":{c}"#))).collect();
+        // each queue that holds anything: the gateway holds back only the events for a full one
+        let kinds: Vec<String> = load[LOAD_KINDS..]
+            .iter()
+            .zip(queues::NAMES)
+            .filter_map(|(c, name)| Some(f32::from_bits(c.load(o) as u32)).filter(|u| *u > 0.0).map(|u| format!(r#""{name}":{u}"#)))
+            .collect();
+        format!(r#"{{"error":0,"message":"ok","data":{{"queue_usage":{},"received":{},"senders":{{{}}},"queues":{{{}}}}}}}"#, f32::from_bits(load[1].load(o) as u32), load[0].load(o), senders.join(","), kinds.join(",")).into_bytes()
     }
 
     fn decode(&mut self, host: &mut dyn Host, kind: Kind, msg: &[u8]) {
@@ -1707,6 +1717,9 @@ pub fn run(mut service: Service, log: Arc<ServiceLog>) -> std::io::Result<()> {
             }
         }
         service.load[1].store(u64::from(service.queue_usage().to_bits()), Ordering::Relaxed);
+        for (k, u) in service.inq.usages().into_iter().enumerate() {
+            service.load[LOAD_KINDS + k].store(u64::from(u.to_bits()), Ordering::Relaxed);
+        }
         while let Ok((req, otx)) = arx.try_recv() {
             let a = crate::socket::request(&mut SocketTarget { service: &mut service, host: &mut host }, &req);
             let _ = otx.send(a);
@@ -1728,11 +1741,12 @@ mod tests {
 
     #[test]
     fn load_answer_and_labels() {
-        let load: Vec<AtomicU64> = (0..2 + 256).map(|_| AtomicU64::new(0)).collect();
+        let load: Vec<AtomicU64> = (0..LOAD_KINDS + queues::KINDS).map(|_| AtomicU64::new(0)).collect();
+        load[LOAD_KINDS + queues::Kind::Sca.index()].store(u64::from(0.5f32.to_bits()), Ordering::Relaxed);
         load[0].store(5, Ordering::Relaxed);
         load[1].store(u64::from(0.25f32.to_bits()), Ordering::Relaxed);
         load[2 + 3].store(70, Ordering::Relaxed);
-        assert_eq!(String::from_utf8(Service::load_json(&load)).unwrap(), r#"{"error":0,"message":"ok","data":{"queue_usage":0.25,"received":5,"senders":{"3":70}}}"#);
+        assert_eq!(String::from_utf8(Service::load_json(&load)).unwrap(), r#"{"error":0,"message":"ok","data":{"queue_usage":0.25,"received":5,"senders":{"3":70},"queues":{"sca":0.5}}}"#, "each queue that holds anything");
         let j = provigil_json::parse(br##"[{"key":"\"a\"","value":"1"},{"key":"!\"b\"","value":"2"},{"key":"#\"c\"","value":"3"},{"key":"x","value":"4"},{"key":"\"a\"","value":"5"}]"##).unwrap();
         let l = labels_of(&j);
         assert_eq!(l.len(), 4, "a duplicate key stays");

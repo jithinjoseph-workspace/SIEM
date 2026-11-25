@@ -29,6 +29,8 @@ pub enum Kind {
 }
 
 pub const KINDS: usize = 9;
+/// The queues' names, in `Kind` order (the engine's load answer, the stage timings).
+pub const NAMES: [&str; KINDS] = ["syscheck", "rootcheck", "sca", "syscollector", "hostinfo", "winevt", "dbsync", "upgrade", "event"];
 
 impl Kind {
     pub fn of(c: u8) -> Kind {
@@ -152,9 +154,14 @@ impl InQueues {
         (0..KINDS).any(|i| self.count[i] + 1 >= self.size[i])
     }
 
+    /// Each queue's usage, 0 to 1, in `Kind` order (the gateway holds back only what goes to a
+    /// queue that is filling up).
+    pub fn usages(&self) -> [f32; KINDS] {
+        std::array::from_fn(|i| self.count[i] as f32 / (self.size[i] as f32 - 1.0).max(1.0))
+    }
+
     /// The queues holding messages: `name count/size`, fullest first (for the stage timings).
     pub fn summary(&self) -> String {
-        const NAMES: [&str; KINDS] = ["syscheck", "rootcheck", "sca", "syscollector", "hostinfo", "winevt", "dbsync", "upgrade", "event"];
         let mut used: Vec<(f32, String)> = (0..KINDS)
             .filter(|&i| self.count[i] > 0)
             .map(|i| (self.count[i] as f32 / self.size[i].max(1) as f32, format!("{} {}/{}", NAMES[i], self.count[i], self.size[i])))

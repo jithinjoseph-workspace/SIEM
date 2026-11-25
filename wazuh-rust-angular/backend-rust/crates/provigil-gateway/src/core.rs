@@ -61,11 +61,12 @@ impl Gw {
         r
     }
 
-    fn engine_open(&self) -> Result<(), Refuse> {
+    /// The engine takes events for these queues now (a queue filling up holds back only its own).
+    fn engine_open<'a>(&self, queues: impl IntoIterator<Item = &'a str>) -> Result<(), Refuse> {
         if !self.engine.running.load(Relaxed) {
             return Err(self.refuse(Refuse(503, "engine_down")));
         }
-        if self.engine.behind.load(Relaxed) {
+        if !self.engine.open_for(queues) {
             return Err(self.refuse(Refuse(429, "engine_behind")));
         }
         Ok(())
@@ -300,8 +301,9 @@ pub async fn events(gw: &Gw, a: &Authed, rt: &Arc<AgentRt>, batch_id: &str, mut 
     gw.stats.c.events_received.fetch_add(total as u64, Relaxed);
     rt.events.fetch_add(total as u64, Relaxed);
     rt.spend(items.len());
-    if items.iter().any(|i| to_engine(kind_of(i), i)) {
-        gw.engine_open()?;
+    let queues: Vec<&str> = items.iter().filter(|i| to_engine(kind_of(i), i)).map(|i| engine::queue_of(kind_of(i))).collect();
+    if !queues.is_empty() {
+        gw.engine_open(queues)?;
     }
     let Some(taking) = rt.take_batch(batch_id) else {
         gw.stats.c.batches_repeated.fetch_add(1, Relaxed);

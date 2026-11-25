@@ -64,9 +64,10 @@ impl Lag {
     }
 }
 
-/// The engine's load: how full its fullest queue is (0 to 1) and the datagrams of gateway `sender`
-/// it read. Err(true): it took too long to answer. Err(false): it is not there.
-pub async fn load(path: &Path, sender: u8) -> Result<(f64, u64), bool> {
+/// The engine's load: how full its fullest queue is (0 to 1), each queue's usage by name (empty
+/// from an engine that does not tell), and the datagrams of gateway `sender` it read.
+/// Err(true): it took too long to answer. Err(false): it is not there.
+pub async fn load(path: &Path, sender: u8) -> Result<Load, bool> {
     use provigil_ipc::aio::{framing, LocalStream};
     let mut s = LocalStream::connect(path).await.map_err(|_| false)?;
     let asked = async {
@@ -78,7 +79,31 @@ pub async fn load(path: &Path, sender: u8) -> Result<(f64, u64), bool> {
     let usage = v["data"]["queue_usage"].as_f64().ok_or(false)?;
     // an engine without per-sender counts cannot tell this gateway's datagrams: not one to feed
     let senders = v["data"]["senders"].as_object().ok_or(false)?;
-    Ok((usage, senders.get(&sender.to_string()).and_then(serde_json::Value::as_u64).unwrap_or(0)))
+    let queues = v["data"]["queues"].as_object().map(|q| q.iter().filter_map(|(k, u)| Some((k.clone(), u.as_f64()?))).collect()).unwrap_or_default();
+    Ok(Load { usage, queues, received: senders.get(&sender.to_string()).and_then(serde_json::Value::as_u64).unwrap_or(0) })
+}
+
+/// One reading of the engine's load.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Load {
+    /// the fullest queue, 0 to 1
+    pub usage: f64,
+    /// each queue holding anything, by name (`winevt`, `sca`, `syscheck`, `rootcheck`, `event`, ...)
+    pub queues: std::collections::HashMap<String, f64>,
+    /// the datagrams of this gateway it read
+    pub received: u64,
+}
+
+/// The engine queue an agent event goes to (as the engine names it): events for a queue that is
+/// filling up are held back (429) while the others still flow.
+pub fn queue_of(event_type: Option<&str>) -> &'static str {
+    match event_type {
+        Some("fim" | "registry") => "syscheck",
+        Some("windows_eventchannel") => "winevt",
+        Some("rootcheck") => "rootcheck",
+        Some("sca") => "sca",
+        _ => "event",
+    }
 }
 
 #[cfg(test)]
@@ -119,13 +144,14 @@ mod tests {
         let server = tokio::spawn(async move {
             let mut s = l.accept().await.unwrap();
             assert_eq!(framing::recv(&mut s, 4096).await.unwrap(), b"{\"command\":\"getload\"}");
-            framing::send(&mut s, br#"{"error":0,"message":"ok","data":{"queue_usage":0.5,"received":1,"senders":{"3":70000}}}"#).await.unwrap();
+            framing::send(&mut s, br#"{"error":0,"message":"ok","data":{"queue_usage":0.5,"received":1,"senders":{"3":70000},"queues":{"sca":0.5,"winevt":0.01}}}"#).await.unwrap();
             // the next one stays unanswered
             let mut stuck = l.accept().await.unwrap();
             let _ = framing::recv(&mut stuck, 4096).await;
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         });
-        assert_eq!(load(&path, 3).await, Ok((0.5, 70_000)));
+        let queues = [("sca".to_string(), 0.5), ("winevt".to_string(), 0.01)].into_iter().collect();
+        assert_eq!(load(&path, 3).await, Ok(Load { usage: 0.5, queues, received: 70_000 }));
         assert_eq!(load(&path, 3).await, Err(true));
         server.abort();
         assert_eq!(load(&dir.path().join("gone"), 3).await, Err(false));

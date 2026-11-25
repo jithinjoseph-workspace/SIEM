@@ -4,6 +4,7 @@
 #   sudo bash provigil-install.sh [--role allinone|master|datalake|ainode|sensor]
 #        [--licence FILE|TOKEN] [--master-ip IP] [--datalake URL] [--datalake-user USER]
 #        [--datalake-password-file FILE] [--dir /opt/provigil] [--version X.Y.Z]
+#        [--master https://ADDRESS --tenant-id ID --sensor-key KEY]   (NDR sensor)
 #
 # The role is this PC's job: all-in-one (everything on one PC), master (with a separate data lake
 # PC), data lake, AI node, or NDR sensor. On the master the licence decides the modules: only the
@@ -22,7 +23,7 @@ PROVIGIL_PUBLIC_KEY=""
 PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/NDR-Demo/releases}"
 
 ROLE=""; LICENCE=""; MASTER_IP=""; DL_URL=""; DL_USER="provigil"; DL_PASS_FILE=""; DIR="/opt/provigil"; WANT_VERSION=""
-NO_VERIFY=0; WITH_VALKEY=""
+NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --role) ROLE="${2:-}"; shift 2 ;;
@@ -35,7 +36,10 @@ while [ $# -gt 0 ]; do
         --version) WANT_VERSION="${2:-}"; shift 2 ;;
         --no-verify) NO_VERIFY=1; shift ;;   # development copies only (no key built in)
         --with-valkey) WITH_VALKEY=1; shift ;;   # data lake of a Windows master
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        --master) MASTER_URL="${2:-}"; shift 2 ;;     # NDR sensor: the master's address (LAN IP or domain)
+        --tenant-id) TENANT_ID="${2:-}"; shift 2 ;;
+        --sensor-key) SENSOR_KEY="${2:-}"; shift 2 ;;
+        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (see --help)"; exit 2 ;;
     esac
 done
@@ -134,7 +138,13 @@ case "$ROLE" in
         ask_master_ip
         exec bash "$DIR/ainode/install-ainode.sh" --master-ip "$MASTER_IP" ;;
     sensor)
-        exec bash "$DIR/scripts/install-sensor.sh" ;;
+        # where the sensor sends its traffic data: the master's LAN IP on site, its domain when hosted
+        [ -n "$MASTER_URL" ] || read -rp "  The master's address (LAN IP, or https://domain when hosted): " MASTER_URL
+        [ -n "$TENANT_ID" ] || read -rp "  Tenant id (console: Sensors, Add sensor): " TENANT_ID
+        [ -n "$SENSOR_KEY" ] || { read -rsp "  Sensor key (console: Sensors, Add sensor): " SENSOR_KEY; echo; }
+        case "$MASTER_URL" in http://*|https://*) ;; *) MASTER_URL="https://$MASTER_URL" ;; esac
+        [ -n "$TENANT_ID" ] && [ -n "$SENSOR_KEY" ] || die "the sensor needs the tenant id and the sensor key"
+        exec bash "$DIR/scripts/install-sensor.sh" --cloud-url "$MASTER_URL" --tenant-id "$TENANT_ID" --api-key "$SENSOR_KEY" ;;
     allinone|master) ;;
     *) die "unknown role $ROLE (allinone, master, datalake, ainode, sensor)" ;;
 esac

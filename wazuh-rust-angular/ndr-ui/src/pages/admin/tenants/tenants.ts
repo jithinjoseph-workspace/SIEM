@@ -649,19 +649,18 @@ export class Tenants implements OnInit, OnDestroy {
     // Admin user: prefer history record, fall back to current form value
     const useAdminUser = (license?.admin_user || this.licenseForm.admin_user).trim();
     const useAdminPass = this.licenseForm.admin_pass;
-    const installCmd = `bash <(curl -fsSL https://raw.githubusercontent.com/jithinjoseph-workspace/NDR-Demo/arkime/install-customer.sh)`;
-    const pubKeyLine = this.licensePublicKey || '(load the portal and copy the public key from the License modal)';
     const credLines = useAdminUser
       ? [`   Tenant admin username : ${useAdminUser}`, `   Tenant admin password : ${useAdminPass || '(enter when prompted)'}`]
       : [`   Tenant admin username : (enter when prompted)`, `   Tenant admin password : (enter when prompted)`];
     const instructions = [
       `=== ProVigilAI Install Package for ${this.licenseTenant?.name} ===`,
       ``,
-      `1. Run on the client's Ubuntu server:`,
-      `   ${installCmd}`,
+      `1. Download the installer zip (Licenses: "Installer for Linux (.zip)") and copy it to the client's Ubuntu PC.`,
+      `2. In the unzipped folder, on every PC:  sudo bash install.sh`,
+      `   It installs Docker if needed and only the licensed modules, and asks what the PC is:`,
+      `   all-in-one, master, data lake, AI node or NDR sensor (a sensor asks for the master's LAN IP or domain).`,
+      `3. Windows master (SIEM only): ProVigil-Setup-<version>.msi from the release, next to licence.jwt.`,
       ``,
-      `2. When prompted, enter:`,
-      `   License public key    : ${pubKeyLine}`,
       `   License token         : ${useToken}`,
       ...credLines,
       ``,

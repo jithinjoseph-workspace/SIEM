@@ -155,3 +155,9 @@ Windows), also for its router link. Tested in the Ubuntu 24.04 install: 5 simula
 - The licence is installed on the master only; the data lake and AI node need none.
 - Windows services through an own small service host (provigil-service), not a third-party
   wrapper; the console's web server is Caddy (one pinned, checksum-checked program).
+
+Fixed 2026-11-25: the role "NDR sensor" of `provigil-install.sh` started `install-sensor.sh` without
+the master address, tenant and key, so it stopped with its usage text. The installer now asks for them (or
+takes `--master https://ADDRESS --tenant-id ID --sensor-key KEY`): the LAN IP of the master on site, its
+domain when hosted. The console's "Copy install package" text described the old install command; it now
+describes the installer zip and `sudo bash install.sh`.

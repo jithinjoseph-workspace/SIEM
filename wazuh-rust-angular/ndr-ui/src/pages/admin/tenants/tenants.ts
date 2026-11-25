@@ -12,6 +12,13 @@ import { AuthService } from '../../../services/auth/auth';
 import { ClockService } from '../../../services/clock/clock';
 
 import { reportRxjsError } from '../../../services/error-reporter/error-reporter';
+/** The sign-in service sends a tenant's features as text ("siem,ndr,ai"); the page works on lists. */
+function withFeatureList(tenants: any[]): any[] {
+  return tenants.map(t => typeof t.features === 'string'
+    ? { ...t, features: t.features.split(',').map((f: string) => f.trim()).filter(Boolean) }
+    : t);
+}
+
 @Component({
   selector: 'app-tenants',
   standalone: true,
@@ -70,6 +77,8 @@ export class Tenants implements OnInit, OnDestroy {
   licenseForm         = { expires_days: 365, max_sensors: 10, max_pcs: 0, max_eps: 0, admin_user: '', admin_pass: '' };
   generatedToken      = '';
   generatingLicense   = false;
+  /** Why the last licence could not be made (shown in the licence dialog). */
+  licenseError        = '';
   tokenCopied         = false;
   licensePublicKey    = '';
   installCopied       = false;
@@ -129,7 +138,7 @@ export class Tenants implements OnInit, OnDestroy {
     this.loadingTenants = true;
     this.api.getTenants().subscribe({
       next: (data: any) => {
-        this.tenants = data.tenants || (Array.isArray(data) ? data : []);
+        this.tenants = withFeatureList(data.tenants || (Array.isArray(data) ? data : []));
         this.loadingTenants = false;
         this.cdr.detectChanges();
       },
@@ -476,7 +485,7 @@ export class Tenants implements OnInit, OnDestroy {
           if (target && target.active !== expectedActive && attempt < delays.length - 1) {
             this.reloadTenantsWithRetry(tenantId, expectedActive, attempt + 1);
           } else {
-            this.tenants = fresh;
+            this.tenants = withFeatureList(fresh);
             this.cdr.detectChanges();
           }
         },
@@ -528,6 +537,7 @@ export class Tenants implements OnInit, OnDestroy {
   openLicense(tenant: any) {
     this.licenseTenant   = tenant;
     this.generatedToken  = '';
+    this.licenseError    = '';
     this.tokenCopied     = false;
     this.licenseForm     = { expires_days: 365, max_sensors: 10, max_pcs: 0, max_eps: 0, admin_user: '', admin_pass: '' };
     this.issuedLicenses  = [];
@@ -554,6 +564,7 @@ export class Tenants implements OnInit, OnDestroy {
     if (!this.licenseTenant) return;
     const features: string[] = this.licenseTenant.features ?? ['ndr'];
     this.generatingLicense = true;
+    this.licenseError = '';
     this.api.generateLicense({
       tenant_id:    this.licenseTenant.id,
       tenant_name:  this.licenseTenant.name,
@@ -582,9 +593,11 @@ export class Tenants implements OnInit, OnDestroy {
         }
         this.cdr.detectChanges();
       },
-      error: () => {
+      error: (e: any) => {
         this.generatingLicense = false;
-        this.showMsg('Failed to generate license', 'error');
+        // the server's reason (e.g. no signing key on this server), shown in the dialog itself
+        this.licenseError = e?.error?.error || 'Failed to generate license';
+        this.showMsg(this.licenseError, 'error');
         this.cdr.detectChanges();
       },
     });

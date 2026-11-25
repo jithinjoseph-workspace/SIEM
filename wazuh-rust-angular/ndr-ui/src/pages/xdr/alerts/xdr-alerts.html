@@ -9,11 +9,11 @@
     <div class="xa-header-stats">
       <div class="xa-stat">
         <span class="xa-stat-label">Total</span>
-        <span class="xa-stat-val">{{ alerts.length }}</span>
+        <span class="xa-stat-val">{{ total() }}</span>
       </div>
       <div class="xa-stat">
         <span class="xa-stat-label">Critical</span>
-        <span class="xa-stat-val danger">{{ criticalCount }}</span>
+        <span class="xa-stat-val danger">{{ criticalCount() }}</span>
       </div>
     </div>
   </div>
@@ -33,22 +33,22 @@
   </div>
 
   <!-- Loading -->
-  <div *ngIf="loading" class="xa-loading">
+  <div *ngIf="loading()" class="xa-loading">
     <div class="xa-spinner"></div>
     <span>Loading unified alerts…</span>
   </div>
 
   <!-- Error -->
-  <div *ngIf="error && !loading" class="xa-error">{{ error }}</div>
+  <div *ngIf="error() && !loading()" class="xa-error">{{ error() }}</div>
 
   <!-- Alert list -->
-  <div *ngIf="!loading && !error" class="xa-alert-list">
+  <div *ngIf="!loading() && !error()" class="xa-alert-list">
 
-    <div *ngIf="alerts.length === 0" class="xa-empty">
+    <div *ngIf="alerts().length === 0" class="xa-empty">
       No alerts match the current filters.
     </div>
 
-    <div *ngFor="let a of filteredAlerts" class="xa-alert-card" [class]="severityClass(a.severity)">
+    <div *ngFor="let a of alerts()" class="xa-alert-card" [class]="severityClass(a.severity)">
       <div class="xa-card-left">
         <span class="xa-sev-badge" [class]="severityClass(a.severity)">{{ a.severity }}</span>
         <span class="xa-src-badge" [class]="sourceClass(a.source)">{{ sourceLabel(a.source) }}</span>

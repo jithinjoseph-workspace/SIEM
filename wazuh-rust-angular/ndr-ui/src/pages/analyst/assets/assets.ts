@@ -30,7 +30,8 @@ import {
 import { DeviceDrawer } from '../../../components/device-drawer/device-drawer';
 import { AuthService } from '../../../services/auth/auth';
 
-declare var echarts: any;
+// loaded when the page first draws its charts, not with every page of the console
+let echarts: any;
 @Component({
   selector: 'app-assets',
   standalone: true,
@@ -158,8 +159,8 @@ export class Assets implements OnInit, AfterViewInit {
     }, 100);
   }
 
-  initCharts() {
-    if (typeof echarts === 'undefined') return;
+  async initCharts() {
+    if (!echarts) echarts = await import('echarts');
     
     if (this.sunburstContainer && !this.sunburstChart) {
       this.sunburstChart = echarts.init(this.sunburstContainer.nativeElement, 'dark');

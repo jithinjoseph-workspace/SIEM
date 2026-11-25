@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -27,9 +27,12 @@ export interface UnifiedAlert {
   styleUrls: ['./xdr-alerts.css'],
 })
 export class XdrAlerts implements OnInit, OnDestroy {
-  alerts: UnifiedAlert[] = [];
-  loading = true;
-  error: string | null = null;
+  // signals: the page redraws when the answer arrives (the app has no zone.js)
+  alerts = signal<UnifiedAlert[]>([]);
+  /** All items matching the filters (the list shows the newest page). */
+  total = signal(0);
+  loading = signal(true);
+  error = signal<string | null>(null);
 
   filterSource: string = 'all';
   filterSeverity: string = 'all';
@@ -39,7 +42,8 @@ export class XdrAlerts implements OnInit, OnDestroy {
   private pollTimer?: ReturnType<typeof setInterval>;
 
   readonly sources = ['all', 'ndr', 'siem', 'corroborated'];
-  readonly severities = ['all', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
+  /** The queue holds high and critical items only (medium and low stay on each module's alert pages). */
+  readonly severities = ['all', 'CRITICAL', 'HIGH'];
   readonly statuses = ['all', 'New', 'Investigating', 'Escalated', 'Resolved'];
 
   constructor(private http: HttpClient) {}
@@ -65,24 +69,19 @@ export class XdrAlerts implements OnInit, OnDestroy {
       '/api/xdr/alerts', { params }
     ).subscribe({
       next: res => {
-        this.alerts = res.alerts ?? [];
-        this.loading = false;
-        this.error = null;
+        this.alerts.set(res.alerts ?? []);
+        this.total.set(res.total ?? res.alerts?.length ?? 0);
+        this.loading.set(false);
+        this.error.set(null);
       },
       error: () => {
-        this.loading = false;
-        this.error = 'Failed to load alerts';
+        this.loading.set(false);
+        this.error.set('Failed to load alerts');
       }
     });
   }
 
-  get criticalCount(): number {
-    return this.alerts.filter(a => a.severity === 'CRITICAL').length;
-  }
-
-  get filteredAlerts(): UnifiedAlert[] {
-    return this.alerts;
-  }
+  criticalCount = computed(() => this.alerts().filter(a => a.severity === 'CRITICAL').length);
 
   severityClass(s: string): string {
     return ({

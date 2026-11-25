@@ -536,10 +536,11 @@
       </button>
     </div>
     <p style="font-size:0.8rem;opacity:0.6;margin-bottom:1rem;">
-      This signed JWT encodes the tenant's licensed features and expiry.
-      The client puts it in their <code>.env</code> as <code>LICENSE_TOKEN=…</code>.
+      A signed licence with the tenant's licensed features, limits and expiry. After generating,
+      download the Linux installer (the licence is inside) or the licence file for the Windows MSI.
       Features included: <strong>{{ (licenseTenant.features ?? ['ndr','ai']).join(', ') }}</strong>
     </p>
+    <div *ngIf="licenseError" class="admin-message error" style="margin-bottom:1rem;">{{ licenseError }}</div>
     <label class="form-field">
       <span>Valid for (days)</span>
       <input [(ngModel)]="licenseForm.expires_days" type="number" min="1" max="3650" />

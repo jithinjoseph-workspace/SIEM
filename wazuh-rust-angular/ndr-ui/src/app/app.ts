@@ -12,7 +12,6 @@ import { AriaBot } from '../components/aria-bot/aria-bot';
   standalone: true,
   imports: [CommonModule, RouterOutlet, Navbar, ToastContainer, AriaBot],
   templateUrl: './app.html',
-  styleUrl: './app.css',
   encapsulation: ViewEncapsulation.None
 })
 export class App implements OnInit {

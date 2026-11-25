@@ -1,6 +1,7 @@
 import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
 
-declare var ForceGraph3D: any;
+// loaded when the topology tab first opens, not with every page of the console
+let ForceGraph3D: any;
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../services/api/api';
@@ -102,7 +103,10 @@ export class DeviceDrawer implements OnChanges {
 
   initTopology() {
     if (this.drawerTab !== 'topology' || !this.topologyContainer || !this.node) return;
-    if (typeof ForceGraph3D === 'undefined') return;
+    if (!ForceGraph3D) {
+      import('3d-force-graph').then(m => { ForceGraph3D = m.default; this.initTopology(); });
+      return;
+    }
 
     if (!this.topologyGraph) {
       this.topologyGraph = ForceGraph3D()(this.topologyContainer.nativeElement)

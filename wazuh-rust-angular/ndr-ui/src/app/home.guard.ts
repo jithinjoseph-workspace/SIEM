@@ -23,6 +23,14 @@ export const homeGuard: CanActivateFn = () => {
   return router.createUrlTree([auth.analystHomeRoute()]);
 };
 
+/** XDR incidents (a host alert and an NDR detection together) are for clients with both modules. */
+export const xdrGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (auth.hasFeature('ndr') && auth.hasFeature('siem')) return true;
+  return router.createUrlTree([auth.analystHomeRoute()]);
+};
+
 /** The combined dashboard is for clients with NDR (licence feature); SIEM-only clients go to their SIEM home. */
 export const siemHomeRedirect: CanActivateFn = () => {
   const auth = inject(AuthService);

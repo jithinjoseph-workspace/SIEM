@@ -64,7 +64,9 @@ pub async fn generate(State(state): State<AppState>, Extension(ctx): Extension<A
     if !ctx.is_super() {
         return forbidden();
     }
-    let bad = |m: &str| Json(json!({ "error": m })).into_response();
+    // an error status, so the console shows the reason instead of an empty licence
+    let bad = |m: &str| (StatusCode::BAD_REQUEST, Json(json!({ "error": m }))).into_response();
+    let unavailable = |m: &str| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": m }))).into_response();
     if r.tenant_id.trim().is_empty() || r.tenant_name.trim().is_empty() {
         return bad("tenant_id and tenant_name are required");
     }
@@ -73,7 +75,7 @@ pub async fn generate(State(state): State<AppState>, Extension(ctx): Extension<A
     }
     let key = match private_key_pem(&std::env::var("LICENSE_PRIVATE_KEY").unwrap_or_default()) {
         Ok(k) => k,
-        Err(e) => return bad(&e),
+        Err(e) => return unavailable(&e),
     };
     let now = chrono::Utc::now().timestamp().max(0) as u64;
     let claims = provigil_license::Claims {
@@ -89,7 +91,7 @@ pub async fn generate(State(state): State<AppState>, Extension(ctx): Extension<A
     };
     let token = match provigil_license::issue(&claims, &key) {
         Ok(t) => t,
-        Err(e) => return bad(&e),
+        Err(e) => return unavailable(&e),
     };
     // a copy, so the super admin can look it up again (the token is the licence; losing the copy
     // does not invalidate it)

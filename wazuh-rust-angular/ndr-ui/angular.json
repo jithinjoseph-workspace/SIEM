@@ -27,12 +27,12 @@
             ],
             "styles": [
               "src/styles.css",
-              "node_modules/driver.js/dist/driver.css"
+              "node_modules/driver.js/dist/driver.css",
+              "src/app/app.css"
             ],
-            "scripts": [
-              "node_modules/echarts/dist/echarts.min.js",
-              "node_modules/echarts-gl/dist/echarts-gl.min.js",
-              "node_modules/3d-force-graph/dist/3d-force-graph.min.js"
+            "scripts": [],
+            "allowedCommonJsDependencies": [
+              "ngraph.forcelayout"
             ]
           },
           "configurations": {

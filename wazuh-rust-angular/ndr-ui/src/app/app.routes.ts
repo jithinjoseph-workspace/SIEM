@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { authGuard } from '../services/auth/auth-guard';
-import { homeGuard, siemHomeRedirect } from './home.guard';
+import { homeGuard, siemHomeRedirect, xdrGuard } from './home.guard';
 
 export const routes: Routes = [
   // Smart home redirect — sends user to the right dashboard based on installed product
@@ -117,7 +117,7 @@ export const routes: Routes = [
     children: [
       {
         path: 'alerts',
-        canActivate: [authGuard],
+        canActivate: [authGuard, xdrGuard],
         data: { permission: 'alerts' },
         loadComponent: () => import('../pages/xdr/alerts/xdr-alerts').then(m => m.XdrAlerts),
       },

@@ -227,18 +227,23 @@ pub fn spawn(state: AppState) {
             let tenants: Vec<(String, Vec<String>)> = state.tenants.read().unwrap().iter().filter(|t| t.active).map(|t| (crate::tenancy::normalize_tenant(&t.id), t.features.clone())).collect();
             let mut all = vec![(crate::tenancy::DEFAULT_TENANT.to_string(), Vec::new())];
             all.extend(tenants.into_iter().filter(|(id, _)| id != crate::tenancy::DEFAULT_TENANT));
-            for (tenant, features) in all {
-                let features = crate::licence::features_for(&tenant).unwrap_or(features);
-                if !provigil_common::modules::client_has(&features, provigil_common::modules::SIEM) {
-                    continue;
+            // several tenants at once (bounded, so ClickHouse is not flooded)
+            futures_util::StreamExt::for_each_concurrent(futures_util::stream::iter(all), crate::TENANTS_AT_ONCE, |(tenant, features)| {
+                let state = &state;
+                async move {
+                    let features = crate::licence::features_for(&tenant).unwrap_or(features);
+                    if !provigil_common::modules::client_has(&features, provigil_common::modules::SIEM) {
+                        return;
+                    }
+                    let alerts = check_tenant(state, &tenant, current).await;
+                    if !alerts.is_empty() {
+                        tracing::info!("UEBA: {} unusual hour(s) for tenant {tenant}", alerts.len());
+                        let json: Vec<serde_json::Value> = alerts.iter().map(|a| serde_json::to_value(a).unwrap_or_default()).collect();
+                        crate::provigil_manager::deliver(state, alerts, json).await;
+                    }
                 }
-                let alerts = check_tenant(&state, &tenant, current).await;
-                if !alerts.is_empty() {
-                    tracing::info!("UEBA: {} unusual hour(s) for tenant {tenant}", alerts.len());
-                    let json: Vec<serde_json::Value> = alerts.iter().map(|a| serde_json::to_value(a).unwrap_or_default()).collect();
-                    crate::provigil_manager::deliver(&state, alerts, json).await;
-                }
-            }
+            })
+            .await;
             // forget hours long past
             raised().lock().unwrap().retain(|k| k.3 >= current - 2);
         }

@@ -118,7 +118,13 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
             per_tenant.entry(tenant).or_default().push(((a.id.to_string(), ts, ip.to_string()), a.clone()));
         }
     }
-    for (tenant, list) in per_tenant {
+    // several tenants at once (bounded, so ClickHouse is not flooded)
+    futures_util::StreamExt::for_each_concurrent(futures_util::stream::iter(per_tenant), crate::TENANTS_AT_ONCE, |(tenant, list)| corroborate_tenant(state, now, tenant, list)).await;
+    Ok(())
+}
+
+async fn corroborate_tenant(state: &AppState, now: u64, tenant: String, list: Vec<(HostAlert, siem_core::Alert)>) {
+    {
         let ips: Vec<String> = list.iter().map(|((_, _, ip), _)| ip.clone()).collect::<HashSet<_>>().into_iter().collect();
         let from = list.iter().map(|((_, ts, _), _)| *ts).min().unwrap_or(now).saturating_sub(WINDOW_MS);
         let client = state.db.tenant_client(&tenant);
@@ -132,10 +138,10 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
         {
             Ok(t) => t,
             // a tenant without the NDR tables: nothing to corroborate
-            Err(_) => continue,
+            Err(_) => return,
         };
         if threats.is_empty() {
-            continue;
+            return;
         }
         let host: Vec<HostAlert> = list.iter().map(|(h, _)| h.clone()).collect();
         // one incident per network detection and host: the host's other alerts confirm the same one
@@ -194,7 +200,6 @@ async fn run_corroboration_cycle(state: &AppState) -> Result<(), Box<dyn std::er
             }
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

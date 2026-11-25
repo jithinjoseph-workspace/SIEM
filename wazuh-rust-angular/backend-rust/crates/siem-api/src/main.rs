@@ -44,6 +44,9 @@ pub mod agent_keys_store;
 pub mod corroboration;
 pub mod incidents;
 pub mod removals;
+
+/// Tenants a background job (NDR cases, XDR correlation, UEBA) works on at once.
+pub const TENANTS_AT_ONCE: usize = 8;
 pub mod registry_writer;
 pub mod ndr_incidents;
 pub mod db;

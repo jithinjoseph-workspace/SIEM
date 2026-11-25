@@ -112,12 +112,17 @@ pub fn spawn(state: AppState) {
                 let tenants: Vec<(String, Vec<String>)> = state.tenants.read().unwrap().iter().filter(|t| t.active).map(|t| (crate::tenancy::normalize_tenant(&t.id), t.features.clone())).collect();
                 let mut all = vec![(crate::tenancy::DEFAULT_TENANT.to_string(), Vec::new())];
                 all.extend(tenants.into_iter().filter(|(id, _)| id != crate::tenancy::DEFAULT_TENANT));
-                for (tenant, features) in all {
-                    let features = crate::licence::features_for(&tenant).unwrap_or(features);
-                    if provigil_common::modules::client_has(&features, provigil_common::modules::NDR) {
-                        cycle(&state, &tenant).await;
+                // several tenants at once (bounded, so ClickHouse is not flooded)
+                futures_util::StreamExt::for_each_concurrent(futures_util::stream::iter(all), crate::TENANTS_AT_ONCE, |(tenant, features)| {
+                    let state = &state;
+                    async move {
+                        let features = crate::licence::features_for(&tenant).unwrap_or(features);
+                        if provigil_common::modules::client_has(&features, provigil_common::modules::NDR) {
+                            cycle(state, &tenant).await;
+                        }
                     }
-                }
+                })
+                .await;
             }
             tokio::time::sleep(std::time::Duration::from_secs(EVERY_SECS)).await;
         }

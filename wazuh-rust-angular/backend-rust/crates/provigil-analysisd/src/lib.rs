@@ -1,6 +1,7 @@
 //! ProVigil manager analysis (see specs/provigil-analysisd.md).
 
 pub mod alert_json;
+pub mod analysis;
 pub mod builtin;
 pub mod config;
 pub mod daemon;

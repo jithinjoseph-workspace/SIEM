@@ -530,7 +530,7 @@ pub struct Service {
     builtin: Builtin,
     whitelist: WhiteList,
     forwarder: Option<Forwarder>,
-    stream: Option<Stream>,
+    stream: Option<Arc<Mutex<Stream>>>,
     /// the alert id's second part when streaming: the bytes streamed
     streamed: i64,
     fts_file: Option<File>,
@@ -557,6 +557,8 @@ pub struct Service {
     windows: builtin::windows::Windows,
     db: DbDecoders,
     workers: Option<Workers>,
+    /// the analysis workers (decoding and archive lines; [`crate::analysis`]), when started
+    analysis: Option<crate::analysis::Analysis>,
     /// time per stage (`PROVIGIL_ANALYSISD_PROFILE=1`), logged every 10 s
     prof: Option<Profile>,
 }
@@ -748,7 +750,7 @@ impl Service {
         // Kind order: syscheck, rootcheck, sca, syscollector, hostinfo, winevt, dbsync, upgrade, event
         let sizes: [usize; KINDS] = [q[5], q[7], q[8], q[6], q[9], q[10], q[13], q[14], q[11]];
         let now = engine.clock.now().sec;
-        let stream = Stream::from_env(&cfg.home.join("queue/stream-spool/analysisd"));
+        let stream = Stream::from_env(&cfg.home.join("queue/stream-spool/analysisd")).map(|s| Arc::new(Mutex::new(s)));
         let mut s = Service {
             outputs: Outputs { stream: stream.is_some(), ..Outputs::default() },
             cfg,
@@ -781,6 +783,7 @@ impl Service {
             windows: Default::default(),
             db: Default::default(),
             workers: None,
+            analysis: None,
             prof: std::env::var("PROVIGIL_ANALYSISD_PROFILE").is_ok_and(|v| v == "1").then(|| Profile { since: Some(std::time::Instant::now()), ..Default::default() }),
         };
         s.open_fts();
@@ -1032,9 +1035,24 @@ impl Service {
         lines.extend(out.warnings.iter().filter(|(p, _)| *p >= count).map(|(_, w)| ("WARNING", w.clone())));
         if let Some(ev) = out.archive {
             self.stats.archive_written(ev.agent_id.as_deref(), now);
-            if let Some(st) = self.stream.as_mut() {
+            if let (Some(a), true) = (&self.analysis, self.stream.is_some()) {
+                // built and streamed by the agent's analysis worker
+                if g.logall_json {
+                    if let Some(l) = crate::text_logs::json_archive(&self.engine, &ev, &mut msgs) {
+                        self.outputs.archives_json.write(&l);
+                    }
+                }
+                a.archive(ev);
+                drain(&mut msgs, &mut lines);
+                for (level, m) in lines {
+                    host.log(level, &m);
+                }
+                self.write_fts();
+                return;
+            }
+            if let Some(st) = &self.stream {
                 if let Some(l) = crate::text_logs::json_archive(&self.engine, &ev, &mut msgs) {
-                    if let Some(w) = st.send(stream::EVENT, &l) {
+                    if let Some(w) = st.lock().unwrap().send(stream::EVENT, &l) {
                         msgs.warn(w);
                     }
                 }
@@ -1053,6 +1071,10 @@ impl Service {
         for (level, m) in lines {
             host.log(level, &m);
         }
+        self.write_fts();
+    }
+
+    fn write_fts(&mut self) {
         for l in std::mem::take(&mut self.engine.fts_lines) {
             self.stats.fts_written();
             if let Some(f) = &mut self.fts_file {
@@ -1070,7 +1092,7 @@ impl Service {
             let before = msgs.list.len();
             let line = crate::text_logs::json_alert(&self.engine, ev, msgs);
             self.streamed += line.len() as i64;
-            if let Some(w) = self.stream.as_mut().and_then(|st| st.send(stream::ALERT, &line)) {
+            if let Some(w) = self.stream.as_ref().and_then(|st| st.lock().unwrap().send(stream::ALERT, &line)) {
                 msgs.warn(w);
             }
             if let Some(fw) = self.forwarder.as_mut().filter(|_| forward) {
@@ -1187,8 +1209,9 @@ impl Service {
         while let Some(d) = self.workers.as_ref().and_then(|w| w.done.try_recv().ok()) {
             self.take_decoded(host, d);
         }
+        self.take_analysed(host, false);
         let mut n = 0;
-        while n < max && self.inq.has_fast() {
+        while n < max && self.inq.has_fast() && self.analysis.as_ref().is_none_or(|a| a.room()) {
             if !self.limits.take() {
                 return;
             }
@@ -1209,12 +1232,67 @@ impl Service {
         self.workers.as_ref().is_some_and(|w| w.in_flight < builtin::IN_FLIGHT)
     }
 
+    /// `n` analysis workers ([`crate::analysis`]): Windows and log messages are decoded, and
+    /// archive lines built and streamed, on them; rule matching stays on this thread.
+    pub fn start_analysis(&mut self, n: usize, log: Arc<ServiceLog>) {
+        self.analysis = Some(crate::analysis::Analysis::start(n, &self.engine, self.builtin, self.stream.clone(), log));
+    }
+
+    pub fn analysis_workers(&self) -> usize {
+        self.analysis.as_ref().map_or(0, |a| a.workers())
+    }
+
+    /// Archive lines the analysis workers streamed so far (benchmarks).
+    pub fn archived(&self) -> u64 {
+        self.analysis.as_ref().map_or(0, |a| a.archived.load(Ordering::Relaxed))
+    }
+
+    /// Streams to `s` instead of `SIEM_STREAM_ADDR` (benchmarks: a spool of their own).
+    pub fn stream_to(&mut self, s: Stream) {
+        self.stream = Some(Arc::new(Mutex::new(s)));
+        self.outputs.stream = true;
+    }
+
+    /// What the analysis workers decoded: to the rules, in the order each agent's came.
+    fn take_analysed(&mut self, host: &mut dyn Host, wait: bool) {
+        loop {
+            let Some(a) = &self.analysis else { return };
+            let next = if wait && a.in_flight > 0 { a.done.recv().ok() } else { a.done.try_recv().ok() };
+            let Some(d) = next else { return };
+            if let Some(a) = &mut self.analysis {
+                a.in_flight -= 1;
+            }
+            if let Some(p) = &mut self.prof {
+                p.clean += d.clean;
+                p.decode += d.decode;
+            }
+            for (level, m) in &d.logs {
+                host.log(level, m);
+            }
+            let Some(ev) = d.ev else { continue };
+            let now = self.engine.clock.now().sec;
+            match d.kind {
+                Kind::Winevt => self.stats.decoded(Component::Eventchannel, ev.agent_id.as_deref(), now),
+                _ => match d.first {
+                    queues::SYSLOG => self.stats.decoded(Component::Syslog, None, now),
+                    queues::LOCALFILE => {
+                        let loc = ev.f[F_LOCATION].clone().unwrap_or_default();
+                        self.stats.decoded(Component::of_module(crate::stats::module_of_location(&loc)), ev.agent_id.as_deref(), now);
+                    }
+                    _ => {}
+                },
+            }
+            self.match_rules(host, *ev);
+        }
+    }
+
     pub fn start_workers<H: Host + Send + 'static>(&mut self, hosts: Vec<H>) {
         self.workers = Some(Workers::start(hosts));
         self.inq.split = true;
     }
 
     pub fn finish_decoding(&mut self, host: &mut dyn Host) {
+        self.take_analysed(host, true);
         while self.workers.as_ref().is_some_and(|w| w.in_flight > 0) {
             let Some(Ok(d)) = self.workers.as_ref().map(|w| w.done.recv()) else { return };
             self.take_decoded(host, d);
@@ -1239,7 +1317,7 @@ impl Service {
     }
 
     pub fn pending(&self) -> bool {
-        !self.inq.is_empty() || self.workers.as_ref().is_some_and(|w| w.in_flight > 0)
+        !self.inq.is_empty() || self.workers.as_ref().is_some_and(|w| w.in_flight > 0) || self.analysis.as_ref().is_some_and(|a| a.in_flight > 0)
     }
 
     pub fn input_full(&self) -> bool {
@@ -1264,6 +1342,13 @@ impl Service {
     }
 
     fn decode(&mut self, host: &mut dyn Host, kind: Kind, msg: &[u8]) {
+        if self.analysis.is_some() && matches!(kind, Kind::Winevt | Kind::Event) && msg[0] != queues::CISCAT {
+            let (now, manager) = (self.engine.clock.now(), self.engine.settings.manager_host.clone());
+            if let Some(a) = &mut self.analysis {
+                a.decode(kind, msg, manager, now);
+            }
+            return;
+        }
         let t0 = std::time::Instant::now();
         let now = self.engine.clock.now();
         let mut ev = self.engine.new_event();
@@ -1631,6 +1716,8 @@ pub fn run(mut service: Service, log: Arc<ServiceLog>) -> std::io::Result<()> {
     let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(131_072);
     let hosts = (0..DB_WORKERS).map(|_| service.live_host(ctx(Arc::new(DbSocket::new(home.join(DB_SOCKET)))))).collect();
     service.start_workers(hosts);
+    service.start_analysis(crate::analysis::worker_count(), log.clone());
+    log.log("INFO", format!("{} analysis worker(s) for {} CPU core(s) (rule matching on one ordered thread)", service.analysis_workers(), std::thread::available_parallelism().map_or(1, |n| n.get())));
     let qpath = home.join(provigil_ipc::queue::EVENT_QUEUE);
     let l3 = log.clone();
     rt.spawn(async move {

@@ -485,6 +485,31 @@ it has a row.)
 - **A-2 Default cluster name.** When cluster information is shown and no cluster name is set, the alert's `cluster.name` is `provigil` (the old code used the upstream product name). The default setting hides cluster information.
 - **A-1 Context search, different agent.** The original loops for ever on an event of another agent in the event-list search; the port skips that event, and the new code keeps the skip.
 
+## 3a. Scaling with the cores (2026-11-25)
+
+Measured first (`PROVIGIL_ANALYSISD_PROFILE=1` logs the time per stage and each queue's fill every
+10 s; `tests/bench_throughput.rs` runs the real service and ruleset): one thread does about 13,000
+Windows events/s without the stream and 11,000 with every event's archive line streamed; live, the
+archive line (JSON) and decoding were the most expensive stages, rule matching the cheapest. The
+1,250 events/s seen in the first load test came from the dev ClickHouse running out of memory
+(writes retried; nothing lost) and from one slow queue holding back every agent.
+
+1. **Backpressure per queue** (gateway and engine): the engine's load answer gives each queue's
+   usage (`queues`); the gateway answers 429 only for events going to a queue over 25 % (for
+   example configuration checks waiting on provigil-db), the others keep flowing; all wait only
+   when the engine as a whole is behind.
+2. **Analysis workers** (`src/analysis.rs`): Windows and log messages are cleaned and decoded, and
+   archive lines built and streamed, on worker threads, each with its own copy of the ruleset
+   (`Engine::fork`). An agent's messages always go to the same worker (order kept). **Rule matching
+   stays one ordered stage**: correlation across agents (one attacker against many computers) is
+   unchanged; Wazuh keeps rule state shared too. Test `workers_fire_the_same_rules`: the same rules
+   fire the same number of times with 0, 1, 3 and 4 workers.
+3. **Automatic size**: workers = cores - 2, at least 1, at most 4; `PROVIGIL_ANALYSIS_WORKERS`
+   overrides (0 automatic). Measured on 16 cores: 1 worker 1.3-1.4x, 2 workers 2.4x, 3 to 5 workers
+   2.7-2.9x (about 31,000 events/s), 6 to 12 workers less (the ordered rule stage is the limit, more
+   workers contend for the stream). Spare cores serve siem-api and ClickHouse. The start log says
+   how many workers for how many cores.
+
 ## 4. The ruleset (GPL-free plan, after the engine)
 
 The rule and decoder **format** is free to use; the **content** of the 168 rule and 120

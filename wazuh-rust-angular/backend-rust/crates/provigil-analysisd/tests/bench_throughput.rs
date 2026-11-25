@@ -101,3 +101,116 @@ fn analysis_thread_throughput() {
     }
     println!("{:28} {:>7.0} events/s   {}", "mixed (all four)", N as f64 / t.elapsed().as_secs_f64(), service.profile_now().unwrap_or_default());
 }
+
+/// The same mixed events through 0 (one thread, as before), 1, 2, 4, 6 and 12 analysis workers,
+/// streamed to a spool of the benchmark's own (a receiver that reads and drops): the time until
+/// every event went through the rules and its archive line was streamed.
+#[test]
+#[ignore]
+fn analysis_workers_scaling() {
+    use provigil_ipc::platform_stream::Stream;
+    let home = manager();
+    let sink = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = sink.local_addr().unwrap().to_string();
+    std::thread::spawn(move || {
+        for c in sink.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut c = c;
+                let _ = std::io::copy(&mut c, &mut std::io::sink());
+            });
+        }
+    });
+    const N: u64 = 40_000;
+    let msgs: Vec<Vec<u8>> = (0..N).map(|seq| message((seq as u32) % 500 + 1, (seq % 4) as u32, seq)).collect();
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    println!("{cores} CPU cores; automatic: {} worker(s)", provigil_analysisd::analysis::auto(cores));
+    let mut single = 0.0;
+    for workers in [0usize, 1, 2, 3, 4, 5, 6, 8, 12] {
+        let logs = tempfile::tempdir().unwrap();
+        let spool = tempfile::tempdir().unwrap();
+        let log = std::sync::Arc::new(ServiceLog::new(provigil_daemon::Log::open(logs.path(), "provigil-analysisd"), false));
+        let cfg = Config::load(&home, &home.join("etc/ossec.conf"), true).expect("manager settings");
+        let mut service = Service::new(cfg, &log, true).expect("ruleset");
+        let mut host = Bench;
+        service.load_mitre(&mut host);
+        service.init_decoders(&mut host);
+        service.stream_to(Stream::start(addr.clone(), "bench".into(), spool.path(), 8 << 30).expect("a stream"));
+        if workers > 0 {
+            service.start_analysis(workers, log.clone());
+        }
+        let t = std::time::Instant::now();
+        for m in &msgs {
+            service.receive(&mut host, m);
+            while service.input_full() {
+                service.pump_some(&mut host, 256);
+            }
+            service.pump_some(&mut host, 256);
+        }
+        while service.pending() {
+            service.pump_some(&mut host, 256);
+        }
+        service.finish_decoding(&mut host);
+        if workers > 0 {
+            let mut last = (0, std::time::Instant::now());
+            while service.archived() < N && last.1.elapsed() < std::time::Duration::from_secs(2) {
+                let a = service.archived();
+                if a != last.0 {
+                    last = (a, std::time::Instant::now());
+                }
+                std::thread::yield_now();
+            }
+        }
+        let rate = N as f64 / t.elapsed().as_secs_f64();
+        if workers == 0 {
+            single = rate;
+        }
+        println!(
+            "{:>2} worker(s): {:>7.0} events/s ({:.1}x){}",
+            workers,
+            rate,
+            rate / single,
+            if workers > 0 { format!(", {} archive lines streamed by the workers", service.archived()) } else { " (one thread, as before)".into() }
+        );
+    }
+}
+
+/// The same messages with and without analysis workers fire the same rules the same number of
+/// times (rule matching is one ordered stage either way).
+#[test]
+fn workers_fire_the_same_rules() {
+    let home = manager();
+    if !home.join("etc/ossec.conf").is_file() {
+        return;
+    }
+    let msgs: Vec<Vec<u8>> = (0..8_000u64).map(|seq| message((seq as u32) % 200 + 1, (seq % 4) as u32, seq)).collect();
+    let fired = |workers: usize| {
+        let logs = tempfile::tempdir().unwrap();
+        let log = std::sync::Arc::new(ServiceLog::new(provigil_daemon::Log::open(logs.path(), "provigil-analysisd"), false));
+        let cfg = Config::load(&home, &home.join("etc/ossec.conf"), true).expect("manager settings");
+        let mut service = Service::new(cfg, &log, true).expect("ruleset");
+        let mut host = Bench;
+        service.init_decoders(&mut host);
+        if workers > 0 {
+            service.start_analysis(workers, log.clone());
+        }
+        for m in &msgs {
+            service.receive(&mut host, m);
+            while service.input_full() {
+                service.pump_some(&mut host, 256);
+            }
+            service.pump_some(&mut host, 256);
+        }
+        while service.pending() {
+            service.pump_some(&mut host, 256);
+        }
+        service.finish_decoding(&mut host);
+        let mut stats = service.engine.rule_stats(0);
+        stats.sort();
+        stats
+    };
+    let single = fired(0);
+    assert!(!single.is_empty(), "the events fire rules");
+    for w in [1, 3, 4] {
+        assert_eq!(fired(w), single, "{w} worker(s): the same rules fired the same number of times");
+    }
+}

@@ -221,10 +221,8 @@ impl LinuxAuditCorrelator {
 
     fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
         let needle = format!("{key}=");
-        let idx = line.find(&needle)?;
-        if idx > 0 && !line.as_bytes()[idx - 1].is_ascii_whitespace() {
-            return None;
-        }
+        // the first match that starts a word ("pid=" also occurs inside "ppid=")
+        let idx = line.match_indices(&needle).map(|(i, _)| i).find(|&i| i == 0 || line.as_bytes()[i - 1].is_ascii_whitespace())?;
         let rest = &line[idx + needle.len()..];
         if let Some(q) = rest.strip_prefix('"') {
             let end = q.find('"')?;

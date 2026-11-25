@@ -24,6 +24,9 @@ const RETRY_MAX: Duration = Duration::from_secs(30);
 /// Attempts per statement before it is given up (logged).
 const ATTEMPTS: u32 = 20;
 
+// shortcut: the queue is in memory: a restart within the gather time (or while ClickHouse is
+// refusing) loses those removals and the agents come back after the restart (removed again from
+// the console); persist the queue if that is ever seen in practice.
 static QUEUE: OnceLock<mpsc::UnboundedSender<AgentRegistryRow>> = OnceLock::new();
 
 /// Queues a removed agent's registry row (marked deleted) and its stored state for removal; false

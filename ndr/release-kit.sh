@@ -152,4 +152,12 @@ if [ "$UPLOAD" = 1 ]; then
             "https://uploads.github.com/repos/$REPO/releases/$ID/assets?name=$name" >/dev/null || die "upload of $name failed"
     done
     log "release v$V published on $REPO"
+    # VERSION on the default branch: what installed systems check for updates
+    SHA=$(curl -fsS "${H[@]}" "https://api.github.com/repos/$REPO/contents/VERSION" 2>/dev/null | $PY -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))' 2>/dev/null | tr -d '\r' || true)
+    BODY=$($PY -c 'import base64,json,sys; v,sha=sys.argv[1],sys.argv[2]; d={"message":"ProVigil "+v,"content":base64.b64encode((v+"\n").encode()).decode()}; d.update({"sha":sha} if sha else {}); print(json.dumps(d))' "$V" "$SHA")
+    if printf '%s' "$BODY" | curl -fsS "${H[@]}" -X PUT "https://api.github.com/repos/$REPO/contents/VERSION" -d @- >/dev/null; then
+        log "VERSION on $REPO: $V (installed systems see the update)"
+    else
+        log "VERSION on $REPO not updated: installed systems do not see this release yet"
+    fi
 fi

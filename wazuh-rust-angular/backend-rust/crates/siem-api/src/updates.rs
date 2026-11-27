@@ -16,7 +16,8 @@ use std::sync::Mutex;
 
 use crate::tenancy::AuthCtx;
 
-const DEFAULT_VERSION_URL: &str = "https://raw.githubusercontent.com/jithinjoseph-workspace/NDR-Demo/arkime/VERSION";
+// the public release repository (release-kit.sh --upload writes it); NDR-Demo is private
+const DEFAULT_VERSION_URL: &str = "https://raw.githubusercontent.com/jithinjoseph-workspace/provigil-releases/main/VERSION";
 
 #[derive(Clone, Default)]
 struct Status {

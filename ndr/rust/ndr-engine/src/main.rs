@@ -1149,14 +1149,15 @@ if role.full_platform() {
         // Only check for updates when running on-prem (DEPLOY_MODE=local or unset)
         if std::env::var("DEPLOY_MODE").as_deref() != Ok("cloud") {
             tokio::spawn(async move {
-                const VERSION_URL: &str =
-                    "https://raw.githubusercontent.com/jithinjoseph-workspace/NDR-Demo/arkime/VERSION";
+                // the public release repository (release-kit.sh --upload writes it); NDR-Demo is private
+                let version_url = std::env::var("PROVIGIL_VERSION_URL").ok().filter(|u| !u.trim().is_empty())
+                    .unwrap_or_else(|| "https://raw.githubusercontent.com/jithinjoseph-workspace/provigil-releases/main/VERSION".to_string());
                 let mut interval = tokio::time::interval(
                     std::time::Duration::from_secs(6 * 3600)
                 );
                 loop {
                     interval.tick().await;
-                    match http.get(VERSION_URL).send().await {
+                    match http.get(&version_url).send().await {
                         Ok(resp) if resp.status().is_success() => {
                             if let Ok(body) = resp.text().await {
                                 let latest = body.trim().to_string();

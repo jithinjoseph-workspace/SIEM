@@ -104,3 +104,39 @@ the master (stored in ClickHouse `cluster_nodes`); 30 s without one marks it dow
 2. **Small: one data lake node with backups, or two data lake nodes (copies)?**
 3. **Sensor on the master box or always a separate sensor** for the Mac family?
 4. **Default AI model** for AI nodes (size versus speed).
+
+## 9. Research 2026-11-27: capacity and Mac risks
+
+Capacity (Small, 2,000 events/s):
+- Measured: 2,500 events/s with no loss on the dev PC (ClickHouse limited to 5 GB). Rules engine 13,000
+  events/s on one thread, 31,000 with workers. A Mac master (VM with about 14 cores) is expected to
+  carry 5,000-10,000 events/s for the SIEM; to be measured.
+- Storage: 2,000 events/s is about 173 million events a day, about 140 GB raw, 15-30 GB in ClickHouse
+  after compression: 8 TB holds roughly 9-18 months (NDR data on top).
+- Adding AI or data lake nodes does not raise the events/s the system takes in: the master takes in
+  everything. Past the master's limit a fourth role is needed: **worker nodes** (gateway + rules engine,
+  `provigil-cluster.md` phases C1-C2).
+- AI runs on alerts, cases and questions, not on every event (2,000 model calls a second is not
+  possible on any hardware). Measured by others: gpt-oss-20b on an M4 Max Mac Studio with Ollama about
+  81 tokens/s for one request, about 20 tokens/s each with 8 at once (about 160 in total): a case
+  summary takes seconds; more AI nodes add capacity more than more parallel requests per node.
+
+Mac risks to test first (none blocks the plan; each has a fallback):
+1. Colima at boot without sign-in: not official; `colima start --foreground` under a launchd daemon
+   (community setups). Fallback: auto sign-in of a service user.
+2. Agent connections through the VM: Colima's default port forwarding may not carry thousands of
+   connections; use a VM address on the network (`--network-address`). Test with the load generator.
+3. ClickHouse in the VM: no published Mac benchmarks; data on the VM's own disk (not a shared folder).
+   Test with the load generator.
+4. Capture on macOS (BPF): no published 10 GbE figures; Apple's libpcap writes pcapng (a Zeek reading
+   issue was reported). Plan for about 1 Gbps; test with a traffic generator.
+5. Ollama parallel requests on Mac: the newer MLX runner was reported to handle requests one at a time
+   even with OLLAMA_NUM_PARALLEL; check the server log, measure.
+6. FileVault blocks unattended start (open question 1); no ECC, RAID or remote power: data lake copies
+   and backups matter more than on servers.
+7. Build: no x86-only code found (ring and rdkafka build on ARM). The siem-api image cross-builds the
+   Windows agent: keep that stage on x86 and copy the result into the ARM image. Building ARM images
+   under emulation on an x86 PC is slow (hours): build them on the Mac itself or an ARM build machine.
+
+Order decided: N2 (join, Nodes page) and N3 (AI sharing) first, they need no hardware; N8 (Ubuntu) next,
+it is the lowest-risk platform; N1 (ARM images) on the Mac when it arrives, then N5-N7.

@@ -286,20 +286,37 @@ pub async fn list(State(state): State<AppState>, Extension(ctx): Extension<AuthC
     };
     let status: Vec<StatusRow> = state.db.main().query("SELECT ?fields FROM cluster_node_status FINAL").fetch_all().await.unwrap_or_default();
     let t = now();
+    // the data lake layout: each node's shard and copy, whether it applied its settings
+    let shards = plan(&lake_nodes(&state).await);
+    let secret = if shards.is_empty() { None } else { cluster_secret(&state).await.ok() };
     let list: Vec<Value> = nodes
         .into_iter()
         .map(|n| {
             let s = status.iter().find(|s| s.id == n.id);
+            let detail = s.and_then(|s| serde_json::from_str::<Value>(&s.detail).ok());
+            let lake = (n.role == "datalake").then(|| {
+                let (shard, copy) = names(&shards, &n.name).unwrap_or_default();
+                let copies = shards.iter().find(|s| s.iter().any(|(x, _)| *x == n.name)).map_or(0, Vec::len);
+                let want = secret.as_deref().and_then(|k| layout_xml(&shards, &n.name, k)).map(|x| hex_sha256(x.as_bytes()));
+                let applied = detail.as_ref().and_then(|d| d.get("layout")).and_then(Value::as_str);
+                json!({ "shard": shard, "copy": copy, "copies": copies, "layout_applied": want.is_some() && applied == want.as_deref() })
+            });
             json!({
                 "id": n.id, "name": n.name, "role": n.role, "address": n.address, "platform": n.platform, "version": n.version,
                 "cpus": n.cpus, "mem_total": n.mem_total, "disk_total": n.disk_total, "joined": n.joined,
                 "state": node_state(s.map(|s| s.at), t), "last_seen": s.map(|s| s.at),
                 "mem_used": s.map(|s| s.mem_used), "disk_used": s.map(|s| s.disk_used), "load": s.map(|s| s.load),
-                "detail": s.and_then(|s| serde_json::from_str::<Value>(&s.detail).ok()),
+                "detail": detail, "lake": lake,
             })
         })
         .collect();
-    Json(json!({ "nodes": list })).into_response()
+    let warnings: Vec<String> = shards
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.len() == 1)
+        .map(|(i, s)| format!("Data lake shard {:02} has one copy ({}): its share of the large tables is lost if that box fails. Add another data lake node, or keep nightly backups.", i + 1, s[0].0))
+        .collect();
+    Json(json!({ "nodes": list, "warnings": warnings })).into_response()
 }
 
 /// `DELETE /api/cluster/nodes/:id` (platform admins): the node is removed; its key stops working.

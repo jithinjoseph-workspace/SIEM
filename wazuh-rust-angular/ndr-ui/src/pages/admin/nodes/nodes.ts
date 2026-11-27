@@ -21,6 +21,8 @@ export interface ClusterNode {
   disk_used: number | null;
   load: number | null;
   detail: { service_up?: boolean } | null;
+  /** a data lake node: its shard, copy name, copies in its shard, whether it applied its settings */
+  lake: { shard: string; copy: string; copies: number; layout_applied: boolean } | null;
 }
 
 @Component({
@@ -32,6 +34,7 @@ export interface ClusterNode {
 export class Nodes implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   nodes = signal<ClusterNode[]>([]);
+  warnings = signal<string[]>([]);
   error = signal<string | null>(null);
   role = signal<'ai' | 'datalake' | ''>('ai');
   token = signal<{ token: string; role: string; expires: number } | null>(null);
@@ -50,8 +53,8 @@ export class Nodes implements OnInit, OnDestroy {
   }
 
   load() {
-    this.http.get<{ nodes: ClusterNode[] }>('/api/cluster/nodes').subscribe({
-      next: (r) => { this.error.set(null); this.nodes.set(r.nodes ?? []); },
+    this.http.get<{ nodes: ClusterNode[]; warnings?: string[] }>('/api/cluster/nodes').subscribe({
+      next: (r) => { this.error.set(null); this.nodes.set(r.nodes ?? []); this.warnings.set(r.warnings ?? []); },
       error: (e) => this.error.set(e?.status === 403 ? 'Only the platform admin can see the nodes.' : 'The node list is not available.'),
     });
   }
@@ -77,7 +80,10 @@ export class Nodes implements OnInit, OnDestroy {
   }
 
   remove(n: ClusterNode) {
-    if (!confirm(`Remove node ${n.name}? It stops being used and its key stops working.`)) return;
+    const lake = n.role === 'datalake'
+      ? '\n\nA data lake node holds data: removing it here does not move its data. Remove a data lake node only when the other node of its shard holds a copy.'
+      : '';
+    if (!confirm(`Remove node ${n.name}? It stops being used and its key stops working.${lake}`)) return;
     this.http.delete(`/api/cluster/nodes/${encodeURIComponent(n.id)}`).subscribe({
       next: () => this.load(),
       error: () => this.error.set(`Node ${n.name} could not be removed.`),

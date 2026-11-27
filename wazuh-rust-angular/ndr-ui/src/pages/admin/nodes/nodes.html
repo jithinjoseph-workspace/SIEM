@@ -5,6 +5,7 @@
   </div>
 
   <div *ngIf="error()" class="p-4 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+  <div *ngFor="let w of warnings()" class="p-3 rounded-xl border border-amber-800 bg-amber-950/40 text-amber-300 text-sm">{{ w }}</div>
 
   <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
     <div class="text-sm font-semibold text-white">Add a node</div>
@@ -30,6 +31,7 @@
         <tr>
           <th class="text-left p-3">Node</th>
           <th class="text-left p-3">Role</th>
+          <th class="text-left p-3">Data lake</th>
           <th class="text-left p-3">State</th>
           <th class="text-left p-3">Service</th>
           <th class="text-right p-3">CPUs / load</th>
@@ -41,7 +43,7 @@
       </thead>
       <tbody>
         <tr *ngIf="nodes().length === 0">
-          <td colspan="9" class="p-4 text-slate-500">No nodes yet: this master works alone. Create a join token to add an AI or data lake node.</td>
+          <td colspan="10" class="p-4 text-slate-500">No nodes yet: this master works alone. Create a join token to add an AI or data lake node.</td>
         </tr>
         <tr *ngFor="let n of nodes()" class="border-t border-slate-800">
           <td class="p-3">
@@ -49,6 +51,13 @@
             <div class="text-[11px] text-slate-500">{{ n.address }} · {{ n.platform }}{{ n.version ? ' · ' + n.version : '' }}</div>
           </td>
           <td class="p-3">{{ roleName(n.role) }}</td>
+          <td class="p-3">
+            <ng-container *ngIf="n.lake as l; else noLake">
+              <div>shard {{ l.shard }} · {{ l.copies }} {{ l.copies === 1 ? 'copy' : 'copies' }}</div>
+              <div class="text-[11px]" [class.text-emerald-400]="l.layout_applied" [class.text-amber-400]="!l.layout_applied">{{ l.layout_applied ? 'settings applied' : 'settings not applied yet' }}</div>
+            </ng-container>
+            <ng-template #noLake><span class="text-slate-500">–</span></ng-template>
+          </td>
           <td class="p-3">
             <span class="px-2 py-0.5 rounded text-xs"
                   [class.bg-emerald-900]="n.state === 'ready'" [class.text-emerald-300]="n.state === 'ready'"

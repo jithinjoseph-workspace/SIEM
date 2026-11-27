@@ -6,6 +6,7 @@
 #   provigil-node.sh join --master https://10.10.10.1 --token pvj_... --role ai|datalake [--name N] [--address IP]
 #   provigil-node.sh run              # the heartbeat loop (the service runs this)
 #   provigil-node.sh install-service  # start at boot: systemd on Linux, launchd on macOS
+#   provigil-node.sh beat             # one heartbeat now, with the master's answer (troubleshooting)
 #   provigil-node.sh status
 set -euo pipefail
 
@@ -146,6 +147,7 @@ EOF
 case "${1:-}" in
     join) shift; cmd_join "$@" ;;
     run) cmd_run ;;
+    beat) [ -f "$CONF" ] || die "not joined yet"; beat_once; echo ;;   # one heartbeat, the master's answer shown
     install-service) cmd_install_service ;;
     status) [ -f "$CONF" ] && grep -v '^SECRET=' "$CONF" || echo "not joined" ;;
     *) sed -n '2,10p' "$0"; exit 2 ;;

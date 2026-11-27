@@ -92,11 +92,22 @@ if [ -n "$KIT" ]; then
     say "using the kit next to this installer: $(basename "$KIT")${OFFLINE:+ (offline, images included)}"
 else
     say "downloading the installer kit from the ProVigil release..."
+    # A public release first, through GitHub's download addresses: the API allows 60 calls an hour
+    # per address without a token (several PCs at one site ran out of them).
+    REPO=$(printf '%s' "$PROVIGIL_DOWNLOAD_URL" | sed -nE 's#^https://api\.github\.com/repos/([^/]+/[^/]+)/releases/?$#\1#p')
+    V="${WANT_VERSION:-${PROVIGIL_VERSION_WANTED:-}}"
+    [ -n "$V" ] || { [ -n "$REPO" ] && V=$(curl -fsSL "https://raw.githubusercontent.com/$REPO/main/VERSION" 2>/dev/null | tr -d ' \r\n'); } || true
+    if [ -n "$REPO" ] && [ -n "$V" ] && curl -fsSL "https://github.com/$REPO/releases/download/v$V/provigil-kit-$V.tar.gz" -o "$WORK/provigil-kit-$V.tar.gz" 2>/dev/null \
+        && curl -fsSL "https://github.com/$REPO/releases/download/v$V/provigil-kit-$V.tar.gz.sig" -o "$WORK/provigil-kit-$V.tar.gz.sig" 2>/dev/null; then
+        KIT="$WORK/provigil-kit-$V.tar.gz"
+    fi
+fi
+if [ -z "$KIT" ]; then
     REL="$PROVIGIL_DOWNLOAD_URL/latest"; [ -n "$WANT_VERSION" ] && REL="$PROVIGIL_DOWNLOAD_URL/tags/v$WANT_VERSION"
     api() { if [ -n "${PROVIGIL_DOWNLOAD_TOKEN:-}" ]; then curl -fsSL -H "Authorization: Bearer $PROVIGIL_DOWNLOAD_TOKEN" "$@"; else curl -fsSL "$@"; fi; }
     if ! api -H "Accept: application/vnd.github+json" "$REL" -o "$WORK/release.json" 2>/dev/null; then
         [ -z "${PROVIGIL_DOWNLOAD_TOKEN:-}" ] || die "the release at $REL could not be read with the download token"
-        read -rsp "  Download token (from ProVigil; the release is private): " PROVIGIL_DOWNLOAD_TOKEN \n            || die "the release at $REL needs a download token: set PROVIGIL_DOWNLOAD_TOKEN or run this in a terminal"
+        read -rsp "  Download token (from ProVigil; the release is private): " PROVIGIL_DOWNLOAD_TOKEN || die "the release at $REL needs a download token: set PROVIGIL_DOWNLOAD_TOKEN or run this in a terminal"
         echo
         api -H "Accept: application/vnd.github+json" "$REL" -o "$WORK/release.json" || die "the release at $REL could not be read (token, network?)"
     fi

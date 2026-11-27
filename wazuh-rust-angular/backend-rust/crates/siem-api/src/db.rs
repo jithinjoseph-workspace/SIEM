@@ -277,14 +277,18 @@ pub const SOAR_DDL: [&str; 5] = [
     "CREATE TABLE IF NOT EXISTS soar_case_comments (id String DEFAULT toString(generateUUIDv4()), case_id String, author String, comment String, created_at DateTime DEFAULT now(), tenant_id String DEFAULT 'default') ENGINE = MergeTree ORDER BY (tenant_id, case_id, created_at) TTL created_at + INTERVAL 730 DAY",
 ];
 
-/// Runs one schema statement on this deployment's ClickHouse: unchanged on a single server, on the
-/// whole cluster with copied tables, and as local plus Distributed tables for a split table
-/// (`provigil_common::ddl`, specs/provigil-nodes.md N4).
+/// Runs one schema statement on this deployment's ClickHouse (`provigil_common::ddl`, specs/
+/// provigil-nodes.md N4): unchanged on a single server, on the whole cluster with copied tables, and
+/// for a split table on its local and Distributed parts. Every statement is tried (an older install's
+/// split table may lack its local part); the first error is returned.
 pub async fn run_ddl(c: &Client, sql: &str) -> Result<(), clickhouse::error::Error> {
+    let mut first = None;
     for s in provigil_common::ddl::statements(sql) {
-        c.query(&s).execute().await?;
+        if let Err(e) = c.query(&s).execute().await {
+            first.get_or_insert(e);
+        }
     }
-    Ok(())
+    first.map_or(Ok(()), Err)
 }
 
 /// The SIEM analyst features' tables (one JSON document per row; a new

@@ -149,15 +149,26 @@ fn replicated_engine(sql: &str, path: Option<&str>) -> String {
 // and `<table>` becomes a Distributed table over them, so the programs read and insert as before.
 // Schema changes go to the right table: retention (TTL) to the local one, column changes to both.
 
-/// The split tables (only on a cluster).
+/// NDR tables init.sql always creates split (`_local` + Distributed), with the key that keeps one
+/// row's versions on one shard (ReplacingMergeTree) or `rand()` for an insert-only table.
+pub const NDR_SPLIT: [(&str, &str); 2] = [("ndr_events", "rand()"), ("ndr_hits", "cityHash64(tenant_id, community_id)")];
+
+/// The split tables (only on a cluster): `CLICKHOUSE_SHARD_TABLES` and [`NDR_SPLIT`].
 pub fn shard_tables() -> &'static [String] {
     static T: OnceLock<Vec<String>> = OnceLock::new();
     T.get_or_init(|| {
         if cluster().is_none() {
             return Vec::new();
         }
-        std::env::var("CLICKHOUSE_SHARD_TABLES").unwrap_or_default().split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
+        let mut v: Vec<String> = std::env::var("CLICKHOUSE_SHARD_TABLES").unwrap_or_default().split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        v.extend(NDR_SPLIT.iter().map(|(t, _)| t.to_string()));
+        v
     })
+}
+
+/// How a split table's rows are spread over the shards.
+pub fn shard_key(table: &str) -> &'static str {
+    NDR_SPLIT.iter().find(|(t, _)| *t == table).map(|(_, k)| *k).unwrap_or("rand()")
 }
 
 /// The statements to run for `sql` on this deployment (one, or several for a split table).
@@ -205,7 +216,8 @@ pub fn statements_with(sql: &str, cluster: Option<&str>, split: &[String]) -> Ve
     let local = named(&db, &format!("{t}_local"), quoted);
     let full = named(&db, &t, quoted);
     let db_arg = if db.is_empty() { "currentDatabase()".to_string() } else { format!("'{}'", db.trim_end_matches('.').trim_matches('`')) };
-    let distributed = |source: &str| format!("CREATE TABLE IF NOT EXISTS {full} ON CLUSTER `{c}` AS {source} ENGINE = Distributed(`{c}`, {db_arg}, '{t}_local', rand())");
+    let key = shard_key(&t);
+    let distributed = |source: &str| format!("CREATE TABLE IF NOT EXISTS {full} ON CLUSTER `{c}` AS {source} ENGINE = Distributed(`{c}`, {db_arg}, '{t}_local', {key})");
     // the name in the statement, swapped for the local table's
     let pos = sql.find(name).unwrap_or(0);
     let to_local = format!("{}{local}{}", &sql[..pos], &sql[pos + name.len()..]);
@@ -223,10 +235,12 @@ pub fn statements_with(sql: &str, cluster: Option<&str>, split: &[String]) -> Ve
         }
         return vec![on_cluster_path(&to_local, Some(c), None), distributed(&local)];
     }
-    // ALTER: retention only on the local table; columns on both
+    // ALTER: retention, indexes and projections only on the local table; columns on both
     let action = up.get(at + 1).map(String::as_str).unwrap_or("");
-    let ttl = up.get(at + 2).is_some_and(|w| w == "TTL");
-    if (action == "MODIFY" || action == "REMOVE") && (ttl || action == "REMOVE") {
+    let what = up.get(at + 2).map(String::as_str).unwrap_or("");
+    let ttl = what == "TTL";
+    let storage_only = ["INDEX", "PROJECTION", "CONSTRAINT", "SETTING", "ORDER", "SAMPLE"].contains(&what) || action == "MATERIALIZE";
+    if (action == "MODIFY" || action == "REMOVE") && (ttl || action == "REMOVE") || storage_only {
         vec![on_cluster_with(&to_local, Some(c))]
     } else if ["ADD", "DROP", "MODIFY", "RENAME", "COMMENT", "CLEAR"].contains(&action) {
         vec![on_cluster_with(&to_local, Some(c)), on_cluster_with(sql, Some(c))]
@@ -280,6 +294,16 @@ mod split_tests {
                 "ALTER TABLE siem_alerts ON CLUSTER `lake` ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''",
             ]
         );
+    }
+
+    #[test]
+    fn ndr_hits_keeps_one_hits_versions_on_one_shard_and_indexes_go_to_the_local_table() {
+        let v = statements_with("CREATE TABLE IF NOT EXISTS `ndr_acme`.`ndr_hits` AS `ndr`.`ndr_hits`", Some("lake"), &["ndr_hits".to_string()]);
+        assert!(v[1].ends_with("Distributed(`lake`, 'ndr_acme', 'ndr_hits_local', cityHash64(tenant_id, community_id))"), "{}", v[1]);
+        let v = statements_with("ALTER TABLE ndr.ndr_events ADD INDEX IF NOT EXISTS idx_sensor_id sensor_id TYPE bloom_filter GRANULARITY 1", Some("lake"), &["ndr_events".to_string()]);
+        assert_eq!(v, ["ALTER TABLE ndr.ndr_events_local ON CLUSTER `lake` ADD INDEX IF NOT EXISTS idx_sensor_id sensor_id TYPE bloom_filter GRANULARITY 1"]);
+        let v = statements_with("ALTER TABLE ndr.ndr_events ADD PROJECTION IF NOT EXISTS p (SELECT * ORDER BY sensor_id)", Some("lake"), &["ndr_events".to_string()]);
+        assert_eq!(v.len(), 1);
     }
 
     #[test]

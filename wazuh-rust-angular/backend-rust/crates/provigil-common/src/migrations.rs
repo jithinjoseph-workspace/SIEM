@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS ndr.users ON CLUSTER ndr_cluster (
     secret_code String DEFAULT '',
     created_at  DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/users', '{replica}', created_at
+    '/clickhouse/tables/all/ndr/users', '{replica}', created_at
 )
 ORDER BY username
 SETTINGS index_granularity = 8192"#),
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS ndr.tenants ON CLUSTER ndr_cluster (
     created_at DateTime DEFAULT now(),
     updated_at DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/tenants', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/tenants', '{replica}', updated_at
 )
 ORDER BY id
 SETTINGS index_granularity = 8192"#),
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS ndr.rules_state_tenant ON CLUSTER ndr_cluster (
     updated   DateTime DEFAULT now(),
     tenant_id String   DEFAULT 'default'
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/rules_state_tenant', '{replica}', updated
+    '/clickhouse/tables/all/ndr/rules_state_tenant', '{replica}', updated
 )
 ORDER BY (tenant_id, id)
 SETTINGS index_granularity = 8192"#),
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS ndr.settings ON CLUSTER ndr_cluster (
     value      String,
     updated_at DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/settings', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/settings', '{replica}', updated_at
 )
 ORDER BY key
 SETTINGS index_granularity = 8192"#),
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS ndr.sigma_rules ON CLUSTER ndr_cluster (
     created_at DateTime DEFAULT now(),
     updated_at DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/sigma_rules', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/sigma_rules', '{replica}', updated_at
 )
 ORDER BY id
 SETTINGS index_granularity = 8192"#),
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_rules ON CLUSTER ndr_cluster (
     created_at        DateTime DEFAULT now(),
     updated_at        DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_rules', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/siem_rules', '{replica}', updated_at
 )
 ORDER BY (tenant_id, rule_id)
 SETTINGS index_granularity = 8192"#),
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS ndr.rules_state ON CLUSTER ndr_cluster (
     updated   DateTime DEFAULT now(),
     tenant_id String   DEFAULT 'default'
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/rules_state', '{replica}', updated
+    '/clickhouse/tables/all/ndr/rules_state', '{replica}', updated
 )
 ORDER BY id
 SETTINGS index_granularity = 8192"#),
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_suppression_rules ON CLUSTER ndr_cluster (
     created_at       DateTime DEFAULT now(),
     updated_at       DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_suppression_rules', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/siem_suppression_rules', '{replica}', updated_at
 )
 ORDER BY (tenant_id, id)
 SETTINGS index_granularity = 8192"#),
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_rule_fitness ON CLUSTER ndr_cluster (
     alert_count          UInt64  DEFAULT 0,
     scored_at            DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_rule_fitness', '{replica}', scored_at
+    '/clickhouse/tables/all/ndr/siem_rule_fitness', '{replica}', scored_at
 )
 ORDER BY (tenant_id, rule_id, scored_at)
 TTL scored_at + INTERVAL 180 DAY
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_sla_config ON CLUSTER ndr_cluster (
     low_hours      UInt32   DEFAULT 72,
     updated_at     DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_sla_config', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/siem_sla_config', '{replica}', updated_at
 )
 ORDER BY tenant_id
 SETTINGS index_granularity = 8192"#),
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_ingest_keys ON CLUSTER ndr_cluster (
     active     UInt8    DEFAULT 1,
     created_at DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_ingest_keys', '{replica}', created_at
+    '/clickhouse/tables/all/ndr/siem_ingest_keys', '{replica}', created_at
 )
 ORDER BY (tenant_id, key_hash)
 SETTINGS index_granularity = 8192"#),
@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_audit_trail ON CLUSTER ndr_cluster (
     detail_json   String   DEFAULT '{}',
     created_at    DateTime DEFAULT now()
 ) ENGINE = ReplicatedMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_audit_trail', '{replica}'
+    '/clickhouse/tables/all/ndr/siem_audit_trail', '{replica}'
 )
 ORDER BY (tenant_id, created_at)
 TTL created_at + INTERVAL 365 DAY
@@ -268,7 +268,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_baselines ON CLUSTER ndr_cluster (
     peer_group     String   DEFAULT '',
     computed_at    DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_baselines', '{replica}', computed_at
+    '/clickhouse/tables/all/ndr/siem_baselines', '{replica}', computed_at
 )
 ORDER BY (tenant_id, entity_id, entity_type)
 SETTINGS index_granularity = 8192"#),
@@ -290,7 +290,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_parsers ON CLUSTER ndr_cluster (
     created_at      DateTime DEFAULT now(),
     updated_at      DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_parsers', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/siem_parsers', '{replica}', updated_at
 )
 ORDER BY (tenant_id, parser_id)
 SETTINGS index_granularity = 8192"#),
@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS ndr.siem_tenant_profiles ON CLUSTER ndr_cluster (
     profile_data String   DEFAULT '{}',
     updated_at   DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/siem_tenant_profiles', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/siem_tenant_profiles', '{replica}', updated_at
 )
 ORDER BY tenant_id
 SETTINGS index_granularity = 8192"#),
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS ndr.unified_alerts ON CLUSTER ndr_cluster (
     created_at           DateTime DEFAULT now(),
     updated_at           DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/unified_alerts', '{replica}', updated_at
+    '/clickhouse/tables/all/ndr/unified_alerts', '{replica}', updated_at
 )
 ORDER BY (tenant_id, alert_id)
 TTL created_at + INTERVAL 180 DAY
@@ -356,7 +356,7 @@ CREATE TABLE IF NOT EXISTS ndr.ai_providers ON CLUSTER ndr_cluster (
     enabled       UInt8    DEFAULT 1,
     created_at    DateTime DEFAULT now()
 ) ENGINE = ReplicatedReplacingMergeTree(
-    '/clickhouse/tables/{shard}/ndr/ai_providers', '{replica}', created_at
+    '/clickhouse/tables/all/ndr/ai_providers', '{replica}', created_at
 )
 ORDER BY name
 SETTINGS index_granularity = 8192"#),
@@ -374,7 +374,7 @@ CREATE TABLE IF NOT EXISTS ndr.threat_intel ON CLUSTER ndr_cluster (
     asn            String  DEFAULT '',
     tags          Array(String)
 ) ENGINE = ReplicatedMergeTree(
-    '/clickhouse/tables/{shard}/ndr/threat_intel', '{replica}'
+    '/clickhouse/tables/all/ndr/threat_intel', '{replica}'
 )
 ORDER BY (attack_type, collected_at)
 TTL collected_at + INTERVAL 90 DAY

@@ -178,7 +178,7 @@ async fn execute(ch: &ClickhouseStorage, action: &Action, mode: Mode, report: &m
             if create.contains("CODEC(ZSTD") { return Ok(()); }
             let sql = format!("ALTER TABLE {db}.ndr_events ON CLUSTER ndr_cluster MODIFY COLUMN raw String CODEC(ZSTD(3))");
             report.actions.push(sql.clone());
-            if mode == Mode::Enforce { ch.client.query(&provigil_common::ddl::on_cluster(&sql)).execute().await?; }
+            if mode == Mode::Enforce { crate::storage::clickhouse::run_ddl(&ch.client, &sql).await?; }
         }
         Action::ShortenRawTtl { db, days } => {
             let create = table_create_sql(ch, db, "ndr_events").await;
@@ -189,7 +189,7 @@ async fn execute(ch: &ClickhouseStorage, action: &Action, mode: Mode, report: &m
             }
             let sql = format!("ALTER TABLE {db}.ndr_events ON CLUSTER ndr_cluster MODIFY TTL timestamp + INTERVAL {days} DAY");
             report.actions.push(sql.clone());
-            if mode == Mode::Enforce { ch.client.query(&provigil_common::ddl::on_cluster(&sql)).execute().await?; }
+            if mode == Mode::Enforce { crate::storage::clickhouse::run_ddl(&ch.client, &sql).await?; }
         }
         Action::DeleteExpiredEvidence { db } => {
             #[derive(clickhouse::Row, serde::Deserialize)]
@@ -370,7 +370,7 @@ mod tests {
         let ch = ClickhouseStorage::new();
         let db = "ndr_zz_guardian";
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db} ON CLUSTER ndr_cluster"))).execute().await;
+        let _ = crate::storage::clickhouse::run_ddl(&ch.client, &format!("DROP DATABASE IF EXISTS {db} ON CLUSTER ndr_cluster")).await;
         run(format!("CREATE DATABASE {db} ON CLUSTER ndr_cluster")).await;
         run(format!("CREATE TABLE {db}.ndr_events ON CLUSTER ndr_cluster (timestamp DateTime, raw String) \
              ENGINE = ReplicatedMergeTree('/clickhouse/tables/{{shard}}/zz_guardian/ndr_events', '{{replica}}') \
@@ -399,6 +399,6 @@ mod tests {
         assert!(noop.actions.is_empty(), "a longer TTL is never applied: {:?}", noop.actions);
         assert_eq!(ttl_days(&table_create_sql(&ch, db, "ndr_events").await), Some(14));
 
-        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db} ON CLUSTER ndr_cluster"))).execute().await;
+        let _ = crate::storage::clickhouse::run_ddl(&ch.client, &format!("DROP DATABASE IF EXISTS {db} ON CLUSTER ndr_cluster")).await;
     }
 }

@@ -30,6 +30,8 @@
     <remote_servers>
         <ndr_cluster>
             <shard>
+                <!-- copies are made by the Replicated tables, not by Distributed inserts (no doubled rows) -->
+                <internal_replication>true</internal_replication>
                 <replica>
                     <host>localhost</host>
                     <port>9000</port>

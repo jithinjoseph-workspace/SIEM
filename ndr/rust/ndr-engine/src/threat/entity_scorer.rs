@@ -218,7 +218,7 @@ mod tests {
         let ch = crate::storage::ClickhouseStorage::new();
         let db = "ndr_zz_entitytest";
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
+        let _ = crate::storage::clickhouse::run_ddl(&ch.client, &format!("DROP DATABASE IF EXISTS {db}")).await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (tenant_id String, src_ip String, dst_ip String, score Float32, \
              severity String, tags Array(String), timestamp DateTime) ENGINE = ReplacingMergeTree ORDER BY (src_ip, dst_ip, timestamp)")).await;
@@ -246,6 +246,6 @@ mod tests {
         assert_eq!(norm("10.0.2.15"), 0.0, "145 low-score DNS alerts to one resolver must not count at all");
         assert!(norm("10.0.9.9") >= 80.0, "12 distinct threat-intel destinations must still be compromised: {}", norm("10.0.9.9"));
         assert!((norm("10.0.5.5") - 18.0).abs() < 0.01, "3 destinations at 60 = 18: {}", norm("10.0.5.5"));
-        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
+        let _ = crate::storage::clickhouse::run_ddl(&ch.client, &format!("DROP DATABASE IF EXISTS {db}")).await;
     }
 }

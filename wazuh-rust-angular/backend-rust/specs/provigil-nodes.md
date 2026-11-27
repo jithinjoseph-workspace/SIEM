@@ -278,3 +278,26 @@ with `{shard}` and the cluster name `ndr_cluster` written in: on more than one s
 tables must use the all-servers path and the large NDR tables (events, hits, flows) the split form;
 the NDR engine's tenant tables the same. Then the master writes the ClickHouse layout from the Nodes
 list (shards of two copies) and sets `CLICKHOUSE_SHARD_TABLES`.
+
+## 16. N4c built 2026-11-27: the NDR schema on any number of shards
+
+- init.sql: `ndr_events` and `ndr_hits` are `<t>_local` (per-shard copies) plus a Distributed table
+  under the old name (`ndr_events` spread at random, `ndr_hits` by `cityHash64(tenant_id,
+  community_id)` so one hit's versions stay on one shard and FINAL keeps the newest); the other 47
+  tables use the all-servers copy path. provigil-common's shared migrations (18 tables) the same.
+- `provigil_common::ddl`: `ndr_events` / `ndr_hits` count as split on any cluster; index, projection
+  and setting changes go to the local part only. The NDR engine's 39 schema statements and siem-api's
+  run through `run_ddl`, which tries every statement (an older install's table may lack its local
+  part) and returns the first error. The NDR engine's tenant copies of init.sql rewrite the
+  all-servers path and the Distributed database too.
+- Cluster configs (Docker ClickHouse 1 and 2, the data lake PC): `internal_replication` true, so a
+  Distributed insert writes one copy and the Replicated table makes the others (without it rows double).
+- Tested on two shards: init.sql 81 statements applied, 0 failed; 116 tables identical on both
+  servers; small tables (init.sql and shared migrations) written on one shard read on the other; 1,000
+  NDR events split 463/537 and read whole; 200 hits written twice from different servers give 200
+  rows, all the newest.
+
+Still to do (N4d): the master writes the ClickHouse layout from the Nodes list (data lake nodes in
+shards of two copies, Keeper on the master and the first two data lake nodes) to each data lake
+node through provigil-node.sh, and sets `CLICKHOUSE_SHARD_TABLES` for siem-api when there is more than
+one shard.

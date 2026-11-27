@@ -516,9 +516,14 @@ impl AuthDb {
                             last = None;
                             break;
                         }
-                        Err(e) => {
+                        // only Keeper or the cluster being busy passes: anything else fails every time
+                        Err(e) if ["KEEPER", "Coordination", "TIMEOUT", "timeout", "Timeout", "TOO_MANY"].iter().any(|k| e.to_string().contains(k)) => {
                             last = Some(e);
                             tokio::time::sleep(std::time::Duration::from_secs(5 << attempt)).await;
+                        }
+                        Err(e) => {
+                            last = Some(e);
+                            break;
                         }
                     }
                 }

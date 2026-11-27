@@ -22,9 +22,11 @@ pub async fn run_ddl_retry(c: &Client, sql: &str) -> Result<(), clickhouse::erro
     Ok(())
 }
 
-/// A failure that passes: Keeper or the cluster busy, or a table another statement is still making.
-fn retryable(e: &str) -> bool {
-    ["KEEPER", "Coordination", "TIMEOUT", "timeout", "Timeout", "does not exist", "UNKNOWN_TABLE", "TOO_MANY"].iter().any(|k| e.contains(k))
+/// A failure that passes: Keeper or the cluster busy. Not "does not exist": a statement on a table a
+/// client database does not have fails every time, and retrying each held the engines' start for 10
+/// minutes (seen in the 1.0.38 install test).
+pub(crate) fn retryable(e: &str) -> bool {
+    ["KEEPER", "Coordination", "TIMEOUT", "timeout", "Timeout", "TOO_MANY"].iter().any(|k| e.contains(k))
 }
 
 pub async fn run_ddl(c: &Client, sql: &str) -> Result<(), clickhouse::error::Error> {
@@ -9004,7 +9006,7 @@ mod ddl_retry_tests {
     #[test]
     fn keeper_timeouts_and_missing_parts_are_tried_again_syntax_errors_not() {
         assert!(super::retryable("Code: 999. Coordination::Exception: Coordination error: Operation timeout (KEEPER_EXCEPTION)"));
-        assert!(super::retryable("Code: 60. DB::Exception: Table ndr_x.ndr_hits_local does not exist. (UNKNOWN_TABLE)"));
+        assert!(!super::retryable("Code: 60. DB::Exception: Table ndr_x.ndr_hits_local does not exist. (UNKNOWN_TABLE)"));
         assert!(!super::retryable("Code: 62. DB::Exception: Syntax error: failed at position 36"));
     }
 }

@@ -38,7 +38,10 @@ impl KafkaConfig {
             .set("group.id", group_id)
             .set("bootstrap.servers", &self.brokers)
             .set("enable.auto.commit", "true")
-            .set("auto.offset.reset", "latest")
+            // a new group (a fresh install) starts at the oldest waiting data: with "latest", what the
+            // sensors sent before the engines first read was skipped (seen in the 1.0.38 install test);
+            // once offsets are committed this has no effect, so nothing is read twice
+            .set("auto.offset.reset", "earliest")
             .set("client.id", client_id)
             .create()
             .expect("Kafka consumer creation failed")

@@ -70,7 +70,7 @@ pub async fn ensure_tables(root: &Client, db: &str) {
     if has_status == 0 {
         let rows: u64 = root.query(&format!("SELECT count() FROM `{db}`.siem_active_responses")).fetch_one().await.unwrap_or(1);
         if rows == 0 {
-            let _ = root.query(&format!("DROP TABLE IF EXISTS `{db}`.siem_active_responses")).execute().await;
+            let _ = root.query(&provigil_common::ddl::on_cluster(&format!("DROP TABLE IF EXISTS `{db}`.siem_active_responses"))).execute().await;
             info!("{db}.siem_active_responses: old empty table replaced");
         } else {
             warn!("{db}.siem_active_responses has rows in the old format; it is kept and active responses are not saved there");
@@ -78,7 +78,7 @@ pub async fn ensure_tables(root: &Client, db: &str) {
     }
     let c = root.clone().with_database(db);
     for (name, ddl) in TABLES {
-        if let Err(e) = c.query(ddl).execute().await {
+        if let Err(e) = c.query(&provigil_common::ddl::on_cluster(ddl)).execute().await {
             warn!("{db}.{name}: {e}");
         }
     }

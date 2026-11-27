@@ -55,7 +55,7 @@ async fn ensure_table(state: &AppState) -> bool {
         ) ENGINE = ReplacingMergeTree(updated_at)
         ORDER BY agent_id"
     );
-    state.db.root().query(&q).execute().await.map_err(|e| warn!("agent_keys: {e}")).is_ok()
+    state.db.root().query(&provigil_common::ddl::on_cluster(&q)).execute().await.map_err(|e| warn!("agent_keys: {e}")).is_ok()
 }
 
 /// Adds the stored keys to the platform keystore; returns the stored keys by agent id

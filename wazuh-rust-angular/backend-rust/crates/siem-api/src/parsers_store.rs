@@ -40,7 +40,7 @@ async fn ensure_table(db: &ClickHouseDb, database: &str) -> bool {
         ) ENGINE = ReplacingMergeTree(updated_at)
         ORDER BY id"
     );
-    match db.root().query(&q).execute().await {
+    match db.root().query(&provigil_common::ddl::on_cluster(&q)).execute().await {
         Ok(()) => true,
         Err(e) => {
             warn!("learned_parsers: {e}");

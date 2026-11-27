@@ -383,7 +383,7 @@ pub async fn apply_retention(root: &Client) {
             alerts
         };
         if let Some(sql) = retention_sql(db, table, days, create) {
-            match root.query(&sql).execute().await {
+            match root.query(&provigil_common::ddl::on_cluster(&sql)).execute().await {
                 Ok(()) => changed += 1,
                 Err(e) => warn!("Retention of {db}.{table} not set: {e}"),
             }
@@ -602,7 +602,7 @@ impl ClickHouseDb {
 
         // Attempt to create database if it doesn't exist
         match root_client
-            .query(&format!("CREATE DATABASE IF NOT EXISTS {}", database))
+            .query(&provigil_common::ddl::on_cluster(&format!("CREATE DATABASE IF NOT EXISTS {}", database)))
             .execute()
             .await
         {
@@ -626,10 +626,10 @@ impl ClickHouseDb {
 
         // Ensure global ndr.tenants table schema has ai_enabled and updated_at columns
         let _ = root_client
-            .query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1")
+            .query(&provigil_common::ddl::on_cluster("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1"))
             .execute()
             .await;
-        let _ = root_client.query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
+        let _ = root_client.query(&provigil_common::ddl::on_cluster("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()")).execute().await;
 
         let client = root_client.clone().with_database(&database);
 
@@ -670,7 +670,7 @@ impl ClickHouseDb {
             ORDER BY (rule_level, timestamp);
         "#;
 
-        if let Err(e) = client.query(create_events_sql).execute().await {
+        if let Err(e) = client.query(&provigil_common::ddl::on_cluster(create_events_sql)).execute().await {
             error!("Failed to create siem_events table: {}", e);
             return Self {
                 client,
@@ -680,7 +680,7 @@ impl ClickHouseDb {
             };
         }
 
-        if let Err(e) = client.query(create_alerts_sql).execute().await {
+        if let Err(e) = client.query(&provigil_common::ddl::on_cluster(create_alerts_sql)).execute().await {
             error!("Failed to create siem_alerts table: {}", e);
             return Self {
                 client,
@@ -709,7 +709,7 @@ impl ClickHouseDb {
             ) ENGINE = MergeTree()
             ORDER BY (timestamp, host_ip);
         "#;
-        let _ = client.query(create_incidents_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_incidents_sql)).execute().await;
 
         // SIEM threat-intel feed IOCs (NDR keeps its own `threat_intel` table in `ndr`)
         let create_threat_intel_sql = r#"
@@ -725,10 +725,10 @@ impl ClickHouseDb {
             ) ENGINE = ReplacingMergeTree()
             ORDER BY (ioc_type, ioc_value);
         "#;
-        let _ = client.query(create_threat_intel_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_threat_intel_sql)).execute().await;
         // the batches of the daemons' streams already stored: a replay skips them
         let _ = client
-            .query("CREATE TABLE IF NOT EXISTS siem_stream_marks (source LowCardinality(String), first_seq UInt64, last_seq UInt64, at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY (source, last_seq) TTL at + INTERVAL 7 DAY")
+            .query(&provigil_common::ddl::on_cluster("CREATE TABLE IF NOT EXISTS siem_stream_marks (source LowCardinality(String), first_seq UInt64, last_seq UInt64, at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY (source, last_seq) TTL at + INTERVAL 7 DAY"))
             .execute()
             .await;
 
@@ -754,7 +754,7 @@ impl ClickHouseDb {
             ORDER BY (timestamp, src_ip, dst_ip)
             TTL toDateTime(timestamp) + INTERVAL 30 DAY;
         "#;
-        let _ = client.query(create_flows_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_flows_sql)).execute().await;
         let create_threats_sql = r#"
             CREATE TABLE IF NOT EXISTS ndr_threats (
                 id UUID DEFAULT generateUUIDv4(),
@@ -773,7 +773,7 @@ impl ClickHouseDb {
             ORDER BY (severity, timestamp, src_ip)
             TTL toDateTime(timestamp) + INTERVAL 180 DAY;
         "#;
-        let _ = client.query(create_threats_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_threats_sql)).execute().await;
 
         // Create siem_agents table for persistent agent storage in ClickHouse
         let create_agents_sql = r#"
@@ -790,7 +790,7 @@ impl ClickHouseDb {
             ) ENGINE = ReplacingMergeTree(last_keepalive)
             ORDER BY (id);
         "#;
-        let _ = client.query(create_agents_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_agents_sql)).execute().await;
 
         // Create tenant_agent_keys table for persistent tenant key mapping in ClickHouse
         let create_keys_sql = r#"
@@ -801,7 +801,7 @@ impl ClickHouseDb {
             ) ENGINE = ReplacingMergeTree()
             ORDER BY (tenant_id);
         "#;
-        let _ = client.query(create_keys_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_keys_sql)).execute().await;
 
         // Global agent registry: every enrolled agent of every tenant. Ids are
         // unique across tenants and never reused (deleted agents keep their row
@@ -819,10 +819,10 @@ impl ClickHouseDb {
             ) ENGINE = ReplacingMergeTree(updated_at)
             ORDER BY (agent_id);
         "#;
-        let _ = client.query(create_registry_sql).execute().await;
+        let _ = client.query(&provigil_common::ddl::on_cluster(create_registry_sql)).execute().await;
         // Deactivated agents keep their row (disabled = 1) and stop reporting.
         let _ = client
-            .query("ALTER TABLE agent_registry ADD COLUMN IF NOT EXISTS disabled UInt8 DEFAULT 0")
+            .query(&provigil_common::ddl::on_cluster("ALTER TABLE agent_registry ADD COLUMN IF NOT EXISTS disabled UInt8 DEFAULT 0"))
             .execute()
             .await;
 
@@ -831,7 +831,7 @@ impl ClickHouseDb {
             .chain(ANALYST_DDL.iter())
             .chain(ALERT_COLUMNS.iter())
         {
-            if let Err(e) = client.query(sql).execute().await {
+            if let Err(e) = client.query(&provigil_common::ddl::on_cluster(sql)).execute().await {
                 warn!("SOAR table not created: {e}");
             }
         }
@@ -963,17 +963,17 @@ impl ClickHouseDb {
             return Ok(db);
         }
         self.root
-            .query(&format!("CREATE DATABASE IF NOT EXISTS `{db}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("CREATE DATABASE IF NOT EXISTS `{db}`")))
             .execute()
             .await
             .map_err(|e| format!("CREATE DATABASE {db}: {e}"))?;
         for t in crate::tenancy::TENANT_TABLES {
             let r = self
                 .root
-                .query(&format!(
+                .query(&provigil_common::ddl::on_cluster(&format!(
                     "CREATE TABLE IF NOT EXISTS `{db}`.`{t}` AS `{}`.`{t}`",
                     crate::tenancy::DEFAULT_DB
-                ))
+                )))
                 .execute()
                 .await;
             if let Err(e) = r {
@@ -991,7 +991,7 @@ impl ClickHouseDb {
             .chain(ANALYST_DDL.iter())
             .chain(ALERT_COLUMNS.iter())
         {
-            if let Err(e) = tc.query(sql).execute().await {
+            if let Err(e) = tc.query(&provigil_common::ddl::on_cluster(sql)).execute().await {
                 warn!("SOAR table not created in {db}: {e}");
             }
         }

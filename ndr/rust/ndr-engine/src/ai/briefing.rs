@@ -372,7 +372,7 @@ mod tests {
         let tenant = "zz_briefingtest";
         let db = tenant_db_pub(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (community_id String, src_ip String, dst_ip String, severity String, score Float32, \
              tags Array(String), sigma_hits Array(String), sensor_id String, timestamp DateTime) ENGINE = MergeTree ORDER BY timestamp")).await;
@@ -413,7 +413,7 @@ mod tests {
         // the whole page text built from these real facts never names a chatter host
         let b = compose(f, "", "");
         assert!(!b.text.contains("10.0.2.15") && b.text.contains("10.0.5.5"));
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 
     // A local OpenAI-compatible server stands in for the provider: the real HTTP path is used.

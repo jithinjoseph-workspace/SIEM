@@ -1006,9 +1006,9 @@ pub async fn create_tenant(
 
     // 2. Create dedicated database for tenant on all cluster nodes
     let db_name = format!("ndr_{}", id.replace("-", "_"));
-    self.client.query(&format!(
+    self.client.query(&provigil_common::ddl::on_cluster(&format!(
         "CREATE DATABASE IF NOT EXISTS {} ON CLUSTER ndr_cluster", db_name
-    )).execute().await?;
+    ))).execute().await?;
 
     // 3. Load init.sql and create tables in the tenant DB namespace dynamically
     let install_dir = std::env::var("INSTALL_DIR")
@@ -1064,7 +1064,7 @@ pub async fn create_tenant(
             tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", id));
 
             if let Err(e) = self.client
-                .query(&tenant_stmt)
+                .query(&provigil_common::ddl::on_cluster(&tenant_stmt))
                 .execute().await {
                 tracing::warn!(
                     "Dynamic table creation warning for tenant DB {}: {}. Error: {}", 
@@ -1415,7 +1415,7 @@ pub async fn delete_announcement(
                 ORDER BY id
             ";
             if let Err(e) = self.client
-                .query(announcements_table)
+                .query(&provigil_common::ddl::on_cluster(announcements_table))
                 .execute()
                 .await {
                 tracing::debug!("Announcements table init skipped: {}", e);
@@ -1432,7 +1432,7 @@ pub async fn delete_announcement(
                 ORDER BY (announcement_id, username)
             ";
             if let Err(e) = self.client
-                .query(announcement_reads_table)
+                .query(&provigil_common::ddl::on_cluster(announcement_reads_table))
                 .execute()
                 .await {
                 tracing::debug!("Announcement reads table init skipped: {}", e);
@@ -1493,7 +1493,7 @@ pub async fn delete_announcement(
                 "CREATE TABLE IF NOT EXISTS ndr.client_errors (id String DEFAULT generateUUIDv4(), message String, stack String DEFAULT '', url String DEFAULT '', username String DEFAULT '', tenant_id String DEFAULT '', user_agent String DEFAULT '', occurred_at DateTime DEFAULT now()) ENGINE = MergeTree() ORDER BY occurred_at TTL occurred_at + INTERVAL 30 DAY",
             ] {
                 if let Err(e) = self.client
-                    .query(alter)
+                    .query(&provigil_common::ddl::on_cluster(alter))
                     .execute().await {
                     tracing::debug!("Column add skipped: {}", e);
                 }
@@ -1538,7 +1538,7 @@ pub async fn delete_announcement(
                             );
                             tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", tenant_id));
 
-                            if let Err(e) = self.client.query(&tenant_stmt).execute().await {
+                            if let Err(e) = self.client.query(&provigil_common::ddl::on_cluster(&tenant_stmt)).execute().await {
                                 tracing::debug!("Auto-migrate statement skipped for {}: {}", db_name, e);
                             }
                         }
@@ -7376,7 +7376,7 @@ pub async fn get_ioc_hits(
                      ENGINE = ReplacingMergeTree(last_seen) ORDER BY (tenant_id, cidr)",
                     db, tenant
                 );
-                if let Err(e) = self.client.query(&q).execute().await {
+                if let Err(e) = self.client.query(&provigil_common::ddl::on_cluster(&q)).execute().await {
                     tracing::debug!("ipam_subnets migrate {}: {}", tenant, e);
                 }
             }
@@ -7946,7 +7946,7 @@ pub async fn get_ioc_hits(
     }
 
     pub async fn ensure_licenses_table(&self) {
-        let _ = self.client.query(
+        let _ = self.client.query(&provigil_common::ddl::on_cluster(
             "CREATE TABLE IF NOT EXISTS ndr.licenses (
                 id          String,
                 tenant_id   String,
@@ -7959,11 +7959,11 @@ pub async fn get_ioc_hits(
                 token       String
             ) ENGINE = ReplacingMergeTree(issued_at)
             ORDER BY (tenant_id, id)"
-        ).execute().await;
+        )).execute().await;
         // Add column to existing tables that were created before this field existed
-        let _ = self.client.query(
+        let _ = self.client.query(&provigil_common::ddl::on_cluster(
             "ALTER TABLE ndr.licenses ADD COLUMN IF NOT EXISTS admin_user String DEFAULT ''"
-        ).execute().await;
+        )).execute().await;
     }
 
     pub async fn insert_license(
@@ -8039,7 +8039,7 @@ pub async fn get_ioc_hits(
     // ── Honeypots ─────────────────────────────────────────────────────────────
 
     pub async fn ensure_honeypots_table(&self) {
-        let _ = self.client.query(
+        let _ = self.client.query(&provigil_common::ddl::on_cluster(
             "CREATE TABLE IF NOT EXISTS ndr.honeypots (
                 id          String,
                 tenant_id   String,
@@ -8050,7 +8050,7 @@ pub async fn get_ioc_hits(
                 created_at  DateTime DEFAULT now()
             ) ENGINE = ReplacingMergeTree(created_at)
             ORDER BY (tenant_id, id)"
-        ).execute().await;
+        )).execute().await;
     }
 
     pub async fn get_honeypots(&self, tenant_id: &str) -> anyhow::Result<Vec<serde_json::Value>> {
@@ -8620,15 +8620,15 @@ mod tenant_column_migration_tests {
     async fn an_old_tenant_table_gets_the_missing_columns_and_accepts_a_case() {
         let ch = ClickhouseStorage::new();
         let db = "ndr_zz_migtest";
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
-        ch.client.query(&format!("CREATE DATABASE {db}")).execute().await.unwrap();
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
+        ch.client.query(&provigil_common::ddl::on_cluster(&format!("CREATE DATABASE {db}"))).execute().await.unwrap();
         // the OLD shapes: no case_number / priority / source
-        ch.client.query(&format!(
+        ch.client.query(&provigil_common::ddl::on_cluster(&format!(
             "CREATE TABLE {db}.soar_cases (id String, title String, updated_at DateTime DEFAULT now()) \
-             ENGINE = ReplacingMergeTree(updated_at) ORDER BY id")).execute().await.unwrap();
-        ch.client.query(&format!(
+             ENGINE = ReplacingMergeTree(updated_at) ORDER BY id"))).execute().await.unwrap();
+        ch.client.query(&provigil_common::ddl::on_cluster(&format!(
             "CREATE TABLE {db}.sigma_rules (id String, name String, updated_at DateTime DEFAULT now()) \
-             ENGINE = ReplacingMergeTree(updated_at) ORDER BY id")).execute().await.unwrap();
+             ENGINE = ReplacingMergeTree(updated_at) ORDER BY id"))).execute().await.unwrap();
 
         // what the SOAR code does today fails on an old table
         let before = ch.client.query(&format!(
@@ -8647,7 +8647,7 @@ mod tenant_column_migration_tests {
         assert_eq!(got, "C-1/P1");
         ch.client.query(&format!("SELECT source FROM {db}.sigma_rules")).fetch_all::<String>().await
             .expect("sigma_rules.source exists after the migration");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8664,7 +8664,7 @@ mod ai_activity_paging_tests {
         let ch = ClickhouseStorage::new();
         let db = "ndr_zz_pagetest";
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.evidence_annotations (id String, bundle_id String, community_id String, tag String, \
              note String, created_at DateTime) ENGINE = MergeTree ORDER BY (community_id, created_at)")).await;
@@ -8685,7 +8685,7 @@ mod ai_activity_paging_tests {
         let page = |sev: &'static str, q: &'static str, limit: u32, offset: u32| {
             let sql = ClickhouseStorage::ai_annotations_query(db, "", sev, q, 0, limit, offset);
             let c = ch.client.clone();
-            async move { c.query(&sql).fetch_all::<Row>().await.unwrap() }
+            async move { c.query(&provigil_common::ddl::on_cluster(&sql)).fetch_all::<Row>().await.unwrap() }
         };
 
         let p0 = page("", "", 20, 0).await;
@@ -8728,7 +8728,7 @@ mod ai_activity_paging_tests {
         assert_eq!(in_range(24 * 30).await, 46, "last 30 days includes it");
         let ranged: Vec<(String, u64)> = ch.client.query(&ClickhouseStorage::ai_annotations_count_query(db, "", "", 24)).fetch_all().await.unwrap();
         assert_eq!(ranged.iter().map(|c| c.1).sum::<u64>(), 45, "the counts follow the same range");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8746,7 +8746,7 @@ mod aria_session_context_tests {
         let tenant = "zz_sessiontest";
         let db = tenant_db(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (community_id String, src_ip String, dst_ip String, severity String, score Float32, \
              tags Array(String), sigma_hits Array(String), sensor_id String, timestamp DateTime) ENGINE = MergeTree ORDER BY timestamp")).await;
@@ -8791,7 +8791,7 @@ mod aria_session_context_tests {
 
         // no community id in the question: no session block at all
         assert!(!ch.fetch_aria_context(tenant, "what is going on?", &[]).await.contains("=== SESSION"));
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8811,7 +8811,7 @@ mod aria_real_schema_tests {
         let tenant = "zz_ariaschema";
         let db = tenant_db(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (community_id String, src_ip String, dst_ip String, severity LowCardinality(String), score Float32, \
              tags Array(String), sigma_hits Array(String), sensor_id String, timestamp DateTime) ENGINE = MergeTree ORDER BY timestamp")).await;
@@ -8825,7 +8825,7 @@ mod aria_real_schema_tests {
         assert!(ctx.contains("=== CRITICAL ALERTS (last 24h) ==="), "{ctx}");
         let latest = ch.get_latest_critical_hit_for_aria(tenant, &[]).await.unwrap();
         assert_eq!(latest.unwrap()["community_id"], "c0", "the status bar's latest critical alert loads too");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8843,7 +8843,7 @@ mod evidence_bundle_identity_tests {
         let tenant = "zz_bundleid";
         let db = tenant_db(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.evidence_bundles (id String, community_id String, file_path String DEFAULT '', sha256 String DEFAULT '', \
              size_bytes UInt64 DEFAULT 0, auto_captured UInt8 DEFAULT 0, expires_at DateTime DEFAULT now() + INTERVAL 90 DAY, \
@@ -8881,7 +8881,7 @@ mod evidence_bundle_identity_tests {
             "an analysis pointing at a never-stored id is repaired by joining on the session");
         let g = by("1:nobundlenobundlenobundle=");
         assert_eq!((g["severity"].as_str(), g["bundle_id"].as_str()), (Some(""), Some("")), "no bundle, no link");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8899,7 +8899,7 @@ mod latest_bundle_file_tests {
         let tenant = "zz_bundlefiletest";
         let db = tenant_db(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.evidence_bundles (id String, community_id String, file_path String DEFAULT '', \
              src_ip String DEFAULT '', dst_ip String DEFAULT '', severity String DEFAULT '', alert_id String DEFAULT '', \
@@ -8926,7 +8926,7 @@ mod latest_bundle_file_tests {
              VALUES ('other','1:othersession=','/opt/ndr/evidence/t/other.zip', now())")).await;
         assert_eq!(ch.latest_bundle_file_for_cid(tenant, "1:cid=").await, Some(("newer".into(), "/opt/ndr/evidence/t/newer.zip".into())));
 
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 
@@ -8944,7 +8944,7 @@ mod incident_outcome_tests {
         let tenant = "zz_outcomes";
         let db = tenant_db(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.soar_cases (id String, community_id String, status String, tenant_id String, \
              created_at DateTime DEFAULT now(), updated_at DateTime DEFAULT now(), closed_at Nullable(DateTime)) \
@@ -8973,7 +8973,7 @@ mod incident_outcome_tests {
         let other = ch.latest_outcomes("zz_outcomes_other", &["1:cidA=".to_string()]).await;
         assert!(other.is_empty(), "a different tenant must see nothing: {other:?}");
 
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }
 

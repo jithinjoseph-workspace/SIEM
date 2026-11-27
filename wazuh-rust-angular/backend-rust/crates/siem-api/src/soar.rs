@@ -1939,7 +1939,7 @@ mod tests {
         });
         let r = futures_util::FutureExt::catch_unwind(result).await;
         db.root()
-            .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
             .execute()
             .await
             .unwrap();

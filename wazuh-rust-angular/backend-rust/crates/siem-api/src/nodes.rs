@@ -94,7 +94,7 @@ pub fn spawn(state: AppState) {
             if state.db.is_connected() {
                 let mut ok = true;
                 for ddl in DDL {
-                    if let Err(e) = state.db.main().query(ddl).execute().await {
+                    if let Err(e) = state.db.main().query(&provigil_common::ddl::on_cluster(ddl)).execute().await {
                         tracing::warn!("nodes table: {e}");
                         ok = false;
                     }

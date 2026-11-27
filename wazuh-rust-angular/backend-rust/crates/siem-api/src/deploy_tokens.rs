@@ -163,7 +163,7 @@ async fn insert<T: clickhouse::Row + Serialize>(state: &AppState, table: &str, r
 /// Creates the tables and loads the tokens and their enrollments (at start).
 pub async fn load(state: &AppState) {
     for ddl in DDL {
-        if let Err(e) = state.db.main().query(ddl).execute().await {
+        if let Err(e) = state.db.main().query(&provigil_common::ddl::on_cluster(ddl)).execute().await {
             tracing::warn!("deploy tokens table: {e}");
         }
     }

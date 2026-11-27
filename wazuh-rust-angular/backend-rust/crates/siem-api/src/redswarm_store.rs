@@ -51,7 +51,7 @@ async fn ensure_tables(state: &AppState) -> bool {
         ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY id"
     );
     for q in [&exec, &drafts, &control] {
-        if state.db.root().query(q).execute().await.map_err(|e| warn!("redswarm_store: {e}")).is_err() {
+        if state.db.root().query(&provigil_common::ddl::on_cluster(q)).execute().await.map_err(|e| warn!("redswarm_store: {e}")).is_err() {
             return false;
         }
     }
@@ -59,7 +59,7 @@ async fn ensure_tables(state: &AppState) -> bool {
     let alter = format!(
         "ALTER TABLE `{DEFAULT_DB}`.redswarm_executions MODIFY TTL toDateTime(updated_at / 1000) + INTERVAL {RETENTION_DAYS} DAY"
     );
-    let _ = state.db.root().query(&alter).execute().await;
+    let _ = state.db.root().query(&provigil_common::ddl::on_cluster(&alter)).execute().await;
     true
 }
 

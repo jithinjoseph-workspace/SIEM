@@ -233,7 +233,7 @@ mod tests {
         let tenant = "zz_supprev";
         let db = crate::storage::clickhouse::tenant_db_pub(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (community_id String, src_ip String, dst_ip String, severity LowCardinality(String), score Float32, \
              tags Array(String), sigma_hits Array(String), threat_intel UInt8 DEFAULT 0, sensor_id String, timestamp DateTime, \
@@ -291,6 +291,6 @@ mod tests {
         let tp = plan(&ch, tenant, &[], "cS", 7).await.unwrap();
         assert!(!tp.session.allowed && !tp.pattern.allowed);
         assert!(plan(&ch, tenant, &[], "nope", 7).await.is_err());
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }

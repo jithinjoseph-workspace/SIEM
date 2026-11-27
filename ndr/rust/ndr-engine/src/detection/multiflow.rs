@@ -1272,7 +1272,7 @@ mod volume_tests {
         let ch = ClickhouseStorage::new();
         let db = "ndr_zz_voltest";
         let x = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         x(format!("CREATE DATABASE {db}")).await;
         x(format!("CREATE TABLE {db}.ndr_events (tenant_id String, src_ip String, timestamp DateTime) ENGINE = MergeTree ORDER BY timestamp")).await;
         x(format!("CREATE TABLE {db}.ndr_baselines (tenant_id String, src_ip String, metric String, window_ts DateTime, value_f Float64, value_s String) ENGINE = MergeTree ORDER BY window_ts")).await;
@@ -1296,6 +1296,6 @@ mod volume_tests {
         let rows: Vec<(String, u64, f64)> = ch.client.query(&volume_anomaly_query(db, "t")).fetch_all().await.unwrap();
         let ips: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
         assert_eq!(ips, vec!["10.0.0.1"], "only the mature-baseline 100x spike: {rows:?}");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }

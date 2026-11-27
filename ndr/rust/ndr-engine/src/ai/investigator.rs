@@ -528,7 +528,7 @@ mod tests {
         let tenant = "zz_investest";
         let db = tenant_db_pub(tenant);
         let run = |q: String| { let c = ch.client.clone(); async move { c.query(&q).execute().await.unwrap() } };
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
         run(format!("CREATE DATABASE {db}")).await;
         run(format!("CREATE TABLE {db}.ndr_hits (community_id String, src_ip String, dst_ip String, severity String, score Float64, \
              tags Array(String), sigma_hits Array(String), timestamp DateTime) ENGINE = MergeTree ORDER BY timestamp")).await;
@@ -552,6 +552,6 @@ mod tests {
         // and the guard turns the AI's over-confident claim about chatter into a plain suspicion
         assert_eq!(guard(v("TRUE_POSITIVE", 95), &a).verdict, "SUSPICIOUS");
         assert_eq!(guard(v("TRUE_POSITIVE", 95), &b).verdict, "TRUE_POSITIVE");
-        let _ = ch.client.query(&format!("DROP DATABASE IF EXISTS {db}")).execute().await;
+        let _ = ch.client.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db}"))).execute().await;
     }
 }

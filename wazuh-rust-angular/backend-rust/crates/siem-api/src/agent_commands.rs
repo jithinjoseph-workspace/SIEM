@@ -111,8 +111,8 @@ async fn follow_marks(c: Client) {
 }
 
 async fn open(c: &Client) -> Result<(), clickhouse::error::Error> {
-    c.query(table::DDL).execute().await?;
-    c.query(PROTOCOL_DDL).execute().await
+    c.query(&provigil_common::ddl::on_cluster(table::DDL)).execute().await?;
+    c.query(&provigil_common::ddl::on_cluster(PROTOCOL_DDL)).execute().await
 }
 
 /// Opens the tables and starts the writer and the marks reader.
@@ -172,7 +172,7 @@ mod tests {
         let env = |k: &str, d: &str| std::env::var(k).unwrap_or_else(|_| d.to_string());
         let root = Client::default().with_url(env("CLICKHOUSE_URL", "http://localhost:8123")).with_user(env("CLICKHOUSE_USER", "default")).with_password(env("CLICKHOUSE_PASSWORD", ""));
         let db = format!("agent_commands_test_{}", uuid::Uuid::new_v4().simple());
-        root.query(&format!("CREATE DATABASE {db}")).execute().await.unwrap();
+        root.query(&provigil_common::ddl::on_cluster(&format!("CREATE DATABASE {db}"))).execute().await.unwrap();
         let c = root.clone().with_database(&db);
         open(&c).await.unwrap();
         let now = now_ms();
@@ -183,6 +183,6 @@ mod tests {
         c.query(&format!("INSERT INTO {PROTOCOL_TABLE} VALUES ('941', 'grpc', ?)")).bind(now).execute().await.unwrap();
         assert_eq!(marks(&c, now - 1).await.unwrap(), vec![("941".to_string(), now)]);
         assert!(marks(&c, now + 1).await.unwrap().is_empty());
-        root.query(&format!("DROP DATABASE {db}")).execute().await.unwrap();
+        root.query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE {db}"))).execute().await.unwrap();
     }
 }

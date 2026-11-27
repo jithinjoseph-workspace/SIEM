@@ -412,7 +412,7 @@ async fn analyst_ai_end_to_end() {
     let res = futures_util::FutureExt::catch_unwind(r).await;
     st.db
         .root()
-        .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
         .execute()
         .await
         .unwrap();
@@ -616,7 +616,7 @@ async fn analyst_insights_end_to_end() {
     let res = futures_util::FutureExt::catch_unwind(r).await;
     st.db
         .root()
-        .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
         .execute()
         .await
         .unwrap();
@@ -912,7 +912,7 @@ async fn history_and_inventory_from_clickhouse() {
     for d in [da, db_b] {
         st.db
             .root()
-            .query(&format!("DROP DATABASE IF EXISTS `{d}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{d}`")))
             .execute()
             .await
             .unwrap();
@@ -1136,7 +1136,7 @@ async fn org_memory_end_to_end() {
     for d in [dbname, db2] {
         st.db
             .root()
-            .query(&format!("DROP DATABASE IF EXISTS `{d}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{d}`")))
             .execute()
             .await
             .unwrap();
@@ -1424,7 +1424,7 @@ async fn swarm_end_to_end() {
     for d in dbs {
         st.db
             .root()
-            .query(&format!("DROP DATABASE IF EXISTS `{d}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{d}`")))
             .execute()
             .await
             .unwrap();
@@ -2002,7 +2002,7 @@ async fn decisions_end_to_end() {
     let res = futures_util::FutureExt::catch_unwind(r).await;
     st.db
         .root()
-        .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
         .execute()
         .await
         .unwrap();
@@ -2053,7 +2053,7 @@ async fn lost_replica_metadata_is_restored() {
     });
     let res = futures_util::FutureExt::catch_unwind(r).await;
     let _ = root
-        .query(&format!("DROP DATABASE IF EXISTS {db} SYNC"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS {db} SYNC")))
         .execute()
         .await;
     if let Err(p) = res {
@@ -2263,7 +2263,7 @@ async fn intel_and_investigation_end_to_end() {
     crate::intel::set_index_for_tests(Vec::new());
     st.db
         .root()
-        .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
         .execute()
         .await
         .unwrap();
@@ -2623,7 +2623,7 @@ async fn network_response_end_to_end() {
     let res = futures_util::FutureExt::catch_unwind(r).await;
     st.db
         .root()
-        .query(&format!("DROP DATABASE IF EXISTS `{dbname}`"))
+        .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{dbname}`")))
         .execute()
         .await
         .unwrap();
@@ -2942,7 +2942,7 @@ async fn tenant_reports_and_alert_mail() {
     for d in [da, db_b] {
         st.db
             .root()
-            .query(&format!("DROP DATABASE IF EXISTS `{d}`"))
+            .query(&provigil_common::ddl::on_cluster(&format!("DROP DATABASE IF EXISTS `{d}`")))
             .execute()
             .await
             .unwrap();

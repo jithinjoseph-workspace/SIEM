@@ -273,7 +273,7 @@ pub async fn get(Extension(ctx): Extension<AuthCtx>) -> Response {
 const SITES_DDL: &str = "CREATE TABLE IF NOT EXISTS site_health (site String, at Int64, status String, checks String) ENGINE = ReplacingMergeTree(at) ORDER BY site";
 
 async fn ensure_table(state: &AppState) {
-    if let Err(e) = state.db.main().query(SITES_DDL).execute().await {
+    if let Err(e) = state.db.main().query(&provigil_common::ddl::on_cluster(SITES_DDL)).execute().await {
         tracing::warn!("site_health table: {e}");
     }
 }

@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod auth;
 pub mod clickhouse;
+pub mod ddl;
 pub mod detection;
 pub mod enrichment;
 #[cfg(feature = "kafka")]

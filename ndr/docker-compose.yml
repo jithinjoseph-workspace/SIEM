@@ -162,6 +162,8 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      # tables the programs create get copies on every ClickHouse server (specs/provigil-nodes.md, N4a)
+      - CLICKHOUSE_CLUSTER=${CLICKHOUSE_CLUSTER:-ndr_cluster}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - CLICKHOUSE_DB=ndr
@@ -204,6 +206,8 @@ services:
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      # tables the programs create get copies on every ClickHouse server (specs/provigil-nodes.md, N4a)
+      - CLICKHOUSE_CLUSTER=${CLICKHOUSE_CLUSTER:-ndr_cluster}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=1
@@ -277,6 +281,8 @@ services:
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      # tables the programs create get copies on every ClickHouse server (specs/provigil-nodes.md, N4a)
+      - CLICKHOUSE_CLUSTER=${CLICKHOUSE_CLUSTER:-ndr_cluster}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=2
@@ -350,6 +356,8 @@ services:
       - NDR_AGENT_URL=http://host.docker.internal:3001
       - NDR_AGENT_SECRET=${NDR_AGENT_SECRET}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      # tables the programs create get copies on every ClickHouse server (specs/provigil-nodes.md, N4a)
+      - CLICKHOUSE_CLUSTER=${CLICKHOUSE_CLUSTER:-ndr_cluster}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - INSTANCE_ID=3
@@ -460,6 +468,8 @@ services:
       - SIEM_LAN_IP=${HOST_IP}
       - SITE_DOMAIN=${SITE_DOMAIN:-}
       - CLICKHOUSE_URL=${DATALAKE_URL:-http://clickhouse1:8123}
+      # tables the programs create get copies on every ClickHouse server (specs/provigil-nodes.md, N4a)
+      - CLICKHOUSE_CLUSTER=${CLICKHOUSE_CLUSTER:-ndr_cluster}
       - CLICKHOUSE_USER=${DATALAKE_USER:-ndr}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
       - CLICKHOUSE_DB=ndr

@@ -83,7 +83,7 @@ fn now_ms() -> u64 {
 /// Creates the tables and loads the rules (at start).
 pub async fn load(state: &AppState) {
     for ddl in DDL {
-        if let Err(e) = state.db.main().query(ddl).execute().await {
+        if let Err(e) = state.db.main().query(&provigil_common::ddl::on_cluster(ddl)).execute().await {
             tracing::warn!("endpoint policy table: {e}");
         }
     }

@@ -225,3 +225,32 @@ skips a provider without a key when it has its own address (a self-hosted model 
 | N10 | Predictive engine | from the intent prediction and predictions pages to a scored forecast of a host's next likely attack steps |
 | N11 | One-click updates for nodes | the master offers a tested release; nodes update one at a time (drain, update, check, next) |
 | N12 | Security-tuned model | an AI model tuned on security data, served by the AI nodes |
+
+## 14. N4a built 2026-11-27: every table copied on every data lake server
+
+Tested on a ClickHouse 24.8 cluster of two servers and Keeper (the version in docker-compose):
+- A `Replicated` database engine copies table definitions but not data for plain `MergeTree` tables,
+  and refuses `ON CLUSTER` (init.sql and the NDR engine use it): not used.
+- Normal databases with `ON CLUSTER` and `Replicated…MergeTree` engines copy data, both kinds of
+  delete (`DELETE FROM`, `ALTER … DELETE`), new columns, views and drops; a server that was down
+  catches up by itself; a table created without a database name lands in the connection's database
+  on every server. The short engine form (no copy path) works: ClickHouse uses its default path.
+
+Done: `provigil-common::ddl::on_cluster` rewrites schema statements when `CLICKHOUSE_CLUSTER` is set
+(`ON CLUSTER`, `…MergeTree` → `Replicated…MergeTree`); queries, inserts and deletes are never changed;
+without the variable nothing changes. Wrapped at the 90 places siem-api and the NDR engine create,
+alter or drop tables and databases. Proof: siem-api started against the two-server cluster created 68
+tables, identical on both, all replicated, and a row written on one server is read on the other.
+`docker-compose.yml` sets `CLICKHOUSE_CLUSTER=ndr_cluster` for siem-api, the NDR engines and the
+sign-in service (the data lake PC defines `ndr_cluster` with its own Keeper as well).
+
+This also fixes the Docker install: it runs two ClickHouse servers behind one address, but the tables
+the programs created existed on only one of them.
+
+Existing installs: tables created earlier stay single-server on the first server (a new copy appears
+empty on the second). Before the pilot, reinstall; for a live install, per table: create the
+replicated table under a new name `ON CLUSTER`, `INSERT … SELECT`, `EXCHANGE TABLES`, drop the old one
+(a migration command to write when the first live install needs it).
+
+Next, N4b: split the large tables (events, alerts, NDR flows and hits) over shards with `Distributed`
+tables; the small tables stay copied on every server.

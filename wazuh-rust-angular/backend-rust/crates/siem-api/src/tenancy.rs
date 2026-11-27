@@ -712,16 +712,16 @@ pub async fn sync_tenants(state: &AppState) {
             let _ = state
                 .db
                 .root()
-                .query(
+                .query(&provigil_common::ddl::on_cluster(
                     "ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1",
-                )
+                ))
                 .execute()
                 .await;
-            let _ = state.db.root().query("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").execute().await;
+            let _ = state.db.root().query(&provigil_common::ddl::on_cluster("ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()")).execute().await;
             match state
                 .db
                 .root()
-                .query(query)
+                .query(&provigil_common::ddl::on_cluster(query))
                 .fetch_all::<NdrTenantRow>()
                 .await
             {

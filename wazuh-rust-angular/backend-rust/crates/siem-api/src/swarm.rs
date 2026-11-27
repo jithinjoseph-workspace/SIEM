@@ -117,7 +117,7 @@ pub fn set_platform_for_tests(t: &str) {
 async fn ensure_tables(state: &AppState) {
     if !TABLES.swap(true, std::sync::atomic::Ordering::SeqCst) {
         for d in DDL {
-            let _ = state.db.tenant_client(&platform()).query(d).execute().await;
+            let _ = state.db.tenant_client(&platform()).query(&provigil_common::ddl::on_cluster(d)).execute().await;
         }
     }
 }

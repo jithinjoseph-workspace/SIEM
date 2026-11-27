@@ -117,7 +117,7 @@ pub async fn load(state: &AppState) {
         return;
     };
     let ddl = format!("CREATE TABLE IF NOT EXISTS {} (id String, doc String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id", table());
-    if let Err(e) = state.db.root().query(&ddl).execute().await {
+    if let Err(e) = state.db.root().query(&provigil_common::ddl::on_cluster(&ddl)).execute().await {
         error!("Syslog tenancy unavailable: {e}");
         return;
     }

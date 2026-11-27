@@ -5,6 +5,7 @@
 #        [--licence FILE|TOKEN] [--master-ip IP] [--datalake URL] [--datalake-user USER]
 #        [--datalake-password-file FILE] [--dir /opt/provigil] [--version X.Y.Z]
 #        [--master https://ADDRESS --tenant-id ID --sensor-key KEY]   (NDR sensor)
+#        [--token JOIN_TOKEN]   (AI node, data lake: join the master, console Admin > Nodes)
 #
 # The role is this PC's job: all-in-one (everything on one PC), master (with a separate data lake
 # PC), data lake, AI node, or NDR sensor. On the master the licence decides the modules: only the
@@ -23,7 +24,7 @@ PROVIGIL_PUBLIC_KEY=""
 PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/provigil-releases/releases}"
 
 ROLE=""; LICENCE=""; MASTER_IP=""; DL_URL=""; DL_USER="provigil"; DL_PASS_FILE=""; DIR="/opt/provigil"; WANT_VERSION=""
-NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""
+NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""; JOIN_TOKEN=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --role) ROLE="${2:-}"; shift 2 ;;
@@ -39,7 +40,8 @@ while [ $# -gt 0 ]; do
         --master) MASTER_URL="${2:-}"; shift 2 ;;     # NDR sensor: the master's address (LAN IP or domain)
         --tenant-id) TENANT_ID="${2:-}"; shift 2 ;;
         --sensor-key) SENSOR_KEY="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        --token) JOIN_TOKEN="${2:-}"; shift 2 ;;
+        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (see --help)"; exit 2 ;;
     esac
 done
@@ -125,6 +127,16 @@ EOF
     case "$c" in 1) ROLE=allinone ;; 2) ROLE=master ;; 3) ROLE=datalake ;; 4) ROLE=ainode ;; 5) ROLE=sensor ;; *) die "choose 1-5" ;; esac
 fi
 ask_master_ip() { [ -n "$MASTER_IP" ] || read -rp "  The master PC's IP address: " MASTER_IP; }
+# an AI or data lake node joins the master (Nodes page: health, and AI work for AI nodes)
+join_master() {
+    local role="$1" node="$DIR/scripts/provigil-node.sh"
+    if [ -z "$JOIN_TOKEN" ]; then
+        say "after the master is installed, join this box from its console (Admin > Nodes, Create join token), then here:"
+        say "  sudo bash $node join --master https://$MASTER_IP --token <token> --role $role && sudo bash $node install-service"
+        return 0
+    fi
+    bash "$node" join --master "https://$MASTER_IP" --token "$JOIN_TOKEN" --role "$role" && bash "$node" install-service         || warn "joining the master failed: run the two commands above again once the master answers"
+}
 
 case "$ROLE" in
     datalake)
@@ -133,10 +145,16 @@ case "$ROLE" in
             read -rp "  Is the master a Windows PC (the MSI)? It then keeps its sessions here [y/N]: " w || w=n
             case "$w" in y|Y|yes) WITH_VALKEY=1 ;; esac
         fi
-        exec bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ${WITH_VALKEY:+--with-valkey} ;;
+        bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ${WITH_VALKEY:+--with-valkey}
+        join_master datalake
+        exit 0 ;;
     ainode)
         ask_master_ip
-        exec bash "$DIR/ainode/install-ainode.sh" --master-ip "$MASTER_IP" ;;
+        bash "$DIR/ainode/install-ainode.sh" --master-ip "$MASTER_IP"
+        # the master is installed before its AI node: its join token can be given now
+        [ -n "$JOIN_TOKEN" ] || read -rp "  Join token from the master's console (Admin > Nodes; Enter to skip): " JOIN_TOKEN || true
+        join_master ai
+        exit 0 ;;
     sensor)
         # where the sensor sends its traffic data: the master's LAN IP on site, its domain when hosted
         [ -n "$MASTER_URL" ] || read -rp "  The master's address (LAN IP, or https://domain when hosted): " MASTER_URL

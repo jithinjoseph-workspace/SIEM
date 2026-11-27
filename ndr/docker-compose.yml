@@ -440,6 +440,14 @@ services:
     build: { context: .., dockerfile: wazuh-rust-angular/backend-rust/docker/siem-api.Dockerfile }
     container_name: siem-api
     restart: unless-stopped
+    # the first start on a new database builds the whole schema (about 2 minutes): without the grace
+    # period it is called unhealthy and ndr-nginx (which waits for it) never starts
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8088/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 300s
     # the whole SIEM pipeline runs here (siem-api, agent gateway, rules engine, agent database):
     # 2 GB was the bottleneck at about 700 agents in the load test. SIEM_API_MEM in .env sizes it.
     mem_limit: ${SIEM_API_MEM:-8g}

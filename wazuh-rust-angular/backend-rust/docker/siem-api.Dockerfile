@@ -69,5 +69,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/siem-api-start && chmod 755 /usr/local/bin/s
 # installer sets 1 when the licence has SIEM, which also starts the gateway.
 ENV SIEM_PORT=8088 PROVIGIL_MANAGER=0 PROVIGIL_SOURCE_DIR=/app/ruleset-src PROVIGIL_MANAGER_HOME=/app/data/manager
 EXPOSE 8088 8089 8443
-HEALTHCHECK CMD wget -q --spider http://127.0.0.1:8088/api/health || exit 1
+# the first start on a new database builds the whole schema (about 2 minutes): a grace period, or
+# Docker calls it unhealthy and the web front (which waits for it) never starts
+HEALTHCHECK --start-period=300s --interval=15s --timeout=10s --retries=4 CMD wget -q --spider http://127.0.0.1:8088/api/health || exit 1
 CMD ["siem-api-start"]

@@ -343,6 +343,9 @@ CREATE TABLE IF NOT EXISTS ndr.tenants ON CLUSTER ndr_cluster
     name       String,
     active     UInt8 DEFAULT 1,
     ai_enabled UInt8 DEFAULT 1,
+    -- the client's licensed modules (the sign-in service sets them from the licence at its first
+    -- start: the column must exist then, also on a SIEM-only install without the NDR engine)
+    features   String DEFAULT 'ndr,ai',
     updated_at DateTime DEFAULT now(),
     created_at DateTime DEFAULT now()
 )

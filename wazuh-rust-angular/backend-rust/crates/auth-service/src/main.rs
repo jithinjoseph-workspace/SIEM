@@ -303,23 +303,37 @@ async fn provision_licence_admin(db: &db::AuthDb, lic: &license::LicenseClaims) 
             Err(_) => tokio::time::sleep(std::time::Duration::from_secs(5)).await,
         }
     }
-    match known {
-        Some(true) => return,
-        None => {
-            tracing::warn!("tenant admin '{user}' not created: the database did not answer");
-            return;
-        }
-        Some(false) => {}
-    }
+    let Some(exists) = known else {
+        tracing::warn!("tenant admin '{user}' not created: the database did not answer");
+        return;
+    };
+    // the client first, also when its admin exists already (a start that met the schema still being
+    // made left the client missing): ask again while the tables or columns are not there yet
     let tenant = if lic.tenant_id.trim().is_empty() { "default".to_string() } else { lic.tenant_id.trim().to_string() };
-    if !db.tenant_id_exists(&tenant).await {
-        if let Err(e) = db.create_tenant(&tenant, &lic.tenant_name).await {
-            tracing::warn!("licence client '{tenant}' not created: {e}");
-            return;
+    let mut made = db.tenant_id_exists(&tenant).await;
+    for attempt in 1..=30 {
+        if made {
+            break;
+        }
+        match db.create_tenant(&tenant, &lic.tenant_name).await {
+            Ok(()) => made = true,
+            Err(e) if attempt == 30 => {
+                tracing::warn!("licence client '{tenant}' not created: {e}");
+                return;
+            }
+            Err(_) => tokio::time::sleep(std::time::Duration::from_secs(5)).await,
         }
     }
     if !lic.features.is_empty() {
-        let _ = db.set_tenant_features(&tenant, &lic.features).await;
+        for _ in 0..30 {
+            if db.set_tenant_features(&tenant, &lic.features).await.is_ok() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    }
+    if exists {
+        return;
     }
     let hash = match bcrypt::hash(&pass, bcrypt::DEFAULT_COST) {
         Ok(h) => h,

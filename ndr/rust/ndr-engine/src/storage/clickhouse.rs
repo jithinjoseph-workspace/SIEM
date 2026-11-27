@@ -4,6 +4,29 @@ use clickhouse::Client;
 /// provigil-nodes.md N4): unchanged on a single server, on the whole cluster with copied tables, and
 /// for a split table on its local and Distributed parts. Every statement is tried (an older install's
 /// split table may lack its local part); the first error is returned.
+/// As [`run_ddl`], tried again while ClickHouse is busy: a tenant's tables are made once, and a
+/// Keeper timeout during a first start (the whole schema being made at once) left a client without
+/// some of them for good (seen in the 1.0.35 install test: ndr_hits, assets). Waits 5, 10, 20, 40 s.
+pub async fn run_ddl_retry(c: &Client, sql: &str) -> Result<(), clickhouse::error::Error> {
+    let mut wait = std::time::Duration::from_secs(5);
+    for attempt in 1..=5 {
+        match run_ddl(c, sql).await {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < 5 && retryable(&e.to_string()) => {
+                tokio::time::sleep(wait).await;
+                wait *= 2;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+/// A failure that passes: Keeper or the cluster busy, or a table another statement is still making.
+fn retryable(e: &str) -> bool {
+    ["KEEPER", "Coordination", "TIMEOUT", "timeout", "Timeout", "does not exist", "UNKNOWN_TABLE", "TOO_MANY"].iter().any(|k| e.contains(k))
+}
+
 pub async fn run_ddl(c: &Client, sql: &str) -> Result<(), clickhouse::error::Error> {
     let mut first = None;
     for s in provigil_common::ddl::statements(sql) {
@@ -1086,7 +1109,7 @@ pub async fn create_tenant(
             );
             tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", id));
 
-            if let Err(e) = crate::storage::clickhouse::run_ddl(&self.client, &tenant_stmt).await {
+            if let Err(e) = crate::storage::clickhouse::run_ddl_retry(&self.client, &tenant_stmt).await {
                 tracing::warn!(
                     "Dynamic table creation warning for tenant DB {}: {}. Error: {}", 
                     db_name, tenant_stmt, e
@@ -1551,7 +1574,7 @@ pub async fn delete_announcement(
                             );
                             tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", tenant_id));
 
-                            if let Err(e) = crate::storage::clickhouse::run_ddl(&self.client, &tenant_stmt).await {
+                            if let Err(e) = crate::storage::clickhouse::run_ddl_retry(&self.client, &tenant_stmt).await {
                                 tracing::debug!("Auto-migrate statement skipped for {}: {}", db_name, e);
                             }
                         }
@@ -7921,12 +7944,15 @@ pub async fn get_ioc_hits(
                             admin_user.trim(), tenant_id, permissions
                         );
 
-                        // Permanently delete seed accounts — known credentials from init.sql.
-                        // mutations_sync=1: these are known/public default credentials being
-                        // removed for security — must be gone immediately, not eventually.
+                        // Delete the seed accounts while they still have init.sql's known passwords
+                        // (mutations_sync=1: gone at once). An 'admin' with its own password (the
+                        // installer's SUPER_ADMIN_PASS, set by the sign-in service) is this install's
+                        // super admin (the Nodes page): it stays.
                         let _ = self.client.query(
                             "ALTER TABLE ndr.users DELETE \
-                             WHERE username IN ('admin', 'tenant-admin') AND tenant_id = 'default' \
+                             WHERE username IN ('admin', 'tenant-admin', 'analyst') AND tenant_id = 'default' \
+                             AND password_hash IN ('$2b$12$qB5uFqakHidExby4EbdH6.tFvW34sj7CAQFZdUCzk5YSi/kV3S09.', \
+                                                   '$2b$12$wi15kWc0KGLG6FEtIysJHuqRfT7PDvOoW2IC3oT3hfoQmtmygZ5h6') \
                              SETTINGS mutations_sync=1"
                         ).execute().await;
 
@@ -8990,5 +9016,15 @@ fn sealed_integration_config(config: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(config) {
         Ok(v) if v.is_object() => provigil_common::secrets::seal_config(&v, &provigil_common::secrets::INTEGRATION_SECRET_KEYS).to_string(),
         _ => config.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod ddl_retry_tests {
+    #[test]
+    fn keeper_timeouts_and_missing_parts_are_tried_again_syntax_errors_not() {
+        assert!(super::retryable("Code: 999. Coordination::Exception: Coordination error: Operation timeout (KEEPER_EXCEPTION)"));
+        assert!(super::retryable("Code: 60. DB::Exception: Table ndr_x.ndr_hits_local does not exist. (UNKNOWN_TABLE)"));
+        assert!(!super::retryable("Code: 62. DB::Exception: Syntax error: failed at position 36"));
     }
 }

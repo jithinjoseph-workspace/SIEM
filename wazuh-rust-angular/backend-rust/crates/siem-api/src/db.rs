@@ -639,6 +639,9 @@ impl ClickHouseDb {
         // Ensure global ndr.tenants table schema has ai_enabled and updated_at columns
         let _ = run_ddl(&root_client, &"ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS ai_enabled UInt8 DEFAULT 1").await;
         let _ = run_ddl(&root_client, &"ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now()").await;
+        // the licensed modules: the sign-in service writes them at its first start (an older
+        // install made only by the NDR engine's migration, so a SIEM-only install lacked it)
+        let _ = run_ddl(&root_client, &"ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS features String DEFAULT 'ndr,ai'").await;
 
         let client = root_client.clone().with_database(&database);
 

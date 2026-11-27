@@ -188,3 +188,20 @@ Install order:
 5. Check in the console's Nodes page: all nodes ready, time in sync, ClickHouse writes and reads, an
    AI test question, capture counters rising.
 6. Enrol a test agent and a test sensor; confirm an alert and an NDR detection reach the console.
+
+## 12. Which role does what (the duties list the owner gave, 2026-11-27)
+
+| Duty | ProVigil: where it runs |
+|---|---|
+| Platform administration, users, roles (RBAC), policies | master: console, sign-in service |
+| Cluster coordination, system health, platform monitoring | master: Nodes page (`nodes.rs`), health checks (`health.rs`) |
+| Configuration and AI model management | master: settings, AI providers (per AI node model: N3) |
+| Software lifecycle | master: updates from the ProVigil release (`updates.rs`) |
+| Copilot, natural-language questions, incident narratives, automated investigations, AI threat hunting | **AI nodes** (language model jobs, shared by N3) |
+| Behavioural analytics (UEBA), anomaly detection, threat correlation (XDR), risk scoring | master today (statistics and rules on the CPU, not GPU work); moved to workers if they grow |
+| Semantic detection, predictive detection | gap: embedding-based detection would run on AI nodes (later phase) |
+| Telemetry storage, indexing, search, investigations, history, retention, hunting data, reports, forensics | **data lake nodes** (ClickHouse; packet search OpenSearch on the master) |
+
+N2 built 2026-11-27: `nodes.rs` (join tokens, signed join and heartbeats, node list, remove),
+`ndr/scripts/provigil-node.sh` (join, heartbeat loop, start at boot on Linux or macOS), console page
+Admin > Nodes.

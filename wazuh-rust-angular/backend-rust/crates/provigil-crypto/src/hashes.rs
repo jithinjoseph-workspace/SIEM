@@ -73,6 +73,14 @@ pub fn hmac_sha1_str(key: &str, data: &str) -> io::Result<String> {
     Ok(hex::encode(m.finalize().into_bytes()))
 }
 
+/// HMAC-SHA256 of `data` with the key text's bytes, as hex (what `openssl dgst -sha256 -hmac key` prints).
+pub fn hmac_sha256_str(key: &str, data: &str) -> String {
+    // HMAC takes a key of any length: this cannot fail
+    let mut m = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC key of any length");
+    m.update(data.as_bytes());
+    hex::encode(m.finalize().into_bytes())
+}
+
 pub fn hmac_sha1_file<P: AsRef<Path>>(key: &str, path: P) -> io::Result<String> {
     file_hex(path, hmac_sha1(key)?, |m| m.finalize().into_bytes().to_vec())
 }

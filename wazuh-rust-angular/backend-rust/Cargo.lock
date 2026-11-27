@@ -4223,6 +4223,7 @@ dependencies = [
  "clickhouse 0.13.3",
  "flate2",
  "futures-util",
+ "hex",
  "lettre",
  "local-ip-address",
  "provigil-agent-server",

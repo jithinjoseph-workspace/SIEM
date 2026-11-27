@@ -1,0 +1,74 @@
+<div class="p-6 space-y-6 text-slate-200">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Nodes</h1>
+    <p class="text-sm text-slate-400">The boxes of this ProVigil system: this master, plus AI nodes (more AI capacity) and data lake nodes (more storage and search). Each node reports every 10 seconds; one silent for 30 seconds is shown as down.</p>
+  </div>
+
+  <div *ngIf="error()" class="p-4 rounded-xl border border-rose-800 bg-rose-950/40 text-rose-300 text-sm">{{ error() }}</div>
+
+  <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
+    <div class="text-sm font-semibold text-white">Add a node</div>
+    <div class="flex flex-wrap items-center gap-3 text-sm">
+      <label for="node-role" class="text-slate-400">Role</label>
+      <select id="node-role" class="bg-slate-950 border border-slate-700 rounded px-2 py-1" [ngModel]="role()" (ngModelChange)="role.set($event)">
+        <option value="ai">AI node</option>
+        <option value="datalake">Data lake node</option>
+        <option value="">Chosen on the box</option>
+      </select>
+      <button type="button" class="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white" (click)="addNode()">Create join token</button>
+    </div>
+    <ng-container *ngIf="token() as t">
+      <p class="text-xs text-slate-400">On the new box (Ubuntu or macOS, on the cluster network), with provigil-node.sh from the installer kit, run as administrator. The token works once and until {{ t.expires * 1000 | date:'medium' }}.</p>
+      <pre class="font-mono text-xs bg-slate-950 border border-slate-800 rounded p-3 whitespace-pre-wrap break-all">{{ command() }}</pre>
+      <button type="button" class="px-3 py-1 rounded border border-slate-700 text-xs" (click)="copy()">{{ copied() ? 'Copied' : 'Copy' }}</button>
+    </ng-container>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-900 text-slate-400 text-xs uppercase">
+        <tr>
+          <th class="text-left p-3">Node</th>
+          <th class="text-left p-3">Role</th>
+          <th class="text-left p-3">State</th>
+          <th class="text-left p-3">Service</th>
+          <th class="text-right p-3">CPUs / load</th>
+          <th class="text-right p-3">Memory GB</th>
+          <th class="text-right p-3">Disk GB</th>
+          <th class="text-left p-3">Last report</th>
+          <th class="p-3"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngIf="nodes().length === 0">
+          <td colspan="9" class="p-4 text-slate-500">No nodes yet: this master works alone. Create a join token to add an AI or data lake node.</td>
+        </tr>
+        <tr *ngFor="let n of nodes()" class="border-t border-slate-800">
+          <td class="p-3">
+            <div class="text-white font-medium">{{ n.name }}</div>
+            <div class="text-[11px] text-slate-500">{{ n.address }} · {{ n.platform }}{{ n.version ? ' · ' + n.version : '' }}</div>
+          </td>
+          <td class="p-3">{{ roleName(n.role) }}</td>
+          <td class="p-3">
+            <span class="px-2 py-0.5 rounded text-xs"
+                  [class.bg-emerald-900]="n.state === 'ready'" [class.text-emerald-300]="n.state === 'ready'"
+                  [class.bg-rose-900]="n.state === 'down'" [class.text-rose-300]="n.state === 'down'"
+                  [class.bg-slate-800]="n.state === 'joining'" [class.text-slate-300]="n.state === 'joining'">{{ n.state }}</span>
+          </td>
+          <td class="p-3">
+            <span *ngIf="n.detail?.service_up === true" class="text-emerald-400">{{ n.role === 'ai' ? 'model server up' : 'database up' }}</span>
+            <span *ngIf="n.detail?.service_up === false" class="text-amber-400">{{ n.role === 'ai' ? 'model server down' : 'database down' }}</span>
+            <span *ngIf="n.detail == null" class="text-slate-500">–</span>
+          </td>
+          <td class="p-3 text-right">{{ n.cpus }} / {{ n.load != null ? (n.load | number:'1.1-1') : '–' }}</td>
+          <td class="p-3 text-right">{{ gb(n.mem_used) }} / {{ gb(n.mem_total) }}</td>
+          <td class="p-3 text-right">{{ gb(n.disk_used) }} / {{ gb(n.disk_total) }}</td>
+          <td class="p-3 text-slate-400">{{ ago(n.last_seen) }}</td>
+          <td class="p-3 text-right">
+            <button type="button" class="px-2 py-1 rounded border border-rose-800 text-rose-300 text-xs" (click)="remove(n)" [attr.aria-label]="'Remove node ' + n.name">Remove</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

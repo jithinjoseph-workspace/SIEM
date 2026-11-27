@@ -142,6 +142,7 @@ export const routes: Routes = [
       { path: 'users',           loadComponent: () => import('../pages/admin/users/users').then(m => m.Users) },
       { path: 'engines',         loadComponent: () => import('../pages/admin/engines/engines').then(m => m.Engines) },
       { path: 'sensors',         loadComponent: () => import('../pages/admin/sensors/sensors').then(m => m.Sensors) },
+      { path: 'nodes',           loadComponent: () => import('../pages/admin/nodes/nodes').then(m => m.Nodes) },
       { path: 'announcements',   loadComponent: () => import('../pages/admin/announcements/announcements').then(m => m.Announcements) },
       { path: 'rules',           loadComponent: () => import('../pages/admin/rules/rules').then(m => m.AdminRules) },
       { path: 'telemetry',       loadComponent: () => import('../pages/admin/telemetry/telemetry').then(m => m.Telemetry) },

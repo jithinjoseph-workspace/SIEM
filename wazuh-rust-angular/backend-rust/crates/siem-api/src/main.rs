@@ -44,6 +44,7 @@ pub mod agent_keys_store;
 pub mod corroboration;
 pub mod incidents;
 pub mod removals;
+pub mod nodes;
 
 /// Tenants a background job (NDR cases, XDR correlation, UEBA) works on at once.
 pub const TENANTS_AT_ONCE: usize = 8;
@@ -530,6 +531,8 @@ async fn main() {
     ndr_incidents::spawn(state.clone());
     // removed agents are stored in batches (one writer, retried while ClickHouse is busy)
     removals::spawn(state.clone());
+    // ProVigil nodes (AI and data lake boxes): their tables
+    nodes::spawn(state.clone());
     // new agents' registry rows in batches (mass enrollment)
     registry_writer::spawn(state.db.clone());
     predictions::spawn(state.clone());
@@ -1141,6 +1144,11 @@ async fn main() {
         .route("/api/siem/ingest", post(log_intake::rest).layer(axum::extract::DefaultBodyLimit::max(log_intake::MAX_BODY)))
         .route("/api/admin/version", get(updates::version))
         .route("/api/admin/apply-update", post(updates::apply))
+        .route("/api/cluster/tokens", post(nodes::create_token))
+        .route("/api/cluster/join", post(nodes::join))
+        .route("/api/cluster/heartbeat", post(nodes::heartbeat))
+        .route("/api/cluster/nodes", get(nodes::list))
+        .route("/api/cluster/nodes/:id", axum::routing::delete(nodes::remove))
         .route("/api/license/generate", post(licence_issue::generate))
         .route("/api/license/public-key", get(licence_issue::public_key))
         .route("/api/license/installer", post(licence_issue::installer))

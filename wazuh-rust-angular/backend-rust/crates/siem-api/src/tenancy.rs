@@ -402,6 +402,8 @@ fn is_public(method: &Method, path: &str) -> bool {
         || (method == Method::POST && (p == "/api/client-errors" || p == "/api/admin/client-errors"))
         // managed sites' health reports: authenticated by their report token in the handler
         || (method == Method::POST && p == "/api/v1/sites/health-report")
+        // ProVigil nodes: signed with their join token or node key, checked in the handler
+        || (method == Method::POST && (p == "/api/cluster/join" || p == "/api/cluster/heartbeat"))
         // log intake: authenticated by the source's ingest key in the handler
         || (method == Method::POST && (p == "/api/siem/wec" || p == "/api/siem/ingest"))
         || method == Method::OPTIONS

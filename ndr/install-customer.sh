@@ -643,7 +643,46 @@ if [ -z "$IFACE" ]; then
         awk '{print $2}' | head -1)
 fi
 [ -z "$IFACE" ] && IFACE="eth0"
-log "Using interface: $IFACE"
+log "Management network card: $IFACE"
+
+# NDR on this box: the card on the switch's mirror port or a TAP (listen only). Without one, NDR
+# sees only this box's own traffic (specs/provigil-nodes.md: the single box).
+CAPTURE_IFACE="${PV_CAPTURE_IFACE:-}"
+if [ "$HAS_NDR" = 1 ] && [ -z "$CAPTURE_IFACE" ]; then
+    CANDIDATES=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d@ -f1 \
+        | grep -vE '^(lo|docker|br-|veth|virbr|tun|tap|wl)' | grep -vxF "$IFACE" || true)
+    if [ -n "$CANDIDATES" ] && [ -t 0 ]; then
+        echo ""
+        echo "  Network cards (other than $IFACE, the management card):"
+        for c in $CANDIDATES; do
+            printf '    %-14s %s\n' "$c" "$(cat /sys/class/net/$c/operstate 2>/dev/null) $(ip -o -4 addr show dev "$c" 2>/dev/null | awk '{print $4}' | head -1)"
+        done
+        read -rp "  The card on the mirror port or TAP (Enter: none): " CAPTURE_IFACE
+    elif [ -z "$CANDIDATES" ]; then
+        warn "Only one network card: NDR sees only this box's traffic. Add a card on the switch mirror port or a TAP and run the installer again with --capture-iface <card>."
+    fi
+fi
+if [ -n "$CAPTURE_IFACE" ]; then
+    ip link show "$CAPTURE_IFACE" >/dev/null 2>&1 || err "No network card $CAPTURE_IFACE"
+    [ "$CAPTURE_IFACE" = "$IFACE" ] && err "$CAPTURE_IFACE is the management card: the capture card must be another one"
+    # listen only, at every start: no address, promiscuous, no offloads (they merge packets)
+    sudo tee /etc/systemd/system/provigil-capture.service > /dev/null << CAPTURE_EOF
+[Unit]
+Description=ProVigil capture card $CAPTURE_IFACE (listen only)
+After=network-pre.target
+Before=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'ip addr flush dev $CAPTURE_IFACE; ip link set $CAPTURE_IFACE up promisc on; ethtool -K $CAPTURE_IFACE gro off lro off tso off gso off 2>/dev/null || true'
+[Install]
+WantedBy=multi-user.target
+CAPTURE_EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now provigil-capture.service >/dev/null 2>&1 || warn "capture card $CAPTURE_IFACE not set listen-only (systemctl status provigil-capture)"
+    log "Capture card: $CAPTURE_IFACE (listen only, promiscuous)"
+    IFACE="$CAPTURE_IFACE"
+fi
 mkdir -p "$RUNTIME_DIR"
 echo "$IFACE" > "$IFACE_FILE"
 
@@ -1314,7 +1353,13 @@ log "Verifying installation..."
 info "Mode:       $DEPLOY_MODE  (role ${PV_ROLE:-allinone})"
 info "Modules:    ${PV_MODULES:-all}"
 info "Interface:  $IFACE  ($HOST_IP)"
-info "Sensors:    remote (install-sensor.sh on probe machines)"
+if [ -n "${CAPTURE_IFACE:-}" ]; then
+    info "Capture:    $CAPTURE_IFACE (listen only; the packet recorder uses it)"
+    info "Analysers:  add Zeek and Suricata on this card: console Sensors, Add sensor (key), then"
+    info "            sudo bash $INSTALL_DIR/scripts/install-sensor.sh --cloud-url https://127.0.0.1 --tenant-id $TENANT_ID --api-key <key> --interface $CAPTURE_IFACE --mode tap"
+else
+    info "Sensors:    remote (install.sh, role NDR sensor, on boxes at the mirror port or TAP)"
+fi
 info "Docker:     $(sudo docker --version)"
 info "ndr-ui:     $(sudo docker inspect --format='{{.State.Status}}' ndr-ui 2>/dev/null || echo 'not started')"
 if [ -n "${PV_DATALAKE_URL:-}" ]; then

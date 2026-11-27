@@ -6,6 +6,7 @@
 #        [--datalake-password-file FILE] [--dir /opt/provigil] [--version X.Y.Z]
 #        [--master https://ADDRESS --tenant-id ID --sensor-key KEY]   (NDR sensor)
 #        [--token JOIN_TOKEN]   (AI node, data lake: join the master, console Admin > Nodes)
+#        [--capture-iface CARD] (all-in-one or master with NDR: the card on the mirror port or TAP)
 #
 # The role is this PC's job: all-in-one (everything on one PC), master (with a separate data lake
 # PC), data lake, AI node, or NDR sensor. On the master the licence decides the modules: only the
@@ -24,7 +25,7 @@ PROVIGIL_PUBLIC_KEY=""
 PROVIGIL_DOWNLOAD_URL="${PROVIGIL_DOWNLOAD_URL:-https://api.github.com/repos/jithinjoseph-workspace/provigil-releases/releases}"
 
 ROLE=""; LICENCE=""; MASTER_IP=""; DL_URL=""; DL_USER="provigil"; DL_PASS_FILE=""; DIR="/opt/provigil"; WANT_VERSION=""
-NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""; JOIN_TOKEN=""
+NO_VERIFY=0; WITH_VALKEY=""; MASTER_URL=""; TENANT_ID=""; SENSOR_KEY=""; JOIN_TOKEN=""; CAPTURE_IFACE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --role) ROLE="${2:-}"; shift 2 ;;
@@ -41,7 +42,8 @@ while [ $# -gt 0 ]; do
         --tenant-id) TENANT_ID="${2:-}"; shift 2 ;;
         --sensor-key) SENSOR_KEY="${2:-}"; shift 2 ;;
         --token) JOIN_TOKEN="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+        --capture-iface) CAPTURE_IFACE="${2:-}"; shift 2 ;;
+        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (see --help)"; exit 2 ;;
     esac
 done
@@ -172,7 +174,8 @@ case "$ROLE" in
         [ -n "$SENSOR_KEY" ] || { read -rsp "  Sensor key (console: Sensors, Add sensor): " SENSOR_KEY; echo; }
         case "$MASTER_URL" in http://*|https://*) ;; *) MASTER_URL="https://$MASTER_URL" ;; esac
         [ -n "$TENANT_ID" ] && [ -n "$SENSOR_KEY" ] || die "the sensor needs the tenant id and the sensor key"
-        exec bash "$DIR/scripts/install-sensor.sh" --cloud-url "$MASTER_URL" --tenant-id "$TENANT_ID" --api-key "$SENSOR_KEY" ;;
+        # --capture-iface: the card on the mirror port or TAP (a passive probe)
+        exec bash "$DIR/scripts/install-sensor.sh" --cloud-url "$MASTER_URL" --tenant-id "$TENANT_ID" --api-key "$SENSOR_KEY" ${CAPTURE_IFACE:+--interface "$CAPTURE_IFACE" --mode tap} ;;
     allinone|master) ;;
     *) die "unknown role $ROLE (allinone, master, datalake, ainode, sensor)" ;;
 esac
@@ -213,7 +216,7 @@ fi
 # ── 5. the services: the rest is install-customer.sh, told the role, licence and image source ──
 export PV_ROLE="$ROLE" PV_MODULES="$MODULES" PV_LICENSE_TOKEN="$LICENCE" PV_LICENSE_PUBLIC_KEY="$PROVIGIL_PUBLIC_KEY"
 export PV_DATALAKE_URL="${DL_URL}" PV_DATALAKE_USER="${DL_URL:+$DL_USER}" PV_DATALAKE_PASSWORD="$DL_PASS"
-export PV_OFFLINE_DIR="$OFFLINE"
+export PV_OFFLINE_DIR="$OFFLINE" PV_CAPTURE_IFACE="$CAPTURE_IFACE"
 [ -n "${PROVIGIL_REGISTRY_TOKEN:-}" ] && export REGISTRY_TOKEN="$PROVIGIL_REGISTRY_TOKEN"
 cd "$DIR"
 exec bash "$DIR/install-customer.sh" "$DIR"

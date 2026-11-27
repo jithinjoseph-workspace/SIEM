@@ -250,6 +250,37 @@ pub fn statements_with(sql: &str, cluster: Option<&str>, split: &[String]) -> Ve
     }
 }
 
+/// One init.sql statement for a client's own database (`ndr_<client>`): the database name, the copy
+/// paths in ZooKeeper / Keeper (per shard and on all servers: a copy path shared with `ndr`'s table
+/// is refused as "replica already exists"), a split table's Distributed database, and the client as
+/// the default tenant. The NDR engine and the sign-in service both make client databases this way.
+pub fn for_tenant(stmt: &str, db: &str, tenant_id: &str) -> String {
+    stmt.replace("ndr.", &format!("{db}."))
+        .replace("/clickhouse/tables/{shard}/ndr/", &format!("/clickhouse/tables/{{shard}}/{db}/"))
+        .replace("/clickhouse/tables/all/ndr/", &format!("/clickhouse/tables/all/{db}/"))
+        .replace("Distributed(ndr_cluster, ndr, ", &format!("Distributed(ndr_cluster, {db}, "))
+        .replace("DEFAULT 'default'", &format!("DEFAULT '{tenant_id}'"))
+}
+
+#[cfg(test)]
+mod tenant_tests {
+    use super::for_tenant;
+
+    #[test]
+    fn a_clients_tables_have_their_own_copy_paths_and_names() {
+        let s = for_tenant(
+            "CREATE TABLE IF NOT EXISTS ndr.settings ON CLUSTER ndr_cluster (key String, tenant_id String DEFAULT 'default') ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/all/ndr/settings', '{replica}') ORDER BY key",
+            "ndr_acme",
+            "acme",
+        );
+        assert!(s.contains("ndr_acme.settings") && s.contains("'/clickhouse/tables/all/ndr_acme/settings'") && s.contains("DEFAULT 'acme'"), "{s}");
+        let s = for_tenant("CREATE TABLE IF NOT EXISTS ndr.ndr_hits ON CLUSTER ndr_cluster AS ndr.ndr_hits_local ENGINE = Distributed(ndr_cluster, ndr, ndr_hits_local, rand())", "ndr_acme", "acme");
+        assert_eq!(s, "CREATE TABLE IF NOT EXISTS ndr_acme.ndr_hits ON CLUSTER ndr_cluster AS ndr_acme.ndr_hits_local ENGINE = Distributed(ndr_cluster, ndr_acme, ndr_hits_local, rand())");
+        let s = for_tenant("ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/ndr/ndr_events_local', '{replica}')", "ndr_acme", "acme");
+        assert!(s.contains("'/clickhouse/tables/{shard}/ndr_acme/ndr_events_local'"));
+    }
+}
+
 #[cfg(test)]
 mod split_tests {
     use super::*;

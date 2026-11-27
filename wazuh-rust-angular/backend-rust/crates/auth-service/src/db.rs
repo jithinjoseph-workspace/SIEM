@@ -505,14 +505,24 @@ impl AuthDb {
                     continue;
                 }
 
-                let mut tenant_stmt = stmt.replace("ndr.", &format!("{}.", db_name));
-                tenant_stmt = tenant_stmt.replace(
-                    "/clickhouse/tables/{shard}/ndr/",
-                    &format!("/clickhouse/tables/{{shard}}/{}/", db_name),
-                );
-                tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", id));
-
-                if let Err(e) = self.client.query(&tenant_stmt).execute().await {
+                // the client's database name, copy paths and default tenant: the rule the NDR engine
+                // uses (this copy lacked the all-servers path: "replica already exists")
+                let tenant_stmt = provigil_common::ddl::for_tenant(&stmt, &db_name, id);
+                // a first start makes the whole schema at once: Keeper may be busy, so try again
+                let mut last = None;
+                for attempt in 0..5u32 {
+                    match self.client.query(&tenant_stmt).execute().await {
+                        Ok(()) => {
+                            last = None;
+                            break;
+                        }
+                        Err(e) => {
+                            last = Some(e);
+                            tokio::time::sleep(std::time::Duration::from_secs(5 << attempt)).await;
+                        }
+                    }
+                }
+                if let Some(e) = last {
                     tracing::warn!(
                         "Dynamic tenant schema warning for {}: {}. Error: {}",
                         db_name, tenant_stmt, e

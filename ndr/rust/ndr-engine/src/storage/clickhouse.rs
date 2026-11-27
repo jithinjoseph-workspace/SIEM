@@ -1090,24 +1090,8 @@ pub async fn create_tenant(
                 continue;
             }
 
-            // Replace database namespace with tenant DB and set its default tenant_id
-            let mut tenant_stmt = stmt.replace("ndr.", &format!("{}.", db_name));
-            // Fix ZooKeeper path: /clickhouse/tables/{shard}/ndr/ → /clickhouse/tables/{shard}/<tenant_db>/
-            // The dot-replace above only fixes the SQL table prefix, not the ZooKeeper path inside ENGINE=
-            tenant_stmt = tenant_stmt.replace(
-                "/clickhouse/tables/{shard}/ndr/",
-                &format!("/clickhouse/tables/{{shard}}/{}/", db_name),
-            );
-            // tables every server holds in full, and the split tables' Distributed part (N4c)
-            tenant_stmt = tenant_stmt.replace(
-                "/clickhouse/tables/all/ndr/",
-                &format!("/clickhouse/tables/all/{}/", db_name),
-            );
-            tenant_stmt = tenant_stmt.replace(
-                "Distributed(ndr_cluster, ndr, ",
-                &format!("Distributed(ndr_cluster, {}, ", db_name),
-            );
-            tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", id));
+            // the client's database name, copy paths and default tenant (one shared rule)
+            let tenant_stmt = provigil_common::ddl::for_tenant(&stmt, &db_name, id);
 
             if let Err(e) = crate::storage::clickhouse::run_ddl_retry(&self.client, &tenant_stmt).await {
                 tracing::warn!(
@@ -1567,12 +1551,8 @@ pub async fn delete_announcement(
 
                             if stmt.trim_start().to_uppercase().starts_with("INSERT") { continue; }
 
-                            let mut tenant_stmt = stmt.replace("ndr.", &format!("{}.", db_name));
-                            tenant_stmt = tenant_stmt.replace(
-                                "/clickhouse/tables/{shard}/ndr/",
-                                &format!("/clickhouse/tables/{{shard}}/{}/", db_name),
-                            );
-                            tenant_stmt = tenant_stmt.replace("DEFAULT 'default'", &format!("DEFAULT '{}'", tenant_id));
+                            // the same rule as a new client's (it lacked the all-servers copy path)
+                            let tenant_stmt = provigil_common::ddl::for_tenant(&stmt, &db_name, &tenant_id);
 
                             if let Err(e) = crate::storage::clickhouse::run_ddl_retry(&self.client, &tenant_stmt).await {
                                 tracing::debug!("Auto-migrate statement skipped for {}: {}", db_name, e);

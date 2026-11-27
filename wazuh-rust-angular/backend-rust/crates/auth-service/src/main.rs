@@ -122,10 +122,18 @@ async fn main() -> anyhow::Result<()> {
     // (which also does it) is not installed for a SIEM-only licence.
     if let Some(lic) = state.verified_license.clone() {
         let db = state.db.clone();
+        tokio::spawn(async move { provision_licence_admin(&db, &lic).await });
+        // a client's install keeps none of the built-in logins (they are the same everywhere). Checked
+        // again and again: the schema (with them) is often made a few seconds after this service
+        // starts (seen in the 1.0.36 install test), and a re-run schema could bring one back.
+        let db = state.db.clone();
         tokio::spawn(async move {
-            // a client's install keeps none of the built-in logins (they are the same everywhere)
-            secure_default_logins(&db).await;
-            provision_licence_admin(&db, &lic).await
+            let started = std::time::Instant::now();
+            loop {
+                secure_default_logins(&db).await;
+                let every = if started.elapsed() < std::time::Duration::from_secs(20 * 60) { 30 } else { 600 };
+                tokio::time::sleep(std::time::Duration::from_secs(every)).await;
+            }
         });
     }
 

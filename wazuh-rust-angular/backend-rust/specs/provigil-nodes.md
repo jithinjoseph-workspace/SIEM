@@ -254,3 +254,27 @@ replicated table under a new name `ON CLUSTER`, `INSERT … SELECT`, `EXCHANGE T
 
 Next, N4b: split the large tables (events, alerts, NDR flows and hits) over shards with `Distributed`
 tables; the small tables stay copied on every server.
+
+## 15. N4b built 2026-11-27: the large SIEM tables split over shards
+
+- `CLICKHOUSE_SHARD_TABLES` (for example `siem_events,siem_alerts`, the master sets it from the
+  Nodes list when there is more than one shard) names the split tables. `provigil_common::ddl::
+  statements` turns a split table's statements into: a local copied table `<t>_local` (per-shard
+  copy path) plus a Distributed table `<t>` over the cluster (`rand()` spreads rows); a tenant copy
+  (`AS ndr.t`) clones the local table; retention (TTL) goes to the local table; column changes to
+  both. siem-api's schema statements in `db.rs` run through `run_ddl`; retention reads the `_local`
+  tables and skips Distributed ones.
+- Small tables now use the copy path `/clickhouse/tables/{uuid}/all` (no shard): every server of every
+  shard holds them in full. With the default path (shard in it) each shard would have kept its own,
+  drifting version of every small table.
+- Tested on two shards (ClickHouse 24.8): 70 tables identical on both servers; 1,000 alerts inserted
+  went 511 to shard 1 and 489 to shard 2 and read back as 1,000 from either server; a small table
+  written on shard 1 is read on shard 2; the alert column change reached both tables.
+- `siem_vulnerability_state` stays copied in full (per-agent deletes and FINAL reads); splitting it needs
+  its deletes sent to the local tables (later).
+
+Still to do (N4c): init.sql (the NDR tables) and provigil-common's shared migrations have copy paths
+with `{shard}` and the cluster name `ndr_cluster` written in: on more than one shard their small
+tables must use the all-servers path and the large NDR tables (events, hits, flows) the split form;
+the NDR engine's tenant tables the same. Then the master writes the ClickHouse layout from the Nodes
+list (shards of two copies) and sets `CLICKHOUSE_SHARD_TABLES`.

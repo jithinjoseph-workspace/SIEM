@@ -42,9 +42,19 @@ const KINDS: &[&[&str]] = &[
 ];
 
 /// ALTER actions that change the schema (data mutations are left alone).
-const ALTER_SCHEMA: &[&str] = &["ADD", "DROP", "MODIFY", "RENAME", "COMMENT", "CLEAR", "MATERIALIZE"];
+const ALTER_SCHEMA: &[&str] = &["ADD", "DROP", "MODIFY", "REMOVE", "RENAME", "COMMENT", "CLEAR", "MATERIALIZE"];
+
+/// The copy path of a table that every data lake server holds in full: without the shard, so all
+/// servers of every shard are copies of each other (the default path has the shard in it).
+const ALL_PATH: &str = "/clickhouse/tables/{uuid}/all";
 
 pub fn on_cluster_with(sql: &str, cluster: Option<&str>) -> String {
+    on_cluster_path(sql, cluster, Some(ALL_PATH))
+}
+
+/// As [`on_cluster_with`]; `path` None keeps ClickHouse's default copy path (per shard: a split
+/// table's local part).
+fn on_cluster_path(sql: &str, cluster: Option<&str>, path: Option<&str>) -> String {
     let Some(cluster) = cluster else { return sql.to_string() };
     let upper = sql.to_ascii_uppercase();
     if upper.contains(" ON CLUSTER ") {
@@ -77,14 +87,14 @@ pub fn on_cluster_with(sql: &str, cluster: Option<&str>) -> String {
     }
     let mut out = format!("{} ON CLUSTER `{}`{}", &sql[..name_end], cluster.replace('`', ""), &sql[name_end..]);
     if kind[0] == "CREATE" {
-        out = replicated_engine(&out);
+        out = replicated_engine(&out, path);
     }
     out
 }
 
-/// `ENGINE = XMergeTree` → `ENGINE = ReplicatedXMergeTree` (arguments kept: ClickHouse uses its default
-/// copy path and replica name when the path is left out).
-fn replicated_engine(sql: &str) -> String {
+/// `ENGINE = XMergeTree(args)` → `ENGINE = ReplicatedXMergeTree('path', '{replica}', args)`, or without
+/// `path` ClickHouse's default copy path and replica name (`ReplicatedXMergeTree(args)`).
+fn replicated_engine(sql: &str, path: Option<&str>) -> String {
     let upper = sql.to_ascii_uppercase();
     let b = sql.as_bytes();
     let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -110,10 +120,172 @@ fn replicated_engine(sql: &str) -> String {
         j += 1;
     }
     let engine = &sql[start..j];
-    if engine.ends_with("MergeTree") && !engine.starts_with("Replicated") {
-        format!("{}Replicated{}", &sql[..start], &sql[start..])
+    if !engine.ends_with("MergeTree") || engine.starts_with("Replicated") {
+        return sql.to_string();
+    }
+    let Some(path) = path else { return format!("{}Replicated{}", &sql[..start], &sql[start..]) };
+    let args = format!("'{path}', '{{replica}}'");
+    let mut k = j;
+    while k < b.len() && b[k].is_ascii_whitespace() {
+        k += 1;
+    }
+    let tail = if b.get(k) == Some(&b'(') {
+        let mut m = k + 1;
+        while m < b.len() && b[m].is_ascii_whitespace() {
+            m += 1;
+        }
+        let sep = if b.get(m) == Some(&b')') { "" } else { ", " };
+        format!("{}({args}{sep}{}", &sql[j..k], &sql[k + 1..])
     } else {
-        sql.to_string()
+        format!("({args}){}", &sql[j..])
+    };
+    format!("{}Replicated{engine}{tail}", &sql[..start])
+}
+
+// ---- split tables (N4b) ----
+//
+// The large tables (`CLICKHOUSE_SHARD_TABLES`, for example `siem_events,siem_alerts`) are split over
+// the cluster's shards: each server keeps its share in `<table>_local` (copied within its shard),
+// and `<table>` becomes a Distributed table over them, so the programs read and insert as before.
+// Schema changes go to the right table: retention (TTL) to the local one, column changes to both.
+
+/// The split tables (only on a cluster).
+pub fn shard_tables() -> &'static [String] {
+    static T: OnceLock<Vec<String>> = OnceLock::new();
+    T.get_or_init(|| {
+        if cluster().is_none() {
+            return Vec::new();
+        }
+        std::env::var("CLICKHOUSE_SHARD_TABLES").unwrap_or_default().split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
+    })
+}
+
+/// The statements to run for `sql` on this deployment (one, or several for a split table).
+pub fn statements(sql: impl AsRef<str>) -> Vec<String> {
+    statements_with(sql.as_ref(), cluster(), shard_tables())
+}
+
+/// (database part with its dot, table name, whether the name was quoted) of `db.t`, `` `db`.`t` `` or `t`.
+fn split_name(name: &str) -> (String, String, bool) {
+    let (db, t) = match name.rfind('.') {
+        Some(i) => (name[..=i].to_string(), &name[i + 1..]),
+        None => (String::new(), name),
+    };
+    let quoted = t.starts_with('`');
+    (db, t.trim_matches('`').to_string(), quoted)
+}
+
+fn named(db: &str, t: &str, quoted: bool) -> String {
+    if quoted {
+        format!("{db}`{t}`")
+    } else {
+        format!("{db}{t}")
+    }
+}
+
+pub fn statements_with(sql: &str, cluster: Option<&str>, split: &[String]) -> Vec<String> {
+    let Some(c) = cluster else { return vec![sql.to_string()] };
+    let words: Vec<&str> = sql.split_whitespace().take(8).collect();
+    let up: Vec<String> = words.iter().map(|w| w.to_ascii_uppercase()).collect();
+    let is = |i: usize, w: &str| up.get(i).is_some_and(|u| u == w);
+    // the object's name position for CREATE TABLE [IF NOT EXISTS] and ALTER TABLE
+    let at = if is(0, "CREATE") && is(1, "TABLE") {
+        if is(2, "IF") { 5 } else { 2 }
+    } else if is(0, "ALTER") && is(1, "TABLE") {
+        2
+    } else {
+        return vec![on_cluster_with(sql, Some(c))];
+    };
+    let Some(raw) = words.get(at) else { return vec![on_cluster_with(sql, Some(c))] };
+    let name = raw.split('(').next().unwrap_or(raw);
+    let (db, t, quoted) = split_name(name);
+    if !split.iter().any(|s| *s == t) {
+        return vec![on_cluster_with(sql, Some(c))];
+    }
+    let local = named(&db, &format!("{t}_local"), quoted);
+    let full = named(&db, &t, quoted);
+    let db_arg = if db.is_empty() { "currentDatabase()".to_string() } else { format!("'{}'", db.trim_end_matches('.').trim_matches('`')) };
+    let distributed = |source: &str| format!("CREATE TABLE IF NOT EXISTS {full} ON CLUSTER `{c}` AS {source} ENGINE = Distributed(`{c}`, {db_arg}, '{t}_local', rand())");
+    // the name in the statement, swapped for the local table's
+    let pos = sql.find(name).unwrap_or(0);
+    let to_local = format!("{}{local}{}", &sql[..pos], &sql[pos + name.len()..]);
+    if up[0] == "CREATE" {
+        // a copy of another split table (a tenant's tables: CREATE TABLE db.t AS ndr.t)
+        if let Some(i) = up.iter().position(|w| w == "AS") {
+            if let Some(src) = words.get(i + 1) {
+                let (sdb, st, sq) = split_name(src);
+                if st == t {
+                    let src_local = named(&sdb, &format!("{t}_local"), sq);
+                    let clone = to_local.replacen(src, &src_local, 1);
+                    return vec![on_cluster_with(&clone, Some(c)), distributed(&local)];
+                }
+            }
+        }
+        return vec![on_cluster_path(&to_local, Some(c), None), distributed(&local)];
+    }
+    // ALTER: retention only on the local table; columns on both
+    let action = up.get(at + 1).map(String::as_str).unwrap_or("");
+    let ttl = up.get(at + 2).is_some_and(|w| w == "TTL");
+    if (action == "MODIFY" || action == "REMOVE") && (ttl || action == "REMOVE") {
+        vec![on_cluster_with(&to_local, Some(c))]
+    } else if ["ADD", "DROP", "MODIFY", "RENAME", "COMMENT", "CLEAR"].contains(&action) {
+        vec![on_cluster_with(&to_local, Some(c)), on_cluster_with(sql, Some(c))]
+    } else {
+        // a data mutation on the Distributed table is refused by ClickHouse: it goes to the local tables
+        vec![format!("{} ON CLUSTER `{c}`{}", &to_local[..pos + local.len()], &to_local[pos + local.len()..])]
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    fn s(sql: &str) -> Vec<String> {
+        statements_with(sql, Some("lake"), &["siem_alerts".to_string(), "siem_events".to_string()])
+    }
+
+    #[test]
+    fn a_split_table_is_a_local_copied_table_and_a_distributed_one_under_the_old_name() {
+        assert_eq!(
+            s("CREATE TABLE IF NOT EXISTS siem_alerts (id String, timestamp UInt64) ENGINE = MergeTree() ORDER BY timestamp"),
+            [
+                "CREATE TABLE IF NOT EXISTS siem_alerts_local ON CLUSTER `lake` (id String, timestamp UInt64) ENGINE = ReplicatedMergeTree() ORDER BY timestamp",
+                "CREATE TABLE IF NOT EXISTS siem_alerts ON CLUSTER `lake` AS siem_alerts_local ENGINE = Distributed(`lake`, currentDatabase(), 'siem_alerts_local', rand())",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tenant_copy_clones_the_local_table() {
+        assert_eq!(
+            s("CREATE TABLE IF NOT EXISTS `ndr_acme`.`siem_events` AS `ndr`.`siem_events`"),
+            [
+                "CREATE TABLE IF NOT EXISTS `ndr_acme`.`siem_events_local` ON CLUSTER `lake` AS `ndr`.`siem_events_local`",
+                "CREATE TABLE IF NOT EXISTS `ndr_acme`.`siem_events` ON CLUSTER `lake` AS `ndr_acme`.`siem_events_local` ENGINE = Distributed(`lake`, 'ndr_acme', 'siem_events_local', rand())",
+            ]
+        );
+    }
+
+    #[test]
+    fn retention_goes_to_the_local_table_and_columns_to_both() {
+        assert_eq!(
+            s("ALTER TABLE `ndr`.`siem_events` MODIFY TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay(90)"),
+            ["ALTER TABLE `ndr`.`siem_events_local` ON CLUSTER `lake` MODIFY TTL toDateTime(intDiv(timestamp, 1000)) + toIntervalDay(90)"]
+        );
+        assert_eq!(s("ALTER TABLE `ndr`.`siem_events` REMOVE TTL"), ["ALTER TABLE `ndr`.`siem_events_local` ON CLUSTER `lake` REMOVE TTL"]);
+        assert_eq!(
+            s("ALTER TABLE siem_alerts ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''"),
+            [
+                "ALTER TABLE siem_alerts_local ON CLUSTER `lake` ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''",
+                "ALTER TABLE siem_alerts ON CLUSTER `lake` ADD COLUMN IF NOT EXISTS alert_json String DEFAULT ''",
+            ]
+        );
+    }
+
+    #[test]
+    fn other_tables_and_no_cluster_are_as_before() {
+        assert_eq!(s("CREATE TABLE IF NOT EXISTS soar_cases (id String) ENGINE = MergeTree ORDER BY id"), ["CREATE TABLE IF NOT EXISTS soar_cases ON CLUSTER `lake` (id String) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{uuid}/all', '{replica}') ORDER BY id"]);
+        assert_eq!(statements_with("CREATE TABLE IF NOT EXISTS siem_alerts (id String) ENGINE = MergeTree ORDER BY id", None, &["siem_alerts".into()]).len(), 1);
     }
 }
 
@@ -133,17 +305,17 @@ mod tests {
     fn tables_get_the_cluster_and_a_replicated_engine() {
         assert_eq!(
             on_cluster_with("CREATE TABLE IF NOT EXISTS siem_x (id String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id", C),
-            "CREATE TABLE IF NOT EXISTS siem_x ON CLUSTER `ndr_cluster` (id String, version UInt64) ENGINE = ReplicatedReplacingMergeTree(version) ORDER BY id"
+            "CREATE TABLE IF NOT EXISTS siem_x ON CLUSTER `ndr_cluster` (id String, version UInt64) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{uuid}/all', '{replica}', version) ORDER BY id"
         );
         assert_eq!(
             on_cluster_with("create table if not exists `ndr_acme`.soar(id String) ENGINE=MergeTree ORDER BY id", C),
-            "create table if not exists `ndr_acme`.soar ON CLUSTER `ndr_cluster`(id String) ENGINE=ReplicatedMergeTree ORDER BY id"
+            "create table if not exists `ndr_acme`.soar ON CLUSTER `ndr_cluster`(id String) ENGINE=ReplicatedMergeTree('/clickhouse/tables/{uuid}/all', '{replica}') ORDER BY id"
         );
         assert_eq!(on_cluster_with("\n  CREATE TABLE IF NOT EXISTS m (x UInt8) ENGINE = Memory", C), "\n  CREATE TABLE IF NOT EXISTS m ON CLUSTER `ndr_cluster` (x UInt8) ENGINE = Memory");
         // "engine" inside a name or a column is not the ENGINE clause (found in the cluster test)
         assert_eq!(
             on_cluster_with("CREATE TABLE IF NOT EXISTS siem_engine_docs (id String, engine_name String, version UInt64) ENGINE = ReplacingMergeTree(version) ORDER BY id", C),
-            "CREATE TABLE IF NOT EXISTS siem_engine_docs ON CLUSTER `ndr_cluster` (id String, engine_name String, version UInt64) ENGINE = ReplicatedReplacingMergeTree(version) ORDER BY id"
+            "CREATE TABLE IF NOT EXISTS siem_engine_docs ON CLUSTER `ndr_cluster` (id String, engine_name String, version UInt64) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{uuid}/all', '{replica}', version) ORDER BY id"
         );
     }
 

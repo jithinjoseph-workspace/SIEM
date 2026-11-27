@@ -533,6 +533,8 @@ async fn main() {
     removals::spawn(state.clone());
     // ProVigil nodes (AI and data lake boxes): their tables
     nodes::spawn(state.clone());
+    // data lake nodes that joined get the tables they lack (N4d)
+    nodes::spawn_schema_sync(state.clone());
     // new agents' registry rows in batches (mass enrollment)
     registry_writer::spawn(state.db.clone());
     predictions::spawn(state.clone());
@@ -1147,6 +1149,7 @@ async fn main() {
         .route("/api/cluster/tokens", post(nodes::create_token))
         .route("/api/cluster/join", post(nodes::join))
         .route("/api/cluster/heartbeat", post(nodes::heartbeat))
+        .route("/api/cluster/layout", get(nodes::layout))
         .route("/api/cluster/nodes", get(nodes::list))
         .route("/api/cluster/nodes/:id", axum::routing::delete(nodes::remove))
         .route("/api/license/generate", post(licence_issue::generate))

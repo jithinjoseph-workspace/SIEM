@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "ndr-engine"
-version = "1.0.32"
+version = "1.0.33"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1831,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "provigil-common"
-version = "1.0.32"
+version = "1.0.33"
 dependencies = [
  "anyhow",
  "async-trait",

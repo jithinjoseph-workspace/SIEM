@@ -145,7 +145,17 @@ case "$ROLE" in
             read -rp "  Is the master a Windows PC (the MSI)? It then keeps its sessions here [y/N]: " w || w=n
             case "$w" in y|Y|yes) WITH_VALKEY=1 ;; esac
         fi
-        bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ${WITH_VALKEY:+--with-valkey}
+        if [ -n "$JOIN_TOKEN" ]; then
+            # one more data lake node of a running system: the same password as the first, no tables
+            # of its own (the master gives them once this node has its layout)
+            if [ -z "$DL_PASS_FILE" ]; then
+                read -rsp "  The data lake password (the one the master uses): " p; echo
+                DL_PASS_FILE=$(mktemp); chmod 600 "$DL_PASS_FILE"; printf '%s\n' "$p" > "$DL_PASS_FILE"; unset p
+            fi
+            bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" --password-file "$DL_PASS_FILE" --joining ${WITH_VALKEY:+--with-valkey}
+        else
+            bash "$DIR/datalake/install-datalake.sh" --master-ip "$MASTER_IP" ${WITH_VALKEY:+--with-valkey}
+        fi
         join_master datalake
         exit 0 ;;
     ainode)

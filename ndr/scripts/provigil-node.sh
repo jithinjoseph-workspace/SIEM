@@ -98,16 +98,65 @@ beat_once() {
         model=${MODEL:-$(curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)}
         printf '%s' "$model" | grep -Eq '^[A-Za-z0-9._:/-]{0,100}$' || model=""
     fi
-    body=$(printf '{"mem_used":%s,"disk_used":%s,"load":%s,"detail":{"service_up":%s,"model":"%s"}}' "$(mem_used)" "$(disk_used)" "$(load)" "$up" "$model")
+    body=$(printf '{"mem_used":%s,"disk_used":%s,"load":%s,"detail":{"service_up":%s,"model":"%s","layout":"%s"}}' "$(mem_used)" "$(disk_used)" "$(load)" "$up" "$model" "$(cat "$CONF_DIR/layout.version" 2>/dev/null)")
     time=$(date +%s)
     sig=$(hmac "$SECRET" "$(printf 'beat\n%s\n%s\n%s' "$NODE_ID" "$time" "$(sha256 "$body")")")
     post -H "X-Node-Id: $NODE_ID" -H "X-Time: $time" -H "X-Sig: $sig" --data-binary "$body" "$MASTER/api/cluster/heartbeat"
 }
 
+# ── a data lake node: the ClickHouse layout the master decides (specs/provigil-nodes.md, N4d) ──
+CH_ETC=/etc/clickhouse-server
+LAYOUT_FILE="$CH_ETC/config.d/zz-provigil-layout.xml"
+PEERS_FILE="$CH_ETC/users.d/zz-provigil-peers.xml"
+
+layout_once() {
+    # shellcheck disable=SC1090
+    . "$CONF"
+    [ "$ROLE" = datalake ] || return 0
+    local time sig answer version nonce iv data mac key tmp me peers host master_ip
+    time=$(date +%s)
+    sig=$(hmac "$SECRET" "$(printf 'beat\n%s\n%s\n%s' "$NODE_ID" "$time" "$(sha256 "")")")
+    answer=$(curl -sS -k --max-time 15 -H "X-Node-Id: $NODE_ID" -H "X-Time: $time" -H "X-Sig: $sig" "$MASTER/api/cluster/layout") || return 1
+    version=$(json_field "$answer" version); nonce=$(json_field "$answer" nonce); iv=$(json_field "$answer" iv)
+    data=$(json_field "$answer" data); mac=$(json_field "$answer" mac)
+    [ -n "$version" ] && [ -n "$data" ] || { say "no layout yet: $answer"; return 1; }
+    [ "$mac" = "$(hmac "$SECRET" "$(printf 'layout-mac\n%s\n%s' "$nonce" "$data")")" ] || { say "layout not signed with this node's key: ignored"; return 1; }
+    [ "$version" = "$(cat "$CONF_DIR/layout.version" 2>/dev/null)" ] && return 0
+    key=$(hmac "$SECRET" "$(printf 'layout\n%s' "$nonce")")
+    tmp=$(mktemp)
+    if ! printf '%s' "$data" | openssl base64 -d -A | openssl enc -d -aes-256-cbc -K "$key" -iv "$iv" > "$tmp" 2>/dev/null || ! grep -q '<remote_servers' "$tmp"; then
+        rm -f "$tmp"; say "layout could not be opened"; return 1
+    fi
+    # the other data lake nodes, from the signed layout itself (they get through this node's firewall)
+    me=$(sed -n 's#.*<interserver_http_host>\(.*\)</interserver_http_host>.*#\1#p' "$tmp")
+    peers=$(sed -n 's#.*<replica><host>\([^<]*\)</host>.*#\1#p' "$tmp" | grep -vxF "$me" | grep -E '^[A-Za-z0-9.:-]{1,100}$' || true)
+    host=$(printf '%s' "$MASTER" | sed -E 's#^[a-z]+://##; s#[:/].*$##')
+    master_ip=$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1{print $1}' || true); master_ip=${master_ip:-$host}
+    install -m 640 -o root -g clickhouse "$tmp" "$LAYOUT_FILE"; rm -f "$tmp"
+    # the ProVigil user: the master, this machine and the other data lake nodes (the whole list:
+    # a second users file replaces the list, it does not add to it)
+    tmp=$(mktemp)
+    { printf '<clickhouse><users><provigil><networks replace="replace">'
+      for ip in "$master_ip" 127.0.0.1 ::1 $peers; do printf '<ip>%s</ip>' "$ip"; done
+      printf '</networks></provigil></users></clickhouse>\n'; } > "$tmp"
+    install -m 640 -o root -g clickhouse "$tmp" "$PEERS_FILE"; rm -f "$tmp"
+    # the other data lake nodes reach this one: queries 9000, copies 9009, Keeper 9181
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+        for ip in $peers; do ufw allow proto tcp from "$ip" to any port 9000,9009,9181 >/dev/null; done
+    fi
+    systemctl restart clickhouse-server
+    echo "$version" > "$CONF_DIR/layout.version"
+    say "ClickHouse layout ${version:0:12} applied (other data lake nodes: $(echo $peers))"
+}
+
 cmd_run() {
     [ -f "$CONF" ] || die "not joined yet: $0 join ..."
+    local n=0
     while true; do
+        # a data lake node checks its layout every minute (and at start)
+        if [ $((n % 6)) = 0 ]; then layout_once >/dev/null 2>&1 || say "layout not applied (master unreachable?)"; fi
         beat_once >/dev/null 2>&1 || say "heartbeat not delivered (master unreachable?)"
+        n=$((n + 1))
         sleep "$EVERY"
     done
 }
@@ -153,6 +202,7 @@ case "${1:-}" in
     join) shift; cmd_join "$@" ;;
     run) cmd_run ;;
     beat) [ -f "$CONF" ] || die "not joined yet"; beat_once; echo ;;   # one heartbeat, the master's answer shown
+    layout) [ -f "$CONF" ] || die "not joined yet"; layout_once ;;     # a data lake node: fetch and apply its ClickHouse layout now
     install-service) cmd_install_service ;;
     status) [ -f "$CONF" ] && grep -v '^SECRET=' "$CONF" || echo "not joined" ;;
     *) sed -n '2,10p' "$0"; exit 2 ;;

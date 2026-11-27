@@ -301,3 +301,29 @@ Still to do (N4d): the master writes the ClickHouse layout from the Nodes list (
 shards of two copies, Keeper on the master and the first two data lake nodes) to each data lake
 node through provigil-node.sh, and sets `CLICKHOUSE_SHARD_TABLES` for siem-api when there is more than
 one shard.
+
+## 17. N4d built 2026-11-27: the master lays out the data lake
+
+- Layout (`nodes.rs`): data lake nodes in join order, two per shard and never moved (1-2 shard 01,
+  3-4 shard 02, ...; an odd last node has one copy until its partner joins); Keeper on the first node
+  (shortcut: one Keeper). The first node keeps the installer's names (shard 01, copy replica-01): it
+  was installed before the master and its tables are registered under them; renaming would leave them
+  read-only.
+- `GET /api/cluster/layout` (signed by the node; encrypted with its key: AES-256-CBC that `openssl enc`
+  opens, plus a signature): the node's ClickHouse settings (the cluster with a shared secret, its shard
+  and copy names, the Keeper, the credentials for copying data between nodes).
+- `provigil-node.sh` on a data lake node, every minute: fetches the layout, checks the signature,
+  decrypts, writes `config.d/zz-provigil-layout.xml` and the full user address list (a second users
+  file replaces the list), opens 9000/9009/9181 to the other data lake nodes (taken from the signed
+  layout, not the unsigned answer), restarts ClickHouse, reports the applied version in its heartbeat.
+- The master, every minute: a ready data lake node whose applied layout is the current one gets the
+  databases and tables it lacks, with the same table ids (copy paths use `{uuid}`), Distributed last;
+  its copies then fill from the other nodes. Tested on ClickHouse 24.8: definitions keep `{uuid}`,
+  `{shard}` and `{replica}`; an empty server given ch1's 116 definitions got 116 tables and filled
+  itself (settings 12/12, users 3/3) and took new writes. Tested end to end with the dev master: two
+  data lake nodes joined, each opened its layout (one shard, two copies, Keeper on the first), the
+  second run changed nothing, the heartbeat reported the applied version.
+- Installer: `install.sh` data lake with `--token` is one more node of a running system: it asks for the
+  data lake password the master uses and runs `install-datalake.sh --joining` (no tables of its own).
+- Not tested yet: on real Linux machines (systemd restart, ufw, the master reaching a node's port 8123).
+  Still to do: the Nodes page warning for a shard with one copy; three Keepers.

@@ -1,7 +1,11 @@
 #!/bin/sh
 # ProVigil data lake (PC 2): installs ClickHouse on Ubuntu 22.04/24.04, open only to the master.
 #
-#   sudo ./install-datalake.sh --master-ip 192.168.1.10 [--password-file FILE] [--keep-days 14] [--no-firewall] [--with-valkey]
+#   sudo ./install-datalake.sh --master-ip 192.168.1.10 [--password-file FILE] [--keep-days 14] [--no-firewall] [--with-valkey] [--joining]
+#
+# --joining: one more data lake node of a running system (with --password-file: the same password as
+# the first). It creates no tables: once the master's layout is applied, the master gives it the
+# tables and they fill from the other nodes (specs/provigil-nodes.md, N4d).
 #
 # --with-valkey: also the master's session store (a Windows master: Valkey has no Windows build),
 # a Redis-compatible server with a password, port 6379 open to the master only.
@@ -20,6 +24,7 @@ while [ $# -gt 0 ]; do
         --keep-days) KEEP_DAYS="${2:-}"; shift 2 ;;
         --no-firewall) FIREWALL=0; shift ;;
         --with-valkey) VALKEY=1; shift ;;
+        --joining) JOINING=1; shift ;;
         *) echo "unknown option $1"; exit 2 ;;
     esac
 done
@@ -109,10 +114,14 @@ else
     die "systemd is required"
 fi
 i=0; until clickhouse-client -q "SELECT 1" >/dev/null 2>&1; do i=$((i+1)); [ $i -lt 60 ] || die "ClickHouse did not start (journalctl -u clickhouse-server)"; sleep 1; done
+if [ "${JOINING:-0}" = 1 ]; then
+    say "joining data lake node: no tables now; the master creates them once this node has its layout"
+else
 clickhouse-client --multiquery < "$FILES/init.sql"
 # the NDR module's schema, when the installer kit has it (after the SIEM one: the shared users and
 # tenants tables then get the NDR columns; every statement is IF NOT EXISTS)
 if [ -f "$FILES/ndr-init.sql" ]; then clickhouse-client --multiquery < "$FILES/ndr-init.sql" >/dev/null; fi
+fi
 say "schema ready: $(clickhouse-client -q "SELECT count() FROM system.tables WHERE database = 'ndr'") tables in ndr"
 
 # 3b. the session store of a Windows master (--with-valkey): password kept across reinstalls

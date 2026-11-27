@@ -140,3 +140,23 @@ Mac risks to test first (none blocks the plan; each has a fallback):
 
 Order decided: N2 (join, Nodes page) and N3 (AI sharing) first, they need no hardware; N8 (Ubuntu) next,
 it is the lowest-risk platform; N1 (ARM images) on the Mac when it arrives, then N5-N7.
+
+## 10. Three product lines (owner decision 2026-11-27)
+
+| Line | Master | AI nodes | Data lake nodes |
+|---|---|---|---|
+| A. Full Mac | Mac Studio (Linux VM; sensor on macOS with a TAP box beside it, about 1 Gbps) | Mac Studio (Ollama on macOS) | Mac Studio (ClickHouse in the Linux VM) |
+| B. Hybrid | Linux x86 server (ProVigil OS, TAP or bypass card inside, full-speed sensor, no VM) | Mac Studio | Mac Studio |
+| C. Full Linux | Linux x86 server | Linux x86 server with NVIDIA GPU | Linux x86 server |
+
+- One design for all three: a node joins with a token whatever it runs on; the master does not care
+  whether an AI node is a Mac or an NVIDIA server (both answer the same OpenAI-style API), and
+  ClickHouse replicas may be on Linux servers and Mac VMs in the same cluster (data parts do not
+  depend on the processor; to be confirmed in the N7 test).
+- Line B removes the Mac's weakest parts from the master (VM networking for thousands of agents,
+  capture speed, start without sign-in) and keeps the Mac where it is strongest (AI). The data lake on
+  a Mac keeps risk 3 (ClickHouse in the VM, to be load-tested); a Linux data lake node can be mixed in.
+- Linux on the Mac Studio itself is not possible (Asahi Linux has no M4 installer or GPU driver as of
+  August 2026), so a Mac node always runs macOS, with the Linux VM where Linux is needed.
+- ProVigil OS for x86: an Ubuntu-based installer image (USB) that installs Ubuntu and ProVigil and
+  asks only the role and the licence; supports TAP or bypass network cards on the master.

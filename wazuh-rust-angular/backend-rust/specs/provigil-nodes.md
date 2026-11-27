@@ -160,3 +160,31 @@ it is the lowest-risk platform; N1 (ARM images) on the Mac when it arrives, then
   August 2026), so a Mac node always runs macOS, with the Linux VM where Linux is needed.
 - ProVigil OS for x86: an Ubuntu-based installer image (USB) that installs Ubuntu and ProVigil and
   asks only the role and the licence; supports TAP or bypass network cards on the master.
+
+## 11. Wiring and installing a three-node system (Small)
+
+Networks:
+- **Office network (LAN)**: agents, NDR sensors, syslog devices and analysts reach the master only.
+  Master ports: 443 console, 8089/8443 agents, 514/6514 syslog, 9092 remote sensors.
+- **Cluster network**: a separate 10 GbE switch (or VLAN) joining the nodes only; private addresses
+  (example 10.10.10.0/24: master .1, data lake .11, AI .21). Ports between nodes only: 8123/9000
+  ClickHouse, 9009 ClickHouse copies, 9181/9234 ClickHouse Keeper, 11434 AI node, 8444 node agent
+  (mTLS). Nothing in the cluster network is reachable from the office network.
+- **Capture**: the TAP (or switch mirror port) to the master's capture port, listen only, no address.
+
+Ports per box: Mac master: built-in 10 GbE to the LAN, Thunderbolt 10 GbE adapter to the cluster
+switch, second Thunderbolt 10 GbE adapter to the TAP. Mac AI or data lake node: built-in 10 GbE to the
+cluster switch (management through the master). Linux master: LAN card, cluster card, TAP card.
+Time: every node takes time from the master (NTP); log order and ClickHouse copies depend on it.
+
+Install order:
+1. Rack and cable all boxes, power on; set each node's cluster address (installer asks).
+2. Master: `install --role master --licence licence.jwt --cluster-ip 10.10.10.1 --lan-ip ...
+   --capture <port>`. It starts the console, Keeper and the NTP server, waits for a data lake node
+   (console shows "waiting for a data lake node"), and prints a join token.
+3. Data lake node: `install --join https://10.10.10.1:8444 --token ... --role datalake`. The master
+   writes the ClickHouse layout, creates the tables, and the platform starts.
+4. AI node: `install --join ... --role ai`. The model downloads; the master adds it to the AI list.
+5. Check in the console's Nodes page: all nodes ready, time in sync, ClickHouse writes and reads, an
+   AI test question, capture counters rising.
+6. Enrol a test agent and a test sensor; confirm an alert and an NDR detection reach the console.

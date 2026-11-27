@@ -1,6 +1,6 @@
 [package]
 name = "provigil-common"
-version = "1.0.37"
+version = "1.0.38"
 edition = "2021"
 description = "Shared types, JWT, SOAR, threat-intel, ClickHouse, Kafka, and tenant utilities for Provigil AI XDR services"
 

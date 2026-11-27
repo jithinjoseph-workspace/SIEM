@@ -46,7 +46,7 @@ pub async fn generate_chat(
     let providers = provigil_common::ai::get_ai_providers(&storage.client, "chat").await;
 
     for p in &providers {
-        if p.api_key.is_empty() { continue; }
+        if !provigil_common::ai::usable(p) { continue; }
         let result = call_provider_chat(p, system, history, user_msg).await;
         if let Ok((ref text, _)) = result {
             if !text.is_empty() { return result; }

@@ -212,8 +212,10 @@ model server is up are added to it automatically (`node:<name>`, Ollama's OpenAI
 11434, the model the node reports, priority `PROVIGIL_AI_NODE_PRIORITY`, default 1). The AI client
 (`siem-ai`) gives each call to the least busy provider of the best priority and moves a provider that
 failed to the back for 30 s. Shortcut: no separate bounded queue; when every node is busy the call
-goes to the least busy one and waits in its model server. Still to do (N3b): the NDR engine's AI
-(`OLLAMA_URL`, one address) to use the same node list.
+goes to the least busy one and waits in its model server. N3b built the same day: the NDR engine's AI (chat,
+verdicts, briefings, embeddings) loads providers through `provigil-common` (`get_ai_providers`),
+which now adds the same ready AI nodes (10 s list, each call starting at the next node) and no longer
+skips a provider without a key when it has its own address (a self-hosted model server).
 
 ## 13. Later phases (gaps found 2026-11-27)
 

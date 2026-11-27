@@ -36,21 +36,75 @@ fn cache() -> Arc<Mutex<HashMap<String, (Vec<AiProvider>, Instant)>>> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Load enabled providers for a use_case ("threat"|"chat"|"all"), sorted by priority.
-/// Results cached for 5 minutes. Concurrent callers share the refreshed result.
+/// Load enabled providers for a use_case ("threat"|"chat"|"all"), sorted by priority, with the
+/// ready AI nodes (specs/provigil-nodes.md, N3). Configured providers are cached for 5 minutes,
+/// the node list for 10 seconds. Concurrent callers share the refreshed result.
 pub async fn get_ai_providers(ch: &Client, use_case: &str) -> Vec<AiProvider> {
-    let cache = cache();
-    let mut guard = cache.lock().await;
-    let needs_refresh = guard.get(use_case)
-        .map(|(_, ts)| ts.elapsed() > Duration::from_secs(300))
-        .unwrap_or(true);
-    if needs_refresh {
-        let fresh = load_from_db(ch, use_case).await;
-        guard.insert(use_case.to_string(), (fresh.clone(), Instant::now()));
-        fresh
-    } else {
-        guard[use_case].0.clone()
+    let configured = {
+        let cache = cache();
+        let mut guard = cache.lock().await;
+        let needs_refresh = guard.get(use_case)
+            .map(|(_, ts)| ts.elapsed() > Duration::from_secs(300))
+            .unwrap_or(true);
+        if needs_refresh {
+            let fresh = load_from_db(ch, use_case).await;
+            guard.insert(use_case.to_string(), (fresh.clone(), Instant::now()));
+            fresh
+        } else {
+            guard[use_case].0.clone()
+        }
+    };
+    with_nodes(configured, ai_nodes(ch).await, NEXT_NODE.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+}
+
+/// Each call starts at the next AI node, so calls spread over them.
+static NEXT_NODE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static NODES: std::sync::OnceLock<Mutex<(Vec<AiProvider>, Option<Instant>)>> = std::sync::OnceLock::new();
+
+/// The configured providers and the AI nodes (rotated by `turn`), by priority (stable).
+pub fn with_nodes(mut list: Vec<AiProvider>, mut nodes: Vec<AiProvider>, turn: usize) -> Vec<AiProvider> {
+    if !nodes.is_empty() {
+        let k = turn % nodes.len();
+        nodes.rotate_left(k);
     }
+    list.extend(nodes);
+    list.sort_by_key(|p| p.priority);
+    list
+}
+
+/// The ready AI nodes whose model server is up (heartbeat within 30 s), as providers: Ollama's
+/// OpenAI-style API on port 11434 with the model the node reported. Priority from
+/// PROVIGIL_AI_NODE_PRIORITY (default 1), the same as siem-api uses.
+async fn ai_nodes(ch: &Client) -> Vec<AiProvider> {
+    let lock = NODES.get_or_init(|| Mutex::new((Vec::new(), None)));
+    let mut g = lock.lock().await;
+    if g.1.is_some_and(|t| t.elapsed() < Duration::from_secs(10)) {
+        return g.0.clone();
+    }
+    #[derive(clickhouse::Row, serde::Deserialize)]
+    struct Row { name: String, address: String, detail: String }
+    let sql = "SELECT n.name AS name, n.address AS address, s.detail AS detail                FROM (SELECT id, name, address FROM ndr.cluster_nodes FINAL WHERE removed = 0 AND role = 'ai') AS n                INNER JOIN (SELECT id, detail FROM ndr.cluster_node_status FINAL WHERE at > toUnixTimestamp(now()) - 30) AS s ON n.id = s.id";
+    let priority = std::env::var("PROVIGIL_AI_NODE_PRIORITY").ok().and_then(|p| p.parse().ok()).unwrap_or(1);
+    // no node tables (a master without nodes, or before siem-api made them): no nodes
+    let rows: Vec<Row> = ch.query(sql).fetch_all().await.unwrap_or_default();
+    let list: Vec<AiProvider> = rows.into_iter().filter_map(|r| {
+        let d: serde_json::Value = serde_json::from_str(&r.detail).ok()?;
+        let model = d.get("model").and_then(|m| m.as_str()).filter(|m| !m.is_empty())?.to_string();
+        if d.get("service_up") != Some(&serde_json::Value::Bool(true)) { return None; }
+        let host = if r.address.contains(':') { format!("[{}]", r.address) } else { r.address.clone() };
+        Some(AiProvider {
+            name: format!("node:{}", r.name), provider_type: "openai".into(), api_key: String::new(), model,
+            base_url: format!("http://{host}:11434"), endpoint_path: "/v1/chat/completions".into(),
+            msg_format: "openai".into(), priority,
+        })
+    }).collect();
+    *g = (list.clone(), Some(Instant::now()));
+    list
+}
+
+/// A provider that can be called: a key, or its own address (a self-hosted model server, an AI node).
+pub fn usable(p: &AiProvider) -> bool {
+    !p.api_key.is_empty() || !p.base_url.is_empty()
 }
 
 /// System + single user prompt → response text.
@@ -68,7 +122,7 @@ pub async fn generate_simple(ch: &Client, use_case: &str, system: &str, prompt: 
 /// Same as `generate_simple` for a provider list you already have (priority order, first non-empty answer wins).
 pub async fn generate_with_providers(providers: &[AiProvider], system: &str, prompt: &str) -> String {
     for p in providers {
-        if p.api_key.is_empty() { continue; }
+        if !usable(p) { continue; }
         let result = call_simple(p, system, prompt).await;
         if !result.is_empty() { return result; }
         warn!("ai_providers: '{}' returned empty, trying next", p.name);
@@ -94,7 +148,7 @@ pub async fn embed_text(ch: &Client, text: &str) -> Option<Vec<f32>> {
 /// Same as `embed_text` for a provider list already in hand.
 pub async fn embed_with_providers(providers: &[AiProvider], text: &str) -> Option<Vec<f32>> {
     for p in providers {
-        if p.api_key.is_empty() || p.provider_type != "openai" { continue; }
+        if !usable(p) || p.provider_type != "openai" { continue; }
         match call_embeddings(p, text).await {
             Some(v) => return Some(v),
             None => warn!("ai_providers: embeddings call to '{}' failed, trying next", p.name),
@@ -224,6 +278,32 @@ async fn call_anthropic(p: &AiProvider, system: &str, prompt: &str) -> String {
     };
 
     data["content"][0]["text"].as_str().unwrap_or("").trim().to_string()
+}
+
+#[cfg(test)]
+mod node_tests {
+    use super::*;
+
+    fn p(name: &str, priority: u8, key: &str, base: &str) -> AiProvider {
+        AiProvider { name: name.into(), provider_type: "openai".into(), api_key: key.into(), model: "m".into(), base_url: base.into(), endpoint_path: String::new(), msg_format: String::new(), priority }
+    }
+
+    #[test]
+    fn nodes_take_turns_and_cloud_stays_behind_them() {
+        let cloud = p("cloud", 5, "k", "");
+        let nodes = vec![p("node:a", 1, "", "http://a:11434"), p("node:b", 1, "", "http://b:11434")];
+        let names = |v: Vec<AiProvider>| v.into_iter().map(|p| p.name).collect::<Vec<_>>();
+        assert_eq!(names(with_nodes(vec![cloud.clone()], nodes.clone(), 0)), ["node:a", "node:b", "cloud"]);
+        assert_eq!(names(with_nodes(vec![cloud.clone()], nodes.clone(), 1)), ["node:b", "node:a", "cloud"]);
+        assert_eq!(names(with_nodes(vec![cloud], Vec::new(), 7)), ["cloud"]);
+    }
+
+    #[test]
+    fn a_model_server_without_a_key_is_usable() {
+        assert!(usable(&p("node:a", 1, "", "http://a:11434")));
+        assert!(usable(&p("cloud", 5, "k", "")));
+        assert!(!usable(&p("empty", 5, "", "")));
+    }
 }
 
 #[cfg(test)]

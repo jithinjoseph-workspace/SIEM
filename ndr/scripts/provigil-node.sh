@@ -91,9 +91,14 @@ cmd_join() {
 beat_once() {
     # shellcheck disable=SC1090
     . "$CONF"
-    local up=false body time sig
+    local up=false body time sig model=""
     service_up "$ROLE" && up=true
-    body=$(printf '{"mem_used":%s,"disk_used":%s,"load":%s,"detail":{"service_up":%s}}' "$(mem_used)" "$(disk_used)" "$(load)" "$up")
+    # an AI node: the model it serves (MODEL= in node.conf, else the first one installed)
+    if [ "$ROLE" = ai ] && [ "$up" = true ]; then
+        model=${MODEL:-$(curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)}
+        printf '%s' "$model" | grep -Eq '^[A-Za-z0-9._:/-]{0,100}$' || model=""
+    fi
+    body=$(printf '{"mem_used":%s,"disk_used":%s,"load":%s,"detail":{"service_up":%s,"model":"%s"}}' "$(mem_used)" "$(disk_used)" "$(load)" "$up" "$model")
     time=$(date +%s)
     sig=$(hmac "$SECRET" "$(printf 'beat\n%s\n%s\n%s' "$NODE_ID" "$time" "$(sha256 "$body")")")
     post -H "X-Node-Id: $NODE_ID" -H "X-Time: $time" -H "X-Sig: $sig" --data-binary "$body" "$MASTER/api/cluster/heartbeat"

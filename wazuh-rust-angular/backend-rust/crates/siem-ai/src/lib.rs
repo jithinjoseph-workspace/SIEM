@@ -5,10 +5,16 @@
 //! them in, so this crate has no database. Providers are tried in priority
 //! order: OpenAI-compatible endpoints (OpenAI, Groq, any custom one) and Anthropic.
 //!
+//! Providers of the same priority share the work (specs/provigil-nodes.md, N3): each call goes to
+//! the one with the fewest calls running, and a provider that just failed waits [`DOWN_FOR`] at the
+//! back of the list. The master's AI nodes are such a group.
+//!
 //! Log text is attacker-controlled: [`untrusted`] wraps it so the model is told
 //! to treat it as data, and the features only ever *recommend*.
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -40,6 +46,43 @@ pub struct Reply {
 }
 
 const TIMEOUT: Duration = Duration::from_secs(60);
+/// A provider that failed is tried after the others for this long.
+const DOWN_FOR: Duration = Duration::from_secs(30);
+
+/// Per provider name: calls running now, and until when it counts as down.
+static LOAD: Mutex<Option<HashMap<String, (u32, Option<Instant>)>>> = Mutex::new(None);
+
+fn with_load<R>(f: impl FnOnce(&mut HashMap<String, (u32, Option<Instant>)>) -> R) -> R {
+    f(LOAD.lock().unwrap().get_or_insert_with(HashMap::new))
+}
+
+/// Calls running on a provider; the count drops when the call ends (also on an early return).
+struct Running(String);
+impl Running {
+    fn start(name: &str) -> Self {
+        with_load(|m| m.entry(name.to_string()).or_default().0 += 1);
+        Running(name.to_string())
+    }
+}
+impl Drop for Running {
+    fn drop(&mut self) {
+        with_load(|m| if let Some(e) = m.get_mut(&self.0) { e.0 = e.0.saturating_sub(1) });
+    }
+}
+
+fn mark(name: &str, ok: bool) {
+    with_load(|m| m.entry(name.to_string()).or_default().1 = if ok { None } else { Some(Instant::now() + DOWN_FOR) });
+}
+
+/// The order to try: by priority; within a priority the ones up before the ones down, then the
+/// fewest calls running.
+fn order<'a>(mut ps: Vec<&'a Provider>, load: &HashMap<String, (u32, Option<Instant>)>, now: Instant) -> Vec<&'a Provider> {
+    ps.sort_by_key(|p| {
+        let (running, down) = load.get(&p.name).copied().unwrap_or((0, None));
+        (p.priority, down.is_some_and(|d| d > now), running)
+    });
+    ps
+}
 const MAX_TOKENS: u32 = 1024;
 /// A provider's rate limit that clears within this long is waited for (once) instead of failing.
 const RATE_LIMIT_WAIT_MAX: f64 = 20.0;
@@ -92,13 +135,14 @@ pub async fn chat_long(providers: &[Provider], system: &str, messages: &[Message
 /// `brief_first`: ask reasoning models to think briefly from the start (a long answer).
 async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], max_tokens: u32, brief_first: bool) -> Result<Reply, String> {
     // a self-hosted model server (its own base URL) may have no key
-    let mut ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty() || !p.base_url.is_empty()).collect();
+    let ps: Vec<&Provider> = providers.iter().filter(|p| !p.api_key.is_empty() || !p.base_url.is_empty()).collect();
     if ps.is_empty() {
         return Err("No AI provider is configured (Settings > AI Configuration)".into());
     }
-    ps.sort_by_key(|p| p.priority);
+    let ps = with_load(|m| order(ps, m, Instant::now()));
     let mut last = String::new();
     for p in ps {
+        let _running = Running::start(&p.name);
         // `reasoning_effort` (OpenAI-format APIs): a reasoning model that thinks until the
         // budget runs out answers nothing; a model without the option refuses the call
         let openai = p.provider_type != "anthropic";
@@ -117,6 +161,8 @@ async fn chat_with(providers: &[Provider], system: &str, messages: &[Message], m
                 r = Ok(again);
             }
         }
+        // a provider that does not answer goes to the back for a while (a rate limit is no failure)
+        mark(&p.name, r.is_ok() || r.as_ref().is_err_and(|e| retry_wait(e).is_some()));
         match r {
             Ok((t, _)) if !t.trim().is_empty() => return Ok(Reply { text: t.trim().to_string(), model: model_of(p) }),
             Ok((_, stop)) if stop == "length" || stop == "max_tokens" => last = format!("{}: empty reply, cut at {max_tokens} tokens", p.name),
@@ -254,6 +300,37 @@ impl HourlyBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prov(name: &str, priority: u8) -> Provider {
+        Provider { name: name.into(), priority, ..Default::default() }
+    }
+
+    #[test]
+    fn work_goes_to_the_least_busy_node_and_a_down_one_waits_at_the_back() {
+        let (a, b, c, cloud) = (prov("node:a", 1), prov("node:b", 1), prov("node:c", 1), prov("cloud", 5));
+        let now = Instant::now();
+        let mut load = HashMap::new();
+        load.insert("node:a".to_string(), (3, None));
+        load.insert("node:b".to_string(), (1, None));
+        load.insert("node:c".to_string(), (0, Some(now + Duration::from_secs(10))));
+        let names = |v: Vec<&Provider>| v.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        // b is least busy; c is down (after the ready ones of its priority); the cloud provider last
+        assert_eq!(names(order(vec![&cloud, &a, &b, &c], &load, now)), ["node:b", "node:a", "node:c", "cloud"]);
+        // once c's down time has passed it is the least busy again
+        assert_eq!(names(order(vec![&a, &b, &c], &load, now + Duration::from_secs(11))), ["node:c", "node:b", "node:a"]);
+    }
+
+    #[test]
+    fn a_running_call_is_counted_until_it_ends() {
+        let n = "node:count-test";
+        let running = |n: &str| with_load(|m| m.get(n).map(|e| e.0).unwrap_or(0));
+        {
+            let _one = Running::start(n);
+            let _two = Running::start(n);
+            assert_eq!(running(n), 2);
+        }
+        assert_eq!(running(n), 0);
+    }
 
     #[test]
     fn rate_limit_waits_come_from_the_provider() {

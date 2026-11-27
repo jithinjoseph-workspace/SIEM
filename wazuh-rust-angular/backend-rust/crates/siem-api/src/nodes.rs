@@ -314,8 +314,64 @@ pub async fn remove(State(state): State<AppState>, Extension(ctx): Extension<Aut
     }
 }
 
+// ---- AI nodes as AI providers (N3) ----
+
+/// How long the list of ready AI nodes is reused before it is read again.
+const AI_LIST_FOR: Duration = Duration::from_secs(10);
+static AI_NODES: std::sync::Mutex<Option<(std::time::Instant, Vec<siem_ai::Provider>)>> = std::sync::Mutex::new(None);
+
+/// A ready AI node as an AI provider: its Ollama answers OpenAI-style on port 11434 with the model
+/// it reported. All nodes share one priority (`PROVIGIL_AI_NODE_PRIORITY`, default 1), so the AI
+/// client gives each call to the least busy of them.
+pub fn node_provider(name: &str, address: &str, model: &str) -> siem_ai::Provider {
+    let priority = std::env::var("PROVIGIL_AI_NODE_PRIORITY").ok().and_then(|p| p.parse().ok()).unwrap_or(1);
+    let host = if address.contains(':') { format!("[{address}]") } else { address.to_string() };
+    siem_ai::Provider {
+        name: format!("node:{name}"),
+        provider_type: "openai".into(),
+        api_key: String::new(),
+        model: model.to_string(),
+        base_url: format!("http://{host}:11434"),
+        endpoint_path: "/v1/chat/completions".into(),
+        priority,
+    }
+}
+
+/// The ready AI nodes whose model server is up, as AI providers.
+pub async fn ai_providers(state: &AppState) -> Vec<siem_ai::Provider> {
+    if let Some((t, list)) = AI_NODES.lock().unwrap().as_ref() {
+        if t.elapsed() < AI_LIST_FOR {
+            return list.clone();
+        }
+    }
+    let t = now();
+    let nodes: Vec<NodeRow> = state.db.main().query("SELECT ?fields FROM cluster_nodes FINAL WHERE removed = 0 AND role = 'ai'").fetch_all().await.unwrap_or_default();
+    let status: Vec<StatusRow> = if nodes.is_empty() {
+        Vec::new()
+    } else {
+        state.db.main().query("SELECT ?fields FROM cluster_node_status FINAL WHERE at > ?").bind(t - DOWN_AFTER).fetch_all().await.unwrap_or_default()
+    };
+    let list: Vec<siem_ai::Provider> = nodes
+        .iter()
+        .filter_map(|n| {
+            let d: Value = serde_json::from_str(&status.iter().find(|s| s.id == n.id)?.detail).ok()?;
+            let model = d.get("model").and_then(Value::as_str).filter(|m| !m.is_empty())?;
+            (d.get("service_up") == Some(&Value::Bool(true))).then(|| node_provider(&n.name, &n.address, model))
+        })
+        .collect();
+    *AI_NODES.lock().unwrap() = Some((std::time::Instant::now(), list.clone()));
+    list
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_ai_node_is_an_openai_style_provider_on_its_model_server() {
+        let p = node_provider("mac-ai-1", "10.10.10.21", "gpt-oss:20b");
+        assert_eq!((p.name.as_str(), p.base_url.as_str(), p.endpoint_path.as_str(), p.model.as_str()), ("node:mac-ai-1", "http://10.10.10.21:11434", "/v1/chat/completions", "gpt-oss:20b"));
+        assert_eq!(node_provider("x", "fd00::21", "m").base_url, "http://[fd00::21]:11434");
+    }
+
     use super::*;
 
     #[test]

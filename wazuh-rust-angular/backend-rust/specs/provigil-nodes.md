@@ -205,3 +205,21 @@ Install order:
 N2 built 2026-11-27: `nodes.rs` (join tokens, signed join and heartbeats, node list, remove),
 `ndr/scripts/provigil-node.sh` (join, heartbeat loop, start at boot on Linux or macOS), console page
 Admin > Nodes.
+
+N3 built 2026-11-27 (SIEM side): every AI feature of siem-api (copilot, case summaries, triage,
+predictions, parsers, investigations) loads its providers through one list; ready AI nodes whose
+model server is up are added to it automatically (`node:<name>`, Ollama's OpenAI-style API on port
+11434, the model the node reports, priority `PROVIGIL_AI_NODE_PRIORITY`, default 1). The AI client
+(`siem-ai`) gives each call to the least busy provider of the best priority and moves a provider that
+failed to the back for 30 s. Shortcut: no separate bounded queue; when every node is busy the call
+goes to the least busy one and waits in its model server. Still to do (N3b): the NDR engine's AI
+(`OLLAMA_URL`, one address) to use the same node list.
+
+## 13. Later phases (gaps found 2026-11-27)
+
+| # | Phase | What |
+|---|---|---|
+| N9 | Semantic detection | events and alerts turned into embeddings on AI nodes; detection by similarity to known attack behaviour (the NDR engine's vector store as the base) |
+| N10 | Predictive engine | from the intent prediction and predictions pages to a scored forecast of a host's next likely attack steps |
+| N11 | One-click updates for nodes | the master offers a tested release; nodes update one at a time (drain, update, check, next) |
+| N12 | Security-tuned model | an AI model tuned on security data, served by the AI nodes |

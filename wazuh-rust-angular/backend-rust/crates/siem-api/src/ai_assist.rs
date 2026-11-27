@@ -32,8 +32,15 @@ struct ProviderRow {
     priority: u8,
 }
 
-/// The enabled providers for a use case ("chat", "threat" or "all"), by priority.
+/// The enabled providers for a use case ("chat", "threat" or "all"), by priority: the configured
+/// ones and the ready AI nodes (the nodes share one priority, so calls spread over them).
 pub async fn providers(state: &AppState, use_case: &str) -> Vec<Provider> {
+    let mut list = configured(state, use_case).await;
+    list.extend(crate::nodes::ai_providers(state).await);
+    list
+}
+
+async fn configured(state: &AppState, use_case: &str) -> Vec<Provider> {
     if let Some((t, p)) = PROVIDERS.lock().unwrap().get_or_insert_with(HashMap::new).get(use_case) {
         if t.elapsed() < PROVIDER_TTL {
             return p.clone();

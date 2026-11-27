@@ -1,6 +1,6 @@
 [package]
 name = "ndr-engine"
-version = "1.0.33"
+version = "1.0.34"
 edition = "2021"
 license = "Apache-2.0"
 description = "Production-grade NDR correlation engine (Apache-2.0)"

@@ -122,7 +122,11 @@ async fn main() -> anyhow::Result<()> {
     // (which also does it) is not installed for a SIEM-only licence.
     if let Some(lic) = state.verified_license.clone() {
         let db = state.db.clone();
-        tokio::spawn(async move { provision_licence_admin(&db, &lic).await });
+        tokio::spawn(async move {
+            // a client's install keeps none of the built-in logins (they are the same everywhere)
+            secure_default_logins(&db).await;
+            provision_licence_admin(&db, &lic).await
+        });
     }
 
     let cors = CorsLayer::new()
@@ -188,6 +192,96 @@ fn require_env(key: &str) -> String {
         tracing::error!("Required env var {} not set — aborting", key);
         std::process::exit(1);
     })
+}
+
+/// The built-in logins every fresh database has (init.sql): `admin` with `ndr@admin123` (super admin)
+/// and `tenant-admin` with `ndr@tenant123`. On a licensed install (a client's) neither may keep its
+/// known password: `admin` gets SUPER_ADMIN_PASS (the installer's), or a random password written to
+/// INITIAL_ADMIN_FILE (default `initial-admin-password.txt`, readable by its owner only), and a
+/// `tenant-admin` still on its default is removed (the installer creates the client's own tenant
+/// admin). Development installs have no licence and keep them.
+async fn secure_default_logins(db: &db::AuthDb) {
+    const DEFAULTS: [(&str, &str); 3] = [("admin", "ndr@admin123"), ("tenant-admin", "ndr@tenant123"), ("analyst", "ndr@tenant123")];
+    for (name, default) in DEFAULTS {
+        // the database may still be starting: ask again for up to 2.5 minutes
+        let mut user = None;
+        for _ in 0..30 {
+            match db.get_user_any_tenant(name).await {
+                Ok(u) => {
+                    user = Some(u);
+                    break;
+                }
+                Err(_) => tokio::time::sleep(std::time::Duration::from_secs(5)).await,
+            }
+        }
+        let Some(Some(u)) = user else { continue };
+        if !bcrypt::verify(default, &u.password_hash).unwrap_or(false) {
+            continue;
+        }
+        if name != "admin" {
+            match db.delete_user(&u.id).await {
+                Ok(()) => tracing::warn!("built-in login '{name}' (known password) removed"),
+                Err(e) => tracing::error!("built-in login '{name}' (known password) NOT removed: {e}"),
+            }
+            continue;
+        }
+        let given = std::env::var("SUPER_ADMIN_PASS").unwrap_or_default().trim().to_string();
+        let (new, generated) = if given.len() >= 12 && given != default {
+            (given, false)
+        } else {
+            use rand::Rng;
+            (rand::thread_rng().sample_iter(&rand::distributions::Alphanumeric).take(20).map(char::from).collect::<String>(), true)
+        };
+        if generated {
+            let path = std::env::var("INITIAL_ADMIN_FILE").ok().filter(|p| !p.trim().is_empty()).unwrap_or_else(|| "initial-admin-password.txt".into());
+            if let Err(e) = write_private(&path, &format!("ProVigil super admin\nuser: admin\npassword: {new}\nChange it after signing in, then delete this file.\n")) {
+                tracing::error!("super admin password not written to {path} ({e}): 'admin' keeps its built-in password");
+                continue;
+            }
+            tracing::warn!("super admin 'admin': the built-in password is replaced; the new one is in {path} (owner only)");
+        }
+        let hash = match bcrypt::hash(&new, bcrypt::DEFAULT_COST) {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::error!("super admin password not set: {e}");
+                continue;
+            }
+        };
+        match db.set_password_hash(&u.id, &hash).await {
+            Ok(()) => tracing::info!("super admin 'admin': built-in password replaced"),
+            Err(e) => tracing::error!("super admin 'admin' still has its built-in password: {e}"),
+        }
+    }
+}
+
+/// A file only its owner can read (the new super admin password).
+fn write_private(path: &str, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o600);
+    }
+    o.open(path)?.write_all(text.as_bytes())?;
+    // Windows: SYSTEM and the Administrators only (as provigil-service does for its secrets)
+    #[cfg(windows)]
+    {
+        use std::process::{Command, Stdio};
+        let ok = Command::new("icacls")
+            .arg(path)
+            .args(["/inheritance:r", "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !ok {
+            let _ = std::fs::remove_file(path);
+            return Err(std::io::Error::other("its access could not be limited to the administrators"));
+        }
+    }
+    Ok(())
 }
 
 /// Creates the licensed client (when missing), gives it the licence's modules, and creates its

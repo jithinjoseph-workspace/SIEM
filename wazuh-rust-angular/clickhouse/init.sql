@@ -216,6 +216,9 @@ ALTER TABLE ndr.tenants ADD COLUMN IF NOT EXISTS updated_at DateTime DEFAULT now
 INSERT INTO ndr.tenants (id, name, plan, features, active) VALUES
     ('default', 'Default Organization', 'enterprise', 'siem,ndr', 1);
 
-INSERT INTO ndr.users (id, username, password_hash, role, tenant_id, permissions, active) VALUES
-    ('u-admin', 'admin', '$2b$12$qB5uFqakHidExby4EbdH6.tFvW34sj7CAQFZdUCzk5YSi/kV3S09.', 'super_admin', 'default', 'dashboard,alerts,siem,ndr,rules,agents,sources,users,settings', 1),
-    ('u-analyst', 'analyst', '$2b$12$wi15kWc0KGLG6FEtIysJHuqRfT7PDvOoW2IC3oT3hfoQmtmygZ5h6', 'analyst', 'default', 'dashboard,alerts,siem,ndr,rules,agents', 1);
+-- the super admin, only when missing (running this file again must not put its first password back);
+-- on a licensed install the sign-in service replaces that password at once (SUPER_ADMIN_PASS). No
+-- other built-in login: the installer creates the client's own tenant admin.
+INSERT INTO ndr.users (id, username, password_hash, role, tenant_id, permissions, active)
+SELECT 'u-admin', 'admin', '$2b$12$qB5uFqakHidExby4EbdH6.tFvW34sj7CAQFZdUCzk5YSi/kV3S09.', 'super_admin', 'default', 'dashboard,alerts,siem,ndr,rules,agents,sources,users,settings', 1
+WHERE (SELECT count() FROM ndr.users FINAL WHERE username = 'admin') = 0;

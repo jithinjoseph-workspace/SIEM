@@ -333,10 +333,9 @@ INSERT INTO ndr.users (username, password_hash, role, tenant_id)
 SELECT 'admin', '$2b$12$qB5uFqakHidExby4EbdH6.tFvW34sj7CAQFZdUCzk5YSi/kV3S09.', 'super_admin', 'default'
 WHERE (SELECT count() FROM ndr.users FINAL WHERE username = 'admin') = 0;
 
--- Password: ndr@tenant123  (customer must change on first login)
-INSERT INTO ndr.users (username, password_hash, role, tenant_id, permissions)
-SELECT 'tenant-admin', '$2b$12$wi15kWc0KGLG6FEtIysJHuqRfT7PDvOoW2IC3oT3hfoQmtmygZ5h6', 'tenant_admin', 'default', 'dashboard,alerts,sensors,users,soar'
-WHERE (SELECT count() FROM ndr.users FINAL WHERE username = 'tenant-admin') = 0;
+-- No built-in tenant admin: the installer creates the client's own (TENANT_ADMIN_USER / _PASS).
+-- On a licensed install the sign-in service replaces the password above (SUPER_ADMIN_PASS, or a
+-- random one written to INITIAL_ADMIN_FILE) and removes a 'tenant-admin' still on its old default.
 
 CREATE TABLE IF NOT EXISTS ndr.tenants ON CLUSTER ndr_cluster
 (

@@ -177,6 +177,8 @@ services:
       # the customer's first admin, created once for the licensed client
       - TENANT_ADMIN_USER=${TENANT_ADMIN_USER}
       - TENANT_ADMIN_PASS=${TENANT_ADMIN_PASS}
+      # this install's super admin password (the sign-in service replaces the built-in one)
+      - SUPER_ADMIN_PASS=${SUPER_ADMIN_PASS:-}
     depends_on:
       clickhouse1:
         condition: service_healthy

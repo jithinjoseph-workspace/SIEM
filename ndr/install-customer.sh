@@ -877,6 +877,26 @@ if [ -z "$TENANT_ADMIN_PASS" ]; then
     [ "$TENANT_ADMIN_PASS" != "$_PASS_CONFIRM" ] && err "Passwords do not match — re-run the installer"
 fi
 
+# This install's super admin ('admin'): its own password, never the built-in one every database starts
+# with. The sign-in service puts it in place at its first start (licensed installs).
+SUPER_ADMIN_PASS=${PV_SUPER_ADMIN_PASS:-}
+SUPER_ADMIN_GENERATED=0
+if [ -z "$SUPER_ADMIN_PASS" ]; then
+    printf "\n"
+    read -sp "  Super admin password (user admin; Enter: make a strong one): " SUPER_ADMIN_PASS
+    echo ""
+    if [ -z "$SUPER_ADMIN_PASS" ]; then
+        SUPER_ADMIN_PASS=$(openssl rand -base64 24 | tr -d '/+=\n' | cut -c1-20)
+        SUPER_ADMIN_GENERATED=1
+    else
+        read -sp "  Confirm password    : " _PASS_CONFIRM
+        echo ""
+        [ "$SUPER_ADMIN_PASS" != "$_PASS_CONFIRM" ] && err "Passwords do not match — re-run the installer"
+    fi
+fi
+[ ${#SUPER_ADMIN_PASS} -ge 12 ] || err "The super admin password needs at least 12 characters"
+[ "$SUPER_ADMIN_PASS" = "ndr@admin123" ] && err "That is the built-in password: choose another"
+
 # Auto-extract TENANT_ID from the license token so events are stored under
 # the correct tenant, not hardcoded "default".
 TENANT_ID="default"
@@ -935,6 +955,7 @@ LICENSE_PUBLIC_KEY=$LICENSE_PUBLIC_KEY
 LICENSE_TOKEN=$LICENSE_TOKEN
 TENANT_ADMIN_USER=$TENANT_ADMIN_USER
 TENANT_ADMIN_PASS=$TENANT_ADMIN_PASS
+SUPER_ADMIN_PASS=$SUPER_ADMIN_PASS
 AGENT_KEYS_SECRET=${AGENT_KEYS_SECRET}
 GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN}
 ENVEOF
@@ -1375,6 +1396,23 @@ info "NDR Agent:  $(curl -s http://localhost:3001/agent/status 2>/dev/null || ec
 # ── Completion banner ─────────────────────────
 _pad() { printf '%-44s' "$1"; }
 
+# the super admin's password is in place once the sign-in service accepts it: then it leaves .env
+# (no password kept in a file)
+ADMIN_OK=0
+for _ in $(seq 1 36); do
+    if curl -sk --max-time 5 -X POST "https://127.0.0.1/api/auth/login" -H 'Content-Type: application/json' \
+        -d "$(python3 -c 'import json,sys; print(json.dumps({"username": "admin", "password": sys.argv[1]}))' "$SUPER_ADMIN_PASS")" 2>/dev/null | grep -q '"token"'; then
+        ADMIN_OK=1; break
+    fi
+    sleep 5
+done
+if [ "$ADMIN_OK" = 1 ]; then
+    sudo sed -i 's/^SUPER_ADMIN_PASS=.*/SUPER_ADMIN_PASS=/' "$INSTALL_DIR/.env"
+    log "Super admin password set (removed from .env)"
+else
+    warn "Super admin password not confirmed yet: sign in as admin with it; then empty SUPER_ADMIN_PASS in $INSTALL_DIR/.env"
+fi
+
 printf "\n\n"
 printf "  ${CYAN}╔══════════════════════════════════════════════╗${NC}\n"
 printf "  ${CYAN}║${NC}                                              ${CYAN}║${NC}\n"
@@ -1400,3 +1438,9 @@ printf "  ${CYAN}║${NC}  $(_pad "status:   ./status.sh")${CYAN}║${NC}\n"
 printf "  ${CYAN}╚══════════════════════════════════════════════╝${NC}\n"
 printf "\n"
 printf "  ${DIM}Proma Secure — Network Detection & Response Platform${NC}\n\n"
+printf "  Super admin:  admin\n"
+if [ "$SUPER_ADMIN_GENERATED" = 1 ]; then
+    printf "  Password:     ${BOLD}%s${NC}   (shown only now: write it down, change it after signing in)\n\n" "$SUPER_ADMIN_PASS"
+else
+    printf "  Password:     the one you chose\n\n"
+fi
